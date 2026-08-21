@@ -39,6 +39,21 @@ const PENDING_CONSUMERS = new Set([ 'chokepointBaselines', 'imfMacro',
       'energyDisruptions',
 ]);
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasLiteralHydrationConsumer(source, key) {
+  if (source.includes(`getHydratedData('${key}')`) || source.includes(`ensureHydrated('${key}')`)) {
+    return true;
+  }
+
+  const escapedKey = escapeRegExp(key);
+  return new RegExp(
+    `\\bcreateHydrationHandoff(?:\\s*<[^>]+>)?\\s*\\(\\s*(?:'${escapedKey}'|"${escapedKey}")\\s*,`,
+  ).test(source);
+}
+
 describe('Bootstrap cache key registry', () => {
   const cacheKeysPath = join(root, 'server', '_shared', 'cache-keys.ts');
   const cacheKeysSrc = readFileSync(cacheKeysPath, 'utf-8');
@@ -321,11 +336,12 @@ describe('Panel hydration consumers', () => {
 // The slow tier is fetched in the BACKGROUND (off the boot critical path, #4488), so any
 // slow-tier consumer that read its hydration WITHOUT an on-demand fetch fallback would break
 // (empty panel). This guard enforces the greppable half — every bootstrap key (incl. all
-// SLOW_KEYS) has a getHydratedData consumer or is allow-listed below. The fetch-on-absence
-// half is a manual audit (a getHydratedData call alone can't prove the adjacent RPC is the
-// fallback); the #4488 audit confirmed every slow-key consumer is hydrated-else-fetch.
+// SLOW_KEYS) has a literal hydration consumer or is allow-listed below. The
+// fetch-on-absence half is a manual audit (a hydration consumer alone can't
+// prove the adjacent RPC is the fallback); the #4488 audit confirmed every
+// slow-key consumer is hydrated-else-fetch.
 describe('Bootstrap key hydration coverage', () => {
-  it('every bootstrap key has a getHydratedData consumer in src/', () => {
+  it('every bootstrap key has a literal hydration consumer in src/', () => {
     const keys = Object.keys(CANONICAL_BOOTSTRAP_CACHE_KEYS);
 
     const srcFiles = [];
@@ -357,14 +373,14 @@ describe('Bootstrap key hydration coverage', () => {
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       if (derivedRoadKeys.has(key)) continue;
-      // Two valid consumer forms. `getHydratedData(k)` reads a key delivered by a
-      // tier bundle. `ensureHydrated(k)` (#5300) reads a key that rides in no
-      // tier: it returns the tier value if one is present and otherwise fetches
-      // the key through its own CDN-shielded `?keys=<k>&public=1` URL. Both prove
-      // the key is actually consumed — which is what this guard is for.
+      // Three valid consumer forms. `getHydratedData(k)` reads a key delivered by
+      // a tier bundle. `ensureHydrated(k)` (#5300) reads a key that rides in no
+      // tier and otherwise fetches its CDN-shielded per-key URL.
+      // `createHydrationHandoff<T>(k, ...)` accepts a tier value into a bounded
+      // service cache. Each literal call proves the key is actually consumed.
       assert.ok(
-        allSrc.includes(`getHydratedData('${key}')`) || allSrc.includes(`ensureHydrated('${key}')`),
-        `Bootstrap key '${key}' has no getHydratedData('${key}') or ensureHydrated('${key}') consumer in src/ — data is fetched but never used`,
+        hasLiteralHydrationConsumer(allSrc, key),
+        `Bootstrap key '${key}' has no literal getHydratedData, ensureHydrated, or createHydrationHandoff consumer in src/ — data is fetched but never used`,
       );
     }
   });
@@ -427,8 +443,9 @@ describe('Bootstrap tier definitions', () => {
   // Scan the source for real consumers — do NOT trust PENDING_CONSUMERS here: it is
   // an allow-list that goes stale the moment a consumer is wired up (euGasStorage,
   // correlationCards and wsbTickers were all still on it long after they had one).
-  // A key with no getHydratedData/ensureHydrated call site is freight: ship it
-  // on demand instead (#5300).
+  // A key with no literal getHydratedData, ensureHydrated, or
+  // createHydrationHandoff call site is freight: ship it on demand instead
+  // (#5300).
   it('every tier key has a hydration consumer — a tier is not a dumping ground', () => {
     const slow = tierKeys('slow');
     const fast = tierKeys('fast');
@@ -444,8 +461,7 @@ describe('Bootstrap tier definitions', () => {
     walk(join(root, 'src'));
     const allSrc = srcFiles.map((f) => readFileSync(f, 'utf-8')).join('\n');
 
-    const freight = [...slow, ...fast].filter((k) =>
-      !allSrc.includes(`getHydratedData('${k}')`) && !allSrc.includes(`ensureHydrated('${k}')`));
+    const freight = [...slow, ...fast].filter((key) => !hasLiteralHydrationConsumer(allSrc, key));
 
     assert.deepEqual(
       freight,
@@ -466,13 +482,12 @@ describe('Bootstrap tier definitions', () => {
     walk(join(root, 'src'));
     const allSrc = srcFiles.map((f) => readFileSync(f, 'utf-8')).join('\n');
 
-    const stale = [...PENDING_CONSUMERS].filter((key) =>
-      allSrc.includes(`getHydratedData('${key}')`) || allSrc.includes(`ensureHydrated('${key}')`));
+    const stale = [...PENDING_CONSUMERS].filter((key) => hasLiteralHydrationConsumer(allSrc, key));
 
     assert.deepEqual(
       stale,
       [],
-      `PENDING_CONSUMERS entries have real hydration consumers and must be removed: ${stale.join(', ')}`,
+      `PENDING_CONSUMERS entries have literal getHydratedData, ensureHydrated, or createHydrationHandoff consumers and must be removed: ${stale.join(', ')}`,
     );
   });
 

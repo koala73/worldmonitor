@@ -81,11 +81,10 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     return [];
   }
 
-  // Hydration is accepted inside outageBreaker.execute() so the breaker cache
-  // is warmed under the same key a later recurring call reads (#7048).
-  const resp = await outageBreaker.execute(async () => {
-    const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
-    if (hydrated?.outages?.length) return hydrated;
+  const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
+  if (hydrated?.outages?.length) outageBreaker.recordSuccess(hydrated);
+
+  const resp = hydrated?.outages?.length ? hydrated : await outageBreaker.execute(async () => {
     return client.listInternetOutages({
       country: '',
       start: 0,
@@ -113,11 +112,13 @@ export function getOutagesStatus(): string {
 // ========================================================================
 
 export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksResponse> {
-  // Accepted inside ddosBreaker.execute() so the hydration warms the breaker
-  // cache a later recurring call reads (#7048).
+  const hydrated = getHydratedData('ddosAttacks') as ListInternetDdosAttacksResponse | undefined;
+  if (hydrated?.protocol?.length || hydrated?.vector?.length) {
+    ddosBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
+
   return ddosBreaker.execute(async () => {
-    const hydrated = getHydratedData('ddosAttacks') as ListInternetDdosAttacksResponse | undefined;
-    if (hydrated?.protocol?.length || hydrated?.vector?.length) return hydrated;
     return client.listInternetDdosAttacks({});
   }, emptyDdosFallback, { shouldCache: (r) => r.protocol.length > 0 || r.vector.length > 0 });
 }
@@ -127,12 +128,15 @@ export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksRespons
 // ========================================================================
 
 export async function fetchTrafficAnomalies(country?: string): Promise<ListInternetTrafficAnomaliesResponse> {
-  // The whole-dataset bootstrap snapshot is accepted inside the breaker (under
-  // its default cache key) only when this call itself wants the whole dataset;
-  // country-filtered reads keep fetching the filtered RPC (#7048).
-  return trafficAnomaliesBreaker.execute(async () => {
+  if (!country) {
     const hydrated = getHydratedData('trafficAnomalies') as ListInternetTrafficAnomaliesResponse | undefined;
-    if (hydrated?.anomalies !== undefined && !country) return hydrated;
+    if (hydrated?.anomalies !== undefined) {
+      if (hydrated.anomalies.length > 0) trafficAnomaliesBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+  }
+
+  return trafficAnomaliesBreaker.execute(async () => {
     return client.listInternetTrafficAnomalies({ country: country || '' });
   }, emptyAnomaliesFallback, { shouldCache: (r) => r.anomalies.length > 0 });
 }

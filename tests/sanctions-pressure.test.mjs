@@ -374,11 +374,22 @@ let bundleSequence = 0;
 async function loadSanctionsService(state) {
   globalThis[FRONTEND_STATE_KEY] = state;
   const stubs = new Map([
-    ['utils-stub', `
+    ['circuit-breaker-stub', `
       export function createCircuitBreaker() {
+        let cached;
         return {
-          async execute(fn, fallback) { try { return await fn(); } catch { return fallback; } },
-          clearCache() {},
+          async execute(fn, fallback, options) {
+            if (cached !== undefined) return cached;
+            try {
+              const result = await fn();
+              if (!options?.shouldCache || options.shouldCache(result)) cached = result;
+              return result;
+            } catch {
+              return fallback;
+            }
+          },
+          recordSuccess(value) { cached = value; },
+          clearCache() { cached = undefined; },
         };
       }
     `],
@@ -396,13 +407,15 @@ async function loadSanctionsService(state) {
     ['generated-clients-stub', `
       export class SanctionsServiceClient {
         async listSanctionsPressure() {
+          globalThis.${FRONTEND_STATE_KEY}.rpcCalls =
+            (globalThis.${FRONTEND_STATE_KEY}.rpcCalls ?? 0) + 1;
           return structuredClone(globalThis.${FRONTEND_STATE_KEY}.rpcResponse);
         }
       }
     `],
   ]);
   const aliases = new Map([
-    ['@/utils', 'utils-stub'],
+    ['@/utils/circuit-breaker', 'circuit-breaker-stub'],
     ['@/services/rpc-client', 'rpc-client-stub'],
     ['@/services/premium-fetch', 'premium-fetch-stub'],
     ['@/services/bootstrap', 'bootstrap-stub'],
@@ -436,6 +449,23 @@ async function loadSanctionsService(state) {
 }
 
 describe('sanctions frontend normalization parity', () => {
+  it('reuses accepted hydration from the breaker cache', async () => {
+    const state = {
+      hydrated: cachedPayload(),
+      premium: true,
+      rpcResponse: undefined,
+      rpcCalls: 0,
+    };
+    const service = await loadSanctionsService(state);
+
+    const hydratedResult = await service.fetchSanctionsPressure();
+    state.hydrated = undefined;
+    const cachedResult = await service.fetchSanctionsPressure();
+
+    assert.deepEqual(cachedResult, hydratedResult);
+    assert.equal(state.rpcCalls, 0);
+  });
+
   it('normalizes old hydrated cache data to absent-error defaults', async () => {
     const oldPayload = cachedPayload();
     delete oldPayload.semaCount;

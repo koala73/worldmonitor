@@ -180,11 +180,13 @@ export async function fetchTradeBarriers(countries: string[] = [], measureType =
 
 export async function fetchCustomsRevenue(): Promise<GetCustomsRevenueResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('customsRevenue') as GetCustomsRevenueResponse | undefined;
+    if (hydrated?.months?.length) {
+      revenueBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await revenueBreaker.execute(async () => {
-      const hydrated = getHydratedData('customsRevenue') as GetCustomsRevenueResponse | undefined;
-      if (hydrated?.months?.length) return hydrated;
       return publicClient.getCustomsRevenue({});
     }, emptyRevenue, { shouldCache: r => (r.months?.length ?? 0) > 0 });
   } catch {

@@ -12,11 +12,13 @@ export type { ListCrossSourceSignalsResponse };
 const EMPTY: ListCrossSourceSignalsResponse = { signals: [], evaluatedAt: 0, compositeCount: 0 };
 
 export async function fetchCrossSourceSignals(): Promise<ListCrossSourceSignalsResponse> {
-  // Accepted inside breaker.execute() so the hydration warms the breaker cache
-  // a later recurring call reads (#7048).
+  const hydrated = getHydratedData('crossSourceSignals') as ListCrossSourceSignalsResponse | undefined;
+  if (hydrated?.signals?.length) {
+    breaker.recordSuccess(hydrated);
+    return hydrated;
+  }
+
   return breaker.execute(async () => {
-    const hydrated = getHydratedData('crossSourceSignals') as ListCrossSourceSignalsResponse | undefined;
-    if (hydrated?.signals?.length) return hydrated;
     return await client.listCrossSourceSignals({}, { signal: AbortSignal.timeout(15_000) });
   }, EMPTY, { shouldCache: (r) => r.signals.length > 0 });
 }

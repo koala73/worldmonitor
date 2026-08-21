@@ -23,6 +23,23 @@ type Harness = {
   fetchSocialVelocity: () => Promise<{ posts: Array<{ id: string }>; fetchedAt: number }>;
   fetchDiseaseOutbreaks: () => Promise<{ outbreaks: Array<{ id: string }>; fetchedAt: number }>;
   fetchSanctionsPressure: () => Promise<{ totalCount: number; entries: Array<{ id: string }> }>;
+  fetchConsumerPriceOverview: (marketCode?: string, basketSlug?: string) => Promise<{ marketCode: string; asOf: string }>;
+  fetchConsumerPriceCategories: (marketCode?: string, basketSlug?: string, range?: string) => Promise<{
+    marketCode: string;
+    asOf: string;
+    categories: Array<{ slug: string }>;
+  }>;
+  fetchConsumerPriceMovers: (marketCode?: string, range?: string, categorySlug?: string) => Promise<{
+    marketCode: string;
+    asOf: string;
+    risers: Array<{ productId: string }>;
+    fallers: Array<{ productId: string }>;
+  }>;
+  fetchRetailerPriceSpreads: (marketCode?: string, basketSlug?: string) => Promise<{
+    marketCode: string;
+    asOf: string;
+    retailers: Array<{ slug: string }>;
+  }>;
   createHydrationHandoff: <T>(
     key: string,
     validate: (value: unknown) => T | null,
@@ -46,20 +63,28 @@ const EARTHQUAKE = {
   id: 'us-7001', place: '12 km SE of X', magnitude: 4.6, depthKm: 33.2,
   occurredAt: 1754000000, sourceUrl: 'https://example.org/eq', source: 'usgs', category: 'usgs',
 };
+const CONCURRENT_EARTHQUAKE = {
+  ...EARTHQUAKE,
+  id: 'us-concurrent-7002',
+  place: 'Concurrent hydration sentinel',
+};
 const SOCIAL_POST = { id: 'post-1', title: 'headline', velocity: 42 };
 const OUTBREAK = { id: 'out-1', disease: 'Cholera', country: 'YY', cases: 10 };
 
-function bootstrapStub(payload: Record<string, unknown>) {
+function bootstrapStub(
+  payload: Record<string, unknown>,
+  rpcResponseForUrl: (url: string) => unknown = (url) => ({ __rpc: true, url }),
+) {
   const requests: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     requests.push(url);
     if (url.includes('/api/bootstrap')) {
-      return new Response(JSON.stringify({ data: payload }), {
+      return new Response(JSON.stringify({ data: payload, missing: [] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       });
     }
-    return new Response(JSON.stringify({ __rpc: true, url }), {
+    return new Response(JSON.stringify(rpcResponseForUrl(url)), {
       status: 200, headers: { 'content-type': 'application/json' },
     });
   }) as typeof fetch;
@@ -78,6 +103,11 @@ before(async () => {
   const stubBrowserSeams = {
     name: 'stub-browser-seams',
     setup(b: PluginBuild) {
+      b.onResolve({ filter: /^@\/utils$/ }, (args) => (
+        args.importer.endsWith('/src/services/consumer-prices/index.ts')
+          ? { path: resolve(root, 'src/utils/circuit-breaker.ts') }
+          : undefined
+      ));
       b.onResolve({ filter: /services\/panel-gating/ }, () => ({ path: 'stub:panel-gating', namespace: 'stub-seam' }));
       b.onResolve({ filter: /services\/premium-fetch/ }, () => ({ path: 'stub:premium-fetch', namespace: 'stub-seam' }));
       b.onLoad({ filter: /.*/, namespace: 'stub-seam' }, (args) => ({
@@ -97,6 +127,7 @@ before(async () => {
         "export { fetchSocialVelocity } from './src/services/social-velocity.ts';",
         "export { fetchDiseaseOutbreaks } from './src/services/disease-outbreaks.ts';",
         "export { fetchSanctionsPressure } from './src/services/sanctions-pressure.ts';",
+        "export { fetchConsumerPriceOverview, fetchConsumerPriceCategories, fetchConsumerPriceMovers, fetchRetailerPriceSpreads } from './src/services/consumer-prices/index.ts';",
         "export { createHydrationHandoff } from './src/services/hydration-handoff.ts';",
         "export { fetchBootstrapData, __testing__ as bootstrapTesting } from './src/services/bootstrap.ts';",
       ].join('\n'),
@@ -133,7 +164,7 @@ describe('bootstrap hydration reuse (#7048)', () => {
 
     const result = await harness.fetchNaturalEvents();
     assert.deepEqual(result, [], 'breaker fallback shape is preserved for rejected hydration');
-    assert.ok(rpcUrlCount(requests) >= 1, 'rejected hydration must fall through to the live path exactly once');
+    assert.equal(rpcUrlCount(requests), 1, 'rejected hydration must fall through to the live path exactly once');
   });
 
   it('naturalEvents: a second call is served from the warmed breaker with zero RPC requests', async () => {
@@ -162,7 +193,18 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 0);
   });
 
-  it('earthquakes: a second call is served from the warmed breaker with zero RPC requests', async () => {
+  it('concurrent first earthquake calls consume accepted hydration before the breaker is warm', async () => {
+    const requests = bootstrapStub({ earthquakes: { earthquakes: [CONCURRENT_EARTHQUAKE] } });
+    await harness.fetchBootstrapData();
+
+    const [a, b] = await Promise.all([harness.fetchEarthquakes(), harness.fetchEarthquakes()]);
+    assert.equal(a.length, 1);
+    assert.equal(a[0].id, 'us-concurrent-7002');
+    assert.deepEqual(b, a);
+    assert.equal(rpcUrlCount(requests), 0);
+  });
+
+  it('earthquakes: newer hydration replaces a fresh breaker entry and is reused', async () => {
     const requests = bootstrapStub({ earthquakes: { earthquakes: [EARTHQUAKE] } });
     await harness.fetchBootstrapData();
 
@@ -216,14 +258,76 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 0, 'the premium sanctions RPC must not fire for bootstrap-sourced data');
   });
 
-  it('concurrent first calls with accepted hydration make zero RPC requests', async () => {
-    const requests = bootstrapStub({ earthquakes: { earthquakes: [EARTHQUAKE] } });
+  it('consumer prices: default hydration is isolated from parameterized cache keys and reused', async () => {
+    const defaultOverview = {
+      marketCode: 'all', asOf: 'bootstrap-overview', currencyCode: 'AED', essentialsIndex: 101,
+      valueBasketIndex: 99, wowPct: 1, momPct: 2, retailerSpreadPct: 3, coveragePct: 100,
+      freshnessLagMin: 5, topCategories: [], upstreamUnavailable: false,
+    };
+    const defaultCategories = {
+      marketCode: 'all', asOf: 'bootstrap-categories', range: '30d', upstreamUnavailable: false,
+      categories: [{ slug: 'bootstrap-category', name: 'Bootstrap category', wowPct: 1, momPct: 2, currentIndex: 101, sparkline: [], coveragePct: 100, itemCount: 1 }],
+    };
+    const defaultMovers = {
+      marketCode: 'all', asOf: 'bootstrap-movers', range: '30d', upstreamUnavailable: false, fallers: [],
+      risers: [{ productId: 'bootstrap-mover', title: 'Bootstrap mover', category: 'food', retailerSlug: 'bootstrap', changePct: 4, currentPrice: 10, currencyCode: 'AED' }],
+    };
+    const defaultSpread = {
+      marketCode: 'all', asOf: 'bootstrap-spread', basketSlug: 'essentials-ae', currencyCode: 'AED',
+      spreadPct: 7, upstreamUnavailable: false,
+      retailers: [{ slug: 'bootstrap-retailer', name: 'Bootstrap retailer', basketTotal: 100, deltaVsCheapest: 0, deltaVsCheapestPct: 0, itemCount: 1, freshnessMin: 5, currencyCode: 'AED' }],
+    };
+    const requests = bootstrapStub({
+      consumerPricesOverview: defaultOverview,
+      consumerPricesCategories: defaultCategories,
+      consumerPricesMovers: defaultMovers,
+      consumerPricesSpread: defaultSpread,
+    }, (url) => {
+      if (url.includes('/get-consumer-price-overview')) {
+        return { ...defaultOverview, marketCode: 'ae', asOf: 'rpc-overview' };
+      }
+      if (url.includes('/list-consumer-price-categories')) {
+        return { ...defaultCategories, marketCode: 'ae', asOf: 'rpc-categories', range: '90d' };
+      }
+      if (url.includes('/list-consumer-price-movers')) {
+        return { ...defaultMovers, marketCode: 'ae', asOf: 'rpc-movers', range: '7d' };
+      }
+      if (url.includes('/list-retailer-price-spreads')) {
+        return { ...defaultSpread, marketCode: 'ae', asOf: 'rpc-spread', basketSlug: 'value-ae' };
+      }
+      return { unexpectedRpcUrl: url };
+    });
     await harness.fetchBootstrapData();
 
-    const [a, b] = await Promise.all([harness.fetchEarthquakes(), harness.fetchEarthquakes()]);
-    assert.equal(a.length, 1);
-    assert.deepEqual(b, a);
-    assert.equal(rpcUrlCount(requests), 0);
+    const parameterized = await Promise.all([
+      harness.fetchConsumerPriceOverview('ae', 'value-ae'),
+      harness.fetchConsumerPriceCategories('ae', 'value-ae', '90d'),
+      harness.fetchConsumerPriceMovers('ae', '7d', 'food'),
+      harness.fetchRetailerPriceSpreads('ae', 'value-ae'),
+    ]);
+    assert.deepEqual(parameterized.map((value) => value.asOf), [
+      'rpc-overview', 'rpc-categories', 'rpc-movers', 'rpc-spread',
+    ], 'each non-default parameter tuple must use its own RPC result');
+    assert.equal(rpcUrlCount(requests), 4);
+
+    const firstDefaults = await Promise.all([
+      harness.fetchConsumerPriceOverview(),
+      harness.fetchConsumerPriceCategories(),
+      harness.fetchConsumerPriceMovers(),
+      harness.fetchRetailerPriceSpreads(),
+    ]);
+    const secondDefaults = await Promise.all([
+      harness.fetchConsumerPriceOverview(),
+      harness.fetchConsumerPriceCategories(),
+      harness.fetchConsumerPriceMovers(),
+      harness.fetchRetailerPriceSpreads(),
+    ]);
+
+    assert.deepEqual(firstDefaults.map((value) => value.asOf), [
+      'bootstrap-overview', 'bootstrap-categories', 'bootstrap-movers', 'bootstrap-spread',
+    ], 'parameterized breaker entries must not shadow the default bootstrap payloads');
+    assert.deepEqual(secondDefaults, firstDefaults, 'the exact default cache keys must reuse bootstrap hydration');
+    assert.equal(rpcUrlCount(requests), 4, 'default bootstrap reads must add no RPC requests');
   });
 
   it('hydration handoff: TTL expiry lets the normal fetch path resume', async () => {
@@ -270,7 +374,6 @@ describe('bootstrap hydration reuse (#7048)', () => {
       ['src/services/thermal-escalation.ts', /breaker\.recordSuccess\(watch\)/],
       ['src/services/unrest/index.ts', /unrestBreaker\.recordSuccess\(hydrated\)/],
       ['src/services/economic/index.ts', /bisPolicyBreaker\.recordSuccess\(hPolicy\)/],
-      ['src/services/consumer-prices/index.ts', /overviewBreaker\.recordSuccess\(hydrated,/],
     ];
     for (const [file, marker] of mustWarm) {
       const source = readFileSync(resolve(root, file), 'utf8');

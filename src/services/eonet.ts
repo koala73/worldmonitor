@@ -76,14 +76,10 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
 }
 
 export async function fetchNaturalEvents(_days = 30): Promise<NaturalEvent[]> {
-  // The hydration check lives INSIDE breaker.execute() so an accepted
-  // bootstrap value is also written into the breaker's cache under the same
-  // key a later recurring call reads (#7048). Outside the breaker, the
-  // consume-once handoff evaporated and every later viewport/refresh call
-  // refetched the RPC.
-  const response = await breaker.execute(async () => {
-    const hydrated = getHydratedData('naturalEvents') as ListNaturalEventsResponse | undefined;
-    if (hydrated?.events?.length) return hydrated;
+  const hydrated = getHydratedData('naturalEvents') as ListNaturalEventsResponse | undefined;
+  if (hydrated?.events?.length) breaker.recordSuccess(hydrated);
+
+  const response = hydrated?.events?.length ? hydrated : await breaker.execute(async () => {
     return client.listNaturalEvents({ days: 30 });
   }, emptyFallback, { shouldCache: (r) => r.events.length > 0 });
 

@@ -17,13 +17,10 @@ const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismolog
 const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
-  // Hydration is accepted inside breaker.execute() so the breaker cache is
-  // warmed under the same key later recurring calls read (#7048); a direct
-  // return drained the consume-once slot and forced a refetch on every
-  // later call.
-  const response = await breaker.execute(async () => {
-    const hydrated = getHydratedData('earthquakes') as ListEarthquakesResponse | undefined;
-    if (hydrated?.earthquakes?.length) return hydrated;
+  const hydrated = getHydratedData('earthquakes') as ListEarthquakesResponse | undefined;
+  if (hydrated?.earthquakes?.length) breaker.recordSuccess(hydrated);
+
+  const response = hydrated?.earthquakes?.length ? hydrated : await breaker.execute(async () => {
     return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyFallback, { shouldCache: (r) => r.earthquakes.length > 0 });
   return response.earthquakes as Earthquake[];

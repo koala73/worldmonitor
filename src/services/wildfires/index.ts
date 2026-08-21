@@ -47,11 +47,10 @@ const emptyFallback: ListFireDetectionsResponse = { fireDetections: [], fetchedA
 // -- Public API --
 
 export async function fetchAllFires(_days?: number): Promise<FetchResult> {
-  // Hydration is accepted inside breaker.execute() so the breaker cache is
-  // warmed under the same key a later recurring call reads (#7048).
-  const response = await breaker.execute(async () => {
-    const hydrated = getHydratedData('wildfires') as ListFireDetectionsResponse | undefined;
-    if (hydrated?.fireDetections?.length) return hydrated;
+  const hydrated = getHydratedData('wildfires') as ListFireDetectionsResponse | undefined;
+  if (hydrated?.fireDetections?.length) breaker.recordSuccess(hydrated);
+
+  const response = hydrated?.fireDetections?.length ? hydrated : await breaker.execute(async () => {
     return client.listFireDetections(
       { start: 0, end: 0, pageSize: 0, cursor: '', neLat: 0, neLon: 0, swLat: 0, swLon: 0 },
       { signal: AbortSignal.timeout(20_000) },

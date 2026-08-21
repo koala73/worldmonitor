@@ -104,11 +104,13 @@ export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorCo
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
+    if (hydrated?.indices?.length) {
+      shippingBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await shippingBreaker.execute(async () => {
-      const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
-      if (hydrated?.indices?.length) return hydrated;
       return client.getShippingRates({});
     }, emptyShipping);
   } catch {
@@ -118,11 +120,13 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
 
 export async function fetchChokepointStatus(): Promise<GetChokepointStatusResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
+    if (hydrated?.chokepoints?.length) {
+      chokepointBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await chokepointBreaker.execute(async () => {
-      const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
-      if (hydrated?.chokepoints?.length) return hydrated;
       return client.getChokepointStatus({});
     }, emptyChokepoints);
   } catch {
@@ -148,11 +152,13 @@ export async function fetchChokepointHistory(
 
 export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
+    if (hydrated?.minerals?.length) {
+      mineralsBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await mineralsBreaker.execute(async () => {
-      const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
-      if (hydrated?.minerals?.length) return hydrated;
       return client.getCriticalMinerals({});
     }, emptyMinerals);
   } catch {

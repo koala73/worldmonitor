@@ -417,11 +417,13 @@ export type { CrudeInventoryWeek };
 export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyCrudeFallback;
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
+    if (hydrated?.weeks?.length) {
+      crudeBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await crudeBreaker.execute(async () => {
-      const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
-      if (hydrated?.weeks?.length) return hydrated;
       return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });
     }, emptyCrudeFallback, { shouldCache: (r) => r.weeks.length > 0 });
   } catch {
@@ -438,11 +440,13 @@ export type { NatGasStorageWeek };
 export async function fetchNatGasStorageRpc(): Promise<GetNatGasStorageResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyNatGasFallback;
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
+    if (hydrated?.weeks?.length) {
+      natGasBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await natGasBreaker.execute(async () => {
-      const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
-      if (hydrated?.weeks?.length) return hydrated;
       return client.getNatGasStorage({}, { signal: AbortSignal.timeout(20_000) });
     }, emptyNatGasFallback, { shouldCache: (r) => r.weeks.length > 0 });
   } catch {
@@ -785,14 +789,14 @@ export async function getChinaMacroSnapshotData(): Promise<GetChinaMacroSnapshot
 
 export async function getBisCreditData(): Promise<GetBisCreditResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
+    if (hydrated?.entries?.length) {
+      bisCreditBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await bisCreditBreaker.execute(
-      async () => {
-        const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
-        if (hydrated?.entries?.length) return hydrated;
-        return client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) });
-      },
+      () => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }),
       emptyBisCreditFallback,
       { shouldCache: (r) => (r.entries?.length ?? 0) > 0 },
     );
@@ -851,14 +855,14 @@ const emptyEcbFxRatesFallback: GetEcbFxRatesResponse = { rates: [], updatedAt: '
 
 export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
+    if (hydrated?.rates?.length) {
+      ecbFxRatesBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await ecbFxRatesBreaker.execute(
-      async () => {
-        const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
-        if (hydrated?.rates?.length) return hydrated;
-        return client.getEcbFxRates({}, { signal: AbortSignal.timeout(12_000) });
-      },
+      () => client.getEcbFxRates({}, { signal: AbortSignal.timeout(12_000) }),
       emptyEcbFxRatesFallback,
       { shouldCache: (r) => (r.rates?.length ?? 0) > 0 },
     );
@@ -933,14 +937,14 @@ export type { GetEuGasStorageResponse, EuGasStorageHistoryEntry };
 
 export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
+    if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) {
+      euGasBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await euGasBreaker.execute(
-      async () => {
-        const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
-        if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) return hydrated;
-        return client.getEuGasStorage({}, { signal: AbortSignal.timeout(12_000) });
-      },
+      () => client.getEuGasStorage({}, { signal: AbortSignal.timeout(12_000) }),
       emptyEuGasFallback,
       { shouldCache: (r) => !r.unavailable && r.fillPct > 0 },
     );
@@ -957,14 +961,14 @@ export type { GetEurostatCountryDataResponse, EurostatCountryEntry };
 
 export async function getEurostatCountryData(): Promise<GetEurostatCountryDataResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
+    if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) {
+      eurostatBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await eurostatBreaker.execute(
-      async () => {
-        const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
-        if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) return hydrated;
-        return client.getEurostatCountryData({}, { signal: AbortSignal.timeout(12_000) });
-      },
+      () => client.getEurostatCountryData({}, { signal: AbortSignal.timeout(12_000) }),
       emptyEurostatFallback,
       { shouldCache: (r) => !r.unavailable && Object.keys(r.countries).length > 0 },
     );
@@ -981,14 +985,14 @@ export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRe
 
 export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
   try {
-    // Hydration accepted inside the breaker so its cache is warmed under the
-    // same key a later recurring call reads (#7048).
+    const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
+    if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) {
+      oilStocksAnalysisBreaker.recordSuccess(hydrated);
+      return hydrated;
+    }
+
     return await oilStocksAnalysisBreaker.execute(
-      async () => {
-        const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
-        if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) return hydrated;
-        return client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) });
-      },
+      () => client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) }),
       emptyOilStocksAnalysisFallback,
       { shouldCache: (r) => !r.unavailable && r.ieaMembers.length > 0 },
     );
