@@ -1826,6 +1826,61 @@ describe('collector latch release is module-owned (#6288)', () => {
     }
   });
 
+  it('grants settle-grace only once across repeated hide and show cycles', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('visible');
+    const savedNow = Date.now;
+    let now = savedNow();
+    const remainingForegroundMs = 1_000;
+    Date.now = () => now;
+    window.fetch = (() => parkForever()) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      await drainPromiseHandlers();
+      const armed = findLatchDeadline(fakeTimers.timers);
+      assert.ok(armed, 'a visible send still owns a latch');
+
+      now += LATCH_DEADLINE_MS - remainingForegroundMs;
+      lifecycle.setVisibility('hidden');
+      lifecycle.fireVisibilityChange();
+      assert.equal(armed.cancelled, true);
+
+      lifecycle.setVisibility('visible');
+      lifecycle.fireVisibilityChange();
+      const firstGrace = fakeTimers.timers.find(
+        (timer) => !timer.cancelled && timer.delay === LATCH_RELEASE_GRACE_MS,
+      );
+      assert.ok(firstGrace, 'the first return grants settle-grace to the unfreezing transport');
+
+      now += LATCH_RELEASE_GRACE_MS - remainingForegroundMs;
+      lifecycle.setVisibility('hidden');
+      lifecycle.fireVisibilityChange();
+      assert.equal(firstGrace.cancelled, true);
+
+      lifecycle.setVisibility('visible');
+      lifecycle.fireVisibilityChange();
+      const secondResume = fakeTimers.timers.find(
+        (timer) => !timer.cancelled && timer !== firstGrace && timer.delay === remainingForegroundMs,
+      );
+      assert.ok(secondResume, 'later returns consume the real remaining foreground budget');
+      secondResume.callback();
+      await assert.rejects(parked, { name: 'TimeoutError' });
+    } finally {
+      Date.now = savedNow;
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
   it('reports hidden visibility and the write-count rate on a pagehide flush that still races', { timeout: 10_000 }, async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });

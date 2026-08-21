@@ -1018,6 +1018,7 @@ function withCollectorDeadline(
   let startedAt = Date.now();
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let paused = false;
+  let settleGraceGranted = false;
   let settled = false;
   let rejectDeadline: (error: Error) => void = () => {};
   const deadline = new Promise<never>((_resolve, reject) => {
@@ -1052,11 +1053,14 @@ function withCollectorDeadline(
   const resume = (): void => {
     if (!paused || settled) return;
     paused = false;
-    // Hidden time can exhaust remainingMs, or leave a 1ms–Nms sliver. Firing
-    // that sliver on the first visible tick would race a fetch that is only
-    // now unfreezing. Give the transport the same grace the latch already
-    // uses against abort/latch collision.
-    if (remainingMs < LATCH_RELEASE_GRACE_MS) remainingMs = LATCH_RELEASE_GRACE_MS;
+    // Hidden time can leave a 1ms–Nms sliver. Firing that sliver on the first
+    // visible tick would race a fetch that is only now unfreezing. Grant one
+    // settle-grace per request, then consume the real remaining foreground
+    // budget on later visibility cycles so a stalled wrapper stays bounded.
+    if (!settleGraceGranted && remainingMs < LATCH_RELEASE_GRACE_MS) {
+      remainingMs = LATCH_RELEASE_GRACE_MS;
+      settleGraceGranted = true;
+    }
     arm();
   };
 
