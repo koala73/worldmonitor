@@ -18,6 +18,7 @@ const pizzintBreaker = createCircuitBreaker<PizzIntStatus>({
   cooldownMs: 5 * 60 * 1000,
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+  revivePersistedData: revivePizzIntStatus,
 });
 
 const gdeltBreaker = createCircuitBreaker<GdeltTensionPair[]>({
@@ -107,6 +108,15 @@ const defaultStatus: PizzIntStatus = {
   dataFreshness: 'stale',
   locations: []
 };
+
+function revivePizzIntStatus(status: PizzIntStatus): PizzIntStatus {
+  if (status.lastUpdate instanceof Date) return status;
+  const revived = new Date(status.lastUpdate as unknown as string | number);
+  return {
+    ...status,
+    lastUpdate: Number.isNaN(revived.getTime()) ? new Date(0) : revived,
+  };
+}
 
 // ---- Public API ----
 

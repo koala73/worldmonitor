@@ -103,13 +103,13 @@ export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorCo
 }
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
-  try {
-    const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
-    if (hydrated?.indices?.length) {
-      shippingBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
+  if (hydrated?.indices?.length) {
+    shippingBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await shippingBreaker.execute(async () => {
       return client.getShippingRates({});
     }, emptyShipping);
@@ -119,13 +119,13 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
 }
 
 export async function fetchChokepointStatus(): Promise<GetChokepointStatusResponse> {
-  try {
-    const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
-    if (hydrated?.chokepoints?.length) {
-      chokepointBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
+  if (hydrated?.chokepoints?.length) {
+    chokepointBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await chokepointBreaker.execute(async () => {
       return client.getChokepointStatus({});
     }, emptyChokepoints);
@@ -151,13 +151,13 @@ export async function fetchChokepointHistory(
 }
 
 export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsResponse> {
-  try {
-    const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
-    if (hydrated?.minerals?.length) {
-      mineralsBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
+  if (hydrated?.minerals?.length) {
+    mineralsBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await mineralsBreaker.execute(async () => {
       return client.getCriticalMinerals({});
     }, emptyMinerals);
@@ -200,14 +200,10 @@ const shippingStressHandoff = createHydrationHandoff<GetShippingStressResponse>(
 );
 
 export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
-  const accepted = shippingStressHandoff.accept() ?? shippingStressHandoff.read();
-  if (accepted) return accepted;
-
-  try {
-    return await client.getShippingStress({});
-  } catch {
-    return emptyShippingStress;
-  }
+  return shippingStressHandoff.getOrLoad(
+    () => client.getShippingStress({}),
+    emptyShippingStress,
+  );
 }
 
 const emptyChokepointIndex: GetCountryChokepointIndexResponse = {

@@ -82,17 +82,21 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   }
 
   const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
-  if (hydrated?.outages?.length) outageBreaker.recordSuccess(hydrated);
-
-  const resp = hydrated?.outages?.length ? hydrated : await outageBreaker.execute(async () => {
-    return client.listInternetOutages({
-      country: '',
-      start: 0,
-      end: 0,
-      pageSize: 0,
-      cursor: '',
-    });
-  }, emptyOutageFallback, { shouldCache: (r) => r.outages.length > 0 });
+  let resp: ListInternetOutagesResponse;
+  if (hydrated?.outages?.length) {
+    outageBreaker.recordSuccess(hydrated);
+    resp = hydrated;
+  } else {
+    resp = await outageBreaker.execute(async () => {
+      return client.listInternetOutages({
+        country: '',
+        start: 0,
+        end: 0,
+        pageSize: 0,
+        cursor: '',
+      });
+    }, emptyOutageFallback, { shouldCache: (r) => r.outages.length > 0 });
+  }
 
   if (resp.outages.length === 0) {
     if (outagesConfigured === null) outagesConfigured = false;
@@ -128,17 +132,18 @@ export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksRespons
 // ========================================================================
 
 export async function fetchTrafficAnomalies(country?: string): Promise<ListInternetTrafficAnomaliesResponse> {
-  if (!country) {
-    const hydrated = getHydratedData('trafficAnomalies') as ListInternetTrafficAnomaliesResponse | undefined;
-    if (hydrated?.anomalies !== undefined) {
-      if (hydrated.anomalies.length > 0) trafficAnomaliesBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('trafficAnomalies') as ListInternetTrafficAnomaliesResponse | undefined;
+  if (hydrated?.anomalies !== undefined && !country) {
+    if (hydrated.anomalies.length > 0) trafficAnomaliesBreaker.recordSuccess(hydrated);
+    return hydrated;
   }
 
   return trafficAnomaliesBreaker.execute(async () => {
     return client.listInternetTrafficAnomalies({ country: country || '' });
-  }, emptyAnomaliesFallback, { shouldCache: (r) => r.anomalies.length > 0 });
+  }, emptyAnomaliesFallback, {
+    cacheKey: country,
+    shouldCache: (r) => r.anomalies.length > 0,
+  });
 }
 
 // ========================================================================

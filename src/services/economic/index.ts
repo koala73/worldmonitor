@@ -416,13 +416,13 @@ export type { CrudeInventoryWeek };
 
 export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyCrudeFallback;
-  try {
-    const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
-    if (hydrated?.weeks?.length) {
-      crudeBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
+  if (hydrated?.weeks?.length) {
+    crudeBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await crudeBreaker.execute(async () => {
       return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });
     }, emptyCrudeFallback, { shouldCache: (r) => r.weeks.length > 0 });
@@ -439,13 +439,13 @@ export type { NatGasStorageWeek };
 
 export async function fetchNatGasStorageRpc(): Promise<GetNatGasStorageResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyNatGasFallback;
-  try {
-    const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
-    if (hydrated?.weeks?.length) {
-      natGasBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
+  if (hydrated?.weeks?.length) {
+    natGasBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await natGasBreaker.execute(async () => {
       return client.getNatGasStorage({}, { signal: AbortSignal.timeout(20_000) });
     }, emptyNatGasFallback, { shouldCache: (r) => r.weeks.length > 0 });
@@ -788,13 +788,13 @@ export async function getChinaMacroSnapshotData(): Promise<GetChinaMacroSnapshot
 }
 
 export async function getBisCreditData(): Promise<GetBisCreditResponse> {
-  try {
-    const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
-    if (hydrated?.entries?.length) {
-      bisCreditBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
+  if (hydrated?.entries?.length) {
+    bisCreditBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await bisCreditBreaker.execute(
       () => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }),
       emptyBisCreditFallback,
@@ -854,13 +854,13 @@ const ecbFxRatesBreaker = createCircuitBreaker<GetEcbFxRatesResponse>({ name: 'E
 const emptyEcbFxRatesFallback: GetEcbFxRatesResponse = { rates: [], updatedAt: '', seededAt: '0', unavailable: true };
 
 export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
-  try {
-    const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
-    if (hydrated?.rates?.length) {
-      ecbFxRatesBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
+  if (hydrated?.rates?.length) {
+    ecbFxRatesBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await ecbFxRatesBreaker.execute(
       () => client.getEcbFxRates({}, { signal: AbortSignal.timeout(12_000) }),
       emptyEcbFxRatesFallback,
@@ -936,13 +936,13 @@ export async function getFxPanelData(): Promise<FxPanelRows> {
 export type { GetEuGasStorageResponse, EuGasStorageHistoryEntry };
 
 export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
-  try {
-    const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
-    if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) {
-      euGasBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
+  if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) {
+    euGasBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await euGasBreaker.execute(
       () => client.getEuGasStorage({}, { signal: AbortSignal.timeout(12_000) }),
       emptyEuGasFallback,
@@ -960,13 +960,13 @@ export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
 export type { GetEurostatCountryDataResponse, EurostatCountryEntry };
 
 export async function getEurostatCountryData(): Promise<GetEurostatCountryDataResponse> {
-  try {
-    const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
-    if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) {
-      eurostatBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
+  if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) {
+    eurostatBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await eurostatBreaker.execute(
       () => client.getEurostatCountryData({}, { signal: AbortSignal.timeout(12_000) }),
       emptyEurostatFallback,
@@ -984,13 +984,13 @@ export async function getEurostatCountryData(): Promise<GetEurostatCountryDataRe
 export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica };
 
 export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
-  try {
-    const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
-    if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) {
-      oilStocksAnalysisBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
+  if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) {
+    oilStocksAnalysisBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await oilStocksAnalysisBreaker.execute(
       () => client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) }),
       emptyOilStocksAnalysisFallback,

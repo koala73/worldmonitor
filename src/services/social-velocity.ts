@@ -22,12 +22,8 @@ const hydrationHandoff = createHydrationHandoff<GetSocialVelocityResponse>(
 );
 
 export async function fetchSocialVelocity(): Promise<GetSocialVelocityResponse> {
-  const accepted = hydrationHandoff.accept() ?? hydrationHandoff.read();
-  if (accepted) return accepted;
-
-  try {
-    return await getClient().getSocialVelocity({});
-  } catch {
-    return emptyVelocity;
-  }
+  return hydrationHandoff.getOrLoad(
+    () => getClient().getSocialVelocity({}),
+    emptyVelocity,
+  );
 }

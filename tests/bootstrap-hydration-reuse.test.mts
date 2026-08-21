@@ -20,6 +20,8 @@ type Harness = {
   fetchNaturalEvents: () => Promise<Array<{ id: string; title: string }>>;
   fetchAllFires: () => Promise<{ totalCount: number; regions?: Record<string, unknown[]>; skipped?: boolean }>;
   fetchEarthquakes: () => Promise<Array<{ id: string }>>;
+  fetchFlightDelays: () => Promise<Array<{ id: string; updatedAt: Date }>>;
+  fetchTrafficAnomalies: (country?: string) => Promise<{ anomalies: Array<{ id: string }>; totalCount: number }>;
   fetchSocialVelocity: () => Promise<{ posts: Array<{ id: string }>; fetchedAt: number }>;
   fetchDiseaseOutbreaks: () => Promise<{ outbreaks: Array<{ id: string }>; fetchedAt: number }>;
   fetchSanctionsPressure: () => Promise<{ totalCount: number; entries: Array<{ id: string }> }>;
@@ -44,12 +46,26 @@ type Harness = {
     key: string,
     validate: (value: unknown) => T | null,
     options?: { ttlMs?: number },
-  ) => { accept: () => T | null; read: () => T | null };
+  ) => {
+    get: () => T | null;
+    getOrLoad: (load: () => Promise<T>, fallback: T) => Promise<T>;
+  };
+};
+
+type MirrorHarness = {
+  fetchRadiationWatch: () => Promise<unknown>;
+  getLatestRadiationWatch: () => unknown;
+  fetchSanctionsPressure: () => Promise<unknown>;
+  getLatestSanctionsPressure: () => unknown;
 };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const originalFetch = globalThis.fetch;
 let harness: Harness;
+let mirrorHarness: MirrorHarness;
+let capturedBreakerOptions: Record<string, {
+  revivePersistedData?: (data: unknown) => unknown;
+}>;
 
 const NATURAL_EVENT = {
   id: 'eonet-EONET_1', title: 'Storm Alpha', category: 'severeStorms', categoryTitle: 'Severe Storms',
@@ -63,24 +79,37 @@ const EARTHQUAKE = {
   id: 'us-7001', place: '12 km SE of X', magnitude: 4.6, depthKm: 33.2,
   occurredAt: 1754000000, sourceUrl: 'https://example.org/eq', source: 'usgs', category: 'usgs',
 };
-const CONCURRENT_EARTHQUAKE = {
-  ...EARTHQUAKE,
-  id: 'us-concurrent-7002',
-  place: 'Concurrent hydration sentinel',
+const FLIGHT_DELAY = {
+  id: 'delay-1', iata: 'JFK', icao: 'KJFK', name: 'John F. Kennedy International', city: 'New York', country: 'US',
+  location: { latitude: 40.6413, longitude: -73.7781 }, region: 'AIRPORT_REGION_AMERICAS',
+  delayType: 'FLIGHT_DELAY_TYPE_GENERAL', severity: 'FLIGHT_DELAY_SEVERITY_MINOR', avgDelayMinutes: 18,
+  delayedFlightsPct: 12, cancelledFlights: 0, totalFlights: 100, reason: 'weather',
+  source: 'FLIGHT_DELAY_SOURCE_FAA', updatedAt: 1_754_000_000_000,
 };
 const SOCIAL_POST = { id: 'post-1', title: 'headline', velocity: 42 };
 const OUTBREAK = { id: 'out-1', disease: 'Cholera', country: 'YY', cases: 10 };
 
 function bootstrapStub(
   payload: Record<string, unknown>,
-  rpcResponseForUrl: (url: string) => unknown = (url) => ({ __rpc: true, url }),
+  rpcResponseForUrl: (url: string) => unknown = (url) => ({
+    __rpc: true,
+    url,
+    events: [],
+    fireDetections: [],
+    anomalies: [],
+    totalCount: 0,
+  }),
 ) {
   const requests: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     requests.push(url);
     if (url.includes('/api/bootstrap')) {
-      return new Response(JSON.stringify({ data: payload, missing: [] }), {
+      // A real bootstrap key belongs to one tier. Keep the deferred slow-tier
+      // request empty so it cannot repopulate a consume-once test key and mask
+      // whether the service cache or handoff answered the recurring call.
+      const data = url.includes('tier=slow') ? {} : payload;
+      return new Response(JSON.stringify({ data, missing: [] }), {
         status: 200, headers: { 'content-type': 'application/json' },
       });
     }
@@ -98,8 +127,8 @@ function rpcUrlCount(requests: string[]): number {
 before(async () => {
   // sanctions-pressure pulls panel-gating (billing/entitlements -> i18n's
   // import.meta.glob, which only exists under Vite). Stub the two browser-only
-  // seams; forcing hasPremiumAccess() true also makes the recurring path the
-  // premium breaker itself, which is exactly what the warm targets.
+  // seams. Anonymous access is intentional: it exercises sanctions' public
+  // bootstrap fallback, the branch used by ordinary visitors.
   const stubBrowserSeams = {
     name: 'stub-browser-seams',
     setup(b: PluginBuild) {
@@ -110,10 +139,13 @@ before(async () => {
       ));
       b.onResolve({ filter: /services\/panel-gating/ }, () => ({ path: 'stub:panel-gating', namespace: 'stub-seam' }));
       b.onResolve({ filter: /services\/premium-fetch/ }, () => ({ path: 'stub:premium-fetch', namespace: 'stub-seam' }));
+      b.onResolve({ filter: /services\/i18n/ }, () => ({ path: 'stub:i18n', namespace: 'stub-seam' }));
       b.onLoad({ filter: /.*/, namespace: 'stub-seam' }, (args) => ({
         contents: args.path === 'stub:panel-gating'
-          ? 'export function hasPremiumAccess() { return true; }'
-          : 'export async function premiumFetch(...args) { return globalThis.fetch(...args); }',
+          ? 'export function hasPremiumAccess() { return false; }'
+          : args.path === 'stub:premium-fetch'
+            ? 'export async function premiumFetch(...args) { return globalThis.fetch(...args); }'
+            : "export function t(key) { return key; } export function getCurrentLanguageTag() { return 'en'; }",
         loader: 'js',
       }));
     },
@@ -124,6 +156,8 @@ before(async () => {
         "export { fetchNaturalEvents } from './src/services/eonet.ts';",
         "export { fetchAllFires } from './src/services/wildfires/index.ts';",
         "export { fetchEarthquakes } from './src/services/earthquakes.ts';",
+        "export { fetchFlightDelays } from './src/services/aviation/index.ts';",
+        "export { fetchTrafficAnomalies } from './src/services/infrastructure/index.ts';",
         "export { fetchSocialVelocity } from './src/services/social-velocity.ts';",
         "export { fetchDiseaseOutbreaks } from './src/services/disease-outbreaks.ts';",
         "export { fetchSanctionsPressure } from './src/services/sanctions-pressure.ts';",
@@ -147,6 +181,94 @@ before(async () => {
   const source = result.outputFiles[0]?.text;
   assert.ok(source, 'esbuild must emit the hydration-reuse harness');
   harness = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`) as Harness;
+
+  const captureCircuitBreakerOptions = {
+    name: 'capture-circuit-breaker-options',
+    setup(b: PluginBuild) {
+      b.onResolve({ filter: /utils\/circuit-breaker/ }, () => ({ path: 'stub:circuit-breaker', namespace: 'capture-breaker' }));
+      b.onLoad({ filter: /.*/, namespace: 'capture-breaker' }, () => ({
+        contents: `
+          globalThis.__wmCapturedBreakerOptions ??= {};
+          export function createCircuitBreaker(options) {
+            globalThis.__wmCapturedBreakerOptions[options.name] = options;
+            return {
+              recordSuccess() {},
+              getCached() { return null; },
+              clearCache() {},
+              getStatus() { return 'ok'; },
+              async execute(fn, fallback) {
+                const replay = globalThis.__wmBreakerReplay?.[options.name];
+                if (replay !== undefined) {
+                  if (globalThis.__wmBreakerRunBackground?.includes(options.name)) {
+                    const background = Promise.resolve().then(fn);
+                    (globalThis.__wmBreakerBackgroundPromises ??= []).push(background);
+                  }
+                  return replay;
+                }
+                try { return await fn(); } catch { return fallback; }
+              },
+            };
+          }
+        `,
+        loader: 'js',
+      }));
+    },
+  };
+  const captureRpcClients = {
+    name: 'capture-rpc-clients',
+    setup(b: PluginBuild) {
+      b.onResolve({ filter: /services\/generated-rpc-clients/ }, () => ({
+        path: 'stub:generated-rpc-clients',
+        namespace: 'capture-rpc',
+      }));
+      b.onLoad({ filter: /.*/, namespace: 'capture-rpc' }, () => ({
+        contents: `
+          export class AviationServiceClient { constructor() {} }
+          export class IntelligenceServiceClient { constructor() {} }
+          export class RadiationServiceClient {
+            constructor() {}
+            async listRadiationObservations() { return globalThis.__wmCapturedLiveRadiation; }
+          }
+          export class SanctionsServiceClient { constructor() {} }
+          export class ThermalServiceClient { constructor() {} }
+        `,
+        loader: 'js',
+      }));
+    },
+  };
+  const reviverCapture = await build({
+    stdin: {
+      contents: [
+        "import './src/services/aviation/index.ts';",
+        "import './src/services/pizzint.ts';",
+        "export { fetchRadiationWatch, getLatestRadiationWatch } from './src/services/radiation.ts';",
+        "export { fetchSanctionsPressure, getLatestSanctionsPressure } from './src/services/sanctions-pressure.ts';",
+        "import './src/services/thermal-escalation.ts';",
+      ].join('\n'),
+      loader: 'ts',
+      resolveDir: root,
+      sourcefile: 'bootstrap-persisted-date-revivers-entry.ts',
+    },
+    bundle: true,
+    define: { 'import.meta.env': '{"DEV":false}' },
+    format: 'esm',
+    logLevel: 'silent',
+    platform: 'node',
+    target: 'node20',
+    write: false,
+    plugins: [captureCircuitBreakerOptions, captureRpcClients, stubBrowserSeams],
+  });
+  const reviverSource = reviverCapture.outputFiles[0]?.text;
+  assert.ok(reviverSource, 'esbuild must emit the Date-reviver capture harness');
+  mirrorHarness = await import(
+    `data:text/javascript;base64,${Buffer.from(reviverSource).toString('base64')}`
+  ) as MirrorHarness;
+  capturedBreakerOptions = (globalThis as typeof globalThis & {
+    __wmCapturedBreakerOptions: typeof capturedBreakerOptions;
+  }).__wmCapturedBreakerOptions;
+  delete (globalThis as typeof globalThis & {
+    __wmCapturedBreakerOptions?: typeof capturedBreakerOptions;
+  }).__wmCapturedBreakerOptions;
 });
 
 afterEach(() => {
@@ -162,9 +284,13 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const requests = bootstrapStub({ naturalEvents: { events: [] } });
     await harness.fetchBootstrapData();
 
-    const result = await harness.fetchNaturalEvents();
-    assert.deepEqual(result, [], 'breaker fallback shape is preserved for rejected hydration');
-    assert.equal(rpcUrlCount(requests), 1, 'rejected hydration must fall through to the live path exactly once');
+    const first = await harness.fetchNaturalEvents();
+    assert.deepEqual(first, [], 'breaker fallback shape is preserved for rejected hydration');
+    assert.equal(rpcUrlCount(requests), 1, 'the first rejected hydration falls through exactly once');
+
+    const second = await harness.fetchNaturalEvents();
+    assert.deepEqual(second, []);
+    assert.equal(rpcUrlCount(requests), 2, 'an empty live response is not promoted into the breaker cache');
   });
 
   it('naturalEvents: a second call is served from the warmed breaker with zero RPC requests', async () => {
@@ -180,6 +306,28 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 0, 'accepted hydration must not be followed by an RPC refetch');
   });
 
+  it('concurrent first reads of accepted hydration make zero RPC requests', async () => {
+    const requests = bootstrapStub({ earthquakes: { earthquakes: [EARTHQUAKE] } });
+    await harness.fetchBootstrapData();
+
+    const [a, b] = await Promise.all([harness.fetchEarthquakes(), harness.fetchEarthquakes()]);
+    assert.equal(a.length, 1);
+    assert.deepEqual(b, a);
+    assert.equal(rpcUrlCount(requests), 0);
+  });
+
+  it('wildfires: rejected hydration and empty live data remain retryable', async () => {
+    const requests = bootstrapStub({ wildfires: { fireDetections: [], fetchedAt: 0, dataAvailable: false } });
+    await harness.fetchBootstrapData();
+
+    const first = await harness.fetchAllFires();
+    const second = await harness.fetchAllFires();
+
+    assert.equal(first.totalCount, 0);
+    assert.equal(second.totalCount, 0);
+    assert.equal(rpcUrlCount(requests), 2, 'each call retries because empty wildfire data is not cached');
+  });
+
   it('wildfires: a second call is served from the warmed breaker with zero RPC requests', async () => {
     const requests = bootstrapStub({ wildfires: { fireDetections: [FIRE_DETECTION], fetchedAt: 1, dataAvailable: true } });
     await harness.fetchBootstrapData();
@@ -193,18 +341,7 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 0);
   });
 
-  it('concurrent first earthquake calls consume accepted hydration before the breaker is warm', async () => {
-    const requests = bootstrapStub({ earthquakes: { earthquakes: [CONCURRENT_EARTHQUAKE] } });
-    await harness.fetchBootstrapData();
-
-    const [a, b] = await Promise.all([harness.fetchEarthquakes(), harness.fetchEarthquakes()]);
-    assert.equal(a.length, 1);
-    assert.equal(a[0].id, 'us-concurrent-7002');
-    assert.deepEqual(b, a);
-    assert.equal(rpcUrlCount(requests), 0);
-  });
-
-  it('earthquakes: newer hydration replaces a fresh breaker entry and is reused', async () => {
+  it('earthquakes: a second call is served from the warmed breaker with zero RPC requests', async () => {
     const requests = bootstrapStub({ earthquakes: { earthquakes: [EARTHQUAKE] } });
     await harness.fetchBootstrapData();
 
@@ -215,6 +352,45 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(first[0].id, 'us-7001');
     assert.deepEqual(second, first);
     assert.equal(rpcUrlCount(requests), 0);
+  });
+
+  it('flightDelays: concurrent on-demand hydration is one-flight and then stays in the breaker', async () => {
+    const requests = bootstrapStub({ flightDelays: { alerts: [FLIGHT_DELAY] } });
+
+    const [first, second] = await Promise.all([
+      harness.fetchFlightDelays(),
+      harness.fetchFlightDelays(),
+    ]);
+    assert.equal(first.length, 1);
+    assert.ok(first[0]?.updatedAt instanceof Date);
+    assert.deepEqual(second, first);
+    assert.equal(
+      requests.filter((url) => url.includes('keys=flightDelays')).length,
+      1,
+      'concurrent first calls share the on-demand request',
+    );
+
+    const third = await harness.fetchFlightDelays();
+    assert.deepEqual(third, first);
+    assert.equal(
+      requests.filter((url) => url.includes('keys=flightDelays')).length,
+      1,
+      'the accepted on-demand result is retained by the delays breaker',
+    );
+  });
+
+  it('traffic anomalies: global hydration never satisfies a country-specific cache key', async () => {
+    const requests = bootstrapStub({
+      trafficAnomalies: { anomalies: [{ id: 'global-1' }], totalCount: 1 },
+    });
+    await harness.fetchBootstrapData();
+
+    const global = await harness.fetchTrafficAnomalies();
+    const filtered = await harness.fetchTrafficAnomalies('US');
+
+    assert.equal(global.anomalies[0]?.id, 'global-1');
+    assert.deepEqual(filtered.anomalies, []);
+    assert.equal(rpcUrlCount(requests), 1, 'the filtered read must use its own RPC/cache key');
   });
 
   it('socialVelocity (no breaker): the hydration handoff answers recurring reads', async () => {
@@ -241,10 +417,9 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 0);
   });
 
-  it('sanctionsPressure: accepted hydration reaches callers and warms the premium breaker', async () => {
-    // hasPremiumAccess() is stubbed true (see the build plugin), so the
-    // recurring path is the premium breaker the recordSuccess warm targets:
-    // zero RPC requests on the second call is the assertion that matters.
+  it('sanctionsPressure: accepted hydration reaches callers and warms the anonymous path', async () => {
+    // hasPremiumAccess() is stubbed false (see the build plugin), so this pins
+    // the anonymous branch used by ordinary visitors.
     const requests = bootstrapStub({
       sanctionsPressure: { entries: [{ id: 'sdn-1', name: 'X', entityType: 'ENTITY', countryCodes: [], countryNames: [], programs: [], sourceLists: [], effectiveAt: 0, isNew: false, note: '' }], countries: [], programs: [], totalCount: 1, sdnCount: 1, consolidatedCount: 0, semaCount: 0, newEntryCount: 0, vesselCount: 0, aircraftCount: 0, fetchedAt: 1, datasetDate: 1 },
     });
@@ -255,7 +430,12 @@ describe('bootstrap hydration reuse (#7048)', () => {
 
     assert.equal(first.totalCount, 1);
     assert.deepEqual(second, first);
-    assert.equal(rpcUrlCount(requests), 0, 'the premium sanctions RPC must not fire for bootstrap-sourced data');
+    assert.equal(rpcUrlCount(requests), 0, 'the sanctions RPC must not fire for bootstrap-sourced data');
+    assert.equal(
+      requests.filter((url) => url.includes('keys=sanctionsPressure')).length,
+      0,
+      'the anonymous per-key bootstrap path must not refetch accepted tier data',
+    );
   });
 
   it('consumer prices: default hydration is isolated from parameterized cache keys and reused', async () => {
@@ -336,17 +516,51 @@ describe('bootstrap hydration reuse (#7048)', () => {
       (value) => (value && typeof (value as { v?: unknown }).v === 'number' ? value as { v: number } : null),
       { ttlMs: 5 },
     );
-    assert.equal(handoff.read(), null, 'nothing accepted yet');
+    assert.equal(handoff.get(), null, 'nothing accepted yet');
 
     // Seed the bootstrap slot the way fetchBootstrapData would.
     const requests = bootstrapStub({ unitHandoffKey: { v: 7 } });
     await harness.fetchBootstrapData();
-    assert.equal(handoff.accept()?.v, 7);
-    assert.equal(handoff.read()?.v, 7);
+    assert.equal(handoff.get()?.v, 7);
+    assert.equal(handoff.get()?.v, 7);
 
     await new Promise((r) => setTimeout(r, 20));
-    assert.equal(handoff.read(), null, 'an expired handoff must not answer recurring reads');
+    let liveCalls = 0;
+    const refreshed = await handoff.getOrLoad(async () => {
+      liveCalls++;
+      return { v: 8 };
+    }, { v: 0 });
+    const repeated = await handoff.getOrLoad(async () => {
+      liveCalls++;
+      return { v: 9 };
+    }, { v: 0 });
+    assert.equal(refreshed.v, 8, 'expiry permits the normal live refresh');
+    assert.equal(repeated.v, 8, 'a valid live refresh starts a new bounded TTL');
+    assert.equal(liveCalls, 1, 'the retained live refresh prevents a second load');
     assert.equal(rpcUrlCount(requests), 0);
+  });
+
+  it('hydration handoff: concurrent first live loads are one-flight', async () => {
+    const handoff = harness.createHydrationHandoff<{ v: number }>(
+      'unitHandoffConcurrentKey',
+      (value) => ((value as { v?: unknown })?.v === 7 ? value as { v: number } : null),
+    );
+    let liveCalls = 0;
+    let release!: (value: { v: number }) => void;
+    const pending = new Promise<{ v: number }>((resolve) => { release = resolve; });
+    const load = () => {
+      liveCalls++;
+      return pending;
+    };
+
+    const first = handoff.getOrLoad(load, { v: 0 });
+    const second = handoff.getOrLoad(load, { v: 0 });
+    assert.equal(liveCalls, 1);
+    release({ v: 7 });
+    assert.deepEqual(await first, { v: 7 });
+    assert.deepEqual(await second, { v: 7 });
+    assert.deepEqual(await handoff.getOrLoad(load, { v: 0 }), { v: 7 });
+    assert.equal(liveCalls, 1, 'the accepted live result remains in the handoff cache');
   });
 
   it('hydration handoff: rejected values are not retained', async () => {
@@ -357,8 +571,153 @@ describe('bootstrap hydration reuse (#7048)', () => {
     );
     bootstrapStub({ unitHandoffRejectedKey: { v: 41 } });
     await harness.fetchBootstrapData();
-    assert.equal(handoff.accept(), null, 'invalid hydration is not accepted');
-    assert.equal(handoff.read(), null, 'and therefore not retained');
+    assert.equal(handoff.get(), null, 'invalid hydration is not accepted');
+    assert.equal(handoff.get(), null, 'and therefore not retained');
+  });
+
+  it('mapped breaker results revive Date fields after JSON persistence', () => {
+    const roundTrip = <T>(breakerName: string, value: T): T => {
+      const revive = capturedBreakerOptions[breakerName]?.revivePersistedData;
+      assert.ok(revive, `${breakerName} must configure revivePersistedData`);
+      return revive(JSON.parse(JSON.stringify(value))) as T;
+    };
+
+    const aviation = roundTrip('Flight Delays v2', [{ updatedAt: new Date(1) }]);
+    assert.ok(aviation[0]?.updatedAt instanceof Date);
+
+    const pizzint = roundTrip('PizzINT', { lastUpdate: new Date(2) });
+    assert.ok(pizzint.lastUpdate instanceof Date);
+
+    const radiation = roundTrip('Radiation Watch', {
+      fetchedAt: new Date(3),
+      observations: [{ observedAt: new Date(4) }],
+    });
+    assert.ok(radiation.fetchedAt instanceof Date);
+    assert.ok(radiation.observations[0]?.observedAt instanceof Date);
+
+    const sanctions = roundTrip('Sanctions Pressure', {
+      fetchedAt: new Date(5),
+      datasetDate: new Date(6),
+      entries: [{ effectiveAt: new Date(7) }, { effectiveAt: null }],
+    });
+    assert.ok(sanctions.fetchedAt instanceof Date);
+    assert.ok(sanctions.datasetDate instanceof Date);
+    assert.ok(sanctions.entries[0]?.effectiveAt instanceof Date);
+    assert.equal(sanctions.entries[1]?.effectiveAt, null);
+
+    const thermal = roundTrip('Thermal Escalation', {
+      fetchedAt: new Date(8),
+      clusters: [{ firstDetectedAt: new Date(9), lastDetectedAt: new Date(10) }],
+    });
+    assert.ok(thermal.fetchedAt instanceof Date);
+    assert.ok(thermal.clusters[0]?.firstDetectedAt instanceof Date);
+    assert.ok(thermal.clusters[0]?.lastDetectedAt instanceof Date);
+  });
+
+  it('persistent breaker replay updates the sanctions and radiation integration mirrors', async () => {
+    const radiation = {
+      fetchedAt: new Date(11),
+      observations: [{ observedAt: new Date(12) }],
+      coverage: { epa: 1, safecast: 0 },
+      summary: {
+        anomalyCount: 0, elevatedCount: 0, spikeCount: 0, corroboratedCount: 0,
+        lowConfidenceCount: 0, conflictingCount: 0, convertedFromCpmCount: 0,
+      },
+    };
+    const sanctions = {
+      fetchedAt: new Date(13), datasetDate: new Date(14), totalCount: 1,
+      sdnCount: 1, consolidatedCount: 0, semaCount: 0, semaError: null,
+      newEntryCount: 0, vesselCount: 0, aircraftCount: 0,
+      countries: [], programs: [], entries: [{ effectiveAt: new Date(15) }],
+    };
+    (globalThis as typeof globalThis & {
+      __wmBreakerReplay: Record<string, unknown>;
+    }).__wmBreakerReplay = {
+      'Radiation Watch': radiation,
+      'Sanctions Pressure': sanctions,
+    };
+
+    try {
+      const replayedRadiation = await mirrorHarness.fetchRadiationWatch();
+      const replayedSanctions = await mirrorHarness.fetchSanctionsPressure();
+      assert.strictEqual(mirrorHarness.getLatestRadiationWatch(), replayedRadiation);
+      assert.strictEqual(mirrorHarness.getLatestSanctionsPressure(), replayedSanctions);
+    } finally {
+      delete (globalThis as typeof globalThis & {
+        __wmBreakerReplay?: Record<string, unknown>;
+      }).__wmBreakerReplay;
+    }
+  });
+
+  it('stale-while-revalidate advances sanctions and radiation integration mirrors', async () => {
+    const staleRadiation = {
+      fetchedAt: new Date(20), observations: [], coverage: { epa: 0, safecast: 0 },
+      summary: {
+        anomalyCount: 0, elevatedCount: 0, spikeCount: 0, corroboratedCount: 0,
+        lowConfidenceCount: 0, conflictingCount: 0, convertedFromCpmCount: 0,
+      },
+    };
+    const staleSanctions = {
+      fetchedAt: new Date(21), datasetDate: null, totalCount: 1,
+      sdnCount: 1, consolidatedCount: 0, semaCount: 0, semaError: null,
+      newEntryCount: 0, vesselCount: 0, aircraftCount: 0,
+      countries: [], programs: [], entries: [],
+    };
+    const liveRadiation = {
+      fetchedAt: 22,
+      observations: [{
+        id: 'rad-live', source: 'RADIATION_SOURCE_EPA_RADNET', contributingSources: [],
+        locationName: 'Live station', country: 'US', location: { latitude: 1, longitude: 2 },
+        value: 0.1, unit: 'uSv/h', observedAt: 23, freshness: 'RADIATION_FRESHNESS_LIVE',
+        baselineValue: 0.1, delta: 0, zScore: 0, severity: 'RADIATION_SEVERITY_NORMAL',
+        confidence: 'RADIATION_CONFIDENCE_HIGH', corroborated: false, conflictingSources: false,
+        convertedFromCpm: false, sourceCount: 1,
+      }],
+      epaCount: 1, safecastCount: 0, anomalyCount: 0, elevatedCount: 0, spikeCount: 0,
+      corroboratedCount: 0, lowConfidenceCount: 0, conflictingCount: 0, convertedFromCpmCount: 0,
+    };
+    const liveSanctions = {
+      entries: [{
+        id: 'sdn-live', name: 'Live entry', entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+        countryCodes: [], countryNames: [], programs: [], sourceLists: [], effectiveAt: 24,
+        isNew: false, note: '',
+      }],
+      countries: [], programs: [], totalCount: 2, sdnCount: 2, consolidatedCount: 0,
+      semaCount: 0, semaError: '', newEntryCount: 0, vesselCount: 0, aircraftCount: 0,
+      fetchedAt: 25, datasetDate: 26,
+    };
+    const scopedGlobal = globalThis as typeof globalThis & {
+      __wmBreakerReplay: Record<string, unknown>;
+      __wmBreakerRunBackground: string[];
+      __wmBreakerBackgroundPromises: Promise<unknown>[];
+      __wmCapturedLiveRadiation: unknown;
+    };
+    scopedGlobal.__wmBreakerReplay = {
+      'Radiation Watch': staleRadiation,
+      'Sanctions Pressure': staleSanctions,
+    };
+    scopedGlobal.__wmBreakerRunBackground = ['Radiation Watch', 'Sanctions Pressure'];
+    scopedGlobal.__wmBreakerBackgroundPromises = [];
+    scopedGlobal.__wmCapturedLiveRadiation = liveRadiation;
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      data: { sanctionsPressure: liveSanctions },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    try {
+      await mirrorHarness.fetchRadiationWatch();
+      await mirrorHarness.fetchSanctionsPressure();
+      await Promise.all(scopedGlobal.__wmBreakerBackgroundPromises);
+      const radiationMirror = mirrorHarness.getLatestRadiationWatch() as { observations?: unknown[] };
+      const sanctionsMirror = mirrorHarness.getLatestSanctionsPressure() as { totalCount?: number };
+      assert.equal(radiationMirror.observations?.length, 1);
+      assert.equal(sanctionsMirror.totalCount, 2);
+    } finally {
+      delete (scopedGlobal as Partial<typeof scopedGlobal>).__wmBreakerReplay;
+      delete (scopedGlobal as Partial<typeof scopedGlobal>).__wmBreakerRunBackground;
+      delete (scopedGlobal as Partial<typeof scopedGlobal>).__wmBreakerBackgroundPromises;
+      delete (scopedGlobal as Partial<typeof scopedGlobal>).__wmCapturedLiveRadiation;
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('the mandatory services warm their owner cache in source (#7048 regression pin)', () => {
@@ -371,13 +730,35 @@ describe('bootstrap hydration reuse (#7048)', () => {
       ['src/services/aviation/index.ts', /breakerDelays\.recordSuccess\(alerts\)/],
       ['src/services/conflict/index.ts', /iranBreaker\.recordSuccess\(hydrated\)/],
       ['src/services/pizzint.ts', /pizzintBreaker\.recordSuccess\(status\)/],
-      ['src/services/thermal-escalation.ts', /breaker\.recordSuccess\(watch\)/],
+      ['src/services/thermal-escalation.ts', /breaker\.recordSuccess\(watch, cacheKey\)/],
       ['src/services/unrest/index.ts', /unrestBreaker\.recordSuccess\(hydrated\)/],
       ['src/services/economic/index.ts', /bisPolicyBreaker\.recordSuccess\(hPolicy\)/],
+      ['src/services/consumer-prices/index.ts', /overviewBreaker\.recordSuccess\(hydrated,/],
     ];
     for (const [file, marker] of mustWarm) {
       const source = readFileSync(resolve(root, file), 'utf8');
       assert.match(source, marker, `${file} must warm its owner cache with accepted hydration`);
     }
+
+    const thermalSource = readFileSync(resolve(root, 'src/services/thermal-escalation.ts'), 'utf8');
+    assert.match(thermalSource, /revivePersistedData:/, 'persisted thermal Date fields must be revived');
+    assert.match(thermalSource, /cacheKey,\s*\n\s*shouldCache:/, 'thermal cache identity must include maxItems');
+
+    for (const file of [
+      'src/services/aviation/index.ts',
+      'src/services/pizzint.ts',
+      'src/services/radiation.ts',
+      'src/services/sanctions-pressure.ts',
+    ]) {
+      const source = readFileSync(resolve(root, file), 'utf8');
+      assert.match(source, /revivePersistedData:/, `${file} must revive Date fields after JSON persistence`);
+    }
+
+    const chokepointPanel = readFileSync(resolve(root, 'src/components/ChokepointStripPanel.ts'), 'utf8');
+    assert.doesNotMatch(
+      chokepointPanel,
+      /getHydratedData\(['"]chokepoints['"]\)/,
+      'the service must be the sole owner that consumes and caches chokepoint hydration',
+    );
   });
 });

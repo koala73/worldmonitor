@@ -61,6 +61,7 @@ const breaker = createCircuitBreaker<SanctionsPressureResult>({
   name: 'Sanctions Pressure',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+  revivePersistedData: reviveSanctionsPressureResult,
 });
 
 let latestSanctionsPressureResult: SanctionsPressureResult | null = null;
@@ -80,6 +81,28 @@ const emptyResult: SanctionsPressureResult = {
   programs: [],
   entries: [],
 };
+
+function reviveDate(value: Date): Date {
+  if (value instanceof Date) return value;
+  const revived = new Date(value as unknown as string | number);
+  return Number.isNaN(revived.getTime()) ? new Date(0) : revived;
+}
+
+function reviveNullableDate(value: Date | null): Date | null {
+  return value === null ? null : reviveDate(value);
+}
+
+function reviveSanctionsPressureResult(result: SanctionsPressureResult): SanctionsPressureResult {
+  return {
+    ...result,
+    fetchedAt: reviveDate(result.fetchedAt),
+    datasetDate: reviveNullableDate(result.datasetDate),
+    entries: result.entries.map((entry) => ({
+      ...entry,
+      effectiveAt: reviveNullableDate(entry.effectiveAt),
+    })),
+  };
+}
 
 function mapEntityType(value: ProtoSanctionsEntityType): SanctionsEntityType {
   switch (value) {
@@ -175,41 +198,55 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
   // endpoint as a second-best read path and surface whatever it serves
   // (or emptyResult on any failure).
   if (!hasPremiumAccess()) {
-    try {
+    const cached = breaker.getCached();
+    if (cached) {
+      latestSanctionsPressureResult = cached;
+      return cached;
+    }
+
+    const result = await breaker.execute(async () => {
       const resp = await fetch(toApiUrl('/api/bootstrap?keys=sanctionsPressure'), {
         signal: AbortSignal.timeout(5_000),
       });
-      if (resp.ok) {
-        const { data } = (await resp.json()) as { data?: { sanctionsPressure?: ListSanctionsPressureResponse } };
-        const payload = data?.sanctionsPressure;
-        if (payload?.entries?.length || payload?.countries?.length || payload?.programs?.length) {
-          const result = toResult(payload);
-          latestSanctionsPressureResult = result;
-          return result;
-        }
+      if (!resp.ok) {
+        throw new Error(`Sanctions bootstrap failed: HTTP ${resp.status}`);
       }
-    } catch { /* fall through to emptyResult */ }
-    return emptyResult;
+      const { data } = (await resp.json()) as { data?: { sanctionsPressure?: ListSanctionsPressureResponse } };
+      const payload = data?.sanctionsPressure;
+      if (payload?.entries?.length || payload?.countries?.length || payload?.programs?.length) {
+        const liveResult = toResult(payload);
+        latestSanctionsPressureResult = liveResult;
+        return liveResult;
+      }
+      latestSanctionsPressureResult = emptyResult;
+      return emptyResult;
+    }, emptyResult, {
+      shouldCache: (value) => value.totalCount > 0,
+    });
+    latestSanctionsPressureResult = result;
+    return result;
   }
 
-  return breaker.execute(async () => {
+  const result = await breaker.execute(async () => {
     const response = await client.listSanctionsPressure({
       maxItems: 30,
     }, {
       signal: AbortSignal.timeout(25_000),
     });
-    const result = toResult(response);
-    latestSanctionsPressureResult = result;
-    if (result.totalCount === 0) {
+    const liveResult = toResult(response);
+    if (liveResult.totalCount === 0) {
       // Seed is missing or the feed is down. Evict any stale cache so the
       // panel surfaces "unavailable" instead of serving old designations
       // indefinitely via stale-while-revalidate.
       breaker.clearCache();
     }
-    return result;
+    latestSanctionsPressureResult = liveResult;
+    return liveResult;
   }, emptyResult, {
-    shouldCache: (result) => result.totalCount > 0,
+    shouldCache: (value) => value.totalCount > 0,
   });
+  latestSanctionsPressureResult = result;
+  return result;
 }
 
 export function getLatestSanctionsPressure(): SanctionsPressureResult | null {

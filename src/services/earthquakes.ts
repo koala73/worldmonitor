@@ -18,9 +18,12 @@ const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
   const hydrated = getHydratedData('earthquakes') as ListEarthquakesResponse | undefined;
-  if (hydrated?.earthquakes?.length) breaker.recordSuccess(hydrated);
+  if (hydrated?.earthquakes?.length) {
+    breaker.recordSuccess(hydrated);
+    return hydrated.earthquakes as Earthquake[];
+  }
 
-  const response = hydrated?.earthquakes?.length ? hydrated : await breaker.execute(async () => {
+  const response = await breaker.execute(async () => {
     return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyFallback, { shouldCache: (r) => r.earthquakes.length > 0 });
   return response.earthquakes as Earthquake[];

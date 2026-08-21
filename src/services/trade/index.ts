@@ -179,13 +179,13 @@ export async function fetchTradeBarriers(countries: string[] = [], measureType =
 }
 
 export async function fetchCustomsRevenue(): Promise<GetCustomsRevenueResponse> {
-  try {
-    const hydrated = getHydratedData('customsRevenue') as GetCustomsRevenueResponse | undefined;
-    if (hydrated?.months?.length) {
-      revenueBreaker.recordSuccess(hydrated);
-      return hydrated;
-    }
+  const hydrated = getHydratedData('customsRevenue') as GetCustomsRevenueResponse | undefined;
+  if (hydrated?.months?.length) {
+    revenueBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
+  try {
     return await revenueBreaker.execute(async () => {
       return publicClient.getCustomsRevenue({});
     }, emptyRevenue, { shouldCache: r => (r.months?.length ?? 0) > 0 });

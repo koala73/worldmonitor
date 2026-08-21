@@ -120,7 +120,7 @@ export async function fetchOceanIceData(): Promise<OceanIceIndicators | null> {
     // Warm the breaker under the same key a later recurring call reads
     // (#7048), wrapping the normalized payload in the response shape its
     // cache entries hold. The data-present guard mirrors its shouldCache.
-    if (hydratedProto) oceanIceBreaker.recordSuccess({ data: hydratedProto });
+    oceanIceBreaker.recordSuccess({ data: hydratedProto });
     return toDisplayOceanIceData(hydratedProto);
   }
 

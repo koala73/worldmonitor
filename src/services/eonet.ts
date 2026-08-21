@@ -77,9 +77,12 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
 
 export async function fetchNaturalEvents(_days = 30): Promise<NaturalEvent[]> {
   const hydrated = getHydratedData('naturalEvents') as ListNaturalEventsResponse | undefined;
-  if (hydrated?.events?.length) breaker.recordSuccess(hydrated);
+  if (hydrated?.events?.length) {
+    breaker.recordSuccess(hydrated);
+    return hydrated.events.map(toNaturalEvent);
+  }
 
-  const response = hydrated?.events?.length ? hydrated : await breaker.execute(async () => {
+  const response = await breaker.execute(async () => {
     return client.listNaturalEvents({ days: 30 });
   }, emptyFallback, { shouldCache: (r) => r.events.length > 0 });
 

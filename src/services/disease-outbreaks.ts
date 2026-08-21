@@ -27,12 +27,8 @@ const hydrationHandoff = createHydrationHandoff<ListDiseaseOutbreaksResponse>(
 );
 
 export async function fetchDiseaseOutbreaks(): Promise<ListDiseaseOutbreaksResponse> {
-  const accepted = hydrationHandoff.accept() ?? hydrationHandoff.read();
-  if (accepted) return accepted;
-
-  try {
-    return await client.listDiseaseOutbreaks({});
-  } catch {
-    return emptyOutbreaks;
-  }
+  return hydrationHandoff.getOrLoad(
+    () => client.listDiseaseOutbreaks({}),
+    emptyOutbreaks,
+  );
 }

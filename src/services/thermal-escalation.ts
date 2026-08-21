@@ -62,10 +62,24 @@ export interface ThermalEscalationWatch {
 }
 
 const client = new ThermalServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+
+function reviveDate(value: Date): Date {
+  return value instanceof Date ? value : new Date(value as unknown as string);
+}
+
 const breaker = createCircuitBreaker<ThermalEscalationWatch>({
   name: 'Thermal Escalation',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+  revivePersistedData: (watch) => ({
+    ...watch,
+    fetchedAt: reviveDate(watch.fetchedAt),
+    clusters: watch.clusters.map((cluster) => ({
+      ...cluster,
+      firstDetectedAt: reviveDate(cluster.firstDetectedAt),
+      lastDetectedAt: reviveDate(cluster.lastDetectedAt),
+    })),
+  }),
 });
 
 const emptyResult: ThermalEscalationWatch = {
@@ -99,6 +113,7 @@ interface HydratedThermalData {
 }
 
 export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEscalationWatch> {
+  const cacheKey = String(maxItems);
   const hydrated = getHydratedData('thermalEscalation') as HydratedThermalData | undefined;
   if (hydrated?.clusters?.length) {
     const sliced = (hydrated.clusters ?? []).slice(0, maxItems).map(toCluster);
@@ -118,7 +133,7 @@ export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEsc
     };
     // Warm the breaker under the same key a later recurring call reads
     // (#7048); the non-empty guard mirrors its shouldCache.
-    breaker.recordSuccess(watch);
+    breaker.recordSuccess(watch, cacheKey);
     return watch;
   }
   return breaker.execute(async () => {
@@ -140,7 +155,10 @@ export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEsc
         highRelevanceCount: response.summary?.highRelevanceCount ?? 0,
       },
     };
-  }, emptyResult, { shouldCache: (r) => r.clusters.length > 0 });
+  }, emptyResult, {
+    cacheKey,
+    shouldCache: (r) => r.clusters.length > 0,
+  });
 }
 
 function toCluster(cluster: ProtoThermalEscalationCluster): ThermalEscalationCluster {
