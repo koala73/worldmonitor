@@ -1,6 +1,6 @@
 import type { PizzIntStatus, PizzIntLocation, PizzIntDefconLevel, GdeltTensionPair } from '@/types';
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { t } from '@/services/i18n';
 import type { GetPizzintStatusResponse, PizzintStatus as ProtoPizzintStatus, PizzintLocation as ProtoLocation, GdeltTensionPair as ProtoTensionPair } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
@@ -112,7 +112,14 @@ const defaultStatus: PizzIntStatus = {
 
 export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
   const hydrated = getHydratedData('pizzint') as GetPizzintStatusResponse | undefined;
-  if (hydrated?.pizzint) return toStatus(hydrated.pizzint);
+  if (hydrated?.pizzint) {
+    // Warm the breaker under the same key a later recurring call reads
+    // (#7048); a bare return drained the consume-once slot and forced a
+    // refetch.
+    const status = toStatus(hydrated.pizzint);
+    pizzintBreaker.recordSuccess(status);
+    return status;
+  }
 
   return pizzintBreaker.execute(async () => {
     const resp: GetPizzintStatusResponse = await getClient().getPizzintStatus({ includeGdelt: false });

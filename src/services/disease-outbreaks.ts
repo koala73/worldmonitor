@@ -1,6 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { ListDiseaseOutbreaksResponse, DiseaseOutbreakItem } from '@/generated/client/worldmonitor/health/v1/service_client';
-import { getHydratedData } from '@/services/bootstrap';
+import { createHydrationHandoff } from '@/services/hydration-handoff';
 import { HealthServiceClient } from '@/services/generated-rpc-clients';
 
 export type { ListDiseaseOutbreaksResponse, DiseaseOutbreakItem };
@@ -16,9 +16,19 @@ const emptyOutbreaks: ListDiseaseOutbreaksResponse = {
   alertLevelMethodologyVersion: 'v1',
 };
 
+// No breaker or TTL cache owns this loader's results, so the accepted
+// bootstrap value is preserved in a service-owned bounded handoff (#7048).
+const hydrationHandoff = createHydrationHandoff<ListDiseaseOutbreaksResponse>(
+  'diseaseOutbreaks',
+  (value) => {
+    const payload = value as ListDiseaseOutbreaksResponse;
+    return payload?.outbreaks?.length ? payload : null;
+  },
+);
+
 export async function fetchDiseaseOutbreaks(): Promise<ListDiseaseOutbreaksResponse> {
-  const hydrated = getHydratedData('diseaseOutbreaks') as ListDiseaseOutbreaksResponse | undefined;
-  if (hydrated?.outbreaks?.length) return hydrated;
+  const accepted = hydrationHandoff.accept() ?? hydrationHandoff.read();
+  if (accepted) return accepted;
 
   try {
     return await client.listDiseaseOutbreaks({});

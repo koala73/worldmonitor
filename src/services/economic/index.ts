@@ -10,7 +10,7 @@
 import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { GetFredSeriesResponse, GetFredSeriesBatchResponse, ListWorldBankIndicatorsResponse, WorldBankCountryData as ProtoWorldBankCountryData, GetEnergyPricesResponse, EnergyPrice as ProtoEnergyPrice, GetEnergyCapacityResponse, GetBisPolicyRatesResponse, GetBisExchangeRatesResponse, GetBisCreditResponse, GetChinaMacroSnapshotResponse, BisPolicyRate, BisExchangeRate, BisCreditToGdp, GetNationalDebtResponse, NationalDebtEntry, GetBlsSeriesResponse, GetCrudeInventoriesResponse, CrudeInventoryWeek, GetNatGasStorageResponse, NatGasStorageWeek, GetEcbFxRatesResponse, EcbFxRate, GetEuGasStorageResponse, EuGasStorageHistoryEntry, GetEurostatCountryDataResponse, EurostatCountryEntry, GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica } from '@/generated/client/worldmonitor/economic/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
@@ -416,10 +416,12 @@ export type { CrudeInventoryWeek };
 
 export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyCrudeFallback;
-  const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
-  if (hydrated?.weeks?.length) return hydrated;
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await crudeBreaker.execute(async () => {
+      const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
+      if (hydrated?.weeks?.length) return hydrated;
       return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });
     }, emptyCrudeFallback, { shouldCache: (r) => r.weeks.length > 0 });
   } catch {
@@ -435,10 +437,12 @@ export type { NatGasStorageWeek };
 
 export async function fetchNatGasStorageRpc(): Promise<GetNatGasStorageResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyNatGasFallback;
-  const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
-  if (hydrated?.weeks?.length) return hydrated;
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await natGasBreaker.execute(async () => {
+      const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
+      if (hydrated?.weeks?.length) return hydrated;
       return client.getNatGasStorage({}, { signal: AbortSignal.timeout(20_000) });
     }, emptyNatGasFallback, { shouldCache: (r) => r.weeks.length > 0 });
   } catch {
@@ -780,11 +784,15 @@ export async function getChinaMacroSnapshotData(): Promise<GetChinaMacroSnapshot
 }
 
 export async function getBisCreditData(): Promise<GetBisCreditResponse> {
-  const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
-  if (hydrated?.entries?.length) return hydrated;
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await bisCreditBreaker.execute(
-      () => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }),
+      async () => {
+        const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
+        if (hydrated?.entries?.length) return hydrated;
+        return client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) });
+      },
       emptyBisCreditFallback,
       { shouldCache: (r) => (r.entries?.length ?? 0) > 0 },
     );
@@ -799,6 +807,14 @@ export async function fetchBisData(): Promise<BisData> {
   const hPolicy = getHydratedData('bisPolicy') as GetBisPolicyRatesResponse | undefined;
   const hEer = getHydratedData('bisExchange') as GetBisExchangeRatesResponse | undefined;
   const hCredit = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
+
+  // Warm the three breakers with the accepted hydration so a later recurring
+  // fetchBisData/getBisCreditData reads them from cache instead of refetching
+  // (#7048). The same acceptance guards as the Promise.resolve fast paths
+  // below mirror each breaker's shouldCache.
+  if (hPolicy?.rates?.length) bisPolicyBreaker.recordSuccess(hPolicy);
+  if (hEer?.rates?.length) bisEerBreaker.recordSuccess(hEer);
+  if (hCredit?.entries?.length) bisCreditBreaker.recordSuccess(hCredit);
 
   // BIS WS_CBPOL has no Russia (scripts/seed-bis-data.mjs covers 12 banks and the
   // CBR is not one), so the key rate comes from its own seeder and is appended to
@@ -834,12 +850,15 @@ const ecbFxRatesBreaker = createCircuitBreaker<GetEcbFxRatesResponse>({ name: 'E
 const emptyEcbFxRatesFallback: GetEcbFxRatesResponse = { rates: [], updatedAt: '', seededAt: '0', unavailable: true };
 
 export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
-  const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
-  if (hydrated?.rates?.length) return hydrated;
-
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await ecbFxRatesBreaker.execute(
-      () => client.getEcbFxRates({}, { signal: AbortSignal.timeout(12_000) }),
+      async () => {
+        const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
+        if (hydrated?.rates?.length) return hydrated;
+        return client.getEcbFxRates({}, { signal: AbortSignal.timeout(12_000) });
+      },
       emptyEcbFxRatesFallback,
       { shouldCache: (r) => (r.rates?.length ?? 0) > 0 },
     );
@@ -913,12 +932,15 @@ export async function getFxPanelData(): Promise<FxPanelRows> {
 export type { GetEuGasStorageResponse, EuGasStorageHistoryEntry };
 
 export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
-  const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
-  if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) return hydrated;
-
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await euGasBreaker.execute(
-      () => client.getEuGasStorage({}, { signal: AbortSignal.timeout(12_000) }),
+      async () => {
+        const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
+        if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) return hydrated;
+        return client.getEuGasStorage({}, { signal: AbortSignal.timeout(12_000) });
+      },
       emptyEuGasFallback,
       { shouldCache: (r) => !r.unavailable && r.fillPct > 0 },
     );
@@ -934,12 +956,15 @@ export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
 export type { GetEurostatCountryDataResponse, EurostatCountryEntry };
 
 export async function getEurostatCountryData(): Promise<GetEurostatCountryDataResponse> {
-  const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
-  if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) return hydrated;
-
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await eurostatBreaker.execute(
-      () => client.getEurostatCountryData({}, { signal: AbortSignal.timeout(12_000) }),
+      async () => {
+        const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
+        if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) return hydrated;
+        return client.getEurostatCountryData({}, { signal: AbortSignal.timeout(12_000) });
+      },
       emptyEurostatFallback,
       { shouldCache: (r) => !r.unavailable && Object.keys(r.countries).length > 0 },
     );
@@ -955,12 +980,15 @@ export async function getEurostatCountryData(): Promise<GetEurostatCountryDataRe
 export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica };
 
 export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
-  const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
-  if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) return hydrated;
-
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await oilStocksAnalysisBreaker.execute(
-      () => client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) }),
+      async () => {
+        const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
+        if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) return hydrated;
+        return client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) });
+      },
       emptyOilStocksAnalysisFallback,
       { shouldCache: (r) => !r.unavailable && r.ieaMembers.length > 0 },
     );

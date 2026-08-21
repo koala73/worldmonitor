@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
 import type { RadiationConfidence as ProtoRadiationConfidence, RadiationFreshness as ProtoRadiationFreshness, RadiationObservation as ProtoRadiationObservation, RadiationSeverity as ProtoRadiationSeverity, RadiationSource as ProtoRadiationSource, ListRadiationObservationsResponse } from '@/generated/client/worldmonitor/radiation/v1/service_client';
@@ -101,6 +101,9 @@ export async function fetchRadiationWatch(): Promise<RadiationWatchResult> {
   if (hydrated?.observations?.length) {
     const result = toResult(hydrated);
     latestRadiationWatchResult = result;
+    // Warm the breaker under the same key a later recurring call reads
+    // (#7048); the observation-count guard mirrors its shouldCache.
+    breaker.recordSuccess(result);
     return result;
   }
 

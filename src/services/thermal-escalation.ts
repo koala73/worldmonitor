@@ -1,6 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import type { ThermalConfidence as ProtoThermalConfidence, ThermalContext as ProtoThermalContext, ThermalEscalationCluster as ProtoThermalEscalationCluster, ThermalStatus as ProtoThermalStatus, ThermalStrategicRelevance as ProtoThermalStrategicRelevance } from '@/generated/client/worldmonitor/thermal/v1/service_client';
 import { ThermalServiceClient } from '@/services/generated-rpc-clients';
 
@@ -102,7 +102,7 @@ export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEsc
   const hydrated = getHydratedData('thermalEscalation') as HydratedThermalData | undefined;
   if (hydrated?.clusters?.length) {
     const sliced = (hydrated.clusters ?? []).slice(0, maxItems).map(toCluster);
-    return {
+    const watch: ThermalEscalationWatch = {
       fetchedAt: hydrated.fetchedAt ? new Date(hydrated.fetchedAt) : new Date(0),
       observationWindowHours: hydrated.observationWindowHours ?? 24,
       sourceVersion: hydrated.sourceVersion || 'thermal-escalation-v1',
@@ -116,6 +116,10 @@ export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEsc
         highRelevanceCount: sliced.filter(c => c.strategicRelevance === 'high').length,
       },
     };
+    // Warm the breaker under the same key a later recurring call reads
+    // (#7048); the non-empty guard mirrors its shouldCache.
+    breaker.recordSuccess(watch);
+    return watch;
   }
   return breaker.execute(async () => {
     const response = await client.listThermalEscalations(

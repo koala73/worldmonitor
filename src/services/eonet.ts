@@ -2,7 +2,7 @@ import type { NaturalEvent, NaturalEventCategory } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { NATURAL_EVENT_CATEGORIES } from '@/types';
 import type { ListNaturalEventsResponse } from '@/generated/client/worldmonitor/natural/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { NaturalServiceClient } from '@/services/generated-rpc-clients';
 
@@ -76,8 +76,14 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
 }
 
 export async function fetchNaturalEvents(_days = 30): Promise<NaturalEvent[]> {
-  const hydrated = getHydratedData('naturalEvents') as ListNaturalEventsResponse | undefined;
-  const response = (hydrated?.events?.length ? hydrated : null) ?? await breaker.execute(async () => {
+  // The hydration check lives INSIDE breaker.execute() so an accepted
+  // bootstrap value is also written into the breaker's cache under the same
+  // key a later recurring call reads (#7048). Outside the breaker, the
+  // consume-once handoff evaporated and every later viewport/refresh call
+  // refetched the RPC.
+  const response = await breaker.execute(async () => {
+    const hydrated = getHydratedData('naturalEvents') as ListNaturalEventsResponse | undefined;
+    if (hydrated?.events?.length) return hydrated;
     return client.listNaturalEvents({ days: 30 });
   }, emptyFallback, { shouldCache: (r) => r.events.length > 0 });
 

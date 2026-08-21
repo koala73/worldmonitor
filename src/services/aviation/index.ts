@@ -344,7 +344,13 @@ const breakerGoogleDates = createCircuitBreaker<GoogleDatesResult>({ name: 'Goog
 
 export async function fetchFlightDelays(): Promise<AirportDelayAlert[]> {
   const hydrated = getHydratedData('flightDelays') as { alerts?: ProtoAlert[] } | undefined;
-  if (hydrated?.alerts?.length) return hydrated.alerts.map(toDisplayAlert);
+  if (hydrated?.alerts?.length) {
+    // Warm the delays breaker under the same key a later recurring call reads
+    // (#7048); the non-empty guard mirrors its shouldCache.
+    const alerts = hydrated.alerts.map(toDisplayAlert);
+    breakerDelays.recordSuccess(alerts);
+    return alerts;
+  }
 
   const onDemand = await ensureHydrated('flightDelays') as { alerts?: ProtoAlert[] } | undefined;
   if (onDemand?.alerts?.length) return onDemand.alerts.map(toDisplayAlert);

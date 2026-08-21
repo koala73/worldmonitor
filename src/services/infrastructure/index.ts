@@ -9,7 +9,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { ListInternetDdosAttacksResponse, ListInternetOutagesResponse, ListInternetTrafficAnomaliesResponse, ListServiceStatusesResponse, InternetOutage as ProtoOutage, ServiceStatus as ProtoServiceStatus } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { InternetOutage } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
@@ -81,8 +81,11 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     return [];
   }
 
-  const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
-  const resp = (hydrated?.outages?.length ? hydrated : null) ?? await outageBreaker.execute(async () => {
+  // Hydration is accepted inside outageBreaker.execute() so the breaker cache
+  // is warmed under the same key a later recurring call reads (#7048).
+  const resp = await outageBreaker.execute(async () => {
+    const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
+    if (hydrated?.outages?.length) return hydrated;
     return client.listInternetOutages({
       country: '',
       start: 0,
@@ -110,10 +113,11 @@ export function getOutagesStatus(): string {
 // ========================================================================
 
 export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksResponse> {
-  const hydrated = getHydratedData('ddosAttacks') as ListInternetDdosAttacksResponse | undefined;
-  if (hydrated?.protocol?.length || hydrated?.vector?.length) return hydrated;
-
+  // Accepted inside ddosBreaker.execute() so the hydration warms the breaker
+  // cache a later recurring call reads (#7048).
   return ddosBreaker.execute(async () => {
+    const hydrated = getHydratedData('ddosAttacks') as ListInternetDdosAttacksResponse | undefined;
+    if (hydrated?.protocol?.length || hydrated?.vector?.length) return hydrated;
     return client.listInternetDdosAttacks({});
   }, emptyDdosFallback, { shouldCache: (r) => r.protocol.length > 0 || r.vector.length > 0 });
 }
@@ -123,10 +127,12 @@ export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksRespons
 // ========================================================================
 
 export async function fetchTrafficAnomalies(country?: string): Promise<ListInternetTrafficAnomaliesResponse> {
-  const hydrated = getHydratedData('trafficAnomalies') as ListInternetTrafficAnomaliesResponse | undefined;
-  if (hydrated?.anomalies !== undefined && !country) return hydrated;
-
+  // The whole-dataset bootstrap snapshot is accepted inside the breaker (under
+  // its default cache key) only when this call itself wants the whole dataset;
+  // country-filtered reads keep fetching the filtered RPC (#7048).
   return trafficAnomaliesBreaker.execute(async () => {
+    const hydrated = getHydratedData('trafficAnomalies') as ListInternetTrafficAnomaliesResponse | undefined;
+    if (hydrated?.anomalies !== undefined && !country) return hydrated;
     return client.listInternetTrafficAnomalies({ country: country || '' });
   }, emptyAnomaliesFallback, { shouldCache: (r) => r.anomalies.length > 0 });
 }
@@ -188,8 +194,11 @@ function computeSummary(services: ServiceStatusResult[]): ServiceStatusSummary {
 }
 
 export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
-  const hydrated = getHydratedData('serviceStatuses') as { statuses?: ProtoServiceStatus[] } | undefined;
+  const hydrated = getHydratedData('serviceStatuses') as ListServiceStatusesResponse | undefined;
   if (hydrated?.statuses?.length) {
+    // Warm the breaker under the same key a later recurring call reads (#7048);
+    // a bare return drained the consume-once slot and forced a refetch.
+    statusBreaker.recordSuccess(hydrated);
     const services = hydrated.statuses.map(toServiceResult);
     return { success: true, timestamp: new Date().toISOString(), summary: computeSummary(services), services };
   }

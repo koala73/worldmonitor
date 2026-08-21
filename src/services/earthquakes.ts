@@ -1,6 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { Earthquake as ProtoEarthquake, ListEarthquakesResponse } from '@/generated/client/worldmonitor/seismology/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { SeismologyServiceClient } from '@/services/generated-rpc-clients';
 
@@ -17,10 +17,13 @@ const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismolog
 const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
-  const hydrated = getHydratedData('earthquakes') as ListEarthquakesResponse | undefined;
-  if (hydrated?.earthquakes?.length) return hydrated.earthquakes as Earthquake[];
-
+  // Hydration is accepted inside breaker.execute() so the breaker cache is
+  // warmed under the same key later recurring calls read (#7048); a direct
+  // return drained the consume-once slot and forced a refetch on every
+  // later call.
   const response = await breaker.execute(async () => {
+    const hydrated = getHydratedData('earthquakes') as ListEarthquakesResponse | undefined;
+    if (hydrated?.earthquakes?.length) return hydrated;
     return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });
   }, emptyFallback, { shouldCache: (r) => r.earthquakes.length > 0 });
   return response.earthquakes as Earthquake[];

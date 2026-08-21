@@ -2,8 +2,9 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { CargoType } from '@/config/bypass-corridors';
 import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetMineralProductionResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
+import { createHydrationHandoff } from '@/services/hydration-handoff';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import {
@@ -102,11 +103,12 @@ export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorCo
 }
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
-  const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
-  if (hydrated?.indices?.length) return hydrated;
-
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await shippingBreaker.execute(async () => {
+      const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
+      if (hydrated?.indices?.length) return hydrated;
       return client.getShippingRates({});
     }, emptyShipping);
   } catch {
@@ -115,11 +117,12 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
 }
 
 export async function fetchChokepointStatus(): Promise<GetChokepointStatusResponse> {
-  const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
-  if (hydrated?.chokepoints?.length) return hydrated;
-
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await chokepointBreaker.execute(async () => {
+      const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
+      if (hydrated?.chokepoints?.length) return hydrated;
       return client.getChokepointStatus({});
     }, emptyChokepoints);
   } catch {
@@ -144,11 +147,12 @@ export async function fetchChokepointHistory(
 }
 
 export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsResponse> {
-  const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
-  if (hydrated?.minerals?.length) return hydrated;
-
   try {
+    // Hydration accepted inside the breaker so its cache is warmed under the
+    // same key a later recurring call reads (#7048).
     return await mineralsBreaker.execute(async () => {
+      const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
+      if (hydrated?.minerals?.length) return hydrated;
       return client.getCriticalMinerals({});
     }, emptyMinerals);
   } catch {
@@ -177,9 +181,21 @@ export async function fetchMineralProduction(): Promise<GetMineralProductionResp
 
 const emptyShippingStress: GetShippingStressResponse = { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0, upstreamUnavailable: false };
 
+// No breaker or TTL cache owns this loader's results, so the accepted
+// bootstrap value is preserved in a service-owned bounded handoff (#7048);
+// before this, every recurring call after the consume-once read refetched
+// the RPC.
+const shippingStressHandoff = createHydrationHandoff<GetShippingStressResponse>(
+  'shippingStress',
+  (value) => {
+    const payload = value as GetShippingStressResponse;
+    return payload?.carriers?.length ? payload : null;
+  },
+);
+
 export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
-  const hydrated = getHydratedData('shippingStress') as GetShippingStressResponse | undefined;
-  if (hydrated?.carriers?.length) return hydrated;
+  const accepted = shippingStressHandoff.accept() ?? shippingStressHandoff.read();
+  if (accepted) return accepted;
 
   try {
     return await client.getShippingStress({});

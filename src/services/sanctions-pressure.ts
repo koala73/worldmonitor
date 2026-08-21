@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { getHydratedData } from '@/services/bootstrap';
@@ -159,6 +159,11 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
   if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
     const result = toResult(hydrated);
     latestSanctionsPressureResult = result;
+    // Warm the breaker under the same key a later recurring premium call
+    // reads (#7048). The guard mirrors execute()'s shouldCache
+    // (totalCount > 0); the local mirror above already covers
+    // getLatestSanctionsPressure() consumers.
+    if (result.totalCount > 0) breaker.recordSuccess(result);
     return result;
   }
 
