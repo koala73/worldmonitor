@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-21T06:30:00Z",
+  "updatedAt": "2026-08-21T07:15:00Z",
   "note": "Product-managed curated public news-account list. Not user-configurable. Official X API only. Post text is R4. Every enabled account carries a numeric accountId verified against GET /2/users/by/username — handle renames must not fork identity, and an unverified handle silently degrades the feed (#6654).",
   "channels": {
     "full": [
@@ -173,16 +173,15 @@
         "verifiedAt": "2026-08-21"
       },
       {
-        "handle": "dwnews",
-        "accountId": "6134882",
+        "handle": "DeutscheWelle",
+        "accountId": "16449615",
         "label": "DW News",
         "sourceName": "DW News",
         "topic": "geopolitics",
         "tier": 2,
-        "enabled": false,
+        "enabled": true,
         "region": "global",
         "maxMessages": 10,
-        "disabledReason": "Account is protected; X returns Authorization Error for third-party timeline reads (verified 2026-08-21).",
         "verifiedAt": "2026-08-21"
       },
       {
@@ -486,16 +485,15 @@
         "verifiedAt": "2026-08-21"
       },
       {
-        "handle": "OSINTdefender",
-        "accountId": "1496286557053071361",
+        "handle": "sentdefender",
+        "accountId": "1457867047334031360",
         "label": "OSINTdefender",
         "sourceName": "OSINTdefender",
         "topic": "conflict",
         "tier": 2,
-        "enabled": false,
+        "enabled": true,
         "region": "global",
         "maxMessages": 10,
-        "disabledReason": "Account is protected; X returns Authorization Error for third-party timeline reads (verified 2026-08-21).",
         "verifiedAt": "2026-08-21"
       },
       {

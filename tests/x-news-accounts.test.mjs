@@ -21,18 +21,21 @@ describe('data/x-accounts.json registry (#6654)', () => {
   });
 
   it('stays in the Telegram analogue ballpark of enabled accounts', () => {
-    // 62 = the 64 originally curated, minus @dwnews and @OSINTdefender, which
-    // are `protected`: X refuses their timelines to a third-party app, so
-    // leaving them enabled held coverage below 100% and pinned health at
-    // SEED_ERROR permanently. Re-enable only after re-probing the API.
+    // Back to 64. Both accounts first disabled here as `protected` were the
+    // registry naming the wrong account, not the publisher being unreachable:
+    // handle `OSINTdefender` is 'Depressed Defender' (626 followers, bio:
+    // "Backup Account of @sentdefender"), while the 2.5M-follower OSINT monitor
+    // is @sentdefender; and DW's English newsroom is public at @DeutscheWelle
+    // while @dwnews is locked. Disabling them dropped two real sources to
+    // silence a symptom. Verified against the API 2026-08-21.
     const enabled = xNews.countEnabledAccounts(registry);
-    assert.equal(enabled, 62, `expected 62 enabled accounts, got ${enabled}`);
+    assert.equal(enabled, 64, `expected 64 enabled accounts, got ${enabled}`);
     const all = xNews.loadXAccounts(registry);
     const full = xNews.loadXAccounts(registry, { set: 'full' });
     const tech = xNews.loadXAccounts(registry, { set: 'tech' });
-    assert.equal(all.length, 62);
-    assert.equal(new Set(all.map((account) => account.handle.toLowerCase())).size, 62);
-    assert.equal(full.length, 54);
+    assert.equal(all.length, 64);
+    assert.equal(new Set(all.map((account) => account.handle.toLowerCase())).size, 64);
+    assert.equal(full.length, 56);
     assert.equal(tech.length, 8);
   });
 
@@ -1162,7 +1165,10 @@ describe('versioned X feed snapshot', () => {
 
 // X answers an unreadable account with HTTP 200 and an `errors` array rather
 // than a 4xx — observed live against @OSINTdefender and @dwnews, both of which
-// are `protected`. The timeline loop only tested `!response.ok`, so a 200 fell
+// are `protected`. (Both are since replaced in the registry by the publishers'
+// real public accounts, @sentdefender and @DeutscheWelle — the ids below stay
+// as the verbatim live payloads that proved the bug.) The timeline loop only
+// tested `!response.ok`, so a 200 fell
 // through to `tweets = []`, found no `next_token`, and recorded a COMPLETE
 // window: a protected, suspended, or deleted account counted as a healthy
 // empty poll forever, with no error and nothing for an operator to see. Every
