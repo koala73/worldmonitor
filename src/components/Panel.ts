@@ -1024,6 +1024,24 @@ export class Panel {
   }
 
   /**
+   * Run a content write WITHOUT crediting the upstream with a recovery
+   * (#6679). The setContent* helpers clear the whole error state — chip,
+   * countdown, AND the exponential-backoff rung — because a success render
+   * normally proves the upstream recovered. Two kinds of render prove no such
+   * thing: replaying a cache while the live fetch still fails, and rendering
+   * a swallowed failure (an upstream that reports outages as an empty
+   * payload). Wrapping those writes here keeps the visible clears while a
+   * still-failing upstream keeps its rung instead of dropping back to the
+   * 15s floor. Safe to nest; the setContent* clear is synchronous, so the
+   * restore cannot race a debounced write.
+   */
+  protected withRetryBackoffPreserved(write: () => void): void {
+    const rung = this.retryAttempt;
+    write();
+    this.retryAttempt = rung;
+  }
+
+  /**
    * Drop the error badge, the pending auto-retry countdown, and the backoff.
    * The single owner of "this panel has recovered": `setContentHtml`,
    * `setContentNodes` and `setTrustedContent` all clear through here, so the
