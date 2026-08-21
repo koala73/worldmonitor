@@ -116,9 +116,19 @@ describe('X news-account public trust registries (#6654)', () => {
   it('registers the ais-relay health probe and seed-meta key', () => {
     assert.match(healthSrc, /xFeed:\s+'intelligence:x-feed:v1'/);
     assert.match(healthSrc, /key: 'seed-meta:intelligence:x-feed:v1'/);
-    assert.match(healthSrc, /issue: 6654/);
     assert.match(relaySrc, /intelligence:x-feed:v1/);
     assert.match(relaySrc, /seed-meta:intelligence:x-feed:v1/);
+    // The probe's `cutover` declaration is retired along with the baseline ack
+    // below: the two are halves of one statement ("this key is allowed to be
+    // absent while the producer is brought up"), and leaving the health.js half
+    // behind left the config asserting a deploy window that had closed, under a
+    // comment claiming X_BEARER_TOKEN was still unprovisioned. It is on
+    // ais-relay and the key is served, so both halves go.
+    assert.doesNotMatch(
+      healthSrc,
+      /xFeed:[^\n]*cutover/,
+      'the xFeed cutover is complete — a lingering declaration re-opens a closed deploy window',
+    );
     // The EMPTY acknowledgement was scoped to the deploy window before the
     // first ais-relay poll. That poll has happened — production has served
     // seed-meta:intelligence:x-feed:v1 since generation 1 — so the entry is
