@@ -119,6 +119,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:polymarket', keywords: ['predictions', 'polymarket', 'forecasts'], label: 'Panel: Predictions', icon: '\u{1F52E}', category: 'panels' },
   { id: 'panel:commodities', keywords: ['commodities', 'gold', 'silver'], label: 'Panel: Commodities', icon: '\u{1F4E6}', category: 'panels' },
   { id: 'panel:markets', keywords: ['markets', 'stocks', 'indices'], label: 'Panel: Markets', icon: '\u{1F4C8}', category: 'panels' },
+  { id: 'panel:investment-research-workbench', keywords: ['research workbench', 'investment research', 'thesis tracker', 'company research', 'asts'], label: 'Panel: Investment Research Workbench', icon: '\u{1F52C}', category: 'panels' },
   { id: 'panel:news-market-correlation', keywords: ['news market correlation', 'gdelt markets', 'lead lag', 'market returns'], label: 'Panel: News ↔ Markets', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:economic', keywords: ['economic', 'economy', 'fred'], label: 'Panel: Economic Indicators', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:global-procurement', keywords: ['procurement', 'tenders', 'contracts', 'rfp', 'opportunities', 'government bids'], label: 'Panel: Global Procurement', icon: '\u{1F4CB}', category: 'panels' },

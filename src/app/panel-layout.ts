@@ -232,6 +232,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'live-news': { className: 'panel-wide' },
   'live-webcams': { className: 'panel-wide' },
   'news-market-correlation': { rowSpan: 2, className: 'panel-wide' },
+  'investment-research-workbench': { rowSpan: 3, className: 'panel-wide' },
   'oil-inventories': { rowSpan: 2 },
   'pipeline-status': { rowSpan: 2 },
   'sanctions-pressure': { rowSpan: 2 },
@@ -2051,6 +2052,7 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyDefaultPanel('heatmap', () => import('@/components/MarketPanel'), 'HeatmapPanel');
     this.lazyDefaultPanel('markets', () => import('@/components/MarketPanel'), 'MarketPanel');
+    this.lazyDefaultPanel('investment-research-workbench', () => import('@/components/InvestmentResearchWorkbenchPanel'), 'InvestmentResearchWorkbenchPanel');
     this.lazyDefaultPanel('stock-analysis', () => import('@/components/StockAnalysisPanel'), 'StockAnalysisPanel');
     this.lazyDefaultPanel('stock-backtest', () => import('@/components/StockBacktestPanel'), 'StockBacktestPanel');
     // Web premium gating for stock-analysis and stock-backtest is handled

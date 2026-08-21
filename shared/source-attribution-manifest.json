@@ -4122,6 +4122,9 @@
         },
         {
           "path": "src/config/variant-meta.ts"
+        },
+        {
+          "path": "src/services/investment-research-workbench.ts"
         }
       ]
     },
@@ -5070,6 +5073,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "investors.ast-science.com",
+      "provider": "investors.ast-science.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit investors.ast-science.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/services/investment-research-workbench.ts"
         }
       ]
     },
@@ -13085,6 +13102,9 @@
         },
         {
           "path": "src/config/variants/finance.ts"
+        },
+        {
+          "path": "src/services/investment-research-workbench.ts"
         }
       ]
     },
