@@ -28,7 +28,7 @@ const EXPECTED_VARIANT_PANEL_SNAPSHOTS: Record<DashboardVariant, {
   enabledCount: number;
   enabledSha256: string;
 }> = {
-  full: { enabledCount: 86, enabledSha256: '8dfdf10adeab4fe49316b04558477a8bed08042563e190b304610dd1284b2348' },
+  full: { enabledCount: 87, enabledSha256: 'f88a8223a3b1ae42a80a9a4d55678b4e0dbaf942632408fe0987e3a956bd5372' },
   tech: { enabledCount: 38, enabledSha256: 'de9f78179aa2c75301883511ad0bab48fc67cba5cd4eb4445906abf17458a290' },
   finance: { enabledCount: 60, enabledSha256: 'e9cbe30455e107add242019de29d44335abf9da2a8a44c9c204076ed279bcfe8' },
   commodity: { enabledCount: 33, enabledSha256: 'b534510a2e814392e3966beb211e300e75a2b33f05c283613dd4f6cee50ddfe0' },
@@ -41,7 +41,7 @@ const EXPECTED_VARIANT_DEFAULT_SNAPSHOTS: Record<DashboardVariant, {
   enabled: number;
   sha256: string;
 }> = {
-  full: { total: 107, enabled: 86, sha256: '4cd24491205d160561c4483cb60df5d5f7bfeb5f75e4754cd7dc8e9f7f5dab4f' },
+  full: { total: 108, enabled: 87, sha256: '1ec04d2013d43b41ade61f27747e6ff68f49068350d11fa3942162fd544ebe60' },
   tech: { total: 41, enabled: 38, sha256: '43d7c788ff599baae171f7f46532653370e03ca4d322a8e6614f9f0a1cee5045' },
   finance: { total: 65, enabled: 60, sha256: 'cfcd641367902fe1966986633577763df178f5a1ea9d22038aa350276b55abbb' },
   commodity: { total: 36, enabled: 33, sha256: 'cc9e0b178dec33dff354a1eea95b5b215302fc7ce685b3d92b82a356df6d6bee' },
@@ -214,6 +214,31 @@ describe('WebMCP live dashboard bindings', () => {
 
     resolveDestroyed();
     await assert.rejects(wait, /Dashboard is no longer available/);
+  });
+
+  it('keeps a pre-ready invocation pending until UI readiness resolves', async () => {
+    let resolveReady!: () => void;
+    const uiReady = new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    });
+    const appDestroyed = new Promise<void>(() => {});
+    let settled = false;
+    const wait = waitForWebMcpUiReady(uiReady, appDestroyed, 10_000)
+      .then(() => { settled = true; });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(settled, false);
+    resolveReady();
+    await wait;
+    assert.equal(settled, true);
+  });
+
+  it('rejects deterministically when UI readiness exceeds its bound', async () => {
+    const never = new Promise<void>(() => {});
+    await assert.rejects(
+      waitForWebMcpUiReady(never, never, 5, 'Test UI'),
+      /Test UI did not initialise within 5ms/,
+    );
   });
 
   it('reuses the real applier and preserves its denial reason', async () => {

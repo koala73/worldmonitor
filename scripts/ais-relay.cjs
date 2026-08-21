@@ -31,6 +31,9 @@ const {
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
 } = require('./lib/llm-model-policy.cjs');
+const xNewsAccounts = require('./lib/x-news-accounts.cjs');
+const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
+const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -592,6 +595,42 @@ function upstashReleaseLockIfOwner(key, owner) {
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const script = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
     const body = JSON.stringify(['EVAL', script, '1', key, owner]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(Number(JSON.parse(data)?.result) === 1); } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
+function upstashPublishXIfLockOwner({ lockKey, owner, snapshotKey, snapshot, pollStateKey, pollState, ttlSeconds, metaKey, meta, metaTtlSeconds }) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const script = [
+      'if redis.call("get",KEYS[1]) ~= ARGV[1] then return 0 end',
+      'redis.call("set",KEYS[2],ARGV[2],"EX",ARGV[4])',
+      'redis.call("set",KEYS[3],ARGV[3],"EX",ARGV[4])',
+      'if ARGV[5] == "1" then redis.call("set",KEYS[4],ARGV[6],"EX",ARGV[7]) end',
+      'return 1',
+    ].join(' ');
+    const body = JSON.stringify([
+      'EVAL', script, '4', lockKey, snapshotKey, pollStateKey, metaKey,
+      owner, JSON.stringify(snapshot), JSON.stringify(pollState), String(ttlSeconds),
+      meta ? '1' : '0', JSON.stringify(meta || {}), String(metaTtlSeconds),
+    ]);
     const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
@@ -1224,6 +1263,177 @@ function startTelegramPollLoop() {
     setInterval(guardedTelegramPoll, TELEGRAM_POLL_INTERVAL_MS).unref?.();
     console.log('[Relay] Telegram poll loop started');
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Curated X news-account monitoring (Track A / #6654)
+// Official X API user-timeline + since_id. Cadence 5–15 min.
+// Requires env: X_BEARER_TOKEN (same Bearer as company-monitoring-worker).
+// ─────────────────────────────────────────────────────────────
+const X_BEARER_TOKEN = String(process.env.X_BEARER_TOKEN || '').trim();
+const X_ENABLED = Boolean(X_BEARER_TOKEN);
+const X_POLL_INTERVAL_MS = xNewsAccounts.clampPollIntervalMs(process.env.X_POLL_INTERVAL_MS || xNewsAccounts.DEFAULT_POLL_INTERVAL_MS);
+// `Number('abc')` is NaN, and Math.max(50, NaN) is NaN — which reaches
+// mergeAndDedup as `.slice(0, NaN)` and silently publishes an EMPTY feed every
+// cycle with no error anywhere. Coerce non-numeric env values to the default.
+const X_MAX_FEED_ITEMS = Math.max(50, Number(process.env.X_MAX_FEED_ITEMS) || xNewsAccounts.DEFAULT_MAX_FEED_ITEMS);
+const X_MAX_TEXT_CHARS = Math.max(200, Number(process.env.X_MAX_TEXT_CHARS) || 800);
+const X_TRACK_A_ACCOUNT_BUDGET = 64;
+const X_FEED_CACHE_KEY = 'intelligence:x-feed:v1';
+const X_FEED_META_KEY = 'seed-meta:intelligence:x-feed:v1';
+const X_FEED_POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';
+const X_FEED_POLL_LOCK_KEY = 'intelligence:x-feed:poll-lock:v1';
+const X_FEED_TTL_SECONDS = 5400;
+const X_FEED_META_TTL_SECONDS = 3600;
+const X_FEED_POLL_LOCK_TTL_SECONDS = Math.ceil((X_POLL_INTERVAL_MS + 120_000) / 1000);
+// The stuck-poll abort has to fire while the Redis lease above is still HELD,
+// and the guard only re-evaluates when a scheduled tick calls it. A threshold at
+// or above the cadence therefore pushes the first evaluation out to 2x the
+// cadence — well past the lease TTL — so between TTL expiry and that tick this
+// replica keeps issuing requests on a lapsed lease while a peer's SETNX
+// succeeds: both drain the shared bearer's quota and both write the whole cursor
+// map. Sitting a minute under the cadence (clamped to 5-15min, so 4-14min here)
+// makes the very next tick abort the run, with the lease still ours to release.
+// Derived from the same constant as the TTL so the invariant
+// X_POLL_STUCK_AFTER_MS < X_POLL_INTERVAL_MS < X_FEED_POLL_LOCK_TTL_SECONDS * 1000
+// cannot drift the way two independently tuned literals can.
+const X_POLL_STUCK_AFTER_MS = X_POLL_INTERVAL_MS - 60_000;
+
+const xState = {
+  accounts: [],
+  cursorByAccountId: Object.create(null),
+  accountIdByHandle: Object.create(null),
+  catchupByAccountId: Object.create(null),
+  items: [],
+  lookupOffset: 0,
+  accountOffset: 0,
+  // Persisted snapshot version, published to Redis and to /status. NOT the poll
+  // guard's run counter — see xPollGeneration below for why the two must stay
+  // apart.
+  generation: 0,
+  lastPollAt: 0,
+  lastHealthyAt: 0,
+  lastCoverage: null,
+  lastError: null,
+  rateLimitedUntil: 0,
+  rateLimitAttempt: 0,
+  // True when a Redis read failed, so last-good state is present but unreadable.
+  // Blocks polling/publishing until a clean read (see the cycle's hydrate()).
+  hydrationFailed: false,
+  startedAt: Date.now(),
+};
+
+// The poll guard's in-process run counter, deliberately NOT xState.generation.
+// The guard stamps each run with this value and, in its `.finally`, only clears
+// the in-flight flag while the stamp still matches. The cycle's hydrate() runs INSIDE
+// a live poll (the lease-conflict and hydration-retry paths) and overwrites the
+// persisted snapshot version from Redis — when both meanings shared one field
+// that overwrite retired the run the guard was fencing on, so inFlight was never
+// cleared, the next tick returned early, and a whole cycle was skipped until
+// stuckAfterMs force-cleared it with a misleading "X poll stuck" warning.
+let xPollGeneration = 0;
+
+function loadXAccounts() {
+  const p = path.join(__dirname, '..', 'data', 'x-accounts.json');
+  const set = String(process.env.X_CHANNEL_SET || '').trim().toLowerCase();
+  try {
+    const raw = JSON.parse(readFileSync(p, 'utf8'));
+    const enabledTotal = xNewsAccounts.countEnabledAccounts(raw);
+    if (enabledTotal > X_TRACK_A_ACCOUNT_BUDGET) {
+      console.warn(`[Relay] X registry has ${enabledTotal} enabled accounts; Track A budget is ~${X_TRACK_A_ACCOUNT_BUDGET}. Re-run spend math before growing the set.`);
+    }
+    xState.accounts = set
+      ? xNewsAccounts.loadXAccounts(raw, { set })
+      : xNewsAccounts.loadXAccounts(raw);
+    if (!xState.accounts.length) {
+      console.warn(`[Relay] X account set "${set || 'all'}" is empty — no accounts to poll`);
+    }
+    return xState.accounts;
+  } catch (e) {
+    xState.accounts = [];
+    xState.lastError = `failed to load x-accounts.json: ${e?.message || String(e)}`;
+    return [];
+  }
+}
+
+// hydrate / publish / pollOnce live in scripts/lib/x-poll-cycle.cjs so a test can
+// EXECUTE them. This file has no module.exports and no require.main guard, so
+// importing it to reach those functions boots the whole relay — which is why the
+// only coverage they ever had was regex-on-source, and why a generation-field
+// collision, a lease handoff that dropped a peer's posts, and a stuck-abort
+// threshold that outlived the Redis lease all shipped unnoticed. Built once here
+// with the relay's real Redis helpers, constants and state object;
+// tests/x-poll-cycle.test.mjs drives the same factory with stubs.
+const xPollCycle = createXPollCycle({
+  xState,
+  xNewsAccounts,
+  loadXAccounts,
+  upstashGet,
+  upstashSetNx,
+  upstashPublishXIfLockOwner,
+  upstashReleaseLockIfOwner,
+  // The guard's run counter, never xState.generation — see the comment on
+  // `let xPollGeneration` above. Passed as an accessor so the cycle module
+  // cannot reach the module-level mutable itself.
+  getPollGeneration: () => xPollGeneration,
+  scheduleRetry: (retryAfterLeaseConflict) => guardedXPoll(retryAfterLeaseConflict),
+  randomId: () => crypto.randomBytes(4).toString('hex'),
+  X_ENABLED,
+  X_BEARER_TOKEN,
+  X_FEED_CACHE_KEY,
+  X_FEED_META_KEY,
+  X_FEED_POLL_STATE_KEY,
+  X_FEED_POLL_LOCK_KEY,
+  X_FEED_TTL_SECONDS,
+  X_FEED_META_TTL_SECONDS,
+  X_FEED_POLL_LOCK_TTL_SECONDS,
+  X_MAX_FEED_ITEMS,
+  X_MAX_TEXT_CHARS,
+  log: (message) => console.log(message),
+  warn: (message) => console.warn(message),
+});
+
+const xPollGuard = createPollGenerationGuard({
+  poll: (context) => xPollCycle.pollOnce(context),
+  getGeneration: () => xPollGeneration,
+  setGeneration: (generation) => { xPollGeneration = generation; },
+  stuckAfterMs: X_POLL_STUCK_AFTER_MS,
+  warn: (stuckMs, error) => {
+    if (error) {
+      console.warn('[Relay] X poll error:', error?.message || error);
+    } else {
+      console.warn(`[Relay] X poll stuck for ${Math.round(stuckMs / 1000)}s — force-clearing in-flight flag`);
+    }
+  },
+});
+
+function guardedXPoll(retryAfterLeaseConflict = false) {
+  xPollGuard.run({ retryAfterLeaseConflict });
+}
+
+async function startXPollLoop() {
+  loadXAccounts();
+  await xPollCycle.hydrate();
+  if (!X_ENABLED) {
+    console.warn('[Relay] X news-account poll skipped — X_BEARER_TOKEN is not configured on ais-relay');
+    return;
+  }
+  const nextDueAt = Math.max(
+    xState.lastPollAt ? xState.lastPollAt + X_POLL_INTERVAL_MS : 0,
+    xState.rateLimitedUntil || 0,
+  );
+  const startupDelayMs = Math.max(0, nextDueAt - Date.now());
+  const startInterval = () => {
+    guardedXPoll();
+    setInterval(guardedXPoll, X_POLL_INTERVAL_MS).unref?.();
+  };
+  if (startupDelayMs > 0) {
+    const timer = setTimeout(startInterval, startupDelayMs);
+    timer.unref?.();
+  } else {
+    startInterval();
+  }
+  console.log(`[Relay] X poll loop started (${Math.round(X_POLL_INTERVAL_MS / 60000)} min cadence)`);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -3458,7 +3668,10 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // tests/importance-score-parity.test.mjs.
 // Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
 // is enforced by tests/importance-score-parity.test.mjs.
-const RELAY_SOURCE_TIERS = requireShared('source-tiers.json');
+const RELAY_SOURCE_TIERS = {
+  ...requireShared('source-tiers.json'),
+  ...requireShared('x-account-source-tiers.json'),
+};
 const {
   createExplicitTierFourSourceSet,
   shouldDropRelaySourceForTier,
@@ -3870,6 +4083,16 @@ async function seedClassifyForVariant(variant, seenTitles) {
           });
         }
       }
+    }
+  }
+  for (const candidate of xNewsAccounts.collectXAlertCandidates(xState.items, RELAY_SOURCE_TIERS, Date.now(), RECENCY_GATE_MS)) {
+    if (!allTitles.has(candidate.title)) {
+      allTitles.set(candidate.title, {
+        source: candidate.source,
+        publishedAt: candidate.publishedAt,
+        corroborationCount: candidate.corroborationCount,
+        link: candidate.link,
+      });
     }
   }
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
@@ -10470,6 +10693,23 @@ const server = http.createServer(async (req, res) => {
         pollInFlight: telegramPollInFlight,
         pollInFlightSince: telegramPollInFlight && telegramPollStartedAt ? new Date(telegramPollStartedAt).toISOString() : null,
       },
+      xFeed: {
+        enabled: X_ENABLED,
+        accounts: xState.accounts?.length || 0,
+        items: xState.items?.length || 0,
+        lastPollAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        hasError: !!xState.lastError,
+        lastError: xState.lastError || null,
+        // Distinguishes "Redis unreadable, refusing to publish" from an ordinary
+        // poll error — otherwise both look like a generic lastError string.
+        hydrationFailed: !!xState.hydrationFailed,
+        generation: xState.generation,
+        coverage: xState.lastCoverage,
+        lastHealthyAt: xState.lastHealthyAt ? new Date(xState.lastHealthyAt).toISOString() : null,
+        pollInFlight: xPollGuard.isInFlight(),
+        pollInFlightSince: xPollGuard.startedAt() ? new Date(xPollGuard.startedAt()).toISOString() : null,
+        rateLimitedUntil: xState.rateLimitedUntil ? new Date(xState.rateLimitedUntil).toISOString() : null,
+      },
       oref: {
         enabled: SIREN_ALERTS_ENABLED,
         alertCount: orefState.lastAlerts?.length || 0,
@@ -10676,6 +10916,39 @@ const server = http.createServer(async (req, res) => {
         enabled: TELEGRAM_ENABLED,
         count: filtered.length,
         updatedAt: telegramState.lastPollAt ? new Date(telegramState.lastPollAt).toISOString() : null,
+        items: filtered,
+      }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal error' }));
+    }
+  } else if (pathname === '/x' || pathname.startsWith('/x/')) {
+    try {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 50)));
+      const topic = (url.searchParams.get('topic') || '').trim().toLowerCase();
+      const account = (url.searchParams.get('account') || url.searchParams.get('channel') || '').trim().toLowerCase();
+      const includeDeleted = url.searchParams.get('includeDeleted') === '1';
+
+      const items = Array.isArray(xState.items) ? xState.items : [];
+      const filtered = items.filter((it) => {
+        if (!includeDeleted && it.contentState === 'deleted') return false;
+        if (topic && String(it.topic || '').toLowerCase() !== topic) return false;
+        if (account && String(it.account || '').toLowerCase() !== account) return false;
+        return true;
+      }).slice(0, limit);
+
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=10',
+        'CDN-Cache-Control': 'public, max-age=10',
+      }, JSON.stringify({
+        source: 'x',
+        earlySignal: true,
+        enabled: X_ENABLED,
+        count: filtered.length,
+        updatedAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        coverage: xState.lastCoverage,
         items: filtered,
       }));
     } catch (e) {
@@ -12727,7 +13000,11 @@ server.listen(PORT, () => {
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }
-  startTelegramPollLoop();
+    startTelegramPollLoop();
+    void startXPollLoop().catch((error) => {
+      xState.lastError = `X poll startup failed: ${error?.message || String(error)}`;
+      console.warn('[Relay] X poll startup failed:', error?.message || error);
+    });
   startOrefPollLoop();
   startUcdpSeedLoop();
   startMarketDataSeedLoop();

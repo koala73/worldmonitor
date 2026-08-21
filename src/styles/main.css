@@ -22,9 +22,9 @@
   --text: #e8e8e8;
   --text-secondary: #ccc;
   --text-dim: #888;
-  --text-muted: #666;
-  --text-faint: #555;
-  --text-ghost: #444;
+  --text-muted: #838383; /* was #666 (3.2:1 on --surface); AA 4.9:1 */
+  --text-faint: #7f7f7f; /* was #555 (2.5:1); AA 4.6:1 */
+  --text-ghost: #666; /* was #444 (1.9:1); 3.2:1 — decorative/large text only, never body copy */
   --accent: #fff;
 
   /* Overlays & shadows */
@@ -169,10 +169,9 @@
   --text: #1a1a1a;
   --text-secondary: #333;
   --text-dim: #6b6b6b;
-  --text-muted: #767676;
-  /* WCAG AA: 4.54:1 vs #f8f9fa */
-  --text-faint: #aaa;
-  --text-ghost: #bbb;
+  --text-muted: #6f6f6f; /* was #767676 (4.3:1 vs --bg); AA 4.8:1 */
+  --text-faint: #727272; /* was #aaa (2.2:1); AA 4.6:1 */
+  --text-ghost: #8e8e8e; /* was #bbb (1.8:1); 3.1:1 — decorative/large text only, never body copy */
   --accent: #111111;
 
   /* Overlays & shadows */
@@ -1977,6 +1976,44 @@ body.panel-resize-active iframe {
   flex-shrink: 0;
   position: relative;
   transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Keyboard reorder affordance (see makeDraggable): invisible until keyboard
+   focus reaches it, so pointer users see no change in the header. */
+.panel-move-btn {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.panel-move-btn:focus-visible {
+  width: auto;
+  height: auto;
+  padding: 2px 6px;
+  overflow: visible;
+  clip-path: none;
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  z-index: 3;
+}
+
+/* The resize strips are keyboard-focusable separators (arrow keys resize);
+   show where focus is when it lands on one. */
+.panel-resize-handle:focus-visible,
+.panel-col-resize-handle:focus-visible,
+.map-resize-handle:focus-visible,
+.map-width-resize-handle:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 
 .panel-header-error {
@@ -14287,7 +14324,7 @@ a.prediction-link:hover {
   padding: 8px 16px;
   border-top: 1px solid var(--overlay-medium);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost);
+  color: var(--text-faint);
 }
 
 .pizzint-footer a {
@@ -14489,7 +14526,7 @@ a.prediction-link:hover {
 
 .mobile-menu-footer-links a {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost);
+  color: var(--text-faint);
   text-decoration: none;
   letter-spacing: 0.02em;
 }
@@ -14501,7 +14538,7 @@ a.prediction-link:hover {
 .mobile-menu-version {
   padding: 4px 20px 16px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost);
+  color: var(--text-faint);
 }
 
 .region-sheet-backdrop {
@@ -19982,7 +20019,8 @@ a.prediction-link:hover {
 }
 
 .unified-settings-preset-chip:focus-visible {
-  outline: none;
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
 }
 
 /* Unified settings selects */
@@ -22836,7 +22874,7 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-ghost);
+  color: var(--text-faint);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -23099,7 +23137,7 @@ body.has-breaking-alert .panels-grid {
 
 .cw-dismiss {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost, #444);
+  color: var(--text-faint, #555);
   cursor: pointer;
   background: none;
   border: none;
@@ -23466,6 +23504,109 @@ body.map-width-resizing {
 }
 
 .telegram-follow-btn:hover {
+  background: var(--accent-dim);
+  color: var(--bg);
+}
+
+/* ==========================================================================
+   X News Accounts Panel (#6654)
+   ========================================================================== */
+
+.x-intel-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.x-intel-degraded {
+  margin: 6px 8px;
+  padding: 6px 8px;
+  border: 1px solid rgb(245 158 11 / 35%);
+  border-radius: 4px;
+  color: var(--color-warning, #f59e0b);
+  background: rgb(245 158 11 / 8%);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.x-intel-item {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--surface);
+  transition: background 0.15s ease, border-left-color 0.15s ease;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.x-intel-item.is-live {
+  background: rgba(0, 255, 127, 0.02);
+  border-left-color: var(--green);
+}
+
+.x-intel-item:hover {
+  background: var(--overlay-light);
+}
+
+.x-intel-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.x-intel-account-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.x-intel-account {
+  font-weight: 600;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.x-intel-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.x-intel-topic {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.x-intel-time {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.x-intel-text {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.x-intel-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.x-intel-follow-btn {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.x-intel-follow-btn:hover {
   background: var(--accent-dim);
   color: var(--bg);
 }
@@ -26005,6 +26146,56 @@ body.map-width-resizing {
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
 
+/* -- Legal links + pre-payment assent (#6976) -- */
+/* The dashboard had no path to the Terms at all, and every upgrade CTA jumped
+   straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
+   terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
+
+.legal-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border-color, #30363d);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  /* Sticky to the bottom of the scrolling modal: the Settings tab is long
+     enough that a row parked at the end of the scroll would be several
+     screens down, which is not "one click from the dashboard". -20px cancels
+     .modal's own bottom padding so it pins flush to the edge. */
+  position: sticky;
+  bottom: -20px;
+  z-index: 1;
+  margin-top: 8px;
+  background: var(--surface);
+}
+
+.legal-links-item {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.legal-links-item:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.checkout-consent {
+  margin: 0 0 8px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.checkout-consent-link {
+  color: var(--text-dim);
+  text-decoration: underline;
+}
+
+.checkout-consent-link:hover {
+  color: var(--text);
+}
+
 .upgrade-pro-status-line {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -26237,6 +26428,15 @@ body.map-width-resizing {
   justify-content: flex-end;
   gap: 6px;
   flex: 0 0 auto;
+}
+
+/* The checkout-consent line (#6976) is a full-width row inside the action
+   column so the assent reads above the CTA it belongs to, rather than becoming
+   a third column in the notice's space-between row. */
+.api-plan-limit-notice-actions .checkout-consent {
+  flex: 1 0 100%;
+  margin: 0 0 2px;
+  text-align: right;
 }
 
 .api-plan-limit-notice-actions .btn {
@@ -27676,6 +27876,50 @@ body.map-width-resizing {
 .markers-settled .dark-vessel-indicator,
 .markers-settled .tech-event-marker.upcoming-soon::after {
   animation: none;
+}
+
+/* ── Accessibility: motion & focus visibility (#6573) ─────────────────── */
+
+/* Honor the OS-level reduced-motion preference globally. Individual guards
+   exist for a handful of selectors above, but ~80 infinite animations and
+   ~325 transitions ran unconditionally. Durations collapse to near-zero
+   (rather than `animation: none`) so animationend/transitionend listeners
+   still fire and will-change cleanups keep working. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus rings for controls whose base rules declare `outline: none` (or
+   swap only border-color on :focus, below the 3:1 non-text contrast bar)
+   without a :focus-visible replacement. Keyboard-only — :focus-visible
+   leaves mouse focus styling as designed. */
+.region-select:focus-visible,
+.focus-select:focus-visible,
+.playback-slider:focus-visible,
+.search-input:focus-visible,
+.embed-snippet-textarea:focus-visible,
+.sources-search input:focus-visible,
+.panels-search input:focus-visible,
+.mcp-input:focus-visible,
+.cp-world-filter:focus-visible,
+.chat-analyst-input:focus-visible,
+.us-notif-slack-input:focus-visible,
+.live-news-manage-search-input:focus-visible,
+.deckgl-layer-toggles .layer-search:focus-visible,
+.fw-import-input:focus-visible,
+.fw-import-textarea:focus-visible,
+.auth-profile-input:focus-visible,
+.debt-search:focus-visible,
+.api-keys-name-input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
 }
 
 .stock-research-overlay {

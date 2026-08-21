@@ -3,11 +3,16 @@
 // template does not obscure the corpus orchestration and other page families.
 
 import {
+  catalogCoverageCountryOptions,
   catalogCountryOptions,
   resolveSourceOrigin,
   sourceOriginFilterValue,
   sourceOriginLabel,
 } from './source-origin.mjs';
+import {
+  isSyndicationTransportEntry,
+  uniqueSorted,
+} from './source-catalog-identity.mjs';
 
 // Hand-authored marketing copy for the /sources/ catalog page. Domains and
 // their docs anchors mirror docs/data-sources.mdx section headings; the
@@ -158,6 +163,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['www.newyorkfed.org', 'finance'],
   ['www.nfx.com', 'technology'],
   ['www.reddit.com', 'news'],
+  ['www.sequoiacap.com', 'technology'],
   ['SWF Institute', 'finance'],
   ['Toronto Transit Commission (TTC) GTFS-RT', 'infrastructure'],
   ['United Nations Population Division', 'finance'],
@@ -624,30 +630,59 @@ function sourceDomainIdForEntries(entries) {
   }
   return match[0];
 }
-export function buildSourceCatalog(entries) {
+
+export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error('Source catalog cannot be empty');
   }
   const entriesByProvider = new Map();
   for (const entry of entries) {
+    if (isSyndicationTransportEntry(entry)) continue;
     const providerEntries = entriesByProvider.get(entry.provider) || [];
     providerEntries.push(entry);
     entriesByProvider.set(entry.provider, providerEntries);
   }
 
-  return [...entriesByProvider.entries()]
-    .map(([provider, providerEntries]) => {
-      const hosts = [...new Set(providerEntries.map((entry) => entry.host))].sort();
-      return {
-        provider,
-        displayName: sourceProviderDisplayName(provider, hosts),
-        domainId: sourceDomainIdForEntries(providerEntries),
-        originCountry: resolveSourceOrigin({ provider, hosts }),
-        hosts,
-        kinds: [...new Set(providerEntries.flatMap((entry) => entry.kind.split('+')))].sort(),
-      };
-    })
-    .sort((left, right) => left.displayName.localeCompare(right.displayName, 'en', { sensitivity: 'base' }));
+  const catalog = [...entriesByProvider.entries()].map(([provider, providerEntries]) => {
+    const hosts = uniqueSorted(providerEntries.map((entry) => entry.host));
+    return {
+      provider,
+      displayName: sourceProviderDisplayName(provider, hosts),
+      domainId: sourceDomainIdForEntries(providerEntries),
+      originCountry: resolveSourceOrigin({ provider, hosts }),
+      hosts,
+      kinds: uniqueSorted(providerEntries.flatMap((entry) => String(entry.kind || '').split('+'))),
+      coveredCountries: [],
+      transportHosts: [],
+    };
+  });
+
+  for (const logical of logicalProviders) {
+    if (!logical?.provider || entriesByProvider.has(logical.provider)) continue;
+    const hosts = uniqueSorted([
+      ...(logical.editorialHosts || []),
+      ...(logical.transportHosts || []),
+    ]);
+    catalog.push({
+      provider: logical.provider,
+      displayName: sourceProviderDisplayName(logical.provider, hosts),
+      domainId: 'news',
+      originCountry: logical.originCountry ?? resolveSourceOrigin({
+        provider: logical.provider,
+        hosts: logical.editorialHosts || [],
+      }),
+      hosts,
+      kinds: ['feed'],
+      coveredCountries: uniqueSorted(logical.coveredCountries),
+      transportHosts: uniqueSorted(logical.transportHosts),
+    });
+  }
+
+  if (catalog.length === 0) {
+    throw new Error('Source catalog cannot be empty');
+  }
+
+  return catalog.sort((left, right) => left.displayName.localeCompare(right.displayName, 'en', { sensitivity: 'base' }));
 }
 
 export function renderSourcesIndex({ sourceStats, sourceCatalog, baseUrl, lastmod, helpers }) {
@@ -678,21 +713,26 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, baseUrl, lastmo
           <a class="domain-docs" href="${docsHref(domain.anchor)}">Methodology &amp; coverage <span aria-hidden="true">↗</span></a>
         </article>`).join('\n');
   const countryOptions = catalogCountryOptions(sourceCatalog);
+  const coverageOptions = catalogCoverageCountryOptions(sourceCatalog);
   const providerCards = sourceCatalog.map((provider) => {
     const domain = domainById.get(provider.domainId);
     const countryLabel = sourceOriginLabel(provider.originCountry);
     const countryFilter = sourceOriginFilterValue(provider.originCountry);
+    const coveredCountries = provider.coveredCountries || [];
+    const coverageFilter = coveredCountries.map((code) => sourceOriginFilterValue(code)).join(' ');
+    const coverageLabel = coveredCountries.map((code) => sourceOriginLabel(code)).join(', ');
     const hostLinks = provider.hosts.map((host) => (
       `<a href="https://${escapeHtml(host)}/" target="_blank" rel="noreferrer">${escapeHtml(host)}</a>`
     )).join('');
     const kindBadges = provider.kinds.map((kind) => (
       `<span class="kind-badge">${escapeHtml(kindLabels[kind] || kind)}</span>`
     )).join('');
-    return `        <article class="provider-card" data-provider="${escapeHtml(provider.provider)}" data-provider-name="${escapeHtml(provider.displayName)}" data-source-domain="${provider.domainId}" data-source-kind="${provider.kinds.join(' ')}" data-source-country="${countryFilter}">
+    return `        <article class="provider-card" data-provider="${escapeHtml(provider.provider)}" data-provider-name="${escapeHtml(provider.displayName)}" data-source-domain="${provider.domainId}" data-source-kind="${provider.kinds.join(' ')}" data-source-country="${countryFilter}" data-source-coverage="${escapeHtml(coverageFilter)}">
           <div class="provider-heading">
             <span class="provider-domain">${escapeHtml(domain.name)}</span>
             <h3>${escapeHtml(provider.displayName)}</h3>
-            <span class="provider-country">${escapeHtml(countryLabel)}</span>
+            <span class="provider-country">Origin: ${escapeHtml(countryLabel)}</span>
+            ${coverageLabel ? `<span class="provider-coverage">Covers: ${escapeHtml(coverageLabel)}</span>` : ''}
           </div>
           <div class="kind-badges">${kindBadges}</div>
           <div class="provider-hosts" aria-label="Provider hosts">${hostLinks}</div>
@@ -762,16 +802,18 @@ ${domainCards}
         <div class="section-heading catalog-heading">
           <p class="eyebrow">Complete catalog</p>
           <h2 id="catalog-heading">All ${sourceStats.providerCount} active providers.</h2>
-          <p>Search by provider or host. Filter by signal domain, source type, or country of origin. Every provider remains in the static HTML for people, search engines and no-script browsers.</p>
+          <p>Search by provider or host. Filter by signal domain, source type, country of origin, or country covered. Every provider remains in the static HTML for people, search engines and no-script browsers.</p>
         </div>
         <div class="catalog-controls">
           <label class="search-control" for="source-search"><span>Search providers</span><input id="source-search" type="search" placeholder="Reuters, USGS, coingecko…" autocomplete="off"></label>
           <label for="source-domain"><span>Domain</span><select id="source-domain"><option value="all">All domains</option>${SOURCE_DOMAINS.map((domain) => `<option value="${domain.id}">${escapeHtml(domain.name)}</option>`).join('')}</select></label>
           <label for="source-kind"><span>Source type</span><select id="source-kind"><option value="all">All types</option><option value="structured">Structured data</option><option value="feed">News / feed</option><option value="operational-status">Operational status</option></select></label>
-          <label for="source-country"><span>Country</span><select id="source-country"><option value="all">All countries</option>${countryOptions.map((country) => `<option value="${country.code}">${escapeHtml(country.name)}</option>`).join('')}</select></label>
+          <label for="source-country"><span>Country of origin</span><select id="source-country"><option value="all">All origins</option>${countryOptions.map((country) => `<option value="${country.code}">${escapeHtml(country.name)}</option>`).join('')}</select></label>
+          <label for="source-coverage"><span>Country covered</span><select id="source-coverage"><option value="all">All coverage</option>${coverageOptions.map((country) => `<option value="${country.code}">${escapeHtml(country.name)}</option>`).join('')}</select></label>
           <button type="button" class="reset-filter" data-source-filter="all">Reset</button>
         </div>
         <div class="catalog-meta"><p id="source-results" aria-live="polite">${sourceStats.providerCount} providers shown</p><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
+        <p class="catalog-country-note" id="source-country-note" aria-live="polite" hidden></p>
         <div class="provider-grid" id="source-catalog" data-source-catalog>
 ${providerCards}
         </div>
@@ -858,7 +900,7 @@ ${providerCards}
       .trust-section p { margin-top: 0; font-size: 15px; line-height: 1.75; }
       .catalog-section { padding-bottom: 100px; }
       .catalog-heading { max-width: 790px; }
-      .catalog-controls { position: sticky; top: 68px; z-index: 10; margin-bottom: 0; padding: 18px; display: grid; grid-template-columns: minmax(200px, 1.2fr) minmax(150px, .8fr) minmax(140px, .7fr) minmax(160px, .85fr) auto; gap: 12px; align-items: end; border: 1px solid var(--line); background: rgba(6,9,7,.94); backdrop-filter: blur(18px); }
+      .catalog-controls { position: sticky; top: 68px; z-index: 10; margin-bottom: 0; padding: 18px; display: grid; grid-template-columns: minmax(200px, 1.2fr) minmax(150px, .8fr) minmax(140px, .7fr) minmax(160px, .85fr) minmax(160px, .85fr) auto; gap: 12px; align-items: end; border: 1px solid var(--line); background: rgba(6,9,7,.94); backdrop-filter: blur(18px); }
       .catalog-controls label { display: grid; gap: 7px; color: var(--muted); font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; }
       .catalog-controls input, .catalog-controls select { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid #2a372f; border-radius: 2px; background: #0b100d; color: var(--text); font: 13px ui-sans-serif, system-ui, sans-serif; }
       .catalog-controls input:focus, .catalog-controls select:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
@@ -867,12 +909,13 @@ ${providerCards}
       .catalog-meta { padding: 15px 2px; display: flex; justify-content: space-between; gap: 20px; align-items: center; }
       .catalog-meta p { margin: 0; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; }
       .catalog-meta a { font-size: 12px; }
+      .catalog-country-note { margin: 0 2px 15px; color: var(--muted); font-size: 13px; line-height: 1.6; }
       .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
       .provider-card { min-width: 0; min-height: 180px; padding: 18px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(9,13,11,.48); }
       .provider-card:hover { background: var(--panel-2); }
       .provider-domain { color: var(--accent); font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; }
       .provider-card h3 { margin: 8px 0 0; font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
-      .provider-country { margin-top: 6px; color: var(--muted); font: 11px ui-sans-serif, system-ui, sans-serif; }
+      .provider-country, .provider-coverage { margin-top: 6px; color: var(--muted); font: 11px ui-sans-serif, system-ui, sans-serif; }
       .kind-badges { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 5px; }
       .provider-hosts { margin-top: auto; padding-top: 18px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
       .provider-hosts a { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
@@ -897,15 +940,18 @@ ${providerCards}
       const domain = document.getElementById('source-domain');
       const kind = document.getElementById('source-kind');
       const country = document.getElementById('source-country');
+      const coverage = document.getElementById('source-coverage');
       const cards = [...document.querySelectorAll('.provider-card')].map((card) => ({
         card,
         searchText: card.textContent.toLowerCase(),
         domain: card.dataset.sourceDomain,
         kinds: new Set(card.dataset.sourceKind.split(' ')),
         country: card.dataset.sourceCountry,
+        coverage: new Set((card.dataset.sourceCoverage || '').split(' ').filter(Boolean)),
       }));
       const filterButtons = [...document.querySelectorAll('[data-source-filter]')];
       const results = document.getElementById('source-results');
+      const countryNote = document.getElementById('source-country-note');
       const noResults = document.getElementById('source-no-results');
       const applyFilters = () => {
         const query = search.value.trim().toLowerCase();
@@ -916,10 +962,17 @@ ${providerCards}
           const matchesDomain = domain.value === 'all' || entry.domain === domain.value;
           const matchesKind = kind.value === 'all' || entry.kinds.has(kind.value);
           const matchesCountry = country.value === 'all' || entry.country === country.value;
-          card.hidden = !(matchesSearch && matchesDomain && matchesKind && matchesCountry);
+          const matchesCoverage = coverage.value === 'all' || entry.coverage.has(coverage.value);
+          card.hidden = !(matchesSearch && matchesDomain && matchesKind && matchesCountry && matchesCoverage);
           if (!card.hidden) visible += 1;
         }
         results.textContent = visible + (visible === 1 ? ' provider shown' : ' providers shown');
+        const showCountryNote = country.value !== 'all' && country.value !== 'intl';
+        const nextCountryNote = showCountryNote
+          ? 'This list shows monitored sources based in the selected country or region. Sources based elsewhere also cover it.'
+          : '';
+        if (countryNote.textContent !== nextCountryNote) countryNote.textContent = nextCountryNote;
+        if (countryNote.hidden === showCountryNote) countryNote.hidden = !showCountryNote;
         noResults.hidden = visible !== 0;
         for (const button of filterButtons) {
           const selected = button.dataset.sourceFilter !== 'all' && button.dataset.sourceFilter === domain.value;
@@ -930,10 +983,12 @@ ${providerCards}
       domain.addEventListener('change', applyFilters);
       kind.addEventListener('change', applyFilters);
       country.addEventListener('change', applyFilters);
+      coverage.addEventListener('change', applyFilters);
       for (const button of filterButtons) button.addEventListener('click', () => {
         search.value = '';
         kind.value = 'all';
         country.value = 'all';
+        coverage.value = 'all';
         domain.value = button.dataset.sourceFilter;
         applyFilters();
         if (button.dataset.sourceFilter !== 'all') {

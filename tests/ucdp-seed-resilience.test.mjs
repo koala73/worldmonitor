@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { discoverVersion as discoverStandaloneUcdpVersion } from '../scripts/seed-ucdp-events.mjs';
 
@@ -22,7 +22,12 @@ const SOURCE_SCAN_IGNORED_DIRS = new Set([
 ]);
 
 function shouldScanSourceDir(path) {
-  return !SOURCE_SCAN_IGNORED_DIRS.has(path);
+  if (SOURCE_SCAN_IGNORED_DIRS.has(path)) return false;
+  // Parallel tests create short-lived repo-root fixtures such as
+  // tmp-times-of-india-feed-test. Those are never source, and they can
+  // vanish between readdir and descent (ENOENT under --test-concurrency).
+  const top = path.split(/[\\/]/)[0];
+  return top !== 'tmp' && !top.startsWith('tmp-');
 }
 
 function sourceFilesContaining(rootDir, needle) {
@@ -30,7 +35,14 @@ function sourceFilesContaining(rootDir, needle) {
   const stack = [rootDir];
   while (stack.length > 0) {
     const dir = stack.pop();
-    for (const entry of readdirSync(dir)) {
+    let entries;
+    try {
+      entries = readdirSync(dir);
+    } catch (err) {
+      if (err?.code === 'ENOENT') continue;
+      throw err;
+    }
+    for (const entry of entries) {
       const path = join(dir, entry);
       // The parallel test runner churns short-lived fixtures under scripts/
       // (bundle-runner, seed-utils-sigterm-cleanup), so a file readdirSync
@@ -217,6 +229,20 @@ describe('UCDP version selection prefers the newest release', () => {
 
   it('all UCDP Redis writers are covered by this guard', () => {
     assert.deepEqual(ucdpRedisWriterPaths(), EXPECTED_UCDP_WRITER_PATHS);
+  });
+
+  it('does not treat ephemeral repo-root tmp fixtures as UCDP writers', () => {
+    const fixtureDir = 'tmp-ucdp-writer-scan-test';
+    mkdirSync(fixtureDir, { recursive: true });
+    writeFileSync(
+      join(fixtureDir, 'fake-writer.mjs'),
+      `envelopeWrite('${UCDP_REDIS_KEY}', '{}');\n`,
+    );
+    try {
+      assert.deepEqual(ucdpRedisWriterPaths(), EXPECTED_UCDP_WRITER_PATHS);
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
+    }
   });
 
   it('standalone cron discovery also requires non-empty Result for the same Redis key', async () => {

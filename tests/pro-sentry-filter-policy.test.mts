@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   MARKETING_IGNORE_ERRORS,
   marketingBeforeSend,
+  sanitizeMarketingRequestUrl,
   type PolicyEvent,
 } from '../pro-test/src/sentry-filter-policy.ts';
 
@@ -58,6 +59,19 @@ describe('marketing ignoreErrors', () => {
     assert.equal(isIgnored('Error', 'Invalid call to runtime.sendMessage(). Tab not found.'), true);
   });
 
+  it('drops the Zalo in-app-browser bridge global (WORLDMONITOR-102)', () => {
+    // Verbatim production value; Safari phrases a missing global this way.
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: zaloJSV2"), true);
+    // Chrome/Edge phrasing for the same missing global.
+    assert.equal(isIgnored('ReferenceError', 'zaloJSV2 is not defined'), true);
+  });
+
+  // Positive control for the `\b` bounds on the Zalo entry: the pattern must
+  // key on the identifier, not on a substring that a longer word contains.
+  it('keeps an error that merely mentions a similar word', () => {
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: zaloJSV2Extended"), false);
+  });
+
   // Positive control: the array must not have grown a pattern broad enough to
   // swallow an ordinary marketing-bundle bug.
   it('keeps a genuine first-party error message', () => {
@@ -66,6 +80,35 @@ describe('marketing ignoreErrors', () => {
       false,
     );
     assert.equal(isIgnored('Error', 'Dodo checkout session could not be created'), false);
+  });
+});
+
+describe('marketing Sentry request URL privacy', () => {
+  it('removes query strings and unsafe auth fragments from production event URLs', () => {
+    assert.equal(
+      sanitizeMarketingRequestUrl(
+        'https://www.worldmonitor.app/pro?wm_referral=private#access_token=private',
+      ),
+      'https://www.worldmonitor.app/pro',
+    );
+  });
+
+  it('retains only approved public marketing routes and section hashes', () => {
+    assert.equal(
+      sanitizeMarketingRequestUrl(
+        'https://www.worldmonitor.app/pro/?checkout_session=private#pricing',
+      ),
+      'https://www.worldmonitor.app/pro#pricing',
+    );
+    assert.equal(
+      sanitizeMarketingRequestUrl('https://www.worldmonitor.app/?ref=private#enterprise-contact'),
+      'https://www.worldmonitor.app/#enterprise-contact',
+    );
+    assert.equal(
+      sanitizeMarketingRequestUrl('https://www.worldmonitor.app/dashboard?token=private'),
+      undefined,
+    );
+    assert.equal(sanitizeMarketingRequestUrl('not a URL?token=private'), undefined);
   });
 });
 
@@ -144,6 +187,52 @@ describe('marketingBeforeSend — stale chunk after deploy', () => {
   });
 });
 
+describe('marketingBeforeSend — injected-script recursion', () => {
+  it('drops the document-framed stack overflow (WORLDMONITOR-103)', () => {
+    // Verbatim production event: Chrome Mobile iOS, every frame on the
+    // prerendered document, whose reported lines sit inside inert JSON-LD.
+    assert.equal(
+      marketingBeforeSend(event('Maximum call stack size exceeded.', [
+        'https://www.worldmonitor.app/',
+        'https://www.worldmonitor.app/',
+      ])),
+      null,
+    );
+  });
+
+  it('drops the Chrome and Firefox phrasings', () => {
+    for (const value of ['Maximum call stack size exceeded', 'too much recursion']) {
+      assert.equal(
+        marketingBeforeSend(event(value, ['https://www.worldmonitor.app/'])),
+        null,
+        `expected ${value} dropped`,
+      );
+    }
+  });
+
+  // Positive control for the `!hasFirstParty` gate. A render loop inside our
+  // own bundle is the realistic first-party cause of this exact message and
+  // must still page; delete the gate and this goes red.
+  it('keeps a stack overflow that carries a marketing-bundle frame', () => {
+    const kept = event('Maximum call stack size exceeded.', [
+      '/pro/assets/index-a1b2c3.js',
+    ]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps a stack overflow that carries a source-mapped frame', () => {
+    const kept = event('too much recursion', ['pro-test/src/WelcomeApp.tsx']);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  // Positive control that the recursion pattern is not broad enough to swallow
+  // an ordinary frameless crash from this bundle.
+  it('keeps an unrelated frameless error', () => {
+    const kept = event('Dodo checkout session could not be created');
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
 describe('policy wiring', () => {
   // A perfect policy that nothing calls filters nothing. The values themselves
   // are exercised above; this only proves `Sentry.init` actually receives them.
@@ -151,7 +240,11 @@ describe('policy wiring', () => {
     const source = readFileSync(resolve(root, 'pro-test/src/sentry.ts'), 'utf8');
     assert.match(source, /from '\.\/sentry-filter-policy'/);
     assert.match(source, /ignoreErrors:\s*MARKETING_IGNORE_ERRORS/);
-    assert.match(source, /beforeSend:\s*\(event\)\s*=>\s*marketingBeforeSend\(event\)/);
+    assert.match(
+      source,
+      /beforeSend:\s*\(event\)\s*=>\s*\{\s*const filteredEvent = marketingBeforeSend\(event\);/,
+    );
+    assert.match(source, /sanitizeMarketingRequestUrl\(filteredEvent\.request\.url\)/);
   });
 
   it('does not copy the dashboard array wholesale', () => {

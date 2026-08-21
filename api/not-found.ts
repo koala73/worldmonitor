@@ -17,8 +17,9 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from './_cors.js';
+import { buildMarkdownTwinResponse, isMarkdownTwinPath } from './_md-url-twin';
 
-export default function handler(req: Request): Response {
+export default function handler(req: Request): Response | Promise<Response> {
   const corsHeaders = getPublicCorsHeaders('GET, POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
@@ -32,6 +33,16 @@ export default function handler(req: Request): Response {
       return req.url;
     }
   })();
+
+  // Unmatched /api/*.md is a markdown URL-fallback probe, not a missing JSON
+  // RPC. Serve a heading-led text/markdown twin of the sibling path instead of
+  // the structured JSON 404 (static public/api/*.md files still win first).
+  if (
+    isMarkdownTwinPath(pathname) &&
+    (req.method === 'GET' || req.method === 'HEAD')
+  ) {
+    return buildMarkdownTwinResponse(req, pathname);
+  }
 
   const body = {
     error: {

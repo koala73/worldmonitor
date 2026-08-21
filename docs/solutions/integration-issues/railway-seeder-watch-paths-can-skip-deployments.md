@@ -152,6 +152,28 @@ same `gate` status branch protection requires.
 
 ## Solution
 
+### Keep operational status off deployable commits
+
+The Seed Freshness Monitor observes the newest gated `main` revision but writes
+its durable `ingestion/seed/*` projection to the fixed historical merge commit
+`b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3`. That commit introduced the
+transition publisher, is required to be an ancestor of the observed revision,
+and cannot become a future deployment candidate.
+
+This keeps the protection without recreating the lag source described above:
+a new or materially changed incident still fails one monitor run, the anchor
+keeps the source status non-green until live recovery, and unchanged polls
+append nothing. The first anchored run imports the newest trusted legacy
+projection from recent first-parent history, so already-active incidents move
+to the anchor without being reported as new failures. Because the acceptance
+context is written last, a later poll can also distinguish an empty anchor from
+a partial write, repair that write, and avoid reporting the same transition
+twice.
+
+Do not move this projection back to `main`, a gated ancestor selected for the
+probe, or any other commit Railway may be asked to deploy. GitHub commit status
+is deployment input in this repository, not only an observability surface.
+
 ### The audit: the registry contract, unchanged
 
 `scripts/railway-services.json` remains the repository-side contract. Each

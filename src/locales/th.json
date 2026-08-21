@@ -363,6 +363,7 @@
     "securityAdvisories": "คำเตือนด้านความปลอดภัย",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "ข่าวกรอง Telegram",
+    "xIntel": "X News Accounts",
     "startups": "สตาร์ทอัพและ VC",
     "vcblogs": "ข้อมูลเชิงลึกและบทความ VC",
     "regionalStartups": "ข่าวสตาร์ทอัพทั่วโลก",
@@ -1759,6 +1760,21 @@
       "viewSource": "ดูแหล่งที่มา",
       "filterGeopolitics": "ภูมิรัฐศาสตร์",
       "filterCyber": "ไซเบอร์"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "ฐานข้อมูลการลงทุนโดยตรงจากต่างประเทศของซาอุดีอาระเบียและ UAE ในโครงสร้างพื้นฐานสำคัญระดับโลก คลิกแถวเพื่อบินไปยังการลงทุนบนแผนที่",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "การแจ้งเตือนจรวดและขีปนาวุธของอิสราเอลแบบเรียลไทม์",
       "orefSirens2": "การแมปโซนไซเรนพร้อมการจำแนกภัยคุกคาม",
       "telegramIntel1": "ช่องข่าวกรรมการ OSINT ที่เลือกสรร",
-      "telegramIntel2": "การอัปเดตข้อขัดแย้งและภูมิรัฐศาสตร์เกือบเรียลไทม์"
+      "telegramIntel2": "การอัปเดตข้อขัดแย้งและภูมิรัฐศาสตร์เกือบเรียลไทม์",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

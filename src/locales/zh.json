@@ -363,6 +363,7 @@
     "securityAdvisories": "安全警告",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram 情报",
+    "xIntel": "X News Accounts",
     "startups": "创业公司与风投",
     "vcblogs": "风投洞察与文章",
     "regionalStartups": "全球创业新闻",
@@ -1759,6 +1760,21 @@
       "viewSource": "查看来源",
       "filterGeopolitics": "地缘政治",
       "filterCyber": "网络"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "沙特阿拉伯和阿联酋在全球关键基础设施领域的对外直接投资数据库。点击某行可在地图上飞到该投资所在位置。",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "实时以色列导弹和火箭警报",
       "orefSirens2": "警报区域地图及威胁分类",
       "telegramIntel1": "精选 Telegram 开源情报频道",
-      "telegramIntel2": "近实时冲突与地缘政治更新"
+      "telegramIntel2": "近实时冲突与地缘政治更新",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

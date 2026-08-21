@@ -10,6 +10,7 @@
       "data/israeli-localities-he-en.json",
       "data/oref-threat-translations-he-en.json",
       "data/telegram-channels.json",
+      "data/x-accounts.json",
       "scripts/_climate-news-helpers.mjs",
       "scripts/_country-resolver.mjs",
       "scripts/_country-stock-index.mjs",
@@ -26,7 +27,10 @@
       "scripts/generate-inventory-facts.mjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/poll-generation-guard.cjs",
       "scripts/lib/usni-fleet-parser.cjs",
+      "scripts/lib/x-news-accounts.cjs",
+      "scripts/lib/x-poll-cycle.cjs",
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-chokepoint-flows.mjs",
@@ -51,6 +55,7 @@
       "scripts/shared/rss-allowed-domains.json",
       "scripts/shared/source-tier-policy.cjs",
       "scripts/shared/source-tiers.json",
+      "scripts/shared/x-account-source-tiers.json",
       "scripts/shared/stablecoin-classifier.cjs",
       "scripts/shared/stablecoins.json",
       "scripts/shared/stocks.json",
@@ -79,6 +84,7 @@
       "shared/rss-allowed-domains.json",
       "shared/source-tier-policy.cjs",
       "shared/source-tiers.json",
+      "shared/x-account-source-tiers.json",
       "shared/stablecoin-classifier.cjs",
       "shared/stablecoins.json",
       "shared/stocks.json"
@@ -325,8 +331,16 @@
   {
     "entry": "scripts/seed-bundle-static-ref-heavy.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-bundle-static-ref-heavy",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "CLOUDFLARE_R2_ACCOUNT_ID",
+      [
+        "CLOUDFLARE_R2_TOKEN",
+        "CLOUDFLARE_API_TOKEN"
+      ]
+    ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
       "scripts/_defense-industrial-source.mjs",

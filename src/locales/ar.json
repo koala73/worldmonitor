@@ -390,6 +390,7 @@
     "securityAdvisories": "تنبيهات أمنية",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "استخبارات Telegram",
+    "xIntel": "X News Accounts",
     "giving": "العطاء العالمي",
     "supplyChain": "سلسلة الإمداد",
     "gulfEconomies": "اقتصادات الخليج",
@@ -1628,6 +1629,21 @@
       "viewSource": "عرض المصدر",
       "filterGeopolitics": "جيوسياسية",
       "filterCyber": "إلكتروني"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "قاعدة بيانات الاستثمارات الأجنبية المباشرة للمملكة العربية السعودية والإمارات في البنية التحتية الحيوية العالمية. انقر على صف للانتقال إلى موقع الاستثمار على الخريطة.",
@@ -3485,7 +3501,9 @@
       "orefSirens1": "تنبيهات الصواريخ والقذائف الإسرائيلية في الوقت الفعلي",
       "orefSirens2": "خريطة مناطق الإنذار مع تصنيف التهديدات",
       "telegramIntel1": "قنوات OSINT على Telegram المختارة بعناية",
-      "telegramIntel2": "تحديثات النزاعات والجيوسياسة في الوقت الفعلي تقريباً"
+      "telegramIntel2": "تحديثات النزاعات والجيوسياسة في الوقت الفعلي تقريباً",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

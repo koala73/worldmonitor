@@ -450,6 +450,7 @@
     "securityAdvisories": "Sigurnosne Preporuke",
     "orefSirens": "Sirene u Izraelu",
     "telegramIntel": "Telegram Obavještajci",
+    "xIntel": "X News Accounts",
     "startups": "Startups & VC",
     "vcblogs": "VC Uvidi i Eseji",
     "regionalStartups": "Globalne Startup Vijesti",
@@ -2057,6 +2058,21 @@
       "filterGeopolitics": "Geopolitika",
       "filterCyber": "Kibernetika"
     },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
     "investments": {
       "infoTooltip": "Baza podataka o stranim direktnim investicijama Saudijske Arabije i UAE-a u globalnu kritičnu infrastrukturu. Kliknite na red da letite do investicije na karti.",
       "searchPlaceholder": "Pretraži imovinu, zemlje, subjekte…",
@@ -3627,7 +3643,9 @@
       "orefSirens1": "Upozorenja o raketama i raketama u izraelskom realnom vremenu",
       "orefSirens2": "Mapiranje zone sirena s klasifikacijom prijetnje",
       "telegramIntel1": "Kurirani Telegram OSINT kanali",
-      "telegramIntel2": "Ažuriranja o konfliktima i geopolitici u blizini realnog vremena"
+      "telegramIntel2": "Ažuriranja o konfliktima i geopolitici u blizini realnog vremena",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "contextMenu": {

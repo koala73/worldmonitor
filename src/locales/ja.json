@@ -363,6 +363,7 @@
     "securityAdvisories": "セキュリティアドバイザリー",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram インテリジェンス",
+    "xIntel": "X News Accounts",
     "startups": "スタートアップ & VC",
     "vcblogs": "VCインサイト & エッセイ",
     "regionalStartups": "グローバルスタートアップニュース",
@@ -1759,6 +1760,21 @@
       "viewSource": "ソースを見る",
       "filterGeopolitics": "地政学",
       "filterCyber": "サイバー"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "サウジアラビアとUAEによるグローバル重要インフラへの外国直接投資データベース。行をクリックするとマップ上の投資先にズーム。",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "イスラエルのミサイル・ロケット警報をリアルタイム配信",
       "orefSirens2": "サイレンゾーンマッピングと脅威分類",
       "telegramIntel1": "厳選されたTelegram OSINT チャネル",
-      "telegramIntel2": "ほぼリアルタイムの紛争・地政学的最新情報"
+      "telegramIntel2": "ほぼリアルタイムの紛争・地政学的最新情報",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

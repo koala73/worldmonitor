@@ -89,6 +89,7 @@ import {
   hydrateGeoHubPanelFromClusters,
   hydrateTechHubPanelFromClusters,
 } from '@/app/hub-activity-hydration';
+import { movePanelToKeyboardZone } from '@/app/panel-keyboard-reorder';
 
 function readSessionStorageValue(key: string): string | null {
   try {
@@ -239,6 +240,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'strategic-posture': { rowSpan: 2 },
   'supply-chain': { rowSpan: 2 },
   'telegram-intel': { rowSpan: 2 },
+  'x-intel': { rowSpan: 2 },
   'threat-timeline': { rowSpan: 2 },
   'trade-policy': { rowSpan: 2 },
   'ucdp-events': { rowSpan: 2 },
@@ -2359,6 +2361,14 @@ export class PanelLayoutManager implements AppModule {
       _lockPanels ? [t('premium.features.telegramIntel1'), t('premium.features.telegramIntel2')] : undefined,
     );
 
+    this.lazyDefaultPanel(
+      'x-intel',
+      () => import('@/components/XIntelPanel'),
+      'XIntelPanel',
+      undefined,
+      _lockPanels ? [t('premium.features.xIntel1'), t('premium.features.xIntel2')] : undefined,
+    );
+
     this.lazyPanel('gcc-investments', async () => {
       const { focusInvestmentOnMap } = await import('@/services/investments-focus');
       return this.importPanel('gcc-investments', () => import('@/components/InvestmentsPanel'), 'InvestmentsPanel', (InvestmentsPanel) =>
@@ -3797,6 +3807,72 @@ export class PanelLayoutManager implements AppModule {
     el.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+
+    // Keyboard path for reordering: the mouse drag above has no keyboard
+    // equivalent, so layout customization was impossible without a pointer.
+    // A visually-hidden-until-focused button in the header moves the panel
+    // one slot per arrow press and persists through the same savePanelOrder()
+    // path as a completed drag. Page Up/Page Down move between the sidebar
+    // and below-map grids when both zones are active on an ultra-wide layout.
+    const header = el.querySelector<HTMLElement>('.panel-header');
+    if (header && !header.querySelector('.panel-move-btn')) {
+      const moveBtn = document.createElement('button');
+      moveBtn.type = 'button';
+      moveBtn.className = 'panel-move-btn';
+      const panelTitle = el.querySelector('.panel-title')?.textContent?.trim() || key;
+      moveBtn.setAttribute(
+        'aria-label',
+        `Move ${panelTitle} panel; arrow keys reorder, Page Up moves to sidebar, Page Down moves below map`,
+      );
+      moveBtn.setAttribute(
+        'aria-keyshortcuts',
+        'ArrowLeft ArrowRight ArrowUp ArrowDown PageUp PageDown',
+      );
+      moveBtn.textContent = '⇅';
+      moveBtn.addEventListener('keydown', (e: KeyboardEvent) => {
+        const targetZone = e.key === 'PageUp'
+          ? 'sidebar'
+          : e.key === 'PageDown'
+            ? 'bottom'
+            : null;
+        if (targetZone) {
+          if (!this.getEffectiveUltraWide()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const sidebarGrid = document.getElementById('panelsGrid');
+          const bottomGrid = document.getElementById('mapBottomGrid');
+          if (!sidebarGrid || !bottomGrid) return;
+          const moved = movePanelToKeyboardZone({
+            panel: el,
+            panelKey: key,
+            targetZone,
+            sidebarGrid,
+            bottomGrid,
+            bottomSet: this.bottomSetMemory,
+          });
+          if (moved) this.savePanelOrder();
+          moveBtn.focus();
+          return;
+        }
+
+        const back = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
+        const fwd = e.key === 'ArrowRight' || e.key === 'ArrowDown';
+        if (!back && !fwd) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const parent = el.parentElement;
+        if (!parent) return;
+        const sibling = back ? el.previousElementSibling : el.nextElementSibling;
+        if (!(sibling instanceof HTMLElement) || !sibling.classList.contains('panel')) return;
+        if (back) parent.insertBefore(el, sibling);
+        else parent.insertBefore(el, sibling.nextElementSibling);
+        this.savePanelOrder();
+        // The button travels with the panel; keep focus on it so repeated
+        // presses keep moving the same panel.
+        moveBtn.focus();
+      });
+      header.prepend(moveBtn);
+    }
 
     this.panelDragCleanupHandlers.push(() => {
       el.removeEventListener('mousedown', onMouseDown);

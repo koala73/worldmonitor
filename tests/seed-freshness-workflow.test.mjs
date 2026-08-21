@@ -61,6 +61,37 @@ function runPublisherWithoutActivation(acceptanceOutcome) {
   }
 }
 
+function runPublisherFromLegacyRevision() {
+  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-legacy-publisher-'));
+  const scriptsDir = join(tempDir, 'scripts');
+  const argsLog = join(tempDir, 'publisher-args.json');
+  const reportPath = join(tempDir, 'seed-freshness-observation.json');
+  try {
+    mkdirSync(scriptsDir);
+    writeFileSync(join(scriptsDir, 'update-seed-health-statuses.mjs'), [
+      "import { writeFileSync } from 'node:fs';",
+      'writeFileSync(process.env.ARGS_LOG, JSON.stringify(process.argv.slice(2)));',
+      '',
+    ].join('\n'));
+    const publisher = stepNamed('Publish ingestion operational transitions');
+    const result = spawnSync('bash', ['-e', '-c', publisher.run], {
+      cwd: tempDir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ARGS_LOG: argsLog,
+        RUNNER_TEMP: tempDir,
+        SEED_ACCEPTANCE_OUTCOME: 'success',
+        SEED_ACCEPTANCE_SHA: HEAD_SHA,
+        SEED_STATUS_SHA: 'b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3',
+      },
+    });
+    return { result, args: JSON.parse(readFileSync(argsLog, 'utf8')), reportPath };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 const HEAD_SHA = '0123456789abcdef';
 // Frozen so the age bound is a boundary, not a race against the wall clock:
 // `date` is faked below and every ancestor age is expressed against this.
@@ -302,11 +333,16 @@ describe('seed freshness workflow control plane', () => {
     assert.equal(publisher.env.GH_TOKEN, '${{ github.token }}');
     assert.equal(publisher.env.SEED_ACCEPTANCE_SHA, '${{ steps.gate.outputs.sha || github.sha }}');
     assert.equal(publisher.env.SEED_ACCEPTANCE_OUTCOME, '${{ steps.acceptance.outcome }}');
+    assert.equal(publisher.env.SEED_STATUS_SHA, 'b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3');
     assert.equal(publisher.env.SEED_STATUS_WRITER_LOGIN, 'github-actions[bot]');
     assert.match(publisher.run, /update-seed-health-statuses\.mjs/);
     assert.match(publisher.run, /if \[ ! -f scripts\/update-seed-health-statuses\.mjs \]/);
     assert.match(publisher.run, /not active on gated revision/);
     assert.match(publisher.run, /--sha "\$SEED_ACCEPTANCE_SHA"/);
+    assert.match(publisher.run, /status_args=\(\)/);
+    assert.match(publisher.run, /grep -q -- "'status-sha':"/);
+    assert.match(publisher.run, /status_args=\(--status-sha "\$SEED_STATUS_SHA"\)/);
+    assert.match(publisher.run, /"\$\{status_args\[@\]\}"/);
     assert.match(publisher.run, /--report "\$RUNNER_TEMP\/seed-freshness-observation\.json"/);
     assertBashSyntax(publisher.run);
     assert.equal(workflow.permissions.statuses, 'write');
@@ -320,6 +356,15 @@ describe('seed freshness workflow control plane', () => {
     const success = runPublisherWithoutActivation('success');
     assert.equal(success.status, 0, success.stderr);
     assert.match(success.stdout, /waiting for a gated activation revision/);
+  });
+
+  it('keeps the pre-anchor publisher compatible during the first gated-revision race', () => {
+    const legacy = runPublisherFromLegacyRevision();
+    assert.equal(legacy.result.status, 0, legacy.result.stderr);
+    assert.deepEqual(legacy.args, [
+      '--sha', HEAD_SHA,
+      '--report', legacy.reportPath,
+    ]);
   });
 
   it('checks out the resolved revision before the ingestion probe', () => {

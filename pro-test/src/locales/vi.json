@@ -358,7 +358,8 @@
           "Làm mới dữ liệu ưu tiên"
         ],
         "highlightFeatures": [
-          "Giấy phép cá nhân"
+          "Giấy phép cá nhân",
+          "1 người dùng được đặt tên"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Hỗ trợ ưu tiên"
         ],
         "highlightFeatures": [
-          "Giấy phép thương mại kèm theo"
+          "Giấy phép thương mại kèm theo",
+          "1 người dùng được đặt tên — không phải đăng nhập chung"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Cá nhân",
     "axisPersonalNote": "sử dụng cá nhân",
     "axisCommercial": "Thương mại",
-    "axisCommercialNote": "công việc, nhóm & sản phẩm"
+    "axisCommercialNote": "công việc, khách hàng & sản phẩm"
   },
   "welcome": {
     "meta": {

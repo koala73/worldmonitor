@@ -9,6 +9,8 @@ import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
+import { createCheckoutConsentElement } from '@/utils/legal-links';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
 import {
@@ -327,6 +329,8 @@ export class Panel {
     // Restore saved col-span
     this.restoreSavedColSpan();
     this.reconcileColSpanAfterAttach();
+    this.setupKeyboardRowResize();
+    this.setupKeyboardColResize();
 
     this.showLoading();
   }
@@ -367,6 +371,7 @@ export class Panel {
       }
       this.colSpanReconcileRaf = null;
       this.restoreSavedColSpan();
+      this.syncKeyboardColResizeAria();
     };
 
     tryReconcile(attempts);
@@ -394,6 +399,78 @@ export class Panel {
     if (this.onTouchCancel) {
       document.removeEventListener('touchcancel', this.onTouchCancel);
     }
+  }
+
+  /**
+   * Keyboard path for the mouse/touch drag handles (WAI-ARIA window-splitter):
+   * the handle is a focusable role="separator"; arrow keys step the span one
+   * unit and persist through the same code path as a completed drag.
+   */
+  private setupKeyboardRowResize(): void {
+    const handle = this.resizeHandle;
+    if (!handle) return;
+    handle.tabIndex = 0;
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'horizontal');
+    handle.setAttribute('aria-label', t('components.panel.dragToResize'));
+    handle.setAttribute('aria-valuemin', '1');
+    handle.setAttribute('aria-valuemax', '4');
+    this.syncKeyboardRowResizeAria();
+    handle.addEventListener('keydown', (e: KeyboardEvent) => {
+      const current = getRowSpan(this.element);
+      let next: number | null = null;
+      if (e.key === 'ArrowUp') next = Math.max(1, current - 1);
+      else if (e.key === 'ArrowDown') next = Math.min(4, current + 1);
+      else if (e.key === 'Home') next = 1;
+      else if (e.key === 'End') next = 4;
+      if (next === null) return;
+      e.preventDefault();
+      if (next === current) return;
+      setSpanClass(this.element, next);
+      savePanelSpan(this.panelId, next);
+      trackPanelResized(this.panelId, next);
+      this.syncKeyboardRowResizeAria();
+    });
+  }
+
+  private setupKeyboardColResize(): void {
+    const handle = this.colResizeHandle;
+    if (!handle) return;
+    handle.tabIndex = 0;
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.setAttribute('aria-label', t('components.panel.dragToResize'));
+    handle.setAttribute('aria-valuemin', '1');
+    this.syncKeyboardColResizeAria();
+    handle.addEventListener('keydown', (e: KeyboardEvent) => {
+      const maxSpan = getMaxColSpan(this.element);
+      const current = clampColSpan(getColSpan(this.element), maxSpan);
+      let next: number | null = null;
+      if (e.key === 'ArrowLeft') next = Math.max(1, current - 1);
+      else if (e.key === 'ArrowRight') next = Math.min(maxSpan, current + 1);
+      else if (e.key === 'Home') next = 1;
+      else if (e.key === 'End') next = maxSpan;
+      if (next === null) return;
+      e.preventDefault();
+      if (next === current) return;
+      setColSpanClass(this.element, next);
+      persistPanelColSpan(this.panelId, this.element);
+      this.syncKeyboardColResizeAria();
+    });
+  }
+
+  private syncKeyboardRowResizeAria(): void {
+    this.resizeHandle?.setAttribute('aria-valuenow', String(getRowSpan(this.element)));
+  }
+
+  private syncKeyboardColResizeAria(): void {
+    if (!this.colResizeHandle) return;
+    const maxSpan = getMaxColSpan(this.element);
+    this.colResizeHandle.setAttribute('aria-valuemax', String(maxSpan));
+    this.colResizeHandle.setAttribute(
+      'aria-valuenow',
+      String(clampColSpan(getColSpan(this.element), maxSpan)),
+    );
   }
 
   private setupResizeHandlers(): void {
@@ -425,6 +502,7 @@ export class Panel {
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
       trackPanelResized(this.panelId, currentSpan);
+      this.syncKeyboardRowResizeAria();
     };
 
     this.onRowWindowBlur = () => this.onRowMouseUp?.();
@@ -497,6 +575,7 @@ export class Panel {
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
       trackPanelResized(this.panelId, currentSpan);
+      this.syncKeyboardRowResizeAria();
     };
     this.onTouchCancel = this.onTouchEnd;
 
@@ -566,6 +645,7 @@ export class Panel {
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
       }
+      this.syncKeyboardColResizeAria();
     };
 
     this.onColWindowBlur = () => this.onColMouseUp?.();
@@ -637,6 +717,7 @@ export class Panel {
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
       }
+      this.syncKeyboardColResizeAria();
     };
     this.onColTouchCancel = this.onColTouchEnd;
   }
@@ -982,6 +1063,12 @@ export class Panel {
       lockedChildren.push(featureList);
     }
 
+    // Assent immediately above the CTA (#6976). This button jumps straight to
+    // Dodo's hosted checkout, where Dodo (merchant of record) shows its terms
+    // and never ours — so ours are presented here, before the jump. The desktop
+    // branch below opens the /pro pricing page in the OS browser instead, and
+    // that page carries its own assent line above every tier CTA.
+    if (!isDesktopRuntime()) lockedChildren.push(createCheckoutConsentElement(WEB_APP_ORIGIN));
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
       ctaBtn.addEventListener('click', () => {
@@ -1452,11 +1539,13 @@ export class Panel {
   public resetHeight(): void {
     this.element.classList.remove('resized', 'span-1', 'span-2', 'span-3', 'span-4');
     clearPanelSpan(this.panelId);
+    this.syncKeyboardRowResizeAria();
   }
 
   public resetWidth(): void {
     clearColSpanClass(this.element);
     clearPanelColSpan(this.panelId);
+    this.syncKeyboardColResizeAria();
   }
 
   protected get signal(): AbortSignal {

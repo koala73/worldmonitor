@@ -1,0 +1,236 @@
+---
+title: "WebMCP：WorldMonitor 浏览器工具"
+description: "在 Chrome 中使用 WorldMonitor 的实验性、标签页绑定 WebMCP 工具，检查其 schema，并验证可见 UI、安全与兼容性契约。"
+---
+
+WebMCP 让浏览器智能体发现并调用当前标签页中 WorldMonitor 页面暴露的工具。这些工具操作现有首页或仪表板 UI，并不是一套独立的数据 API。
+
+<Warning>
+WebMCP 是一项实验性的拟议 Web 标准，目前通过 Chrome 149 Origin Trial 提供。API 和浏览器行为仍可能改变。WorldMonitor 只支持在可见、有人参与的浏览器标签页中使用它。
+
+**WebMCP 不会取代 [WorldMonitor 托管 MCP 服务器](/zh/mcp-overview)。** 持久、远程、后台或无头智能体，以及直接读取 WorldMonitor 数据的场景，请使用托管服务器。
+</Warning>
+
+## 选择正确的接口
+
+| 接口 | 范围与生命周期 | UI 模型 | 认证与权益 | 最适用场景 |
+|---|---|---|---|---|
+| **WebMCP** | 当前源、页面和标签页；页面或可见表单消失时工具也消失 | 操作用户已看到的 WorldMonitor UI | 复用浏览器会话，并重新检查与点击操作相同的变体、渲染器、认证和权益门禁 | 本地浏览器助手协助用户探索实时仪表板 |
+| **[托管 MCP 服务器](/zh/mcp-overview)** | `https://worldmonitor.app/mcp` 上持久的远程 Streamable HTTP 端点 | 向 MCP 客户端返回结构化情报数据 | OAuth 2.1 或 `X-WorldMonitor-Key`，由服务器执行配额和权益检查 | Claude、Cursor、服务、自动化、后台或无头智能体 |
+| **[MCP Apps](/zh/mcp-apps)** | MCP 宿主调用托管工具，再渲染关联的 `ui://` 资源 | WorldMonitor UI 嵌入智能体宿主 | 实时数据仍来自普通的已认证托管 MCP 工具调用 | 在兼容 MCP Apps 的客户端中展示富交互结果 |
+
+WebMCP 不是 MCP 传输、MCP Apps 扩展、发现服务器或嵌入机制。托管 MCP 和 MCP Apps 无需打开 WorldMonitor 标签页；WebMCP 则描述并操作当前实时前端。
+
+## 可用性
+
+### 生产 Origin Trial
+
+WorldMonitor 为以下精确生产源的顶层 `/`、`/dashboard` 和 `/dashboard.html` 路由注册 Origin Trial：
+
+- `https://www.worldmonitor.app`
+- `https://tech.worldmonitor.app`
+- `https://finance.worldmonitor.app`
+- `https://commodity.worldmonitor.app`
+- `https://happy.worldmonitor.app`
+- `https://energy.worldmonitor.app`
+
+专用源的根路由会进入该源的仪表板。`/?mode=agent` 是独立的机器可读 JSON 接口，不是 WebMCP 路由。预览部署和文档路由未注册。
+
+Origin Trial 令牌有时限。发布检查必须验证实际部署的响应头，不得假设先前提交的令牌仍被浏览器接受。
+
+### 本地开发
+
+使用 Chrome 149 或更高版本：
+
+1. 打开 `chrome://flags/#enable-webmcp-testing`。
+2. 将 **WebMCP for testing** 设为 **Enabled**。
+3. 完全重新启动 Chrome。
+4. 本地启动 WorldMonitor。打开 `/dashboard` 检查含八个工具的仪表板；不要使用 `/embed`。若要检查含两个工具的静态首页，请先运行 `npm run build:pro`，再打开 `/pro/welcome.html`。本地 Vite 的 `/` 会加载仪表板 SPA，只有生产环境才把 `/` 重写到欢迎页。
+5. 在 DevTools 中确认特性检测：
+
+```js
+Boolean(document.modelContext?.registerTool)
+```
+
+本地开发由该 flag 代替 Origin Trial 注册。WorldMonitor 仍会发送 API 所需的源隔离与权限策略响应头。
+
+<Note>
+如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
+</Note>
+
+## 工具清单
+
+工具取决于页面和当前状态。运行时权威来源是 `await document.modelContext.getTools()`，不是在其他页面缓存的旧清单。
+
+### 首页工具
+
+静态 `https://www.worldmonitor.app/` 欢迎页会在仪表板 SPA 加载前注册两个命令式工具：
+
+| 工具 | 输入 schema | 行为 |
+|---|---|---|
+| `launchWorldMonitor` | 对象，可选字符串 `monitor`；枚举 `world`、`tech`、`finance`、`commodity`、`energy`、`happy`；不允许其他属性。默认为 `world`。 | 将当前标签页导航到选定的实时仪表板。 |
+| `getWorldMonitorMcpEndpoint` | 空对象；不允许其他属性。 | 只读返回 `https://worldmonitor.app/mcp`、服务器卡片、Streamable HTTP 传输和认证模式。 |
+
+### 仪表板命令式工具
+
+六个仪表板变体都注册相同的八个命令式工具。登录和权益变化不会改变注册集合；每次调用都会重新检查实时状态。
+
+| 工具 | 输入 schema | 可见结果 |
+|---|---|---|
+| `openCountryBrief` | 必填字符串 `iso2`，模式 `^[A-Z]{2}$`；不允许其他属性。 | 打开现有国家深度分析路径。 |
+| `openSearch` | 空对象；不允许其他属性。 | 打开全局搜索面板。 |
+| `get_dashboard_context` | 空对象；不允许其他属性。 | 只读、受限地返回可见变体、地图视图、中心点、缩放、时间范围、启用图层及已挂载/启用面板 ID。 |
+| `open_dashboard_panel` | 必填字符串 `panelId`，长度 1–96，模式 `^[a-z0-9][a-z0-9@_-]*$`；不允许其他属性。 | 经权益感知 UI 路径打开并滚动到当前已启用的可用面板。已禁用面板返回 `panel_disabled`；用户可从仪表板搜索或设置中启用它们。此工具不会自行启用面板。 |
+| `set_map_view` | 二选一且只能选一：`view`；或 `lat` 加 `lon`。`view` 可为 `global`、`america`、`mena`、`eu`、`asia`、`latam`、`africa`、`oceania`；`lat` 范围 -85.051129–85.051129，`lon` 范围 -180–180，可选 `zoom` 范围 1–10。 | 移动可见地图。 |
+| `set_map_layers` | 必填对象 `layers`，含 1–10 个布尔项；键长 1–30，匹配 `^[a-z][A-Za-z0-9_-]*$`；顶层不允许其他属性。 | 启用或禁用允许的可见图层，并返回逐图层结果。 |
+| `search_dashboard` | 必填字符串 `query`，长度 1–160；可选 `scope` 为 `all`、`signals`、`map`、`panels`、`actions`，默认 `all`；可选整数 `limit` 为 1–10，默认 8；不允许其他属性。 | 只读、受限地搜索当前国家、信号、地图、面板、金融和动作索引；返回内容标记为不可信。 |
+| `open_search_result` | 必填字符串 `resultKey`，模式 `^sr_[a-f0-9]{32}$`；不允许其他属性。 | 重新检查可用性、兼容性、认证和权益后，打开本页此前返回的一项结果。 |
+
+`search_dashboard` 返回精简描述符，不暴露隐藏仪表板状态。不透明结果键只能使用一次，两分钟后过期，最多保留最近 64 个；相关运行时、认证、权益、变体或组件访问发生变化时也会失效。过期或无效键会被拒绝，不会被当作 URL 或命令执行。
+
+### 声明式采购工具
+
+全球采购面板可以暴露一个[声明式 WebMCP 工具](https://developer.chrome.com/docs/ai/webmcp/declarative-api)：
+
+| 工具 | 表单派生输入 | 可用条件 |
+|---|---|---|
+| `search_procurement` | 可选文本 `query`、`buyer`，各自最多 160 个字符；可选 `country` 必须恰好为两个 ASCII 字母（`^[A-Za-z]{2}$`），并规范化为大写；`source` 为 `""`（全部来源）、`sam`、`ted`、`contracts-finder`、`canada-buys`、`gets` 或 `world-bank`；`sort` 为 `closing_soon`、`newest`、`estimated_value` 或 `relevance`；`techRelevant` 为布尔值。 | full、tech 和 finance 的全新默认布局会包含此工具。由于面板可跨变体寻址，在其他变体上明确启用有权益的面板后也可能出现。无论哪种情况，面板及表单都必须已连接、可见、数据就绪且空闲。 |
+
+表单的精确描述是 “Search official global procurement opportunities using visible filters.”。它使用 `toolautosubmit` 和用户看到的同一组控件。调用会让表单显示激活状态，经普通请求路径应用筛选，并以受限摘要返回匹配数、可用性、覆盖范围、已应用筛选及来源状态，而不返回招标描述或隐藏提交数据。重置或取消会中止请求并恢复可见表单状态。数据契约见[全球采购情报](/zh/global-procurement-intelligence)。
+
+## 人工控制与 UI 行为
+
+- 命令式工具在启动时同步注册，但会等待所需 UI 或地图渲染器。销毁应用会中止待处理工作并注销工具；同文档重新初始化不会产生重复注册。
+- 动作经过与人工控件相同的 UI、agent-bus、面板和地图路径，不调用具有额外权限的后端捷径。
+- 每次调用时都会评估认证、订阅权益、仪表板变体、面板挂载状态、图层策略和渲染器就绪状态。登录时发现的工具不能在退出或降级后保留访问权。
+- 成功变更保持可见：面板打开、搜索界面出现、地图状态变化，声明式采购表单显示激活/等待状态。
+- 被拒绝、无效、跳过、不可用和过期操作返回受限结果或安全错误，不会静默绕过锁定，也不会虚构结果。
+- 用户可以继续操作页面；已有的重置、关闭、导航和取消控件始终具有最终控制权。
+
+## 安全与隐私
+
+WorldMonitor 遵循浏览器的源隔离和同源模型：
+
+- 生产仪表板响应包含 `Origin-Agent-Cluster: ?1`，且 `Permissions-Policy` 包含 `tools=(self)`。
+- WorldMonitor 不通过 `fromOrigins`、`exposedTo` 或 iframe 的 `allow="tools"` 委派向其他源开放 WebMCP。
+- `/embed` 和 `/embed.html` 明确发送 `tools=()`。即使父页面拥有 WebMCP，嵌入的 WorldMonitor 面板也不得暴露任何工具。
+- WebMCP 复用用户现有浏览器会话，不通过工具参数接受新的 API 密钥，也不会弱化面板和数据权益。
+- 仪表板搜索结果按不可信内容处理，并在选择前重新验证。
+- 仪表板运行遥测严格受限：`webmcp-registered` 记录 `toolCount`、`pageSurface` 和 API 类别；`webmcp-registration-failed` 记录工具及稳定原因；`webmcp-tool-invoked` 记录工具、结果和终态原因。仪表板搜索还可以记录查询长度、结果数及允许列表内的结果类型类别。这些 WebMCP 专用自定义属性不得包含参数、搜索文本、结果键、返回内容、URL、招标内容或用户身份。事件仍使用 WorldMonitor 常规的 Umami 页面与会话外层信息，其中包含页面上下文，并可能与已登录的仪表板身份关联；受限路径只会省略自动内容归因属性，不会移除常规分析会话元数据。
+
+WebMCP 主要面向本地、有人参与的浏览器工作流。即使某些浏览器实现可能在其他环境暴露部分能力，WorldMonitor 也不把 WebMCP 作为无头、无人值守、跨源或后台自动化契约。此类场景请使用[托管 MCP 服务器](/zh/mcp-overview)。
+
+## 使用浏览器 API 调试
+
+使用 `document` 上的当前 API。旧的 `navigator.modelContext` 从 Chrome 150 起已弃用，已移除的 `provideContext` 草案 API 不受支持。
+
+```js
+const modelContext = document.modelContext;
+const tools = await modelContext.getTools();
+console.table(tools.map(({ name, description }) => ({ name, description })));
+```
+
+`getTools()` 按字母顺序返回当前页面授权的工具。在当前 Chrome 版本中，返回描述符的 `inputSchema` 是 JSON 字符串：
+
+```js
+const tool = tools.find(({ name }) => name === 'search_dashboard');
+const schema = JSON.parse(tool.inputSchema);
+console.log(schema);
+```
+
+以 JSON 字符串参数调用已发现工具：
+
+```js
+const result = await modelContext.executeTool(
+  tool,
+  JSON.stringify({ query: 'Hormuz', scope: 'all', limit: 5 }),
+);
+console.log(result);
+```
+
+使用中止信号测试浏览器驱动的取消：
+
+```js
+const controller = new AbortController();
+const pending = modelContext.executeTool(
+  tool,
+  JSON.stringify({ query: 'shipping disruption' }),
+  { signal: controller.signal },
+);
+controller.abort();
+try {
+  await pending;
+  throw new Error('Expected the aborted execution to reject.');
+} catch (error) {
+  if (error?.name !== 'AbortError') throw error;
+  console.log('Execution cancelled with AbortError.');
+}
+```
+
+如需可视化流程，请安装 Chrome 官方 [Model Context Tool Inspector](https://chromewebstore.google.com/detail/model-context-tool-inspec/gbpdfapgefenggkahomfgkhfehlcenpd)。用它确认发现、描述、schema、有效与无效参数、输出、错误、取消以及相应可见 UI 变化。[Chrome DevTools 149](https://developer.chrome.com/blog/new-in-devtools-149) 也提供实验性 WebMCP Application 面板检查器；它是另一个实验，需要同时启用 `chrome://flags/#enable-webmcp-testing` 和 `chrome://flags/#devtools-webmcp-support`。
+
+<Warning>
+Inspector 的自然语言工作流默认会把提示词发送给外部 Gemini 模型。不要在 Inspector 提示词中输入凭据或私有仪表板内容。当前模型行为见 Chrome 的 [WebMCP 概述](https://developer.chrome.com/docs/ai/webmcp)。
+</Warning>
+
+## 发布冒烟检查清单
+
+必须测试将要发布的精确提交。记录其 40 字符 Git SHA，并从同一 checkout 执行本地证明：
+
+### 本地，相同 SHA
+
+```bash
+(
+  set -euo pipefail
+  WEBMCP_SHA="$(git rev-parse --verify HEAD)"
+  test "${#WEBMCP_SHA}" -eq 40
+  test -z "$(git status --porcelain --untracked-files=normal)"
+  printf 'Testing WebMCP at %s\n' "$WEBMCP_SHA"
+  WM_WEBMCP_DEPLOYED_SHA="$WEBMCP_SHA" npm run test:e2e:webmcp
+)
+```
+
+这些命令会解析并输出精确提交；如果工作树存在已跟踪、已暂存或未跟踪变更，则立即失败。传入 `WM_WEBMCP_DEPLOYED_SHA` 后，本地证据产物会记录该 SHA；套件无法独立证明部署与 SHA 的对应关系。套件会启用 Chrome WebMCP 测试特性，并测试这个干净 checkout。除自动化证明外，如果发布修改了相关接口，还要用 `getTools()` 或 Inspector 检查每个仪表板变体以及采购工具可见/隐藏状态。如果发布修改了首页，请先运行 `npm run build:pro`，再检查 `/pro/welcome.html`。
+
+### 生产，相同 SHA
+
+首先在部署控制平面确认目标 URL 确实提供预期 SHA。运行器会把 `WM_WEBMCP_DEPLOYED_SHA` 记录在证据中，但无法独立推导或证明 URL 与 SHA 的对应关系。
+
+执行可选的有头生产套件；它不启用本地测试 flag，因此会测试真实 Origin Trial：
+
+```bash
+WM_WEBMCP_PRODUCTION_URL=https://www.worldmonitor.app \
+WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
+npm run test:e2e:webmcp:production
+```
+
+该套件断言 `Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、一次免费上下文调用、一次不可用面板拒绝及取消，并写出 JSON 证据产物。请把这些产物与发布证据一起保存。其门禁有意只接受规范目标 `https://www.worldmonitor.app`。对于其他已注册源，应手动检查响应头，并使用 `getTools()` 或 Inspector 验证清单和行为；只有另行评审并添加专用冒烟目标后，才可自动化测试这些源。
+
+还要确认 `/embed` 与 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档和嵌入页面没有获得顶层清单。部署控制平面的 SHA 检查、响应头、清单、UI 行为和终态结果应视为独立断言；仅有部署成功或注册日志不等于验收通过。
+
+## 兼容与移除策略
+
+WorldMonitor 以当前 `document.modelContext.registerTool()` API 为目标并进行特性检测。它不提供 `navigator.modelContext`、`provideContext` 或草案兼容 shim。
+
+如果未来浏览器迁移确实需要临时 fallback，该变更必须：
+
+1. 明确具体浏览器/API 缺口，并保持当前 API 为首选路径。
+2. 保持同源策略、可见 UI 行为、认证/权益检查、受限输出、隐私规则和取消能力。
+3. 同时为原生与 fallback 路径提供契约测试，并指定移除负责人及 Chrome 里程碑或生产验证条件。
+4. 当前支持 API 在生产验证后立即移除；fallback 绝不能成为未记录的永久 API。
+
+WebMCP 不可用时，托管 MCP 服务器仍是受支持的替代接口。它是一套独立产品接口，不是浏览器 fallback 实现。
+
+## 反馈与官方参考
+
+WorldMonitor 清单、UI、权限或权益问题请通过 [GitHub Issues](https://github.com/koala73/worldmonitor/issues) 或 [WorldMonitor 支持](/zh/support)报告。请附页面 URL、Chrome 版本、可见工具名、预期 UI 效果、实际受限结果/错误，以及能否在 Inspector 复现。切勿包含凭据或私有仪表板内容。
+
+- [Chrome WebMCP 概述](https://developer.chrome.com/docs/ai/webmcp)
+- [命令式 API](https://developer.chrome.com/docs/ai/webmcp/imperative-api)
+- [声明式 API](https://developer.chrome.com/docs/ai/webmcp/declarative-api)
+- [WebMCP 与 MCP 的比较](https://developer.chrome.com/docs/ai/webmcp/compare-mcp)
+- [最佳实践](https://developer.chrome.com/docs/ai/webmcp/best-practices)
+- [安全指南](https://developer.chrome.com/docs/ai/webmcp/secure-tools)
+- [评估指南](https://developer.chrome.com/docs/ai/webmcp/evals)
+- [Chrome 149 Origin Trial 公告](https://developer.chrome.com/blog/ai-webmcp-origin-trial)
+- [Chrome DevTools 149 WebMCP 检查器](https://developer.chrome.com/blog/new-in-devtools-149)

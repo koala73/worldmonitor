@@ -1,0 +1,236 @@
+---
+title: "WebMCP: browser tools for WorldMonitor"
+description: "Use WorldMonitor's experimental, tab-bound WebMCP tools in Chrome, inspect their schemas, and verify their visible UI, security, and compatibility contracts."
+---
+
+WebMCP lets a browser agent discover and invoke tools exposed by the WorldMonitor page that is open in the current tab. Those tools operate the existing homepage or dashboard UI; they are not a separate data API.
+
+<Warning>
+WebMCP is an experimental proposed web standard available through a Chrome 149 origin trial. Its API and browser behavior can change. WorldMonitor supports it only in a visible, human-in-the-loop browser tab.
+
+**WebMCP does not replace the [hosted WorldMonitor MCP server](/mcp-overview).** Use the hosted server for persistent, remote, background, or headless agents and for direct access to WorldMonitor data.
+</Warning>
+
+## Choose the right surface
+
+| Surface | Scope and lifetime | UI model | Auth and entitlement | Best fit |
+|---|---|---|---|---|
+| **WebMCP** | The current origin, page, and tab; tools disappear when their page or visible form is gone | Operates the WorldMonitor UI already visible to the person | Reuses the browser session and rechecks the same variant, renderer, authentication, and entitlement gates as a click | A local browser assistant helping a person explore the live dashboard |
+| **[Hosted MCP server](/mcp-overview)** | Persistent remote Streamable HTTP endpoint at `https://worldmonitor.app/mcp` | Returns structured intelligence data to an MCP client | OAuth 2.1 or `X-WorldMonitor-Key`, with server-side quota and entitlement checks | Claude, Cursor, services, automations, background or headless agents |
+| **[MCP Apps](/mcp-apps)** | An MCP host calls a hosted tool, then renders its linked `ui://` resource | WorldMonitor UI is embedded inside the agent host | The live data still comes from a normal authenticated hosted MCP tool call | Rich results inside an MCP Apps-compatible client |
+
+WebMCP is not an MCP transport, MCP Apps extension, discovery server, or embedding mechanism. The hosted MCP server and MCP Apps can work without a WorldMonitor tab. WebMCP instead describes the live frontend and lets the browser agent use that frontend in place.
+
+## Availability
+
+### Production origin trial
+
+WorldMonitor enrolls the top-level `/`, `/dashboard`, and `/dashboard.html` routes on these exact production origins:
+
+- `https://www.worldmonitor.app`
+- `https://tech.worldmonitor.app`
+- `https://finance.worldmonitor.app`
+- `https://commodity.worldmonitor.app`
+- `https://happy.worldmonitor.app`
+- `https://energy.worldmonitor.app`
+
+The root route on a specialized origin leads to that origin's dashboard. `/?mode=agent` is a separate machine-readable JSON surface and is not a WebMCP route. Preview deployments and documentation routes are not enrolled.
+
+Origin-trial tokens are time-limited. Release checks must verify the deployed response header rather than assume that a token committed earlier is still accepted.
+
+### Local development
+
+Use Chrome 149 or newer:
+
+1. Open `chrome://flags/#enable-webmcp-testing`.
+2. Set **WebMCP for testing** to **Enabled**.
+3. Relaunch Chrome completely.
+4. Start WorldMonitor locally. Open `/dashboard` for the eight-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
+5. Confirm feature detection in DevTools:
+
+```js
+Boolean(document.modelContext?.registerTool)
+```
+
+The local flag replaces origin-trial enrollment for development. WorldMonitor still sends the origin-isolation and permissions-policy headers needed by the API.
+
+<Note>
+Browsers without the current API, including the Tauri desktop webview when it does not expose WebMCP, safely do nothing. WorldMonitor does not install a browser polyfill and does not fall back to an older draft API.
+</Note>
+
+## Tool inventory
+
+Tools are page- and state-specific. The runtime source of truth is `await document.modelContext.getTools()`, not a cached list from an earlier page.
+
+### Homepage tools
+
+The static `https://www.worldmonitor.app/` welcome page registers two imperative tools before the dashboard SPA loads:
+
+| Tool | Input schema | Behavior |
+|---|---|---|
+| `launchWorldMonitor` | Object with optional string `monitor`; enum `world`, `tech`, `finance`, `commodity`, `energy`, `happy`; no additional properties. Defaults to `world`. | Navigates the current tab to the selected live dashboard. |
+| `getWorldMonitorMcpEndpoint` | Empty object; no additional properties. | Read-only connection details for `https://worldmonitor.app/mcp`, its server card, Streamable HTTP transport, and auth modes. |
+
+### Dashboard imperative tools
+
+Every dashboard variant registers the same eight imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
+
+| Tool | Input schema | Visible result |
+|---|---|---|
+| `openCountryBrief` | Required string `iso2`, pattern `^[A-Z]{2}$`; no additional properties. | Opens the existing country deep-dive path. |
+| `openSearch` | Empty object; no additional properties. | Opens the global search palette. |
+| `get_dashboard_context` | Empty object; no additional properties. | Read-only bounded snapshot of the visible variant, map view, center, zoom, time range, enabled layers, and mounted/enabled panel IDs. |
+| `open_dashboard_panel` | Required string `panelId`, 1–96 characters, pattern `^[a-z0-9][a-z0-9@_-]*$`; no additional properties. | Opens and scrolls to an available, currently enabled panel through the entitlement-aware UI path. Disabled panels return `panel_disabled`; a person can enable them from dashboard search or settings. This tool does not enable panels itself. |
+| `set_map_view` | Exactly one of: `view`; or `lat` plus `lon`. `view` is `global`, `america`, `mena`, `eu`, `asia`, `latam`, `africa`, or `oceania`. `lat` is -85.051129–85.051129, `lon` is -180–180, and optional `zoom` is 1–10. | Moves the visible map. |
+| `set_map_layers` | Required object `layers` with 1–10 boolean entries. Keys are 1–30 characters and match `^[a-z][A-Za-z0-9_-]*$`; no additional top-level properties. | Enables or disables allowed visible layers and returns a per-layer outcome. |
+| `search_dashboard` | Required string `query`, 1–160 characters. Optional `scope`: `all`, `signals`, `map`, `panels`, or `actions` (default `all`). Optional integer `limit`: 1–10 (default 8). No additional properties. | Read-only bounded search of current country, signal, map, panel, finance, and action indexes. Returned content is marked untrusted. |
+| `open_search_result` | Required string `resultKey`, pattern `^sr_[a-f0-9]{32}$`; no additional properties. | Opens one result previously returned on this page after rechecking availability, compatibility, auth, and entitlement. |
+
+`search_dashboard` returns concise descriptors rather than raw hidden dashboard state. Its opaque result keys are one-use, expire after two minutes, are bounded to the most recent 64 entries, and are invalidated when relevant runtime, authentication, entitlement, variant, or widget access changes. A stale or invalid key is denied instead of being treated as a URL or command.
+
+### Declarative procurement tool
+
+The Global Procurement panel can expose one [declarative WebMCP tool](https://developer.chrome.com/docs/ai/webmcp/declarative-api):
+
+| Tool | Form-derived inputs | Availability |
+|---|---|---|
+| `search_procurement` | Optional `query` and `buyer` text, each at most 160 characters; optional `country` of exactly two ASCII letters (`^[A-Za-z]{2}$`), normalized to uppercase; `source` is `""` (All sources), `sam`, `ted`, `contracts-finder`, `canada-buys`, `gets`, or `world-bank`; `sort` is `closing_soon`, `newest`, `estimated_value`, or `relevance`; `techRelevant` is boolean. | Included in the fresh default layouts for full, tech, and finance. Because panels are cross-addressable, it can also appear after the entitled panel is explicitly enabled on another variant. In every case, the panel and form must be connected, visible, data-ready, and idle. |
+
+The form's exact description is “Search official global procurement opportunities using visible filters.” It uses `toolautosubmit` and the same controls a person sees. Invocation makes the form visibly active, applies the filters through the normal request path, and resolves with a bounded summary of matches, availability, coverage, applied filters, and source status—not tender descriptions or hidden submission data. Reset or cancellation aborts the request and restores the visible form state. See [Global Procurement Intelligence](/global-procurement-intelligence) for the data contract.
+
+## Human control and UI behavior
+
+- Imperative tools register synchronously at startup, but wait for the necessary UI or map renderer before acting. Destroying the app aborts pending work and unregisters its tools; same-document reinitialization does not create duplicates.
+- Actions go through the same UI, agent-bus, panel, and map paths used by human controls. They do not call a privileged backend shortcut.
+- Authentication, subscription entitlement, dashboard variant, mounted-panel availability, layer policy, and renderer readiness are evaluated at invocation time. A tool discovered while signed in cannot retain access after sign-out or downgrade.
+- Successful mutations remain visible: panels open, the search palette appears, map state changes, and the declarative procurement form shows active/pending state.
+- Denied, invalid, skipped, unavailable, and expired operations return bounded outcomes or safe errors. They do not silently bypass a lock or invent a result.
+- The person can continue using the page. Existing reset, close, navigation, and cancellation controls remain authoritative.
+
+## Security and privacy
+
+WorldMonitor follows the browser's origin-isolated, same-origin model:
+
+- Production dashboard responses use `Origin-Agent-Cluster: ?1` and a `Permissions-Policy` containing `tools=(self)`.
+- WorldMonitor does not grant WebMCP access to another origin with `fromOrigins`, `exposedTo`, or an iframe `allow="tools"` delegation.
+- `/embed` and `/embed.html` explicitly send `tools=()`. An embedded WorldMonitor panel must expose no WebMCP tools, even when its parent page has WebMCP access.
+- WebMCP uses the person's existing browser session. It does not accept a new API key through tool arguments or weaken panel and data entitlements.
+- Dashboard search results are treated as untrusted content and are revalidated before selection.
+- Dashboard operational telemetry is bounded: `webmcp-registered` records `toolCount`, `pageSurface`, and the API bucket; `webmcp-registration-failed` records the tool and a stable reason; `webmcp-tool-invoked` records the tool, outcome, and terminal reason. Dashboard search may additionally record query length, result count, and allowlisted result-type buckets. These WebMCP-specific custom properties must not include arguments, search text, result keys, returned content, URLs, tender content, or user identity. The events still use WorldMonitor's normal Umami page and session envelope, which includes page context and may be associated with the signed-in dashboard identity; the restricted path omits automatic content-attribution properties, not normal analytics session metadata.
+
+WebMCP is designed primarily for a local browser workflow with a person in the loop. Although browser implementations may expose pieces in other environments, WorldMonitor does not support WebMCP as a headless, unattended, cross-origin, or background automation contract. Use the [hosted MCP server](/mcp-overview) for those cases.
+
+## Debug with the browser API
+
+Use the current API on `document`. The older `navigator.modelContext` surface is deprecated in Chrome 150, and the removed `provideContext` draft API is not supported.
+
+```js
+const modelContext = document.modelContext;
+const tools = await modelContext.getTools();
+console.table(tools.map(({ name, description }) => ({ name, description })));
+```
+
+`getTools()` returns the tools authorized for the current page in alphabetical order. In current Chrome builds, a returned descriptor's `inputSchema` is a JSON string:
+
+```js
+const tool = tools.find(({ name }) => name === 'search_dashboard');
+const schema = JSON.parse(tool.inputSchema);
+console.log(schema);
+```
+
+Invoke a discovered tool with a JSON-string argument payload:
+
+```js
+const result = await modelContext.executeTool(
+  tool,
+  JSON.stringify({ query: 'Hormuz', scope: 'all', limit: 5 }),
+);
+console.log(result);
+```
+
+Test browser-driven cancellation with an abort signal:
+
+```js
+const controller = new AbortController();
+const pending = modelContext.executeTool(
+  tool,
+  JSON.stringify({ query: 'shipping disruption' }),
+  { signal: controller.signal },
+);
+controller.abort();
+try {
+  await pending;
+  throw new Error('Expected the aborted execution to reject.');
+} catch (error) {
+  if (error?.name !== 'AbortError') throw error;
+  console.log('Execution cancelled with AbortError.');
+}
+```
+
+For a visual workflow, install Chrome's official [Model Context Tool Inspector](https://chromewebstore.google.com/detail/model-context-tool-inspec/gbpdfapgefenggkahomfgkhfehlcenpd). Use it to confirm discovery, descriptions, schemas, valid and invalid arguments, outputs, errors, cancellation, and the corresponding visible UI change. [Chrome DevTools 149](https://developer.chrome.com/blog/new-in-devtools-149) also has an experimental WebMCP Application-panel inspector; that separate experiment requires both `chrome://flags/#enable-webmcp-testing` and `chrome://flags/#devtools-webmcp-support`.
+
+<Warning>
+The Inspector's natural-language workflow sends prompts to an external Gemini model by default. Do not put credentials or private dashboard content into Inspector prompts. See Chrome's [WebMCP overview](https://developer.chrome.com/docs/ai/webmcp) for the current model behavior.
+</Warning>
+
+## Release smoke checklist
+
+Test the exact commit that will ship. Record its 40-character Git SHA and use that same checkout for the local proof:
+
+### Local, same SHA
+
+```bash
+(
+  set -euo pipefail
+  WEBMCP_SHA="$(git rev-parse --verify HEAD)"
+  test "${#WEBMCP_SHA}" -eq 40
+  test -z "$(git status --porcelain --untracked-files=normal)"
+  printf 'Testing WebMCP at %s\n' "$WEBMCP_SHA"
+  WM_WEBMCP_DEPLOYED_SHA="$WEBMCP_SHA" npm run test:e2e:webmcp
+)
+```
+
+These commands resolve and print the exact commit, then fail if the worktree has tracked, staged, or untracked changes. Passing `WM_WEBMCP_DEPLOYED_SHA` makes the local evidence artifact record that SHA; the suite does not independently prove a deployment-to-SHA mapping. It launches Chrome with the WebMCP testing feature and exercises that clean checkout. In addition to the automated proof, use `getTools()` or the Inspector to verify each dashboard variant and the visible/hidden procurement states when the release changes those surfaces. If the release changes the homepage, run `npm run build:pro` before verifying `/pro/welcome.html`.
+
+### Production, same SHA
+
+First verify in the deployment control plane that the target URL is serving the intended SHA. The runner records `WM_WEBMCP_DEPLOYED_SHA` in its evidence but cannot independently derive or prove the URL-to-SHA mapping.
+
+Run the opt-in headed production suite without the local testing flag so it exercises the real origin trial:
+
+```bash
+WM_WEBMCP_PRODUCTION_URL=https://www.worldmonitor.app \
+WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
+npm run test:e2e:webmcp:production
+```
+
+The suite asserts the `Origin-Trial`, `Origin-Agent-Cluster`, and `Permissions-Policy` headers; the inventory and schemas; a free context call; a denied unavailable-panel call; and cancellation, then writes JSON evidence artifacts. Preserve those artifacts with the release evidence. Its guard intentionally accepts only the canonical `https://www.worldmonitor.app` target. On other enrolled origins, verify headers and use `getTools()` or the Inspector to check inventory and behavior manually unless a separate smoke target has been reviewed and added.
+
+Also verify `/embed` and `/embed.html` return `tools=()`, and that `/?mode=agent`, preview deployments, docs, and embed pages do not gain the top-level inventory. Treat the deployment control-plane SHA check, headers, inventory, UI behavior, and terminal outcomes as separate assertions; a successful deploy or registration log alone is not acceptance.
+
+## Compatibility and removal policy
+
+WorldMonitor targets the current `document.modelContext.registerTool()` API and feature-detects it. It does not ship `navigator.modelContext`, `provideContext`, or a draft compatibility shim.
+
+If a future browser transition requires a temporary fallback, the change must:
+
+1. Name the exact browser/API gap and keep the current API as the preferred path.
+2. Preserve same-origin policy, visible UI behavior, auth/entitlement checks, bounded outputs, privacy rules, and cancellation.
+3. Have contract tests for both native and fallback paths plus an explicit removal owner and Chrome milestone or production verification condition.
+4. Be removed once the supported current API is verified in production; a fallback must never become an undocumented permanent API.
+
+The hosted MCP server remains the supported alternative when WebMCP is unavailable. It is a separate product surface, not a browser fallback implementation.
+
+## Feedback and official references
+
+Report WorldMonitor inventory, UI, permission, or entitlement problems through [GitHub Issues](https://github.com/koala73/worldmonitor/issues) or [WorldMonitor support](/support). Include the page URL, Chrome version, visible tool names, expected UI effect, actual bounded result/error, and whether the behavior reproduced in the Inspector. Never include credentials or private dashboard content.
+
+- [Chrome WebMCP overview](https://developer.chrome.com/docs/ai/webmcp)
+- [Imperative API](https://developer.chrome.com/docs/ai/webmcp/imperative-api)
+- [Declarative API](https://developer.chrome.com/docs/ai/webmcp/declarative-api)
+- [WebMCP compared with MCP](https://developer.chrome.com/docs/ai/webmcp/compare-mcp)
+- [Best practices](https://developer.chrome.com/docs/ai/webmcp/best-practices)
+- [Security guidance](https://developer.chrome.com/docs/ai/webmcp/secure-tools)
+- [Evaluation guidance](https://developer.chrome.com/docs/ai/webmcp/evals)
+- [Chrome 149 origin-trial announcement](https://developer.chrome.com/blog/ai-webmcp-origin-trial)
+- [Chrome DevTools 149 WebMCP inspector](https://developer.chrome.com/blog/new-in-devtools-149)

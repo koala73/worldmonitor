@@ -172,6 +172,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:security-advisories', keywords: ['advisories', 'travel advisory', 'security advisory', 'travel warning'], label: 'Panel: Security Advisories', icon: '\u{1F6C2}', category: 'panels' },
   { id: 'panel:oref-sirens', keywords: ['sirens', 'oref', 'israel sirens', 'red alert', 'iron dome'], label: 'Panel: Israel Sirens', icon: '\u{1F6A8}', category: 'panels' },
   { id: 'panel:telegram-intel', keywords: ['telegram', 'telegram intel', 'osint'], label: 'Panel: Telegram Intel', icon: '\u{1F4E8}', category: 'panels' },
+  { id: 'panel:x-intel', keywords: ['x news', 'twitter', 'x accounts', 'news accounts'], label: 'Panel: X News Accounts', icon: '\u{1F426}', category: 'panels' },
   { id: 'panel:airline-intel', keywords: ['airline', 'airline intelligence', 'aviation intel', 'flight news'], label: 'Panel: Airline Intelligence', icon: '\u2708\uFE0F', category: 'panels' },
   { id: 'panel:tech-readiness', keywords: ['tech readiness', 'digital readiness', 'technology index'], label: 'Panel: Tech Readiness Index', icon: '\u{1F4F1}', category: 'panels' },
   { id: 'panel:world-clock', keywords: ['clock', 'world clock', 'time zones', 'timezone'], label: 'Panel: World Clock', icon: '\u{1F570}\uFE0F', category: 'panels' },

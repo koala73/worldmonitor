@@ -1416,6 +1416,9 @@
       "references": [
         {
           "path": "scripts/lib/company-monitoring-x-provider.mjs"
+        },
+        {
+          "path": "scripts/lib/x-news-accounts.cjs"
         }
       ]
     },
@@ -3866,7 +3869,7 @@
     },
     {
       "host": "feeds.bbci.co.uk",
-      "provider": "feeds.bbci.co.uk",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -3930,7 +3933,8 @@
         {
           "path": "src/config/variants/tech.ts"
         }
-      ]
+      ],
+      "role": "transport"
     },
     {
       "host": "feeds.finra.org",
@@ -6232,6 +6236,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/source-catalog-identity.mjs"
+        },
+        {
           "path": "scripts/validate-rss-feeds.mjs"
         },
         {
@@ -6249,7 +6256,8 @@
         {
           "path": "src/config/variants/tech.ts"
         }
-      ]
+      ],
+      "role": "transport"
     },
     {
       "host": "news.mit.edu",
@@ -7992,6 +8000,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
           "path": "src/config/feeds.ts"
         }
       ]
@@ -9184,6 +9195,23 @@
       ]
     },
     {
+      "host": "timesofindia.indiatimes.com",
+      "provider": "Times of India",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Times of India and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "tools.cdc.gov",
       "provider": "tools.cdc.gov",
       "kind": "structured",
@@ -9891,6 +9919,9 @@
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"
         },
         {
+          "path": "scripts/lib/x-news-accounts.cjs"
+        },
+        {
           "path": "scripts/mcp-live-smoke.mjs"
         },
         {
@@ -10435,7 +10466,7 @@
     },
     {
       "host": "www.bbc.com",
-      "provider": "www.bbc.com",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -13028,15 +13059,12 @@
     {
       "host": "www.sequoiacap.com",
       "provider": "www.sequoiacap.com",
-      "kind": "feed+structured",
+      "kind": "structured",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.sequoiacap.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
         {
           "path": "src/config/variants/tech.ts"
         }
@@ -14294,6 +14322,47 @@
       "license": "Not applicable: no live fetch is present in this checkout",
       "attribution": "Excluded from the live-provider count: issue audit named Digitraffic, but no current source call was found.",
       "status": "excluded"
+    }
+  ],
+  "logicalProviders": [
+    {
+      "provider": "Fast Company",
+      "feedLabels": [
+        "Fast Company"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "US",
+      "coveredCountries": []
+    },
+    {
+      "provider": "NDTV",
+      "feedLabels": [
+        "NDTV",
+        "NDTV India"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "IN",
+      "coveredCountries": [
+        "IN"
+      ]
+    },
+    {
+      "provider": "The Hacker News",
+      "feedLabels": [
+        "The Hacker News"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "IN",
+      "coveredCountries": []
     }
   ]
 }

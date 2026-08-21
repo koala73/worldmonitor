@@ -50,6 +50,25 @@ const ON_DEMAND_KEYS = new Set(bootstrapTierKeyNames('on-demand', { iranEventsEn
 // authoritative, but let bootstrap clients use the Alberta sibling first and
 // the abandoned legacy key second until alerts:canada:v1 has been published
 // in every environment.
+// R4 (#6654) fields that must never appear in a bootstrap-tier payload.
+// `text` is the X post body: the first-party panel may render it (via
+// /api/x-feed), but alerts, MCP, and embed/OEM partners get derived facts plus
+// a permalink only. `pollState` is seed-internal cursor state.
+// Kept in sync with stripXFeedRestrictedFields in scripts/publish-bootstrap-tiers.mjs.
+export function stripXFeedRestrictedFields(value) {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const { pollState: _pollState, ...rest } = value;
+  if (!Array.isArray(rest.items)) return rest;
+  return {
+    ...rest,
+    items: rest.items.map((item) => {
+      if (item == null || typeof item !== 'object' || Array.isArray(item)) return item;
+      const { text: _text, ...itemRest } = item;
+      return itemRest;
+    }),
+  };
+}
+
 function bootstrapRedisReadKeys(keys) {
   if (!keys.includes(BOOTSTRAP_CACHE_KEYS.canadaAlerts)) return keys;
   const extra = CANADA_ALERTS_CUTOVER_FALLBACK_KEYS.filter((key) => !keys.includes(key));
@@ -612,6 +631,16 @@ export default async function handler(req, ctx) {
       if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
         const { enrichmentMeta: _stripped, ...rest } = val;
         responseValue = rest;
+      }
+      // R4 (#6654): X post bodies must never leave the first-party path.
+      // `?tier=slow&public=1` is unauthenticated, ACAO:*, and CDN-cacheable for
+      // 2h, so anything here reaches embed/OEM and server-to-server callers —
+      // exactly the audience R4 excludes. `xFeed` is deliberately NOT registered
+      // in BOOTSTRAP_CACHE_KEYS (same as `telegramFeed`); this strip is the
+      // regression guard if it is ever re-added. Post text is served only by
+      // /api/x-feed. Mirrored in scripts/publish-bootstrap-tiers.mjs.
+      if (names[i] === 'xFeed' && val != null && typeof val === 'object' && !Array.isArray(val)) {
+        responseValue = stripXFeedRestrictedFields(val);
       }
       if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
       data[names[i]] = responseValue;

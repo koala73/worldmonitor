@@ -125,7 +125,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
   GoodThingsDigest: 'panels-news', LatestBrief: 'panels-news',
   LiveNews: 'panels-news', News: 'panels-news',
-  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news',
+  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news', XIntel: 'panels-news',
   // Macro / prices / trade
   BigMac: 'panels-economy', ConsumerPrices: 'panels-economy',
   Economic: 'panels-economy', GlobalProcurement: 'panels-economy',

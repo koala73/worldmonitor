@@ -26,6 +26,24 @@ const TIER_INTERVAL_MS = Object.freeze({
 });
 const TIER_ORDER = Object.freeze(['fast', 'slow']);
 
+// R4 (#6654) fields that must never appear in a bootstrap-tier payload.
+// `text` is the X post body (first-party only, via /api/x-feed); `pollState` is
+// seed-internal cursor state.
+// Kept in sync with stripXFeedRestrictedFields in api/bootstrap.js.
+export function stripXFeedRestrictedFields(value) {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const { pollState: _pollState, ...rest } = value;
+  if (!Array.isArray(rest.items)) return rest;
+  return {
+    ...rest,
+    items: rest.items.map((item) => {
+      if (item == null || typeof item !== 'object' || Array.isArray(item)) return item;
+      const { text: _text, ...itemRest } = item;
+      return itemRest;
+    }),
+  };
+}
+
 function assertTier(tier) {
   if (!Object.hasOwn(TIER_INTERVAL_MS, tier)) {
     throw new TypeError(`Unknown tier: ${tier}`);
@@ -117,6 +135,21 @@ export async function assembleBootstrapTierPayload(registry, options = {}) {
     ) {
       const { enrichmentMeta: _stripped, ...rest } = value;
       value = rest;
+    }
+    // R4 (#6654): X post bodies must never reach a published tier artifact.
+    // The slow tier is served unauthenticated at `?tier=slow&public=1` with
+    // ACAO:* and a 2h CDN shield, so anything here reaches embed/OEM and
+    // server-to-server callers — the audience R4 excludes. `xFeed` is
+    // deliberately NOT registered in BOOTSTRAP_CACHE_KEYS (same as
+    // `telegramFeed`); this strip is the regression guard if it is ever
+    // re-added. Kept in sync with stripXFeedRestrictedFields in api/bootstrap.js.
+    if (
+      names[index] === 'xFeed'
+      && value !== null
+      && typeof value === 'object'
+      && !Array.isArray(value)
+    ) {
+      value = stripXFeedRestrictedFields(value);
     }
     if (names[index] === 'wildfires') value = compactWildfireDashboardPayload(value);
     data[names[index]] = value;

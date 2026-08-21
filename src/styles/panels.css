@@ -3867,3 +3867,10 @@ a.hub-top-story {
   color: var(--negative, #f87171);
   opacity: 0.85;
 }
+
+/* Focus ring for search inputs whose base rules suppress the outline (#6573). */
+.watchlist-search:focus-visible,
+.wl-search input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}

@@ -774,7 +774,12 @@ function extractDescription(block: string, isAtom: boolean, title: string): stri
   for (const tag of tags) {
     const raw = extractRawTagBody(block, tag);
     if (!raw) continue;
-    const cleaned = decodeXmlEntities(raw)
+    // Some publisher feeds place entity-encoded thumbnail markup before a
+    // literal CDATA summary in one tag body (Times of India is one example).
+    // Unwrap complete embedded CDATA sections before entity decoding and HTML
+    // stripping; otherwise `<...>` removal consumes the wrapper and its text.
+    const unwrapped = raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+    const cleaned = decodeXmlEntities(unwrapped)
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();

@@ -22,18 +22,10 @@ import {
 } from '../scripts/source-attribution.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { catalogProviderIdentities } from '../scripts/source-catalog-identity.mjs';
+import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-// Deliberately independent of the production active-entry predicate. Keep this
-// oracle expressed only in raw manifest fields so a predicate mutation cannot
-// change both the implementation and the expected membership.
-function rawManifestActiveEntries(manifest) {
-  assert.ok(Array.isArray(manifest?.entries), 'the attribution manifest must contain an entries array');
-  return manifest.entries.filter(
-    (entry) => entry?.observed === true && (entry.status === 'reviewed' || entry.status === 'terms-review'),
-  );
-}
 
 /**
  * Build a throwaway checkout whose committed artifacts the generator itself
@@ -124,9 +116,14 @@ test('source inventory has complete metadata and matches the generated catalog',
   assert.ok(activeEntries.length > 0, 'the active source oracle must not be empty');
   assert.deepEqual(observedManifestHosts, inventoryHosts, 'raw manifest membership must match the source scan exactly');
   assert.equal(stats.activeHosts, activeEntries.length, 'production stats must match the independent active-host oracle');
+  assert.deepEqual(
+    [...catalogProviderIdentities(manifest)].sort(),
+    [...rawCatalogProviderNames(manifest)].sort(),
+    'production identities must match the independent provider oracle membership',
+  );
   assert.equal(
     stats.providerCount,
-    new Set(activeEntries.map((entry) => entry.provider)).size,
+    rawCatalogProviderNames(manifest).size,
     'production stats must match the independent provider oracle',
   );
   assert.equal(stats.observedHosts, inventory.length, 'observed stats must derive from the source scan');
@@ -308,7 +305,12 @@ test('the independent raw-manifest oracle catches an active-predicate mutation',
   try {
     writeFileSync(
       mutantPath,
-      source.replace(originalPredicate, "return entry?.observed === true && entry.status === 'excluded';"),
+      source
+        .replace(
+          "from './source-catalog-identity.mjs'",
+          `from ${JSON.stringify(pathToFileURL(join(rootDir, 'scripts/source-catalog-identity.mjs')).href)}`,
+        )
+        .replace(originalPredicate, "return entry?.observed === true && entry.status === 'excluded';"),
     );
     const mutant = await import(`${pathToFileURL(mutantPath).href}?test=${Date.now()}`);
     const manifest = loadManifest(rootDir);
@@ -544,6 +546,43 @@ test('ledger stats reject intrinsic manifest failures before counting', () => {
   assert.ok(errors.some((error) => error.includes('duplicate manifest entry')));
   assert.ok(errors.some((error) => error.includes('incomplete logical attribution metadata')));
   assert.throws(() => sourceAttributionLedgerStats(malformed), /invalid manifest/);
+});
+
+test('ledger stats reject unknown roles and incomplete logical providers', () => {
+  const manifest = loadManifest(rootDir);
+  const withUnknownRole = {
+    ...manifest,
+    entries: [
+      ...manifest.entries,
+      {
+        host: 'role-invalid.example',
+        provider: 'role-invalid.example',
+        license: 'Provider terms',
+        attribution: 'Credit role-invalid.example.',
+        observed: true,
+        kind: 'structured',
+        status: 'reviewed',
+        role: 'publisher',
+        references: [{ path: 'scripts/invalid-role.mjs' }],
+      },
+    ],
+  };
+  const roleErrors = validateSourceAttributionLedger(withUnknownRole);
+  assert.ok(roleErrors.some((error) => error.includes('role must be "transport"')));
+  assert.throws(() => sourceAttributionLedgerStats(withUnknownRole), /invalid manifest/);
+
+  const withBrokenLogical = {
+    ...manifest,
+    logicalProviders: [
+      ...(manifest.logicalProviders || []),
+      { provider: 'Broken Logical' },
+      { provider: 'Broken Logical', feedLabels: ['Broken Logical'], transportHosts: ['feeds.feedburner.com'] },
+    ],
+  };
+  const logicalErrors = validateSourceAttributionLedger(withBrokenLogical);
+  assert.ok(logicalErrors.some((error) => error.includes('needs feedLabels')));
+  assert.ok(logicalErrors.some((error) => error.includes('duplicate logical provider')));
+  assert.throws(() => sourceAttributionLedgerStats(withBrokenLogical), /invalid manifest/);
 });
 
 test('the committed manifest is a fixpoint of its own generator', () => {

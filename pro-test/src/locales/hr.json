@@ -358,7 +358,8 @@
           "Prioritetno osvježavanje podataka"
         ],
         "highlightFeatures": [
-          "Osobna licenca"
+          "Osobna licenca",
+          "1 named korisnik"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Prioritetna podrška"
         ],
         "highlightFeatures": [
-          "Komercijalna licenca uključena"
+          "Komercijalna licenca uključena",
+          "1 named korisnik — ne dijeljenja prijava"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Osobno",
     "axisPersonalNote": "individualna upotreba",
     "axisCommercial": "Komercijalno",
-    "axisCommercialNote": "rad, timovi i proizvodi"
+    "axisCommercialNote": "rad, klijenti i proizvodi"
   },
   "welcome": {
     "meta": {

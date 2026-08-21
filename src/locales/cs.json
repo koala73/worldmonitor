@@ -367,6 +367,7 @@
     "securityAdvisories": "Bezpečnostní varování",
     "orefSirens": "Sirény v Izraeli",
     "telegramIntel": "Telegram Intel",
+    "xIntel": "X News Accounts",
     "startups": "Startupy a VC",
     "vcblogs": "Postřehy z VC a eseje",
     "regionalStartups": "Globální startupové zprávy",
@@ -1744,6 +1745,21 @@
       "viewSource": "Zobrazit zdroj",
       "filterGeopolitics": "Geopolitika",
       "filterCyber": "Kyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Databáze přímých zahraničních investic Saúdské Arábie a SAE do globální kritické infrastruktury. Kliknutím na řádek přejdete k investici na mapě.",
@@ -3449,7 +3465,9 @@
       "orefSirens1": "Výstrahy na rakety a střely v Izraeli v reálném čase",
       "orefSirens2": "Mapování zón sirén s klasifikací hrozby",
       "telegramIntel1": "Kurátorované kanály Telegram OSINT",
-      "telegramIntel2": "Aktualizace konfliktů a geopolitických témat téměř v reálném čase"
+      "telegramIntel2": "Aktualizace konfliktů a geopolitických témat téměř v reálném čase",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

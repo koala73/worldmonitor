@@ -15,7 +15,7 @@
     "axisPersonal": "Personal",
     "axisPersonalNote": "individual use",
     "axisCommercial": "Commercial",
-    "axisCommercialNote": "work, teams & products",
+    "axisCommercialNote": "робота, клієнти й продукти",
     "promoCodeNote": "Have a promo code? Enter it during checkout.",
     "cta": {
       "checkoutDefault": "Get Started",
@@ -46,7 +46,8 @@
           "Priority data refresh"
         ],
         "highlightFeatures": [
-          "Personal license"
+          "Personal license",
+          "1 іменований користувач"
         ]
       },
       "proBusiness": {
@@ -60,7 +61,8 @@
           "Priority support"
         ],
         "highlightFeatures": [
-          "Commercial license included"
+          "Commercial license included",
+          "1 іменований користувач — не спільний вхід"
         ]
       },
       "api": {

@@ -774,6 +774,37 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `list_x_feed`
+
+Curated public news-account posts from monitored X accounts. Returns permalink plus derived facts only — never tweet bodies. Use this to see which accounts posted recently, not to redistribute post text.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `limit` | number | no | Maximum posts to return (1-200, default 50) |
+| `topic` | string | no | Optional topic filter such as breaking, conflict, geopolitics, cyber |
+| `account` | string | no | Optional account handle without @ |
+
+- **API endpoints:** `GET /api/intelligence/v1/list-x-feed`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **10.0s**.
+- **Content policy:** post text is R4. MCP/embed partners receive facts + permalink only.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_x_feed","arguments":{"limit":20,"topic":"breaking"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_defense_industrial_base`
 
 Returns a country's latest World Bank military expenditure, armed-forces

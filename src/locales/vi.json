@@ -363,6 +363,7 @@
     "securityAdvisories": "Cảnh báo An ninh",
     "orefSirens": "Cảnh báo Israel",
     "telegramIntel": "Tình báo Telegram",
+    "xIntel": "X News Accounts",
     "startups": "Khởi nghiệp & Đầu tư mạo hiểm",
     "vcblogs": "Nhận định & Bài viết VC",
     "regionalStartups": "Tin Khởi nghiệp Toàn cầu",
@@ -1759,6 +1760,21 @@
       "viewSource": "Xem nguồn",
       "filterGeopolitics": "Địa chính trị",
       "filterCyber": "Mạng"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Cơ sở dữ liệu đầu tư trực tiếp nước ngoài của Ả Rập Saudi và UAE vào hạ tầng quan trọng toàn cầu. Nhấp vào hàng để bay đến vị trí đầu tư trên bản đồ.",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "Cảnh báo tên lửa và rocket Israel theo thời gian thực",
       "orefSirens2": "Lập bản đồ vùng còi với phân loại mối đe dọa",
       "telegramIntel1": "Các kênh OSINT Telegram được chọn lọc",
-      "telegramIntel2": "Các cập nhật xung đột và địa chính trị gần thời gian thực"
+      "telegramIntel2": "Các cập nhật xung đột và địa chính trị gần thời gian thực",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

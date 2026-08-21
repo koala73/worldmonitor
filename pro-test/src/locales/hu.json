@@ -358,7 +358,8 @@
           "Prioritásos adatfrissítés"
         ],
         "highlightFeatures": [
-          "Személyes licenc"
+          "Személyes licenc",
+          "1 megnevezett felhasználó"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Prioritásos támogatás"
         ],
         "highlightFeatures": [
-          "Kereskedelmi licenc mellékelve"
+          "Kereskedelmi licenc mellékelve",
+          "1 megnevezett felhasználó — nem megosztott bejelentkezés"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Személyes",
     "axisPersonalNote": "egyéni használat",
     "axisCommercial": "Kereskedelmi",
-    "axisCommercialNote": "munka, csapatok és termékek"
+    "axisCommercialNote": "munka, ügyfelek és termékek"
   },
   "welcome": {
     "meta": {

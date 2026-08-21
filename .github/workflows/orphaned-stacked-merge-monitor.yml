@@ -1,0 +1,43 @@
+name: Orphaned Stacked Merge Monitor
+
+# Safety net for #7006. A required pre-merge check can miss a same-second
+# parent/child merge; after merge, GitHub still shows MERGED even when the
+# merge commit never became an ancestor of main. Fail loudly and open an
+# issue plus a PR comment — nobody re-reads checks on a closed purple PR.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  monitor:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # The merge commit carries this workflow's script. origin/main is
+          # fetched in the next step for the ancestry proof; a tombstone merge
+          # is on the merge commit but not on main.
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Verify merge commit reached main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -o pipefail
+          git fetch --quiet origin "$DEFAULT_BRANCH"
+          node scripts/check-stacked-merge.mjs --mode post-merge

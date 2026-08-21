@@ -363,6 +363,7 @@
     "securityAdvisories": "Güvenlik Uyarıları",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram İstihbarat",
+    "xIntel": "X News Accounts",
     "startups": "Girisimler ve Risk Sermayesi",
     "vcblogs": "Risk Sermayesi Gorusleri ve Yazilar",
     "regionalStartups": "Kuresel Girisim Haberleri",
@@ -1759,6 +1760,21 @@
       "viewSource": "Kaynağı görüntüle",
       "filterGeopolitics": "Jeopolitik",
       "filterCyber": "Siber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Suudi Arabistan ve BAE'nin kuresel kritik altyapilara dogrudan yabanci yatirimlari veritabani. Yatirimi haritada gormek icin bir satira tiklayin.",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "Gerçek zamanlı İsrail füze ve roket uyarıları",
       "orefSirens2": "Tehdit sınıflandırması ile siren bölgesi haritalaması",
       "telegramIntel1": "Küratörlü Telegram OSINT kanalları",
-      "telegramIntel2": "Neredeyse gerçek zamanlı çatışma ve jeopolitik güncellemeleri"
+      "telegramIntel2": "Neredeyse gerçek zamanlı çatışma ve jeopolitik güncellemeleri",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

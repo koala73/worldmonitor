@@ -686,6 +686,37 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `list_x_feed`
+
+精选公开新闻账号的 X 动态。仅返回永久链接与派生事实 — 从不返回帖文正文。用于查看哪些账号最近发帖，而不是转载正文。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `limit` | number | 否 | 返回的最大帖文数（1-200，默认 50） |
+| `topic` | string | 否 | 可选主题过滤，例如 breaking、conflict、geopolitics、cyber |
+| `account` | string | 否 | 可选账号 handle（不含 @） |
+
+- **API 端点：** `GET /api/intelligence/v1/list-x-feed`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**10.0s**。
+- **内容政策：** 帖文正文为 R4。MCP/embed 合作方仅获得事实 + 永久链接。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_x_feed","arguments":{"limit":20,"topic":"breaking"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_country_brief`
 
 AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治和经济评估。支持分析框架以提供结构化视角。

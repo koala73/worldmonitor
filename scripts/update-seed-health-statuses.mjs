@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-// Publish Seed Freshness as durable, per-source commit statuses.
+// Publish Seed Freshness as durable, per-source operational statuses.
 //
 // The health probe remains strict. A new or changed source incident fails this
-// workflow once. An unchanged incident stays red on every gated main revision,
-// but later scheduled observations do not generate another generic failed run.
-// Recovery is posted only after the live health payload stops reporting it.
+// workflow once. Statuses live on one historical anchor commit so operational
+// incidents cannot poison the check suite of an unrelated deployable revision.
+// Unchanged observations append nothing. Recovery is posted only after the live
+// health payload stops reporting the source.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -148,6 +149,20 @@ function runGit(args) {
   return result.stdout.trim();
 }
 
+function isAncestor(ancestor, descendant) {
+  const args = ['merge-base', '--is-ancestor', ancestor, descendant];
+  const result = spawnSync('git', args, {
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+    timeout: 30_000,
+  });
+  if (result.signal) throw new Error(`git ${args.join(' ')} timed out`);
+  if (result.error) throw result.error;
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw new Error(`git ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`);
+}
+
 export function validateObservationCheckedAt(value, now = Date.now()) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
     throw new Error('seed acceptance observation checkedAt must be a normalized UTC ISO instant');
@@ -174,6 +189,18 @@ function completionMarkerCheckedAt(status) {
     throw new Error('seed acceptance completion marker has an invalid observed checkedAt');
   }
   return { checkedAt, timestamp };
+}
+
+function statusMeaningMatches(current, previous) {
+  if (!previous || current.state !== previous.state) return false;
+  if (current.context !== ACCEPTANCE_CONTEXT) {
+    return current.description === previous.description;
+  }
+  const withoutObservationTime = (description) => description.replace(
+    /; observed \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    '',
+  );
+  return withoutObservationTime(current.description) === withoutObservationTime(previous.description);
 }
 
 function readObservation(path, now = Date.now()) {
@@ -228,6 +255,43 @@ function readPreviousObservation({ repository, shas, trustedWriter }) {
   return { sha: null, checkedAt: null, checkedAtTimestamp: null, statuses: new Map() };
 }
 
+function readAnchorObservation({ repository, sha, trustedWriter }) {
+  const statuses = readCommitStatuses({ repository, sha });
+  const seedStatuses = statuses.filter(
+    (status) => typeof status?.context === 'string' && status.context.startsWith(STATUS_PREFIX),
+  );
+  if (seedStatuses.length === 0) {
+    return {
+      state: 'empty',
+      checkedAt: null,
+      checkedAtTimestamp: null,
+      statuses: new Map(),
+    };
+  }
+
+  const projection = latestStatusesByContext([statuses], STATUS_PREFIX, { creatorLogin: trustedWriter });
+  const markerStatus = projection.get(ACCEPTANCE_CONTEXT);
+  const marker = markerStatus ? completionMarkerCheckedAt(markerStatus) : null;
+  const newestIsMarker = seedStatuses[0].context === ACCEPTANCE_CONTEXT;
+  // A pre-transition marker has no observation timestamp, so it cannot prove
+  // ordering. Preserve the existing one-time bootstrap alert instead of using
+  // legacy source statuses to suppress the first ordered projection.
+  if (newestIsMarker && !marker) {
+    return {
+      state: 'legacy',
+      checkedAt: null,
+      checkedAtTimestamp: null,
+      statuses: new Map(),
+    };
+  }
+  return {
+    state: newestIsMarker ? 'complete' : 'partial',
+    checkedAt: marker?.checkedAt ?? null,
+    checkedAtTimestamp: marker?.timestamp ?? null,
+    statuses: projection,
+  };
+}
+
 function isMainModule() {
   return pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url;
 }
@@ -238,15 +302,21 @@ function main() {
     options: {
       report: { type: 'string' },
       sha: { type: 'string', default: process.env.GITHUB_SHA },
+      'status-sha': { type: 'string', default: process.env.SEED_STATUS_SHA },
     },
     strict: true,
   });
   const reportPath = values.report;
-  const sha = values.sha;
+  const observedSha = values.sha;
+  const statusSha = values['status-sha'];
   const repository = process.env.GITHUB_REPOSITORY;
   if (!reportPath) throw new Error('--report is required');
-  if (!sha) throw new Error('--sha or GITHUB_SHA is required');
+  if (!observedSha) throw new Error('--sha or GITHUB_SHA is required');
+  if (!statusSha) throw new Error('--status-sha or SEED_STATUS_SHA is required');
   if (!repository) throw new Error('GITHUB_REPOSITORY is required');
+  if (!isAncestor(statusSha, observedSha)) {
+    throw new Error(`seed status anchor ${statusSha} is not an ancestor of monitored revision ${observedSha}`);
+  }
 
   const observation = readObservation(reportPath);
   const current = buildSeedHealthStatuses(observation.acceptance, observation.checkedAt);
@@ -255,25 +325,46 @@ function main() {
     throw new Error('SEED_STATUS_HISTORY_LIMIT must be an integer from 1 to 100');
   }
   const trustedWriter = requireStatusWriterLogin();
-  const previousObservation = readPreviousObservation({
+  const anchoredObservation = readAnchorObservation({
     repository,
-    shas: firstParentShas(sha, historyLimit),
+    sha: statusSha,
     trustedWriter,
   });
+  // The first anchored run imports the latest completed legacy projection from
+  // main. A partial anchor write overlays that complete projection so the next
+  // run repairs the projection without alerting again for a source status that
+  // GitHub already accepted. Once the newest anchor status is its completion
+  // marker, the anchor is the sole authority.
+  const legacyObservation = anchoredObservation.state === 'complete'
+    ? null
+    : readPreviousObservation({
+      repository,
+      shas: firstParentShas(observedSha, historyLimit),
+      trustedWriter,
+    });
+  const previousObservation = anchoredObservation.state === 'complete'
+    ? { ...anchoredObservation, sha: statusSha }
+    : {
+        sha: legacyObservation.sha,
+        checkedAt: anchoredObservation.checkedAt ?? legacyObservation.checkedAt,
+        checkedAtTimestamp: anchoredObservation.checkedAtTimestamp
+          ?? legacyObservation.checkedAtTimestamp,
+        statuses: new Map([
+          ...legacyObservation.statuses,
+          ...anchoredObservation.statuses,
+        ]),
+      };
   if (previousObservation.checkedAtTimestamp != null
     && Date.parse(observation.checkedAt) <= previousObservation.checkedAtTimestamp) {
     throw new Error(`seed acceptance observation checkedAt ${observation.checkedAt} is not newer than completed projection ${previousObservation.checkedAt}`);
   }
   const plan = planStatusLifecycle({ current, previous: previousObservation.statuses });
-  let updates = previousObservation.sha === sha
-    ? plan.updates.filter((status) => {
-      const previous = previousObservation.statuses.get(status.context);
-      return !previous
-        || previous.state !== status.state
-        || previous.description !== status.description;
-    })
+  let updates = anchoredObservation.state === 'complete'
+    ? plan.updates.filter(
+        (status) => !statusMeaningMatches(status, anchoredObservation.statuses.get(status.context)),
+      )
     : plan.updates;
-  if (previousObservation.sha === sha && updates.length > 0
+  if (anchoredObservation.state === 'complete' && updates.length > 0
     && !updates.some((status) => status.context === ACCEPTANCE_CONTEXT)) {
     updates = [...updates, current.find((status) => status.context === ACCEPTANCE_CONTEXT)];
   }
@@ -281,11 +372,14 @@ function main() {
     ...updates.filter((status) => status.context !== ACCEPTANCE_CONTEXT),
     ...updates.filter((status) => status.context === ACCEPTANCE_CONTEXT),
   ];
-  postCommitStatuses({ repository, sha, statuses: orderedUpdates });
+  postCommitStatuses({ repository, sha: statusSha, statuses: orderedUpdates });
 
   console.log(JSON.stringify({
     checkedAt: observation.checkedAt,
-    sha,
+    observedSha,
+    statusSha,
+    anchorState: anchoredObservation.state,
+    importedFromSha: anchoredObservation.state === 'complete' ? null : legacyObservation.sha,
     statusesPublished: orderedUpdates.length,
     newOrChangedFailures: plan.alerting.map((status) => status.context),
   }, null, 2));

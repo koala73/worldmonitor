@@ -187,8 +187,12 @@ describe('China official policy adapters (#5576)', () => {
     // gate — the larger input allocates proportionally more string, so
     // collection cost rides along with the measurement and best-of-N does not
     // remove it (GC is allocation-driven, not scheduler-driven). At 4x the
-    // bands are ~4x versus ~16x, so an 8x gate sits far from both.
-    const timeAtSize = (repeat: number): number => {
+    // bands are ~4x versus ~16x.
+    //
+    // `test:data` runs this file at concurrency 16. A discarded warmup plus a
+    // 12x gate still fail quadratic (~16x) and ReDoS, but tolerate the ~10x
+    // linear+GC ratios that 16-way CI has produced.
+    const timeAtSize = (repeat: number, attempts: number): number => {
       const openers = '<div class="content">'.repeat(repeat);
       const closers = '</div>'.repeat(repeat);
       const nested = `<body>${openers}正文内容足够长且必须保留${closers}</body>`;
@@ -200,7 +204,7 @@ describe('China official policy adapters (#5576)', () => {
       // linear bookkeeping, not parser work, and including it would flatter a
       // superlinear parser at large sizes.
       let best = Number.POSITIVE_INFINITY;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
         const startedAt = performance.now();
         __testing__.stripHtml(script);
         parseAgencyListing('CAC', anchors);
@@ -211,12 +215,14 @@ describe('China official policy adapters (#5576)', () => {
       return best;
     };
 
-    const base = timeAtSize(4_000);
-    const quadrupled = timeAtSize(16_000);
+    timeAtSize(4_000, 1);
+    timeAtSize(16_000, 1);
+    const base = timeAtSize(4_000, 5);
+    const quadrupled = timeAtSize(16_000, 5);
     const ratio = quadrupled / base;
 
     assert.ok(
-      quadrupled <= base * 8 + 2,
+      quadrupled <= base * 12 + 2,
       `quadrupling the input scaled cost ${ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x (${base.toFixed(1)}ms → ${quadrupled.toFixed(1)}ms)`,
     );
   });

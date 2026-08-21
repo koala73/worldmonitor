@@ -73,6 +73,14 @@ The compact projection omits description text, eligibility requirements, and sub
 
 The MCP tool is Pro-gated exactly like the HTTP route and is not part of bootstrap. An unfiltered tool call preserves all open opportunities; `min_automation_score` remains opt-in. See the [MCP tool reference](/mcp-tools-reference#get_procurement_opportunities) for the complete parameter contract.
 
+## WebMCP browser tool
+
+The fresh full, tech, and finance layouts include the Global Procurement panel. Because panels are cross-addressable, an entitled user can also enable it on another variant. The connected, visible, data-ready, and idle panel can expose the declarative WebMCP tool `search_procurement`; its optional inputs come from the human form: `query` and `buyer` text of at most 160 characters each, `country` of exactly two ASCII letters (`^[A-Za-z]{2}$`), `source`, `sort`, and the boolean `techRelevant`.
+
+Once an agent invocation starts, the exact form and its declaring attributes remain mounted until the browser-owned response promise settles; a concurrent invocation receives the retryable `request_in_progress` outcome. Hiding, locking, or destroying the panel makes the tool unavailable, while ordinary loading without an active agent invocation removes the declaration.
+
+An invocation visibly activates and submits the same form, follows the canonical request path, and returns only a bounded summary of matches, coverage, applied filters, availability, and source status. Reset/cancel aborts pending work. It does not expose hidden tender content or bypass Pro entitlement. See [WebMCP](/webmcp#declarative-procurement-tool) for the exact browser schema and lifecycle.
+
 ## Technology relevance
 
 `automationFit` is a transparent keyword-based relevance signal for software, AI, data, cybersecurity, automation, cloud, and related terms. It contains a score, classification version, match reasons, and text evidence. It is **not** a legal or procurement-eligibility determination: `participationMode` remains `unknown` unless an upstream source explicitly supports it.

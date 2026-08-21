@@ -708,6 +708,9 @@ export class App {
     if (shouldPrime('telegram-intel')) {
       primeTask('telegram-intel', () => this.dataLoader.loadTelegramIntel());
     }
+    if (shouldPrime('x-intel')) {
+      primeTask('x-intel', () => this.dataLoader.loadXIntel());
+    }
     if (shouldPrime('gulf-economies')) {
       const panel = this.state.panels['gulf-economies'] as GulfEconomiesPanel | undefined;
       if (panel) primeTask('gulf-economies', () => panel.fetchData());
@@ -2393,6 +2396,9 @@ export class App {
       this.primeVisiblePanelData(),
     ]);
     markLcpDebug('wm:data:initial-fanout-complete');
+    if (import.meta.env.VITE_E2E === '1') {
+      document.documentElement.dataset.wmInitialDataReady = 'true';
+    }
     const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();
 
     // If bootstrap was served from cache but live data just loaded, promote the status indicator
@@ -2898,6 +2904,11 @@ export class App {
     this.latestSearchMilitary = [];
     this.latestSearchAdsbUpdatedAt = 0;
     this.resolveAppDestroyed();
+    // Unregister agent entry points before the rest of teardown. In particular,
+    // init-failure cleanup may run on a partially initialised App; even if a
+    // later module cleanup throws, no WebMCP tool may retain this dead instance.
+    this.webMcpController?.abort();
+    this.webMcpController = null;
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;
     this.viewportHydrationReady = false;
@@ -2926,37 +2937,39 @@ export class App {
       this.stockDeepLinkTimer = null;
     }
 
-    // Destroy all modules in reverse order
-    for (let i = this.modules.length - 1; i >= 0; i--) {
-      this.modules[i]!.destroy();
+    try {
+      // Destroy all modules in reverse order. A single destructor must not skip
+      // remaining modules or the map/AIS tail cleanup.
+      for (let i = this.modules.length - 1; i >= 0; i--) {
+        try {
+          this.modules[i]!.destroy();
+        } catch {
+          // Continue tearing down the rest of the dashboard.
+        }
+      }
+    } finally {
+      // Clean up subscriptions, map, AIS, and breaking news
+      this.unsubAiFlow?.();
+      this.unsubFreeTier?.();
+      this.unsubEntitlementPremiumLoaders?.();
+      this.freeTierGate.cancelFallback();
+      mlWorker.terminate();
+      this.state.findingsBadge?.destroy();
+      this.state.findingsBadge = null;
+      this.state.breakingBanner?.destroy();
+      destroyBreakingNewsAlerts();
+      this.cachedModeBannerEl?.remove();
+      this.cachedModeBannerEl = null;
+      window.removeEventListener(WM_SESSION_DEGRADED_EVENT, this.handleWmSessionDegraded);
+      if (this.followedCountriesCapDropToastTimer !== null) {
+        window.clearTimeout(this.followedCountriesCapDropToastTimer);
+        this.followedCountriesCapDropToastTimer = null;
+      }
+      this.state.map?.destroy();
+      disconnectAisStream();
+      stopFlightHistoryCleanup();
+      stopLoadedVesselHistoryCleanup();
     }
-
-    // Clean up subscriptions, map, AIS, and breaking news
-    this.unsubAiFlow?.();
-    this.unsubFreeTier?.();
-    this.unsubEntitlementPremiumLoaders?.();
-    this.freeTierGate.cancelFallback();
-    mlWorker.terminate();
-    this.state.findingsBadge?.destroy();
-    this.state.findingsBadge = null;
-    this.state.breakingBanner?.destroy();
-    destroyBreakingNewsAlerts();
-    this.cachedModeBannerEl?.remove();
-    this.cachedModeBannerEl = null;
-    window.removeEventListener(WM_SESSION_DEGRADED_EVENT, this.handleWmSessionDegraded);
-    if (this.followedCountriesCapDropToastTimer !== null) {
-      window.clearTimeout(this.followedCountriesCapDropToastTimer);
-      this.followedCountriesCapDropToastTimer = null;
-    }
-    this.state.map?.destroy();
-    disconnectAisStream();
-    stopFlightHistoryCleanup();
-    stopLoadedVesselHistoryCleanup();
-    // Unregister every WebMCP tool so a same-document re-init (tests,
-    // HMR, SPA harness) doesn't leave the browser with stale bindings
-    // pointing at a disposed App.
-    this.webMcpController?.abort();
-    this.webMcpController = null;
   }
 
   private async initFindingsBadge(): Promise<void> {
@@ -3374,6 +3387,13 @@ export class App {
       () => this.dataLoader.loadTelegramIntel(),
       REFRESH_INTERVALS.telegramIntel,
       () => this.isPanelNearViewport('telegram-intel')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'x-intel',
+      () => this.dataLoader.loadXIntel(),
+      REFRESH_INTERVALS.xIntel,
+      () => this.isPanelNearViewport('x-intel')
     );
 
     this.refreshScheduler.scheduleRefresh(

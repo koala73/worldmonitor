@@ -365,6 +365,7 @@
     "securityAdvisories": "Aviz de securitate",
     "orefSirens": "Sirene Israel",
     "telegramIntel": "Telegram Intel",
+    "xIntel": "X News Accounts",
     "startups": "Startup-uri & VC",
     "vcblogs": "Analize VC",
     "regionalStartups": "Știri globale startup-uri",
@@ -1761,6 +1762,21 @@
       "live": "ÎN DIRECT",
       "viewSource": "Vezi sursa",
       "filterGeopolitics": "Geopolitică",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -3431,7 +3447,9 @@
       "orefSirens1": "Alerte în timp real pentru rachete și rachete Israel",
       "orefSirens2": "Hartă zonelor de sirenă cu clasificare amenințărilor",
       "telegramIntel1": "Canale Telegram OSINT curate",
-      "telegramIntel2": "Actualizări conflicte și geopolitice aproape în timp real"
+      "telegramIntel2": "Actualizări conflicte și geopolitice aproape în timp real",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

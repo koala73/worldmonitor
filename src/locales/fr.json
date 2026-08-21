@@ -384,6 +384,7 @@
     "securityAdvisories": "Avis de Sécurité",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Renseignement Telegram",
+    "xIntel": "X News Accounts",
     "giving": "Dons mondiaux",
     "supplyChain": "Chaîne d'approvisionnement",
     "gulfEconomies": "Économies du Golfe",
@@ -1663,6 +1664,21 @@
       "live": "EN DIRECT",
       "viewSource": "Voir la source",
       "filterGeopolitics": "Géopolitique",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -3431,7 +3447,9 @@
       "orefSirens1": "Alertes missiles et roquettes Israël en temps réel",
       "orefSirens2": "Cartographie des zones de sirène avec classification des menaces",
       "telegramIntel1": "Canaux OSINT Telegram sélectionnés",
-      "telegramIntel2": "Mises à jour sur les conflits et la géopolitique en quasi-temps réel"
+      "telegramIntel2": "Mises à jour sur les conflits et la géopolitique en quasi-temps réel",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

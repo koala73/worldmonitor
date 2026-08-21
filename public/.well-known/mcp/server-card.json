@@ -292,6 +292,13 @@
       }
     },
     {
+      "name": "list_x_feed",
+      "description": "Curated public news-account posts from monitored X accounts. Returns permalink plus derived facts only — never tweet bodies. Use this to see which accounts posted recently, not to redistribute post text.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
       "name": "get_food_stocks",
       "description": "USDA PSD cereal stocks-to-use by marketing year. Ask for a country (ISO-2) plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.",
       "_meta": {

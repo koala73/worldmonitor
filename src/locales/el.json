@@ -363,6 +363,7 @@
     "securityAdvisories": "Προειδοποιήσεις Ασφαλείας",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Πληροφορίες Telegram",
+    "xIntel": "X News Accounts",
     "startups": "Startups & VC",
     "vcblogs": "Αναλύσεις & Άρθρα VC",
     "regionalStartups": "Παγκόσμια Νέα Startups",
@@ -1759,6 +1760,21 @@
       "viewSource": "Προβολή πηγής",
       "filterGeopolitics": "Γεωπολιτική",
       "filterCyber": "Κυβερνο"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Βάση δεδομένων άμεσων ξένων επενδύσεων Σαουδικής Αραβίας και ΗΑΕ σε παγκόσμιες κρίσιμες υποδομές. Κάντε κλικ σε μια γραμμή για μετάβαση στην επένδυση στον χάρτη.",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "Ειδοποιήσεις πυραύλων και ρακετών του Ισραήλ σε πραγματικό χρόνο",
       "orefSirens2": "Χαρτογραφία ζωνών σειρήνας με ταξινόμηση απειλών",
       "telegramIntel1": "Επιλεγμένα κανάλια OSINT του Telegram",
-      "telegramIntel2": "Ενημερώσεις συγκρούσεων και γεωπολιτικών ζητημάτων σε σχεδόν πραγματικό χρόνο"
+      "telegramIntel2": "Ενημερώσεις συγκρούσεων και γεωπολιτικών ζητημάτων σε σχεδόν πραγματικό χρόνο",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

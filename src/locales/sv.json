@@ -67,6 +67,7 @@
     "securityAdvisories": "Säkerhetsvarningar",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Underrättelser",
+    "xIntel": "X News Accounts",
     "giving": "Global Givmildhet",
     "supplyChain": "Försörjningskedja",
     "gulfEconomies": "Gulfekonomierna",
@@ -1113,6 +1114,21 @@
       "live": "LIVE",
       "viewSource": "Visa källa",
       "filterGeopolitics": "Geopolitik",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -3413,7 +3429,9 @@
       "orefSirens1": "Varningar om missiler och raketer från Israel i realtid",
       "orefSirens2": "Sirenzoner med hotklassificering",
       "telegramIntel1": "Kurerade Telegram OSINT-kanaler",
-      "telegramIntel2": "Uppdateringar om konflikter och geopolitik nästan i realtid"
+      "telegramIntel2": "Uppdateringar om konflikter och geopolitik nästan i realtid",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

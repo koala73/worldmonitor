@@ -246,6 +246,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /\bcrusoe is not defined\b/, // WORLDMONITOR-R3 — injected userscript reference, anonymous-frames-only stack
       /\bvc_request_action is not defined\b/, // WORLDMONITOR-RB — Samsung Internet / Tizen smart-view-cast global injection
       /\bmainWorldSdk is not defined\b/, // WORLDMONITOR-TG — browser extension SDK injected into the page main world references its global before define; not in our bundle (Edge 148/Windows, anonymous-frames-only stack)
+      /\bextDomain is not defined\b/, // WORLDMONITOR-105 — same class as mainWorldSdk: extension content script reads its own `extDomain` global before define; absent from src/, api/, public/ and index.html (Chrome 151/Windows, three `<anonymous>:1` frames and nothing else)
       /navigationPerformanceLoggerJavascriptInterface/,
       /jQuery is not defined/,
       /illegal UTF-16 sequence/,
@@ -880,6 +881,20 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         || /Cannot inject key into script value/.test(msg)
         || /Connection lost while action was in flight/.test(msg)
         || /WEBGLRenderPipeline.*Link error/.test(msg)
+        // Firefox's window.onerror wording when a script throws a bare primitive
+        // (`throw undefined` / `throw null`) instead of an Error. The whole stack
+        // is the DOCUMENT url (`https://www.worldmonitor.app/#moments` at line 0),
+        // so there is no script file to attribute it to at all. Our bundle never
+        // throws a bare primitive — `throw undefined|null|void 0` appears nowhere
+        // in src/, shared/ or api/ (pinned by the source-level invariant test in
+        // tests/sentry-beforesend.test.mjs), and a rethrow (`throw err`) of a
+        // primitive caught from a third party still leaves the rethrowing
+        // first-party frame on the stack, which fails this block's
+        // `!hasFirstParty` gate and surfaces normally. Restricted to the only two
+        // thrown values we can prove are not ours — `undefined` and `null`; every
+        // other one, `uncaught exception: [object Object]` included, still reports
+        // (WORLDMONITOR-106 — Firefox 153 / Windows).
+        || /^uncaught exception: (?:undefined|null)$/.test(msg)
       )) return null;
       // `SyntaxError: Invalid or unexpected token` (and the Unexpected token/keyword/EOF
       // family) surfacing THROUGH the deck.gl/maplibre WebGL init path. Our compiled,

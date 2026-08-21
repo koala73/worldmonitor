@@ -40,6 +40,7 @@ beforeEach(() => {
   }
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+  process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
 });
 
 afterEach(() => {
@@ -114,8 +115,14 @@ function installFetchMock(options: FetchMockOptions = {}) {
   return calls;
 }
 
+// The metered routes require identity (see requireLiveAviationAccess). These
+// tests are about what happens AFTER the gate — caching, negative caching,
+// budget — so every request carries a key; `tests/aviation-live-routes-require
+// -auth.test.mts` owns the gate itself.
 function requestFor(path: string): Request {
-  return new Request(`https://worldmonitor.app${path}`);
+  return new Request(`https://worldmonitor.app${path}`, {
+    headers: { 'X-WorldMonitor-Key': 'test-key' },
+  });
 }
 
 function ctxFor(request: Request) {

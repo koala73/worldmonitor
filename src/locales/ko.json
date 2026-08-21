@@ -363,6 +363,7 @@
     "securityAdvisories": "보안 권고",
     "orefSirens": "이스라엘 공습 경보",
     "telegramIntel": "Telegram 인텔리전스",
+    "xIntel": "X News Accounts",
     "startups": "스타트업 & VC",
     "vcblogs": "VC 인사이트 & 에세이",
     "regionalStartups": "글로벌 스타트업 뉴스",
@@ -1759,6 +1760,21 @@
       "viewSource": "출처 보기",
       "filterGeopolitics": "지정학",
       "filterCyber": "사이버"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "사우디아라비아와 UAE의 글로벌 핵심 인프라 해외직접투자 데이터베이스. 행을 클릭하면 지도에서 해당 투자를 확인할 수 있습니다.",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "실시간 이스라엘 미사일 및 로켓 경보",
       "orefSirens2": "경보 영역 지도 및 위협 분류",
       "telegramIntel1": "큐레이션된 Telegram OSINT 채널",
-      "telegramIntel2": "거의 실시간 분쟁 및 지정학 업데이트"
+      "telegramIntel2": "거의 실시간 분쟁 및 지정학 업데이트",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

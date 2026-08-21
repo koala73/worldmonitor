@@ -1217,6 +1217,80 @@ export const RPC_TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'list_x_feed',
+    _outputBudgetBytes: 65536,
+    description: 'Curated public news-account posts from monitored X accounts. Returns permalink plus derived facts only — never tweet bodies. Use this to see which accounts posted recently, not to redistribute post text.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Maximum posts to return (1-200, default 50)' },
+        topic: { type: 'string', description: 'Optional topic filter such as breaking, conflict, geopolitics, cyber' },
+        account: { type: 'string', description: 'Optional account handle without @' },
+      },
+      required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        enabled: { type: 'boolean', description: 'Whether the ais-relay X poller currently has credentials.' },
+        count: { type: 'number' },
+        error: { type: 'string' },
+        posts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              accountId: { type: 'string' },
+              accountName: { type: 'string' },
+              handle: { type: 'string' },
+              topic: { type: 'string' },
+              timestampMs: { type: 'number' },
+              permalink: { type: 'string' },
+              facts: { type: 'array', items: { type: 'string' } },
+              hasMedia: { type: 'boolean' },
+              lang: { type: 'string' },
+              contentState: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _coverageKeys: ['intelligence:x-feed:v1'],
+    _execute: async (params, base, context) => {
+      const qs = new URLSearchParams();
+      const limit = Math.max(1, Math.min(200, Number(params.limit ?? 50) || 50));
+      qs.set('limit', String(limit));
+      if (params.topic) qs.set('topic', String(params.topic));
+      if (params.account) qs.set('account', String(params.account).replace(/^@/, ''));
+      const url = `${base}/api/intelligence/v1/list-x-feed?${qs}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(10_000),
+      });
+      await assertToolFetchOk(res, 'list-x-feed');
+      const payload = await res.json() as Record<string, unknown>;
+      const rawPosts = Array.isArray(payload.posts) ? payload.posts : [];
+      const posts = rawPosts.map((post: unknown) => {
+        if (!post || typeof post !== 'object') return {};
+        const rest = { ...(post as Record<string, unknown>) };
+        delete rest.text;
+        return rest;
+      });
+      return {
+        enabled: Boolean(payload?.enabled),
+        count: posts.length,
+        error: typeof payload?.error === 'string' ? payload.error : '',
+        posts,
+      };
+    },
+    _apiPaths: [
+      'GET /api/intelligence/v1/list-x-feed',
+    ],
+  },
+  {
     name: 'get_food_stocks',
     _outputBudgetBytes: 131072,
     description: 'USDA PSD cereal stocks-to-use by marketing year. Ask for a country (ISO-2) plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.',

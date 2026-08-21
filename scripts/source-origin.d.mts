@@ -11,4 +11,7 @@ export function sourceOriginFilterValue(code: string | null | undefined): string
 export function catalogCountryOptions(sourceCatalog: Array<{
   originCountry?: string | null;
 }>): Array<{ code: string; name: string }>;
+export function catalogCoverageCountryOptions(sourceCatalog: Array<{
+  coveredCountries?: string[];
+}>): Array<{ code: string; name: string }>;
 export function assertKnownOriginCode(code: string | null | undefined, label: string): void;

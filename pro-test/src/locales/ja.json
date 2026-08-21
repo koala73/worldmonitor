@@ -358,7 +358,8 @@
           "優先データ更新"
         ],
         "highlightFeatures": [
-          "個人ライセンス"
+          "個人ライセンス",
+          "1 名のユーザー"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "優先サポート"
         ],
         "highlightFeatures": [
-          "商用ライセンス付属"
+          "商用ライセンス付属",
+          "1 名のユーザー — 共有ログインではありません"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "個人用",
     "axisPersonalNote": "個人で使用",
     "axisCommercial": "商用",
-    "axisCommercialNote": "仕事、チーム、製品向け"
+    "axisCommercialNote": "仕事、クライアント、製品"
   },
   "welcome": {
     "meta": {

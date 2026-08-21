@@ -31,7 +31,6 @@ const IDEMPOTENCY_PATTERN = '^[\\x21-\\x7E]{1,255}$';
 // drift between the gateway and the two injectors, so it must not hold a third literal
 // that can drift alongside them.
 const IDEMPOTENCY_EXEMPT_PATHS = readIdempotencyExemptPaths();
-
 function idempotencyParam(op) {
   return (op?.parameters ?? []).find(
     (p) => p && p.in === 'header' && String(p.name).toLowerCase() === 'idempotency-key',
@@ -99,21 +98,15 @@ function assertIdempotencyResponses(op, label) {
     op.responses['422'].headers?.['Idempotency-Key'],
     `${label} 422 response must document echoed Idempotency-Key`,
   );
-  // The 2xx (success) response must document the replay markers — the only
-  // observable signal for "was this a replay?" (issue #4769 P2). The success
-  // response is 200 everywhere except async-enqueue POSTs, which document
-  // 202 Accepted instead (scripts/openapi-inject-async-jobs.mjs renames the
-  // generated 200 after the replay markers are stamped).
+  // The 2xx success response must document the replay markers — the only
+  // observable signal for "was this a replay?". Async-enqueue POSTs use 202;
+  // every other generated success uses 200.
   const successEntries = Object.entries(op.responses ?? {}).filter(([code]) => /^2\d\d$/.test(code));
   assert.equal(successEntries.length, 1, `${label} must document exactly one 2xx success response`);
   const [successCode, success] = successEntries[0];
   const echoed = success.headers?.['Idempotency-Key'];
   assert.ok(echoed, `${label} ${successCode} response must document the echoed Idempotency-Key header`);
-  assert.equal(
-    echoed.schema?.type,
-    'string',
-    `${label} ${successCode} Idempotency-Key must be a string header`,
-  );
+  assert.equal(echoed.schema?.type, 'string', `${label} ${successCode} Idempotency-Key must be a string header`);
   const replayed = success.headers?.['Idempotent-Replayed'];
   assert.ok(replayed, `${label} ${successCode} response must document the Idempotent-Replayed marker`);
   assert.equal(

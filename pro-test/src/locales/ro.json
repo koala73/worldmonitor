@@ -358,7 +358,8 @@
           "Reîmprospătare prioritară a datelor"
         ],
         "highlightFeatures": [
-          "Licență personală"
+          "Licență personală",
+          "1 utilizator desemnat"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Suport prioritar"
         ],
         "highlightFeatures": [
-          "Licență comercială inclusă"
+          "Licență comercială inclusă",
+          "1 utilizator desemnat — nu o autentificare partajată"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Personal",
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
-    "axisCommercialNote": "de lucru, echipe și produse"
+    "axisCommercialNote": "muncă, clienți și produse"
   },
   "welcome": {
     "meta": {

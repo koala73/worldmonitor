@@ -119,7 +119,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['positive-events:geo:v1',
     'cascade-mirror: live counterpart of positive_events:geo-bootstrap:v1 (covered by get_positive_events).'],
   ['aviation:delays:faa:v1',
-    'cascade-mirror: RPC variant of aviation:delays-bootstrap:v2 (covered by get_aviation_status). Same seed-meta key (seed-meta:aviation:faa).'],
+    'cascade-mirror: RPC variant of aviation:delays-bootstrap:v2 (covered by get_aviation_status). Its own seed-meta:aviation:faa carries the FAA-only count; the aggregate counts itself since #6987.'],
   ['cyber:threats:v2',
     'cascade-mirror: RPC variant of cyber:threats-bootstrap:v2 (covered by get_cyber_threats). Same seed-meta key (seed-meta:cyber:threats).'],
   ['conflict:ucdp-events-bootstrap:v1',

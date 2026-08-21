@@ -175,8 +175,14 @@ describe('GlobalProcurementPanel declarative WebMCP tool', () => {
     ]);
     expect([...parameterControls!].every((control) => !control.required)).toBe(true);
 
+    const query = tools[0]?.elements.namedItem('query') as HTMLInputElement;
+    const buyer = tools[0]?.elements.namedItem('buyer') as HTMLInputElement;
+    expect(query.maxLength).toBe(160);
+    expect(buyer.maxLength).toBe(160);
     const country = tools[0]?.elements.namedItem('country') as HTMLInputElement;
+    expect(country.minLength).toBe(2);
     expect(country.maxLength).toBe(2);
+    expect(country.pattern).toBe('^[A-Za-z]{2}$');
     expect(country.getAttribute('toolparamdescription')).toContain('ISO 3166-1 alpha-2');
     const technologyRelevant = tools[0]?.elements.namedItem('techRelevant') as HTMLInputElement;
     expect(technologyRelevant.type).toBe('checkbox');
@@ -198,6 +204,51 @@ describe('GlobalProcurementPanel declarative WebMCP tool', () => {
       'estimated_value',
       'relevance',
     ]);
+  });
+
+  it('rejects invalid programmatic filter values before starting a request', async () => {
+    const handler = vi.fn(() => new Promise<void>(() => undefined));
+    const panel = mount(handler);
+    commitResponse(panel);
+    const currentForm = form(panel);
+    const query = currentForm.elements.namedItem('query') as HTMLInputElement;
+    const buyer = currentForm.elements.namedItem('buyer') as HTMLInputElement;
+    const country = currentForm.elements.namedItem('country') as HTMLInputElement;
+
+    const invalidValues = [
+      () => { query.value = 'q'.repeat(161); },
+      () => { query.value = '\ud83d\ude80'.repeat(81); },
+      () => { buyer.value = 'b'.repeat(161); },
+      () => { country.value = 'C'; },
+      () => { country.value = 'CAN'; },
+      () => { country.value = 'C1'; },
+      () => { country.value = '\u00c7A'; },
+    ];
+    for (const setInvalidValue of invalidValues) {
+      query.value = '';
+      buyer.value = '';
+      country.value = '';
+      setInvalidValue();
+      const invocation = dispatchAgentSubmit(currentForm);
+      await expectRetryableFailure(invocation.response, 'invalid_arguments');
+    }
+    expect(handler).not.toHaveBeenCalled();
+
+    country.value = 'CAN';
+    currentForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(handler).not.toHaveBeenCalled();
+
+    query.value = 'q'.repeat(160);
+    buyer.value = 'b'.repeat(160);
+    country.value = 'ca';
+    const validInvocation = dispatchAgentSubmit(currentForm);
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      query: 'q'.repeat(160),
+      buyer: 'b'.repeat(160),
+      country: 'CA',
+    }), false, expect.any(AbortSignal));
+    panel.update(response({ total: 1 }));
+    await expect(validInvocation.response).resolves.toMatchObject({ ok: true, matchCount: 1 });
   });
 
   it('withholds the tool when the form is unusable, hidden, gated, unavailable, or destroyed', () => {

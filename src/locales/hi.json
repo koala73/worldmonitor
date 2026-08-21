@@ -438,6 +438,7 @@
     "securityAdvisories": "सुरक्षा सलाह",
     "orefSirens": "इज्राइल सायरन",
     "telegramIntel": "टेलीग्राम खुफिया",
+    "xIntel": "X News Accounts",
     "startups": "स्टार्टअप और वीसी",
     "vcblogs": "वीसी की जानकारी और लेख",
     "regionalStartups": "वैश्विक स्टार्टअप खबरें",
@@ -1900,6 +1901,21 @@
       "viewSource": "स्रोत देखें",
       "filterGeopolitics": "भू-राजनीति",
       "filterCyber": "साइबर"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "सऊदी अरब और UAE के वैश्विक महत्वपूर्ण इन्फ्रास्ट्रक्चर में विदेशी निवेशों का डेटाबेस। मानचित्र पर निवेश देखने के लिए पंक्ति पर क्लिक करें।",
@@ -3409,7 +3425,9 @@
       "orefSirens1": "रियल-टाइम इज़राइल मिसाइल और रॉकेट अलर्ट",
       "orefSirens2": "सायरन क्षेत्र का नक्शा और खतरे की श्रेणीकरण",
       "telegramIntel1": "चुने हुए टेलीग्राम ओएसइंट चैनल",
-      "telegramIntel2": "करीब रियल-टाइम संघर्ष और भू-राजनीतिक अपडेट"
+      "telegramIntel2": "करीब रियल-टाइम संघर्ष और भू-राजनीतिक अपडेट",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "contextMenu": {

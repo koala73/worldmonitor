@@ -9,6 +9,10 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 **初次使用？** [MCP 快速入门](/zh/mcp-quickstart) 是一条从零到在 Claude Desktop 中完成真实工具调用的五分钟路径。如需认证模式、套餐、OAuth 配置和完整工具目录，请回到本页查看。
 </Tip>
 
+<Note>
+如果需要操作 Chrome 标签页中已经打开的仪表板，请参见 [WebMCP](/zh/webmcp)。WebMCP 是页面本地、实验性且有人参与的接口；它**不会**取代这套持久托管 MCP 服务器及其数据工具。
+</Note>
+
 <Info>
 **Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 `403 INSUFFICIENT_TIER`。
 
@@ -544,6 +548,7 @@ MCP handler 在三个独立层次上发出失败信号 —— **HTTP 状态**、
 
 ## 相关
 
+- [WebMCP](/zh/webmcp) —— 操作可见 WorldMonitor 网站的实验性、标签页绑定工具
 - [MCP 快速入门](/zh/mcp-quickstart) —— 五分钟从零到首次调用的演练
 - [JMESPath 指南](/zh/mcp-jmespath) —— 投影语法 + 12 个实例
 - [MCP 工具参考](/zh/mcp-tools-reference) —— 各工具参数和 `curl` 示例

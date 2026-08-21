@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -27,6 +27,7 @@ const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), '
 const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.config.ts'), 'utf-8');
 const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
+const webMcpE2eSource = readFileSync(resolve(__dirname, '../e2e/webmcp.spec.ts'), 'utf-8');
 const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
@@ -40,7 +41,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -80,6 +81,47 @@ const GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES = [
   'public/pro/welcome.html',
 ];
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
+const WEBMCP_PLAYWRIGHT_ENV_KEYS = [
+  'WM_REQUIRE_WEBMCP',
+  'WM_WEBMCP_PRODUCTION',
+  'WM_WEBMCP_PRODUCTION_URL',
+  'WM_WEBMCP_DEPLOYED_SHA',
+  'WM_WEBMCP_CHROME_CHANNEL',
+  'WM_WEBMCP_CHROME_EXECUTABLE_PATH',
+];
+
+function probePlaywrightWebMcpEnvironment(overrides = {}) {
+  const env = { ...process.env, NODE_NO_WARNINGS: '1' };
+  for (const key of WEBMCP_PLAYWRIGHT_ENV_KEYS) delete env[key];
+  Object.assign(env, overrides);
+
+  const probe = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '-e',
+      [
+        "const { default: config } = await import('./playwright.config.ts');",
+        "const chromium = config.projects?.find(({ name }) => name === 'chromium');",
+        'console.log(JSON.stringify({',
+        '  baseURL: config.use?.baseURL ?? null,',
+        '  hasWebServer: Boolean(config.webServer),',
+        '  launchArgs: chromium?.use?.launchOptions?.args ?? [],',
+        '  testMatch: config.testMatch ?? null,',
+        '}));',
+      ].join('\n'),
+    ],
+    {
+      cwd: resolve(__dirname, '..'),
+      encoding: 'utf8',
+      env,
+    },
+  );
+  assert.ifError(probe.error);
+  return probe;
+}
 
 const getCacheHeaderValue = (sourcePath) => {
   let value = null;
@@ -97,9 +139,10 @@ const getHeadersForSource = (sourcePath) => {
 };
 
 // Convert a vercel.json `source` (the path-to-regexp subset used in this file)
-// into a RegExp: literal segments, inline regex groups `(...)` kept raw, and
-// `:name*` catch-all params. Lets tests evaluate which rules match a concrete
-// URL instead of only asserting on a rule in isolation.
+// into a RegExp: literal segments, inline regex groups `(...)` kept raw,
+// `:name(regex)` custom matchers, and `:name*` catch-all params. Lets tests
+// evaluate which rules match a concrete URL instead of only asserting on a
+// rule in isolation.
 const sourceToRegExp = (source) => {
   let out = '';
   for (let i = 0; i < source.length; i++) {
@@ -119,7 +162,20 @@ const sourceToRegExp = (source) => {
     } else if (ch === ':') {
       let j = i + 1;
       while (j < source.length && /[A-Za-z0-9_]/.test(source[j])) j++;
-      if (source[j] === '*') {
+      if (source[j] === '(') {
+        // `:name(regex)` custom matcher — drop the name, keep the group.
+        let depth = 0;
+        let k = j;
+        for (; k < source.length; k++) {
+          if (source[k] === '(') depth++;
+          else if (source[k] === ')') {
+            depth--;
+            if (depth === 0) break;
+          }
+        }
+        out += source.slice(j, k + 1);
+        i = k;
+      } else if (source[j] === '*') {
         out = out.replace(/\/$/, '');
         out += '(?:/.*)?';
         i = j;
@@ -377,10 +433,11 @@ describe('crawlable content corpus deployment contracts', () => {
       );
       // The ordering checks above only prove the STRING is chained. Without this,
       // build:pro could be rewritten to a no-op and every assertion here stays
-      // green while the deploy quietly stops producing /pro.
+      // green while the deploy quietly stops producing /pro. Accept either
+      // `cd pro-test && npm run build` or `npm --prefix pro-test run build`.
       assert.match(
         packageJson.scripts['build:pro'],
-        /cd pro-test\b[\s\S]*npm run build\b/,
+        /(?:cd pro-test\b[\s\S]*npm run build\b|npm --prefix pro-test run build\b)/,
         'build:pro must actually run pro-test\'s build, not just exist as a chained name'
       );
       assert.ok(
@@ -1254,14 +1311,16 @@ describe('welcome landing page routing', () => {
     // `[~|^$*]?` covers every CSS attribute operator, so a rule rewritten with
     // one we do not model fails loudly below instead of dropping out of the
     // scanned set.
-    const selectors = [...prerenderSource.matchAll(/(main|nav) a\[([a-zA-Z-]+)([~|^$*]?)="([^"]+)"\]/g)];
+    // `nav` matches with or without the header marker so an un-scoped rule is
+    // still scanned here; the required list below is what fails on it.
+    const selectors = [...prerenderSource.matchAll(/(main|nav(?:\[data-wm-nav\])?) a\[([a-zA-Z-]+)([~|^$*]?)="([^"]+)"\]/g)];
     const scanned = new Set(selectors.map(([, region, attribute, operator, value]) => `${region} a[${attribute}${operator}="${value}"]`));
     // Named, not counted: a floor equal to the post-deletion count is green
     // when the rule it exists to protect is deleted outright.
     for (const required of [
       'main a[data-umami-event-target="welcome-hero"]',
       'main a[href*="moments"]',
-      'nav a[aria-label*="Launch"]',
+      'nav[data-wm-nav] a[aria-label*="Launch"]',
     ]) {
       assert.ok(scanned.has(required), `critical CSS must still style the welcome CTA via ${required}`);
     }
@@ -1271,7 +1330,16 @@ describe('welcome landing page routing', () => {
         operator === '' || operator === '*',
         `critical CSS selector a[${attribute}${operator}="${value}"] uses an attribute operator this guard does not model — teach it the operator or it silently stops checking that rule`
       );
-      const matched = (anchorsByRegion.get(region) ?? []).some((tag) => {
+      // `nav[data-wm-nav]` is the header nav's marker (see prerender.mjs); the
+      // anchor pool is keyed by the landmark element, so map it back. Asserted
+      // rather than defaulted: an unknown region silently reports every rule in
+      // it as dead, which reads as a broken CTA instead of a broken guard.
+      const anchorRegion = region.startsWith('nav') ? 'nav' : region;
+      assert.ok(
+        anchorsByRegion.has(anchorRegion),
+        `critical CSS region "${region}" has no anchor pool — teach this guard the region or it stops checking every rule inside it`
+      );
+      const matched = anchorsByRegion.get(anchorRegion).some((tag) => {
         const actual = tag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1];
         if (actual === undefined) return false;
         return operator === '*' ? actual.includes(value) : actual === value;
@@ -1281,6 +1349,87 @@ describe('welcome landing page routing', () => {
         `critical CSS selector ${region} a[${attribute}${operator}="${value}"] matches no prerendered <${region}> anchor — the rule is dead and its CTA paints unstyled`
       );
     }
+  });
+
+  it('scopes every nav critical-CSS rule to the primary header nav, not to every <nav> on the page', { skip: shouldSkipProBuiltOutput() }, async () => {
+    // The inline critical CSS is UNLAYERED, so a bare `nav` type selector beats
+    // every Tailwind utility on EVERY nav landmark the page renders — including
+    // ones added later, in the footer, by someone who never opened this file.
+    // The legal footer nav (#6982) landed under `nav{position:fixed;top:0;
+    // z-index:50}` and painted itself across the header, over the Launch CTA.
+    const { Window } = await import('happy-dom');
+    const prerenderSource = readFileSync(resolve(__dirname, '../pro-test/prerender.mjs'), 'utf-8')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const criticalCssArray = prerenderSource.match(/const CRITICAL_CSS = \[([\s\S]*?)\n\]\.join\(''\);/)?.[1];
+    assert.ok(criticalCssArray, 'could not find the CRITICAL_CSS array in prerender.mjs — teach this guard its new shape');
+    const criticalCss = [...criticalCssArray.matchAll(/'((?:[^'\\]|\\.)*)'/g)]
+      .map(([, literal]) => literal.replace(/\\'/g, "'"))
+      .join('');
+
+    // Leaf rules only: an `@media (...)` prelude can never complete this match
+    // (its body opens another `{`), so a media block contributes the rules
+    // inside it and nothing else.
+    const navSelectors = [...criticalCss.matchAll(/([^{}]+)\{[^{}]*\}/g)]
+      .flatMap(([, selectorList]) => selectorList.split(',').map((one) => one.trim()))
+      .filter((selector) => /^nav\b/.test(selector));
+
+    // Only the nav landmarks are parsed: every selector above is rooted at
+    // `nav`, so nothing outside one can match, and parsing the whole 130KB
+    // prerendered page instead costs ~10s of suite time. <nav> does not nest,
+    // so the non-greedy sweep takes each landmark whole.
+    const navMarkup = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8')
+      .match(/<nav\b[\s\S]*?<\/nav>/g) ?? [];
+    assert.ok(
+      navMarkup.length > 1,
+      'positive control: the prerendered welcome page must render a second <nav> (the legal footer row) or the containment check below proves nothing'
+    );
+    const window = new Window({
+      url: 'https://www.worldmonitor.app/',
+      settings: {
+        disableJavaScriptEvaluation: true,
+        disableJavaScriptFileLoading: true,
+        disableCSSFileLoading: true,
+      },
+    });
+    window.document.write(`<!doctype html><html><body>${navMarkup.join('')}</body></html>`);
+    const { document } = window;
+
+    // Two positive controls, because "nothing over-matched" is green on a page
+    // that renders one nav, and green again if the rules were deleted outright.
+    const headerPin = navSelectors.filter((selector) => criticalCss.includes(`${selector}{position:fixed`));
+    assert.equal(
+      headerPin.length,
+      1,
+      `positive control: exactly one nav critical-CSS rule must still pin the header before Tailwind loads (found ${headerPin.length})`
+    );
+    const pinned = [...document.querySelectorAll(headerPin[0])];
+    assert.equal(
+      pinned.length,
+      1,
+      `critical CSS "${headerPin[0]}" pins ${pinned.length} elements — it must pin the header nav and nothing else`
+    );
+    const header = pinned[0];
+
+    // A `nav`-rooted selector can only reach a nav landmark or its descendants,
+    // so the other landmarks and their subtrees are the complete population at
+    // risk — and testing that population beats re-querying the whole document
+    // once per selector, which costs seconds per query at this page size.
+    const outsideHeader = [...document.querySelectorAll('nav')]
+      .filter((nav) => nav !== header && !header.contains(nav))
+      .flatMap((nav) => [nav, ...nav.querySelectorAll('*')]);
+
+    for (const selector of navSelectors) {
+      for (const element of outsideHeader) {
+        assert.ok(
+          !element.matches(selector),
+          `critical CSS selector "${selector}" also matches <${element.tagName.toLowerCase()} `
+          + `${element.getAttribute('aria-label') ?? element.className}> outside the header nav — `
+          + 'these rules are unlayered, so scope them to the header marker instead of the bare `nav` element'
+        );
+      }
+    }
+
+    await window.happyDOM.close();
   });
 
   it('redirects signed-in welcome visitors to /dashboard client-side without loading the Clerk SDK', () => {
@@ -1303,13 +1452,14 @@ describe('deploy/API CORS guardrails', () => {
     ]);
     const apiCorsRules = vercelConfig.headers
       .filter((entry) => entry.source.startsWith('/api'))
+      .filter((entry) => !entry.source.endsWith('.md'))
       .filter((entry) => entry.headers?.some((header) => corsHeaderKeys.has(header.key.toLowerCase())))
       .map((entry) => entry.source);
 
     assert.deepEqual(
       apiCorsRules,
       [],
-      'API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true.'
+      'JSON API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true. Static /api/*.md twins are public agent documents and may set ACAO * in vercel.json.'
     );
   });
 });
@@ -1512,13 +1662,193 @@ describe('security header guardrails', () => {
     );
   });
 
-  it('runs the strict WebMCP iframe probe in an enabled Chrome milestone', () => {
+  it('keeps local suites local unless the complete production-smoke environment is present', () => {
+    const deployedSha = 'a'.repeat(40);
+    const matrix = [
+      {
+        name: 'ordinary suite',
+        env: {},
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: false,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'strict local WebMCP suite',
+        env: { WM_REQUIRE_WEBMCP: '1' },
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: true,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'strict local WebMCP evidence with a deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: true,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'bounded production smoke',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        expected: {
+          baseURL: 'https://www.worldmonitor.app',
+          hasWebServer: false,
+          testingFlag: false,
+          testMatch: '**/webmcp.spec.ts',
+        },
+      },
+    ];
+
+    for (const entry of matrix) {
+      const probe = probePlaywrightWebMcpEnvironment(entry.env);
+      assert.equal(
+        probe.status,
+        0,
+        `${entry.name} should load playwright.config.ts:\n${probe.stderr}`,
+      );
+      const resolved = JSON.parse(probe.stdout.trim());
+      assert.equal(resolved.baseURL, entry.expected.baseURL, `${entry.name} baseURL`);
+      assert.equal(resolved.hasWebServer, entry.expected.hasWebServer, `${entry.name} webServer`);
+      assert.equal(resolved.testMatch, entry.expected.testMatch, `${entry.name} testMatch`);
+      assert.equal(
+        resolved.launchArgs.includes('--enable-features=WebMCPTesting'),
+        entry.expected.testingFlag,
+        `${entry.name} testing flag`,
+      );
+    }
+  });
+
+  it('rejects every incomplete or inconsistent WebMCP evidence environment', () => {
+    const deployedSha = 'b'.repeat(40);
+    const matrix = [
+      {
+        name: 'URL without production mode',
+        env: { WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app' },
+        error: /WM_WEBMCP_PRODUCTION_URL requires WM_WEBMCP_PRODUCTION=1/,
+      },
+      {
+        name: 'local SHA without strict WebMCP mode',
+        env: { WM_WEBMCP_DEPLOYED_SHA: deployedSha },
+        error: /WM_WEBMCP_DEPLOYED_SHA requires WM_REQUIRE_WEBMCP=1 outside production mode/,
+      },
+      {
+        name: 'explicit local mode with a remote URL',
+        env: {
+          WM_WEBMCP_PRODUCTION: '0',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL requires WM_WEBMCP_PRODUCTION=1/,
+      },
+      {
+        name: 'strict local mode with a malformed deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: 'not-a-sha',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'strict local mode with an empty deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: '',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'strict local mode with a whitespace-only deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: '   ',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'production mode without strict WebMCP mode',
+        env: {
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION=1 requires WM_REQUIRE_WEBMCP=1/,
+      },
+      {
+        name: 'production mode without a URL',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL must be https:\/\/www\.worldmonitor\.app/,
+      },
+      {
+        name: 'production mode with a different URL',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://tech.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL must be https:\/\/www\.worldmonitor\.app/,
+      },
+      {
+        name: 'production mode without a deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record the exact 40-character SHA/,
+      },
+      {
+        name: 'production mode with a malformed deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: 'not-a-sha',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record the exact 40-character SHA/,
+      },
+    ];
+
+    for (const entry of matrix) {
+      const probe = probePlaywrightWebMcpEnvironment(entry.env);
+      assert.notEqual(probe.status, 0, `${entry.name} must fail closed`);
+      assert.match(`${probe.stdout}\n${probe.stderr}`, entry.error, entry.name);
+    }
+  });
+
+  it('runs strict WebMCP invocation and iframe probes in an enabled Chrome milestone', () => {
     const script = packageJson.scripts?.['test:e2e:webmcp'] ?? '';
+    const productionScript = packageJson.scripts?.['test:e2e:webmcp:production'] ?? '';
     const variantSmokeJob = testWorkflowSource.match(
       /\n  variant-smoke-full:\n[\s\S]*?(?=\n  [a-z][a-z0-9-]+:\n|$)/,
     )?.[0] ?? '';
     assert.match(script, /WM_REQUIRE_WEBMCP=1/);
-    assert.match(script, /playwright test e2e\/embed\.spec\.ts --project=chromium/);
+    assert.match(script, /e2e\/webmcp\.spec\.ts/);
+    assert.match(script, /e2e\/embed\.spec\.ts/);
+    assert.match(script, /--project=chromium/);
+    assert.match(productionScript, /WM_REQUIRE_WEBMCP=1/);
+    assert.match(productionScript, /WM_WEBMCP_PRODUCTION=1/);
+    assert.match(productionScript, /e2e\/webmcp\.spec\.ts/);
+    assert.match(productionScript, /--headed/);
     assert.ok(variantSmokeJob, 'Test workflow must define the full-variant smoke job');
     assert.match(
       variantSmokeJob,
@@ -1530,6 +1860,17 @@ describe('security header guardrails', () => {
     assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);
     assert.match(playwrightConfigSource, /executablePath: webMcpChromeExecutablePath/);
     assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting/);
+    assert.match(playwrightConfigSource, /requireWebMcp && !webMcpProduction/);
+    assert.match(playwrightConfigSource, /https:\/\/www\.worldmonitor\.app/);
+    assert.match(playwrightConfigSource, /WM_WEBMCP_DEPLOYED_SHA/);
+    assert.match(webMcpE2eSource, /document\.modelContext/);
+    assert.match(webMcpE2eSource, /\.getTools\(\)/);
+    assert.match(webMcpE2eSource, /provider\.executeTool/);
+    assert.match(webMcpE2eSource, /new AbortController\(\)/);
+    assert.match(webMcpE2eSource, /page\.on\('pageerror'/);
+    assert.match(webMcpE2eSource, /window\.addEventListener\('unhandledrejection'/);
+    assert.match(webMcpE2eSource, /lateLeakWindowMs/);
+    assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
     assert.match(embedE2eSource, /WEBMCP_MIN_CHROME_MAJOR = 149/);
     assert.match(embedE2eSource, /WM_REQUIRE_WEBMCP requires Chrome/);
   });
@@ -2814,7 +3155,95 @@ describe('agent readiness: auth.md walkthrough', () => {
     assert.equal(dashboardShadow('/auth.md'), undefined, '/auth.md must serve the real file, not the dashboard');
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|auth\\.md|'), 'HTML cache catch-all must keep excluding /auth.md');
   });
+});
 
+// orank "Markdown URL fallback": homepage /index.md already returns markdown,
+// but the scanner sampled GET /api/download as the content page and then
+// requested /api/download.md. That path used to hit api/[...notfound].ts as
+// JSON 404. Cloudflare Markdown for Agents cannot fill this gap — it converts
+// HTML only when Accept: text/markdown, and /api/download is a 302, not HTML.
+describe('agent readiness: /api/download.md URL twin', () => {
+  const downloadMdPath = resolve(__dirname, '../public/api/download.md');
+  const downloadMd = readFileSync(downloadMdPath, 'utf-8');
+
+  it('publishes heading-led markdown at public/api/download.md', () => {
+    assert.ok(existsSync(downloadMdPath), 'expected public/api/download.md (markdown twin of GET /api/download)');
+    assert.match(downloadMd, /^# /m, '/api/download.md must open with a heading so scanners accept a non-HTML body');
+    assert.match(downloadMd, /platform=windows-exe/);
+    assert.match(downloadMd, /platform=macos-arm64/);
+    assert.match(downloadMd, /platform=linux-appimage/);
+  });
+
+  it('serves /api/download.md as markdown with CORS and a self-canonical Link', () => {
+    assert.equal(getHeaderValueForSource('/api/download.md', 'Content-Type'), 'text/markdown; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/api/download.md', 'Access-Control-Allow-Origin'), '*');
+    assert.equal(
+      getHeaderValueForSource('/api/download.md', 'Link'),
+      '<https://www.worldmonitor.app/api/download.md>; rel="canonical"'
+    );
+  });
+
+  it('is not rewritten to the dashboard shell', () => {
+    const dashboardShadow = (path) => vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(path)
+    );
+    assert.equal(dashboardShadow('/api/download.md'), undefined, '/api/download.md must serve the static twin, not the dashboard');
+    assert.ok(
+      SPA_HTML_CACHE_SOURCE.startsWith('/((?!api|'),
+      '/api/* (including /api/download.md) must stay outside the HTML-cache catch-all'
+    );
+  });
+});
+
+// orank "Markdown URL fallback" is site-wide (`/docs/auth` → `/docs/auth.md`),
+// not a single sampled URL. Static public/*.md files still win (afterFiles).
+// /docs/:match* stays first so Mintlify keeps /docs/*.md. /index.md stays
+// ahead of the generic fallback. /api/*.md is excluded from this rewrite so
+// the filesystem catch-all (api/[...notfound].ts) can emit markdown without
+// reintroducing a shadowing /api/:path* rewrite (#4724).
+describe('agent readiness: generic markdown URL-fallback rewrite', () => {
+  const mdTwinRewrite = vercelConfig.rewrites.find((r) =>
+    typeof r.destination === 'string' && r.destination.startsWith('/api/md-twin')
+  );
+  const rewriteIndex = (source) => vercelConfig.rewrites.findIndex((r) => r.source === source);
+
+  it('rewrites unmatched /{page}.md to /api/md-twin after docs and /index.md', () => {
+    assert.ok(mdTwinRewrite, 'expected a generic /{page}.md → /api/md-twin rewrite');
+    assert.match(mdTwinRewrite.source, /api\//, 'rewrite must exclude /api/*.md (handled by the not-found catch-all)');
+    assert.match(mdTwinRewrite.source, /:mdPath|:path/, 'rewrite must capture the sibling path as a Vercel :param');
+    assert.doesNotMatch(
+      mdTwinRewrite.source,
+      /\(\?</,
+      'PCRE named groups are not Vercel :params; destination :mdPath would fail deploy (invalid-route-destination-segment)',
+    );
+    const mdIdx = vercelConfig.rewrites.indexOf(mdTwinRewrite);
+    assert.ok(mdIdx > rewriteIndex('/docs/:match*'), '/docs/:match* must stay ahead of the generic .md fallback');
+    assert.ok(mdIdx > rewriteIndex('/index.md'), '/index.md → /home.md must stay ahead of the generic .md fallback');
+  });
+
+  it('does not reintroduce a shadowing /api/:path* → /api/not-found rewrite', () => {
+    const shadow = (vercelConfig.rewrites ?? []).find((r) =>
+      r.destination === '/api/not-found' && /^\/api\/(?::[^/]*\*|\(\.\*\))$/.test(r.source ?? '')
+    );
+    assert.equal(shadow, undefined, 'do not add /api/:path* → /api/not-found; it shadows [rpc].ts gateways (#4724)');
+  });
+
+  it('sends content-page .md twins to the generator, not the dashboard shell', () => {
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/dashboard.md' })?.destination, '/api/md-twin?path=:mdPath');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/AAPL.md' })?.destination, '/api/md-twin?path=:mdPath');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/docs/auth.md' })?.destination, 'https://worldmonitor.mintlify.dev/docs/:match*');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/index.md' })?.destination, '/home.md');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/api/health.md' }), null);
+  });
+
+  it('keeps HTML-cache catch-all from applying to generated .md twins', () => {
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|.*\\.md$'), 'HTML cache catch-all must exclude every *.md path');
+    assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test('/dashboard.md'), false);
+    assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test('/dashboard'), true);
+  });
+});
+
+describe('agent readiness: remaining markdown twins', () => {
   // pricing.md and support.md are advertised in api-catalog service-meta and
   // llms.txt (#4854/#4857), agents.md is the agent-discovery entry point
   // (#4952), so they get the same three-way pinning as auth.md:

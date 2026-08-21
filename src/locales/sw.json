@@ -448,6 +448,7 @@
     "securityAdvisories": "Ushauri wa Usalama",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegraph ya Intel",
+    "xIntel": "X News Accounts",
     "startups": "Anza na VC",
     "vcblogs": "Maarifa na Insha za VC",
     "regionalStartups": "Habari za Kuanzishwa Ulimwenguni",
@@ -1912,6 +1913,21 @@
       "live": "LIVE",
       "viewSource": "Tazama Chanzo",
       "filterGeopolitics": "Siasa za kijiografia",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -3419,7 +3435,9 @@
       "orefSirens1": "Arifa za wakati halisi za kombora na roketi za Israeli",
       "orefSirens2": "Ramani ya eneo la king'ora na uainishaji wa vitisho",
       "telegramIntel1": "Vituo vya Telegramu vilivyoratibiwa vya OSINT",
-      "telegramIntel2": "Mizozo ya wakati halisi na masasisho ya kijiografia na kisiasa"
+      "telegramIntel2": "Mizozo ya wakati halisi na masasisho ya kijiografia na kisiasa",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "contextMenu": {

@@ -363,6 +363,7 @@
     "securityAdvisories": "Препоръки за сигурност",
     "orefSirens": "Сирени на Израел",
     "telegramIntel": "Telegram Intel",
+    "xIntel": "X News Accounts",
     "startups": "Стартъпи & VC",
     "vcblogs": "VC прозрения & есета",
     "regionalStartups": "Световни стартъп новини",
@@ -1759,6 +1760,21 @@
       "viewSource": "Виж източника",
       "filterGeopolitics": "Геополитика",
       "filterCyber": "Кибер"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "База данни на Саудитска Арабия и UAE преки чужди инвестиции в глобална критична инфраструктура. Кликнете на ред, за да летите на инвестицията на карта.",
@@ -3413,7 +3429,9 @@
       "orefSirens1": "Алерти в реално време за израелски ракети и снаряди",
       "orefSirens2": "Карта на зоните на сирените с класификация на заплахите",
       "telegramIntel1": "Кураторски Telegram OSINT канали",
-      "telegramIntel2": "Актуализации за конфликти и геополитика в близко реално време"
+      "telegramIntel2": "Актуализации за конфликти и геополитика в близко реално време",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {
