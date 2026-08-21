@@ -525,6 +525,27 @@ function recordAuthFailure(nextState, status, context, now) {
   nextState.lastError = `X auth failed (HTTP ${status}) ${context}: check X_BEARER_TOKEN — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
 }
 
+/**
+ * X reports an unreadable ACCOUNT with HTTP 200 and a top-level `errors` array,
+ * not a 4xx: a protected account yields `Authorization Error`, a renamed or
+ * deleted one `Not Found Error`, a suspended one `Forbidden`. Only the payload
+ * distinguishes them from a genuinely quiet timeline, so a caller that trusts
+ * `response.ok` reads all three as "polled successfully, no new posts".
+ *
+ * A resource-level error alongside usable `data` is a different thing — the
+ * deleted-post tombstone path relies on exactly that shape — so this reports a
+ * fault only when the payload carries no data at all.
+ */
+function describeResourceError(body) {
+  if (Array.isArray(body?.data) && body.data.length > 0) return null;
+  if (body?.data && !Array.isArray(body.data)) return null;
+  const error = (Array.isArray(body?.errors) ? body.errors : [])[0];
+  if (!error) return null;
+  const title = typeof error.title === 'string' && error.title ? error.title : 'API error';
+  const detail = typeof error.detail === 'string' && error.detail ? `: ${error.detail}` : '';
+  return `${title}${detail}`;
+}
+
 function collectDeletedTweetIds(body, requestedIds) {
   const found = new Set((Array.isArray(body?.data) ? body.data : []).map((row) => String(row.id)));
   const errorsById = new Map();
@@ -679,7 +700,13 @@ async function pollXFeed({
         }
         if (!response.ok || !body?.data?.id) {
           nextState.accountsFailed += 1;
-          nextState.lastError = `user lookup @${account.handle} failed: HTTP ${response.status}`;
+          // A missing handle also answers 200-with-errors, so the status alone
+          // reads as "HTTP 200" and tells the operator nothing about which
+          // handle died or why. Prefer the upstream title/detail when present.
+          const lookupError = describeResourceError(body);
+          nextState.lastError = lookupError
+            ? `user lookup @${account.handle} failed: ${lookupError}`
+            : `user lookup @${account.handle} failed: HTTP ${response.status}`;
           await sleep(staggerMs, wait);
           continue;
         }
@@ -728,6 +755,16 @@ async function pollXFeed({
         if (!response.ok) {
           nextState.accountsFailed += 1;
           nextState.lastError = `timeline @${account.handle} failed: HTTP ${response.status}`;
+          pageFailed = true;
+          break;
+        }
+        // A 200 carrying only `errors` means the account itself is unreadable
+        // (protected / suspended / renamed away). Falling through would record
+        // an empty-but-complete window and retire the account silently.
+        const resourceError = describeResourceError(body);
+        if (resourceError) {
+          nextState.accountsFailed += 1;
+          nextState.lastError = `timeline @${account.handle} unreadable: ${resourceError}`;
           pageFailed = true;
           break;
         }

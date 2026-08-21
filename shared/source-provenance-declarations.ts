@@ -465,7 +465,7 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "Paul Graham Essays": { risk: 'unknown', type: 'unknown' },
   "PBoC Watch": { risk: 'unknown', type: 'unknown' },
   "PBS NewsHour": { risk: 'unknown', type: 'unknown' },
-  "Pentagon": { risk: 'reviewed', type: 'reviewed' },
+  "Pentagon": { risk: 'unknown', type: 'reviewed' },
   "Pipelines & Chokepoints": { risk: 'unknown', type: 'unknown' },
   "PitchBook News": { risk: 'unknown', type: 'unknown' },
   "Pivot Podcast": { risk: 'unknown', type: 'unknown' },

@@ -308,14 +308,21 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
     note: 'Military OSINT aggregator; treat as a lead',
   },
   {
-    sourceName: 'Pentagon',
+    // Renamed from 'Pentagon' (#6654 follow-up). @PentagonPresSec no longer
+    // exists: the department rebranded and the account is now @DeptofWar.
+    // Beware the neighbours — @WarDepartment, @SecretaryOfWar and @thePentagon
+    // are unrelated personal accounts with three-figure follower counts, so
+    // only the id verified against the API belongs in a tier-1 slot.
+    sourceName: 'Department of War',
     tier: 1,
     type: 'gov',
     risk: 'high',
     stateAffiliated: 'USA',
-    note: 'Official US Department of Defense publisher; treat statements as government claims',
-    reuseType: true,
-    reuseTier: true,
+    note: 'Official US Department of War publisher; treat statements as government claims',
+    // No reuse flags: 'Pentagon' could borrow the existing defense.gov RSS
+    // masthead's type/risk, but 'Department of War' is a new public name with
+    // no masthead behind it, so this entry must emit its own keys or the
+    // account falls through to the tier-4 default and is dropped from alerts.
   },
   {
     sourceName: 'Press TV',

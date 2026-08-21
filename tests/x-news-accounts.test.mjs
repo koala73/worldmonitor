@@ -20,19 +20,30 @@ describe('data/x-accounts.json registry (#6654)', () => {
     assert.ok(Array.isArray(registry.channels.finance));
   });
 
-  it('starts with about 64 enabled accounts, matching the Telegram analogue', () => {
+  it('stays in the Telegram analogue ballpark of enabled accounts', () => {
+    // 62 = the 64 originally curated, minus @dwnews and @OSINTdefender, which
+    // are `protected`: X refuses their timelines to a third-party app, so
+    // leaving them enabled held coverage below 100% and pinned health at
+    // SEED_ERROR permanently. Re-enable only after re-probing the API.
     const enabled = xNews.countEnabledAccounts(registry);
-    assert.equal(enabled, 64, `expected 64 enabled accounts, got ${enabled}`);
+    assert.equal(enabled, 62, `expected 62 enabled accounts, got ${enabled}`);
     const all = xNews.loadXAccounts(registry);
     const full = xNews.loadXAccounts(registry, { set: 'full' });
     const tech = xNews.loadXAccounts(registry, { set: 'tech' });
-    assert.equal(all.length, 64);
-    assert.equal(new Set(all.map((account) => account.handle.toLowerCase())).size, 64);
-    assert.equal(full.length, 56);
+    assert.equal(all.length, 62);
+    assert.equal(new Set(all.map((account) => account.handle.toLowerCase())).size, 62);
+    assert.equal(full.length, 54);
     assert.equal(tech.length, 8);
   });
 
-  it('stores numeric accountId when known and always has handle/label/topic/tier', () => {
+  it('pins a verified numeric accountId on every enabled account', () => {
+    // This assertion used to read `if (account.accountId)`, which is vacuous
+    // for an account that has none — and 41 of 64 shipped without one. The
+    // registry was curated with no API access, so six handles pointed at
+    // accounts that do not exist and four pinned ids pointed at unrelated
+    // private individuals whose posts would have published as trusted tier-2
+    // wire services. An id is the identity the poll loop actually uses, so it
+    // is required, not optional (#6654 follow-up).
     const accounts = [
       ...xNews.loadXAccounts(registry, { set: 'full' }),
       ...xNews.loadXAccounts(registry, { set: 'tech' }),
@@ -44,11 +55,40 @@ describe('data/x-accounts.json registry (#6654)', () => {
       assert.ok(account.topic, 'topic required');
       assert.ok(Number.isFinite(account.tier) && account.tier >= 1 && account.tier <= 3, `${account.handle} tier`);
       assert.equal(account.enabled, true);
-      if (account.accountId) {
-        assert.match(account.accountId, /^[1-9]\d{0,18}$/);
-      }
+      assert.ok(account.accountId, `@${account.handle} must ship a verified accountId`);
+      assert.match(account.accountId, /^[1-9]\d{0,18}$/, `@${account.handle} accountId shape`);
     }
     assert.equal(accounts.find((a) => a.handle === 'Reuters')?.accountId, '1652541');
+  });
+
+  it('never points two accounts at the same X identity', () => {
+    // A copy-paste during curation is how @TheEconomist ended up on another
+    // account's id. Duplicate ids would silently double-count one timeline
+    // while the shadowed source went dark.
+    const accounts = [
+      ...xNews.loadXAccounts(registry, { set: 'full' }),
+      ...xNews.loadXAccounts(registry, { set: 'tech' }),
+    ];
+    const ids = accounts.map((a) => a.accountId);
+    assert.equal(new Set(ids).size, ids.length, 'duplicate accountId in the registry');
+    // sourceName is deliberately NOT unique: a masthead can run several
+    // accounts that share one trust identity (@BBCBreaking + @BBCWorld ->
+    // 'BBC World', @CNN + @cnnbrk -> 'CNN World', both Iran International
+    // feeds). Trust is keyed on the publisher; only the X identity is 1:1.
+    const handles = accounts.map((a) => a.handle.toLowerCase());
+    assert.equal(new Set(handles).size, handles.length, 'duplicate handle in the registry');
+  });
+
+  it('records when each enabled account was last verified against the API', () => {
+    for (const account of xNews.loadXAccounts(registry)) {
+      const raw = [...registry.channels.full, ...registry.channels.tech]
+        .find((a) => a.handle === account.handle);
+      assert.match(
+        String(raw?.verifiedAt || ''),
+        /^\d{4}-\d{2}-\d{2}$/,
+        `@${account.handle} needs a verifiedAt date (run scripts/verify-x-accounts.mjs)`,
+      );
+    }
   });
 });
 
@@ -1117,5 +1157,104 @@ describe('versioned X feed snapshot', () => {
     const empty = xNews.hydrateXFeedSnapshot({ version: xNews.X_FEED_SNAPSHOT_VERSION, items: [] });
     assert.ok(empty);
     assert.equal(empty.items.length, 0);
+  });
+});
+
+// X answers an unreadable account with HTTP 200 and an `errors` array rather
+// than a 4xx — observed live against @OSINTdefender and @dwnews, both of which
+// are `protected`. The timeline loop only tested `!response.ok`, so a 200 fell
+// through to `tweets = []`, found no `next_token`, and recorded a COMPLETE
+// window: a protected, suspended, or deleted account counted as a healthy
+// empty poll forever, with no error and nothing for an operator to see. Every
+// account now ships a pinned accountId, which makes this the only path that
+// runs for them, so it has to fail loudly.
+describe('unreadable-account timeline responses (#6654 follow-up)', () => {
+  const protectedAccount = {
+    handle: 'OSINTdefender',
+    accountId: '1496286557053071361',
+    label: 'OSINTdefender',
+    sourceName: 'OSINTdefender',
+    topic: 'osint',
+    tier: 2,
+    maxMessages: 10,
+  };
+
+  const authErrorBody = JSON.stringify({
+    errors: [{
+      value: '1496286557053071361',
+      detail: 'Sorry, you are not authorized to see the user with id: [1496286557053071361].',
+      title: 'Authorization Error',
+      type: 'https://api.twitter.com/2/problems/not-authorized-for-resource',
+    }],
+  });
+
+  const unreadable = async () => new Response(authErrorBody, {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  it('counts a 200-with-errors timeline as a failure, not a complete window', async () => {
+    const state = await xNews.pollXFeed({
+      accounts: [protectedAccount],
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: unreadable,
+      now: () => Date.parse('2026-08-21T06:00:00.000Z'),
+      wait: async () => {},
+    });
+
+    assert.equal(state.accountsFailed, 1, 'an unreadable account must count as failed');
+    assert.equal(state.accountsPolled, 0, 'an unreadable account must not count as polled');
+  });
+
+  it('names the handle and the upstream reason so an operator can act', async () => {
+    const state = await xNews.pollXFeed({
+      accounts: [protectedAccount],
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: unreadable,
+      now: () => Date.parse('2026-08-21T06:00:00.000Z'),
+      wait: async () => {},
+    });
+
+    assert.match(state.lastError || '', /OSINTdefender/, 'lastError must name the account');
+    assert.match(state.lastError || '', /Authorization Error/, 'lastError must carry the upstream title');
+    assert.doesNotMatch(state.lastError || '', /HTTP 200/, 'reporting an unreadable account as "HTTP 200" misleads the operator');
+  });
+
+  it('does not advance the cursor for an unreadable account', async () => {
+    const state = await xNews.pollXFeed({
+      accounts: [protectedAccount],
+      state: {
+        cursorByAccountId: { '1496286557053071361': '900' },
+        accountIdByHandle: {},
+        items: [],
+      },
+      bearerToken: 'test-token',
+      fetchImpl: unreadable,
+      now: () => Date.parse('2026-08-21T06:00:00.000Z'),
+      wait: async () => {},
+    });
+
+    assert.equal(state.cursorByAccountId['1496286557053071361'], '900', 'cursor must not move on a failed read');
+  });
+
+  // Positive control: without this the fix could be "call every empty page a
+  // failure", which would red the whole fleet on a quiet night.
+  it('still reports a genuinely empty timeline as a successful poll', async () => {
+    const state = await xNews.pollXFeed({
+      accounts: [{ ...protectedAccount, handle: 'Reuters', accountId: '1652541', sourceName: 'Reuters' }],
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => new Response(JSON.stringify({ data: [], meta: { result_count: 0 } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      now: () => Date.parse('2026-08-21T06:00:00.000Z'),
+      wait: async () => {},
+    });
+
+    assert.equal(state.accountsFailed, 0, 'a quiet account is not a broken one');
+    assert.equal(state.accountsPolled, 1);
   });
 });
