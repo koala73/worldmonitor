@@ -217,8 +217,18 @@ describe('China official policy adapters (#5576)', () => {
 
     timeAtSize(4_000, 1);
     timeAtSize(16_000, 1);
-    const base = timeAtSize(4_000, 5);
-    const quadrupled = timeAtSize(16_000, 5);
+    // Interleave the two sizes instead of measuring them sequentially:
+    // test:data runs 16 files concurrently, so a sequential 16k measurement
+    // can land in a busier window than the 4k one and inflate the ratio with
+    // no parser change (#6985 — observed 8.4x/9.0x flakes under load).
+    // Best-of-N per size still applies, but each attempt pairs the sizes, so
+    // a stall must hit the same attempt of the larger size N times to survive.
+    let base = Number.POSITIVE_INFINITY;
+    let quadrupled = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      base = Math.min(base, timeAtSize(4_000, 1));
+      quadrupled = Math.min(quadrupled, timeAtSize(16_000, 1));
+    }
     const ratio = quadrupled / base;
 
     assert.ok(
