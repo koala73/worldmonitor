@@ -522,6 +522,13 @@ function isSharedCacheableBootstrapKind(authKind) {
   return authKind === 'public-weather' || authKind === 'public-tier' || authKind === 'public-on-demand';
 }
 
+function getPublicBootstrapHeaders() {
+  return {
+    ...getPublicCorsHeaders(),
+    'Timing-Allow-Origin': '*',
+  };
+}
+
 // `tier` is the requested tier, or null for a single-key read. The on-demand
 // default lives here rather than at the call site so there is ONE resolution
 // path: a test that re-derived "on-demand falls back to slow" would be checking
@@ -545,7 +552,7 @@ function successCacheHeaders(requestedTier, authKind, cors, onDemandKey = null) 
   // pin an echoed ACAO onto a cached response. Safe because isDisallowedOrigin()
   // already rejected unauthorized origins at the handler entry (this is exactly
   // the contract getPublicCorsHeaders documents).
-  const publicCors = getPublicCorsHeaders();
+  const publicCors = getPublicBootstrapHeaders();
   if (!isSharedCacheableBootstrapKind(authKind)) {
     return {
       ...publicCors,
@@ -618,7 +625,7 @@ export default async function handler(req, ctx) {
         { error: 'Bootstrap service temporarily unavailable' },
         503,
         {
-          ...getPublicCorsHeaders(),
+          ...getPublicBootstrapHeaders(),
           'Cache-Control': 'no-store',
           'Retry-After': '5',
         },
@@ -684,7 +691,7 @@ export default async function handler(req, ctx) {
   // (#6784): health probes Redis, so nothing pages, and the client stamps the
   // empty hit as a fresh read.
   const cacheHeaders = onDemandKey && missing.includes(onDemandKey)
-    ? { ...getPublicCorsHeaders(), 'Cache-Control': 'no-store' }
+    ? { ...getPublicBootstrapHeaders(), 'Cache-Control': 'no-store' }
     : successCacheHeaders(tier, auth.kind, cors, onDemandKey);
   const response = jsonResponse(
     { data, missing },

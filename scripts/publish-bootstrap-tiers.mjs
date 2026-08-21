@@ -25,6 +25,7 @@ const TIER_INTERVAL_MS = Object.freeze({
   slow: 10 * 60_000,
 });
 const TIER_ORDER = Object.freeze(['fast', 'slow']);
+const PUBLISHER_LARGEST_KEY_LIMIT = 5;
 
 // R4 (#6654) fields that must never appear in a bootstrap-tier payload.
 // `text` is the X post body (first-party only, via /api/x-feed); `pollState` is
@@ -158,6 +159,48 @@ export async function assembleBootstrapTierPayload(registry, options = {}) {
   return { data, missing };
 }
 
+/**
+ * Measure the exact public `{ data, missing }` JSON payload. Key entries retain
+ * payload insertion order; callers can sort a copy for bounded diagnostics.
+ */
+export function buildBootstrapPayloadByteLedger(payload) {
+  if (
+    !payload
+    || typeof payload !== 'object'
+    || Array.isArray(payload)
+    || !payload.data
+    || typeof payload.data !== 'object'
+    || Array.isArray(payload.data)
+    || !Array.isArray(payload.missing)
+  ) {
+    throw new TypeError('Bootstrap byte ledger requires a { data, missing } payload');
+  }
+
+  const keys = Object.entries(payload.data).map(([key, value]) => {
+    const serializedValue = JSON.stringify(value);
+    if (serializedValue === undefined) {
+      throw new TypeError(`Bootstrap byte ledger cannot serialize key: ${key}`);
+    }
+    const valueBytes = Buffer.byteLength(serializedValue, 'utf8');
+    return {
+      key,
+      bytes: Buffer.byteLength(JSON.stringify(key), 'utf8') + 1 + valueBytes,
+      valueBytes,
+    };
+  });
+  const dataEntryBytes = keys.reduce((total, entry) => total + entry.bytes, 0);
+  const dataSeparatorBytes = Math.max(0, keys.length - 1);
+  const missingJson = JSON.stringify(payload.missing);
+
+  return {
+    totalBytes: Buffer.byteLength('{"data":{', 'utf8')
+      + dataEntryBytes
+      + dataSeparatorBytes
+      + Buffer.byteLength(`},"missing":${missingJson}}`, 'utf8'),
+    keys,
+  };
+}
+
 export async function publishBootstrapTier(tier, options = {}) {
   assertTier(tier);
   const env = options.env ?? process.env;
@@ -173,6 +216,11 @@ export async function publishBootstrapTier(tier, options = {}) {
     fetchFn: options.fetchFn,
     timeoutMs: options.redisTimeoutMs,
   });
+  const payloadLedger = buildBootstrapPayloadByteLedger(payload);
+  const largestKeys = [...payloadLedger.keys]
+    .sort((left, right) => right.bytes - left.bytes || left.key.localeCompare(right.key))
+    .slice(0, PUBLISHER_LARGEST_KEY_LIMIT)
+    .map(({ key, bytes }) => ({ key, bytes }));
   const resolveStorage = options.resolveStorage
     ?? (storageEnv => resolveR2StorageConfig(storageEnv, { profile: 'bootstrap' }));
   const storage = resolveStorage(env);
@@ -192,7 +240,15 @@ export async function publishBootstrapTier(tier, options = {}) {
   // the canonical R2 publish, but it is logged loudly so a chronic failure is visible.
   const kv = await publishTierToKv(tier, envelope, { ...options, env, logger: options.logger });
 
-  return { tier, generatedAt, missing: payload.missing.length, bytes: write?.bytes ?? null, kv };
+  return {
+    tier,
+    generatedAt,
+    missing: payload.missing.length,
+    bytes: write?.bytes ?? null,
+    payloadBytes: payloadLedger.totalBytes,
+    largestKeys,
+    kv,
+  };
 }
 
 /**
@@ -260,7 +316,15 @@ export async function runPublisherLoop(options = {}) {
       const kvStatus = result?.kv?.skipped ? 'skipped'
         : result?.kv?.ok ? `${result.kv.bytes}b`
         : `FAILED(${result?.kv?.error ?? 'unknown'})`;
-      logger.info?.(`[bootstrap-r2] published tier=${tier} generatedAt=${result?.generatedAt ?? 'unknown'} bytes=${result?.bytes ?? 'unknown'} missing=${result?.missing ?? 'unknown'} kv=${kvStatus}`);
+      logger.info?.('[bootstrap-r2] published', {
+        tier,
+        generatedAt: result?.generatedAt ?? null,
+        artifactBytes: result?.bytes ?? null,
+        payloadBytes: result?.payloadBytes ?? null,
+        missing: result?.missing ?? null,
+        largestKeys: result?.largestKeys ?? [],
+        kv: kvStatus,
+      });
     } catch (error) {
       logger.warn?.(`[bootstrap-r2] publish failed tier=${tier}: ${error?.message ?? String(error)}`);
     } finally {

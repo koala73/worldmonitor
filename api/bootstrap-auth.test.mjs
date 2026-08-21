@@ -212,6 +212,7 @@ function assertPublicCorsHeaders(resp) {
   assert.equal(resp.headers.get('access-control-allow-origin'), '*');
   assert.equal(resp.headers.get('access-control-allow-credentials'), null);
   assert.equal(resp.headers.get('vary'), null);
+  assert.equal(resp.headers.get('timing-allow-origin'), '*');
 }
 
 function assertNonSharedCacheHeaders(resp) {
@@ -227,6 +228,7 @@ test('no-Origin enterprise key keeps bootstrap shape but is not shared-cacheable
     assert.equal(resp.status, 200);
     assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
     assertNonSharedCacheHeaders(resp);
+    assert.equal(resp.headers.get('timing-allow-origin'), null);
   });
 });
 
@@ -237,6 +239,7 @@ test('allowed-Origin enterprise key keeps bootstrap shape but is not shared-cach
     assert.equal(resp.status, 200);
     assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
     assertNonSharedCacheHeaders(resp);
+    assert.equal(resp.headers.get('timing-allow-origin'), null);
   });
 });
 

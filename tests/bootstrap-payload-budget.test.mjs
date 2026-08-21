@@ -6,7 +6,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { bootstrapTierKeyNames } from '../shared/bootstrap-tier-keys.js';
+import { buildBootstrapPayloadByteLedger } from '../scripts/publish-bootstrap-tiers.mjs';
 import {
+  BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST,
   CAPTURED_BASE_TIER_KEYS,
   CAPTURED_KEY_DECODED_BYTES,
   DEMOTED_FAST_KEYS,
@@ -14,11 +16,43 @@ import {
   FAST_FIRST_PAINT_JUSTIFICATION,
   FINAL_TIER_DECODED_BYTE_CEILINGS,
   PRODUCTION_CAPTURE,
+  REPRESENTATIVE_FIXTURE_CONTRACTS,
+  REPRESENTATIVE_PAYLOAD_BYTE_BASELINES,
+  REPRESENTATIVE_BOOTSTRAP_PAYLOADS,
+  assertRepresentativeBootstrapFixtures,
+  buildBootstrapPayloadBudgetCandidate,
+  bootstrapPayloadBudgetViolations,
   tierPayloadBytesFromLedger,
 } from './fixtures/bootstrap-payload-budget.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REQUIRED_REDUCTION = Object.freeze({ fast: 0.20, slow: 0.25 });
+const PINNED_REPRESENTATIVE_FIXTURE_CONTRACTS = Object.freeze({
+  fast: Object.freeze({
+    marketQuotes: Object.freeze({
+      collection: 'quotes',
+      minimumRecords: 93,
+      requiredFields: Object.freeze(['symbol', 'name', 'price', 'change']),
+    }),
+    weatherAlerts: Object.freeze({
+      collection: 'alerts',
+      minimumRecords: 50,
+      requiredFields: Object.freeze(['id', 'event', 'severity']),
+    }),
+  }),
+  slow: Object.freeze({
+    wildfires: Object.freeze({
+      collection: 'fireDetections',
+      minimumRecords: 500,
+      requiredFields: Object.freeze(['brightness', 'detectedAt']),
+    }),
+    ucdpEvents: Object.freeze({
+      collection: 'events',
+      minimumRecords: 150,
+      requiredFields: Object.freeze(['id', 'country', 'dateStart', 'violenceType']),
+    }),
+  }),
+});
 
 test('frozen production ledger is complete and cannot shrink silently', () => {
   assert.equal(PRODUCTION_CAPTURE.capturedAt, '2026-08-21T14:51:50Z');
@@ -47,6 +81,57 @@ test('frozen production ledger is complete and cannot shrink silently', () => {
     PRODUCTION_CAPTURE.tiers.slow.decodedBytes,
     `SLOW ledger no longer reconstructs captured body ${PRODUCTION_CAPTURE.tiers.slow.sha256}`,
   );
+});
+
+test('representative fixtures hard-pin independent record counts and required fields', () => {
+  assert.deepEqual(REPRESENTATIVE_FIXTURE_CONTRACTS, PINNED_REPRESENTATIVE_FIXTURE_CONTRACTS);
+  assert.doesNotThrow(() => assertRepresentativeBootstrapFixtures());
+
+  for (const [tier, contracts] of Object.entries(PINNED_REPRESENTATIVE_FIXTURE_CONTRACTS)) {
+    for (const [key, contract] of Object.entries(contracts)) {
+      const records = REPRESENTATIVE_BOOTSTRAP_PAYLOADS[tier].data[key][contract.collection];
+      assert.equal(records.length, contract.minimumRecords, `${tier}.${key} count changed`);
+      assert.deepEqual(Object.keys(records[0]).sort(), [...contract.requiredFields].sort());
+
+      const tooSmall = structuredClone(REPRESENTATIVE_BOOTSTRAP_PAYLOADS);
+      tooSmall[tier].data[key][contract.collection].pop();
+      assert.throws(
+        () => assertRepresentativeBootstrapFixtures(tooSmall),
+        new RegExp(`${key}\\.${contract.collection} has ${contract.minimumRecords - 1} records`),
+      );
+
+      const missingField = structuredClone(REPRESENTATIVE_BOOTSTRAP_PAYLOADS);
+      delete missingField[tier].data[key][contract.collection][0][contract.requiredFields[0]];
+      assert.throws(
+        () => assertRepresentativeBootstrapFixtures(missingField),
+        new RegExp(`${key}\\.${contract.collection}\\[0\\] is missing ${contract.requiredFields[0]}`),
+      );
+    }
+  }
+});
+
+test('real publisher ledger measures the frozen representative payload baseline', () => {
+  for (const tier of ['fast', 'slow']) {
+    const ledger = buildBootstrapPayloadByteLedger(REPRESENTATIVE_BOOTSTRAP_PAYLOADS[tier]);
+    assert.equal(ledger.totalBytes, REPRESENTATIVE_PAYLOAD_BYTE_BASELINES[tier].totalBytes);
+    assert.deepEqual(
+      Object.fromEntries(ledger.keys.map(({ key, bytes }) => [key, bytes])),
+      REPRESENTATIVE_PAYLOAD_BYTE_BASELINES[tier].keyBytes,
+    );
+  }
+});
+
+test('budget manifest records pre-change ceilings, final targets, and reviewed exception rationale', () => {
+  for (const tier of ['fast', 'slow']) {
+    const budget = BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST.tiers[tier];
+    assert.equal(budget.preChangeCeilingBytes, PRODUCTION_CAPTURE.tiers[tier].decodedBytes);
+    assert.equal(budget.finalTargetBytes, FINAL_TIER_DECODED_BYTE_CEILINGS[tier]);
+    assert.equal(budget.minimumCapturedKeyCount, CAPTURED_BASE_TIER_KEYS[tier].length);
+    for (const exception of Object.values(budget.reviewedExceptions)) {
+      assert.ok(exception.rationale.trim().length > 0);
+      assert.ok(Number.isInteger(exception.ceilingBytes) && exception.ceilingBytes > 0);
+    }
+  }
 });
 
 test('all demotions are represented in their actual destination tier', () => {
@@ -84,7 +169,52 @@ test('actual head memberships meet net reductions and absolute decoded ceilings'
       `${tier.toUpperCase()} head ${headBytes} B exceeds absolute ceiling `
       + `${FINAL_TIER_DECODED_BYTE_CEILINGS[tier]} B`,
     );
+    const representativeLedger = buildBootstrapPayloadByteLedger(REPRESENTATIVE_BOOTSTRAP_PAYLOADS[tier]);
+    const candidate = buildBootstrapPayloadBudgetCandidate(
+      tier,
+      headKeys[tier],
+      representativeLedger,
+    );
+    assert.equal(candidate.totalBytes, headBytes, 'frozen representative fixture must add no growth');
+    assert.deepEqual(bootstrapPayloadBudgetViolations(tier, candidate), []);
   }
+});
+
+test('budget fails aggregate and per-key growth measured from representative payloads', () => {
+  const headKeys = bootstrapTierKeyNames('fast', { iranEventsEnabled: false });
+
+  const aggregateGrowth = structuredClone(REPRESENTATIVE_BOOTSTRAP_PAYLOADS.fast);
+  const bytesToOverflow = Math.max(
+    1,
+    FINAL_TIER_DECODED_BYTE_CEILINGS.fast - tierPayloadBytesFromLedger(headKeys) + 1,
+  );
+  aggregateGrowth.data.marketQuotes.quotes[0].symbol += 'G'.repeat(bytesToOverflow);
+  const aggregateCandidate = buildBootstrapPayloadBudgetCandidate(
+    'fast',
+    headKeys,
+    buildBootstrapPayloadByteLedger(aggregateGrowth),
+  );
+  assert.ok(aggregateCandidate.totalBytes > FINAL_TIER_DECODED_BYTE_CEILINGS.fast);
+  assert.match(
+    bootstrapPayloadBudgetViolations('fast', aggregateCandidate).join('\n'),
+    /aggregate .* exceeds final target/,
+  );
+
+  const perKeyGrowth = structuredClone(REPRESENTATIVE_BOOTSTRAP_PAYLOADS.fast);
+  const materialGrowth = Math.max(
+    2_048,
+    Math.ceil(CAPTURED_KEY_DECODED_BYTES.marketQuotes * 0.05),
+  );
+  perKeyGrowth.data.marketQuotes.quotes[0].symbol += 'G'.repeat(materialGrowth + 1);
+  const perKeyCandidate = buildBootstrapPayloadBudgetCandidate(
+    'fast',
+    headKeys,
+    buildBootstrapPayloadByteLedger(perKeyGrowth),
+  );
+  assert.match(
+    bootstrapPayloadBudgetViolations('fast', perKeyCandidate).join('\n'),
+    /marketQuotes .* without a reviewed exception/,
+  );
 });
 
 test('every remaining fast key has a first-paint justification', () => {
