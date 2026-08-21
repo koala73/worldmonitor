@@ -145,6 +145,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   'live-news': { name: 'Market Headlines', enabled: true, priority: 1 },
   insights: { name: 'AI Market Insights', enabled: true, priority: 1 },
   markets: { name: 'Live Markets', enabled: true, priority: 1 },
+  'investment-research-workbench': { name: 'Investment Research Workbench', enabled: true, priority: 1 },
   'stock-analysis': { name: 'Stock Analysis', enabled: true, priority: 1 },
   'stock-backtest': { name: 'Backtesting', enabled: true, priority: 1 },
   'daily-market-brief': { name: 'Daily Market Brief', enabled: true, priority: 1 },

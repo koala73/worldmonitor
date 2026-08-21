@@ -109,6 +109,7 @@ const HOST_ORIGINS = Object.freeze({
   'hiiraan.com': 'CA',
   'interfax.com': 'RU',
   'investing.com': 'IL',
+  'investors.ast-science.com': 'US',
   'iranintl.com': 'GB',
   'janes.com': 'GB',
   'jin10.com': 'CN',

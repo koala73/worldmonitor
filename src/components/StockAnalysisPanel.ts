@@ -21,6 +21,7 @@ import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
 import { createWatchlistButton } from './watchlist-modal';
 import { WatchlistTableView } from './WatchlistTableView';
+import { dispatchInvestmentResearchOpen } from '@/services/investment-research-workbench';
 
 function formatChange(change: number): string {
   const rounded = Number.isFinite(change) ? change.toFixed(2) : '0.00';
@@ -82,6 +83,14 @@ export class StockAnalysisPanel extends Panel {
   constructor() {
     super({ id: 'stock-analysis', title: 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip'), premium: 'locked' });
     this.header.appendChild(createWatchlistButton('Edit Watchlist'));
+    this.content.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-open-research-workbench]');
+      const symbol = button?.dataset.openResearchWorkbench;
+      if (!symbol) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      dispatchInvestmentResearchOpen(symbol);
+    });
   }
 
   public override destroy(): void {
@@ -264,6 +273,7 @@ export class StockAnalysisPanel extends Panel {
               <span class="signal-badge ${tone}" style="font-family:var(--font-mono)">${escapeHtml(ratingSignal)}</span>
             </div>
             <div style="margin-top:6px;font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);line-height:1.5">${escapeHtml(getStockAnalysisRatingSummary(item))}</div>
+            <button type="button" data-open-research-workbench="${escapeHtml(item.symbol)}" style="margin-top:8px;padding:5px 9px;border:1px solid var(--border);border-radius:3px;background:rgba(255,255,255,0.04);color:var(--accent-primary);cursor:pointer;font-size:calc(10px * var(--wm-panel-effective-scale, 1))">Open Research Workbench →</button>
           </div>
           <div style="text-align:right;min-width:110px">
             <div style="font-size:calc(18px * var(--wm-panel-effective-scale, 1));font-weight:700">${escapeHtml(formatPrice(item.currentPrice, item.currency))}</div>
