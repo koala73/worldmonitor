@@ -64,8 +64,14 @@ export class GdeltIntelPanel extends Panel {
 
     const cached = this.topicData.get(topic.id);
     if (cached && Date.now() - cached.fetchedAt.getTime() < 5 * 60 * 1000) {
-      this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
-      this.renderArticles(cached.articles);
+      // Cache replay, not a proven recovery (#6679 instance A). The topic
+      // tabs are siblings of this.content, so they stay clickable while a
+      // topic is in an error state — switching to a cached topic must not
+      // reset the failing topic's backoff rung to the 15s floor.
+      this.withRetryBackoffPreserved(() => {
+        this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
+        this.renderArticles(cached.articles);
+      });
     } else {
       this.loadActiveTopic();
     }
@@ -142,7 +148,13 @@ export class GdeltIntelPanel extends Panel {
 
   private renderArticles(articles: GdeltArticle[]): void {
     if (articles.length === 0) {
-      this.setContentNodes(h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
+      // fetchGdeltArticles reports RPC failure as a resolved [] (breaker +
+      // emptyGdeltFallback), so an empty list may be a swallowed outage
+      // (#6679 instance B) — render the empty state without crediting the
+      // upstream with a recovery it never proved.
+      this.withRetryBackoffPreserved(() => {
+        this.setContentNodes(h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
+      });
       return;
     }
 
