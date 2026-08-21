@@ -1419,6 +1419,9 @@
         },
         {
           "path": "scripts/lib/x-news-accounts.cjs"
+        },
+        {
+          "path": "scripts/verify-x-accounts.mjs"
         }
       ]
     },
