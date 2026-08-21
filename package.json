@@ -273,6 +273,10 @@
     "shell-quote": "^1.8.4",
     "ip-address": "^10.3.1",
     "brace-expansion@1": "^1.1.18",
-    "brace-expansion@2": "^2.1.4"
+    "brace-expansion@2": "^2.1.4",
+    "sharp": "0.35.3",
+    "postcss": "8.5.23",
+    "fast-uri": "3.1.5",
+    "markdown-it": "14.2.0"
   }
 }
