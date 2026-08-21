@@ -1241,12 +1241,19 @@ describe('unreadable-account timeline responses (#6654 follow-up)', () => {
 
   // Positive control: without this the fix could be "call every empty page a
   // failure", which would red the whole fleet on a quiet night.
+  //
+  // The body is the VERBATIM live response for an account with nothing in the
+  // window (verified 2026-08-21 against @thePentagon over a 24h start_time):
+  // no `data` key at all and no `errors` key, only `meta.result_count`. An
+  // earlier draft of this test asserted `{ data: [], meta: {...} }`, a shape X
+  // never sends — it would have passed against a guard that wrongly keys on
+  // `data` being absent, which is the exact false positive being ruled out.
   it('still reports a genuinely empty timeline as a successful poll', async () => {
     const state = await xNews.pollXFeed({
       accounts: [{ ...protectedAccount, handle: 'Reuters', accountId: '1652541', sourceName: 'Reuters' }],
       state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
       bearerToken: 'test-token',
-      fetchImpl: async () => new Response(JSON.stringify({ data: [], meta: { result_count: 0 } }), {
+      fetchImpl: async () => new Response(JSON.stringify({ meta: { result_count: 0 } }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
@@ -1256,5 +1263,46 @@ describe('unreadable-account timeline responses (#6654 follow-up)', () => {
 
     assert.equal(state.accountsFailed, 0, 'a quiet account is not a broken one');
     assert.equal(state.accountsPolled, 1);
+  });
+
+  // The deleted-post tombstone path depends on `data` and `errors` arriving
+  // TOGETHER from /2/tweets. Treating any payload carrying `errors` as a fault
+  // would misread that as a broken account, so prove the two stay
+  // distinguishable. Tombstone semantics themselves are asserted by the
+  // dedicated deletion test above; this one guards the failure accounting.
+  it('does not count a data-plus-errors tombstone response as an account failure', async () => {
+    const account = { ...protectedAccount, handle: 'Reuters', accountId: '1652541', sourceName: 'Reuters' };
+    const prior = xNews.normalizeXPost(
+      { id: '50', text: 'old post', created_at: '2026-08-20T09:00:00.000Z' },
+      account,
+    );
+    const state = await xNews.pollXFeed({
+      accounts: [account],
+      state: { cursorByAccountId: { 1652541: '100' }, accountIdByHandle: {}, items: [prior] },
+      bearerToken: 'test-token',
+      fetchImpl: async (url) => {
+        const { pathname } = new URL(url);
+        if (pathname === '/2/users/1652541/tweets') {
+          return new Response(JSON.stringify({
+            data: [{ id: '101', text: 'live post', created_at: '2026-08-21T05:00:00.000Z' }],
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({
+          data: [{ id: '101' }],
+          errors: [{
+            resource_id: '50',
+            value: '50',
+            title: 'Not Found Error',
+            detail: 'Could not find tweet with ids: [50].',
+          }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      },
+      now: () => Date.parse('2026-08-21T06:00:00.000Z'),
+      wait: async () => {},
+    });
+
+    assert.equal(state.accountsFailed, 0, 'a tombstone response is not an account failure');
+    assert.equal(state.accountsPolled, 1);
+    assert.equal(state.cursorByAccountId['1652541'], '101', 'the live page still advances the cursor');
   });
 });

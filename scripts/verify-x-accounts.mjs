@@ -63,8 +63,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function resourceError(body) {
   if (body?.data) return null;
   const error = (Array.isArray(body?.errors) ? body.errors : [])[0];
-  if (!error) return 'empty response with no data and no errors';
-  return `${error.title || 'API error'}${error.detail ? `: ${error.detail}` : ''}`;
+  if (error) return `${error.title || 'API error'}${error.detail ? `: ${error.detail}` : ''}`;
+  // A quiet account answers `{"meta":{"result_count":0}}` — no `data` key and
+  // no `errors` key (verified against the live API). Reporting that as a fault
+  // would flag every account that simply had nothing to say in the window.
+  if (typeof body?.meta?.result_count === 'number') return null;
+  return 'empty response with no data, no errors, and no result_count';
 }
 
 async function apiGet(path) {
