@@ -3,10 +3,19 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
-const welcomeHtml = () => readFileSync(new URL('../public/pro/welcome.html', import.meta.url), 'utf8');
+let cachedWelcomeHtml;
+const welcomeHtml = () =>
+  (cachedWelcomeHtml ??= readFileSync(new URL('../public/pro/welcome.html', import.meta.url), 'utf8'));
 const enLocale = () =>
   JSON.parse(readFileSync(new URL('../pro-test/src/locales/en.json', import.meta.url), 'utf8'));
 const WELCOME_FAQ_COUNT = 11;
+const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
+
+let cachedJsonLdBlocks;
+const welcomeJsonLdBlocks = () =>
+  (cachedJsonLdBlocks ??= [
+    ...welcomeHtml().matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g),
+  ].map((match) => JSON.parse(match[1])));
 
 // Every assertion here reads the prerendered public/pro/welcome.html, which is
 // built by `npm run build:pro` rather than committed (#6898). Skip when the
@@ -24,11 +33,8 @@ const welcomeRoot = () => {
 };
 
 test('welcome FAQPage JSON-LD matches every visible FAQ entry', { skip }, () => {
-  const html = welcomeHtml();
   const en = enLocale();
-  const jsonLdBlocks = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
-    .map((match) => JSON.parse(match[1]));
-  const faqPage = jsonLdBlocks.find((block) => block['@type'] === 'FAQPage');
+  const faqPage = welcomeJsonLdBlocks().find((block) => block['@type'] === 'FAQPage');
 
   assert.ok(faqPage, 'welcome.html should include FAQPage JSON-LD');
   assert.equal(faqPage.mainEntity.length, WELCOME_FAQ_COUNT);
@@ -37,6 +43,34 @@ test('welcome FAQPage JSON-LD matches every visible FAQ entry', { skip }, () => 
     assert.equal(entry.name, en.welcome.faq[`q${n}`]);
     assert.equal(entry.acceptedAnswer?.text, en.welcome.faq[`a${n}`]);
   }
+});
+
+test('welcome JSON-LD connects the page, website, application, and publisher', { skip }, () => {
+  const html = welcomeHtml();
+  const blocks = welcomeJsonLdBlocks();
+  const webPage = blocks.find((block) => block['@type'] === 'WebPage');
+  const webSite = blocks.find((block) => block['@type'] === 'WebSite');
+  const organization = blocks.find((block) => block['@type'] === 'Organization');
+  const application = blocks.find((block) => block['@type'] === 'SoftwareApplication');
+  const metaDescription = html.match(/<meta name="description" content="([^"]+)"/u)?.[1];
+
+  assert.ok(webPage, 'welcome.html should include WebPage JSON-LD');
+  assert.ok(webSite, 'welcome.html should include WebSite JSON-LD');
+  assert.ok(organization, 'welcome.html should include Organization JSON-LD');
+  assert.ok(application, 'welcome.html should include SoftwareApplication JSON-LD');
+  assert.equal(webPage['@id'], `${CANONICAL_ORIGIN}#webpage`);
+  assert.equal(webPage.url, CANONICAL_ORIGIN);
+  assert.equal(webPage.description, metaDescription);
+  assert.deepEqual(webPage.isPartOf, { '@id': `${CANONICAL_ORIGIN}#website` });
+  assert.deepEqual(webPage.mainEntity, { '@id': `${CANONICAL_ORIGIN}#software` });
+  assert.equal(webSite['@id'], `${CANONICAL_ORIGIN}#website`);
+  assert.equal(webSite.url, CANONICAL_ORIGIN);
+  assert.deepEqual(webSite.publisher, { '@id': `${CANONICAL_ORIGIN}#organization` });
+  assert.equal(organization['@id'], `${CANONICAL_ORIGIN}#organization`);
+  assert.equal(organization.url, CANONICAL_ORIGIN);
+  assert.equal(application['@id'], `${CANONICAL_ORIGIN}#software`);
+  assert.equal(application.url, CANONICAL_ORIGIN);
+  assert.deepEqual(application.publisher, { '@id': `${CANONICAL_ORIGIN}#organization` });
 });
 
 test('built welcome page ships the real hero in #root before JavaScript', { skip }, () => {

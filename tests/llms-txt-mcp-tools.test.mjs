@@ -8,6 +8,9 @@ const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
 const REGISTRY_DIR = join(ROOT, 'api/mcp/registry');
 const LLMS_FILES = ['public/llms.txt', 'public/llms-full.txt', 'public/api/llms.txt'];
+const LLMS_TEXTS = new Map(
+  LLMS_FILES.map((rel) => [rel, readFileSync(join(ROOT, rel), 'utf-8')]),
+);
 
 // Every MCP tool name uses a verb prefix (get_/generate_/analyze_/search_/
 // describe_), so this picks tool citations out of the backticked prose
@@ -50,7 +53,7 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
   });
 
   for (const rel of LLMS_FILES) {
-    const text = readFileSync(join(ROOT, rel), 'utf-8');
+    const text = LLMS_TEXTS.get(rel);
     const cited = citedTools(text);
 
     it(`${rel} cites at least one MCP tool (section not silently dropped)`, () => {
@@ -69,4 +72,16 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
       );
     });
   }
+
+  it('public/llms.txt wraps every list-item URL in a Markdown link', () => {
+    const text = LLMS_TEXTS.get('public/llms.txt');
+    const listItemsWithUrls = text.split('\n').filter((line) => line.startsWith('- ') && /https?:\/\//.test(line));
+
+    assert.ok(listItemsWithUrls.length > 0, 'public/llms.txt should contain linked resources');
+    for (const line of listItemsWithUrls) {
+      assert.match(line, /^- \[[^\]]+\]\(https?:\/\/[^)]+\)/, `list item needs a primary Markdown link: ${line}`);
+      const withoutMarkdownLinks = line.replace(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g, '');
+      assert.doesNotMatch(withoutMarkdownLinks, /https?:\/\//, `list item contains a bare URL: ${line}`);
+    }
+  });
 });
