@@ -679,7 +679,7 @@ async function fetchAndParseRss(
     // Try direct fetch first
     const direct = await fetchRssText(feed.url, signal);
     let text = direct.text;
-    let failure: FeedFetchAttempt['failure'] = direct.failure;
+    const failure: FeedFetchAttempt['failure'] = direct.failure;
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
     let relayFailure: FeedFetchAttempt['failure'] = null;
