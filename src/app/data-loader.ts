@@ -134,7 +134,7 @@ import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo, loadFromStorage, saveToStorage } from '@/utils';
-import { localYmd } from '@/utils/local-date';
+import { addLocalDays, localYmd } from '@/utils/local-date';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
@@ -2686,8 +2686,8 @@ export class DataLoaderManager implements AppModule {
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const today = new Date();
-      const past = new Date(today.getTime() - 7 * 86400_000);
-      const future = new Date(today.getTime() + 14 * 86400_000);
+      const past = addLocalDays(today, -7);
+      const future = addLocalDays(today, 14);
       const resp = await client.listEarningsCalendar({
         fromDate: localYmd(past),
         toDate: localYmd(future),

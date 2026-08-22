@@ -3074,10 +3074,10 @@
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
       "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "EMELKEDÉSI SEBESSÉG",
+      "manufacturer": "GYÁRTÓ",
+      "owner": "TULAJDONOS",
+      "builtYear": "ÉPÍTÉSI ÉV"
     },
     "militaryVessel": {
       "aisDark": "AIS SÖTÉT",
@@ -3123,7 +3123,7 @@
       "vesselsCount": "{{count}} HAJÓ",
       "vessels": "HAJÓK",
       "trackedVessels": "KÖVETETT HAJÓK",
-      "showLess": "Show less"
+      "showLess": "Kevesebb megjelenítése"
     },
     "naturalEvent": {
       "closed": "LEZÁRVA",
@@ -3418,8 +3418,8 @@
     "fontFamilyDesc": "Monospace a technikai megjelenéshez, rendszer alapértelmezés az olvashatóság kedvéért.",
     "fontMono": "Monospace",
     "fontSystem": "Rendszer alapértelmezés",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "Szövegméret",
+    "followGlobalFontScale": "Globális beállítás használata"
   },
   "premium": {
     "pro": "PRO",

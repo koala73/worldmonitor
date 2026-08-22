@@ -5,7 +5,7 @@
 
 import { pipeline, env } from '@xenova/transformers';
 import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
-import { createLoadDeduper } from './load-dedupe';
+import { AsyncResourceLifecycle } from './async-resource-lifecycle';
 import { storeVectors, searchVectors, getCount, resetStore, sanitizeTitle, type VectorSearchResult } from './vector-db';
 
 // Configure transformers.js
@@ -117,14 +117,12 @@ type MLWorkerMessage =
   | VectorStoreCountMessage
   | VectorStoreResetMessage;
 
-// Loaded pipelines (using unknown since pipeline types vary)
+// Pipeline types vary by task in transformers.js.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const loadedPipelines = new Map<string, any>();
-// Concurrent loads of the same model share one download; the entry clears
-// when the load settles (NOT only on success), so a transient failure is
-// retried on the next request instead of poisoning the model for the whole
-// session (#5425).
-const modelLoads = createLoadDeduper<string>();
+type ModelPipeline = any;
+const modelPipelines = new AsyncResourceLifecycle<string, ModelPipeline>(async (pipe) => {
+  if (typeof pipe?.dispose === 'function') await pipe.dispose();
+});
 
 function getModelConfig(modelId: string): ModelConfig | undefined {
   return MODEL_CONFIGS.find(m => m.id === modelId);
@@ -134,106 +132,88 @@ function isSupportedModelId(modelId: string): boolean {
   return !!getModelConfig(modelId);
 }
 
-async function loadModel(modelId: string): Promise<void> {
-  if (loadedPipelines.has(modelId)) return;
-
+async function createModelPipeline(modelId: string): Promise<ModelPipeline> {
   const config = getModelConfig(modelId);
   if (!config) throw new Error(`Unknown model: ${modelId}`);
 
-  // Concurrent callers share one in-flight load; a failed load clears on
-  // settle so the next request re-attempts the download (#5425).
-  return modelLoads.run(modelId, async () => {
-    console.log(`[MLWorker] Loading model: ${config.hfModel}`);
-    const startTime = Date.now();
+  console.log(`[MLWorker] Loading model: ${config.hfModel}`);
+  const startTime = Date.now();
 
-    // Suppress verbose ONNX Runtime warnings (CleanUnusedInitializersAndNodeArgs)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ort = (globalThis as any).ort;
-    if (ort?.env) { try { ort.env.logLevel = 'error'; } catch { /* ignore */ } }
+  // Suppress verbose ONNX Runtime warnings (CleanUnusedInitializersAndNodeArgs)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ort = (globalThis as any).ort;
+  if (ort?.env) { try { ort.env.logLevel = 'error'; } catch { /* ignore */ } }
 
-    const pipe = await pipeline(config.task, config.hfModel, {
-      progress_callback: (progress: { status: string; progress?: number }) => {
-        if (progress.status === 'progress' && progress.progress !== undefined) {
-          self.postMessage({
-            type: 'model-progress',
-            modelId,
-            progress: progress.progress,
-          });
-        }
-      },
-    });
-
-    loadedPipelines.set(modelId, pipe);
-    console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
-
-    // Notify manager that model is now available (no id = unsolicited notification)
-    self.postMessage({ type: 'model-loaded', modelId });
+  const pipe = await pipeline(config.task, config.hfModel, {
+    progress_callback: (progress: { status: string; progress?: number }) => {
+      if (progress.status === 'progress' && progress.progress !== undefined) {
+        self.postMessage({
+          type: 'model-progress',
+          modelId,
+          progress: progress.progress,
+        });
+      }
+    },
   });
+
+  console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
+  self.postMessage({ type: 'model-loaded', modelId });
+  return pipe;
 }
 
-function unloadModel(modelId: string): void {
-  const pipe = loadedPipelines.get(modelId);
-  if (pipe) {
-    loadedPipelines.delete(modelId);
-    // Dropping only the Map reference kept every ONNX InferenceSession alive
-    // until worker termination, so each desktop tab-hide cycle (which calls
-    // unloadOptionalModels) leaked a full WASM-heap model set. dispose() is
-    // fire-and-forget: unload stays synchronous from the caller's view.
-    void Promise.resolve(pipe?.dispose?.()).catch(() => {});
-    console.log(`[MLWorker] Unloaded model: ${modelId}`);
-  }
+async function loadModel(modelId: string): Promise<void> {
+  await modelPipelines.load(modelId, () => createModelPipeline(modelId));
+}
+
+async function unloadModel(modelId: string): Promise<void> {
+  const disposed = await modelPipelines.unload(modelId);
+  if (disposed) console.log(`[MLWorker] Unloaded model: ${modelId}`);
 }
 
 async function embedTexts(texts: string[]): Promise<number[][]> {
-  await loadModel('embeddings');
-  const pipe = loadedPipelines.get('embeddings')!;
-
-  const results: number[][] = [];
-  for (const text of texts) {
-    const output = await pipe(text, { pooling: 'mean', normalize: true });
-    results.push(Array.from(output.data as Float32Array));
-  }
-
-  return results;
+  return modelPipelines.use('embeddings', () => createModelPipeline('embeddings'), async (pipe) => {
+    const results: number[][] = [];
+    for (const text of texts) {
+      const output = await pipe(text, { pooling: 'mean', normalize: true });
+      results.push(Array.from(output.data as Float32Array));
+    }
+    return results;
+  });
 }
 
 async function summarizeTexts(texts: string[], modelId = 'summarization'): Promise<string[]> {
   if (!isSupportedModelId(modelId)) {
     throw new Error(`Unknown model: ${modelId}`);
   }
-  await loadModel(modelId);
-  const pipe = loadedPipelines.get(modelId)!;
-
-  const results: string[] = [];
-  for (const text of texts) {
-    const output = await pipe(`summarize: ${text}`, {
-      max_new_tokens: 64,
-      min_length: 10,
-    });
-    const result = (output as Array<{ generated_text: string }>)[0];
-    results.push(result?.generated_text ?? '');
-  }
-
-  return results;
+  return modelPipelines.use(modelId, () => createModelPipeline(modelId), async (pipe) => {
+    const results: string[] = [];
+    for (const text of texts) {
+      const output = await pipe(`summarize: ${text}`, {
+        max_new_tokens: 64,
+        min_length: 10,
+      });
+      const result = (output as Array<{ generated_text: string }>)[0];
+      results.push(result?.generated_text ?? '');
+    }
+    return results;
+  });
 }
 
 async function classifySentiment(texts: string[]): Promise<Array<{ label: string; score: number }>> {
-  await loadModel('sentiment');
-  const pipe = loadedPipelines.get('sentiment')!;
-
-  const results: Array<{ label: string; score: number }> = [];
-  for (const text of texts) {
-    const output = await pipe(text);
-    const result = (output as Array<{ label: string; score: number }>)[0];
-    if (result) {
-      results.push({
-        label: result.label.toLowerCase() === 'positive' ? 'positive' : 'negative',
-        score: result.score,
-      });
+  return modelPipelines.use('sentiment', () => createModelPipeline('sentiment'), async (pipe) => {
+    const results: Array<{ label: string; score: number }> = [];
+    for (const text of texts) {
+      const output = await pipe(text);
+      const result = (output as Array<{ label: string; score: number }>)[0];
+      if (result) {
+        results.push({
+          label: result.label.toLowerCase() === 'positive' ? 'positive' : 'negative',
+          score: result.score,
+        });
+      }
     }
-  }
-
-  return results;
+    return results;
+  });
 }
 
 interface NEREntity {
@@ -245,29 +225,27 @@ interface NEREntity {
 }
 
 async function extractEntities(texts: string[]): Promise<NEREntity[][]> {
-  await loadModel('ner');
-  const pipe = loadedPipelines.get('ner')!;
-
-  const results: NEREntity[][] = [];
-  for (const text of texts) {
-    const output = await pipe(text);
-    const entities = (output as Array<{
-      entity_group: string;
-      score: number;
-      word: string;
-      start: number;
-      end: number;
-    }>).map(e => ({
-      text: e.word,
-      type: e.entity_group,
-      confidence: e.score,
-      start: e.start,
-      end: e.end,
-    }));
-    results.push(entities);
-  }
-
-  return results;
+  return modelPipelines.use('ner', () => createModelPipeline('ner'), async (pipe) => {
+    const results: NEREntity[][] = [];
+    for (const text of texts) {
+      const output = await pipe(text);
+      const entities = (output as Array<{
+        entity_group: string;
+        score: number;
+        word: string;
+        start: number;
+        end: number;
+      }>).map(e => ({
+        text: e.word,
+        type: e.entity_group,
+        confidence: e.score,
+        start: e.start,
+        end: e.end,
+      }));
+      results.push(entities);
+    }
+    return results;
+  });
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -361,7 +339,7 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
       }
 
       case 'unload-model': {
-        unloadModel(message.modelId);
+        await unloadModel(message.modelId);
         self.postMessage({
           type: 'model-unloaded',
           id: message.id,
@@ -497,15 +475,13 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
         self.postMessage({
           type: 'status-result',
           id: message.id,
-          loadedModels: Array.from(loadedPipelines.keys()),
+          loadedModels: modelPipelines.keys(),
         });
         break;
       }
 
       case 'reset': {
-        const pipes = [...loadedPipelines.values()];
-        loadedPipelines.clear();
-        for (const pipe of pipes) void Promise.resolve(pipe?.dispose?.()).catch(() => {});
+        await modelPipelines.reset();
         self.postMessage({ type: 'reset-complete' });
         break;
       }

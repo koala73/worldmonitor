@@ -3074,10 +3074,10 @@
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
       "attribution": "Source: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "سرعت صعود",
+      "manufacturer": "سازنده",
+      "owner": "مالک",
+      "builtYear": "سال ساخت"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",
@@ -3123,7 +3123,7 @@
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "VESSELS",
       "trackedVessels": "TRACKED VESSELS",
-      "showLess": "Show less"
+      "showLess": "نمایش کمتر"
     },
     "naturalEvent": {
       "closed": "CLOSED",
@@ -3418,8 +3418,8 @@
     "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
     "fontMono": "Monospace",
     "fontSystem": "System Default",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "اندازه متن",
+    "followGlobalFontScale": "استفاده از تنظیم سراسری"
   },
   "premium": {
     "pro": "PRO",

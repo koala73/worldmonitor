@@ -126,6 +126,11 @@ class MLWorkerManager {
           return;
         }
 
+        if (data.type === 'reset-complete') {
+          this.loadedModels.clear();
+          return;
+        }
+
         if (data.type === 'error') {
           const pending = data.id ? this.pendingRequests.get(data.id) : null;
           if (pending) {
@@ -268,7 +273,6 @@ class MLWorkerManager {
     try {
       return await this.request<boolean>('unload-model', { modelId });
     } catch {
-      this.loadedModels.delete(modelId);
       return false;
     }
   }
@@ -379,7 +383,6 @@ class MLWorkerManager {
   reset(): void {
     if (this.worker) {
       this.worker.postMessage({ type: 'reset' });
-      this.loadedModels.clear();
     }
   }
 

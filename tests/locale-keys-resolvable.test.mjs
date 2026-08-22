@@ -9,7 +9,7 @@
 //
 // Dynamically-composed keys (t(`panels.${id}.name`) fragments like "panels."
 // or "commands.regions.") cannot be validated statically and are ignored:
-// the scan only asserts on complete dotted literals ending in [a-zA-Z0-9_].
+// the scan only asserts on complete dotted literals ending in [a-zA-Z0-9_-].
 //
 // Run: node --test tests/locale-keys-resolvable.test.mjs
 
@@ -21,7 +21,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCAN_DIRS = ['src/components', 'src/app'];
-const PLURAL_SUFFIXES = ['_one', '_other', '_zero', '_two', '_few', '_many'];
+const ENGLISH_PLURAL_SUFFIXES = ['_one', '_other'];
+const LITERAL_KEY_PATTERN = /\bt\(\s*(["'`])([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)+)\1/g;
 
 function* walkTs(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -43,19 +44,22 @@ function keyResolves(en, dotted) {
   const v = cur[last];
   if (typeof v === 'string') return true;
   // Plural family stored as flat siblings of the base name.
-  return PLURAL_SUFFIXES.some((s) => typeof cur[`${last}${s}`] === 'string');
+  return ENGLISH_PLURAL_SUFFIXES.every((suffix) => typeof cur[`${last}${suffix}`] === 'string');
+}
+
+function extractLiteralKeys(source) {
+  return [...source.matchAll(LITERAL_KEY_PATTERN)].map((match) => match[2]);
 }
 
 test('every static t() key resolves in en.json', () => {
   const en = JSON.parse(readFileSync(join(ROOT, 'src', 'locales', 'en.json'), 'utf8'));
-  const literal = /\bt\(\s*(["'`])([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)\1/g;
   const missing = [];
   for (const dir of SCAN_DIRS) {
     for (const file of walkTs(join(ROOT, dir))) {
       const src = readFileSync(file, 'utf8');
-      for (const m of src.matchAll(literal)) {
-        if (!keyResolves(en, m[2])) {
-          missing.push(`${file.replace(join(ROOT), '')}: ${m[2]}`);
+      for (const key of extractLiteralKeys(src)) {
+        if (!keyResolves(en, key)) {
+          missing.push(`${file.replace(join(ROOT), '')}: ${key}`);
         }
       }
     }
@@ -76,6 +80,12 @@ test('scanner self-check: known shapes are classified correctly', () => {
   };
   assert.equal(keyResolves(en, 'a.b'), true);
   assert.equal(keyResolves(en, 'a.signals'), true); // plural family
+  assert.equal(keyResolves({ a: { signals_one: 'one' } }, 'a.signals'), false);
+  assert.equal(keyResolves({ a: { signals_other: 'other' } }, 'a.signals'), false);
   assert.equal(keyResolves(en, 'a.missing'), false);
   assert.equal(keyResolves(en, 'flat.nested'), false); // parent is a string
+  assert.deepEqual(
+    extractLiteralKeys("t('popups.base.types.us-nato'); t(`a.b`);"),
+    ['popups.base.types.us-nato', 'a.b'],
+  );
 });

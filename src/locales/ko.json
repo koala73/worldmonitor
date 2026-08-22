@@ -165,9 +165,7 @@
       "energyMix": "전원 구성",
       "coal": "석탄",
       "noMajorDisruptions": "보고된 주요 중단 없음",
-      "activeDisruptions_one": "활성 중단 {{count}}건",
       "activeDisruptions_other": "활성 중단 {{count}}건",
-      "activeSignals_one": "활성 신호 {{count}}건",
       "activeSignals_other": "활성 신호 {{count}}건",
       "aviationSource": "항공 모니터링",
       "hazardSource": "국가 인텔리전스 신호",
@@ -1404,7 +1402,6 @@
       "clusters": "클러스터",
       "alertsLabel": "알림",
       "alert": "알림",
-      "sources_one": "{{count}}개 출처",
       "sources_other": "{{count}}개 출처",
       "briefTech": "기술 브리프",
       "briefCommodity": "상품 브리프",
@@ -2036,17 +2033,12 @@
       },
       "time": {
         "justNow": "방금",
-        "hoursAgo_one": "{{count}}시간 전",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_one": "{{count}}일 전",
         "daysAgo_other": "{{count}}일 전"
       },
       "filters": {
-        "alert_one": "{{count}} 알림",
         "alert_other": "{{count}} 알림",
-        "warning_one": "{{count}} 경고",
         "warning_other": "{{count}} 경고",
-        "watch_one": "{{count}} 감시",
         "watch_other": "{{count}} 감시"
       },
       "errors": {
@@ -2209,7 +2201,6 @@
       "rationale": "근거:",
       "driver": "동인:",
       "appliesToNext": "다음 AI 재생성에 적용",
-      "signals_one": "{{count}}개 신호",
       "signals_other": "{{count}}개 신호",
       "disclaimer": "AI 생성 거래 신호는 정보 제공 목적입니다. 투자 조언이 아닙니다. 항상 자신의 조사를 수행하세요.",
       "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요."
@@ -2440,7 +2431,6 @@
         "new": "신규",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}}개 지정",
       "designations_other": "{{count}}개 지정",
       "fallbacks": {
         "unattributed": "미귀속",
@@ -2478,9 +2468,7 @@
         "updated": "{{time}}에 업데이트됨"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}시간 전",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_one": "{{count}}일 전",
         "daysAgo_other": "{{count}}일 전"
       },
       "confidence": {
@@ -2510,7 +2498,6 @@
     "correlation": {
       "loading": "데이터를 기다리는 중입니다...",
       "empty": "검출된 활성 수렴이 없습니다.",
-      "signals_one": "{{count}}개 신호",
       "signals_other": "{{count}}개 신호",
       "analyzing": "분석 중입니다...",
       "viewOnMap": "지도에서 보기"
@@ -2537,16 +2524,11 @@
         "industrial": "industrial",
         "strategic": "strategic"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
       "sources_other": "{{count}} src",
       "age": {
-        "minutesAgo_one": "{{count}}분 전",
         "minutesAgo_other": "{{count}}분 전",
-        "hoursAgo_one": "{{count}}시간 전",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_one": "{{count}}일 전",
         "daysAgo_other": "{{count}}일 전"
       }
     },
@@ -3005,10 +2987,10 @@
       "hexCode": "HEX 코드",
       "squawk": "스쿼크",
       "attribution": "출처: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "상승률",
+      "manufacturer": "제조사",
+      "owner": "운영사",
+      "builtYear": "제조년도"
     },
     "militaryVessel": {
       "aisDark": "AIS 소실",
@@ -3054,7 +3036,7 @@
       "vesselsCount": "{{count}}척 함정",
       "vessels": "함정",
       "trackedVessels": "추적 중인 함정",
-      "showLess": "Show less"
+      "showLess": "축소"
     },
     "naturalEvent": {
       "closed": "종료",
@@ -3344,8 +3326,8 @@
     "fontFamilyDesc": "기술적 모양을 위해 모노스페이스, 더 쉬운 읽기를 위해 시스템 기본값.",
     "fontMono": "모노스페이스",
     "fontSystem": "시스템 기본값",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "텍스트 크기",
+    "followGlobalFontScale": "전역 설정 사용"
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",

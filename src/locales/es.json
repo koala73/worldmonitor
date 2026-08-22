@@ -3015,10 +3015,10 @@
       "hexCode": "CÓDIGO HEXAGONAL",
       "squawk": "GRAZNIDO",
       "attribution": "Fuente: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "VELOCIDAD DE ASCENSO",
+      "manufacturer": "FABRICANTE",
+      "owner": "PROPIETARIO",
+      "builtYear": "AÑO DE FABRICACIÓN"
     },
     "militaryVessel": {
       "aisDark": "AIS OSCURO",
@@ -3064,7 +3064,7 @@
       "vesselsCount": "{{count}} BUQUES",
       "vessels": "BUQUES",
       "trackedVessels": "BUQUES CON ORUGAS",
-      "showLess": "Show less"
+      "showLess": "Mostrar menos"
     },
     "naturalEvent": {
       "closed": "CERRADO",
@@ -3362,8 +3362,8 @@
     "fontFamilyDesc": "Monoespaciada para un aspecto técnico, sistema predeterminado para lectura más fácil.",
     "fontMono": "Monoespaciada",
     "fontSystem": "Sistema Predeterminado",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "Tamaño de texto",
+    "followGlobalFontScale": "Usar global"
   },
   "contextMenu": {
     "openCountryBrief": "Abrir resumen del país",

@@ -165,9 +165,7 @@
       "energyMix": "電力結構",
       "coal": "煤炭",
       "noMajorDisruptions": "未報告重大中斷",
-      "activeDisruptions_one": "{{count}} 起活躍中斷",
       "activeDisruptions_other": "{{count}} 起活躍中斷",
-      "activeSignals_one": "{{count}} 個活躍訊號",
       "activeSignals_other": "{{count}} 個活躍訊號",
       "aviationSource": "航空監測",
       "hazardSource": "國家情報訊號",
@@ -1404,7 +1402,6 @@
       "clusters": "聚類",
       "alertsLabel": "警報",
       "alert": "警報",
-      "sources_one": "{{count}} 個來源",
       "sources_other": "{{count}} 個來源",
       "briefTech": "技術簡報",
       "briefCommodity": "商品簡報",
@@ -2036,17 +2033,12 @@
       },
       "time": {
         "justNow": "剛才",
-        "hoursAgo_one": "{{count}}小時前",
         "hoursAgo_other": "{{count}}小時前",
-        "daysAgo_one": "{{count}}天前",
         "daysAgo_other": "{{count}}天前"
       },
       "filters": {
-        "alert_one": "{{count}} 條警報",
         "alert_other": "{{count}} 條警報",
-        "warning_one": "{{count}} 條警告",
         "warning_other": "{{count}} 條警告",
-        "watch_one": "{{count}} 條監測",
         "watch_other": "{{count}} 條監測"
       },
       "errors": {
@@ -2209,7 +2201,6 @@
       "rationale": "理由：",
       "driver": "驅動因素：",
       "appliesToNext": "適用於下一次AI重新生成",
-      "signals_one": "{{count}}個訊號",
       "signals_other": "{{count}}個訊號",
       "disclaimer": "AI生成的交易訊號僅供參考。非投資建議。請自行研究。",
       "unavailable": "AI市場影響在每次預測執行後生成。請稍後檢視。"
@@ -2440,7 +2431,6 @@
         "new": "新增",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}} 項指定",
       "designations_other": "{{count}} 項指定",
       "fallbacks": {
         "unattributed": "未歸屬",
@@ -2478,9 +2468,7 @@
         "updated": "更新於 {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h 前",
         "hoursAgo_other": "{{count}}h 前",
-        "daysAgo_one": "{{count}}d 前",
         "daysAgo_other": "{{count}}d 前"
       },
       "confidence": {
@@ -2510,7 +2498,6 @@
     "correlation": {
       "loading": "等待資料...",
       "empty": "未檢測到活躍收斂",
-      "signals_one": "{{count}} 個訊號",
       "signals_other": "{{count}} 個訊號",
       "analyzing": "分析中...",
       "viewOnMap": "在地圖上檢視"
@@ -2537,16 +2524,11 @@
         "industrial": "工業",
         "strategic": "戰略性"
       },
-      "observations_one": "{{count}} 次觀測",
       "observations_other": "{{count}} 次觀測",
-      "sources_one": "{{count}} 個來源",
       "sources_other": "{{count}} 個來源",
       "age": {
-        "minutesAgo_one": "{{count}} 分鐘前",
         "minutesAgo_other": "{{count}} 分鐘前",
-        "hoursAgo_one": "{{count}} 小時前",
         "hoursAgo_other": "{{count}} 小時前",
-        "daysAgo_one": "{{count}} 天前",
         "daysAgo_other": "{{count}} 天前"
       }
     },
@@ -3005,10 +2987,10 @@
       "hexCode": "HEX程式碼",
       "squawk": "應答機程式碼",
       "attribution": "來源：adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "爬升率",
+      "manufacturer": "製造商",
+      "owner": "所有者",
+      "builtYear": "製造年份"
     },
     "militaryVessel": {
       "aisDark": "AIS訊號消失",
@@ -3054,7 +3036,7 @@
       "vesselsCount": "{{count}}艘艦艇",
       "vessels": "艦艇",
       "trackedVessels": "跟蹤艦艇",
-      "showLess": "Show less"
+      "showLess": "顯示更少"
     },
     "naturalEvent": {
       "closed": "已結束",
@@ -3344,8 +3326,8 @@
     "fontFamilyDesc": "等寬字型用於技術外觀，系統預設字型便於閱讀。",
     "fontMono": "等寬字型",
     "fontSystem": "系統預設",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "文字大小",
+    "followGlobalFontScale": "使用全域性設定"
   },
   "contextMenu": {
     "openCountryBrief": "開啟國家簡報",

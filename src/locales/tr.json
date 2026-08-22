@@ -3005,10 +3005,10 @@
       "hexCode": "HEX KODU",
       "squawk": "SQUAWK",
       "attribution": "Kaynak: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "TIRMANIŞ HIZI",
+      "manufacturer": "ÜRETİCİ",
+      "owner": "SAHİBİ",
+      "builtYear": "İNŞA YILI"
     },
     "militaryVessel": {
       "aisDark": "AIS KARANLIK",
@@ -3054,7 +3054,7 @@
       "vesselsCount": "{{count}} GEMI",
       "vessels": "GEMI",
       "trackedVessels": "TAKIP EDILEN GEMI",
-      "showLess": "Show less"
+      "showLess": "Daha azını göster"
     },
     "naturalEvent": {
       "closed": "KAPANDI",
@@ -3344,8 +3344,8 @@
     "fontFamilyDesc": "Teknik görünüş için Monospace, daha kolay okuma için sistem varsayılanı.",
     "fontMono": "Monospace",
     "fontSystem": "Sistem Varsayılanı",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "Metin boyutu",
+    "followGlobalFontScale": "Genel ayarı kullan"
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",

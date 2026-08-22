@@ -3041,10 +3041,10 @@
       "hexCode": "HEX-КОД",
       "squawk": "СКВОК",
       "attribution": "Источник: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "СКОРОСТЬ НАБОРА ВЫСОТЫ",
+      "manufacturer": "ПРОИЗВОДИТЕЛЬ",
+      "owner": "ВЛАДЕЛЕЦ",
+      "builtYear": "ГОД ВЫПУСКА"
     },
     "militaryVessel": {
       "aisDark": "AIS ВЫКЛЮЧЕН",
@@ -3090,7 +3090,7 @@
       "vesselsCount": "{{count}} КОРАБЛЕЙ",
       "vessels": "КОРАБЛИ",
       "trackedVessels": "ОТСЛЕЖИВАЕМЫЕ КОРАБЛИ",
-      "showLess": "Show less"
+      "showLess": "Показать меньше"
     },
     "naturalEvent": {
       "closed": "ЗАВЕРШЕНО",
@@ -3380,8 +3380,8 @@
     "fontFamilyDesc": "Моноширинный для технического вида, системный по умолчанию для удобства чтения.",
     "fontMono": "Моноширинный",
     "fontSystem": "Системный шрифт",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "Размер текста",
+    "followGlobalFontScale": "Использовать глобальный размер"
   },
   "contextMenu": {
     "openCountryBrief": "Открыть обзор страны",

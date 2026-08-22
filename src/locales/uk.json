@@ -197,7 +197,11 @@
         "partial": "Partial",
         "stale": "Stale",
         "unavailable": "Unavailable"
-      }
+      },
+      "activeDisruptions_few": "{{count}} активні збої",
+      "activeDisruptions_many": "{{count}} активних збоїв",
+      "activeSignals_few": "{{count}} активні сигнали",
+      "activeSignals_many": "{{count}} активних сигналів"
     },
     "ownFlights": "Own Flights",
     "foreignFlights": "Foreign Flights",
@@ -1134,7 +1138,9 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "disclaimer": "AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research.",
-      "unavailable": "AI market implications are generated after each forecast run. Check back shortly."
+      "unavailable": "AI market implications are generated after each forecast run. Check back shortly.",
+      "signals_few": "{{count}} сигнали",
+      "signals_many": "{{count}} сигналів"
     },
     "status": {
       "updatedAt": "Updated {{time}}"
@@ -1563,7 +1569,9 @@
       "compiledFrom": "Compiled from {{stories}} stories across {{sources}} sources",
       "provenanceTitle": "Coverage provenance: how many ingested stories and distinct sources this brief was selected from",
       "briefFreshness": "Generated {{minutes}}m ago · newest source {{hours}}h old",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Story details ({{count}})",
+      "sources_few": "{{count}} джерела",
+      "sources_many": "{{count}} джерел"
     },
     "settings": {
       "exportSettings": "Export Settings",
@@ -2250,7 +2258,11 @@
         "hoursAgo_one": "{{count}}h ago",
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}d ago",
-        "daysAgo_other": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d ago",
+        "hoursAgo_few": "{{count}}г тому",
+        "hoursAgo_many": "{{count}}г тому",
+        "daysAgo_few": "{{count}}д тому",
+        "daysAgo_many": "{{count}}д тому"
       },
       "filters": {
         "alert_one": "{{count}} Alert",
@@ -2258,7 +2270,13 @@
         "warning_one": "{{count}} Warning",
         "warning_other": "{{count}} Warnings",
         "watch_one": "{{count}} Watch",
-        "watch_other": "{{count}} Watches"
+        "watch_other": "{{count}} Watches",
+        "alert_few": "{{count}} Сповіщення",
+        "alert_many": "{{count}} Сповіщень",
+        "warning_few": "{{count}} Попередження",
+        "warning_many": "{{count}} Попереджень",
+        "watch_few": "{{count}} Моніторингу",
+        "watch_many": "{{count}} Моніторингу"
       },
       "errors": {
         "noData": "No outbreak data available",
@@ -2534,7 +2552,9 @@
         "unattributed": "Unattributed",
         "program": "Program",
         "undated": "undated"
-      }
+      },
+      "designations_few": "{{count}} санкції",
+      "designations_many": "{{count}} санкцій"
     },
     "radiationWatch": {
       "title": "Radiation Watch",
@@ -2569,7 +2589,11 @@
         "hoursAgo_one": "{{count}}h ago",
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}d ago",
-        "daysAgo_other": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d ago",
+        "hoursAgo_few": "{{count}}г тому",
+        "hoursAgo_many": "{{count}}г тому",
+        "daysAgo_few": "{{count}}д тому",
+        "daysAgo_many": "{{count}}д тому"
       },
       "confidence": {
         "high": "high confidence",
@@ -2601,7 +2625,9 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "analyzing": "Analyzing...",
-      "viewOnMap": "View on map"
+      "viewOnMap": "View on map",
+      "signals_few": "{{count}} сигнали",
+      "signals_many": "{{count}} сигналів"
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -2635,8 +2661,18 @@
         "hoursAgo_one": "{{count}}h ago",
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}d ago",
-        "daysAgo_other": "{{count}}d ago"
-      }
+        "daysAgo_other": "{{count}}d ago",
+        "minutesAgo_few": "{{count}}хв тому",
+        "minutesAgo_many": "{{count}}хв тому",
+        "hoursAgo_few": "{{count}}г тому",
+        "hoursAgo_many": "{{count}}г тому",
+        "daysAgo_few": "{{count}}д тому",
+        "daysAgo_many": "{{count}}д тому"
+      },
+      "observations_few": "{{count}} спост.",
+      "observations_many": "{{count}} спост.",
+      "sources_few": "{{count}} джер.",
+      "sources_many": "{{count}} джер."
     },
     "chokepointStrip": {
       "title": "Chokepoint Status",
@@ -3074,10 +3110,10 @@
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
       "attribution": "Source: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "ШВИДКІСТЬ НАБОРУ ВИСОТИ",
+      "manufacturer": "ВИРОБНИК",
+      "owner": "ВЛАСНИК",
+      "builtYear": "РІК ВИПУСКУ"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",
@@ -3123,7 +3159,7 @@
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "VESSELS",
       "trackedVessels": "TRACKED VESSELS",
-      "showLess": "Show less"
+      "showLess": "Показати менше"
     },
     "naturalEvent": {
       "closed": "CLOSED",
@@ -3418,8 +3454,8 @@
     "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
     "fontMono": "Monospace",
     "fontSystem": "System Default",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "Розмір тексту",
+    "followGlobalFontScale": "Використовувати глобальний"
   },
   "premium": {
     "pro": "PRO",

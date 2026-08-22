@@ -165,9 +165,7 @@
       "energyMix": "สัดส่วนการผลิตไฟฟ้า",
       "coal": "ถ่านหิน",
       "noMajorDisruptions": "ไม่มีรายงานการหยุดชะงักที่สำคัญ",
-      "activeDisruptions_one": "การหยุดชะงักที่ยังดำเนินอยู่ {{count}} รายการ",
       "activeDisruptions_other": "การหยุดชะงักที่ยังดำเนินอยู่ {{count}} รายการ",
-      "activeSignals_one": "สัญญาณที่ยังดำเนินอยู่ {{count}} รายการ",
       "activeSignals_other": "สัญญาณที่ยังดำเนินอยู่ {{count}} รายการ",
       "aviationSource": "การติดตามการบิน",
       "hazardSource": "สัญญาณข่าวกรองรายประเทศ",
@@ -1404,7 +1402,6 @@
       "clusters": "กลุ่มข้อมูล",
       "alertsLabel": "การแจ้งเตือน",
       "alert": "การแจ้งเตือน",
-      "sources_one": "{{count}} แหล่งที่มา",
       "sources_other": "{{count}} แหล่งที่มา",
       "briefTech": "บทสรุปเทคโนโลยี",
       "briefCommodity": "บทสรุปสินค้าโภคนำ",
@@ -2036,17 +2033,12 @@
       },
       "time": {
         "justNow": "เมื่อสักครู่",
-        "hoursAgo_one": "{{count}}h ที่ผ่านมา",
         "hoursAgo_other": "{{count}}h ที่ผ่านมา",
-        "daysAgo_one": "{{count}}d ที่ผ่านมา",
         "daysAgo_other": "{{count}}d ที่ผ่านมา"
       },
       "filters": {
-        "alert_one": "{{count}} การแจ้งเตือน",
         "alert_other": "{{count}} การแจ้งเตือน",
-        "warning_one": "{{count}} คำเตือน",
         "warning_other": "{{count}} คำเตือน",
-        "watch_one": "{{count}} การติดตาม",
         "watch_other": "{{count}} การติดตาม"
       },
       "errors": {
@@ -2209,7 +2201,6 @@
       "rationale": "เหตุผล:",
       "driver": "ตัวขับเคลื่อน:",
       "appliesToNext": "ใช้กับการสร้างสัญญาณ AI ครั้งถัดไป",
-      "signals_one": "{{count}} สัญญาณ",
       "signals_other": "{{count}} สัญญาณ",
       "disclaimer": "สัญญาณการซื้อขายที่สร้างโดย AI เพื่อวัตถุประสงค์ข้อมูลเท่านั้น ไม่ใช่คำแนะนำการลงทุน ทำการศึกษาวิจัยของคุณเองเสมอ",
       "unavailable": "ผลกระทบต่อตลาด AI จะสร้างขึ้นหลังจากแต่ละครั้งที่รันการพยากรณ์ กรุณาตรวจสอบอีกครั้งในไม่ช่วงเวลา"
@@ -2440,7 +2431,6 @@
         "new": "ใหม่",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}} การระบุตัวตน",
       "designations_other": "{{count}} การระบุตัวตน",
       "fallbacks": {
         "unattributed": "ไม่ได้ระบุแหล่งที่มา",
@@ -2478,9 +2468,7 @@
         "updated": "อัปเดตแล้ว {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h ที่แล้ว",
         "hoursAgo_other": "{{count}}h ที่แล้ว",
-        "daysAgo_one": "{{count}}d ที่แล้ว",
         "daysAgo_other": "{{count}}d ที่แล้ว"
       },
       "confidence": {
@@ -2510,7 +2498,6 @@
     "correlation": {
       "loading": "รอข้อมูล...",
       "empty": "ไม่พบการบรรจบกันที่ใช้งานอยู่",
-      "signals_one": "{{count}} สัญญาณ",
       "signals_other": "{{count}} สัญญาณ",
       "analyzing": "กำลังวิเคราะห์...",
       "viewOnMap": "ดูบนแผนที่"
@@ -2537,16 +2524,11 @@
         "industrial": "อุตสาหกรรม",
         "strategic": "เชิงกลยุทธ์"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
       "sources_other": "{{count}} src",
       "age": {
-        "minutesAgo_one": "{{count}}m ที่แล้ว",
         "minutesAgo_other": "{{count}}m ที่แล้ว",
-        "hoursAgo_one": "{{count}}h ที่แล้ว",
         "hoursAgo_other": "{{count}}h ที่แล้ว",
-        "daysAgo_one": "{{count}}d ที่แล้ว",
         "daysAgo_other": "{{count}}d ที่แล้ว"
       }
     },
@@ -3005,10 +2987,10 @@
       "hexCode": "รหัส HEX",
       "squawk": "รหัส SQUAWK",
       "attribution": "แหล่งที่มา: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "อัตราการขึ้น",
+      "manufacturer": "ผู้ผลิต",
+      "owner": "เจ้าของ",
+      "builtYear": "ปีที่ผลิต"
     },
     "militaryVessel": {
       "aisDark": "AIS มืด",
@@ -3054,7 +3036,7 @@
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "เรือ",
       "trackedVessels": "เรือที่ติดตาม",
-      "showLess": "Show less"
+      "showLess": "แสดงน้อยลง"
     },
     "naturalEvent": {
       "closed": "ปิด",
@@ -3344,8 +3326,8 @@
     "fontFamilyDesc": "Monospace สำหรับลักษณะเทคนิค ฟอนต์เริ่มต้นของระบบสำหรับการอ่านที่ง่ายกว่า",
     "fontMono": "Monospace",
     "fontSystem": "ค่าเริ่มต้นของระบบ",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "ขนาดข้อความ",
+    "followGlobalFontScale": "ใช้การตั้งค่าทั่วโลก"
   },
   "contextMenu": {
     "openCountryBrief": "เปิดภาพรวมประเทศ",

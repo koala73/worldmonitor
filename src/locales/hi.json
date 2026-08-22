@@ -3074,10 +3074,10 @@
       "hexCode": "हेक्स कोड",
       "squawk": "स्क्वॉक",
       "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "चढ़ाई की दर",
+      "manufacturer": "निर्माता",
+      "owner": "मालिक",
+      "builtYear": "निर्माण वर्ष"
     },
     "militaryVessel": {
       "aisDark": "AIS डार्क",
@@ -3123,7 +3123,7 @@
       "vesselsCount": "{{count}} जहाज",
       "vessels": "जहाज",
       "trackedVessels": "ट्रैक किए गए जहाज",
-      "showLess": "Show less"
+      "showLess": "कम दिखाएँ"
     },
     "naturalEvent": {
       "closed": "बंद",
@@ -3418,8 +3418,8 @@
     "fontFamilyDesc": "तकनीकी लुक के लिए मोनोस्पेस, आसानी से पढ़ने के लिए सिस्टम डिफ़ॉल्ट।",
     "fontMono": "मोनोस्पेस",
     "fontSystem": "सिस्टम डिफ़ॉल्ट",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "पाठ आकार",
+    "followGlobalFontScale": "वैश्विक सेटिंग का उपयोग करें"
   },
   "premium": {
     "pro": "PRO",

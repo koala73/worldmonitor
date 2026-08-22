@@ -16,6 +16,7 @@ export {
   buildSummaryCacheKey as getCacheKey,
   selectUniqueHeadlinePairs,
 } from '../../../../src/utils/summary-cache-key';
+import { MAX_BODY_LEN } from '../../../../src/utils/summary-cache-key';
 
 // ========================================================================
 // Hash utility (unified FNV-1a 52-bit -- H-7 fix)
@@ -33,8 +34,6 @@ export { deduplicateHeadlines } from './dedup.mjs';
 // ========================================================================
 // SummarizeArticle: Full prompt builder (ported from _summarize-handler.js)
 // ========================================================================
-
-const MAX_BODY_INTERPOLATION_LEN = 400;
 
 export function buildArticlePrompts(
   headlines: string[],
@@ -65,7 +64,7 @@ export function buildArticlePrompts(
         // input contract is enforced by the caller (summarize-article.ts
         // sanitises bodies into string values before passing here).
         const rawBody = opts.bodies?.[i] ?? '';
-        const clipped = rawBody.slice(0, MAX_BODY_INTERPOLATION_LEN);
+        const clipped = rawBody.slice(0, MAX_BODY_LEN);
         return clipped.length > 0
           ? `${i + 1}. ${h}\n    Context: ${clipped}`
           : `${i + 1}. ${h}`;

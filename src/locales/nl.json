@@ -2682,10 +2682,10 @@
       "hexCode": "HEX-CODE",
       "squawk": "SQUAWK",
       "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "STIJGSNELHEID",
+      "manufacturer": "FABRIKANT",
+      "owner": "EIGENAAR",
+      "builtYear": "BOUWJAAR"
     },
     "militaryVessel": {
       "aisDark": "AIS DONKER",
@@ -2731,7 +2731,7 @@
       "vesselsCount": "{{count}} VAARTUIGEN",
       "vessels": "VAARTUIGEN",
       "trackedVessels": "BIJGEVOERDE VAARTUIGEN",
-      "showLess": "Show less"
+      "showLess": "Minder weergeven"
     },
     "naturalEvent": {
       "closed": "GESLOTEN",
@@ -3344,8 +3344,8 @@
     "fontFamilyDesc": "Monospace voor een technische uitstraling, systeemstandaard voor gemakkelijker lezen.",
     "fontMono": "Monospace",
     "fontSystem": "Systeemstandaard",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "Tekstgrootte",
+    "followGlobalFontScale": "Algemene instelling gebruiken"
   },
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",

@@ -3033,10 +3033,10 @@
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
       "attribution": "Zdroj: adsb.lol (ODbL) · OpenSky Network",
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
+      "climbRate": "RYCHLOST STOUPÁNÍ",
+      "manufacturer": "VÝROBCE",
+      "owner": "MAJITEL",
+      "builtYear": "ROK VÝROBY"
     },
     "militaryVessel": {
       "aisDark": "AIS VYP",
@@ -3082,7 +3082,7 @@
       "vesselsCount": "{{count}} PLAVIDEL",
       "vessels": "PLAVIDLA",
       "trackedVessels": "SLEDOVANÁ PLAVIDLA",
-      "showLess": "Show less"
+      "showLess": "Zobrazit méně"
     },
     "naturalEvent": {
       "closed": "ZAVŘENO",
@@ -3380,8 +3380,8 @@
     "fontFamilyDesc": "Monospace pro technický vzhled, systémové výchozí pro snazší čtení.",
     "fontMono": "Monospace",
     "fontSystem": "Systémové výchozí",
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
+    "panelFontScale": "Velikost textu",
+    "followGlobalFontScale": "Použít globální"
   },
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",
