@@ -170,6 +170,12 @@ export interface DigestCoverageBlock {
   droppedUndated: number;
   droppedFreshness: number;
   droppedCategoryCap: number;
+  /** #7084: true exactly when accepted older content is replayed. */
+  servedStale: boolean;
+  /** Age of the served content since acceptance, seconds (0 when fresh). */
+  staleAgeSeconds: number;
+  /** Closed stale reason: empty-rebuild | build-error ('' when fresh). */
+  staleReason: string;
 }
 
 export interface DigestCoverageInput {
@@ -194,6 +200,12 @@ export interface DigestCoverageInput {
     perCategoryCap: number;
   };
   buildStartMs: number;
+  /** #7084: why stale content is served ('' when fresh). */
+  staleReason?: string;
+  /** #7084: acceptedAt of the replayed snapshot, for the age field. */
+  staleAcceptedAtMs?: number;
+  /** Clock for the age computation — supplied so tests stay deterministic. */
+  nowMs?: number;
 }
 
 /** Classify one build into the closed coverage vocabulary. Pure. */
@@ -234,5 +246,10 @@ export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageB
     droppedUndated: input.drops.undated,
     droppedFreshness: input.drops.freshnessFloor,
     droppedCategoryCap: input.drops.perCategoryCap,
+    servedStale: input.servingStale,
+    staleAgeSeconds: input.servingStale && input.staleAcceptedAtMs !== undefined
+      ? Math.max(0, Math.round(((input.nowMs ?? Date.now()) - input.staleAcceptedAtMs) / 1000))
+      : 0,
+    staleReason: input.servingStale ? (input.staleReason ?? '') : '',
   };
 }

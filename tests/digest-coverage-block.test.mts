@@ -72,9 +72,25 @@ describe('digest coverage block (#7085)', () => {
     assert.equal(cov.publisherCount, 0);
   });
 
-  it('classifies stale when accepted older content is served (forward-compat with #7084)', () => {
-    const cov = buildDigestCoverage({ ...BASE, servingStale: true });
+  it('classifies stale when accepted older content is served (#7084)', () => {
+    const cov = buildDigestCoverage({
+      ...BASE,
+      servingStale: true,
+      staleReason: 'empty-rebuild',
+      staleAcceptedAtMs: BASE.buildStartMs - 90_000,
+      nowMs: BASE.buildStartMs,
+    });
     assert.equal(cov.state, 'stale');
+    assert.equal(cov.servedStale, true);
+    assert.equal(cov.staleReason, 'empty-rebuild');
+    assert.equal(cov.staleAgeSeconds, 90);
+  });
+
+  it('marks fresh builds with the empty stale fields', () => {
+    const cov = buildDigestCoverage({ ...BASE });
+    assert.equal(cov.servedStale, false);
+    assert.equal(cov.staleAgeSeconds, 0);
+    assert.equal(cov.staleReason, '');
   });
 
   it('counts distinct publishers of the SERVED items, not feeds or parsed items', () => {

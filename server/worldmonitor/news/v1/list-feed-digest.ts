@@ -8,7 +8,7 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline, readCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -21,6 +21,20 @@ import {
 } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import { buildDigestCoverage, classifyFeedAttempt, interleaveByCategory, type FeedFetchAttempt } from './_attempts';
+import {
+  ATTEMPT_META_TTL_S,
+  LASTGOOD_TTL_S,
+  classifyStaleSnapshot,
+  filterRevokedUrls,
+  isAcceptableDigest,
+  isEligibleScope,
+  attemptMetaKey,
+  lastGoodKey,
+  REVOKED_URLS_KEY,
+  shouldReplaceAccepted,
+  type AcceptedSnapshotMeta,
+  type StaleReason,
+} from './_lastgood';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
@@ -56,6 +70,134 @@ const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
+
+/**
+ * #7084: read the narrow revocation set. Best-effort — an unreadable set
+ * suppresses nothing (fail-open reads, fail-closed semantics would hide the
+ * entire digest behind a Redis hiccup), and the set is expected to sit at
+ * zero entries almost all of the time.
+ */
+async function readRevokedUrlSet(): Promise<Set<string>> {
+  try {
+    const results = await runRedisPipeline([['SMEMBERS', REVOKED_URLS_KEY]]);
+    const raw = results[0]?.result;
+    return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * #7084: publish a freshly built digest as the durable accepted snapshot.
+ * A candidate always serves the request that built it; whether it REPLACES
+ * the accepted snapshot follows shouldReplaceAccepted (an expired snapshot
+ * never vetoes; a materially narrower one does not displace a live richer
+ * one). Best-effort — a failure here never fails the response.
+ */
+async function publishAcceptedSnapshot(variant: string, lang: string, data: ListFeedDigestResponse): Promise<void> {
+  if (!isEligibleScope(variant, lang)) return;
+  const categoryCount = Object.keys(data.categories ?? {}).length;
+  const now = Date.now();
+  try {
+    if (isAcceptableDigest(data)) {
+      const currentRead = await readCachedJson(lastGoodKey(variant, lang));
+      const current = currentRead.status === 'hit' && currentRead.value && typeof currentRead.value === 'object'
+        ? currentRead.value as AcceptedSnapshotMeta
+        : null;
+      const decision = shouldReplaceAccepted(current, { categoryCount }, now);
+      if (decision.replace) {
+        await setCachedJson(lastGoodKey(variant, lang), { acceptedAt: now, categoryCount, data }, LASTGOOD_TTL_S);
+      } else {
+        console.log(`[digest-lastgood] kept live snapshot (${decision.reason}) variant=${variant} lang=${lang}`);
+      }
+    } else {
+      console.log(`[digest-lastgood] candidate rejected (not structurally acceptable) variant=${variant} lang=${lang}`);
+    }
+    await setCachedJson(attemptMetaKey(variant, lang), { ts: now, outcome: 'fresh' }, ATTEMPT_META_TTL_S).catch(() => {});
+  } catch (err) {
+    console.warn('[digest-lastgood] publish failed:', err);
+  }
+}
+
+/**
+ * #7084: durable last-good serving. Called only on the degraded paths —
+ * the rebuild was rejected (zero items / negative sentinel) or threw.
+ * Returns a stale-marked response when Redis is readable and the accepted
+ * snapshot is inside the six-hour contract, else null so the caller falls
+ * back to the warm-isolate cache (reported separately, never claimed as a
+ * durable read) and finally the explicit unavailable response.
+ */
+async function serveLastGood(
+  variant: string,
+  lang: string,
+  reason: StaleReason,
+): Promise<ListFeedDigestResponse | null> {
+  if (!isEligibleScope(variant, lang)) return null;
+  let snapshot: { acceptedAt: number; categoryCount: number; data: ListFeedDigestResponse } | null = null;
+  try {
+    const read = await readCachedJson(lastGoodKey(variant, lang));
+    if (read.status === 'error') {
+      // Redis unreadable: do NOT claim the durable fallback worked.
+      console.warn('[digest-serving] outcome=isolate-fallback reason=redis-unreadable');
+      return null;
+    }
+    if (read.status === 'hit' && read.value && typeof read.value === 'object') {
+      snapshot = read.value as { acceptedAt: number; categoryCount: number; data: ListFeedDigestResponse };
+    }
+  } catch {
+    console.warn('[digest-serving] outcome=isolate-fallback reason=redis-read-threw');
+    return null;
+  }
+
+  const now = Date.now();
+  const verdict = classifyStaleSnapshot(snapshot ? { acceptedAt: snapshot.acceptedAt, data: snapshot.data } : null, now);
+  if (!verdict.serve) {
+    console.log(`[digest-serving] outcome=${verdict.outcome} reason=${reason} variant=${variant} lang=${lang}`);
+    return null;
+  }
+
+  // Same revocation policy as fresh serialization: a revoked URL vanishes
+  // from stale content immediately, without waiting for a fresh build.
+  const revoked = await readRevokedUrlSet();
+  let data = snapshot!.data;
+  if (revoked.size > 0) {
+    const categories: Record<string, { items: ProtoNewsItem[] }> = {};
+    for (const [category, bucket] of Object.entries(data.categories ?? {})) {
+      const { kept } = filterRevokedUrls((bucket?.items ?? []) as Array<{ link?: string }>, revoked);
+      categories[category] = { items: kept as ProtoNewsItem[] };
+    }
+    data = { ...data, categories } as ListFeedDigestResponse;
+  }
+
+  // Content counts keep describing the SERVED body; only the state flips to
+  // 'stale', and attemptedAt names the failed attempt, not the content.
+  const coverage = data.coverage
+    ? {
+        ...data.coverage,
+        state: 'stale' as const,
+        servedStale: true,
+        staleAgeSeconds: verdict.ageSeconds,
+        staleReason: reason,
+        attemptedAt: new Date(now).toISOString(),
+      }
+    : undefined;
+
+  console.log(
+    `[digest-serving] outcome=stale reason=${reason} age_s=${verdict.ageSeconds} ` +
+      `variant=${variant} lang=${lang} revoked_urls=${revoked.size}`,
+  );
+  return { ...data, ...(coverage ? { coverage } : {}) };
+}
+
+/** Best-effort attempt metadata on the degraded paths (#7084). */
+async function recordFailedAttempt(variant: string, lang: string, outcome: string): Promise<void> {
+  if (!isEligibleScope(variant, lang)) return;
+  try {
+    await setCachedJson(attemptMetaKey(variant, lang), { ts: Date.now(), outcome }, ATTEMPT_META_TTL_S);
+  } catch {
+    /* telemetry only */
+  }
+}
 const ITEMS_PER_FEED = 5;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
@@ -1238,6 +1380,9 @@ export async function listFeedDigest(
       droppedUndated: 0,
       droppedFreshness: 0,
       droppedCategoryCap: 0,
+      servedStale: false,
+      staleAgeSeconds: 0,
+      staleReason: '',
     },
   });
 
@@ -1260,14 +1405,30 @@ export async function listFeedDigest(
 
     if (fresh === null) {
       markNoCacheResponse(ctx.request);
+      // #7084: rejected rebuild (zero items / negative sentinel). Try the
+      // durable accepted snapshot before the warm-isolate fallback.
+      await recordFailedAttempt(variant, lang, 'empty-rebuild');
+      const stale = await serveLastGood(variant, lang, 'empty-rebuild');
+      if (stale) return stale;
+      console.log('[digest-serving] outcome=isolate-fallback reason=empty-rebuild');
       return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
     }
 
     if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
     fallbackDigestCache.set(fallbackKey, { data: fresh, ts: Date.now() });
+    // #7084: the accepted snapshot is the durable fallback a cold isolate
+    // serves after a rejected rebuild. Awaited so a response finishing
+    // first cannot kill the write.
+    await publishAcceptedSnapshot(variant, lang, fresh);
     return fresh;
   } catch {
     markNoCacheResponse(ctx.request);
+    // #7084: the build itself failed. Same order — durable snapshot first,
+    // warm-isolate fallback second, explicit unavailable last.
+    await recordFailedAttempt(variant, lang, 'build-error');
+    const stale = await serveLastGood(variant, lang, 'build-error');
+    if (stale) return stale;
+    console.log('[digest-serving] outcome=isolate-fallback reason=build-error');
     return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
   }
 }
@@ -1739,13 +1900,20 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     }
 
     // Sort by importanceScore desc, then pubDate desc; then truncate per category.
+    const revokedUrls = await readRevokedUrlSet();
     const slicedByCategory = new Map<string, ParsedItem[]>();
     for (const [category, items] of results) {
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
       );
       ledgerDrops.perCategoryCap += Math.max(0, items.length - MAX_ITEMS_PER_CATEGORY);
-      slicedByCategory.set(category, items.slice(0, MAX_ITEMS_PER_CATEGORY));
+      // #7084: the same revocation set suppresses fresh and stale
+      // serialization. Revoked items do not consume category cap slots.
+      const { kept: allowed, dropped: revokedDropped } = filterRevokedUrls(items, revokedUrls);
+      if (revokedDropped > 0) {
+        console.log(`[digest] revoked ${revokedDropped} item(s) in category=${category}`);
+      }
+      slicedByCategory.set(category, allowed.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
 
     const allSliced = [...slicedByCategory.values()].flat();

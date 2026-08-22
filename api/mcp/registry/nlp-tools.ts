@@ -163,6 +163,10 @@ type NlpDigestFetch = {
     categoriesTotal: number;
     missingCategories: string[];
     stale: boolean;
+    /** #7084: why stale content is served ('' when fresh). */
+    staleReason: string;
+    /** #7084: age of the served content since acceptance, seconds. */
+    staleAgeSeconds: number;
   };
 };
 
@@ -211,6 +215,9 @@ async function fetchNlpDigestItems(
       categoryCompleted?: number;
       categoryTotal?: number;
       categoryStates?: Record<string, string>;
+      servedStale?: boolean;
+      staleAgeSeconds?: number;
+      staleReason?: string;
     };
   };
 
@@ -294,6 +301,8 @@ async function fetchNlpDigestItems(
         .map(([k]) => k)
         .slice(0, 12),
       stale: cov.state === 'stale',
+      staleReason: nlpTruncateUtf8(cov.staleReason ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
+      staleAgeSeconds: nlpClampInt(cov.staleAgeSeconds ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
     }
     : undefined;
 
