@@ -20,6 +20,14 @@ import {
   type ServerFeed,
 } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
+import { classifyFeedAttempt, interleaveByCategory, type FeedFetchAttempt } from './_attempts';
+import {
+  FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_TTL_S,
+  accumulatorPruneBounds,
+  buildForecastEvidenceMember,
+  isEligibleForecastEvidence,
+} from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
@@ -372,9 +380,16 @@ function computeImportanceScore(
 function createTimeoutLinkedController(parentSignal: AbortSignal): {
   controller: AbortController;
   cleanup: () => void;
+  timedOut: () => boolean;
 } {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
+  // #7083: distinguish the per-feed timeout from the parent (global digest
+  // deadline) abort so the attempt classifier can name the real cause.
+  let perFeedTimeoutFired = false;
+  const timeout = setTimeout(() => {
+    perFeedTimeoutFired = true;
+    controller.abort();
+  }, FEED_TIMEOUT_MS);
   const onAbort = () => controller.abort();
   parentSignal.addEventListener('abort', onAbort, { once: true });
 
@@ -384,6 +399,7 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
       clearTimeout(timeout);
       parentSignal.removeEventListener('abort', onAbort);
     },
+    timedOut: () => perFeedTimeoutFired,
   };
 }
 
@@ -420,8 +436,8 @@ export function looksLikeRssXml(text: string): boolean {
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
-): Promise<string | null> {
-  const { controller, cleanup } = createTimeoutLinkedController(signal);
+): Promise<{ text: string | null; failure: FeedFetchAttempt['failure'] }> {
+  const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
 
   try {
     const resp = await fetch(url, {
@@ -432,13 +448,18 @@ async function fetchRssText(
       },
       signal: controller.signal,
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) return { text: null, failure: 'direct-error' };
     const text = await resp.text();
     // Defensive: upstream may return HTTP 200 with an HTML interstitial
     // (Cloudflare bot challenge, captcha page). Reject up front so the
     // caller's relay fallback fires instead of caching an empty parse.
-    if (!looksLikeRssXml(text)) return null;
-    return text;
+    if (!looksLikeRssXml(text)) return { text: null, failure: 'direct-error' };
+    return { text, failure: null };
+  } catch {
+    return {
+      text: null,
+      failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'direct-error',
+    };
   } finally {
     cleanup();
   }
@@ -455,6 +476,9 @@ interface ParseResult {
   parsedTotal: number;     // count of <item>/<entry> blocks attempted
   droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
   droppedFeedCap?: number; // #4920: items beyond ITEMS_PER_FEED, previously uncounted
+  // #7083: how the fetch leg of this attempt actually ended. Absent on
+  // cache entries written before the field existed.
+  attempt?: FeedFetchAttempt;
 }
 
 // Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
@@ -494,7 +518,10 @@ async function fetchAndParseRss(
   // v7→v8: extend the same exclusion policy to duration-led anniversary
   // explainers ("10 years on from …"). Warm v7 rows already carry an
   // authoritative isOpinion="0", so force another cold parse on rollout.
-  const cacheKey = `rss:feed:v8:${variant}:${feed.url}`;
+  // v8→v9 (#7083): ParseResult gained the `attempt` field. Warm v8 rows
+  // lack it, so zero-item entries could not be classified between
+  // negative-cache and fresh-failure; force a cold parse on rollout.
+  const cacheKey = `rss:feed:v9:${variant}:${feed.url}`;
 
   try {
     // Read cache unconditionally — the v5 prefix guarantees pre-fix
@@ -505,12 +532,22 @@ async function fetchAndParseRss(
     // what the PR description claimed and what review P1 flagged was
     // missing.
     const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
-    if (cached) return cached;
+    if (cached) {
+      if (cached.parsedTotal === 0 && cached.items.length === 0) {
+        // A cached zero-item entry is the negative cache written by a
+        // previous failed attempt — say so instead of reporting 'empty'.
+        return { ...cached, attempt: { source: 'cache', failure: null, negativeCache: true } };
+      }
+      return cached;
+    }
 
     // Try direct fetch first
-    let text = await fetchRssText(feed.url, signal).catch(() => null);
+    const direct = await fetchRssText(feed.url, signal);
+    let text = direct.text;
+    let failure: FeedFetchAttempt['failure'] = direct.failure;
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
+    let relayFailure: FeedFetchAttempt['failure'] = null;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
     // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
@@ -519,7 +556,7 @@ async function fetchAndParseRss(
       if (relayBase) {
         relayBodyShape = 'fetch-error';
         const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-        const { controller, cleanup } = createTimeoutLinkedController(signal);
+        const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
         try {
           const resp = await fetch(relayUrl, {
             headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
@@ -538,7 +575,10 @@ async function fetchAndParseRss(
               relayBodyShape = 'html-or-empty';
             }
           }
-        } catch { /* relay also failed */ } finally {
+        } catch {
+          /* relay also failed */
+          relayFailure = timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error';
+        } finally {
           cleanup();
         }
       }
@@ -557,8 +597,19 @@ async function fetchAndParseRss(
 
     if (!text) {
       // Both direct and relay failed. Cache empty short so we retry sooner
-      // than the healthy-result TTL.
-      const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0 };
+      // than the healthy-result TTL. The attempt verdict distinguishes the
+      // global deadline abort (#7083) so a deadline-starved build is not
+      // later reported as an upstream failure.
+      const attempt: FeedFetchAttempt = {
+        source: 'cache',
+        failure: failure === 'deadline-abort'
+          ? 'deadline-abort'
+          : failure === 'per-feed-timeout'
+            ? 'per-feed-timeout'
+            : relayFailure ?? 'relay-error',
+        negativeCache: false,
+      };
+      const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
       await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
       return empty;
     }
@@ -568,13 +619,26 @@ async function fetchAndParseRss(
     // network failure: cache empty short so we retry sooner.
     const parsed = parseRssXml(text, feed, variant);
     const result: ParseResult = parsed ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
+    // text is non-null here, so the fetch source can only be 'direct' or
+    // 'relay' — narrow explicitly, the variable's type still carries
+    // 'both-failed' for the log line above.
+    result.attempt = {
+      source: source === 'relay' ? 'relay' : 'direct',
+      failure: null,
+      negativeCache: false,
+    };
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
     await setCachedJson(cacheKey, result, ttl);
     return result;
   } catch {
-    return { items: [], parsedTotal: 0, droppedUndated: 0 };
+    return {
+      items: [],
+      parsedTotal: 0,
+      droppedUndated: 0,
+      attempt: { source: 'cache', failure: 'direct-error', negativeCache: false },
+    };
   }
 }
 
@@ -1279,6 +1343,9 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   if (items.length === 0) return;
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
+  // #7082 evidence archive publication counters (operator visibility).
+  let evidenceWritten = 0;
+  let evidenceDropped = 0;
 
   // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
   // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
@@ -1333,6 +1400,23 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
           ['EXPIRE', trackKey, ttl],
           ['ZADD', accKey, nowStr, hash],
         );
+        // #7082 dual publication: forecast judging needs this story for up
+        // to 14 days, far beyond the accumulator's 48h contract. The
+        // evidence archive member is self-contained (title/link/description
+        // ride on the member; no story:track dependency) and only the
+        // full/English scope that judging actually reads is archived.
+        if (isEligibleForecastEvidence(variant, lang)) {
+          const evidenceMember = buildForecastEvidenceMember(
+            { hash, title: item.title, link: item.link, description: item.description, publishedAt: item.publishedAt },
+            now,
+          );
+          if (evidenceMember) {
+            commands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, evidenceMember]);
+            evidenceWritten += 1;
+          } else {
+            evidenceDropped += 1;
+          }
+        }
         // #4924: alias rows for every member exact-title hash -> the FINAL
         // (post-adoption) canonical, story-track TTL — next cycle's
         // adoption source. Includes the canonical's own hash.
@@ -1358,7 +1442,25 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   }
 
   // Refresh accumulator TTL once per build — 48h, shorter than STORY_TTL since digest cron only needs ~24h lookback.
-  await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
+  // The TTL is abandoned-key cleanup only: member retention is the explicit
+  // prune below (#7082) — millions of expired members previously lived here
+  // forever because the TTL never removed them.
+  const prune = accumulatorPruneBounds(now);
+  const evidenceCommands: Array<Array<string | number>> = [
+    ['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL],
+    ['ZREMRANGEBYSCORE', accKey, prune.min, prune.max],
+  ];
+  if (isEligibleForecastEvidence(variant, lang)) {
+    // Rolling archive retention + TTL (contract + guard band).
+    const evidencePrune = accumulatorPruneBounds(now, FORECAST_EVIDENCE_TTL_S * 1000);
+    evidenceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
+    evidenceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
+    console.info(
+      `[forecast-evidence] published=${evidenceWritten} dropped=${evidenceDropped} ` +
+      `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`,
+    );
+  }
+  await runRedisPipeline(evidenceCommands);
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
@@ -1382,7 +1484,18 @@ function buildDigestFeedBatches(variant: string, lang: string): {
     }
   }
 
-  const orderedEntries = orderServerFeedEntries(allEntries);
+  // #7083: category-fair scheduling, with the deadline-priority promise
+  // kept absolute: feeds with deadlinePriority > 0 start first in a cold
+  // build (the China coverage trio is market-hours critical), and the rest
+  // interleave so the next wave contains the head of every eligible
+  // category — a slow category can no longer push all later categories
+  // behind the global deadline.
+  const priorityOrdered = orderServerFeedEntries(allEntries);
+  const priorityHead = priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) > 0);
+  const orderedEntries = [
+    ...priorityHead,
+    ...interleaveByCategory(priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) <= 0)),
+  ];
   const batches: DigestFeedEntry[][] = [];
   for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
     batches.push(orderedEntries.slice(i, i + BATCH_CONCURRENCY));
@@ -1404,22 +1517,46 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
 
     const results = new Map<string, ParsedItem[]>();
-    // Track feeds that actually completed (with or without items) so we can
-    // distinguish a genuine timeout (never ran) from a successful empty fetch.
-    const completedFeeds = new Set<string>();
+    // #7083 attempt tracking: which feeds STARTED (vs never reached before
+    // the deadline), when the first start/completion happened, and a precise
+    // terminal outcome per feed from the closed vocabulary — so scheduling
+    // starvation is never reported as an upstream failure.
+    const startedFeeds = new Set<string>();
+    const attemptCategories = new Map<string, string>();
+    const attemptOutcomes = new Map<string, ReturnType<typeof classifyFeedAttempt>>();
+    const buildStart = Date.now();
+    let firstStartMs: number | null = null;
+    let firstCompletionMs: number | null = null;
+    let finalCompletionMs: number | null = null;
 
     for (const batch of batches) {
       if (deadlineController.signal.aborted) break;
 
       const settled = await Promise.allSettled(
         batch.map(async ({ category, feed }) => {
+          startedFeeds.add(feed.name);
+          attemptCategories.set(feed.name, category);
+          if (firstStartMs === null) firstStartMs = Date.now() - buildStart;
           const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
-          completedFeeds.add(feed.name);
-          // Classify per-feed status. 'all-undated' is the silent-zeroing
-          // failure mode (every parsed item dropped for missing/unparseable
-          // dates) — distinguished from a genuinely empty fetch ('empty')
-          // so log aggregation can keyword-match. 'partial-undated' is
-          // informational (some items dropped, some kept).
+          const outcome = classifyFeedAttempt(true, result.attempt ?? {
+            source: 'cache', failure: null, negativeCache: false,
+          }, {
+            parsedTotal: result.parsedTotal,
+            keptItems: result.items.length,
+            droppedUndated: result.droppedUndated,
+          });
+          attemptOutcomes.set(feed.name, outcome);
+          const completionMs = Date.now() - buildStart;
+          if (firstCompletionMs === null) firstCompletionMs = completionMs;
+          finalCompletionMs = completionMs;
+          // Public feed status keeps the historical four-value contract
+          // (docs/methodology + the proto comment): completed feeds carry
+          // 'all-undated'/'empty'/'partial-undated', feeds that never
+          // completed carry 'timeout'. The fine-grained attempt outcome
+          // (deadline-abort vs per-feed-timeout vs relay-error vs
+          // not-started...) stays in attemptOutcomes and the
+          // [digest-attempts] telemetry line; the coverage block (#7085)
+          // is where that precise vocabulary becomes public.
           if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
             feedStatuses[feed.name] = 'all-undated';
           } else if (result.items.length === 0) {
@@ -1448,10 +1585,41 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       }
     }
 
+    const deadlineAborted = deadlineController.signal.aborted;
     for (const entry of allEntries) {
-      if (!completedFeeds.has(entry.feed.name)) {
+      if (!startedFeeds.has(entry.feed.name)) {
+        // #7083: this feed's batch never ran. The public map keeps the
+        // coarse 'timeout' contract; the precise 'not-started' verdict
+        // (scheduling starvation, not an upstream failure) lives in
+        // attemptOutcomes and the [digest-attempts] telemetry line.
         feedStatuses[entry.feed.name] = 'timeout';
+        attemptOutcomes.set(entry.feed.name, 'not-started');
+        attemptCategories.set(entry.feed.name, entry.category);
       }
+    }
+
+    // #7083 operator telemetry: one structured line per build with the
+    // outcome histogram, per-category coverage, and the timings needed to
+    // see which stage consumes the deadline. No host names or exceptions
+    // here — details stay in the [feed-fetch] lines.
+    {
+      const byOutcome: Record<string, number> = {};
+      for (const outcome of attemptOutcomes.values()) {
+        byOutcome[outcome] = (byOutcome[outcome] ?? 0) + 1;
+      }
+      const byCategory: Record<string, Record<string, number>> = {};
+      for (const [feedName, category] of attemptCategories) {
+        const outcome = attemptOutcomes.get(feedName) ?? 'unknown';
+        const cat = (byCategory[category] ??= {});
+        cat[outcome] = (cat[outcome] ?? 0) + 1;
+      }
+      const headroomMs = Math.max(0, OVERALL_DEADLINE_MS - (finalCompletionMs ?? Date.now() - buildStart));
+      console.info(
+        `[digest-attempts] variant=${variant} lang=${lang} feeds=${allEntries.length} ` +
+        `deadline_aborted=${deadlineAborted} first_start_ms=${firstStartMs ?? 'n/a'} ` +
+        `first_completion_ms=${firstCompletionMs ?? 'n/a'} final_completion_ms=${finalCompletionMs ?? 'n/a'} ` +
+        `headroom_ms=${headroomMs} by_outcome=${JSON.stringify(byOutcome)} by_category=${JSON.stringify(byCategory)}`,
+      );
     }
 
     // U3 — hard freshness floor. Drop items older than NEWS_MAX_AGE_HOURS

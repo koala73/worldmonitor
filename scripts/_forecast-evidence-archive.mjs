@@ -1,0 +1,190 @@
+/**
+ * Dedicated forecast evidence archive (#7082).
+ *
+ * Forecast judging needs evidence for up to 14 days after publication, but
+ * the digest accumulator it used to read carries a 48-hour TTL: a story
+ * older than two days is silently absent, and judging could not tell a
+ * genuinely quiet window from a truncated one. The accumulator also never
+ * pruned members, so production carried millions of expired tombstones.
+ *
+ * This archive is the separate retention contract from the issue:
+ *   - key            forecast:evidence:v1        ZSet, score = lastSeen_ms
+ *   - member         compact JSON, self-contained (no story:track dependency —
+ *                    those rows expire after 7 days and must not gate 14-day
+ *                    judging)
+ *   - TTL            15 days: the 14-day reader contract plus a one-day
+ *                    cleanup guard band, applied per write
+ *
+ * Pure helpers only — Redis I/O stays with the callers so tests can exercise
+ * the record shapes and budget math directly.
+ */
+
+export const FORECAST_EVIDENCE_KEY = 'forecast:evidence:v1';
+export const FORECAST_EVIDENCE_VERSION = 1;
+
+/** 14-day reader contract + 1-day cleanup guard band. */
+export const FORECAST_EVIDENCE_TTL_S = 15 * 24 * 60 * 60;
+/** Reader-side maximum lookback (matches JUDGED_EVIDENCE_MAX_LOOKBACK_MS). */
+export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Per-member byte budget. A member carries fixed fields plus a title and a
+ * URL; anything beyond this is a malformed upstream we refuse to archive
+ * rather than bloat the ZSet with (the writer drops the record and counts
+ * it, mirroring how the digest ledger counts dropped items).
+ */
+export const FORECAST_EVIDENCE_MEMBER_MAX_BYTES = 2048;
+
+/**
+ * Fields the judged path needs; everything else is deliberately dropped.
+ *
+ * @typedef {object} ForecastEvidenceRecord
+ * @property {number} v
+ * @property {string} hash
+ * @property {string} title
+ * @property {string} link
+ * @property {string} description
+ * @property {number} publishedAt
+ * @property {number} lastSeen epoch ms of the digest publication that wrote this record
+ *
+ * @typedef {object} ForecastEvidenceParseResult
+ * @property {ForecastEvidenceRecord|null} record
+ * @property {boolean} malformed
+ * @property {boolean} oversized set when the member parsed but was dropped by the byte budget
+ */
+
+/**
+ * Eligibility gate for dual publication: the judged archive only ever read
+ * the full/English accumulator, so only that scope is archived.
+ */
+/**
+ * @param {string} variant
+ * @param {string} lang
+ * @returns {boolean}
+ */
+export function isEligibleForecastEvidence(variant, lang) {
+  return variant === 'full' && lang === 'en';
+}
+
+/**
+ * Build the self-contained archive member for one story. Returns null when a
+ * required field is missing or the serialized member exceeds the byte budget
+ * (the caller counts the drop instead of writing it).
+ */
+/**
+ * @param {{hash?: unknown, title?: unknown, link?: unknown, description?: unknown, publishedAt?: unknown}} track
+ * @param {number} lastSeen
+ * @returns {string|null}
+ */
+export function buildForecastEvidenceMember(track, lastSeen) {
+  const hash = typeof track.hash === 'string' ? track.hash : '';
+  const title = typeof track.title === 'string' ? track.title : '';
+  const link = typeof track.link === 'string' ? track.link : '';
+  const description = typeof track.description === 'string' ? track.description : '';
+  const publishedAt = Number(track.publishedAt);
+
+  if (!hash || !title || !link || !Number.isFinite(publishedAt) || !Number.isFinite(lastSeen)) {
+    return null;
+  }
+
+  const record = {
+    v: FORECAST_EVIDENCE_VERSION,
+    hash,
+    title,
+    link,
+    // Descriptions feed judge grounding; cap hard so one verbose wire copy
+    // cannot blow the member budget.
+    description: description.slice(0, 512),
+    publishedAt: Math.floor(publishedAt),
+    lastSeen: Math.floor(lastSeen),
+  };
+
+  const member = JSON.stringify(record);
+  return member.length <= FORECAST_EVIDENCE_MEMBER_MAX_BYTES ? member : null;
+}
+
+/**
+ * Parse one archived member. Malformed members are reported (counted as
+ * tombstones by the caller) instead of silently omitted — the issue's
+ * backfill rule, applied to steady-state reads too.
+ */
+/**
+ * @param {unknown} raw
+ * @returns {ForecastEvidenceParseResult}
+ */
+export function parseForecastEvidenceMember(raw) {
+  if (typeof raw !== 'string') {
+    return { record: null, malformed: true, oversized: false };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { record: null, malformed: true, oversized: false };
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return { record: null, malformed: true, oversized: false };
+  }
+  const record = /** @type {Partial<ForecastEvidenceRecord>} */ (parsed);
+  if (
+    record.v !== FORECAST_EVIDENCE_VERSION ||
+    typeof record.hash !== 'string' || !record.hash ||
+    typeof record.title !== 'string' || !record.title ||
+    typeof record.link !== 'string' ||
+    typeof record.description !== 'string' ||
+    !Number.isFinite(record.publishedAt) ||
+    !Number.isFinite(record.lastSeen)
+  ) {
+    return { record: null, malformed: true, oversized: false };
+  }
+  if (raw.length > FORECAST_EVIDENCE_MEMBER_MAX_BYTES) {
+    return { record: null, malformed: false, oversized: true };
+  }
+  return {
+    record: {
+      v: record.v,
+      hash: record.hash,
+      title: record.title,
+      link: record.link,
+      description: record.description,
+      publishedAt: Math.floor(/** @type {number} */ (record.publishedAt)),
+      lastSeen: Math.floor(/** @type {number} */ (record.lastSeen)),
+    },
+    malformed: false,
+    oversized: false,
+  };
+}
+
+/**
+ * Score bounds for member-level retention on the digest accumulator
+ * (#7082 plan §4): prune everything strictly older than the 48-hour digest
+ * contract during normal publication. The key TTL stays as abandoned-key
+ * cleanup — member retention is no longer the TTL's job.
+ */
+/**
+ * @param {number} nowMs
+ * @param {number} [retentionMs]
+ * @returns {{min: string, max: string}}
+ */
+export function accumulatorPruneBounds(nowMs, retentionMs = 48 * 60 * 60 * 1000) {
+  if (!Number.isFinite(nowMs)) {
+    throw new Error('accumulatorPruneBounds requires a finite nowMs');
+  }
+  return { min: '-inf', max: String(Math.floor(nowMs - retentionMs)) };
+}
+
+/**
+ * Score bounds for archiving retention: everything strictly older than the
+ * 14-day reader contract plus guard band is out of contract even before the
+ * key TTL collects it.
+ */
+/**
+ * @param {number} nowMs
+ * @returns {{min: string, max: string}}
+ */
+export function evidencePruneBounds(nowMs) {
+  if (!Number.isFinite(nowMs)) {
+    throw new Error('evidencePruneBounds requires a finite nowMs');
+  }
+  return { min: '-inf', max: String(Math.floor(nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - 24 * 60 * 60 * 1000)) };
+}
