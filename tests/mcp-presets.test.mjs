@@ -121,7 +121,7 @@ describe('MCP Presets — static validation', () => {
 
   it('expected commercial presets are present', () => {
     const names = new Set(presets.map(p => p.name));
-    for (const expected of ['Exa Search', 'Tavily Search', 'Slack', 'GitHub', 'Stripe', 'Sentry', 'Datadog', 'Linear']) {
+    for (const expected of ['Exa Search', 'Tavily Search', 'Serply Search', 'Slack', 'GitHub', 'Stripe', 'Sentry', 'Datadog', 'Linear']) {
       assert.ok(names.has(expected), `Expected preset "${expected}" not found`);
     }
   });
@@ -143,6 +143,13 @@ describe('MCP Presets — static validation', () => {
     assert.ok(parallel, 'Parallel Search preset not found');
     assert.equal(parallel.serverUrl, 'https://search.parallel.ai/mcp');
     assert.equal(parallel.defaultTool, 'web_search');
+  });
+
+  it('Serply Search uses the Serply MCP endpoint and google_news_search tool', () => {
+    const serply = presets.find(p => p.name === 'Serply Search');
+    assert.ok(serply, 'Serply Search preset not found');
+    assert.equal(serply.serverUrl, 'https://api.serply.io/mcp');
+    assert.equal(serply.defaultTool, 'google_news_search');
   });
 
   it('Datadog serverUrl includes /api/unstable/mcp-server/mcp', () => {
@@ -204,6 +211,7 @@ describe(`MCP Presets — live connectivity (${LIVE ? 'ENABLED' : 'SKIPPED — s
     { name: 'Notion',        url: 'https://mcp.notion.com/mcp' },
     { name: 'Airtable',      url: 'https://mcp.airtable.com/mcp' },
     { name: 'Perigon News',  url: 'https://mcp.perigon.io/v1/mcp' },
+    { name: 'Serply Search', url: 'https://api.serply.io/mcp' },
     { name: 'Datadog',       url: 'https://mcp.datadoghq.com/api/unstable/mcp-server/mcp' },
   ];
 

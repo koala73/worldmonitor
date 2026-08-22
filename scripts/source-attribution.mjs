@@ -780,6 +780,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: user-configured MCP connector.',
     status: 'excluded',
   },
+  'api.serply.io': {
+    provider: 'Serply Search MCP',
+    license: 'Excluded: optional user-configured MCP connector',
+    attribution: 'Excluded from the provider count: user-configured MCP connector.',
+    status: 'excluded',
+  },
   'api.example.com': {
     provider: 'Example API placeholder',
     license: 'Excluded: documentation/test placeholder',
@@ -909,13 +915,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '2ce115029a352d9faa4625b542bbd88eb149148821712779c7842bd5df1f1a59',
-  reason: 'Preserve reviewed provider identities and register the current two-host City of Toronto Calls package identity.',
+  sha256: '8107cc102c44e195a28217f00b94626765e54f7fbb2e699b8089fd0d939b0119',
+  reason: 'Add the Serply Search MCP identity for api.serply.io as an excluded user-configured MCP connector, matching the Robtex, Linear, Airtable, Cloudflare, and Parallel Search MCP rows, while preserving the reviewed provider identities, including the current two-host City of Toronto Calls package identity, the FAOSTAT transport migration grouping, the redistribution-restricted BGS observation API grouping for issue #6449, and the India Meteorological Department grouping for api.imd.gov.in, rsmcnewdelhi.imd.gov.in, and mausam.imd.gov.in.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, and the 2026-09-01 FAOSTAT transport identity review.',
+  reviewReference: 'Serply vendor-disclosed contribution, same excluded-connector shape as PR #6447; plus Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, and the 2026-09-01 FAOSTAT transport identity review.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
