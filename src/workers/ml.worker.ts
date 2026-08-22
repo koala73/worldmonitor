@@ -175,6 +175,11 @@ function unloadModel(modelId: string): void {
   const pipe = loadedPipelines.get(modelId);
   if (pipe) {
     loadedPipelines.delete(modelId);
+    // Dropping only the Map reference kept every ONNX InferenceSession alive
+    // until worker termination, so each desktop tab-hide cycle (which calls
+    // unloadOptionalModels) leaked a full WASM-heap model set. dispose() is
+    // fire-and-forget: unload stays synchronous from the caller's view.
+    void Promise.resolve(pipe?.dispose?.()).catch(() => {});
     console.log(`[MLWorker] Unloaded model: ${modelId}`);
   }
 }
@@ -498,7 +503,9 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
       }
 
       case 'reset': {
+        const pipes = [...loadedPipelines.values()];
         loadedPipelines.clear();
+        for (const pipe of pipes) void Promise.resolve(pipe?.dispose?.()).catch(() => {});
         self.postMessage({ type: 'reset-complete' });
         break;
       }
