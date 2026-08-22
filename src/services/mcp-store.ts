@@ -72,6 +72,17 @@ export const MCP_PRESETS: McpPreset[] = [
     defaultTitle: 'Parallel Search',
   },
   {
+    name: 'Serply Search',
+    icon: '🗞️',
+    description: 'Google news, web, and scholar search plus URL fetching, with structured results',
+    serverUrl: 'https://api.serply.io/mcp',
+    authNote: 'Requires X-Api-Key: <SERPLY_API_KEY> (free tier at serply.io)',
+    apiKeyHeader: 'X-Api-Key: {key}',
+    defaultTool: 'google_news_search',
+    defaultArgs: { query: 'geopolitical developments', proxy_location: 'US' },
+    defaultTitle: 'News Search',
+  },
+  {
     name: 'Perigon News',
     icon: '📰',
     description: 'Real-time global news search with journalist, company, and topic filters',
