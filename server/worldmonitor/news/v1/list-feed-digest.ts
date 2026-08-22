@@ -882,9 +882,13 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   // so the cache prefix (currently classify:sebuf:v6:) lives in exactly
   // one place — bumping it again only requires touching _shared.ts and
   // the relay's independent .cjs helper. See U4 of the plan.
+  // Titles are independent — hash them concurrently instead of N sequential
+  // WebCrypto hops on this hot fast-tier surface.
+  const keyed = await Promise.all(
+    candidates.map((item) => buildClassifyCacheKey(item.title).then((key) => ({ key, item }))),
+  );
   const keyMap = new Map<string, ParsedItem[]>();
-  for (const item of candidates) {
-    const key = await buildClassifyCacheKey(item.title);
+  for (const { key, item } of keyed) {
     const existing = keyMap.get(key) ?? [];
     existing.push(item);
     keyMap.set(key, existing);

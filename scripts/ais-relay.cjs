@@ -2363,8 +2363,14 @@ function _parseYahooChartJson(body) {
     const price = meta.regularMarketPrice;
     const prevClose = meta.chartPreviousClose || meta.previousClose || price;
     const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    // Round to 7 significant digits like the cron seeders' roundSparkline
+    // (_seed-utils.mjs). Raw float64 noise made these FAST-tier keys ~2x the
+    // rounded size, and whichever writer wins the relay/cron race decides
+    // what every visitor downloads on cold load.
     const closes = result.indicators?.quote?.[0]?.close;
-    const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
+    const sparkline = Array.isArray(closes)
+      ? closes.filter((v) => v != null).map((v) => Number(Number(v).toPrecision(7)))
+      : [];
     return { price, change, sparkline };
   } catch { return null; }
 }

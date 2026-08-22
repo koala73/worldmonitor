@@ -120,8 +120,13 @@ export async function listTemporalAnomalies(
       const anomalies: TemporalAnomalyProto[] = [];
 
       const counts: Record<string, number> = {};
-      for (const [type, sourceKey] of Object.entries(COUNT_SOURCE_KEYS)) {
-        const data = await getCachedJson(sourceKey) as Record<string, unknown> | null;
+      const countEntries = await Promise.all(
+        Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
+          type,
+          await getCachedJson(sourceKey) as Record<string, unknown> | null,
+        ] as const),
+      );
+      for (const [type, data] of countEntries) {
         if (!data) continue;
 
         if (type === 'news') {
