@@ -3004,7 +3004,11 @@
       "heading": "航向",
       "hexCode": "HEX程式碼",
       "squawk": "應答機程式碼",
-      "attribution": "來源：adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "來源：adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS訊號消失",
@@ -3049,7 +3053,8 @@
       "moreVessels": "還有{{count}}艘艦艇",
       "vesselsCount": "{{count}}艘艦艇",
       "vessels": "艦艇",
-      "trackedVessels": "跟蹤艦艇"
+      "trackedVessels": "跟蹤艦艇",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "已結束",
@@ -3338,7 +3343,9 @@
     "fontFamily": "字型",
     "fontFamilyDesc": "等寬字型用於技術外觀，系統預設字型便於閱讀。",
     "fontMono": "等寬字型",
-    "fontSystem": "系統預設"
+    "fontSystem": "系統預設",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "開啟國家簡報",

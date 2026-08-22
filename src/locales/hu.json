@@ -3073,7 +3073,11 @@
       "heading": "IRÁNY",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS SÖTÉT",
@@ -3118,7 +3122,8 @@
       "moreVessels": "+{{count}} további hajó",
       "vesselsCount": "{{count}} HAJÓ",
       "vessels": "HAJÓK",
-      "trackedVessels": "KÖVETETT HAJÓK"
+      "trackedVessels": "KÖVETETT HAJÓK",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "LEZÁRVA",
@@ -3412,7 +3417,9 @@
     "fontFamily": "Betűtípus család",
     "fontFamilyDesc": "Monospace a technikai megjelenéshez, rendszer alapértelmezés az olvashatóság kedvéért.",
     "fontMono": "Monospace",
-    "fontSystem": "Rendszer alapértelmezés"
+    "fontSystem": "Rendszer alapértelmezés",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "premium": {
     "pro": "PRO",

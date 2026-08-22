@@ -3004,7 +3004,11 @@
       "heading": "방위",
       "hexCode": "HEX 코드",
       "squawk": "스쿼크",
-      "attribution": "출처: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "출처: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS 소실",
@@ -3049,7 +3053,8 @@
       "moreVessels": "+{{count}}척 추가 함정",
       "vesselsCount": "{{count}}척 함정",
       "vessels": "함정",
-      "trackedVessels": "추적 중인 함정"
+      "trackedVessels": "추적 중인 함정",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "종료",
@@ -3338,7 +3343,9 @@
     "fontFamily": "글꼴 패밀리",
     "fontFamilyDesc": "기술적 모양을 위해 모노스페이스, 더 쉬운 읽기를 위해 시스템 기본값.",
     "fontMono": "모노스페이스",
-    "fontSystem": "시스템 기본값"
+    "fontSystem": "시스템 기본값",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",

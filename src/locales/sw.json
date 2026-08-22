@@ -3083,7 +3083,11 @@
       "heading": "KICHWA",
       "hexCode": "MSIMBO WA HEX",
       "squawk": "SQUAWK",
-      "attribution": "Chanzo: Mtandao wa OpenSky"
+      "attribution": "Chanzo: Mtandao wa OpenSky",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS GIZA",
@@ -3128,7 +3132,8 @@
       "moreVessels": "+{{count}} vyombo zaidi",
       "vesselsCount": "{{count}} VYOMBO",
       "vessels": "VYOMBO",
-      "trackedVessels": "VYOMBO VILIVYOFUATILIWA"
+      "trackedVessels": "VYOMBO VILIVYOFUATILIWA",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "IMEFUNGWA",
@@ -3422,7 +3427,9 @@
     "fontFamily": "Familia ya Fonti",
     "fontFamilyDesc": "Nafasi moja kwa mwonekano wa kiufundi, chaguomsingi ya mfumo kwa usomaji rahisi.",
     "fontMono": "Nafasi moja",
-    "fontSystem": "Chaguomsingi ya Mfumo"
+    "fontSystem": "Chaguomsingi ya Mfumo",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "premium": {
     "pro": "PRO",

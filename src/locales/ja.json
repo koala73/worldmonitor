@@ -3004,7 +3004,11 @@
       "heading": "方位",
       "hexCode": "HEXコード",
       "squawk": "スコーク",
-      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS消失",
@@ -3049,7 +3053,8 @@
       "moreVessels": "+{{count}}隻の追加艦艇",
       "vesselsCount": "{{count}}隻",
       "vessels": "艦艇",
-      "trackedVessels": "追跡中の艦艇"
+      "trackedVessels": "追跡中の艦艇",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "終了",
@@ -3338,7 +3343,9 @@
     "fontFamily": "フォントファミリー",
     "fontFamilyDesc": "テクニカルな見た目にはモノスペース、より読みやすくするにはシステムデフォルトを選択できます。",
     "fontMono": "モノスペース",
-    "fontSystem": "システムデフォルト"
+    "fontSystem": "システムデフォルト",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",

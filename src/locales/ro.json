@@ -3022,7 +3022,11 @@
       "heading": "TITUL",
       "hexCode": "COD HEX",
       "squawk": "SQUAWK",
-      "attribution": "Sursa: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Sursa: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS ÎNTUNEC",
@@ -3067,7 +3071,8 @@
       "moreVessels": "+{{count}} mai multe vase",
       "vesselsCount": "{{count}} NAVE",
       "vessels": "NAVE",
-      "trackedVessels": "NAVE ȘENILE"
+      "trackedVessels": "NAVE ȘENILE",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "ÎNCHIS",
@@ -3356,7 +3361,9 @@
     "fontFamily": "Familie de fonturi",
     "fontFamilyDesc": "Monospace pentru aspect tehnic, font implicit pentru citire mai ușoară.",
     "fontMono": "Monospace",
-    "fontSystem": "Font implicit"
+    "fontSystem": "Font implicit",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",

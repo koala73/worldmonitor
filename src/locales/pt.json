@@ -2697,7 +2697,11 @@
       "heading": "CABEÇALHO",
       "hexCode": "CÓDIGO HEX.",
       "squawk": "GRANDE",
-      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS ESCURO",
@@ -2742,7 +2746,8 @@
       "moreVessels": "+{{count}} mais embarcações",
       "vesselsCount": "{{count}} NAVIOS",
       "vessels": "NAVIOS",
-      "trackedVessels": "NAVIOS RASTREADOS"
+      "trackedVessels": "NAVIOS RASTREADOS",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "FECHADO",
@@ -3356,7 +3361,9 @@
     "fontFamily": "Família de Fontes",
     "fontFamilyDesc": "Monospace para uma aparência técnica, fonte padrão do sistema para leitura mais fácil.",
     "fontMono": "Monospace",
-    "fontSystem": "Padrão do Sistema"
+    "fontSystem": "Padrão do Sistema",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Abrir resumo do país",

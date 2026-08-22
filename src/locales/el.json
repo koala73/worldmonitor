@@ -3004,7 +3004,11 @@
       "heading": "ΠΟΡΕΙΑ",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Πηγή: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Πηγή: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS ΣΚΟΤΕΙΝΟ",
@@ -3049,7 +3053,8 @@
       "moreVessels": "+{{count}} ακόμη πλοία",
       "vesselsCount": "{{count}} ΠΛΟΙΑ",
       "vessels": "ΠΛΟΙΑ",
-      "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ"
+      "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "ΚΛΕΙΣΤΟ",
@@ -3338,7 +3343,9 @@
     "fontFamily": "Οικογένεια Γραμματοσειράς",
     "fontFamilyDesc": "Monospace για τεχνικό περιβάλλον, προεπιλογή συστήματος για ευκολότερη ανάγνωση.",
     "fontMono": "Monospace",
-    "fontSystem": "Προεπιλογή Συστήματος"
+    "fontSystem": "Προεπιλογή Συστήματος",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Άνοιγμα επισκόπησης χώρας",

@@ -3073,7 +3073,11 @@
       "heading": "दिशा",
       "hexCode": "हेक्स कोड",
       "squawk": "स्क्वॉक",
-      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS डार्क",
@@ -3118,7 +3122,8 @@
       "moreVessels": "+{{count}} और जहाज",
       "vesselsCount": "{{count}} जहाज",
       "vessels": "जहाज",
-      "trackedVessels": "ट्रैक किए गए जहाज"
+      "trackedVessels": "ट्रैक किए गए जहाज",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "बंद",
@@ -3412,7 +3417,9 @@
     "fontFamily": "फॉन्ट परिवार",
     "fontFamilyDesc": "तकनीकी लुक के लिए मोनोस्पेस, आसानी से पढ़ने के लिए सिस्टम डिफ़ॉल्ट।",
     "fontMono": "मोनोस्पेस",
-    "fontSystem": "सिस्टम डिफ़ॉल्ट"
+    "fontSystem": "सिस्टम डिफ़ॉल्ट",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "premium": {
     "pro": "PRO",

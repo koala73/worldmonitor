@@ -3014,7 +3014,11 @@
       "heading": "TITRE",
       "hexCode": "CODE HEXICAL",
       "squawk": "CRI",
-      "attribution": "Source : adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Source : adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS FONCÉ",
@@ -3059,7 +3063,8 @@
       "moreVessels": "+{{count}} navires supplémentaires",
       "vesselsCount": "{{count}} NAVIRES",
       "vessels": "NAVIRES",
-      "trackedVessels": "NAVIRES SUIVANTS"
+      "trackedVessels": "NAVIRES SUIVANTS",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "FERMÉ",
@@ -3356,7 +3361,9 @@
     "fontFamily": "Famille de polices",
     "fontFamilyDesc": "Monospace pour un look technique, police système par défaut pour une lecture plus facile.",
     "fontMono": "Monospace",
-    "fontSystem": "Police système par défaut"
+    "fontSystem": "Police système par défaut",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Ouvrir la fiche pays",

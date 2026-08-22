@@ -3004,7 +3004,11 @@
       "heading": "航向",
       "hexCode": "HEX代码",
       "squawk": "应答机代码",
-      "attribution": "来源：adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "来源：adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS信号消失",
@@ -3049,7 +3053,8 @@
       "moreVessels": "还有{{count}}艘舰艇",
       "vesselsCount": "{{count}}艘舰艇",
       "vessels": "舰艇",
-      "trackedVessels": "跟踪舰艇"
+      "trackedVessels": "跟踪舰艇",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "已结束",
@@ -3338,7 +3343,9 @@
     "fontFamily": "字体",
     "fontFamilyDesc": "等宽字体用于技术外观，系统默认字体便于阅读。",
     "fontMono": "等宽字体",
-    "fontSystem": "系统默认"
+    "fontSystem": "系统默认",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "打开国家简报",

@@ -3004,7 +3004,11 @@
       "heading": "HƯỚNG BAY",
       "hexCode": "MÃ HEX",
       "squawk": "SQUAWK",
-      "attribution": "Nguồn: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Nguồn: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "MẤT TÍN HIỆU AIS",
@@ -3049,7 +3053,8 @@
       "moreVessels": "+{{count}} tàu khác",
       "vesselsCount": "{{count}} TÀU",
       "vessels": "TÀU",
-      "trackedVessels": "TÀU ĐƯỢC THEO DÕI"
+      "trackedVessels": "TÀU ĐƯỢC THEO DÕI",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "ĐÃ KẾT THÚC",
@@ -3338,7 +3343,9 @@
     "fontFamily": "Họ phông chữ",
     "fontFamilyDesc": "Monospace cho giao diện kỹ thuật, phông chữ hệ thống mặc định để dễ đọc hơn.",
     "fontMono": "Monospace",
-    "fontSystem": "Phông chữ hệ thống"
+    "fontSystem": "Phông chữ hệ thống",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",

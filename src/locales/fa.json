@@ -3073,7 +3073,11 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",
@@ -3118,7 +3122,8 @@
       "moreVessels": "+{{count}} more vessels",
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "VESSELS",
-      "trackedVessels": "TRACKED VESSELS"
+      "trackedVessels": "TRACKED VESSELS",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "CLOSED",
@@ -3412,7 +3417,9 @@
     "fontFamily": "Font Family",
     "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
     "fontMono": "Monospace",
-    "fontSystem": "System Default"
+    "fontSystem": "System Default",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "premium": {
     "pro": "PRO",

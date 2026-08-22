@@ -3040,7 +3040,11 @@
       "heading": "КУРС",
       "hexCode": "HEX-КОД",
       "squawk": "СКВОК",
-      "attribution": "Источник: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Источник: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS ВЫКЛЮЧЕН",
@@ -3085,7 +3089,8 @@
       "moreVessels": "+{{count}} ещё кораблей",
       "vesselsCount": "{{count}} КОРАБЛЕЙ",
       "vessels": "КОРАБЛИ",
-      "trackedVessels": "ОТСЛЕЖИВАЕМЫЕ КОРАБЛИ"
+      "trackedVessels": "ОТСЛЕЖИВАЕМЫЕ КОРАБЛИ",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "ЗАВЕРШЕНО",
@@ -3374,7 +3379,9 @@
     "fontFamily": "Шрифт",
     "fontFamilyDesc": "Моноширинный для технического вида, системный по умолчанию для удобства чтения.",
     "fontMono": "Моноширинный",
-    "fontSystem": "Системный шрифт"
+    "fontSystem": "Системный шрифт",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Открыть обзор страны",

@@ -2681,7 +2681,11 @@
       "heading": "RUBRIEK",
       "hexCode": "HEX-CODE",
       "squawk": "SQUAWK",
-      "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS DONKER",
@@ -2726,7 +2730,8 @@
       "moreVessels": "+{{count}} meer schepen",
       "vesselsCount": "{{count}} VAARTUIGEN",
       "vessels": "VAARTUIGEN",
-      "trackedVessels": "BIJGEVOERDE VAARTUIGEN"
+      "trackedVessels": "BIJGEVOERDE VAARTUIGEN",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "GESLOTEN",
@@ -3338,7 +3343,9 @@
     "fontFamily": "Lettertype",
     "fontFamilyDesc": "Monospace voor een technische uitstraling, systeemstandaard voor gemakkelijker lezen.",
     "fontMono": "Monospace",
-    "fontSystem": "Systeemstandaard"
+    "fontSystem": "Systeemstandaard",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",

@@ -3004,7 +3004,11 @@
       "heading": "YON",
       "hexCode": "HEX KODU",
       "squawk": "SQUAWK",
-      "attribution": "Kaynak: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Kaynak: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS KARANLIK",
@@ -3049,7 +3053,8 @@
       "moreVessels": "+{{count}} daha fazla gemi",
       "vesselsCount": "{{count}} GEMI",
       "vessels": "GEMI",
-      "trackedVessels": "TAKIP EDILEN GEMI"
+      "trackedVessels": "TAKIP EDILEN GEMI",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "KAPANDI",
@@ -3338,7 +3343,9 @@
     "fontFamily": "Yazı Tipi Ailesi",
     "fontFamilyDesc": "Teknik görünüş için Monospace, daha kolay okuma için sistem varsayılanı.",
     "fontMono": "Monospace",
-    "fontSystem": "Sistem Varsayılanı"
+    "fontSystem": "Sistem Varsayılanı",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",

@@ -3282,7 +3282,11 @@
       "heading": "SMJER",
       "hexCode": "HEX KÔD",
       "squawk": "SQUAWK",
-      "attribution": "Izvor: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Izvor: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS NEVIDLJIV",
@@ -3329,7 +3333,8 @@
       "moreVessels": "+{{count}} dodatnih brodova",
       "vesselsCount": "{{count}} BRODOVA",
       "vessels": "BRODOVI",
-      "trackedVessels": "PRAĆENI BRODOVI"
+      "trackedVessels": "PRAĆENI BRODOVI",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "ZATVORENO",
@@ -3627,7 +3632,9 @@
     "fontFamily": "Obitelj Fonta",
     "fontFamilyDesc": "Monospace za tehnički izgled, zadanu vrijednost sustava za lakše čitanje.",
     "fontMono": "Monospace",
-    "fontSystem": "Zadana vrijednost sustava"
+    "fontSystem": "Zadana vrijednost sustava",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "premium": {
     "pro": "PRO",

@@ -3004,7 +3004,11 @@
       "heading": "ทิศทาง",
       "hexCode": "รหัส HEX",
       "squawk": "รหัส SQUAWK",
-      "attribution": "แหล่งที่มา: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "แหล่งที่มา: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS มืด",
@@ -3049,7 +3053,8 @@
       "moreVessels": "+{{count}} more vessels",
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "เรือ",
-      "trackedVessels": "เรือที่ติดตาม"
+      "trackedVessels": "เรือที่ติดตาม",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "ปิด",
@@ -3338,7 +3343,9 @@
     "fontFamily": "ตระกูลฟอนต์",
     "fontFamilyDesc": "Monospace สำหรับลักษณะเทคนิค ฟอนต์เริ่มต้นของระบบสำหรับการอ่านที่ง่ายกว่า",
     "fontMono": "Monospace",
-    "fontSystem": "ค่าเริ่มต้นของระบบ"
+    "fontSystem": "ค่าเริ่มต้นของระบบ",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "เปิดภาพรวมประเทศ",

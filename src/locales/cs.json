@@ -3032,7 +3032,11 @@
       "heading": "SMĚR",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Zdroj: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Zdroj: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT"
     },
     "militaryVessel": {
       "aisDark": "AIS VYP",
@@ -3077,7 +3081,8 @@
       "moreVessels": "+{{count}} dalších plavidel",
       "vesselsCount": "{{count}} PLAVIDEL",
       "vessels": "PLAVIDLA",
-      "trackedVessels": "SLEDOVANÁ PLAVIDLA"
+      "trackedVessels": "SLEDOVANÁ PLAVIDLA",
+      "showLess": "Show less"
     },
     "naturalEvent": {
       "closed": "ZAVŘENO",
@@ -3374,7 +3379,9 @@
     "fontFamily": "Typ písma",
     "fontFamilyDesc": "Monospace pro technický vzhled, systémové výchozí pro snazší čtení.",
     "fontMono": "Monospace",
-    "fontSystem": "Systémové výchozí"
+    "fontSystem": "Systémové výchozí",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global"
   },
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",
