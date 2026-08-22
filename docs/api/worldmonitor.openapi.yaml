@@ -23600,6 +23600,13 @@ paths:
                                               "link": "https://example.com/worldmonitor"
                                               "source": "example"
                                               "title": "example"
+                                "coverage":
+                                    "attemptedAt": "2026-01-15T12:00:00Z"
+                                    "categoryCompleted": 1
+                                    "categoryStates":
+                                        "exampleKey": "example"
+                                    "categoryTotal": 1
+                                    "droppedCategoryCap": 1
                                 "feedStatuses":
                                     "exampleKey": "example"
                                 "generatedAt": "2026-01-15T12:00:00Z"

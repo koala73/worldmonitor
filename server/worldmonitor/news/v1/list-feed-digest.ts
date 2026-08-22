@@ -2,7 +2,6 @@ import type {
   ServerContext,
   ListFeedDigestRequest,
   ListFeedDigestResponse,
-  DigestCoverage,
   CategoryBucket,
   NewsItem as ProtoNewsItem,
   ThreatLevel as ProtoThreatLevel,
