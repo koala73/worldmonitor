@@ -20,7 +20,15 @@ import {
   type ServerFeed,
 } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
-import { classifyFeedAttempt, interleaveByCategory, type FeedFetchAttempt } from './_attempts';
+import {
+  cachedAttemptFrom,
+  classifyFeedAttempt,
+  interleaveByCategory,
+  resolveTerminalFetchFailure,
+  runFeedAttemptBatches,
+  summarizeFeedAttempts,
+  type FeedFetchAttempt,
+} from './_attempts';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
@@ -68,7 +76,7 @@ const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
 
-type DigestFeedEntry = { category: string; feed: ServerFeed };
+type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
@@ -527,9 +535,10 @@ async function fetchAndParseRss(
     const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
     if (cached) {
       if (cached.parsedTotal === 0 && cached.items.length === 0) {
-        // A cached zero-item entry is the negative cache written by a
-        // previous failed attempt — say so instead of reporting 'empty'.
-        return { ...cached, attempt: { source: 'cache', failure: null, negativeCache: true } };
+        // Only a cached prior fetch failure is negative. A valid RSS body
+        // can also contain no entries; preserve that successful empty result
+        // so cache hits keep the normal `empty` verdict.
+        return { ...cached, attempt: cachedAttemptFrom(cached.attempt) };
       }
       return cached;
     }
@@ -541,12 +550,14 @@ async function fetchAndParseRss(
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
     let relayFailure: FeedFetchAttempt['failure'] = null;
+    let relayAttempted = false;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
     // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
     if (!text) {
       const relayBase = getRelayBaseUrl();
       if (relayBase) {
+        relayAttempted = true;
         relayBodyShape = 'fetch-error';
         const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
         const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
@@ -594,12 +605,13 @@ async function fetchAndParseRss(
       // global deadline abort (#7083) so a deadline-starved build is not
       // later reported as an upstream failure.
       const attempt: FeedFetchAttempt = {
-        source: 'cache',
-        failure: failure === 'deadline-abort'
-          ? 'deadline-abort'
-          : failure === 'per-feed-timeout'
-            ? 'per-feed-timeout'
-            : relayFailure ?? 'relay-error',
+        source: relayAttempted ? 'relay' : 'direct',
+        failure: resolveTerminalFetchFailure({
+          directFailure: failure,
+          relayFailure,
+          relayAttempted,
+          deadlineAborted: signal.aborted,
+        }),
         negativeCache: false,
       };
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
@@ -630,7 +642,7 @@ async function fetchAndParseRss(
       items: [],
       parsedTotal: 0,
       droppedUndated: 0,
-      attempt: { source: 'cache', failure: 'direct-error', negativeCache: false },
+      attempt: { source: 'direct', failure: 'direct-error', negativeCache: false },
     };
   }
 }
@@ -1428,14 +1440,14 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   for (const [category, feeds] of Object.entries(feedsByCategory)) {
     const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
     for (const feed of filtered) {
-      allEntries.push({ category, feed });
+      allEntries.push({ attemptId: `${category}:${allEntries.length}`, category, feed });
     }
   }
 
   if (variant === 'full') {
     const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
     for (const feed of filteredIntel) {
-      allEntries.push({ category: 'intel', feed });
+      allEntries.push({ attemptId: `intel:${allEntries.length}`, category: 'intel', feed });
     }
   }
 
@@ -1472,84 +1484,64 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
 
     const results = new Map<string, ParsedItem[]>();
-    // #7083 attempt tracking: which feeds STARTED (vs never reached before
-    // the deadline), when the first start/completion happened, and a precise
-    // terminal outcome per feed from the closed vocabulary — so scheduling
-    // starvation is never reported as an upstream failure.
-    const startedFeeds = new Set<string>();
-    const attemptCategories = new Map<string, string>();
-    const attemptOutcomes = new Map<string, ReturnType<typeof classifyFeedAttempt>>();
     const buildStart = Date.now();
-    let firstStartMs: number | null = null;
-    let firstCompletionMs: number | null = null;
-    let finalCompletionMs: number | null = null;
+    const attempts = await runFeedAttemptBatches(
+      allEntries,
+      batches,
+      deadlineController.signal,
+      async (entry) => {
+        const { category, feed } = entry;
+        const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
+        const outcome = classifyFeedAttempt(true, result.attempt ?? {
+          source: 'cache', failure: null, negativeCache: false,
+        }, {
+          parsedTotal: result.parsedTotal,
+          keptItems: result.items.length,
+          droppedUndated: result.droppedUndated,
+        });
 
-    for (const batch of batches) {
-      if (deadlineController.signal.aborted) break;
+        // Public feed status keeps the historical four-value contract
+        // (docs/methodology + the proto comment): completed feeds carry
+        // 'all-undated'/'empty'/'partial-undated', feeds that never
+        // completed carry 'timeout'. The fine-grained attempt outcome
+        // stays in telemetry, keyed by the unique inventory attempt ID.
+        if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
+          feedStatuses[feed.name] = 'all-undated';
+        } else if (result.items.length === 0) {
+          feedStatuses[feed.name] = 'empty';
+        } else if (result.droppedUndated > 0) {
+          feedStatuses[feed.name] = 'partial-undated';
+        }
 
-      const settled = await Promise.allSettled(
-        batch.map(async ({ category, feed }) => {
-          startedFeeds.add(feed.name);
-          attemptCategories.set(feed.name, category);
-          if (firstStartMs === null) firstStartMs = Date.now() - buildStart;
-          const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
-          const outcome = classifyFeedAttempt(true, result.attempt ?? {
-            source: 'cache', failure: null, negativeCache: false,
-          }, {
-            parsedTotal: result.parsedTotal,
-            keptItems: result.items.length,
-            droppedUndated: result.droppedUndated,
-          });
-          attemptOutcomes.set(feed.name, outcome);
-          const completionMs = Date.now() - buildStart;
-          if (firstCompletionMs === null) firstCompletionMs = completionMs;
-          finalCompletionMs = completionMs;
-          // Public feed status keeps the historical four-value contract
-          // (docs/methodology + the proto comment): completed feeds carry
-          // 'all-undated'/'empty'/'partial-undated', feeds that never
-          // completed carry 'timeout'. The fine-grained attempt outcome
-          // (deadline-abort vs per-feed-timeout vs relay-error vs
-          // not-started...) stays in attemptOutcomes and the
-          // [digest-attempts] telemetry line; the coverage block (#7085)
-          // is where that precise vocabulary becomes public.
-          if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
-            feedStatuses[feed.name] = 'all-undated';
-          } else if (result.items.length === 0) {
-            feedStatuses[feed.name] = 'empty';
-          } else if (result.droppedUndated > 0) {
-            feedStatuses[feed.name] = 'partial-undated';
-          }
-          return {
+        return {
+          outcome,
+          value: {
             category,
             items: result.items,
             droppedUndated: result.droppedUndated,
             droppedFeedCap: result.droppedFeedCap ?? 0,
-          };
-        }),
-      );
+          },
+        };
+      },
+    );
 
-      for (const result of settled) {
-        if (result.status === 'fulfilled') {
-          const { category, items, droppedUndated, droppedFeedCap } = result.value;
-          const existing = results.get(category) ?? [];
-          existing.push(...items);
-          results.set(category, existing);
-          ledgerDrops.undated += droppedUndated;
-          ledgerDrops.perFeedCap += droppedFeedCap;
-        }
-      }
+    for (const { value } of attempts.fulfilled) {
+      const { category, items, droppedUndated, droppedFeedCap } = value;
+      const existing = results.get(category) ?? [];
+      existing.push(...items);
+      results.set(category, existing);
+      ledgerDrops.undated += droppedUndated;
+      ledgerDrops.perFeedCap += droppedFeedCap;
     }
 
     const deadlineAborted = deadlineController.signal.aborted;
     for (const entry of allEntries) {
-      if (!startedFeeds.has(entry.feed.name)) {
+      if (!attempts.startedAttemptIds.has(entry.attemptId)) {
         // #7083: this feed's batch never ran. The public map keeps the
         // coarse 'timeout' contract; the precise 'not-started' verdict
         // (scheduling starvation, not an upstream failure) lives in
-        // attemptOutcomes and the [digest-attempts] telemetry line.
+        // the helper's attempt-outcome map and telemetry line.
         feedStatuses[entry.feed.name] = 'timeout';
-        attemptOutcomes.set(entry.feed.name, 'not-started');
-        attemptCategories.set(entry.feed.name, entry.category);
       }
     }
 
@@ -1558,21 +1550,16 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // see which stage consumes the deadline. No host names or exceptions
     // here — details stay in the [feed-fetch] lines.
     {
-      const byOutcome: Record<string, number> = {};
-      for (const outcome of attemptOutcomes.values()) {
-        byOutcome[outcome] = (byOutcome[outcome] ?? 0) + 1;
-      }
-      const byCategory: Record<string, Record<string, number>> = {};
-      for (const [feedName, category] of attemptCategories) {
-        const outcome = attemptOutcomes.get(feedName) ?? 'unknown';
-        const cat = (byCategory[category] ??= {});
-        cat[outcome] = (cat[outcome] ?? 0) + 1;
-      }
-      const headroomMs = Math.max(0, OVERALL_DEADLINE_MS - (finalCompletionMs ?? Date.now() - buildStart));
+      const { byOutcome, byCategory, headroomMs } = summarizeFeedAttempts(
+        attempts.attemptCategories,
+        attempts.attemptOutcomes,
+        OVERALL_DEADLINE_MS,
+        attempts.finalCompletionMs ?? Date.now() - buildStart,
+      );
       console.info(
         `[digest-attempts] variant=${variant} lang=${lang} feeds=${allEntries.length} ` +
-        `deadline_aborted=${deadlineAborted} first_start_ms=${firstStartMs ?? 'n/a'} ` +
-        `first_completion_ms=${firstCompletionMs ?? 'n/a'} final_completion_ms=${finalCompletionMs ?? 'n/a'} ` +
+        `deadline_aborted=${deadlineAborted} first_start_ms=${attempts.firstStartMs ?? 'n/a'} ` +
+        `first_completion_ms=${attempts.firstCompletionMs ?? 'n/a'} final_completion_ms=${attempts.finalCompletionMs ?? 'n/a'} ` +
         `headroom_ms=${headroomMs} by_outcome=${JSON.stringify(byOutcome)} by_category=${JSON.stringify(byCategory)}`,
       );
     }
@@ -1834,6 +1821,7 @@ export const __testing__ = {
   POST_FETCH_HEADROOM_MS,
   RESPONSE_GUARD_BAND_MS,
   OVERALL_DEADLINE_MS,
+  BATCH_CONCURRENCY,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

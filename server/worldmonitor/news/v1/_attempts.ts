@@ -63,6 +63,48 @@ export interface FeedItemCounters {
   droppedUndated: number;
 }
 
+export type FeedFetchFailure = Exclude<FeedFetchAttempt['failure'], null>;
+
+export interface TerminalFetchFailureInput {
+  directFailure: FeedFetchAttempt['failure'];
+  relayFailure: FeedFetchAttempt['failure'];
+  relayAttempted: boolean;
+  deadlineAborted: boolean;
+}
+
+/**
+ * Choose the terminal fetch failure without losing which leg ended last.
+ * A global deadline always wins because it invalidates both fetch legs.
+ */
+export function resolveTerminalFetchFailure({
+  directFailure,
+  relayFailure,
+  relayAttempted,
+  deadlineAborted,
+}: TerminalFetchFailureInput,
+): FeedFetchFailure {
+  if (deadlineAborted || directFailure === 'deadline-abort' || relayFailure === 'deadline-abort') {
+    return 'deadline-abort';
+  }
+  // The closed vocabulary has one relay terminal state. Do not let a relay
+  // leg's own timeout inherit the direct leg's `direct-timeout` label.
+  if (relayAttempted) return 'relay-error';
+  return directFailure ?? 'direct-error';
+}
+
+/**
+ * Describe a cached zero-item result without changing successful empties
+ * into failures.  A cached prior failure is explicitly a negative-cache hit.
+ */
+export function cachedAttemptFrom(prior: FeedFetchAttempt | undefined): FeedFetchAttempt {
+  const failure = prior?.failure ?? null;
+  return {
+    source: 'cache',
+    failure,
+    negativeCache: prior?.negativeCache === true || failure !== null,
+  };
+}
+
 /**
  * Classify one feed attempt into the closed vocabulary. Pure: same inputs,
  * same output, no clock or signal access — the caller supplies the fetch
@@ -98,8 +140,12 @@ export function classifyFeedAttempt(
     return 'aborted-by-deadline';
   }
 
-  if (attempt.failure === 'relay-error' || attempt.failure === 'direct-error') {
+  if (attempt.failure === 'relay-error') {
     return 'relay-failure';
+  }
+
+  if (attempt.failure === 'direct-error') {
+    return 'other-fetch-failure';
   }
 
   if (parsedTotal > 0 && droppedUndated > 0) {
@@ -107,6 +153,115 @@ export function classifyFeedAttempt(
   }
 
   return 'empty';
+}
+
+export interface FeedAttemptBatchEntry {
+  attemptId: string;
+  category: string;
+}
+
+export interface FeedAttemptExecution<T> {
+  value: T;
+  outcome: FeedAttemptOutcome;
+}
+
+export interface FeedAttemptBatchResult<E extends FeedAttemptBatchEntry, T> {
+  fulfilled: Array<{ entry: E; value: T }>;
+  startedAttemptIds: Set<string>;
+  attemptCategories: Map<string, string>;
+  attemptOutcomes: Map<string, FeedAttemptOutcome>;
+  firstStartMs: number | null;
+  firstCompletionMs: number | null;
+  finalCompletionMs: number | null;
+}
+
+export interface FeedAttemptTelemetrySummary {
+  byOutcome: Record<string, number>;
+  byCategory: Record<string, Record<string, number>>;
+  headroomMs: number;
+}
+
+/** Build the structured per-attempt counters emitted by the digest runner. */
+export function summarizeFeedAttempts(
+  attemptCategories: ReadonlyMap<string, string>,
+  attemptOutcomes: ReadonlyMap<string, FeedAttemptOutcome>,
+  overallDeadlineMs: number,
+  elapsedMs: number,
+): FeedAttemptTelemetrySummary {
+  const byOutcome: Record<string, number> = {};
+  for (const outcome of attemptOutcomes.values()) {
+    byOutcome[outcome] = (byOutcome[outcome] ?? 0) + 1;
+  }
+
+  const byCategory: Record<string, Record<string, number>> = {};
+  for (const [attemptId, category] of attemptCategories) {
+    const outcome = attemptOutcomes.get(attemptId) ?? 'unknown';
+    const categoryOutcomes = (byCategory[category] ??= {});
+    categoryOutcomes[outcome] = (categoryOutcomes[outcome] ?? 0) + 1;
+  }
+
+  return {
+    byOutcome,
+    byCategory,
+    headroomMs: Math.max(0, overallDeadlineMs - elapsedMs),
+  };
+}
+
+/**
+ * Execute feed batches while retaining an attempt ledger keyed by a stable,
+ * unique ID.  The executor owns successful classification; a rejected
+ * execution is always an otherwise-unclassified bounded fetch failure.
+ */
+export async function runFeedAttemptBatches<E extends FeedAttemptBatchEntry, T>(
+  allEntries: readonly E[],
+  batches: readonly (readonly E[])[],
+  signal: AbortSignal,
+  execute: (entry: E) => Promise<FeedAttemptExecution<T>>,
+  now: () => number = Date.now,
+): Promise<FeedAttemptBatchResult<E, T>> {
+  const fulfilled: Array<{ entry: E; value: T }> = [];
+  const startedAttemptIds = new Set<string>();
+  const attemptCategories = new Map<string, string>();
+  const attemptOutcomes = new Map<string, FeedAttemptOutcome>();
+  const startedAt = now();
+  let firstStartMs: number | null = null;
+  let firstCompletionMs: number | null = null;
+  let finalCompletionMs: number | null = null;
+
+  for (const batch of batches) {
+    if (signal.aborted) break;
+    const settled = await Promise.allSettled(batch.map(async (entry) => {
+      startedAttemptIds.add(entry.attemptId);
+      attemptCategories.set(entry.attemptId, entry.category);
+      if (firstStartMs === null) firstStartMs = now() - startedAt;
+      try {
+        const execution = await execute(entry);
+        attemptOutcomes.set(entry.attemptId, execution.outcome);
+        return { entry, value: execution.value };
+      } catch (error) {
+        attemptOutcomes.set(entry.attemptId, 'other-fetch-failure');
+        throw error;
+      } finally {
+        const completionMs = now() - startedAt;
+        if (firstCompletionMs === null) firstCompletionMs = completionMs;
+        finalCompletionMs = completionMs;
+      }
+    }));
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        fulfilled.push(result.value);
+      }
+    }
+  }
+
+  for (const entry of allEntries) {
+    if (startedAttemptIds.has(entry.attemptId)) continue;
+    attemptCategories.set(entry.attemptId, entry.category);
+    attemptOutcomes.set(entry.attemptId, 'not-started');
+  }
+
+  return { fulfilled, startedAttemptIds, attemptCategories, attemptOutcomes, firstStartMs, firstCompletionMs, finalCompletionMs };
 }
 
 /**
