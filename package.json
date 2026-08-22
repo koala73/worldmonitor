@@ -59,6 +59,8 @@
     "inventory:facts:check": "node scripts/generate-inventory-facts.mjs --check",
     "docs:stats": "npm run inventory:facts",
     "docs:check": "node scripts/docs-stats.mjs --check",
+    "study:story-phase-fading": "node scripts/study-story-phase-fading.mjs",
+    "study:story-phase-fading:check": "node scripts/study-story-phase-fading.mjs --check",
     "sources:generate": "node scripts/source-attribution.mjs --write",
     "sources:check": "node scripts/source-attribution.mjs --check",
     "dev": "vite",

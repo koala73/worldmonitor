@@ -1085,18 +1085,52 @@ interface StoryTrack {
   lastSeen: number;
   mentionCount: number;
   sourceCount: number;
-  currentScore: number;
-  peakScore: number;
 }
 
-function derivePhase(track: StoryTrack): ProtoStoryPhase {
-  const ageMs = Date.now() - track.firstSeen;
+/**
+ * Derive the wire lifecycle phase for a story appearing in THIS build cycle.
+ *
+ * FADING is deliberately not derivable here. #7081 ran a bounded study against
+ * frozen production evidence (tests/fixtures/story-phase-fading-study.json,
+ * replayed by scripts/study-story-phase-fading.mjs) and recorded a no-go for
+ * the previously documented `currentScore < 0.5 * peakScore` rule. Three
+ * findings, each reproducible from that fixture:
+ *
+ *   1. The rule was unreachable. It read `peakScore` from the story:track hash,
+ *      but the peak is written to the story:peak:v1 ZSet and that hash field has
+ *      no writer — the field was absent on 14,000/14,000 sampled rows, so the
+ *      branch could never be taken. The old comment here blamed "HSETNX
+ *      placeholders" for both scores; that was wrong about currentScore, which
+ *      is written on every cycle and was positive on all 14,000 rows.
+ *
+ *   2. Repaired to read the real peak, the ratio measures article age, not
+ *      traction. importanceScore weights severity at 0.55 and recency at 0.10,
+ *      so the score's dynamic range at fixed severity is min/max = 0.63
+ *      (critical), 0.57 (high), 0.49 (medium), 0.37 (low), 0.18 (info). A
+ *      critical or high story therefore cannot reach half its peak without a
+ *      severity downgrade, while an info story crosses it on the recency term
+ *      alone once its article passes 24h (18 -> 8). Measured on the same rows:
+ *      673 firings, 670 of them info/low, and 0 of 679 critical/high rows.
+ *
+ *   3. Fading is not observable at this call site at all. derivePhase only runs
+ *      for stories present in the current cycle, and it is handed a track whose
+ *      lastSeen is `now` — a story that stopped being covered is absent from the
+ *      cycle and never reaches this function. Silence, the one signal that does
+ *      identify a fading story, is only visible where the non-serving population
+ *      is in scope: scripts/seed-digest-notifications.mjs derives its own phase
+ *      over the accumulator and already treats >24h of silence as fading.
+ *
+ * The STORY_PHASE_FADING wire value is retained for compatibility and is still
+ * handled by consumers (the client alert gate suppresses it), but this handler
+ * does not emit it. Do not reintroduce a score-ratio branch here without new
+ * evidence that clears the acceptance bar recorded in the study.
+ *
+ * `nowMs` is injectable so the phase boundaries are testable without a live clock.
+ */
+function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryPhase {
+  const ageMs = nowMs - track.firstSeen;
   if (track.mentionCount <= 1) return 'STORY_PHASE_BREAKING';
   if (track.mentionCount <= 5 && ageMs < 2 * 60 * 60 * 1000) return 'STORY_PHASE_DEVELOPING';
-  // FADING requires real scores from E1. Until E1 ships, currentScore and
-  // peakScore are both 0 (HSETNX placeholders), so this branch is intentionally
-  // inactive — stories fall through to SUSTAINED rather than incorrectly FADING.
-  if (track.currentScore > 0 && track.peakScore > 0 && track.currentScore < track.peakScore * 0.5) return 'STORY_PHASE_FADING';
   return 'STORY_PHASE_SUSTAINED';
 }
 
@@ -1106,7 +1140,15 @@ function derivePhase(track: StoryTrack): ProtoStoryPhase {
  */
 async function readStoryTracks(titleHashes: string[]): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
-  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', 'currentScore', 'peakScore'];
+  // currentScore and peakScore are deliberately NOT read here. derivePhase is
+  // the only consumer this handler ever had for them, and it no longer uses a
+  // score at all (#7081 no-go — see derivePhase). peakScore in particular never
+  // existed as a hash field: the peak lives in the story:peak:v1 ZSet, so the
+  // HMGET slot returned null on every sampled production row. Dropping both
+  // trims two fields from every per-story HMGET in the batch. The WRITE side is
+  // unchanged — buildStoryTrackHsetFields still persists currentScore, which
+  // scripts/seed-digest-notifications.mjs reads.
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount'];
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
@@ -1120,8 +1162,6 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
       lastSeen:     Number(vals[1] ?? 0),
       mentionCount: Number(vals[2] ?? 0),
       sourceCount:  Number(vals[3] ?? 0),
-      currentScore: Number(vals[4] ?? 0),
-      peakScore:    Number(vals[5] ?? 0),
     });
   }
   return map;
@@ -1636,14 +1676,12 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
             lastSeen: now,
             mentionCount,
             sourceCount,
-            currentScore: stale?.currentScore ?? 0,
-            peakScore: stale?.peakScore ?? 0,
           };
           const storyMeta: ProtoStoryMeta = {
             firstSeen,
             mentionCount,
             sourceCount,
-            phase: derivePhase(merged),
+            phase: derivePhase(merged, now),
           };
           return toProtoItem(item, storyMeta);
         }),
@@ -1702,6 +1740,7 @@ export const __testing__ = {
   promoteDiplomacySeverity,
   computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
+  derivePhase,
   readStoryTracks,
   resolveMaxAgeMs,
   capLlmUpgrade,
