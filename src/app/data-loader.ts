@@ -134,6 +134,7 @@ import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo, loadFromStorage, saveToStorage } from '@/utils';
+import { localYmd } from '@/utils/local-date';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
@@ -2688,13 +2689,13 @@ export class DataLoaderManager implements AppModule {
       const past = new Date(today.getTime() - 7 * 86400_000);
       const future = new Date(today.getTime() + 14 * 86400_000);
       const resp = await client.listEarningsCalendar({
-        fromDate: past.toISOString().slice(0, 10),
-        toDate: future.toISOString().slice(0, 10),
+        fromDate: localYmd(past),
+        toDate: localYmd(future),
       });
       const earnings = resp.earnings ?? [];
       if (resp.unavailable || earnings.length === 0) return undefined;
       const { buildEarningsBriefContext } = await import('@/services/daily-market-brief');
-      return buildEarningsBriefContext(earnings, today.toISOString().slice(0, 10));
+      return buildEarningsBriefContext(earnings, localYmd(today));
     } catch {
       return undefined;
     }
@@ -4211,7 +4212,9 @@ export class DataLoaderManager implements AppModule {
     try {
       const fireResult = await fetchAllFires(1);
       if (fireResult.skipped) {
-        this.ctx.panels['satellite-fires']?.showConfigError(t('panels.satelliteFires.noData'));
+        // en.json carries panels.satelliteFires as a flat title string, so the
+        // nested .noData lookup could never resolve — it rendered the raw key.
+        this.ctx.panels['satellite-fires']?.showConfigError(t('common.noData'));
         this.ctx.statusPanel?.updateApi('FIRMS', { status: 'error' });
         return;
       }
