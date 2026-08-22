@@ -794,10 +794,7 @@ components:
                     type: integer
                     format: int32
                     description: 'Per-gate drop count: category cap.'
-                droppedCategoryCap:
-                    type: integer
-                    format: int32
-                    description: 'Per-gate drop count: category cap.'
+
                 servedStale:
                     type: boolean
                     description: 'Durable last-good serving (#7084): true exactly when accepted older content is replayed after a failed latest attempt. The content counts still describe the served body; attemptedAt names the FAILED attempt.'
