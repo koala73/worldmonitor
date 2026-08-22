@@ -26,6 +26,11 @@ import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
 import { GROQ_DEFAULT_MODEL } from './_llm-model-timeouts.mjs';
 import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
+import {
+  FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+  parseForecastEvidenceMember,
+} from './_forecast-evidence-archive.mjs';
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
@@ -1226,12 +1231,139 @@ async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
   if (!dueEntries.length) return { items: [], available: false };
 
   const windowStartMs = Math.min(...dueEntries.map((entry) => judgedArchiveWindowForEntry(entry, nowMs).startMs));
+  // #7082: judge from the dedicated evidence archive first — it is
+  // self-contained (no story:track dependency) and covers the full 14-day
+  // contract. The accumulator reader stays as the migration fallback while
+  // both paths exist; divergence between them is logged, not swallowed.
+  try {
+    const archived = await readForecastEvidenceArchive(windowStartMs, nowMs, options);
+    if (archived.available) {
+      if (!options.quietArchiveMigration) {
+        try {
+          const legacy = await readDigestAccumulatorArchive(windowStartMs, nowMs, options);
+          if (legacy.available && legacy.items.length !== archived.items.length) {
+            console.warn(
+              `  [forecast-resolutions] evidence archive/accumulator divergence: ` +
+              `archive=${archived.items.length} accumulator=${legacy.items.length} ` +
+              `(expected while the archive backfills; accumulator lacks >48h evidence)`,
+            );
+          }
+        } catch {
+          // The comparison is best-effort telemetry; the archive read already
+          // succeeded and must not fail because the legacy path did.
+        }
+      }
+      return archived;
+    }
+  } catch (err) {
+    console.warn(`  [forecast-resolutions] evidence archive unavailable, falling back to accumulator: ${err?.message || err}`);
+  }
   try {
     return await readDigestAccumulatorArchive(windowStartMs, nowMs, options);
   } catch (err) {
     console.warn(`  [forecast-resolutions] judged archive unavailable: ${err?.message || err}`);
     return { items: [], available: false };
   }
+}
+
+/**
+ * #7082: read the dedicated forecast evidence archive. Members are
+ * self-contained JSON records (title/link/description/publishedAt ride on
+ * the member), so — unlike the accumulator reader — there is no story:track
+ * dependency that expires after 7 days. Malformed or oversized members are
+ * counted as tombstones and surfaced in the result instead of being
+ * silently omitted, and truncation tightens the reported coverage window so
+ * missing evidence can never be converted into a judged negative.
+ */
+export async function readForecastEvidenceArchive(windowStartMs, nowMs, options = {}) {
+  const { url, token } = getArchiveRedisCredentials(options);
+  const configuredMaxLookbackMs = Number.isFinite(options.maxLookbackMs)
+    ? Math.max(1, Math.floor(options.maxLookbackMs))
+    : resolveJudgedEvidenceMaxLookbackMs();
+  const requestedCoverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
+  const maxHashes = Number.isFinite(options.maxHashes)
+    ? Math.max(1, Math.floor(options.maxHashes))
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
+  const base = {
+    requestedStartMs: windowStartMs,
+    requestedEndMs: nowMs,
+    coverageStartMs: requestedCoverageStartMs,
+    coverageEndMs: nowMs,
+    archive: FORECAST_EVIDENCE_KEY,
+  };
+  const zsetResp = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify([
+      'ZREVRANGEBYSCORE',
+      FORECAST_EVIDENCE_KEY,
+      String(nowMs),
+      String(requestedCoverageStartMs),
+      'WITHSCORES',
+      'LIMIT',
+      '0',
+      String(maxHashes + 1),
+    ]),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!zsetResp.ok) throw new Error(`Redis ZREVRANGEBYSCORE ${FORECAST_EVIDENCE_KEY} failed: HTTP ${zsetResp.status}`);
+  const zsetPayload = await zsetResp.json();
+  if (!Array.isArray(zsetPayload?.result)) {
+    throw new Error(`Redis ZREVRANGEBYSCORE ${FORECAST_EVIDENCE_KEY} returned non-array WITHSCORES data`);
+  }
+  const zsetRows = zsetPayload.result;
+  if (zsetRows.length % 2 !== 0) {
+    throw new Error(`Redis ZREVRANGEBYSCORE ${FORECAST_EVIDENCE_KEY} returned malformed WITHSCORES data`);
+  }
+  const members = [];
+  let malformedTombstones = 0;
+  for (let index = 0; index < zsetRows.length; index += 2) {
+    const raw = zsetRows[index];
+    const score = Number(zsetRows[index + 1]);
+    if (!raw || !Number.isFinite(score)) {
+      malformedTombstones += 1;
+      continue;
+    }
+    const { record, malformed, oversized } = parseForecastEvidenceMember(raw);
+    if (malformed || oversized || !record) {
+      malformedTombstones += 1;
+      continue;
+    }
+    members.push({ record, score });
+  }
+  if (!members.length && malformedTombstones === 0) return { ...base, items: [], available: true };
+  const truncated = members.length > maxHashes;
+  const selected = members.slice(0, maxHashes);
+  const oldestRetainedScore = selected.at(-1)?.score;
+  const firstDroppedScore = members[maxHashes]?.score;
+  const retainedCoverageStartMs = firstDroppedScore === oldestRetainedScore
+    ? oldestRetainedScore + 1
+    : oldestRetainedScore;
+  const coverageStartMs = truncated
+    ? Math.max(requestedCoverageStartMs, retainedCoverageStartMs)
+    : requestedCoverageStartMs;
+  if (truncated) {
+    console.warn(`  [forecast-resolutions] evidence archive hash cap reached (${selected.length}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; retained coverage begins ${new Date(coverageStartMs).toISOString()}`);
+  }
+  if (malformedTombstones > 0) {
+    console.warn(`  [forecast-resolutions] evidence archive reported ${malformedTombstones} malformed/oversized tombstone member(s)`);
+  }
+  const items = selected.map(({ record }, index) => ({
+    id: `N${index + 1}`,
+    title: record.title,
+    description: record.description,
+    url: record.link,
+    publishedAt: record.lastSeen,
+    hash: record.hash,
+  }));
+  return {
+    ...base,
+    coverageStartMs,
+    truncated,
+    malformedTombstones,
+    items,
+    available: true,
+  };
 }
 
 export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options = {}) {
