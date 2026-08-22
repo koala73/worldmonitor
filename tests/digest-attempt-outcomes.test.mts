@@ -150,14 +150,21 @@ describe('list-feed-digest wiring (#7083)', () => {
     digestSource = await readFile(resolve(root, 'server/worldmonitor/news/v1/list-feed-digest.ts'), 'utf8');
   });
 
-  it('batches from the category-interleaved ordering', () => {
-    assert.match(digestSource, /interleaveByCategory\(orderServerFeedEntries\(allEntries\)\)/);
+  it('batches from the priority head plus category-interleaved ordering', () => {
+    // The China coverage trio's deadlinePriority promise stays absolute —
+    // pinned before the interleave — while every other category round-robins
+    // so no single slow category can starve the rest behind the deadline.
+    assert.match(digestSource, /priorityHead/);
+    assert.match(digestSource, /interleaveByCategory\(/);
+    assert.match(digestSource, /deadlinePriority \?\? 0\) > 0/);
   });
 
   it('records started feeds before awaiting and labels the rest not-started', () => {
     assert.match(digestSource, /startedFeeds\.add\(feed\.name\)/);
-    assert.match(digestSource, /'not-started'/);
-    assert.doesNotMatch(digestSource, /feedStatuses\[entry\.feed\.name\] = 'timeout'/);
+    // The precise 'not-started' verdict is internal (attemptOutcomes +
+    // telemetry); the public map keeps the coarse 'timeout' contract.
+    assert.match(digestSource, /attemptOutcomes\.set\(entry\.feed\.name, 'not-started'\)/);
+    assert.match(digestSource, /feedStatuses\[entry\.feed\.name\] = 'timeout'/);
   });
 
   it('classifies every started feed through the closed vocabulary', () => {
@@ -171,6 +178,10 @@ describe('list-feed-digest wiring (#7083)', () => {
   });
 
   it('keeps healthy completed feeds out of the public status map', () => {
-    assert.match(digestSource, /if \(outcome !== 'completed'\)/);
+    // The public map only ever assigns the coarse states for non-healthy
+    // outcomes ('all-undated'/'empty'/'partial-undated'); a healthy parse
+    // leaves the feed absent, and fine-grained outcomes stay internal.
+    assert.match(digestSource, /feedStatuses\[feed\.name\] = 'empty'/);
+    assert.doesNotMatch(digestSource, /feedStatuses\[feed\.name\] = outcome/);
   });
 });

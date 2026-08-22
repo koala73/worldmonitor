@@ -1439,11 +1439,18 @@ function buildDigestFeedBatches(variant: string, lang: string): {
     }
   }
 
-  // #7083: category-fair scheduling. Priorities still order feeds inside
-  // their category, but the categories are interleaved so the first batch
-  // wave contains the head of every eligible category — a slow category can
-  // no longer push all later categories behind the global deadline.
-  const orderedEntries = interleaveByCategory(orderServerFeedEntries(allEntries));
+  // #7083: category-fair scheduling, with the deadline-priority promise
+  // kept absolute: feeds with deadlinePriority > 0 start first in a cold
+  // build (the China coverage trio is market-hours critical), and the rest
+  // interleave so the next wave contains the head of every eligible
+  // category — a slow category can no longer push all later categories
+  // behind the global deadline.
+  const priorityOrdered = orderServerFeedEntries(allEntries);
+  const priorityHead = priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) > 0);
+  const orderedEntries = [
+    ...priorityHead,
+    ...interleaveByCategory(priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) <= 0)),
+  ];
   const batches: DigestFeedEntry[][] = [];
   for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
     batches.push(orderedEntries.slice(i, i + BATCH_CONCURRENCY));
@@ -1497,13 +1504,20 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
           const completionMs = Date.now() - buildStart;
           if (firstCompletionMs === null) firstCompletionMs = completionMs;
           finalCompletionMs = completionMs;
-          // Public feed status keeps the historical contract: healthy
-          // completed feeds stay absent, every other state carries its
-          // precise outcome name instead of being flattened into
-          // 'empty'/'timeout' (#7083). The full histogram (including
-          // 'completed') goes to the [digest-attempts] telemetry line.
-          if (outcome !== 'completed') {
-            feedStatuses[feed.name] = outcome;
+          // Public feed status keeps the historical four-value contract
+          // (docs/methodology + the proto comment): completed feeds carry
+          // 'all-undated'/'empty'/'partial-undated', feeds that never
+          // completed carry 'timeout'. The fine-grained attempt outcome
+          // (deadline-abort vs per-feed-timeout vs relay-error vs
+          // not-started...) stays in attemptOutcomes and the
+          // [digest-attempts] telemetry line; the coverage block (#7085)
+          // is where that precise vocabulary becomes public.
+          if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
+            feedStatuses[feed.name] = 'all-undated';
+          } else if (result.items.length === 0) {
+            feedStatuses[feed.name] = 'empty';
+          } else if (result.droppedUndated > 0) {
+            feedStatuses[feed.name] = 'partial-undated';
           }
           return {
             category,
@@ -1529,9 +1543,11 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const deadlineAborted = deadlineController.signal.aborted;
     for (const entry of allEntries) {
       if (!startedFeeds.has(entry.feed.name)) {
-        // #7083: this feed's batch never ran — say so instead of relabeling
-        // scheduling starvation as an upstream 'timeout'.
-        feedStatuses[entry.feed.name] = 'not-started';
+        // #7083: this feed's batch never ran. The public map keeps the
+        // coarse 'timeout' contract; the precise 'not-started' verdict
+        // (scheduling starvation, not an upstream failure) lives in
+        // attemptOutcomes and the [digest-attempts] telemetry line.
+        feedStatuses[entry.feed.name] = 'timeout';
         attemptOutcomes.set(entry.feed.name, 'not-started');
         attemptCategories.set(entry.feed.name, entry.category);
       }
