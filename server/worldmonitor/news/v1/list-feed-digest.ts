@@ -612,7 +612,14 @@ async function fetchAndParseRss(
     // network failure: cache empty short so we retry sooner.
     const parsed = parseRssXml(text, feed, variant);
     const result: ParseResult = parsed ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
-    result.attempt = { source, failure: null, negativeCache: false };
+    // text is non-null here, so the fetch source can only be 'direct' or
+    // 'relay' — narrow explicitly, the variable's type still carries
+    // 'both-failed' for the log line above.
+    result.attempt = {
+      source: source === 'relay' ? 'relay' : 'direct',
+      failure: null,
+      negativeCache: false,
+    };
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
