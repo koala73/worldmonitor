@@ -2,6 +2,7 @@ import type {
   ServerContext,
   ListFeedDigestRequest,
   ListFeedDigestResponse,
+  DigestCoverage,
   CategoryBucket,
   NewsItem as ProtoNewsItem,
   ThreatLevel as ProtoThreatLevel,
@@ -20,7 +21,7 @@ import {
   type ServerFeed,
 } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
-import { classifyFeedAttempt, interleaveByCategory, type FeedFetchAttempt } from './_attempts';
+import { buildDigestCoverage, classifyFeedAttempt, interleaveByCategory, type FeedFetchAttempt } from './_attempts';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
@@ -1217,7 +1218,29 @@ export async function listFeedDigest(
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
 
-  const empty = (): ListFeedDigestResponse => ({ categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() });
+  // #7085: an empty response still carries an explicit `unavailable`
+  // coverage block so clients can distinguish "nothing served" from
+  // "digest temporarily absent".
+  const empty = (): ListFeedDigestResponse => ({
+    categories: {},
+    feedStatuses: {},
+    generatedAt: new Date().toISOString(),
+    coverage: {
+      state: 'unavailable',
+      attemptedAt: new Date().toISOString(),
+      itemsServed: 0,
+      publisherCount: 0,
+      feedTotal: 0,
+      feedCompleted: 0,
+      categoryTotal: 0,
+      categoryCompleted: 0,
+      categoryStates: {},
+      droppedFeedCap: 0,
+      droppedUndated: 0,
+      droppedFreshness: 0,
+      droppedCategoryCap: 0,
+    },
+  });
 
   try {
     // cachedFetchJson coalesces concurrent cold-path calls: concurrent requests
@@ -1799,10 +1822,28 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       );
     }
 
+    // #7085 coverage block: one compact summary of the content served and
+    // the latest build attempt. Content identity (generatedAt) and attempt
+    // identity (attemptedAt) are separate on purpose — they diverge the day
+    // durable last-good serving lands (#7084). Counts only: no raw errors,
+    // feed URLs, hostnames, or per-host timings leave the server.
+    // servingStale stays false until durable last-good serving (#7084).
+    const coverage = buildDigestCoverage({
+      entries: allEntries,
+      attemptOutcomes,
+      itemsServed: allSliced.length,
+      publisherSources: allSliced.map((item) => item.source),
+      deadlineAborted: deadlineController.signal.aborted,
+      servingStale: false,
+      drops: { ...ledgerDrops },
+      buildStartMs: buildStart,
+    });
+
     return {
       categories,
       feedStatuses,
       generatedAt: new Date().toISOString(),
+      coverage,
     };
   } finally {
     clearTimeout(deadlineTimeout);

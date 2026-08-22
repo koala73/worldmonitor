@@ -148,6 +148,22 @@ type NlpDigestFetch = {
   category: string | null;
   /** Present when a non-empty category filter did not match any digest key. */
   note?: string;
+  /**
+   * Compact data-quality summary from the digest's coverage block (#7085):
+   * closed state, served/publisher counts, feed and category completion,
+   * and missing category names. Agents can condition summaries on it.
+   */
+  digestCoverage?: {
+    state: string;
+    servedItems: number;
+    servedPublishers: number;
+    feedsCompleted: number;
+    feedsTotal: number;
+    categoriesCompleted: number;
+    categoriesTotal: number;
+    missingCategories: string[];
+    stale: boolean;
+  };
 };
 
 // Caching asymmetry among these four tools is deliberate. get_keyword_spikes
@@ -186,6 +202,16 @@ async function fetchNlpDigestItems(
     categories?: Record<string, NlpDigestCategoryGroup>;
     feedStatuses?: Record<string, string>;
     generatedAt?: string;
+    coverage?: {
+      state?: string;
+      itemsServed?: number;
+      publisherCount?: number;
+      feedCompleted?: number;
+      feedTotal?: number;
+      categoryCompleted?: number;
+      categoryTotal?: number;
+      categoryStates?: Record<string, string>;
+    };
   };
 
   const seen = new Set<string>();
@@ -250,13 +276,42 @@ async function fetchNlpDigestItems(
       });
     }
   }
+  // #7085: carry the digest's coverage block through to agents in a
+  // compact, closed shape. Counts pass through only when the upstream
+  // digest actually sent them; a digest without coverage simply omits it.
+  const cov = body.coverage;
+  const digestCoverage = cov && typeof cov.state === 'string'
+    ? {
+      state: nlpClampDigestCoverageState(cov.state),
+      servedItems: nlpClampInt(cov.itemsServed ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      servedPublishers: nlpClampInt(cov.publisherCount ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      feedsCompleted: nlpClampInt(cov.feedCompleted ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      feedsTotal: nlpClampInt(cov.feedTotal ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      categoriesCompleted: nlpClampInt(cov.categoryCompleted ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      categoriesTotal: nlpClampInt(cov.categoryTotal ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      missingCategories: Object.entries(cov.categoryStates ?? {})
+        .filter(([, v]) => v === 'missing')
+        .map(([k]) => k)
+        .slice(0, 12),
+      stale: cov.state === 'stale',
+    }
+    : undefined;
+
   return {
     items,
     generatedAt: nlpTruncateUtf8(body.generatedAt ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
     variant,
     category: category || null,
     ...(note ? { note } : {}),
+    ...(digestCoverage ? { digestCoverage } : {}),
   };
+}
+
+/** Coverage states are a closed vocabulary — pass through only the known four. */
+function nlpClampDigestCoverageState(value: string): string {
+  return value === 'complete' || value === 'partial' || value === 'stale' || value === 'unavailable'
+    ? value
+    : 'unavailable';
 }
 
 function resolveNlpDigestVariant(value: unknown): NlpDigestVariant | null {
@@ -486,6 +541,7 @@ export const NLP_TOOLS: ToolDef[] = [
         variant: digest.variant,
         category: digest.category,
         ...(digest.note ? { note: digest.note } : {}),
+        ...(digest.digestCoverage ? { digestCoverage: digest.digestCoverage } : {}),
         ...aggregated,
       };
     },
@@ -660,6 +716,7 @@ export const NLP_TOOLS: ToolDef[] = [
         variant: digest.variant,
         category: digest.category,
         ...(digest.note ? { note: digest.note } : {}),
+        ...(digest.digestCoverage ? { digestCoverage: digest.digestCoverage } : {}),
       };
     },
     _apiPaths: [

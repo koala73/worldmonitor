@@ -48470,6 +48470,9 @@ components:
                 generatedAt:
                     type: string
                     description: ISO 8601 timestamp of when this digest was generated
+                coverage:
+                    $ref: '#/components/schemas/worldmonitor_news_v1_DigestCoverage'
+                    description: Compact coverage summary of the content served and the latest build attempt (#7085). Counts only — no raw errors, URLs, or host timings.
         worldmonitor_news_v1_ListFeedDigestResponse_CategoriesEntry:
             type: object
             properties:
@@ -48478,6 +48481,67 @@ components:
                 value:
                     $ref: '#/components/schemas/worldmonitor_news_v1_CategoryBucket'
         worldmonitor_news_v1_ListFeedDigestResponse_FeedStatusesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
+        worldmonitor_news_v1_DigestCoverage:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: 'complete | partial | stale | unavailable. complete: every configured category had at least one completed eligible feed and the build did not hit the global deadline. partial: content exists, but a category had no completed feed or the build hit the global deadline. stale: accepted older content is served after a failed latest attempt (durable last-good serving, #7084). unavailable: no eligible content could be served.'
+                attemptedAt:
+                    type: string
+                    description: ISO 8601 time of the latest build attempt (attempt identity).
+                itemsServed:
+                    type: integer
+                    format: int32
+                    description: Items served in this response, after every gate.
+                publisherCount:
+                    type: integer
+                    format: int32
+                    description: Distinct publishers among the served items (normalized source labels, current cycle only — not feed-label counts, not historical sets).
+                feedTotal:
+                    type: integer
+                    format: int32
+                    description: Eligible feeds configured for this variant+language.
+                feedCompleted:
+                    type: integer
+                    format: int32
+                    description: Eligible feeds that completed (with or without items).
+                categoryTotal:
+                    type: integer
+                    format: int32
+                    description: Categories configured for this variant+language.
+                categoryCompleted:
+                    type: integer
+                    format: int32
+                    description: Categories with at least one completed feed.
+                categoryStates:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Per-category state — ok (a feed completed) | missing (none did).
+                droppedFeedCap:
+                    type: integer
+                    format: int32
+                    description: 'Per-gate drop count: feed cap.'
+                droppedUndated:
+                    type: integer
+                    format: int32
+                    description: 'Per-gate drop count: undated-item.'
+                droppedFreshness:
+                    type: integer
+                    format: int32
+                    description: 'Per-gate drop count: freshness floor.'
+                droppedCategoryCap:
+                    type: integer
+                    format: int32
+                    description: 'Per-gate drop count: category cap.'
+        worldmonitor_news_v1_DigestCoverage_CategoryStatesEntry:
             type: object
             properties:
                 key:

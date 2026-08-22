@@ -147,3 +147,92 @@ export function interleaveByCategory<T extends { category: string }>(
   }
   return ordered;
 }
+
+/**
+ * #7085 coverage block. Structural mirror of the proto DigestCoverage
+ * message — kept free of generated-type imports so plain .mjs tests can
+ * import this module directly.
+ */
+export interface DigestCoverageBlock {
+  /** complete | partial | stale | unavailable */
+  state: 'complete' | 'partial' | 'stale' | 'unavailable';
+  /** ISO 8601 time of the latest build attempt (attempt identity). */
+  attemptedAt: string;
+  itemsServed: number;
+  publisherCount: number;
+  feedTotal: number;
+  feedCompleted: number;
+  categoryTotal: number;
+  categoryCompleted: number;
+  /** Per-category state: ok (a feed completed) | missing (none did). */
+  categoryStates: Record<string, string>;
+  droppedFeedCap: number;
+  droppedUndated: number;
+  droppedFreshness: number;
+  droppedCategoryCap: number;
+}
+
+export interface DigestCoverageInput {
+  entries: readonly { category: string; feed: { name: string } }[];
+  /** Fine-grained attempt outcome per feed name; 'not-started' = never ran. */
+  attemptOutcomes: ReadonlyMap<string, string>;
+  itemsServed: number;
+  /** Source label of every served item (publisherCount = distinct count). */
+  publisherSources: readonly string[];
+  /** True when the global deadline aborted the build. */
+  deadlineAborted: boolean;
+  /**
+   * True when accepted older content is served after a failed latest
+   * attempt. No caller sets this until durable last-good serving (#7084)
+   * lands; the classifier and contract are ready for it.
+   */
+  servingStale: boolean;
+  drops: {
+    perFeedCap: number;
+    undated: number;
+    freshnessFloor: number;
+    perCategoryCap: number;
+  };
+  buildStartMs: number;
+}
+
+/** Classify one build into the closed coverage vocabulary. Pure. */
+export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageBlock {
+  const configuredCategories = [...new Set(input.entries.map((e) => e.category))];
+  const completedByCategory = new Map<string, number>();
+  let feedCompleted = 0;
+  for (const entry of input.entries) {
+    const outcome = input.attemptOutcomes.get(entry.feed.name);
+    if (outcome !== undefined && outcome !== 'not-started') {
+      feedCompleted += 1;
+      completedByCategory.set(entry.category, (completedByCategory.get(entry.category) ?? 0) + 1);
+    }
+  }
+  const categoryStates: Record<string, string> = {};
+  for (const category of configuredCategories) {
+    categoryStates[category] = (completedByCategory.get(category) ?? 0) > 0 ? 'ok' : 'missing';
+  }
+  const categoryCompleted = configuredCategories.filter((c) => categoryStates[c] === 'ok').length;
+  const state: DigestCoverageBlock['state'] = input.servingStale
+    ? 'stale'
+    : input.itemsServed === 0
+      ? 'unavailable'
+      : input.deadlineAborted || categoryCompleted < configuredCategories.length
+        ? 'partial'
+        : 'complete';
+  return {
+    state,
+    attemptedAt: new Date(input.buildStartMs).toISOString(),
+    itemsServed: input.itemsServed,
+    publisherCount: new Set(input.publisherSources).size,
+    feedTotal: input.entries.length,
+    feedCompleted,
+    categoryTotal: configuredCategories.length,
+    categoryCompleted,
+    categoryStates,
+    droppedFeedCap: input.drops.perFeedCap,
+    droppedUndated: input.drops.undated,
+    droppedFreshness: input.drops.freshnessFloor,
+    droppedCategoryCap: input.drops.perCategoryCap,
+  };
+}
