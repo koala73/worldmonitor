@@ -24,7 +24,29 @@ type Harness = {
   fetchTrafficAnomalies: (country?: string) => Promise<{ anomalies: Array<{ id: string }>; totalCount: number }>;
   fetchSocialVelocity: () => Promise<{ posts: Array<{ id: string }>; fetchedAt: number }>;
   fetchDiseaseOutbreaks: () => Promise<{ outbreaks: Array<{ id: string }>; fetchedAt: number }>;
-  fetchSanctionsPressure: () => Promise<{ totalCount: number; entries: Array<{ id: string }> }>;
+  fetchSanctionsPressure: () => Promise<{
+    totalCount: number;
+    semaError: string | null;
+    entries: Array<{ id: string }>;
+  }>;
+  fetchPizzIntStatus: () => Promise<{
+    dataFreshness: 'fresh' | 'stale';
+    lastUpdate: Date;
+  }>;
+  fetchChokepointStatus: () => Promise<{
+    chokepoints: Array<{ id: string }>;
+    fetchedAt: string;
+    upstreamUnavailable: boolean;
+  }>;
+  refreshChokepointStatusAfterHydration: (response: {
+    chokepoints: Array<{ id: string }>;
+    fetchedAt: string;
+    upstreamUnavailable: boolean;
+  }) => Promise<{
+    chokepoints: Array<{ id: string }>;
+    fetchedAt: string;
+    upstreamUnavailable: boolean;
+  } | null>;
   fetchConsumerPriceOverview: (marketCode?: string, basketSlug?: string) => Promise<{ marketCode: string; asOf: string }>;
   fetchConsumerPriceCategories: (marketCode?: string, basketSlug?: string, range?: string) => Promise<{
     marketCode: string;
@@ -91,7 +113,7 @@ const OUTBREAK = { id: 'out-1', disease: 'Cholera', country: 'YY', cases: 10 };
 
 function bootstrapStub(
   payload: Record<string, unknown>,
-  rpcResponseForUrl: (url: string) => unknown = (url) => ({
+  rpcResponseForUrl: (url: string) => unknown | Promise<unknown> = (url) => ({
     __rpc: true,
     url,
     events: [],
@@ -113,7 +135,7 @@ function bootstrapStub(
         status: 200, headers: { 'content-type': 'application/json' },
       });
     }
-    return new Response(JSON.stringify(rpcResponseForUrl(url)), {
+    return new Response(JSON.stringify(await rpcResponseForUrl(url)), {
       status: 200, headers: { 'content-type': 'application/json' },
     });
   }) as typeof fetch;
@@ -122,6 +144,13 @@ function bootstrapStub(
 
 function rpcUrlCount(requests: string[]): number {
   return requests.filter((url) => !url.includes('/api/bootstrap')).length;
+}
+
+async function waitForRpcCount(requests: string[], expected: number): Promise<void> {
+  for (let attempt = 0; attempt < 20 && rpcUrlCount(requests) < expected; attempt += 1) {
+    await new Promise<void>((resolveWait) => setImmediate(resolveWait));
+  }
+  assert.equal(rpcUrlCount(requests), expected);
 }
 
 before(async () => {
@@ -161,6 +190,8 @@ before(async () => {
         "export { fetchSocialVelocity } from './src/services/social-velocity.ts';",
         "export { fetchDiseaseOutbreaks } from './src/services/disease-outbreaks.ts';",
         "export { fetchSanctionsPressure } from './src/services/sanctions-pressure.ts';",
+        "export { fetchPizzIntStatus } from './src/services/pizzint.ts';",
+        "export { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from './src/services/supply-chain/index.ts';",
         "export { fetchConsumerPriceOverview, fetchConsumerPriceCategories, fetchConsumerPriceMovers, fetchRetailerPriceSpreads } from './src/services/consumer-prices/index.ts';",
         "export { createHydrationHandoff } from './src/services/hydration-handoff.ts';",
         "export { fetchBootstrapData, __testing__ as bootstrapTesting } from './src/services/bootstrap.ts';",
@@ -417,6 +448,33 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 0);
   });
 
+  it('sanctionsPressure: partial SEMA results remain visible but retry instead of entering the success cache', async () => {
+    const partial = {
+      entries: [{
+        id: 'sdn-partial', name: 'Partial entry', entityType: 'ENTITY', countryCodes: [],
+        countryNames: [], programs: [], sourceLists: [], effectiveAt: 0, isNew: false, note: '',
+      }],
+      countries: [], programs: [], totalCount: 1, sdnCount: 1, consolidatedCount: 0,
+      semaCount: 0, semaError: 'SEMA HTTP 503', newEntryCount: 0, vesselCount: 0,
+      aircraftCount: 0, fetchedAt: 1, datasetDate: 1,
+    };
+    const requests = bootstrapStub({ sanctionsPressure: partial });
+    await harness.fetchBootstrapData();
+
+    const hydrated = await harness.fetchSanctionsPressure();
+    const firstRetry = await harness.fetchSanctionsPressure();
+    const secondRetry = await harness.fetchSanctionsPressure();
+
+    assert.equal(hydrated.semaError, 'SEMA HTTP 503');
+    assert.equal(firstRetry.semaError, 'SEMA HTTP 503');
+    assert.equal(secondRetry.semaError, 'SEMA HTTP 503');
+    assert.equal(
+      requests.filter((url) => url.includes('keys=sanctionsPressure')).length,
+      2,
+      'partial SEMA data must not suppress later recovery attempts',
+    );
+  });
+
   it('sanctionsPressure: accepted hydration reaches callers and warms the anonymous path', async () => {
     // hasPremiumAccess() is stubbed false (see the build plugin), so this pins
     // the anonymous branch used by ordinary visitors.
@@ -436,6 +494,112 @@ describe('bootstrap hydration reuse (#7048)', () => {
       0,
       'the anonymous per-key bootstrap path must not refetch accepted tier data',
     );
+  });
+
+  it('PizzINT: stale hydration is shown once, then a fresh live result is cached', async () => {
+    const staleStatus = {
+      defconLevel: 4, defconLabel: 'stale', aggregateActivity: 10, activeSpikes: 1,
+      locationsMonitored: 1, locationsOpen: 1, updatedAt: 1,
+      dataFreshness: 'DATA_FRESHNESS_STALE', locations: [],
+    };
+    const freshStatus = {
+      ...staleStatus,
+      defconLevel: 3,
+      defconLabel: 'fresh',
+      updatedAt: 2,
+      dataFreshness: 'DATA_FRESHNESS_FRESH',
+    };
+    const requests = bootstrapStub(
+      { pizzint: { pizzint: staleStatus, tensionPairs: [] } },
+      () => ({ pizzint: freshStatus, tensionPairs: [] }),
+    );
+    await harness.fetchBootstrapData();
+
+    const hydrated = await harness.fetchPizzIntStatus();
+    const recovered = await harness.fetchPizzIntStatus();
+    const cached = await harness.fetchPizzIntStatus();
+
+    assert.equal(hydrated.dataFreshness, 'stale');
+    assert.equal(recovered.dataFreshness, 'fresh');
+    assert.deepEqual(cached, recovered);
+    assert.equal(rpcUrlCount(requests), 1, 'stale hydration must retry once and cache only the fresh result');
+  });
+
+  it('chokepoints: degraded hydration renders promptly, refreshes once, and remains retryable', async () => {
+    const degraded = {
+      chokepoints: [{ id: 'hydrated-degraded' }],
+      fetchedAt: 'hydrated',
+      upstreamUnavailable: true,
+    };
+    const degradedLive = {
+      chokepoints: [{ id: 'live-degraded' }],
+      fetchedAt: 'live',
+      upstreamUnavailable: true,
+    };
+    let releaseFirstRefresh!: (value: typeof degradedLive) => void;
+    const firstRefresh = new Promise<typeof degradedLive>((resolveRefresh) => {
+      releaseFirstRefresh = resolveRefresh;
+    });
+    let liveCalls = 0;
+    const requests = bootstrapStub({ chokepoints: degraded }, () => {
+      liveCalls += 1;
+      return liveCalls === 1 ? firstRefresh : degradedLive;
+    });
+    await harness.fetchBootstrapData();
+
+    const initial = await harness.fetchChokepointStatus();
+    const refresh = harness.refreshChokepointStatusAfterHydration(initial);
+    const concurrentRead = harness.fetchChokepointStatus();
+
+    assert.equal(initial.chokepoints[0]?.id, 'hydrated-degraded');
+    await waitForRpcCount(requests, 1);
+    const concurrent = await concurrentRead;
+    assert.equal(concurrent.chokepoints[0]?.id, 'hydrated-degraded');
+
+    releaseFirstRefresh(degradedLive);
+    const refreshed = await refresh;
+    assert.equal(refreshed?.chokepoints[0]?.id, 'live-degraded');
+    assert.equal(rpcUrlCount(requests), 1, 'concurrent readers join the hydration refresh');
+
+    const retry = await harness.fetchChokepointStatus();
+    assert.equal(retry.chokepoints[0]?.id, 'live-degraded');
+    assert.equal(rpcUrlCount(requests), 2, 'degraded live data is not promoted into the breaker cache');
+  });
+
+  it('chokepoints: accepted hydration stays immediate and one refresh replaces the warmed cache', async () => {
+    const hydrated = {
+      chokepoints: [{ id: 'hydrated-valid' }],
+      fetchedAt: 'hydrated',
+      upstreamUnavailable: false,
+    };
+    const live = {
+      chokepoints: [{ id: 'live-valid' }],
+      fetchedAt: 'live',
+      upstreamUnavailable: false,
+    };
+    let releaseRefresh!: (value: typeof live) => void;
+    const liveResponse = new Promise<typeof live>((resolveRefresh) => {
+      releaseRefresh = resolveRefresh;
+    });
+    const requests = bootstrapStub({ chokepoints: hydrated }, () => liveResponse);
+    await harness.fetchBootstrapData();
+
+    const initial = await harness.fetchChokepointStatus();
+    const refresh = harness.refreshChokepointStatusAfterHydration(initial);
+    const concurrentRead = harness.fetchChokepointStatus();
+
+    assert.equal(initial.chokepoints[0]?.id, 'hydrated-valid');
+    await waitForRpcCount(requests, 1);
+    const concurrent = await concurrentRead;
+    assert.equal(concurrent.chokepoints[0]?.id, 'hydrated-valid');
+
+    releaseRefresh(live);
+    const refreshed = await refresh;
+    assert.equal(refreshed?.chokepoints[0]?.id, 'live-valid');
+
+    const cachedLive = await harness.fetchChokepointStatus();
+    assert.equal(cachedLive.chokepoints[0]?.id, 'live-valid');
+    assert.equal(rpcUrlCount(requests), 1, 'the successful refresh replaces the hydrated cache');
   });
 
   it('consumer prices: default hydration is isolated from parameterized cache keys and reused', async () => {

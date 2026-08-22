@@ -118,6 +118,10 @@ function revivePizzIntStatus(status: PizzIntStatus): PizzIntStatus {
   };
 }
 
+function isCacheablePizzIntStatus(status: PizzIntStatus): boolean {
+  return status.dataFreshness === 'fresh';
+}
+
 // ---- Public API ----
 
 export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
@@ -125,9 +129,10 @@ export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
   if (hydrated?.pizzint) {
     // Warm the breaker under the same key a later recurring call reads
     // (#7048); a bare return drained the consume-once slot and forced a
-    // refetch.
+    // refetch. Stale hydration can serve this render, but must not suppress
+    // the next live recovery attempt.
     const status = toStatus(hydrated.pizzint);
-    pizzintBreaker.recordSuccess(status);
+    if (isCacheablePizzIntStatus(status)) pizzintBreaker.recordSuccess(status);
     return status;
   }
 
@@ -135,7 +140,7 @@ export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
     const resp: GetPizzintStatusResponse = await getClient().getPizzintStatus({ includeGdelt: false });
     if (!resp.pizzint) throw new Error('No PizzINT data');
     return toStatus(resp.pizzint);
-  }, defaultStatus);
+  }, defaultStatus, { shouldCache: isCacheablePizzIntStatus });
 }
 
 export async function fetchGdeltTensions(): Promise<GdeltTensionPair[]> {

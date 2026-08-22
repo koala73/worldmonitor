@@ -177,6 +177,10 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
   };
 }
 
+function isCacheableSanctionsPressureResult(result: SanctionsPressureResult): boolean {
+  return result.totalCount > 0 && result.semaError === null;
+}
+
 export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult> {
   const hydrated = getHydratedData('sanctionsPressure') as ListSanctionsPressureResponse | undefined;
   if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
@@ -184,9 +188,9 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
     latestSanctionsPressureResult = result;
     // Warm the breaker under the same key a later recurring premium call
     // reads (#7048). The guard mirrors execute()'s shouldCache
-    // (totalCount > 0); the local mirror above already covers
+    // (complete, non-degraded data); the local mirror above already covers
     // getLatestSanctionsPressure() consumers.
-    if (result.totalCount > 0) breaker.recordSuccess(result);
+    if (isCacheableSanctionsPressureResult(result)) breaker.recordSuccess(result);
     return result;
   }
 
@@ -221,7 +225,7 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
       latestSanctionsPressureResult = emptyResult;
       return emptyResult;
     }, emptyResult, {
-      shouldCache: (value) => value.totalCount > 0,
+      shouldCache: isCacheableSanctionsPressureResult,
     });
     latestSanctionsPressureResult = result;
     return result;
@@ -243,7 +247,7 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
     latestSanctionsPressureResult = liveResult;
     return liveResult;
   }, emptyResult, {
-    shouldCache: (value) => value.totalCount > 0,
+    shouldCache: isCacheableSanctionsPressureResult,
   });
   latestSanctionsPressureResult = result;
   return result;

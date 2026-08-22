@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
-import { fetchChokepointStatus } from '@/services/supply-chain';
+import { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from '@/services/supply-chain';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
@@ -61,15 +61,29 @@ export class ChokepointStripPanel extends Panel {
   }
 
   public async fetchData(): Promise<void> {
+    let initial: GetChokepointStatusResponse;
     try {
-      const fresh = await fetchChokepointStatus();
-      if (!this.element?.isConnected) return;
-      this.data = fresh;
-      this.render();
+      initial = await fetchChokepointStatus();
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
       this.showError(t('components.chokepointStrip.errors.unavailable'), () => void this.fetchData());
+      return;
+    }
+
+    if (!this.element?.isConnected) return;
+    this.data = initial;
+    this.render();
+
+    try {
+      const refreshed = await refreshChokepointStatusAfterHydration(initial);
+      if (!refreshed?.chokepoints.length || !this.element?.isConnected) return;
+      this.data = refreshed;
+      this.render();
+    } catch (err) {
+      if (this.isAbortError(err) || !this.element?.isConnected) return;
+      // Keep the already-rendered hydration result when background recovery fails.
+      console.warn('[ChokepointStripPanel] Hydration refresh failed:', err);
     }
   }
 

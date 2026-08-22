@@ -80,6 +80,21 @@ const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerRespo
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
+const isCacheableChokepointStatus = (value: GetChokepointStatusResponse): boolean =>
+  value.chokepoints.length > 0 && !value.upstreamUnavailable;
+
+// A hydrated response is returned immediately for first paint, then refreshed
+// once in the background. The breaker coalesces the normal cached case; this
+// service-owned promise also coalesces degraded hydration, which is deliberately
+// not admitted to the breaker cache.
+const chokepointHydrationRefreshes = new WeakMap<
+  GetChokepointStatusResponse,
+  Promise<GetChokepointStatusResponse>
+>();
+let activeChokepointHydrationHandoff: {
+  response: GetChokepointStatusResponse;
+  refresh: Promise<GetChokepointStatusResponse>;
+} | null = null;
 const emptyMineralProduction: GetMineralProductionResponse = {
   commodities: [],
   countries: [],
@@ -118,20 +133,64 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
   }
 }
 
+function loadLiveChokepointStatus(forceRefresh = false): Promise<GetChokepointStatusResponse> {
+  return chokepointBreaker.execute(async () => {
+    return client.getChokepointStatus({});
+  }, emptyChokepoints, {
+    shouldCache: isCacheableChokepointStatus,
+    forceRefresh,
+  });
+}
+
+function startChokepointHydrationRefresh(
+  response: GetChokepointStatusResponse,
+): Promise<GetChokepointStatusResponse> {
+  if (activeChokepointHydrationHandoff) return activeChokepointHydrationHandoff.refresh;
+
+  const refresh = loadLiveChokepointStatus(true);
+  const handoff = { response, refresh };
+  activeChokepointHydrationHandoff = handoff;
+  const clearActiveRefresh = (): void => {
+    if (activeChokepointHydrationHandoff === handoff) {
+      activeChokepointHydrationHandoff = null;
+    }
+  };
+  void refresh.then(clearActiveRefresh, clearActiveRefresh);
+  return refresh;
+}
+
 export async function fetchChokepointStatus(): Promise<GetChokepointStatusResponse> {
+  if (activeChokepointHydrationHandoff) {
+    return activeChokepointHydrationHandoff.response;
+  }
+
   const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
   if (hydrated?.chokepoints?.length) {
-    chokepointBreaker.recordSuccess(hydrated);
+    if (isCacheableChokepointStatus(hydrated)) {
+      chokepointBreaker.recordSuccess(hydrated);
+    }
+    chokepointHydrationRefreshes.set(hydrated, startChokepointHydrationRefresh(hydrated));
     return hydrated;
   }
 
   try {
-    return await chokepointBreaker.execute(async () => {
-      return client.getChokepointStatus({});
-    }, emptyChokepoints);
+    return await loadLiveChokepointStatus();
   } catch {
     return emptyChokepoints;
   }
+}
+
+/**
+ * Let any caller holding the active bootstrap response join its single live
+ * refresh. Responses from normal live loads return `null`, so callers do not
+ * issue a second RPC after their normal load.
+ */
+export function refreshChokepointStatusAfterHydration(
+  response: GetChokepointStatusResponse,
+): Promise<GetChokepointStatusResponse | null> {
+  const refresh = chokepointHydrationRefreshes.get(response);
+  if (!refresh) return Promise.resolve(null);
+  return refresh;
 }
 
 /**
