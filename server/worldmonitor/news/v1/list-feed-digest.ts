@@ -29,6 +29,13 @@ import {
   summarizeFeedAttempts,
   type FeedFetchAttempt,
 } from './_attempts';
+import {
+  FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_TTL_S,
+  accumulatorPruneBounds,
+  buildForecastEvidenceMember,
+  isEligibleForecastEvidence,
+} from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
@@ -1348,6 +1355,9 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   if (items.length === 0) return;
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
+  // #7082 evidence archive publication counters (operator visibility).
+  let evidenceWritten = 0;
+  let evidenceDropped = 0;
 
   // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
   // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
@@ -1402,6 +1412,23 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
           ['EXPIRE', trackKey, ttl],
           ['ZADD', accKey, nowStr, hash],
         );
+        // #7082 dual publication: forecast judging needs this story for up
+        // to 14 days, far beyond the accumulator's 48h contract. The
+        // evidence archive member is self-contained (title/link/description
+        // ride on the member; no story:track dependency) and only the
+        // full/English scope that judging actually reads is archived.
+        if (isEligibleForecastEvidence(variant, lang)) {
+          const evidenceMember = buildForecastEvidenceMember(
+            { hash, title: item.title, link: item.link, description: item.description, publishedAt: item.publishedAt },
+            now,
+          );
+          if (evidenceMember) {
+            commands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, evidenceMember]);
+            evidenceWritten += 1;
+          } else {
+            evidenceDropped += 1;
+          }
+        }
         // #4924: alias rows for every member exact-title hash -> the FINAL
         // (post-adoption) canonical, story-track TTL — next cycle's
         // adoption source. Includes the canonical's own hash.
@@ -1427,7 +1454,25 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   }
 
   // Refresh accumulator TTL once per build — 48h, shorter than STORY_TTL since digest cron only needs ~24h lookback.
-  await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
+  // The TTL is abandoned-key cleanup only: member retention is the explicit
+  // prune below (#7082) — millions of expired members previously lived here
+  // forever because the TTL never removed them.
+  const prune = accumulatorPruneBounds(now);
+  const evidenceCommands: Array<Array<string | number>> = [
+    ['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL],
+    ['ZREMRANGEBYSCORE', accKey, prune.min, prune.max],
+  ];
+  if (isEligibleForecastEvidence(variant, lang)) {
+    // Rolling archive retention + TTL (contract + guard band).
+    const evidencePrune = accumulatorPruneBounds(now, FORECAST_EVIDENCE_TTL_S * 1000);
+    evidenceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
+    evidenceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
+    console.info(
+      `[forecast-evidence] published=${evidenceWritten} dropped=${evidenceDropped} ` +
+      `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`,
+    );
+  }
+  await runRedisPipeline(evidenceCommands);
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
