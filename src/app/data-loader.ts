@@ -656,6 +656,7 @@ export class DataLoaderManager implements AppModule {
       if (catCount === 0) throw new Error('digest returned 0 categories');
       markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
+      this.reportDigestCoverage(data);
       this.persistDigest(requestKey, data);
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
 
@@ -722,6 +723,43 @@ export class DataLoaderManager implements AppModule {
 
   private getRetainedDigest(key = this.digestCacheKey()): ListFeedDigestResponse | null {
     return getScopedDigest(this.lastGoodDigest, key);
+  }
+
+  /**
+   * #7085: surface the digest's coverage block on the status panel. Runtime
+   * guards throughout — persisted last-good digests from before the coverage
+   * rollout carry no coverage field at all.
+   */
+  private reportDigestCoverage(digest: ListFeedDigestResponse): void {
+    const cov = digest.coverage;
+    if (!cov || typeof cov.state !== 'string') {
+      this.ctx.statusPanel?.updateDigestCoverage({
+        state: 'unknown',
+        itemsServed: 0,
+        publisherCount: 0,
+        feedsCompleted: 0,
+        feedsTotal: 0,
+        categoriesCompleted: 0,
+        categoriesTotal: 0,
+        missingCategories: [],
+      });
+      return;
+    }
+    const state = cov.state === 'complete' || cov.state === 'partial' || cov.state === 'stale' || cov.state === 'unavailable'
+      ? cov.state
+      : 'unknown';
+    this.ctx.statusPanel?.updateDigestCoverage({
+      state,
+      itemsServed: Number(cov.itemsServed) || 0,
+      publisherCount: Number(cov.publisherCount) || 0,
+      feedsCompleted: Number(cov.feedCompleted) || 0,
+      feedsTotal: Number(cov.feedTotal) || 0,
+      categoriesCompleted: Number(cov.categoryCompleted) || 0,
+      categoriesTotal: Number(cov.categoryTotal) || 0,
+      missingCategories: Object.entries(cov.categoryStates ?? {})
+        .filter(([, v]) => v === 'missing')
+        .map(([k]) => k),
+    });
   }
 
   private async loadPersistedDigest(key = this.digestCacheKey()): Promise<ListFeedDigestResponse | null> {
