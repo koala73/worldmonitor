@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **753 active source hosts** representing **746 active providers** (**322 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **754 active source hosts** representing **747 active providers** (**323 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -261,7 +261,7 @@ This generated inventory covers **753 active source hosts** representing **746 a
 | feeds.npr.org (feeds.npr.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | fema.gov (fema.gov) | feed — src/config/feeds.ts |
 | feodotracker.abuse.ch (feodotracker.abuse.ch) | structured — scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
-| finance.worldmonitor.app (finance.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts |
+| finance.worldmonitor.app (finance.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts, src/services/investment-research-workbench.ts |
 | finance.yahoo.com (finance.yahoo.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts, src/config/variants/tech.ts |
 | Financial Action Task Force (FATF) (www.fatf-gafi.org) | structured — scripts/seed-fatf-listing.mjs |
 | financialpost.com (financialpost.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -332,6 +332,7 @@ This generated inventory covers **753 active source hosts** representing **746 a
 | Internal example placeholder (internal.example.com) | structured — api/notification-channels.ts |
 | International Forum of Sovereign Wealth Funds (www.ifswf.org) | structured — scripts/seed-sovereign-wealth.mjs |
 | investing.com (investing.com) | feed — src/config/feeds.ts |
+| investors.ast-science.com (investors.ast-science.com) | structured — src/services/investment-research-workbench.ts |
 | ipinfo.io (ipinfo.io) | structured — scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
 | iranintl.com (iranintl.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | iseas.edu.sg (iseas.edu.sg) | feed — src/config/feeds.ts |
@@ -519,7 +520,7 @@ This generated inventory covers **753 active source hosts** representing **746 a
 | search.worldbank.org (search.worldbank.org) | structured — scripts/seed-global-tenders.mjs |
 | search.yahoo.com (search.yahoo.com) | structured — src/services/rss.ts |
 | searchadvisor.naver.com (searchadvisor.naver.com) | structured — scripts/seo-indexnow-submit.mjs |
-| SEC (www.sec.gov) | feed+structured — scripts/openapi-inject-examples.mjs, scripts/seed-regulatory-actions.mjs, scripts/seed-sec-8k-stream.mjs, scripts/seed-sec-cik-map.mjs, +3 more |
+| SEC (www.sec.gov) | feed+structured — scripts/openapi-inject-examples.mjs, scripts/seed-regulatory-actions.mjs, scripts/seed-sec-8k-stream.mjs, scripts/seed-sec-cik-map.mjs, +4 more |
 | SEC EDGAR (data.sec.gov) | structured — server/_shared/sec-edgar.ts |
 | SEC EDGAR Full-Text Search (efts.sec.gov) | structured — server/_shared/sec-edgar.ts |
 | sedeaplicaciones.minetur.gob.es (sedeaplicaciones.minetur.gob.es) | structured — scripts/backfill-fuel-prices-prev.mjs, scripts/seed-fuel-prices.mjs |

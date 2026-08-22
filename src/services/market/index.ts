@@ -6,8 +6,9 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetPhysicalPremiumsResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetPhysicalPremiumsResponse, GetSectorSummaryResponse, ListCryptoQuotesRequest, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData, TokenData } from '@/types';
+import { CRYPTO_IDS } from '@/config/markets';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { MarketServiceClient } from '@/services/generated-rpc-clients';
@@ -246,6 +247,14 @@ export async function fetchSectors(): Promise<GetSectorSummaryResponse> {
 
 let lastSuccessfulCrypto: CryptoData[] = [];
 
+export function createDefaultCryptoQuoteRequest(): ListCryptoQuotesRequest {
+  return { ids: [...CRYPTO_IDS] };
+}
+
+export function isUsableCryptoQuoteResponse(response: ListCryptoQuotesResponse): boolean {
+  return response.quotes.length > 0;
+}
+
 export async function fetchCrypto(): Promise<CryptoData[]> {
   const hydrated = getHydratedData('cryptoQuotes') as ListCryptoQuotesResponse | undefined;
   if (hydrated?.quotes?.length) {
@@ -254,8 +263,18 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
   }
 
   const resp = await cryptoBreaker.execute(async () => {
-    return client.listCryptoQuotes({ ids: [] }); // empty = all defaults
-  }, EMPTY_CRYPTO_FALLBACK);
+    // Sending the canonical IDs preserves the seed-only fast path when the
+    // production seed is healthy, while allowing the server's bounded gap
+    // provider chain to recover a partial or missing seed in local/degraded
+    // environments. An empty request is intentionally seed-only and therefore
+    // cannot recover when Redis is unavailable.
+    return client.listCryptoQuotes(createDefaultCryptoQuoteRequest());
+  }, EMPTY_CRYPTO_FALLBACK, {
+    // Earlier local/degraded requests could persist an empty fallback. Reject
+    // those entries so upgrading clients immediately retry with canonical IDs
+    // instead of displaying the cached failure for the full TTL.
+    shouldCache: isUsableCryptoQuoteResponse,
+  });
 
   const results = resp.quotes
     .map(toCryptoData)
