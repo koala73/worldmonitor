@@ -61,11 +61,15 @@ export async function getCountryPortActivity(
   const code = req.countryCode?.trim().toUpperCase() ?? '';
   if (!code || code.length !== 2) return EMPTY;
 
-  const countriesResult = await getCachedJson(PORTWATCH_PORT_ACTIVITY_COUNTRIES_KEY, true).catch(() => null);
+  // PERF: allowlist + payload reads run concurrently; the gate is applied on
+  // the combined result. Valid codes save a serial RTT; invalid ones cost one
+  // extra small read instead of one extra RTT on every valid request.
+  const [countriesResult, data] = await Promise.all([
+    getCachedJson(PORTWATCH_PORT_ACTIVITY_COUNTRIES_KEY, true).catch(() => null),
+    getCachedJson(`${PORTWATCH_PORT_ACTIVITY_KEY_PREFIX}${code}`, true).catch(() => null),
+  ]);
   const countries = Array.isArray(countriesResult) ? (countriesResult as string[]) : [];
   if (!countries.includes(code)) return EMPTY;
-
-  const data = await getCachedJson(`${PORTWATCH_PORT_ACTIVITY_KEY_PREFIX}${code}`, true).catch(() => null);
   if (!data) return EMPTY;
 
   const payload = data as SeederPayload;
