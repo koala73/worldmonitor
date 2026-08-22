@@ -186,7 +186,7 @@ export class InvestmentResearchWorkbenchPanel extends Panel {
             <input data-irw-symbol value="${escapeHtml(this.symbol)}" aria-label="Company ticker" autocomplete="off" spellcheck="false">
           </label>
           <button type="button" data-irw-run ${this.loading ? 'disabled' : ''}>${this.loading ? 'Running…' : 'Run research'}</button>
-          <span class="irw-adapter">${this.endpoint() ? 'Langflow endpoint → OpenBB / agents' : 'Local ASTS fixture · add VITE_RESEARCH_WORKBENCH_URL for live orchestration'}</span>
+          <span class="irw-adapter">${this.endpoint() ? 'Research sidecar → OpenBB · Langflow optional' : 'Local ASTS fixture · add VITE_RESEARCH_WORKBENCH_URL for live orchestration'}</span>
         </div>
         <div class="irw-steps" role="tablist" aria-label="Research workflow">
           ${STEPS.map((step, index) => `<button type="button" role="tab" aria-selected="${this.activeStep === step.id}" class="${this.activeStep === step.id ? 'active' : ''}" data-irw-step="${step.id}"><span>${index + 1}</span>${escapeHtml(step.label)}</button>`).join('')}

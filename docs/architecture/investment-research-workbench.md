@@ -8,7 +8,7 @@ The finance variant uses World Monitor as the situational-awareness UI and adds 
 
 - `InvestmentResearchWorkbenchPanel` owns interaction and presentation only. It consumes the typed `InvestmentResearchReport` contract and never calls finance vendors directly.
 - `createResearchWorkbenchAdapter()` selects a local, source-traceable ASTS fixture when no endpoint is configured, or a remote adapter when `VITE_RESEARCH_WORKBENCH_URL` is present.
-- The remote endpoint is the Langflow orchestration boundary. It should call OpenBB for normalized market data, filings, estimates and comparable-company inputs; FinRobot or custom components may handle company research; the critic must run after the parallel research agents.
+- The remote endpoint is a replaceable research-sidecar boundary. It should call OpenBB for normalized market data; FinRobot or custom components may handle company research; Langflow may orchestrate the critic after the parallel research agents.
 - The browser sends no vendor credentials. API keys belong behind the orchestration endpoint or in the desktop sidecar/keychain.
 - Any panel can dispatch `wm:open-investment-research` with `{ symbol }` to open the workbench for a company without importing the panel itself.
 
@@ -20,5 +20,4 @@ The bundled ASTS fixture is deliberately `not-decision-grade`: it demonstrates t
 
 ## Remote request
 
-The browser posts the schema version, normalized symbol, ordered workflow and `dataLayer: "openbb"`. The response must satisfy `investment-research-workbench/v1`. This keeps Langflow replaceable and allows direct custom orchestration later without changing the UI.
-
+The browser posts the schema version, normalized symbol, ordered workflow and `dataLayer: "openbb"`. The response must satisfy `investment-research-workbench/v1`. A companion local sidecar can expose `POST /v1/research/run`, keeping OpenBB/Python and credentials outside the browser bundle, and can call Langflow's `POST /api/v1/run/{FLOW_ID}` route when configured. This keeps both the data provider and orchestration layer replaceable without changing the UI.
