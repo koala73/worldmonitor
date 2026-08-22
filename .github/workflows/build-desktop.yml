@@ -267,7 +267,7 @@ jobs:
       # ── Build (signed) ──
       - name: Build Tauri app (signed)
         if: steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
@@ -306,7 +306,7 @@ jobs:
       # ── Build (unsigned — no Apple certs) ──
       - name: Build Tauri app (unsigned)
         if: steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true'
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
