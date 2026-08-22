@@ -88,6 +88,9 @@ enum CompanyCoverageState {
   COMPANY_COVERAGE_STATE_STALE = 4;
   COMPANY_COVERAGE_STATE_UNAVAILABLE = 5;
   COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION = 6;
+  // Set when no independent identity binding exists: the company cannot be
+  // scanned safely, so it must not read as a quiet result (#7044).
+  COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED = 7;
 }
 
 // CompanyObservationState is independent of coverage completeness.

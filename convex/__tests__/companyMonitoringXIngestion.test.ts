@@ -466,6 +466,95 @@ describe("Company Monitoring compliant X ingestion", () => {
       referenceCount: 0,
     });
   });
+  test("demotion reinstates identity_unresolved coverage with a generation bump (#7044)", async () => {
+    const t = convexTest(schema, modules);
+    const firstClaim = await seedXWork(t);
+    await finalize(t, firstClaim);
+    const beforeDemotion = await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      return { coverageState: company?.coverageState, snapshotGeneration: company?.snapshotGeneration };
+    });
+    // The authoritative binding resolved the company: coverage is cleared.
+    expect(beforeDemotion.coverageState).toBeUndefined();
+
+    await t.run(async (ctx) => {
+      const domainClaim = await ctx.db
+        .query("companyMonitoringClaims")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .filter((q) => q.eq(q.field("claimId"), DOMAIN_CLAIM_A))
+        .unique();
+      await ctx.db.patch(domainClaim!._id, {
+        provenance: "customer",
+        trustState: "unverified",
+        allowedUses: undefined,
+        expiresAt: undefined,
+        updatedAt: NOW + DAY_MS,
+      });
+    });
+
+    vi.setSystemTime(NOW + DAY_MS);
+    const secondClaim = await t.mutation(ORCHESTRATION.claimNextWorkForTest, {
+      workerId: "x-worker",
+    });
+    expect(secondClaim.work.subjects[0].currentIdentity).toMatchObject({
+      state: "demoted",
+      demotionReason: "official_link_lost",
+    });
+
+    const afterDemotion = await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      return { coverageState: company?.coverageState, snapshotGeneration: company?.snapshotGeneration };
+    });
+    // A company that held a binding and lost it must not read as quiet.
+    expect(afterDemotion.coverageState).toBe("identity_unresolved");
+    expect(afterDemotion.snapshotGeneration).toBe(
+      beforeDemotion.snapshotGeneration! + 1,
+      "a coverage flip must advance the company row's snapshotGeneration",
+    );
+  });
+
+  test("an authoritative identity clears a previously unresolved company (#7044)", async () => {
+    const t = convexTest(schema, modules);
+    const firstClaim = await seedXWork(t);
+    await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      await ctx.db.patch(company!._id, {
+        coverageState: "identity_unresolved",
+      });
+    });
+
+    await finalize(t, firstClaim);
+
+    const resolved = await t.run(async (ctx) => {
+      const company = await ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique();
+      return { coverageState: company?.coverageState, snapshotGeneration: company?.snapshotGeneration };
+    });
+    expect(resolved.coverageState).toBeUndefined();
+    expect(resolved.snapshotGeneration).toBeGreaterThan(1);
+  });
+
 
   test("preserves the immutable account ID after a reassignment demotion", async () => {
     const t = convexTest(schema, modules);
