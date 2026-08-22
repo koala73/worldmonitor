@@ -233,8 +233,16 @@ export default async function handler(
       // client retry recovers cleanly. Keeping the capture at error
       // drowned real bugs in the dashboard while delivering no operational
       // signal beyond "drift happened" (already evident from the warning
-      // bucket). A genuine systemic drift incident would still surface
-      // because volume would escalate and reopen the archived issue.
+      // bucket). A genuine systemic drift incident surfaces only because the
+      // QK bucket is archived `until_escalating` — Sentry's forecast reopens
+      // it when volume departs baseline. That mode is load-bearing for this
+      // downgrade, not incidental: QK sat on `archived_forever` (which opts
+      // OUT of escalation detection) from 2026-05 and absorbed a 13.6x ramp
+      // — 8 ev/wk to 109 ev/wk across 344 users, peaking the week of
+      // 2026-07-20 — with no reopen and no notification. Nobody diagnosed
+      // that spike; it self-resolved and its root cause is still unknown.
+      // Re-archiving as anything that cannot reopen silently deletes the
+      // only escalation path this `warning` level leaves.
       if (kind === 'UNAUTHENTICATED') {
         if (session.acceptedWithinClockTolerance) {
           console.warn(
