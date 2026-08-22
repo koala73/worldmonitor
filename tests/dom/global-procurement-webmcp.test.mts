@@ -251,6 +251,27 @@ describe('GlobalProcurementPanel declarative WebMCP tool', () => {
     await expect(validInvocation.response).resolves.toMatchObject({ ok: true, matchCount: 1 });
   });
 
+  it('rejects injected source and sort options before starting a request', async () => {
+    const handler = vi.fn(() => { throw new Error('off-enum filters must not start a request'); });
+    const panel = mount(handler);
+    commitResponse(panel);
+    const currentForm = form(panel);
+    const source = currentForm.elements.namedItem('source') as HTMLSelectElement;
+    const sort = currentForm.elements.namedItem('sort') as HTMLSelectElement;
+
+    for (const select of [source, sort]) {
+      const injected = document.createElement('option');
+      injected.value = 'injected-off-enum-value';
+      select.appendChild(injected);
+      select.value = injected.value;
+      const invocation = dispatchAgentSubmit(currentForm);
+      await expectRetryableFailure(invocation.response, 'invalid_arguments');
+      injected.remove();
+    }
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('withholds the tool when the form is unusable, hidden, gated, unavailable, or destroyed', () => {
     const unmountedPanel = new GlobalProcurementPanel();
     panels.push(unmountedPanel);

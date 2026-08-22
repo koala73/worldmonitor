@@ -14,6 +14,7 @@ import {
   type RendererKind,
 } from '@/config/map-layer-definitions';
 import { TIER1_COUNTRIES } from '@/services/country-instability';
+import { throwIfWebMcpAborted } from '@/services/webmcp';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
@@ -35,7 +36,7 @@ export interface SearchSelectionDispatcherBindings {
   openCountryBriefByCode(
     code: string,
     country: string,
-    options?: { trackDetailedAnalytics?: boolean },
+    options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
   ): boolean | Promise<boolean>;
   enablePanel(panelId: string, options?: { trackDetailedAnalytics?: boolean }): boolean;
   trackSearchResultSelected(type: string, options?: { includeAttribution?: boolean }): void;
@@ -54,18 +55,39 @@ export interface SearchSelectionDispatcherBindings {
 interface SelectionOptions {
   trackDetailedAnalytics?: boolean;
   programmaticEpoch?: number;
+  signal?: AbortSignal;
 }
 
 /** Applies shared CMD+K and WebMCP selections to visible dashboard surfaces. */
 export class SearchSelectionDispatcher {
+  // One deadline bounds a deferred-panel acknowledgement without trying to
+  // mirror PanelLayoutManager's load/retry timing. The MutationObserver below
+  // resolves as soon as the real (non-shell) panel is connected, including
+  // when an individual dynamic import takes several seconds before retrying.
+  // Thirty seconds covers PanelLayout's full retry budget even when each of
+  // its four dynamic-import attempts takes several seconds to settle, while
+  // still preventing a permanently stuck import from hanging the tool call.
+  private static readonly DEFERRED_PANEL_PRESENTATION_TIMEOUT_MS = 30_000;
   private highlightTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
   private programmaticEpoch = 0;
+  private activeProgrammaticAbort: AbortController | null = null;
   private readonly programmaticTimers = new Map<ReturnType<typeof setTimeout>, () => void>();
+  private readonly programmaticMatchResolvers = new Map<number, () => SearchMatch | undefined>();
+  private readonly activePanelWaitCancels = new Set<() => void>();
 
   public constructor(private readonly bindings: SearchSelectionDispatcherBindings) {}
 
   public destroy(): void {
+    this.cancelPendingProgrammaticSelection();
+    for (const cancel of this.activePanelWaitCancels) cancel();
+    this.activePanelWaitCancels.clear();
+  }
+
+  public cancelPendingProgrammaticSelection(): void {
+    this.activeProgrammaticAbort?.abort();
+    this.activeProgrammaticAbort = null;
     this.programmaticEpoch += 1;
+    this.programmaticMatchResolvers.clear();
     for (const [timer, cancel] of this.programmaticTimers) {
       this.bindings.clearTimeout(timer);
       cancel();
@@ -74,22 +96,71 @@ export class SearchSelectionDispatcher {
   }
 
   public handleSearchResult(result: SearchResult): boolean | Promise<boolean> {
+    this.cancelPendingProgrammaticSelection();
     return this.applySearchResult(result);
   }
 
   public handleCommand(command: Command): boolean | Promise<boolean> {
+    this.cancelPendingProgrammaticSelection();
     return this.applyCommand(command);
   }
 
-  public async selectProgrammaticMatch(match: SearchMatch): Promise<boolean> {
-    this.destroy();
+  public async selectProgrammaticMatch(
+    match: SearchMatch,
+    signal?: AbortSignal,
+    resolveCommitMatch: () => SearchMatch | undefined = () => match,
+  ): Promise<boolean> {
+    this.cancelPendingProgrammaticSelection();
+    throwIfWebMcpAborted(signal);
     const epoch = this.programmaticEpoch;
-    return await this.bindings.runWithAgentAnalyticsSuppressed(() => {
-      const options = { trackDetailedAnalytics: false, programmaticEpoch: epoch };
-      return match.kind === 'command'
-        ? this.applyCommand(match.command, options)
-        : this.applySearchResult(match.result, options);
-    });
+    const selectionAbort = new AbortController();
+    this.activeProgrammaticAbort = selectionAbort;
+    this.programmaticMatchResolvers.set(epoch, resolveCommitMatch);
+    const handleAbort = (): void => {
+      if (epoch !== this.programmaticEpoch) return;
+      selectionAbort.abort(signal?.reason);
+      this.cancelPendingProgrammaticSelection();
+    };
+    signal?.addEventListener('abort', handleAbort, { once: true });
+    try {
+      const selection = this.bindings.runWithAgentAnalyticsSuppressed(() => {
+        const options = {
+          trackDetailedAnalytics: false,
+          programmaticEpoch: epoch,
+          signal: selectionAbort.signal,
+        };
+        return match.kind === 'command'
+          ? this.applyCommand(match.command, options)
+          : this.applySearchResult(match.result, options);
+      });
+      const selectionWasAsync = typeof (selection as PromiseLike<boolean>)?.then === 'function';
+      const selected = selectionWasAsync ? await selection : selection as boolean;
+      throwIfWebMcpAborted(signal);
+      if (
+        selectionAbort.signal.aborted
+        || epoch !== this.programmaticEpoch
+      ) return false;
+      // Async presentation can outlive its issued target, so revalidate after
+      // it settles. A synchronous toggle has already run to completion: its
+      // own mutation may intentionally make the command non-executable (for
+      // example a free user healing a stale enabled locked layer), and must
+      // not retroactively turn that successful outcome into a denial.
+      if (
+        selectionWasAsync
+        && !this.programmaticMatchResolvers.get(epoch)?.()
+      ) return false;
+      return selected;
+    } catch (error) {
+      throwIfWebMcpAborted(signal);
+      if (selectionAbort.signal.aborted) return false;
+      throw error;
+    } finally {
+      this.programmaticMatchResolvers.delete(epoch);
+      if (this.activeProgrammaticAbort === selectionAbort) {
+        this.activeProgrammaticAbort = null;
+      }
+      signal?.removeEventListener('abort', handleAbort);
+    }
   }
 
   private applySearchResult(
@@ -107,40 +178,72 @@ export class SearchSelectionDispatcher {
         const item = result.data as NewsItem;
         const target = this.bindings.resolveExecutableNewsPanel(item.link);
         if (!target) return false;
-        const [targetPanelId, targetPanel] = target;
-        this.scrollToPanel(targetPanelId, trackDetailedAnalytics);
-        return this.schedule(() => targetPanel.scrollToNewsItem(item.link), 300, epoch);
+        const [targetPanelId] = target;
+        if (!this.scrollToPanel(targetPanelId, trackDetailedAnalytics)) return false;
+        return this.schedule((commitMatch) => {
+          const commitItem = this.resolveScheduledResultData<NewsItem>(result, commitMatch);
+          if (!commitItem) return false;
+          const commitTarget = this.bindings.resolveExecutableNewsPanel(commitItem.link);
+          if (!commitTarget) return false;
+          commitTarget[1].scrollToNewsItem(commitItem.link);
+          return true;
+        }, 300, epoch);
       }
       case 'hotspot': {
-        const hotspot = result.data as typeof INTEL_HOTSPOTS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const hotspot = this.resolveScheduledResultData<typeof INTEL_HOTSPOTS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!hotspot) return false;
           ctx.map?.setView('global');
           ctx.map?.triggerHotspotClick(hotspot.id);
         }, 300, epoch);
       }
       case 'conflict': {
-        const conflict = result.data as typeof CONFLICT_ZONES[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const conflict = this.resolveScheduledResultData<typeof CONFLICT_ZONES[0]>(
+            result,
+            commitMatch,
+          );
+          if (!conflict) return false;
           ctx.map?.setView('global');
           ctx.map?.triggerConflictClick(conflict.id);
         }, 300, epoch);
       }
       case 'market':
-        this.scrollToPanel('markets', trackDetailedAnalytics);
-        break;
+        return epoch === undefined
+          ? this.scrollToPanel('markets', trackDetailedAnalytics)
+          : this.scrollToPanelWhenReady(
+            'markets',
+            trackDetailedAnalytics,
+            epoch,
+            options.signal,
+          );
       case 'prediction':
-        this.scrollToPanel('polymarket', trackDetailedAnalytics);
-        break;
+        return epoch === undefined
+          ? this.scrollToPanel('polymarket', trackDetailedAnalytics)
+          : this.scrollToPanelWhenReady(
+            'polymarket',
+            trackDetailedAnalytics,
+            epoch,
+            options.signal,
+          );
       case 'base': {
-        const base = result.data as MilitaryBase;
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const base = this.resolveScheduledResultData<MilitaryBase>(result, commitMatch);
+          if (!base) return false;
           ctx.map?.setView('global');
           ctx.map?.triggerBaseClick(base.id);
         }, 300, epoch);
       }
       case 'pipeline': {
-        const pipeline = result.data as typeof PIPELINES[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const pipeline = this.resolveScheduledResultData<typeof PIPELINES[0]>(
+            result,
+            commitMatch,
+          );
+          if (!pipeline) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('pipelines');
           ctx.mapLayers.pipelines = true;
@@ -148,8 +251,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'cable': {
-        const cable = result.data as typeof UNDERSEA_CABLES[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const cable = this.resolveScheduledResultData<typeof UNDERSEA_CABLES[0]>(
+            result,
+            commitMatch,
+          );
+          if (!cable) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('cables');
           ctx.mapLayers.cables = true;
@@ -157,8 +264,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'datacenter': {
-        const dc = result.data as typeof AI_DATA_CENTERS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const dc = this.resolveScheduledResultData<typeof AI_DATA_CENTERS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!dc) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('datacenters');
           ctx.mapLayers.datacenters = true;
@@ -166,8 +277,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'nuclear': {
-        const facility = result.data as typeof NUCLEAR_FACILITIES[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const facility = this.resolveScheduledResultData<typeof NUCLEAR_FACILITIES[0]>(
+            result,
+            commitMatch,
+          );
+          if (!facility) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('nuclear');
           ctx.mapLayers.nuclear = true;
@@ -175,8 +290,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'irradiator': {
-        const irradiator = result.data as typeof GAMMA_IRRADIATORS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const irradiator = this.resolveScheduledResultData<typeof GAMMA_IRRADIATORS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!irradiator) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('irradiators');
           ctx.mapLayers.irradiators = true;
@@ -188,8 +307,12 @@ export class SearchSelectionDispatcher {
         ctx.map?.setView('global');
         break;
       case 'techcompany': {
-        const company = result.data as typeof TECH_COMPANIES[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const company = this.resolveScheduledResultData<typeof TECH_COMPANIES[0]>(
+            result,
+            commitMatch,
+          );
+          if (!company) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('techHQs');
           ctx.mapLayers.techHQs = true;
@@ -197,15 +320,23 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'ailab': {
-        const lab = result.data as typeof AI_RESEARCH_LABS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const lab = this.resolveScheduledResultData<typeof AI_RESEARCH_LABS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!lab) return false;
           ctx.map?.setView('global');
           ctx.map?.setCenter(lab.lat, lab.lon, 4);
         }, 300, epoch);
       }
       case 'startup': {
-        const ecosystem = result.data as typeof STARTUP_ECOSYSTEMS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const ecosystem = this.resolveScheduledResultData<typeof STARTUP_ECOSYSTEMS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!ecosystem) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('startupHubs');
           ctx.mapLayers.startupHubs = true;
@@ -213,8 +344,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'techevent': {
-        const event = result.data as { lat: number; lng: number };
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const event = this.resolveScheduledResultData<{ lat: number; lng: number }>(
+            result,
+            commitMatch,
+          );
+          if (!event) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('techEvents');
           ctx.mapLayers.techEvents = true;
@@ -222,8 +357,9 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'techhq': {
-        const hq = result.data as typeof TECH_HQS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const hq = this.resolveScheduledResultData<typeof TECH_HQS[0]>(result, commitMatch);
+          if (!hq) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('techHQs');
           ctx.mapLayers.techHQs = true;
@@ -231,8 +367,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'accelerator': {
-        const accelerator = result.data as typeof ACCELERATORS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const accelerator = this.resolveScheduledResultData<typeof ACCELERATORS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!accelerator) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('accelerators');
           ctx.mapLayers.accelerators = true;
@@ -240,8 +380,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'exchange': {
-        const exchange = result.data as typeof STOCK_EXCHANGES[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const exchange = this.resolveScheduledResultData<typeof STOCK_EXCHANGES[0]>(
+            result,
+            commitMatch,
+          );
+          if (!exchange) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('stockExchanges');
           ctx.mapLayers.stockExchanges = true;
@@ -249,8 +393,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'financialcenter': {
-        const center = result.data as typeof FINANCIAL_CENTERS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const center = this.resolveScheduledResultData<typeof FINANCIAL_CENTERS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!center) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('financialCenters');
           ctx.mapLayers.financialCenters = true;
@@ -258,8 +406,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'centralbank': {
-        const bank = result.data as typeof CENTRAL_BANKS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const bank = this.resolveScheduledResultData<typeof CENTRAL_BANKS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!bank) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('centralBanks');
           ctx.mapLayers.centralBanks = true;
@@ -267,8 +419,12 @@ export class SearchSelectionDispatcher {
         }, 300, epoch);
       }
       case 'commodityhub': {
-        const hub = result.data as typeof COMMODITY_HUBS[0];
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const hub = this.resolveScheduledResultData<typeof COMMODITY_HUBS[0]>(
+            result,
+            commitMatch,
+          );
+          if (!hub) return false;
           ctx.map?.setView('global');
           ctx.map?.enableLayer('commodityHubs');
           ctx.mapLayers.commodityHubs = true;
@@ -278,16 +434,21 @@ export class SearchSelectionDispatcher {
       case 'country': {
         const { code, name } = result.data as { code: string; name: string };
         if (trackDetailedAnalytics) this.bindings.trackCountrySelected(code, name, 'search');
-        return this.bindings.openCountryBriefByCode(code, name, { trackDetailedAnalytics });
+        return this.bindings.openCountryBriefByCode(code, name, {
+          trackDetailedAnalytics,
+          ...(options.signal ? { signal: options.signal } : {}),
+        });
       }
       case 'flight': {
-        const { lat, lon, layer } = result.data as {
-          kind: string;
-          lat: number;
-          lon: number;
-          layer: keyof MapLayers;
-        };
-        return this.schedule(() => {
+        return this.schedule((commitMatch) => {
+          const flight = this.resolveScheduledResultData<{
+            kind: string;
+            lat: number;
+            lon: number;
+            layer: keyof MapLayers;
+          }>(result, commitMatch);
+          if (!flight) return false;
+          const { lat, lon, layer } = flight;
           ctx.map?.enableLayer(layer);
           ctx.mapLayers[layer] = true;
           ctx.map?.setCenter(lat, lon, 9);
@@ -295,6 +456,19 @@ export class SearchSelectionDispatcher {
       }
     }
     return true;
+  }
+
+  private resolveScheduledResultData<T>(
+    issuedResult: SearchResult,
+    commitMatch?: SearchMatch,
+  ): T | null {
+    if (commitMatch === undefined) return issuedResult.data as T;
+    if (
+      commitMatch.kind !== 'result'
+      || commitMatch.result.type !== issuedResult.type
+      || commitMatch.result.id !== issuedResult.id
+    ) return null;
+    return commitMatch.result.data as T;
   }
 
   private applyCommand(
@@ -366,13 +540,25 @@ export class SearchSelectionDispatcher {
         const config = ctx.panelSettings[panelId];
         if (config && !config.enabled) {
           if (!this.bindings.enablePanel(panelId, { trackDetailedAnalytics })) return false;
-          this.scrollToPanelWhenReady(panelId, 12, trackDetailedAnalytics, epoch);
-          if (subTab) this.dispatchPanelTab(panelId, subTab, 12, epoch);
-          break;
+          const scrolled = this.scrollToPanelWhenReady(
+            panelId,
+            trackDetailedAnalytics,
+            epoch,
+            options.signal,
+          );
+          if (!subTab) return scrolled;
+          return this.dispatchPanelTabAfterPresentation(scrolled, panelId, subTab, epoch);
         }
-        this.scrollToPanel(panelId, trackDetailedAnalytics);
-        if (subTab) this.dispatchPanelTab(panelId, subTab, 12, epoch);
-        break;
+        const scrolled = epoch === undefined
+          ? this.scrollToPanel(panelId, trackDetailedAnalytics)
+          : this.scrollToPanelWhenReady(
+            panelId,
+            trackDetailedAnalytics,
+            epoch,
+            options.signal,
+          );
+        if (!subTab) return scrolled;
+        return this.dispatchPanelTabAfterPresentation(scrolled, panelId, subTab, epoch);
       }
       case 'view':
         if (action === 'dark' || action === 'light') {
@@ -426,7 +612,10 @@ export class SearchSelectionDispatcher {
           || new Intl.DisplayNames(['en'], { type: 'region' }).of(action)
           || action;
         if (trackDetailedAnalytics) this.bindings.trackCountrySelected(action, name, 'command');
-        return this.bindings.openCountryBriefByCode(action, name, { trackDetailedAnalytics });
+        return this.bindings.openCountryBriefByCode(action, name, {
+          trackDetailedAnalytics,
+          ...(options.signal ? { signal: options.signal } : {}),
+        });
       }
       case 'country-map': {
         const bbox = getCountryBbox(action);
@@ -447,41 +636,131 @@ export class SearchSelectionDispatcher {
     return true;
   }
 
-  private scrollToPanelWhenReady(
+  private async scrollToPanelWhenReady(
     panelId: string,
-    attemptsLeft = 12,
     trackDetailedAnalytics = true,
     epoch?: number,
-  ): void {
-    if (!trackDetailedAnalytics) this.bindings.suppressNextAgentPanelView(panelId);
-    if (document.querySelector(`[data-panel="${panelId}"]`)) {
-      this.scrollToPanel(panelId, trackDetailedAnalytics);
-      return;
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    let panel = this.findConnectedPanel(panelId);
+    if (panel?.isConnected) {
+      if (!trackDetailedAnalytics) this.bindings.suppressNextAgentPanelView(panelId);
+      panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.applyHighlight(panel);
+      return true;
     }
-    if (attemptsLeft <= 0) return;
-    this.schedule(
-      () => this.scrollToPanelWhenReady(panelId, attemptsLeft - 1, trackDetailedAnalytics, epoch),
-      80,
-      epoch,
+    const deferredShell = document.querySelector(
+      `[data-panel="${panelId}"][data-deferred-panel]`,
     );
-  }
-
-  private dispatchPanelTab(panelId: string, tab: string, attemptsLeft = 12, epoch?: number): void {
-    if (panelId !== 'consumer-prices') return;
-    if (document.querySelector(`[data-panel="${panelId}"]:not([data-deferred-panel])`)) {
-      window.dispatchEvent(new CustomEvent('wm-consumer-prices-open-tab', { detail: { tab } }));
-      return;
+    if (deferredShell?.isConnected) {
+      deferredShell.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    if (attemptsLeft <= 0) return;
-    this.schedule(() => this.dispatchPanelTab(panelId, tab, attemptsLeft - 1, epoch), 80, epoch);
-  }
 
-  private scrollToPanel(panelId: string, trackDetailedAnalytics = true): void {
+    panel = await this.waitForConnectedPanel(panelId, epoch, signal);
+    if (!panel || !this.isProgrammaticSelectionCurrent(epoch)) return false;
+    // The initial privacy mark may expire while a slow lazy import exhausts a
+    // retry. Re-arm it at the actual presentation boundary so the eventual
+    // scroll/view event is still attributed to the agent-safe path.
     if (!trackDetailedAnalytics) this.bindings.suppressNextAgentPanelView(panelId);
-    const panel = document.querySelector(`[data-panel="${panelId}"]`);
-    if (!panel) return;
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
     this.applyHighlight(panel);
+    return true;
+  }
+
+  private dispatchPanelTabAfterPresentation(
+    presentation: boolean | Promise<boolean>,
+    panelId: string,
+    tab: string,
+    epoch?: number,
+  ): boolean | Promise<boolean> {
+    if (panelId !== 'consumer-prices') return presentation;
+    const dispatch = (): boolean => {
+      if (!this.isProgrammaticSelectionCurrent(epoch) || !this.findConnectedPanel(panelId)) {
+        return false;
+      }
+      window.dispatchEvent(new CustomEvent('wm-consumer-prices-open-tab', { detail: { tab } }));
+      return true;
+    };
+    return typeof presentation === 'boolean'
+      ? presentation && dispatch()
+      : presentation.then((presented) => presented && dispatch());
+  }
+
+  private findConnectedPanel(panelId: string): Element | null {
+    const panel = document.querySelector(`[data-panel="${panelId}"]:not([data-deferred-panel])`);
+    return panel?.isConnected ? panel : null;
+  }
+
+  private isProgrammaticSelectionCurrent(epoch?: number): boolean {
+    return epoch === undefined
+      || (epoch === this.programmaticEpoch && Boolean(this.programmaticMatchResolvers.get(epoch)?.()));
+  }
+
+  private waitForConnectedPanel(
+    panelId: string,
+    epoch?: number,
+    signal?: AbortSignal,
+  ): Promise<Element | null> {
+    const existing = this.findConnectedPanel(panelId);
+    if (existing) return Promise.resolve(existing);
+    if (
+      signal?.aborted
+      || !this.isProgrammaticSelectionCurrent(epoch)
+    ) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise<Element | null>((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let observer: MutationObserver | null = null;
+      let cancelWait = (): void => {};
+      const finish = (panel: Element | null): void => {
+        if (settled) return;
+        settled = true;
+        this.activePanelWaitCancels.delete(cancelWait);
+        observer?.disconnect();
+        signal?.removeEventListener('abort', handleAbort);
+        if (timer !== undefined) {
+          this.bindings.clearTimeout(timer);
+          if (epoch !== undefined) this.programmaticTimers.delete(timer);
+        }
+        resolve(panel);
+      };
+      const handleAbort = (): void => finish(null);
+      cancelWait = (): void => finish(null);
+      this.activePanelWaitCancels.add(cancelWait);
+      const observationRoot = document.body ?? document.documentElement;
+
+      if (typeof MutationObserver !== 'undefined' && observationRoot) {
+        observer = new MutationObserver(() => {
+          const panel = this.findConnectedPanel(panelId);
+          if (panel) finish(panel);
+        });
+      }
+      observer?.observe(observationRoot, { childList: true, subtree: true });
+      signal?.addEventListener('abort', handleAbort, { once: true });
+      timer = this.bindings.setTimeout(
+        () => finish(this.findConnectedPanel(panelId)),
+        SearchSelectionDispatcher.DEFERRED_PANEL_PRESENTATION_TIMEOUT_MS,
+      );
+      if (epoch !== undefined) {
+        this.programmaticTimers.set(timer, () => finish(null));
+      }
+      // Close the query/observe race: the panel may have mounted immediately
+      // before the observer was attached.
+      const mounted = this.findConnectedPanel(panelId);
+      if (mounted) finish(mounted);
+    });
+  }
+
+  private scrollToPanel(panelId: string, trackDetailedAnalytics = true): boolean {
+    if (!trackDetailedAnalytics) this.bindings.suppressNextAgentPanelView(panelId);
+    const panel = document.querySelector(`[data-panel="${panelId}"]`);
+    if (!panel) return false;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    this.applyHighlight(panel);
+    return true;
   }
 
   private applyHighlight(element: Element): void {
@@ -496,21 +775,32 @@ export class SearchSelectionDispatcher {
     }, 3100));
   }
 
-  private schedule(callback: () => void, delay: number, epoch?: number): boolean | Promise<boolean> {
+  private schedule(
+    callback: (match?: SearchMatch) => boolean | void | Promise<boolean | void>,
+    delay: number,
+    epoch?: number,
+  ): boolean | Promise<boolean> {
     if (epoch === undefined) {
-      this.bindings.setTimeout(callback, delay);
+      this.bindings.setTimeout(() => { void callback(); }, delay);
       return true;
     }
     return new Promise<boolean>((resolve, reject) => {
       const timer = this.bindings.setTimeout(() => {
         this.programmaticTimers.delete(timer);
-        if (epoch !== this.programmaticEpoch) {
-          resolve(false);
-          return;
-        }
         try {
-          callback();
-          resolve(true);
+          if (epoch !== this.programmaticEpoch) {
+            resolve(false);
+            return;
+          }
+          const commitMatch = this.programmaticMatchResolvers.get(epoch)?.();
+          if (!commitMatch) {
+            resolve(false);
+            return;
+          }
+          void Promise.resolve(callback(commitMatch)).then(
+            (result) => resolve(result !== false),
+            reject,
+          );
         } catch (error) {
           reject(error);
         }
