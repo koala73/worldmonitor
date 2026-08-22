@@ -10,6 +10,7 @@ export const CACHE_TTL_SECONDS = 86400; // 24 hours
 
 export {
   CACHE_VERSION,
+  MAX_BODY_LEN,
   canonicalizeSummaryInputs,
   buildSummaryCacheKey,
   buildSummaryCacheKey as getCacheKey,
