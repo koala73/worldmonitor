@@ -58,14 +58,18 @@ describe('cursor skill: sentry-triage', () => {
   });
 
   it('audits archive mode via substatus, not empty statusDetails', () => {
-    assert.match(markdown, /substatus/);
-    assert.match(markdown, /statusDetails/);
+    assert.match(markdown, /get_sentry_resource|get_issue_details/);
+    assert.match(markdown, /search_issues/);
+    assert.match(markdown, /never via empty `statusDetails`/);
+    assert.match(markdown, /Do not treat empty `statusDetails` as clean/);
     assert.match(markdown, /archived_forever/);
     assert.match(markdown, /archived_until_escalating/);
     assert.match(markdown, /archived_until_condition_met/);
-    assert.match(markdown, /untilEscalating/);
-    assert.match(markdown, /unresolved/);
+    assert.match(markdown, /Default archive is `ignoreMode: 'untilEscalating'`/);
+    assert.match(markdown, /ignoreMode: 'forever'/);
+    assert.match(markdown, /Cycle `unresolved` → `ignored`|status='unresolved'|status='ignored'/);
     assert.match(markdown, /silently no-ops|silent no-op|no-ops/i);
-    assert.match(markdown, /read(?:s|ing)? [`']?substatus[`']? back|GET and read `substatus`|read `substatus` back/i);
+    assert.match(markdown, /read `substatus` back/);
+    assert.match(markdown, /get_issue_activity|reason=/);
   });
 });

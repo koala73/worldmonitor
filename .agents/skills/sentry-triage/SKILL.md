@@ -61,8 +61,8 @@ Policy lives in `src/bootstrap/sentry-init.ts` and `src/bootstrap/sentry-allow-u
 
 - **Link or short ID** → fetch that issue directly.
 - **Description** → `search_issues` (`is:unresolved`, `firstSeen:-24h`, `error.type:…`, `release:latest` as needed).
-- **Empty / board triage** → unresolved issues for `worldmonitor`, newest or highest-volume first. Skip issues that are already clearly noise-class from title + recent history unless volume just spiked.
-- **Ignored-board audit** → fetch each `is:ignored` issue and read **`substatus`**. Do not treat empty `statusDetails` as clean. Flag every `archived_forever` issue that lacks a recorded forever decision (WORLDMONITOR-QK absorbed a 13.6x ramp in silence while `statusDetails` was `{}`). Re-archive those as `archived_until_escalating` after classifying them, or resolve if genuinely fixed.
+- **Empty / board triage** → unresolved issues for `worldmonitor`, newest or highest-volume first. Skip issues that are already clearly noise-class from title + recent history unless volume just spiked. Always include the ignored-board audit below — the unresolved board cannot see `archived_forever` issues.
+- **Ignored-board audit** → `search_issues` `is:ignored` returns **status only**. That list cannot distinguish archive modes: both `archived_forever` and `archived_until_escalating` report `statusDetails: {}`. For each ignored issue, fetch details with `get_sentry_resource` (`resourceType: 'issue'`) or `execute_sentry_tool(name='get_issue_details', …)` and read **`substatus`**. Do not treat empty `statusDetails` as clean. Flag every `archived_forever` issue that lacks a recorded forever decision — a prior `update_issue` `reason=` comment or an `execute_sentry_tool(name='get_issue_activity', …)` note that explicitly chose forever (WORLDMONITOR-QK absorbed a 13.6x ramp in silence while `statusDetails` was `{}`). In report-only mode, list those issues. In active mode (or when the user asked to re-archive), re-archive them as `archived_until_escalating` after classifying them, or resolve if genuinely fixed.
 
 Confirm which issue to work when the search returns several.
 
@@ -115,9 +115,12 @@ State one class before touching code or Sentry status:
 
 **Archive / mute (any class)**
 
-- Use `update_issue` only to archive a classified mute or to apply a status the user explicitly requested. Prefer resolve-by-commit.
-- Default archive is `ignoreMode: 'untilEscalating'` (`archived_until_escalating`). Use `ignoreMode: 'forever'` (`archived_forever`) only for a true won't-fix, and record that decision on the issue.
-- Changing `substatus` requires a status **transition**. `update_issue` with `status: 'ignored'` on an already-`ignored` issue returns success and silently no-ops — read-back still shows the old mode (verified 2026-08-22 on WORLDMONITOR-QK). Cycle `unresolved` → `ignored` with the target `ignoreMode`, then GET and read `substatus` back. The write's own 200 proves nothing.
+- Use `update_issue` only to archive a classified mute or to apply a status the user explicitly requested. Prefer resolve-by-commit. Report-only mode flags the mute; it does not write.
+- Default archive is `ignoreMode: 'untilEscalating'` (`archived_until_escalating`). Use `ignoreMode: 'forever'` (`archived_forever`) only for a true won't-fix, and record that decision on the issue with `reason=` (or a later `get_issue_activity` note that names forever).
+- Changing `substatus` requires a status **transition**. `update_issue` with `status: 'ignored'` on an already-`ignored` issue returns success and silently no-ops — read-back still shows the old mode (verified 2026-08-22 on WORLDMONITOR-QK). The write's own 200 proves nothing. Required sequence:
+  1. `update_issue(…, status='unresolved')`
+  2. `update_issue(…, status='ignored', ignoreMode='untilEscalating', reason='…')` — a failed second write leaves the issue briefly unresolved; finish the cycle before stopping.
+  3. `get_sentry_resource` / `get_issue_details` and read `substatus` back. Do not trust the write response.
 
 **Ingest-gate**
 
