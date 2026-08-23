@@ -48,6 +48,7 @@ These rules come from shipped triage write-ups. They override generic Sentry adv
    - `beforeSend` when suppression depends on stack provenance (example: exact `Failed to fetch` plus an extension fetch/apply wrapper).
 8. **Name-shaped allowlists are a treadmill.** Bound tolerances by an enforced invariant (fetch-free chunks, host allowlists), not by another minifier spelling.
 9. **Distinguish product failure from baseline, credential, sandbox, or ingest-gate gaps.** `allowUrls` drops events before `beforeSend`. A silent host is an ingest bug, not "no errors."
+10. **Audit archive mode via `substatus`, never via empty `statusDetails`.** `archived_forever` opts out of Sentry's escalation detection — volume can never reopen the issue. Default mute is `archived_until_escalating` (`update_issue` `ignoreMode: 'untilEscalating'`). `archived_forever` requires a deliberate, recorded won't-fix decision. See the archive-mode table and write trap below.
 
 Canonical write-ups:
 
@@ -61,8 +62,17 @@ Policy lives in `src/bootstrap/sentry-init.ts` and `src/bootstrap/sentry-allow-u
 - **Link or short ID** → fetch that issue directly.
 - **Description** → `search_issues` (`is:unresolved`, `firstSeen:-24h`, `error.type:…`, `release:latest` as needed).
 - **Empty / board triage** → unresolved issues for `worldmonitor`, newest or highest-volume first. Skip issues that are already clearly noise-class from title + recent history unless volume just spiked.
+- **Ignored-board audit** → fetch each `is:ignored` issue and read **`substatus`**. Do not treat empty `statusDetails` as clean. Flag every `archived_forever` issue that lacks a recorded forever decision (WORLDMONITOR-QK absorbed a 13.6x ramp in silence while `statusDetails` was `{}`). Re-archive those as `archived_until_escalating` after classifying them, or resolve if genuinely fixed.
 
 Confirm which issue to work when the search returns several.
+
+Archive mode lives in `substatus`. Every archive except `archived_until_condition_met` reports `statusDetails: {}`:
+
+| substatus | statusDetails | reopens? |
+|---|---|---|
+| `archived_forever` | `{}` | **NO** — opts out of escalation detection |
+| `archived_until_escalating` | `{}` | yes (Sentry forecast) |
+| `archived_until_condition_met` | `{ignoreCount, ignoreWindow}` | yes (threshold) |
 
 ## Step 2 — Pull context
 
@@ -102,7 +112,12 @@ State one class before touching code or Sentry status:
 - Cross-check frames against the codebase. If Sentry Releases exist, diff the event's release, not an assumed `main`.
 - Fix the cause. Add a test that reproduces the failure with synthetic data when the surface has a test suite.
 - Resolve by shipping: `Fixes WORLDMONITOR-12A` in the commit or PR body. Follow WorldMonitor delivery rules (preflight, no `--no-verify`, no merge unless asked).
-- Use `update_issue` only to archive a true won't-fix or to apply a status the user explicitly requested. Prefer resolve-by-commit.
+
+**Archive / mute (any class)**
+
+- Use `update_issue` only to archive a classified mute or to apply a status the user explicitly requested. Prefer resolve-by-commit.
+- Default archive is `ignoreMode: 'untilEscalating'` (`archived_until_escalating`). Use `ignoreMode: 'forever'` (`archived_forever`) only for a true won't-fix, and record that decision on the issue.
+- Changing `substatus` requires a status **transition**. `update_issue` with `status: 'ignored'` on an already-`ignored` issue returns success and silently no-ops — read-back still shows the old mode (verified 2026-08-22 on WORLDMONITOR-QK). Cycle `unresolved` → `ignored` with the target `ignoreMode`, then GET and read `substatus` back. The write's own 200 proves nothing.
 
 **Ingest-gate**
 
@@ -115,10 +130,11 @@ End with a short board or single-issue digest:
 - Issue ID and title
 - Class
 - Evidence (event id, release, the frame or signature that decided the class)
+- `substatus` after any archive write (read-back, not the write response)
 - Action taken or recommended
 - Tests run and their result
 - What remains unproved (missing MCP, missing event body, credential/sandbox limits)
 
 ## What "done" looks like
 
-The issue is classified with evidence. Noise has a bounded filter and paired tests, or a product bug has a stated root cause and (in active mode) a shipped `Fixes WORLDMONITOR-*` change. Nothing is resolved with `inNextRelease`.
+The issue is classified with evidence. Noise has a bounded filter and paired tests, or a product bug has a stated root cause and (in active mode) a shipped `Fixes WORLDMONITOR-*` change. Nothing is resolved with `inNextRelease`. No issue sits on `archived_forever` without a recorded forever decision.

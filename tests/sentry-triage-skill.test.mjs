@@ -56,4 +56,16 @@ describe('cursor skill: sentry-triage', () => {
     assert.match(markdown, /sentry-beforesend\.test\.mjs/);
     assert.match(markdown, /Fixes WORLDMONITOR-/);
   });
+
+  it('audits archive mode via substatus, not empty statusDetails', () => {
+    assert.match(markdown, /substatus/);
+    assert.match(markdown, /statusDetails/);
+    assert.match(markdown, /archived_forever/);
+    assert.match(markdown, /archived_until_escalating/);
+    assert.match(markdown, /archived_until_condition_met/);
+    assert.match(markdown, /untilEscalating/);
+    assert.match(markdown, /unresolved/);
+    assert.match(markdown, /silently no-ops|silent no-op|no-ops/i);
+    assert.match(markdown, /read(?:s|ing)? [`']?substatus[`']? back|GET and read `substatus`|read `substatus` back/i);
+  });
 });
