@@ -5,23 +5,15 @@ description: "Standard World Monitor API error shape, common HTTP status codes, 
 
 ## Error shape
 
-All error responses are JSON with `Content-Type: application/json`:
+All error responses are JSON with `Content-Type: application/json`, but the **body envelope differs by surface** — a robust client branches on which key is present:
 
-```json
-{ "error": "brief_not_found" }
-```
+| Envelope | Surface | Example |
+|----------|---------|---------|
+| `{ "violations": [...] }` | Generated gateway RPCs (`/api/<domain>/v1/...`), on **400 validation errors**. Each violation is `{ "field", "description" }`; there is no `error` or `message` sibling. | `{ "violations": [{ "field": "country_code", "description": "value is required" }] }` |
+| `{ "message": "..." }` | Generated gateway RPCs, on all **other 4xx/5xx** errors. | `{ "message": "Pro subscription required" }` |
+| `{ "error": "..." }` | Standalone edge endpoints (brief, commerce, notifications, proxies, …) and the handful of gateway errors that opt into the `error` envelope. | `{ "error": "brief_not_found" }` |
 
-Some endpoints include additional fields:
-
-```json
-{
-  "error": "invalid_request",
-  "error_description": "iso2 must be a 2-letter uppercase country code",
-  "field": "iso2"
-}
-```
-
-OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) error codes: `invalid_request`, `invalid_client`, `invalid_grant`, `unsupported_grant_type`, `invalid_scope`.
+OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) error codes in a `{ "error", "error_description" }` envelope: `invalid_request`, `invalid_client`, `invalid_grant`, `unsupported_grant_type`, `invalid_scope`.
 
 ## Status codes
 
@@ -32,7 +24,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `304` | Not Modified (conditional cache hit) | — |
 | `400` | Bad request — validation error | No — fix input |
 | `401` | Missing / invalid auth | No — fix auth |
-| `403` | Authenticated but not entitled (usually `pro_required`), or `subscription_lapsed` — a lapse confirmed with the billing provider (`X-Billing-Verification` header set) | No — upgrade / resubscribe |
+| `403` | Authenticated but not entitled (usually `pro_required`), or `subscription_lapsed` — a lapse confirmed with the billing provider (`X-Billing-Verification` header set). Also `{"error":"Forbidden"}` from the edge bot gate — see below. | No — upgrade / resubscribe (or send a real User-Agent / API key for the bot gate) |
 | `404` | Resource / tool / brief / entity not found | No |
 | `405` | Method not allowed | No |
 | `409` | `Idempotency-Key` request still in progress, or another conflict such as duplicate webhook registration. | Yes for keyed in-flight requests — honor `Retry-After: 2`; otherwise no |
@@ -43,6 +35,15 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `502` | Upstream / Convex / Dodo failure | Yes — exponential backoff |
 | `503` | Service unavailable — missing env or dependency down; billing verification in progress (`renewal_verification_pending` / `renewal_verification_failed` — dynamic `Retry-After`, 1-60s); or billing backend unreachable (`entitlement_verification_unavailable` — fixed `Retry-After: 5`) | Yes — honor `Retry-After`, else exponential backoff |
 | `504` | Upstream timeout | Yes — with backoff |
+
+### The edge bot gate (`403 {"error":"Forbidden"}`)
+
+Before any handler runs, the edge middleware refuses `/api/*` requests whose `User-Agent` looks like a generic script or crawler (`curl/`, `wget`, `python-requests`, `go-http`, `java/`, `ruby`, `php/`, most crawler UAs) — or is missing / shorter than 10 characters — with a bare `403 {"error":"Forbidden"}`. Two ways through it:
+
+- **Send a `wm_…` API key** in `X-WorldMonitor-Key` (or `X-Api-Key`) — a well-formed key bypasses the gate before the UA is examined.
+- **Send a browser-like `User-Agent`** for anonymous reads (e.g. `curl -A "Mozilla/5.0 (compatible; my-integration/1.0)" …`).
+
+A handful of public paths skip the gate entirely: `/api/version`, `/api/health`, `/api/product-catalog`, `/api/llms.txt`, `/api/seed-contract-probe`. Everything else — including anonymous public reads like `GET /api/bootstrap?public=1` — is behind it, which is why a bare `curl` of a documented anonymous endpoint returns 403 while the same URL works from a browser.
 
 ### Reading `X-Billing-Verification`
 

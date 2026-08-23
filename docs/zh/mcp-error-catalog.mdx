@@ -29,7 +29,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 ## 快速指引
 
 - **HTTP 状态码**是传输层的回答。大多数 JSON-RPC 回复 —— 无论成功还是错误 —— 按 JSON-RPC 2.0 惯例都会以 **HTTP 200** 返回。只有当失败属于通用 HTTP 客户端必须响应的情况（鉴权、每日上限、服务不可用）且受益于 `Retry-After` / `WWW-Authenticate` 头时，handler 才会升级状态码。
-- **JSON-RPC `error.code`** 是应用层的回答。共使用六个代码：`-32001`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。handler 不会发出其他代码 —— 如果你看到了其他代码，请将其视为协议 bug 并提交 issue。
+- **JSON-RPC `error.code`** 是应用层的回答。共使用九个代码：`-32001`、`-32002`、`-32003`、`-32004`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。handler 不会发出其他代码 —— 如果你看到了其他代码，请将其视为协议 bug 并提交 issue。
 - **软行为信封**是高频失败模式。`tools/call` 在 JSON-RPC 层成功（HTTP 200，无 `error` 字段），但位于 `result.content[0].text` 中的 JSON 携带了一个 `_budget_exceeded` 或 `_jmespath_error` 判别字段。只检查 JSON-RPC 信封的客户端会默默地把这些当作成功 —— 请解析 `result.content[0].text`，并在将该负载作为数据消费前检查是否存在前导下划线 `_` 键。
 - **已执行的调用仍计费。** `_budget_exceeded`、`_jmespath_error` 和工具执行错误（`-32603`）都发生在工具已运行之后，因此它们会消耗 Pro 每日配额槽位。只有预分发失败（如每日上限拒绝或配额预留服务失败）才不消耗槽位。
 - **两条 401 路径都设置了 `WWW-Authenticate`**，包含 `realm="worldmonitor"` 以及指向 `/.well-known/oauth-protected-resource` 的 `resource_metadata` 指针。支持 RFC 9728 的客户端（Claude Desktop、MCP Inspector）会凭此头自动跳转 OAuth 流程，无需进一步干预。

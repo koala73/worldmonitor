@@ -135,9 +135,9 @@ Invalidates a user's entitlement cache after a subscription change (Dodo webhook
 
 ## Geo utilities
 
-### `GET /api/geo?iso2=US`
+### `GET /api/geo`
 
-Returns country metadata: centroid, bbox, capital, ISO codes.
+Geo-IP echo: returns `{ "country": "<ISO2>" }` derived from the CDN's country header for the calling IP. Takes no parameters. (For reverse geocoding of coordinates, use `GET /api/infrastructure/v1/reverse-geocode?lat=…&lon=…`.)
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 

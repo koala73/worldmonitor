@@ -62,13 +62,13 @@ WorldMonitor 在 Railway 上为每个用户生成情报简报，将每一期存�
 
 ## 辅助
 
-### `GET /api/story?date=YYYY-MM-DD`
+### `GET /api/story?c={ISO2}&t={type}`
 
-用于分享简报的公开只读"故事视图"（Web 阅读器）。SEO 友好的 HTML 响应。
+面向社交媒体爬虫的公开只读 HTML 页面，展示一个**国家故事**（默认类型 `ciianalysis`）。参数：`c`（国家，必填）、`t`（故事类型）、`ts`（时间戳）、`s`（分数）、`l`（级别）。它不是简报阅读器，也不接受 `date` 参数。
 
-### `GET /api/og-story?date=YYYY-MM-DD`
+### `GET /api/og-story?c={ISO2}&t={type}`
 
-`/api/story` 的 Open Graph 预览图。返回 `image/png`，激进缓存。
+`/api/story` 的 Open Graph 预览图，接受相同的 `c`/`t`/`s`/`l` 参数。返回 `image/png`，激进缓存。
 
 ### `POST /api/chat-analyst`
 

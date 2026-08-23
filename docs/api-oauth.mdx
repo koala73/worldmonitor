@@ -52,13 +52,15 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 - `https://claude.com/api/mcp/auth_callback`
 - `http://localhost:<port>` / `http://127.0.0.1:<port>` — any port
 
+At most **3** `redirect_uris` per registration; more returns `400 invalid_request`.
+
 **Rate limit**: 5 registrations / 60 s / IP.
 
 **Client TTL**: 90 days sliding (every successful token exchange refreshes).
 
 ### `GET /api/oauth/authorize`
 
-Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-in, then issues an authorization code bound to the caller's PRO entitlement.
+Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-in, then issues an authorization code bound to the caller's entitlement. The Pro sign-in leg of the consent flow is served by the sibling `GET /oauth/authorize-pro` (HTML; not called directly by clients), which admits Pro subscribers and confirmed free accounts and refuses lapsed paid entitlements with the Pro-required page.
 
 **Required query params**:
 
@@ -102,6 +104,14 @@ grant_type=refresh_token
 refresh_token=<from previous exchange>
 client_id=<from DCR>
 ```
+
+**Grant type: `client_credentials`** (operator-issued enterprise keys only):
+```
+grant_type=client_credentials
+client_secret=<enterprise API key>
+```
+
+Validates the `client_secret` against the deployment's operator key allowlist and returns a bearer token with `scope: "mcp"` and the standard 3600 s TTL. Not available for dashboard `wm_…` keys — those are sent directly as `X-WorldMonitor-Key` instead.
 
 **Rate limit**: 10 token requests / minute. The limiter is keyed by `client_secret` hash for `client_credentials`, by `client_id` when present (`authorization_code` and `refresh_token`), and falls back to caller IP only when neither identifier is available.
 

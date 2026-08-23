@@ -470,7 +470,7 @@ This is the right call when you're capturing a fixture, running a one-off audit,
 
 ### `_budget_exceeded` — when the payload is too big
 
-Each tool declares a per-tool output budget (`_outputBudgetBytes`). When a tool's serialised response exceeds that budget **after** all filtering, `summary`, and JMESPath have been applied, the server returns this envelope instead of the oversized payload — still inside the normal MCP result, still HTTP 200, still `isError: false`:
+Each tool declares a per-tool output budget (`_outputBudgetBytes`). When a tool's serialised response exceeds that budget **after** all filtering, `summary`, and JMESPath have been applied, the server returns this envelope instead of the oversized payload — still inside the normal MCP result, still HTTP 200, not a JSON-RPC error (success results carry no `isError` flag):
 
 ```json
 {
@@ -481,7 +481,7 @@ Each tool declares a per-tool output budget (`_outputBudgetBytes`). When a tool'
 }
 ```
 
-The recovery is always the same: **make the projection more selective**, or layer a tool-level filter (`country`, `since`, `limit`) underneath it. The Pro daily quota is automatically rolled back when this envelope fires — you don't pay a quota slot for a response you can't use.
+The recovery is always the same: **make the projection more selective**, or layer a tool-level filter (`country`, `since`, `limit`) underneath it. The Pro daily quota slot **stays charged** when this envelope fires — the tool already ran its full upstream fetch/compute before the output was measured, so the cost is sunk (a refund here would let a caller drive unlimited real cost by always exceeding the budget). Budget your projection up front via `describe_tool`'s `outputSchema` rather than relying on retries.
 
 ### `_jmespath_error` — when the projection itself fails
 
@@ -494,7 +494,7 @@ A JMESPath expression can fail three ways: the expression itself exceeds 1024 by
 }
 ```
 
-`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
+`original_keys` is the top-level keys of the unprojected response (capped at 50 keys with a `...<N more>` sentinel) — enough context for the model to retry with a corrected expression in one extra call. When the unprojected root is not an object, it degrades to a shape hint instead: `["<array length=N>"]` for an array root, `["<string>"]` / `["<number>"]` for a scalar. A bad expression **does** consume one daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
 
 ## Complements to projection
 

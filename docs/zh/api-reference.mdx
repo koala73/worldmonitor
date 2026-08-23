@@ -48,7 +48,7 @@ curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
   -d '{
     "operations": [
       { "id": "fear-greed", "path": "/api/market/v1/get-fear-greed-index" },
-      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country=DE&jmespath=score" }
+      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country_code=DE&jmespath=score" }
     ]
   }'
 ```
