@@ -32,6 +32,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://worldmonitor.app/oauth/authorize` | OAuth 2.1 authorization endpoint (PKCE required) |
 | `https://worldmonitor.app/oauth/token` | Token endpoint (authorization_code + refresh_token) |
 | `https://worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414; the endpoints it advertises mirror the request host, so the `api.` subdomain works too) |
+| `https://worldmonitor.app/docs/mcp` | Separate anonymous **documentation** MCP server (docs search + read-only docs filesystem) — card at `/.well-known/mcp/docs-server-card.json`; see [Agent Discovery](/agent-discovery#agent-front-doors) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
 Server identifier: `worldmonitor` v1.17.0.

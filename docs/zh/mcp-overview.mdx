@@ -32,6 +32,7 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 | `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 授权端点（要求 PKCE） |
 | `https://api.worldmonitor.app/api/oauth/token` | Token 端点（authorization_code + refresh_token） |
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS 元数据（RFC 8414） |
+| `https://worldmonitor.app/docs/mcp` | 独立的匿名**文档** MCP 服务器（文档搜索 + 只读文档文件系统）——卡片位于 `/.well-known/mcp/docs-server-card.json`；参见[智能体发现](/zh/agent-discovery) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | 资源服务器元数据（RFC 9728） |
 
 服务器标识：`worldmonitor` v1.17.0。
