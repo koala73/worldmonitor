@@ -150,6 +150,10 @@ The typed value a provider-rate-limited operation returns *instead of throwing*,
 
 A stack frame contributed by a monkeypatched global — most often a third-party script's `window.fetch` wrapper — that appears in a trace as though it were a caller but merely passes the call through. Trampoline frames make third-party failures look first-party, which is why suppression gates must classify them; the trap is that their *names* are minifier output, renamed at will across builds and eventually omitted entirely, so any gate that recognizes a trampoline by name shape is on a treadmill. Identity comes instead from build-stable structural facts: which first-party chunk the frame is attributed to, and whether the wrapping script's own frame is present in the same trace. A gate that admits trampoline frames from a chunk is safe only under an *enforced* invariant that the chunk's backing modules perform no network work of their own — enforced meaning a test fails when it stops being true, not a comment asserting it. See also: Vacuous Guard.
 
+### Two-Verifier Seam
+
+The Clerk bearer is checked twice on `/api/user-prefs`: first by the edge (`jose` + cached JWKS in `validateBearerToken`), then again by Convex's OIDC verifier after `client.setAuth`. A token can pass the first check and fail the second. That gap is usually remaining lifetime versus round-trip and clock skew, not JWKS/audience/issuer drift — the edge already accepted the signature. `convex_auth_drift` (WORLDMONITOR-QK) is the Sentry name for the Convex-side rejection; it is the near-expiry face of a leftover token. The expired face 401s at the edge and never reaches this bucket. See also: Anonymous Session.
+
 ## Timestamps & Hot-Document Writes
 
 ### Content Clock

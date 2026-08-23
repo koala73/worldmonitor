@@ -220,6 +220,15 @@ export default async function handler(
       // drift — skip the drift capture for it so the WORLDMONITOR-QK bucket
       // keeps meaning what its comment says.
       //
+      // The May–July 2026 13.6x QK ramp (8 → 109 ev/wk, 344 users, all POST
+      // setPreferences) was the *other* near-expiry feeder: `getClerkToken`
+      // stamped Clerk's stale-while-revalidate leftover with a flat 50s TTL,
+      // so tokens with ≤15s of life still passed the edge and died at Convex.
+      // #5753 bound reuse by the token's own `exp` (2026-07-28T17:57Z); the
+      // last high-rate event (22:40Z) is stale-bundle tail. Residual ~5 ev/wk
+      // is this designed two-verifier baseline, not an open defect. See
+      // docs/solutions/integration-issues/convex-auth-drift-ramp-was-stacked-clerk-token-cache.md.
+      //
       // Every other UNAUTHENTICATED here is genuine auth/audience/issuer
       // drift between our Clerk JWKS validation and Convex's auth config (a
       // Clerk JWKS rotation lag, an audience mismatch, a stale
