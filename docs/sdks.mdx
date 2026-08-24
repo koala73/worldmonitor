@@ -28,6 +28,16 @@ All four clients expose the same surface with language-native naming:
 
 Every tool accepts an optional `jmespath` argument for [server-side projection](/mcp-jmespath) — typically an 80–95% response-size cut.
 
+### REST rate-limit errors
+
+The REST escape hatch returns the existing API transport error for any HTTP 429: Python raises `APIError`, Ruby raises `WorldMonitor::APIError`, Go returns `*worldmonitor.APIError`, and the CLI exits nonzero.
+
+- A `limit_type` of `per_minute` means the authenticated REST API key exceeded its per-minute burst limit.
+- A `limit_type` of `daily` means the key exceeded its daily plan allowance. The request at the allowance is allowed; the next request returns 429. It is not accepted as a metered overage.
+- Honor `Retry-After` before retrying. It is the time to the burst-window reset for `per_minute`, or to the next UTC midnight for `daily`.
+
+These REST 429s are separate from MCP's own limits and JSON-RPC tool errors.
+
 ## Python
 
 ```python
