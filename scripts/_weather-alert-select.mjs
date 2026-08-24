@@ -80,14 +80,24 @@ export function requireAlertFeatures(data) {
   return data.features;
 }
 
+// NWS ships 6-7 decimal coordinates. Five decimals retain metre-level detail
+// while reducing the FAST-tier weather-alert payload.
+function roundCoordinate(value) {
+  return Number.isFinite(value) ? Number(value.toFixed(5)) : value;
+}
+
+function roundPosition(position) {
+  return [roundCoordinate(position[0]), roundCoordinate(position[1])];
+}
+
 export function extractCoordinates(geometry) {
   if (!geometry) return [];
   try {
     if (geometry.type === 'Polygon') {
-      return geometry.coordinates[0]?.map(c => [c[0], c[1]]) || [];
+      return geometry.coordinates[0]?.map(roundPosition) || [];
     }
     if (geometry.type === 'MultiPolygon') {
-      return geometry.coordinates[0]?.[0]?.map(c => [c[0], c[1]]) || [];
+      return geometry.coordinates[0]?.[0]?.map(roundPosition) || [];
     }
   } catch { /* ignore */ }
   return [];
@@ -103,12 +113,12 @@ export function extractRings(geometry) {
   if (!geometry) return [];
   try {
     if (geometry.type === 'Polygon') {
-      const ring = geometry.coordinates[0]?.map(c => [c[0], c[1]]);
+      const ring = geometry.coordinates[0]?.map(roundPosition);
       return ring ? [ring] : [];
     }
     if (geometry.type === 'MultiPolygon') {
       return (geometry.coordinates || [])
-        .map(poly => poly?.[0]?.map(c => [c[0], c[1]]))
+        .map(poly => poly?.[0]?.map(roundPosition))
         .filter(Array.isArray);
     }
   } catch { /* ignore */ }

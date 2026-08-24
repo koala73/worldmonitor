@@ -22,6 +22,10 @@ const TITLE_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC:\s*M(\d+(?:\.\d+)?)
 const EVENT_ID_RE = /[?&]eventid=([^&]+)/i;
 const CLOCK_SKEW_MS = 60 * 60 * 1000;
 
+function roundCoordinate(value) {
+  return Number.isFinite(value) ? Number(value.toFixed(5)) : value;
+}
+
 export class NrcanAtomParseError extends Error {
   constructor(message) {
     super(message);
@@ -60,7 +64,12 @@ function parsePoint(block) {
   const latitude = Number(parts[0]);
   const longitude = Number(parts[1]);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  return { latitude, longitude };
+  // 5 decimals ~ 1m — matches the weather-alert polygon rounding; upstream
+  // ships 6-7 decimals that only inflate the seeded payload.
+  return {
+    latitude: roundCoordinate(latitude),
+    longitude: roundCoordinate(longitude),
+  };
 }
 
 function parseDepthKm(block) {
@@ -259,8 +268,8 @@ export function parseUsgsGeojson(geojson) {
       magnitude: feature.properties?.mag ?? 0,
       depthKm: feature.geometry?.coordinates?.[2] ?? 0,
       location: {
-        latitude: feature.geometry?.coordinates?.[1] ?? 0,
-        longitude: feature.geometry?.coordinates?.[0] ?? 0,
+        latitude: roundCoordinate(feature.geometry?.coordinates?.[1] ?? 0),
+        longitude: roundCoordinate(feature.geometry?.coordinates?.[0] ?? 0),
       },
       occurredAt: Number.isFinite(occurredAt) && occurredAt > 0 ? occurredAt : 0,
       sourceUrl: String(feature.properties?.url || ''),

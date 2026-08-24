@@ -21,6 +21,7 @@ import {
   countryCodeFromSwicUrl,
   eligibleAlertCount,
   extractCoordinates,
+  extractRings,
   fetchApprovedWeatherJson,
   fetchEcccAlertFeatures,
   formatTruncationWarning,
@@ -201,6 +202,36 @@ describe('weather alert selection', () => {
   it('extracts the outer ring of a MultiPolygon', () => {
     const coords = extractCoordinates({ type: 'MultiPolygon', coordinates: [[[[1, 2], [3, 4]]]] });
     assert.deepEqual(coords, [[1, 2], [3, 4]]);
+  });
+
+  it('rounds every Polygon and MultiPolygon position to five decimals', () => {
+    const ringA = [
+      [-100.1234567, 40.7654321],
+      [-99.9876543, 41.2345678],
+      [-100.1234567, 40.7654321],
+    ];
+    const ringB = [
+      [-80.111119, 30.999999],
+      [-79.222226, 31.333334],
+      [-80.111119, 30.999999],
+    ];
+    const roundedA = [
+      [-100.12346, 40.76543],
+      [-99.98765, 41.23457],
+      [-100.12346, 40.76543],
+    ];
+    const roundedB = [
+      [-80.11112, 31],
+      [-79.22223, 31.33333],
+      [-80.11112, 31],
+    ];
+
+    assert.deepEqual(extractCoordinates({ type: 'Polygon', coordinates: [ringA] }), roundedA);
+    assert.deepEqual(extractRings({ type: 'Polygon', coordinates: [ringA] }), [roundedA]);
+
+    const multiPolygon = { type: 'MultiPolygon', coordinates: [[ringA], [ringB]] };
+    assert.deepEqual(extractCoordinates(multiPolygon), roundedA);
+    assert.deepEqual(extractRings(multiPolygon), [roundedA, roundedB]);
   });
 
   it('returns undefined centroid for an empty ring', () => {

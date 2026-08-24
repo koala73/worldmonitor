@@ -101,11 +101,6 @@ export async function listAirportDelays(
   const [{ faaAlerts, faaSourceCovered }, { intlAlerts, intlCoverage, intlCoveredIatas }, notamResult] =
     await Promise.all([faaRead, intlRead, notamRead]);
 
-  // 3. NOTAM alerts — shared loader (seed-first with live fallback).
-  // loadNotamClosures swallows both the seed-read and live-fetch failures
-  // internally (returns null on error), so no outer try/catch is needed — a
-  // failure degrades cleanly to "no NOTAM merge this tick" rather than
-  // bubbling and tripping every airport to UNKNOWN at the handler boundary.
   const allAlerts = [...faaAlerts, ...intlAlerts];
   if (notamResult) {
     const existingIatas = new Set(allAlerts.map(a => a.iata));

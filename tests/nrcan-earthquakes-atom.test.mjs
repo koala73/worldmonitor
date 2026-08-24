@@ -104,6 +104,23 @@ describe('nrcan atom fixture (live host capture)', () => {
       assert.notEqual(eq.occurredAt, Date.parse('2026-08-13T00:00:00Z'));
     }
   });
+
+  it('rounds Atom coordinates to five decimals', () => {
+    const { earthquakes } = parseNrcanAtom(`
+      <feed xmlns="http://www.w3.org/2005/Atom" xmlns:georss="http://www.georss.org/georss">
+        <entry>
+          <title>2026-08-13 11:11:27 UTC: M5.0 High precision</title>
+          <id>https://www.earthquakescanada.nrcan.gc.ca/?eventid=precision</id>
+          <georss:point>49.1234567 -123.7654321</georss:point>
+        </entry>
+      </feed>
+    `);
+
+    assert.deepEqual(earthquakes[0].location, {
+      latitude: 49.12346,
+      longitude: -123.76543,
+    });
+  });
 });
 
 describe('parse failure vs empty Atom', () => {
@@ -515,11 +532,15 @@ describe('module import contract', () => {
       features: [{
         id: 'us1',
         properties: { place: 'somewhere', mag: 5.1, time: 1_700_000_000_000, url: 'https://earthquake.usgs.gov/1' },
-        geometry: { coordinates: [-120, 40, 12] },
+        geometry: { coordinates: [-120.7654321, 40.1234567, 12] },
       }],
     });
     assert.equal(parsed.earthquakes[0].source, 'usgs');
     assert.equal(parsed.earthquakes[0].depthKm, 12);
+    assert.deepEqual(parsed.earthquakes[0].location, {
+      latitude: 40.12346,
+      longitude: -120.76543,
+    });
     assert.equal(parsed.newestAt, 1_700_000_000_000);
   });
 });
