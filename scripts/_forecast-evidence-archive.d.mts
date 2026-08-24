@@ -28,10 +28,15 @@ export const FORECAST_EVIDENCE_COVERAGE_VERSION: number;
 export const FORECAST_EVIDENCE_TTL_S: number;
 export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS: number;
 export const FORECAST_EVIDENCE_MEMBER_MAX_BYTES: number;
+export const ACCUMULATOR_RETENTION_MS: number;
+export const FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS: number;
+export function resolveForecastEvidenceCoverageMaxLagMs(
+  env?: Record<string, string | undefined>,
+): number;
 export function utf8ByteLength(value: string): number;
 export function isForecastEvidenceHash(value: unknown): value is string;
 export function forecastEvidenceRecordKey(hash: string): string;
-export function parseForecastEvidenceCoverage(raw: unknown): {
+export interface ForecastEvidenceCoverage {
   v: number;
   coverageStartMs: number;
   coverageEndMs: number;
@@ -42,8 +47,23 @@ export function parseForecastEvidenceCoverage(raw: unknown): {
   sourceKey: string;
   legacyOldestHash: string;
   legacyOldestScoreMs: number;
-} | null;
-export function forecastEvidenceCoversWindow(raw: unknown, startMs: number, endMs: number): boolean;
+}
+export function parseForecastEvidenceCoverage(raw: unknown): ForecastEvidenceCoverage | null;
+/**
+ * `maxLagMs` defaults to 0: only the read path opts into a staleness budget;
+ * gates that authorize destruction demand a marker reaching the instant given.
+ */
+export function forecastEvidenceCoversWindow(
+  raw: unknown,
+  startMs: number,
+  endMs: number,
+  maxLagMs?: number,
+): boolean;
+/** Move a verified marker forward to a newer confirmed publication. */
+export function advanceForecastEvidenceCoverage(
+  raw: unknown,
+  nowMs: number,
+): ForecastEvidenceCoverage | null;
 
 /** Eligibility gate for dual publication: only the full/English scope is archived. */
 export function isEligibleForecastEvidence(variant: string, lang: string): boolean;

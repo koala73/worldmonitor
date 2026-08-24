@@ -17,9 +17,16 @@ import {
   FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
   forecastEvidenceCoversWindow,
   parseForecastEvidenceCoverage,
+  ACCUMULATOR_RETENTION_MS,
 } from './_forecast-evidence-archive.mjs';
 
-export const RETENTION_MS = 48 * 60 * 60 * 1000;
+/** Shared with the online prune in list-feed-digest.ts — see ACCUMULATOR_RETENTION_MS. */
+export const RETENTION_MS = ACCUMULATOR_RETENTION_MS;
+/**
+ * How stale the cutover marker may be and still authorise a destructive sweep.
+ * Deliberately much tighter than the read path's budget: this tool deletes.
+ */
+export const MAX_MARKER_STALENESS_MS = 24 * 60 * 60 * 1000;
 export const SCAN_PAGE_SIZE = 100;
 export const DELETE_RECORD_BATCH = 100;
 export const MAX_SCAN_PAGES = 10_000;
@@ -32,20 +39,32 @@ const USER_AGENT = 'worldmonitor-prune-digest-accumulator/1.0';
 
 export function usage() {
   return [
-    'Usage: node scripts/prune-digest-accumulator.mjs [--apply] [--key <exact-key> ...]',
+    'Usage: node scripts/prune-digest-accumulator.mjs [--apply] [--key <exact-key> ...] [--json]',
     '',
     '  Dry run (default): discover keys with SCAN and report what would be pruned.',
     '  --key: inspect an exact accumulator key; repeat for more than one key.',
     '  --apply: prune only the exact accumulator keys supplied with --key.',
+    '  --json: emit the machine-readable report on stdout (prose log goes to stderr).',
+    '',
+    'Environment:',
+    '  UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  required, always.',
+    '  FORECAST_EVIDENCE_CUTOVER_ENABLED=1                required for --apply. The sweep',
+    '      also requires a valid forecast:evidence:coverage:v1 marker proving the archive',
+    '      already carries the 14-day judging window; --apply refuses without both.',
+    '',
+    'Exit codes: 0 ok/nothing to do, 1 unexpected failure, 2 bad usage, 3 refused by the',
+    'cutover gate (flag unset, marker missing/stale/inadequate).',
   ].join('\n');
 }
 
 export function parseArgs(argv) {
-  const parsed = { apply: false, help: false, keys: [] };
+  const parsed = { apply: false, help: false, json: false, keys: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--apply') {
       parsed.apply = true;
+    } else if (arg === '--json') {
+      parsed.json = true;
     } else if (arg === '--help' || arg === '-h') {
       parsed.help = true;
     } else if (arg === '--key') {
@@ -168,12 +187,26 @@ export async function requireVerifiedCutover(redis, env, observedAtMs) {
   if (!coverage) {
     throw new Error('Refusing --apply: forecast evidence coverage marker is missing or malformed');
   }
-  const requiredStartMs = coverage.coverageEndMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS;
-  if (!forecastEvidenceCoversWindow(coverage, requiredStartMs, coverage.coverageEndMs)) {
-    throw new Error('Refusing --apply: forecast evidence marker does not prove the required 14-day window');
-  }
+  // Anchor the required window to the OPERATOR's clock, not the marker's own
+  // coverageEndMs. Deriving requiredStartMs from coverageEndMs asked the marker
+  // to cover a window defined by itself — an invariant parseForecastEvidenceCoverage
+  // already enforces, so the check could never fail and proved nothing.
   if (coverage.coverageEndMs > observedAtMs) {
     throw new Error('Refusing --apply: forecast evidence coverage end is in the future');
+  }
+  const stalenessMs = observedAtMs - coverage.coverageEndMs;
+  if (stalenessMs > MAX_MARKER_STALENESS_MS) {
+    throw new Error(
+      `Refusing --apply: forecast evidence marker is ${Math.round(stalenessMs / 3_600_000)}h stale `
+      + `(max ${Math.round(MAX_MARKER_STALENESS_MS / 3_600_000)}h); the digest writer is not advancing coverage`,
+    );
+  }
+  if (!forecastEvidenceCoversWindow(
+    coverage,
+    observedAtMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+    coverage.coverageEndMs,
+  )) {
+    throw new Error('Refusing --apply: forecast evidence marker does not prove the required 14-day window');
   }
   return coverage;
 }
@@ -205,6 +238,7 @@ export async function pruneAccumulatorKey(
 
   let removed = 0;
   let pages = 0;
+  let convergedEarly = false;
   while (pages < targetPages) {
     const pageLimit = Math.min(deleteRecordBatch, targetRemovals - removed);
     const members = await redis([
@@ -215,7 +249,19 @@ export async function pruneAccumulatorKey(
       throw new Error(`Redis ZRANGEBYSCORE returned an unexpected page for ${key}`);
     }
     if (members.length === 0) {
-      throw new Error(`${key} changed during cleanup: an expected delete page was empty`);
+      // The live digest publication prunes the same key on every build, so an
+      // empty page usually means it got there first — a converged sweep, not a
+      // corrupted one. Re-measure before deciding: only a page that is empty
+      // while eligible members remain is a real inconsistency.
+      const remaining = nonNegativeInteger(
+        await redis(['ZCOUNT', key, '-inf', cutoffExclusive]),
+        'ZCOUNT',
+      );
+      if (remaining > 0) {
+        throw new Error(`${key} changed during cleanup: an expected delete page was empty with ${remaining} still eligible`);
+      }
+      convergedEarly = true;
+      break;
     }
 
     const pageRemoved = nonNegativeInteger(await redis(['ZREM', key, ...members]), 'ZREM');
@@ -232,7 +278,10 @@ export async function pruneAccumulatorKey(
     await redis(['ZCOUNT', key, '-inf', cutoffExclusive]),
     'ZCOUNT',
   );
-  if (removed !== targetRemovals) {
+  // convergedEarly means a concurrent publication prune already removed the
+  // tail and we re-measured zero eligible members — removing fewer than the
+  // pre-scan target is the correct outcome there, not a failed verification.
+  if (removed !== targetRemovals && !convergedEarly) {
     throw new Error(
       `${key} cleanup verification failed: target=${targetRemovals} removed=${removed}`,
     );
@@ -242,6 +291,7 @@ export async function pruneAccumulatorKey(
     pages,
     complete: eligibleRemaining === 0,
     eligibleRemaining,
+    convergedEarly,
     recordBudget,
     commandBudget: maxDeleteCommands,
   };
@@ -269,27 +319,47 @@ export async function runCleanup({
 
   const config = redisConfigFromEnv(env);
   const redis = (command) => redisCommand(config, command, fetchImpl);
-  const coverage = parsed.apply ? await requireVerifiedCutover(redis, env, nowMs) : null;
+  // Dry-run runs the SAME gate read-only and reports its verdict, so
+  // "is it safe to prune yet?" is answerable without risking a mutation.
+  // Previously the only way to learn the answer was to attempt --apply.
+  let coverage = null;
+  let cutoverReady = false;
+  let cutoverBlockedReason = null;
+  try {
+    coverage = await requireVerifiedCutover(redis, env, nowMs);
+    cutoverReady = true;
+  } catch (err) {
+    if (parsed.apply) throw err;
+    cutoverBlockedReason = err?.message || String(err);
+  }
   const referenceClockMs = coverage?.coverageEndMs ?? nowMs;
   const cutoff = referenceClockMs - RETENTION_MS;
   const cutoffExclusive = `(${cutoff}`;
   const mode = parsed.apply ? 'APPLY' : 'DRY-RUN';
   log(
     `[prune-digest-accumulator] mode=${mode} observedAt=${new Date(nowMs).toISOString()} `
-    + `referenceClock=${new Date(referenceClockMs).toISOString()} cutoff=${new Date(cutoff).toISOString()}`,
+    + `referenceClock=${new Date(referenceClockMs).toISOString()} cutoff=${new Date(cutoff).toISOString()} `
+    + `retentionHours=${Math.round(RETENTION_MS / 3_600_000)} cutoverReady=${cutoverReady}`,
   );
   if (coverage) {
     log(
       `[prune-digest-accumulator] coverageProof=${FORECAST_EVIDENCE_COVERAGE_KEY} `
       + `window=${new Date(coverage.coverageStartMs).toISOString()}..${new Date(coverage.coverageEndMs).toISOString()} `
-      + `verifiedAt=${new Date(coverage.cutoverVerifiedAtMs).toISOString()}`,
+      + `verifiedAt=${new Date(coverage.cutoverVerifiedAtMs).toISOString()} `
+      + `markerStalenessMs=${nowMs - coverage.coverageEndMs}`,
     );
+  } else if (cutoverBlockedReason) {
+    log(`[prune-digest-accumulator] cutover NOT ready: ${cutoverBlockedReason}`);
   }
 
   const keys = parsed.keys.length > 0 ? parsed.keys.slice().sort() : await discoverAccumulatorKeys(redis);
   if (keys.length === 0) {
     log('[prune-digest-accumulator] no accumulator keys found; nothing to do.');
-    return { mode, keys: [] };
+    return {
+      mode, json: parsed.json, observedAtMs: nowMs, referenceClockMs, cutoff,
+      retentionMs: RETENTION_MS, cutoverReady, cutoverBlockedReason, coverage,
+      keys: [], results: [],
+    };
   }
 
   const results = [];
@@ -323,9 +393,13 @@ export async function runCleanup({
   }
   return {
     mode,
+    json: parsed.json,
     observedAtMs: nowMs,
     referenceClockMs,
     cutoff,
+    retentionMs: RETENTION_MS,
+    cutoverReady,
+    cutoverBlockedReason,
     coverage,
     keys,
     results,
@@ -335,9 +409,30 @@ export async function runCleanup({
 const isDirectExecution = process.argv[1]
   && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 
+/**
+ * Exit codes are part of the tool's contract: an operator (or an agent)
+ * sequencing the cutover must be able to tell "refused by the gate" from
+ * "crashed" without scraping prose off stderr.
+ */
+export const EXIT_OK = 0;
+export const EXIT_FAILED = 1;
+export const EXIT_USAGE = 2;
+export const EXIT_CUTOVER_REFUSED = 3;
+
 if (isDirectExecution) {
-  runCleanup().catch((err) => {
-    console.error(`[prune-digest-accumulator] failed: ${err?.message || err}`);
-    process.exitCode = 1;
-  });
+  // With --json the machine-readable report owns stdout and the prose log is
+  // routed to stderr, so `... --json | jq` works.
+  const wantsJson = process.argv.slice(2).includes('--json');
+  runCleanup(wantsJson ? { log: (...args) => console.error(...args) } : {})
+    .then((report) => {
+      if (wantsJson) console.log(JSON.stringify(report, null, 2));
+    })
+    .catch((err) => {
+      const message = err?.message || String(err);
+      console.error(`[prune-digest-accumulator] failed: ${message}`);
+      if (wantsJson) console.log(JSON.stringify({ mode: 'FAILED', error: message }, null, 2));
+      if (/^Refusing --apply:/.test(message)) process.exitCode = EXIT_CUTOVER_REFUSED;
+      else if (/^(Unknown argument|--key requires|--apply requires|Refusing non-accumulator)/.test(message)) process.exitCode = EXIT_USAGE;
+      else process.exitCode = EXIT_FAILED;
+    });
 }

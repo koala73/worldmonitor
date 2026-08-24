@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   DELETE_RECORD_BATCH,
+  MAX_MARKER_STALENESS_MS,
   RETENTION_MS,
   runCleanup,
 } from '../scripts/prune-digest-accumulator.mjs';
@@ -208,7 +209,7 @@ describe('digest accumulator cleanup', () => {
     }
   });
 
-  it('uses the verified marker end, not observation time, for the exclusive 48-hour cutoff', async () => {
+  it('uses the verified marker end, not observation time, for the exclusive retention cutoff', async () => {
     const proofEnd = NOW - 24 * 60 * 60 * 1000;
     const proofCutoff = proofEnd - RETENTION_MS;
     const fake = createFakeRedis({
@@ -250,7 +251,7 @@ describe('digest accumulator cleanup', () => {
     assert.deepEqual(fake.state.get(OTHER_KEY).map(({ member }) => member), ['boundary']);
   });
 
-  it('removes only scores strictly older than the 48-hour cutoff', async () => {
+  it('removes only scores strictly older than the retention cutoff', async () => {
     const fake = createFakeRedis({
       rowsByKey: {
         [KEY]: [
@@ -336,5 +337,138 @@ describe('digest accumulator cleanup', () => {
     assert.equal(first.results[0].removed, 1);
     assert.equal(second.results[0].removed, 0);
     assert.deepEqual(fake.state.get(KEY).map(({ member }) => member), ['boundary']);
+  });
+
+  it('retains the weekly digest window rather than the 48-hour key TTL', async () => {
+    // seed-digest-notifications buildDigest() reads this key back to the
+    // subscriber's lastSentAt — ~7 days for a weekly rule. Pruning to 48h
+    // silently shipped two-day digests to weekly subscribers.
+    const fake = createFakeRedis({
+      rowsByKey: {
+        [KEY]: [
+          row('six-days-old', NOW - 6 * 24 * 60 * 60 * 1000),
+          row('nine-days-old', NOW - 9 * 24 * 60 * 60 * 1000),
+        ],
+      },
+    });
+
+    await quietRun(fake, ['--apply', '--key', KEY]);
+
+    assert.deepEqual(
+      fake.state.get(KEY).map(({ member }) => member),
+      ['six-days-old'],
+      'a six-day-old member is still inside a weekly digest window',
+    );
+    assert.ok(RETENTION_MS > 7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('reports cutover readiness in dry-run without touching Redis state', async () => {
+    // "Is it safe to prune yet?" must be answerable without risking --apply.
+    const fake = createFakeRedis({
+      scanPages: [['0', [KEY]]],
+      rowsByKey: { [KEY]: [row('old', CUTOFF - 1)] },
+    });
+
+    const result = await quietRun(fake);
+
+    assert.equal(result.cutoverReady, true);
+    assert.equal(result.cutoverBlockedReason, null);
+    assert.equal(result.retentionMs, RETENTION_MS);
+    assert.equal(fake.calls.some(({ command }) => command[0] === 'ZREM'), false);
+    assert.equal(fake.state.get(KEY).length, 1);
+  });
+
+  it('reports the blocking reason in dry-run instead of throwing', async () => {
+    const fake = createFakeRedis({
+      scanPages: [['0', [KEY]]],
+      coverageMarker: 'not-json',
+      rowsByKey: { [KEY]: [row('old', CUTOFF - 1)] },
+    });
+
+    const result = await quietRun(fake);
+
+    assert.equal(result.cutoverReady, false);
+    assert.match(result.cutoverBlockedReason, /coverage marker is missing or malformed/);
+    assert.equal(fake.calls.some(({ command }) => command[0] === 'ZREM'), false);
+  });
+
+  it('refuses --apply when the marker is stale even though it proves 14 days', async () => {
+    // The marker's own coverageEndMs used to define the window it had to
+    // cover — a self-comparison the parser already guarantees, so the check
+    // could never fail. Anchoring to the operator's clock makes a marker from
+    // a writer that stopped days ago refuse the sweep.
+    const staleEnd = NOW - MAX_MARKER_STALENESS_MS - 1;
+    const fake = createFakeRedis({
+      coverageMarker: validCoverage(staleEnd),
+      rowsByKey: { [KEY]: [row('old', CUTOFF - 1)] },
+    });
+
+    await assert.rejects(
+      () => quietRun(fake, ['--apply', '--key', KEY]),
+      /marker is \d+h stale/,
+    );
+    assert.equal(fake.calls.filter(({ command }) => command[0] === 'ZREM').length, 0);
+  });
+
+  it('accepts a marker inside the staleness allowance', async () => {
+    const freshEnd = NOW - MAX_MARKER_STALENESS_MS + 60_000;
+    const fake = createFakeRedis({
+      coverageMarker: validCoverage(freshEnd),
+      rowsByKey: { [KEY]: [row('old', freshEnd - RETENTION_MS - 1), row('keep', NOW)] },
+    });
+
+    const result = await quietRun(fake, ['--apply', '--key', KEY]);
+
+    assert.equal(result.cutoverReady, true);
+    assert.equal(result.results[0].removed, 1);
+    assert.deepEqual(fake.state.get(KEY).map(({ member }) => member), ['keep']);
+  });
+
+  it('converges instead of failing when publication pruned the tail first', async () => {
+    // The live digest prunes the same key on every build. An empty delete page
+    // with nothing eligible left is a won race, not a corrupted key.
+    const fake = createFakeRedis({
+      rowsByKey: { [KEY]: [row('old-1', CUTOFF - 2), row('old-2', CUTOFF - 1)] },
+    });
+    const originalFetch = fake.fetchImpl;
+    let stolen = false;
+    const racingFetch = async (url, options) => {
+      const command = JSON.parse(options.body);
+      // Between the ZCOUNT that sized the work and the first range read, the
+      // publication prune removes every eligible member.
+      if (!stolen && command[0] === 'ZRANGEBYSCORE') {
+        stolen = true;
+        fake.state.set(KEY, []);
+      }
+      return originalFetch(url, options);
+    };
+
+    const result = await quietRun({ ...fake, fetchImpl: racingFetch }, ['--apply', '--key', KEY]);
+
+    assert.equal(result.results[0].removed, 0);
+    assert.equal(result.results[0].convergedEarly, true);
+    assert.equal(result.results[0].complete, true);
+    assert.equal(result.results[0].eligibleRemaining, 0);
+  });
+
+  it('still fails loudly when a page is empty but members remain eligible', async () => {
+    const fake = createFakeRedis({
+      rowsByKey: { [KEY]: [row('old-1', CUTOFF - 2), row('old-2', CUTOFF - 1)] },
+    });
+    const originalFetch = fake.fetchImpl;
+    const lyingFetch = async (url, options) => {
+      const command = JSON.parse(options.body);
+      // A range read that returns nothing while ZCOUNT still reports work is a
+      // genuine inconsistency and must not be swallowed by the convergence path.
+      if (command[0] === 'ZRANGEBYSCORE') {
+        return { ok: true, status: 200, async json() { return { result: [] }; } };
+      }
+      return originalFetch(url, options);
+    };
+
+    await assert.rejects(
+      () => quietRun({ ...fake, fetchImpl: lyingFetch }, ['--apply', '--key', KEY]),
+      /an expected delete page was empty with 2 still eligible/,
+    );
   });
 });

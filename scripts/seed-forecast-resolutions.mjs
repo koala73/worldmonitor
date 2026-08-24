@@ -35,7 +35,15 @@ import {
   isForecastEvidenceHash,
   parseForecastEvidenceCoverage,
   parseForecastEvidenceMember,
+  resolveForecastEvidenceCoverageMaxLagMs,
 } from './_forecast-evidence-archive.mjs';
+
+/**
+ * Hash cap for the pre-cutover archive/accumulator divergence log. This read is
+ * telemetry only — a bounded sample answers "are the two paths diverging?" and
+ * the unbounded read cost up to ~31 extra pipeline round-trips per judged run.
+ */
+export const MIGRATION_DIVERGENCE_SAMPLE_HASHES = 500;
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
@@ -1239,7 +1247,9 @@ export async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}
     : (options.env ?? process.env).FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
 
   const windowStartMs = Math.min(...dueEntries.map((entry) => judgedArchiveWindowForEntry(entry, nowMs).startMs));
-  const windowEndMs = Math.max(...dueEntries.map((entry) => judgedArchiveWindowForEntry(entry, nowMs).endMs));
+  // judgedArchiveWindowForEntry returns endMs: nowMs for every entry, so the
+  // window end is nowMs by construction.
+  const windowEndMs = nowMs;
   // #7082: judge from the dedicated evidence archive first — it is
   // self-contained (no story:track dependency) and covers the full 14-day
   // contract. The accumulator reader stays as the migration fallback while
@@ -1249,12 +1259,22 @@ export async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}
     if (archived.available) {
       if (!cutoverEnabled && !options.quietArchiveMigration) {
         try {
-          const legacy = await readDigestAccumulatorArchive(windowStartMs, windowEndMs, options);
+          // Telemetry only — a bounded sample is enough to spot divergence, and
+          // the unbounded read cost ~31 extra pipeline round-trips on every
+          // pre-cutover judged run just to compare two counts.
+          const legacy = await readDigestAccumulatorArchive(windowStartMs, windowEndMs, {
+            ...options,
+            maxHashes: Math.min(
+              MIGRATION_DIVERGENCE_SAMPLE_HASHES,
+              Number.isFinite(options.maxHashes) ? options.maxHashes : MIGRATION_DIVERGENCE_SAMPLE_HASHES,
+            ),
+          });
           if (legacy.available && legacy.items.length !== archived.items.length) {
             console.warn(
               `  [forecast-resolutions] evidence archive/accumulator divergence: ` +
               `archive=${archived.items.length} accumulator=${legacy.items.length} ` +
-              `(expected while the archive backfills; accumulator lacks >48h evidence)`,
+              `(sampled at ${MIGRATION_DIVERGENCE_SAMPLE_HASHES} hashes; expected while the ` +
+              `archive backfills — the accumulator lacks evidence beyond its retention window)`,
             );
           }
         } catch {
@@ -1297,6 +1317,14 @@ export async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}
  * counted as tombstones and surfaced in the result instead of being
  * silently omitted, and truncation tightens the reported coverage window so
  * missing evidence can never be converted into a judged negative.
+ *
+ * The coverage marker is compared with a staleness budget
+ * (FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS). The marker records the last
+ * confirmed digest publication and this seeder runs in a different process at
+ * a later instant, so demanding `coverageEndMs >= Date.now()` is a race no
+ * deployment can win — it would make the archive permanently unreadable.
+ * Evidence that would have been published inside the budget does not exist in
+ * any store yet, so a marker within it has no hole behind it.
  */
 export async function readForecastEvidenceArchive(windowStartMs, nowMs, options = {}) {
   const { url, token } = getArchiveRedisCredentials(options);
@@ -1304,10 +1332,17 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   const configuredMaxLookbackMs = Number.isFinite(options.maxLookbackMs)
     ? Math.max(1, Math.floor(options.maxLookbackMs))
     : resolveJudgedEvidenceMaxLookbackMs();
+  const coverageMaxLagMs = Number.isFinite(options.coverageMaxLagMs)
+    ? Math.max(0, Math.floor(options.coverageMaxLagMs))
+    : resolveForecastEvidenceCoverageMaxLagMs(options.env ?? process.env);
   const requestedCoverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
   const maxHashes = Number.isFinite(options.maxHashes)
     ? Math.max(1, Math.floor(options.maxHashes))
     : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
+  const archiveTimeoutMs = Number.isFinite(options.archiveTimeoutMs)
+    ? Math.max(1_000, Math.floor(options.archiveTimeoutMs))
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_TIMEOUT_MS', DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS);
+  const archiveDeadlineMs = Date.now() + archiveTimeoutMs;
   const base = {
     requestedStartMs: windowStartMs,
     requestedEndMs: nowMs,
@@ -1315,12 +1350,18 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     coverageEndMs: nowMs,
     archive: FORECAST_EVIDENCE_KEY,
   };
+  // One budget for the whole read, not per request: the record fan-out below
+  // can issue ceil(maxHashes / recordBatchSize) sequential pipelines, and a
+  // per-request timeout lets their sum blow past any caller deadline. Mirrors
+  // readDigestAccumulatorArchive's archiveDeadlineMs.
   const requestRedis = async (endpoint, command, context) => {
+    const remainingMs = archiveDeadlineMs - Date.now();
+    if (remainingMs <= 0) throw new Error(`${context} exceeded ${archiveTimeoutMs}ms archive budget`);
     const response = await fetchFn(endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
       body: JSON.stringify(command),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(remainingMs),
     });
     if (!response.ok) throw new Error(`${context} failed: HTTP ${response.status}`);
     return response.json();
@@ -1332,7 +1373,7 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     `Redis GET ${FORECAST_EVIDENCE_COVERAGE_KEY}`,
   );
   const coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
-  if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs)) {
+  if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs, coverageMaxLagMs)) {
     return {
       ...base,
       coverageStartMs: coverage?.coverageStartMs,
@@ -1341,6 +1382,8 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
       incomplete: true,
       incompleteReason: coverage ? 'coverage_window_incomplete' : 'coverage_unverified',
       cutoverVerified: Boolean(coverage),
+      coverageLagMs: coverage ? nowMs - coverage.coverageEndMs : undefined,
+      coverageMaxLagMs,
       items: [],
       available: false,
     };
@@ -1385,6 +1428,23 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     selectedScores.push(score);
   }
 
+  // Truncation NARROWS the window rather than failing the read, mirroring
+  // readDigestAccumulatorArchive below. The cap is a standing property of a
+  // busy 14-day window, not a transient blip: failing the whole read on it
+  // means no judged forecast ever resolves again once the archive gets big.
+  // The narrowed coverageStartMs is what keeps this fail-closed —
+  // archiveCoversEntryWindow still refuses any entry whose own window reaches
+  // past the retained range, so missing evidence is never judged as absence.
+  // Scores descend (ZREVRANGEBYSCORE), so the oldest retained score is last.
+  const oldestRetainedScore = selectedScores.at(-1);
+  const firstDroppedScore = truncated ? Number(zsetRows[maxHashes * 2 + 1]) : undefined;
+  const retainedCoverageStartMs = Number.isFinite(oldestRetainedScore)
+    ? (firstDroppedScore === oldestRetainedScore ? oldestRetainedScore + 1 : oldestRetainedScore)
+    : requestedCoverageStartMs;
+  const effectiveCoverageStartMs = truncated
+    ? Math.max(requestedCoverageStartMs, retainedCoverageStartMs)
+    : requestedCoverageStartMs;
+
   const recordBatchSize = Number.isFinite(options.recordBatchSize)
     ? Math.max(1, Math.min(500, Math.floor(options.recordBatchSize)))
     : 500;
@@ -1414,9 +1474,12 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     records.push({ record, score: selectedScores[index] });
   }
 
-  const incomplete = truncated || malformedTombstones > 0;
+  // A tombstone is a member we KNOW we could not read — a real hole inside the
+  // retained range that narrowing cannot describe — so it still fails the read.
+  // Truncation is different: nothing is missing inside the narrowed window.
+  const incomplete = malformedTombstones > 0;
   if (truncated) {
-    console.warn(`  [forecast-resolutions] evidence archive raw hash cap reached (${rawPairCount}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}`);
+    console.warn(`  [forecast-resolutions] evidence archive raw hash cap reached (${rawPairCount}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; retained coverage begins ${new Date(effectiveCoverageStartMs).toISOString()}; increase FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT or page the archive scan`);
   }
   if (malformedTombstones > 0) {
     console.warn(`  [forecast-resolutions] evidence archive reported ${malformedTombstones} missing/malformed/oversized/duplicate member(s)`);
@@ -1431,9 +1494,14 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   }));
   return {
     ...base,
-    coverageStartMs: coverage.coverageStartMs,
-    coverageEndMs: coverage.coverageEndMs,
-    coverageComplete: !incomplete,
+    // Report the window actually served: the marker's proof intersected with
+    // what this query asked for and what the hash cap let us retain. Returning
+    // the marker's frozen start would claim coverage the read did not deliver.
+    coverageStartMs: Math.max(coverage.coverageStartMs, effectiveCoverageStartMs),
+    coverageEndMs: nowMs,
+    markerCoverageEndMs: coverage.coverageEndMs,
+    coverageLagMs: nowMs - coverage.coverageEndMs,
+    coverageComplete: !incomplete && !truncated,
     cutoverVerified: true,
     incomplete,
     truncated,

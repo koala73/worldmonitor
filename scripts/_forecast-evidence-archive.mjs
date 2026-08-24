@@ -33,6 +33,64 @@ export const FORECAST_EVIDENCE_TTL_S = 15 * 24 * 60 * 60;
 export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
+ * Member-level retention for `digest:accumulator:v1:<variant>:<lang>`.
+ *
+ * The issue's plan said 48 hours, reasoning from `DIGEST_ACCUMULATOR_TTL`. That
+ * is the *key* TTL, not the widest *reader* lookback, and the reader inventory
+ * the plan asked for (and that this constant now records) does not fit in it:
+ *
+ *   reader                                          lookback
+ *   ----------------------------------------------  ------------------------
+ *   seed-digest-notifications buildDigest()          `lastSentAt`-anchored:
+ *                                                    24h default, ~12h twice-
+ *                                                    daily, ~6.5-7d WEEKLY,
+ *                                                    older after missed ticks
+ *   scripts/lib/watchlist-story-scan.mjs             24h
+ *   api/mcp/registry/nlp-tools.ts keyword spikes     48h
+ *   seed-forecast-resolutions (judged)               14d -> migrating to the
+ *                                                    dedicated archive below
+ *
+ * A 48-hour member prune silently truncates every weekly digest to two days of
+ * stories, so retention is sized to the widest surviving reader instead. Seven
+ * days matches `STORY_TTL` — `buildDigest` HGETALLs a `story:track:v1` row for
+ * every hash it reads here, so an accumulator member that outlives its story
+ * row is unusable anyway — plus a one-day guard band, mirroring how the
+ * evidence archive's own retention is sized. This still bounds a key that
+ * previously grew without limit; it bounds it at the real contract.
+ */
+export const ACCUMULATOR_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
+
+/**
+ * How stale the coverage marker may be and still count as covering "now".
+ *
+ * `coverageEndMs` records the last confirmed digest publication. The resolver
+ * is a separate process reading at a later instant, so requiring the marker to
+ * reach the reader's live clock is a race no deployment can win — the archive
+ * would never be readable at all. The honest statement is narrower: evidence
+ * that would have been published between the last publication and now does not
+ * exist in ANY store yet, so a marker inside this budget has no hole behind it.
+ *
+ * Sized against the digest's own 900s (15 min) `cachedFetchJson` TTL, which
+ * bounds how often `writeStoryTracking` can advance the marker. 6h is 24x that
+ * interval — enough to absorb low-traffic gaps, degraded periods where the
+ * digest caches a negative sentinel instead of publishing, and a deploy — while
+ * a marker staler than that means the writer is genuinely down and judging
+ * SHOULD fail closed rather than judge against a hole.
+ */
+export const FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {number}
+ */
+export function resolveForecastEvidenceCoverageMaxLagMs(env = process.env) {
+  const raw = Number(env.FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS);
+  return Number.isFinite(raw) && raw >= 0
+    ? Math.floor(raw)
+    : FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS;
+}
+
+/**
  * Per-member byte budget. A member carries fixed fields plus a title and a
  * URL; anything beyond this is a malformed upstream we refuse to archive
  * rather than bloat the ZSet with (the writer drops the record and counts
@@ -113,14 +171,51 @@ export function parseForecastEvidenceCoverage(raw) {
   };
 }
 
-/** @param {unknown} raw @param {number} startMs @param {number} endMs */
-export function forecastEvidenceCoversWindow(raw, startMs, endMs) {
+/**
+ * `maxLagMs` is the staleness budget described on
+ * FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS. It defaults to 0 — a caller that
+ * authorizes destruction (the accumulator prune gate, the sweep tool) must
+ * demand a marker that already reaches the instant it is reasoning about, and
+ * only the read path opts into a budget.
+ *
+ * @param {unknown} raw
+ * @param {number} startMs
+ * @param {number} endMs
+ * @param {number} [maxLagMs]
+ */
+export function forecastEvidenceCoversWindow(raw, startMs, endMs, maxLagMs = 0) {
   const metadata = parseForecastEvidenceCoverage(raw);
+  const lag = Number.isFinite(maxLagMs) && maxLagMs > 0 ? Math.floor(maxLagMs) : 0;
   return Boolean(
     metadata
     && metadata.coverageStartMs <= startMs
-    && metadata.coverageEndMs >= endMs,
+    && metadata.coverageEndMs >= endMs - lag,
   );
+}
+
+/**
+ * Advance a verified marker to a newer confirmed publication.
+ *
+ * The marker's invariants (`sourceDigestAtMs === coverageEndMs`, the >= 14-day
+ * span, `cutoverVerifiedAtMs` inside the window) are enforced by
+ * `parseForecastEvidenceCoverage` on the way back in, so the one place that
+ * moves the window lives here rather than being hand-reconstructed at each
+ * write site. Returns null when the input is not a valid marker.
+ *
+ * @param {unknown} raw
+ * @param {number} nowMs
+ * @returns {ReturnType<typeof parseForecastEvidenceCoverage>}
+ */
+export function advanceForecastEvidenceCoverage(raw, nowMs) {
+  const metadata = parseForecastEvidenceCoverage(raw);
+  if (!metadata || !Number.isFinite(nowMs)) return null;
+  const coverageEndMs = Math.max(metadata.coverageEndMs, Math.floor(nowMs));
+  return {
+    ...metadata,
+    coverageEndMs,
+    // Invariant: the parser requires these two to be equal.
+    sourceDigestAtMs: coverageEndMs,
+  };
 }
 
 /**
@@ -144,8 +239,7 @@ export function forecastEvidenceCoversWindow(raw, startMs, endMs) {
 /**
  * Eligibility gate for dual publication: the judged archive only ever read
  * the full/English accumulator, so only that scope is archived.
- */
-/**
+ *
  * @param {string} variant
  * @param {string} lang
  * @returns {boolean}
@@ -155,11 +249,19 @@ export function isEligibleForecastEvidence(variant, lang) {
 }
 
 /**
- * Build the self-contained archive member for one story. Returns null when a
- * required field is missing or the serialized member exceeds the byte budget
- * (the caller counts the drop instead of writing it).
- */
-/**
+ * Build the self-contained archive member for one story.
+ *
+ * A record whose *description* pushes it past the byte budget is trimmed, not
+ * dropped: the description is judge grounding, while hash/title/link/
+ * publishedAt are the evidence itself. Dropping the whole member over a verbose
+ * wire summary loses evidence AND (because the caller counts the drop) stalls
+ * the coverage marker, so the budget is enforced by shrinking the one
+ * expendable field first.
+ *
+ * Returns null only when a required field is missing or when the record is
+ * still over budget with no description at all — a genuinely malformed
+ * upstream the caller should count.
+ *
  * @param {{hash?: unknown, title?: unknown, link?: unknown, description?: unknown, publishedAt?: unknown}} track
  * @param {number} lastSeen
  * @returns {string|null}
@@ -175,19 +277,25 @@ export function buildForecastEvidenceMember(track, lastSeen) {
     return null;
   }
 
-  const record = {
+  const serialize = (/** @type {string} */ text) => JSON.stringify({
     v: FORECAST_EVIDENCE_VERSION,
     hash,
     title,
     link,
-    // Descriptions feed judge grounding; cap hard so one verbose wire copy
-    // cannot blow the member budget.
-    description: description.slice(0, 512),
+    description: text,
     publishedAt: Math.floor(publishedAt),
     lastSeen: Math.floor(lastSeen),
-  };
+  });
 
-  const member = JSON.stringify(record);
+  // `slice` counts UTF-16 code units and the budget counts UTF-8 bytes, so a
+  // 512-"character" CJK or emoji description can still be ~2KB on its own.
+  // Halve until it fits rather than giving up on the story.
+  let text = description.slice(0, 512);
+  let member = serialize(text);
+  while (utf8ByteLength(member) > FORECAST_EVIDENCE_MEMBER_MAX_BYTES && text.length > 0) {
+    text = text.slice(0, Math.floor(text.length / 2));
+    member = serialize(text);
+  }
   return utf8ByteLength(member) <= FORECAST_EVIDENCE_MEMBER_MAX_BYTES ? member : null;
 }
 
@@ -195,8 +303,7 @@ export function buildForecastEvidenceMember(track, lastSeen) {
  * Parse one archived member. Malformed members are reported (counted as
  * tombstones by the caller) instead of silently omitted — the issue's
  * backfill rule, applied to steady-state reads too.
- */
-/**
+ *
  * @param {unknown} raw
  * @returns {ForecastEvidenceParseResult}
  */
@@ -245,16 +352,17 @@ export function parseForecastEvidenceMember(raw) {
 
 /**
  * Score bounds for member-level retention on the digest accumulator
- * (#7082 plan §4): prune everything strictly older than the 48-hour digest
- * contract during normal publication. The key TTL stays as abandoned-key
- * cleanup — member retention is no longer the TTL's job.
- */
-/**
+ * (#7082 plan §4): prune everything strictly older than ACCUMULATOR_RETENTION_MS
+ * during normal publication. The key TTL stays as abandoned-key cleanup —
+ * member retention is no longer the TTL's job.
+ *
+ * See ACCUMULATOR_RETENTION_MS for why this is 8 days and not the plan's 48h.
+ *
  * @param {number} nowMs
  * @param {number} [retentionMs]
  * @returns {{min: string, max: string}}
  */
-export function accumulatorPruneBounds(nowMs, retentionMs = 48 * 60 * 60 * 1000) {
+export function accumulatorPruneBounds(nowMs, retentionMs = ACCUMULATOR_RETENTION_MS) {
   if (!Number.isFinite(nowMs)) {
     throw new Error('accumulatorPruneBounds requires a finite nowMs');
   }
@@ -265,8 +373,7 @@ export function accumulatorPruneBounds(nowMs, retentionMs = 48 * 60 * 60 * 1000)
  * Score bounds for archiving retention: everything strictly older than the
  * 14-day reader contract plus guard band is out of contract even before the
  * key TTL collects it.
- */
-/**
+ *
  * @param {number} nowMs
  * @returns {{min: string, max: string}}
  */
