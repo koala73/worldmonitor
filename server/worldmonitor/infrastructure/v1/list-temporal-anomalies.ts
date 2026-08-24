@@ -156,6 +156,7 @@ export async function listTemporalAnomalies(
       );
 
       let writeFailures = 0;
+      let attemptedWrites = 0;
       for (let i = 0; i < typesWithCounts.length; i++) {
         const type = typesWithCounts[i]!;
         const count = counts[type]!;
@@ -202,20 +203,23 @@ export async function listTemporalAnomalies(
         const delta2 = count - newMean;
         const newM2 = prev.m2 + delta * delta2;
 
-        try {
-          await setCachedJson(makeBaselineKeyV2(type, 'global', weekday, month), {
-            mean: newMean,
-            m2: newM2,
-            sampleCount: n,
-            lastUpdated: now.toISOString(),
-          }, BASELINE_TTL);
-        } catch {
-          writeFailures++;
-        }
+        // Check the RETURN VALUE, not a thrown error: setCachedJson catches its own
+        // failures and resolves false (server/_shared/redis.ts), so a try/catch here
+        // never runs and a failed baseline write is invisible. Count attempts
+        // separately from tracked types — the dueForSample `continue` above means
+        // most rebuilds attempt none, so typesWithCounts.length is not the denominator.
+        attemptedWrites++;
+        const wrote = await setCachedJson(makeBaselineKeyV2(type, 'global', weekday, month), {
+          mean: newMean,
+          m2: newM2,
+          sampleCount: n,
+          lastUpdated: now.toISOString(),
+        }, BASELINE_TTL);
+        if (!wrote) writeFailures++;
       }
 
       if (writeFailures > 0) {
-        console.warn(`[TemporalBaseline] ${writeFailures}/${typesWithCounts.length} baseline writes failed`);
+        console.warn(`[TemporalBaseline] ${writeFailures}/${attemptedWrites} baseline writes failed`);
       }
 
       anomalies.sort((a, b) => b.zScore - a.zScore);
@@ -228,7 +232,17 @@ export async function listTemporalAnomalies(
 
       const published = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
       if (published) {
-        await writeTemporalAnomaliesSeedMeta(snapshot);
+        // This stamp is now the ONLY freshness producer for three health consumers.
+        // A silent failure here reads as a stalled producer 45min later with nothing
+        // in the logs to explain it, and the next attempt is a full rebuild cycle
+        // away — so surface it with a grep-able marker rather than discarding it.
+        const stamped = await writeTemporalAnomaliesSeedMeta(snapshot);
+        if (!stamped) {
+          console.warn(
+            '[TemporalAnomalies] seed-meta stamp FAILED after a successful publish; '
+            + 'health consumers will read STALE_SEED within maxStaleMin if this repeats',
+          );
+        }
       }
       return snapshot;
     }

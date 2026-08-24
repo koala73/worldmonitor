@@ -63,7 +63,7 @@ export const TEMPORAL_ANOMALIES_TTL = 3600;
  * and never sits on the refresh period.
  *
  * Changing this without moving those consumers' maxStaleMin is a monitoring change,
- * not just a caching one. See tests/temporal-anomalies-cache.test.mjs.
+ * not just a caching one. See tests/temporal-anomalies-cache.test.mts.
  */
 export const TEMPORAL_ANOMALIES_REBUILD_AFTER_MS = 20 * 60 * 1000;
 

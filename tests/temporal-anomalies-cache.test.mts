@@ -79,6 +79,16 @@ describe('temporal anomalies cache freshness', () => {
     // The Redis key must outlive the rebuild threshold so a lock loser can still be
     // served a stale body instead of an empty one.
     assert.ok(TEMPORAL_ANOMALIES_TTL * 1000 > TEMPORAL_ANOMALIES_REBUILD_AFTER_MS);
+
+    // The data key must also outlive the STALE alarm, so health reaches STALE_SEED
+    // before the key goes EMPTY (the ordering api/health.js:789 depends on). The
+    // bound above is weaker and would pass at any TTL over 20 minutes; dropping TTL
+    // to 30min for a cost tune would silently invert this ordering.
+    assert.ok(
+      TEMPORAL_ANOMALIES_TTL / 60 > maxStaleMin,
+      `data TTL ${TEMPORAL_ANOMALIES_TTL / 60}min must exceed maxStaleMin ${maxStaleMin}min `
+      + 'so health reads STALE_SEED before the key disappears',
+    );
   });
 
   it('serves a fresh cache hit in exactly ONE Redis round trip, with no writes', async () => {
@@ -96,15 +106,28 @@ describe('temporal anomalies cache freshness', () => {
     assert.equal(calls[0]!.key, 'temporal:anomalies:v1');
   });
 
-  it('positive control: the stub does observe writes when a rebuild runs', async () => {
-    // Proves the assertion above can actually fail. A stale snapshot forces the
-    // rebuild path, which legitimately writes (lock, baselines, snapshot, seed-meta).
+  it('a successful rebuild stamps seed-meta -- the only remaining freshness producer', async () => {
+    // Doubles as the positive control for the round-trip guard above (proving the
+    // stub observes writes at all) AND as the guard for the single behaviour this
+    // whole change hinges on: seed-meta:temporal:anomalies is now written ONLY here.
+    // Three consumers alarm on it at maxStaleMin 45 (api/health.js,
+    // mcp/registry/analysis-tools.ts, mcp/registry/cache-tools.ts), so a regression
+    // that drops or mis-gates this one write takes all three to STALE_SEED 45
+    // minutes after deploy. Asserting `writes.length > 0` did NOT catch that -- the
+    // lock SET alone satisfies it.
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
     });
 
     const writes = calls.filter((c) => c.method === 'POST');
     assert.ok(writes.length > 0, 'rebuild path must write; otherwise the guard above is vacuous');
+
+    const metaWrites = writes.filter((c) => c.key === 'seed-meta:temporal:anomalies');
+    assert.equal(
+      metaWrites.length, 1,
+      'a successful rebuild must stamp seed-meta exactly once -- three health consumers '
+      + `watch it at maxStaleMin 45. Writes seen: ${JSON.stringify(writes.map((w) => w.key))}`,
+    );
   });
 
   it('does not fold a new baseline sample when one was taken recently', async () => {
@@ -134,6 +157,42 @@ describe('temporal anomalies cache freshness', () => {
     );
   });
 
+  it('does not resample between the rebuild threshold and the sampling interval', async () => {
+    // THE test that distinguishes the two clocks. The fixtures at 60s and 61min both
+    // sit on the same side of BOTH constants, so neither can tell them apart: with
+    // BASELINE_SAMPLE_INTERVAL_MS swapped for TEMPORAL_ANOMALIES_REBUILD_AFTER_MS --
+    // i.e. the exact re-coupling this decoupling exists to prevent -- both still pass.
+    // A fixture strictly between the two constants is the only thing that catches it.
+    const between = (TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + BASELINE_SAMPLE_INTERVAL_MS) / 2;
+    assert.ok(
+      between > TEMPORAL_ANOMALIES_REBUILD_AFTER_MS && between < BASELINE_SAMPLE_INTERVAL_MS,
+      'precondition: the fixture must straddle the two constants to be discriminating',
+    );
+
+    const sampledBetween = {
+      mean: 1000, m2: 290_000, sampleCount: 30,
+      lastUpdated: new Date(Date.now() - between).toISOString(),
+    };
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': { topStories: [{ id: 'a' }] },
+      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+      ...Object.fromEntries(
+        ['news', 'satellite_fires'].map((t) => [
+          makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
+          sampledBetween,
+        ]),
+      ),
+    });
+
+    const baselineWrites = calls.filter((c) => c.method === 'POST' && c.key.includes('baseline:v2:'));
+    assert.equal(
+      baselineWrites.length, 0,
+      'a baseline sampled more recently than BASELINE_SAMPLE_INTERVAL_MS must NOT resample, '
+      + 'even though the snapshot is past its rebuild threshold',
+    );
+  });
+
   it('folds a baseline sample once the sampling interval has elapsed', async () => {
     // Positive control for the guard above.
     const dueForSample = {
@@ -160,12 +219,24 @@ describe('temporal anomalies cache freshness', () => {
     // Removing the sliding-TTL refresh must not regress this: a lock loser during a
     // rebuild window still has a usable cached body and must return it.
     const stale = freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000);
-    const { response } = await runWithRedisStub(
+    const { response, calls } = await runWithRedisStub(
       { 'temporal:anomalies:v1': stale },
       { lockGranted: false },
     );
 
     assert.deepEqual(response, stale, 'lock loser must fall back to the stale snapshot');
+
+    // Asserting the body alone does not prove the lock was contended: a regression
+    // that returns the stale snapshot WITHOUT attempting the lock passes that check.
+    // Pin the mechanism -- lock attempted, and nothing published on the losing path.
+    assert.ok(
+      calls.some((c) => c.method === 'POST' && c.key === 'baseline:lock'),
+      'the lock must actually be attempted; otherwise this is not the lock-loser path',
+    );
+    assert.equal(
+      calls.filter((c) => c.method === 'POST' && c.key !== 'baseline:lock').length, 0,
+      'a lock loser must not publish a snapshot, a baseline, or a freshness stamp',
+    );
   });
 
   it('counts the pre-cap FIRMS total, not the capped canonical array (#5866)', async () => {
