@@ -177,6 +177,61 @@ describe('parseBootstrapCacheContract', () => {
     });
   }
 
+  it('throws when TIER_CACHE is wrapped in an unknown callee', () => {
+    const source = SYNTHETIC_BOOTSTRAP.replace(
+      'const TIER_CACHE = {',
+      'const TIER_CACHE = withDefaults({',
+    );
+    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: TIER_CACHE opener not found');
+    assert.throws(() => parseBootstrapCacheContract(source), /could not parse TIER_CACHE/);
+  });
+
+  it('throws when Object.freeze is not followed by a call', () => {
+    const source = SYNTHETIC_BOOTSTRAP.replace(
+      'const TIER_CACHE = {',
+      'const TIER_CACHE = Object.freeze[',
+    );
+    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: TIER_CACHE opener not found');
+    assert.throws(() => parseBootstrapCacheContract(source), /could not parse TIER_CACHE/);
+  });
+
+  it('parses TIER_CACHE when a line comment sits between = and {', () => {
+    const source = SYNTHETIC_BOOTSTRAP.replace(
+      'const TIER_CACHE = {',
+      'const TIER_CACHE = // note\n {',
+    );
+    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: TIER_CACHE opener not found');
+    const cache = parseBootstrapCacheContract(source);
+    assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
+  });
+
+  it('ignores a commented leftover TIER_CACHE assignment', () => {
+    const leftover = `// const TIER_CACHE = {
+//   slow: 'max-age=1, stale-while-revalidate=1, stale-if-error=1',
+//   fast: 'max-age=1, stale-while-revalidate=1, stale-if-error=1',
+// };
+`;
+    const source = leftover + SYNTHETIC_BOOTSTRAP.replace(
+      'const TIER_CACHE = {',
+      'const TIER_CACHE = Object.freeze({',
+    );
+    const cache = parseBootstrapCacheContract(source);
+    assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
+    assert.equal(cache.tierCache.slow, 'max-age=300, stale-while-revalidate=600, stale-if-error=3600');
+  });
+
+  it('ignores a block-comment leftover TIER_CACHE assignment', () => {
+    const leftover = `/* const TIER_CACHE = {
+  slow: 'max-age=1, stale-while-revalidate=1, stale-if-error=1',
+  fast: 'max-age=1, stale-while-revalidate=1, stale-if-error=1',
+}; */
+`;
+    const source = leftover + SYNTHETIC_BOOTSTRAP;
+    const cache = parseBootstrapCacheContract(source);
+    assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
+    assert.equal(cache.tierCache.slow, 'max-age=300, stale-while-revalidate=600, stale-if-error=3600');
+  });
+
   it('throws when a tier loses its entry', () => {
     const source = SYNTHETIC_BOOTSTRAP.replace(
       "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n};",

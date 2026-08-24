@@ -354,10 +354,14 @@ function parseMcpAppsInventory({
 // some later block's closing brace and parsed that instead. Counting braces
 // bounds the body to the object actually declared. Safe here because these
 // blocks hold only header strings, which contain no braces.
-// Skip wrappers (`Object.freeze(`, JSDoc `/** @type … */ (`) between `=` and
-// `{`; JSDoc braces are comments, not the literal (#7115).
+// Skip wrappers (`Object.freeze(`, `Object.seal(`, JSDoc `/** @type … */ (`)
+// between `=` and `{`; JSDoc braces are comments, not the literal (#7115).
+// Any other callee is a parse failure so a helper that transforms the object
+// cannot silently pass against the argument literal.
+const OBJECT_WRAPPER_IDENTIFIERS = new Set(['Object.freeze', 'Object.seal']);
+
 function parseObjectBlockBody(source, declaration, label) {
-  const assignment = source.match(new RegExp(`(?:export\\s+)?${declaration}\\s*=`));
+  const assignment = findLiveAssignment(source, declaration);
   if (!assignment || assignment.index === undefined) {
     throw new Error(`docs-stats: could not parse ${label}`);
   }
@@ -371,6 +375,30 @@ function parseObjectBlockBody(source, declaration, label) {
     }
   }
   throw new Error(`docs-stats: could not parse ${label} (unbalanced braces)`);
+}
+
+function findLiveAssignment(source, declaration) {
+  const assignment = new RegExp(`(?:export\\s+)?${declaration}\\s*=`, 'g');
+  let match;
+  while ((match = assignment.exec(source)) !== null) {
+    if (isCommentedSourceIndex(source, match.index)) continue;
+    return match;
+  }
+  return null;
+}
+
+// Line-prefix `//` (not `http://`) or an unclosed `/*` before the match.
+// First-match-wins would otherwise bind a leftover commented assignment and
+// parse that dead object — or fail — while a live wrapped constant sits below.
+function isCommentedSourceIndex(source, index) {
+  const before = source.slice(0, index);
+  const lastBlockOpen = before.lastIndexOf('/*');
+  const lastBlockClose = before.lastIndexOf('*/');
+  if (lastBlockOpen > lastBlockClose) return true;
+
+  const lineStart = source.lastIndexOf('\n', index - 1) + 1;
+  const prefix = source.slice(lineStart, index);
+  return /(?:^|[^:])\/\/(?!\/)/.test(prefix);
 }
 
 function skipLineAndBlockComments(source, i) {
@@ -406,7 +434,7 @@ function findAssignedObjectLiteralOpen(source, from, label) {
       continue;
     }
     const identifier = source.slice(i).match(/^[A-Za-z_$][\w$.]*/)?.[0];
-    if (identifier) {
+    if (identifier && OBJECT_WRAPPER_IDENTIFIERS.has(identifier)) {
       i += identifier.length;
       continue;
     }
