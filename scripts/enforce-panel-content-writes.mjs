@@ -106,9 +106,11 @@ export const DIRECT_WRITE_PATTERNS = [
  * idiom inside a comment; scanning raw text counted 2, which would have let the
  * entry survive migration of the only real call.
  *
- * 41 entries / 91 call sites across 27 files. Every entry is a latent instance
- * of the #6557 latch for as long as it stays. The confirmed-defect subset was
- * tracked in #6577 and closed by #6587 (behaviour) + #6678 (this migration).
+ * The CLI derives and reports the current entry and call-site totals from the
+ * registry below; do not duplicate those shrinking counts in this comment.
+ * Every entry is a latent instance of the #6557 latch for as long as it stays.
+ * The confirmed-defect subset was tracked in #6577 and closed by #6587
+ * (behaviour) + #6678 (this migration).
  *
  * #6678 moved the five #6577 panels' SUCCESS writes onto the sanctioned helpers,
  * which is why three of them now read `x1` rather than `x2`: the surviving write

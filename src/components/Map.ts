@@ -4421,8 +4421,7 @@ export class MapComponent {
   }
 
   public setNewsLocations(_data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
-    // SVG fallback: news locations rendered as simple circles
-    // For now, skip on SVG map to keep mobile lightweight
+    // SVG/mobile fallback intentionally skips news locations to stay lightweight.
   }
 
   public setTechActivity(activities: TechHubActivity[]): void {
