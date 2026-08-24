@@ -162,13 +162,14 @@ describe('parseBootstrapCacheContract', () => {
     );
   });
 
-  for (const [label, from, to] of [
-    ['TIER_CACHE wrapped in Object.freeze', 'const TIER_CACHE = {', 'const TIER_CACHE = Object.freeze({'],
-    ['TIER_CACHE behind a JSDoc const assertion', 'const TIER_CACHE = {', 'const TIER_CACHE = /** @type {const} */ ({'],
-    ['TIER_CDN_CACHE wrapped in export and Object.freeze', 'const TIER_CDN_CACHE = {', 'export const TIER_CDN_CACHE = Object.freeze({'],
-  ] as [string, string, string][]) {
+  for (const [label, from, to, closeFrom, closeTo] of [
+    ['TIER_CACHE wrapped in Object.freeze', 'const TIER_CACHE = {', 'const TIER_CACHE = Object.freeze({', "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n};", "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n});"],
+    ['TIER_CACHE wrapped in Object.seal', 'const TIER_CACHE = {', 'const TIER_CACHE = Object.seal({', "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n};", "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n});"],
+    ['TIER_CACHE behind a JSDoc const assertion', 'const TIER_CACHE = {', 'const TIER_CACHE = /** @type {const} */ ({', "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n};", "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n});"],
+    ['TIER_CDN_CACHE wrapped in export and Object.freeze', 'const TIER_CDN_CACHE = {', 'export const TIER_CDN_CACHE = Object.freeze({', "  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',\n};", "  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',\n});"],
+  ] as [string, string, string, string, string][]) {
     it(`parses ${label}`, () => {
-      const source = SYNTHETIC_BOOTSTRAP.replace(from, to);
+      const source = SYNTHETIC_BOOTSTRAP.replace(from, to).replace(closeFrom, closeTo);
       assert.notEqual(source, SYNTHETIC_BOOTSTRAP, `fixture drift: ${from} not found`);
       const cache = parseBootstrapCacheContract(source);
       assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
@@ -195,6 +196,18 @@ describe('parseBootstrapCacheContract', () => {
     assert.throws(() => parseBootstrapCacheContract(source), /could not parse TIER_CACHE/);
   });
 
+  for (const [label, replacement] of [
+    ['an approved wrapper has no call opener', 'const TIER_CACHE = Object.freeze {'],
+    ['a grouping parenthesis is unclosed', 'const TIER_CACHE = ({'],
+    ['an approved wrapper call is unclosed', 'const TIER_CACHE = Object.freeze({'],
+  ] as [string, string][]) {
+    it(`throws when ${label}`, () => {
+      const source = SYNTHETIC_BOOTSTRAP.replace('const TIER_CACHE = {', replacement);
+      assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: TIER_CACHE opener not found');
+      assert.throws(() => parseBootstrapCacheContract(source), /could not parse TIER_CACHE/);
+    });
+  }
+
   it('parses TIER_CACHE when a line comment sits between = and {', () => {
     const source = SYNTHETIC_BOOTSTRAP.replace(
       'const TIER_CACHE = {',
@@ -214,6 +227,9 @@ describe('parseBootstrapCacheContract', () => {
     const source = leftover + SYNTHETIC_BOOTSTRAP.replace(
       'const TIER_CACHE = {',
       'const TIER_CACHE = Object.freeze({',
+    ).replace(
+      "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n};",
+      "  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',\n});",
     );
     const cache = parseBootstrapCacheContract(source);
     assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
@@ -230,6 +246,15 @@ describe('parseBootstrapCacheContract', () => {
     const cache = parseBootstrapCacheContract(source);
     assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
     assert.equal(cache.tierCache.slow, 'max-age=300, stale-while-revalidate=600, stale-if-error=3600');
+  });
+
+  it('ignores comment-looking text inside a string before the live assignment', () => {
+    const source = SYNTHETIC_BOOTSTRAP.replace(
+      'const TIER_CACHE = {',
+      "const note = '//';\nconst TIER_CACHE = {",
+    );
+    const cache = parseBootstrapCacheContract(source);
+    assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
   });
 
   it('throws when a tier loses its entry', () => {
@@ -318,7 +343,7 @@ describe('parseBootstrapCacheContract', () => {
 
   it('throws on an unterminated object block instead of scanning to EOF', () => {
     const source = SYNTHETIC_BOOTSTRAP.replace('const TIER_CACHE = {', 'const TIER_CACHE = { {');
-    assert.throws(() => parseBootstrapCacheContract(source), /unbalanced braces/);
+    assert.throws(() => parseBootstrapCacheContract(source), /could not parse TIER_CACHE/);
   });
 
   it('throws when successCacheHeaders grows an undocumented literal state', () => {

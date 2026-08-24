@@ -18,6 +18,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
+import { extractAssignedObjectBlock } from './lib/js-source-structure.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // #6702: tests that stage probe trees redirect the module at a throwaway
@@ -361,86 +362,11 @@ function parseMcpAppsInventory({
 const OBJECT_WRAPPER_IDENTIFIERS = new Set(['Object.freeze', 'Object.seal']);
 
 function parseObjectBlockBody(source, declaration, label) {
-  const assignment = findLiveAssignment(source, declaration);
-  if (!assignment || assignment.index === undefined) {
+  const body = extractAssignedObjectBlock(source, declaration, OBJECT_WRAPPER_IDENTIFIERS);
+  if (body === null) {
     throw new Error(`docs-stats: could not parse ${label}`);
   }
-  const open = findAssignedObjectLiteralOpen(source, assignment.index + assignment[0].length, label);
-  let depth = 0;
-  for (let i = open; i < source.length; i += 1) {
-    if (source[i] === '{') depth += 1;
-    else if (source[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return source.slice(open + 1, i);
-    }
-  }
-  throw new Error(`docs-stats: could not parse ${label} (unbalanced braces)`);
-}
-
-function findLiveAssignment(source, declaration) {
-  const assignment = new RegExp(`(?:export\\s+)?${declaration}\\s*=`, 'g');
-  let match;
-  while ((match = assignment.exec(source)) !== null) {
-    if (isCommentedSourceIndex(source, match.index)) continue;
-    return match;
-  }
-  return null;
-}
-
-// Line-prefix `//` (not `http://`) or an unclosed `/*` before the match.
-// First-match-wins would otherwise bind a leftover commented assignment and
-// parse that dead object — or fail — while a live wrapped constant sits below.
-function isCommentedSourceIndex(source, index) {
-  const before = source.slice(0, index);
-  const lastBlockOpen = before.lastIndexOf('/*');
-  const lastBlockClose = before.lastIndexOf('*/');
-  if (lastBlockOpen > lastBlockClose) return true;
-
-  const lineStart = source.lastIndexOf('\n', index - 1) + 1;
-  const prefix = source.slice(lineStart, index);
-  return /(?:^|[^:])\/\/(?!\/)/.test(prefix);
-}
-
-function skipLineAndBlockComments(source, i) {
-  const character = source[i];
-  const next = source[i + 1];
-  if (character === '/' && next === '/') {
-    const newline = source.indexOf('\n', i + 2);
-    return newline === -1 ? source.length : newline + 1;
-  }
-  if (character === '/' && next === '*') {
-    const close = source.indexOf('*/', i + 2);
-    return close === -1 ? source.length : close + 2;
-  }
-  return i;
-}
-
-function findAssignedObjectLiteralOpen(source, from, label) {
-  let i = from;
-  while (i < source.length) {
-    const skipped = skipLineAndBlockComments(source, i);
-    if (skipped !== i) {
-      i = skipped;
-      continue;
-    }
-    const character = source[i];
-    if (/\s/.test(character)) {
-      i += 1;
-      continue;
-    }
-    if (character === '{') return i;
-    if (character === '(') {
-      i += 1;
-      continue;
-    }
-    const identifier = source.slice(i).match(/^[A-Za-z_$][\w$.]*/)?.[0];
-    if (identifier && OBJECT_WRAPPER_IDENTIFIERS.has(identifier)) {
-      i += identifier.length;
-      continue;
-    }
-    throw new Error(`docs-stats: could not parse ${label}`);
-  }
-  throw new Error(`docs-stats: could not parse ${label}`);
+  return body;
 }
 
 function parseCacheHeaderMap(source, name) {
