@@ -24,43 +24,73 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
   });
 
   it('applies the mobile M5.0 earthquake cutoff after the time-range filter and before marker DOM creation', () => {
-    const block = sliceBetween('// Earthquakes (magnitude-based sizing)', '// Economic Centers');
+    // The caps moved out of renderOverlays into overlayFeedSlices() (#7112) so
+    // the marker budget plans on exactly the slice the loops draw. The ordering
+    // invariant is unchanged and still asserted, just in its new home.
+    const slices = sliceBetween('private overlayFeedSlices(): {', 'private planOverlayMarkerBudget(');
 
-    const timeFilterIdx = block.indexOf('const filteredQuakes =');
-    const mobileFilterIdx = block.indexOf('const quakesForRender = this.isMobile');
-    const markerLoopIdx = block.indexOf('quakesForRender.forEach((eq) => {');
-    const markerDomIdx = block.indexOf("document.createElement('div')");
+    const timeFilterIdx = slices.indexOf('const filteredQuakes = withinTimeRange(this.earthquakes);');
+    const mobileFilterIdx = slices.indexOf('quakes: this.isMobile');
 
     assert.ok(timeFilterIdx >= 0, 'earthquake time-range filter should exist');
     assert.ok(mobileFilterIdx > timeFilterIdx, 'mobile cutoff should run after the time-range filter');
-    assert.ok(markerLoopIdx > mobileFilterIdx, 'marker loop should use the capped render list');
-    assert.ok(markerDomIdx > markerLoopIdx, 'mobile cutoff should run before marker DOM creation');
     assert.match(
-      block,
+      slices,
       /filteredQuakes\.filter\(\(eq\) => eq\.magnitude >= MapComponent\.MOBILE_MIN_EARTHQUAKE_MAGNITUDE\)/,
       'mobile path must filter earthquakes at the named M5.0 threshold',
     );
-    assert.match(block, /: filteredQuakes;/, 'desktop path must keep the full time-range-filtered list');
+    assert.match(slices, /: filteredQuakes,/, 'desktop path must keep the full time-range-filtered list');
+
+    // The slice is computed once, before any marker is built, and both the
+    // budget plan and the render loop read that same slice — planning on the
+    // raw field instead would spend the layer's share on events the cutoff
+    // discards and render none of the ones that survive it (#7112).
+    const overlays = sliceBetween(
+      'private renderOverlays(projection: d3.GeoProjection): void {',
+      'private renderConflictEventMarkers(',
+    );
+    const slicesIdx = overlays.indexOf('const slices = this.overlayFeedSlices();');
+    const planIdx = overlays.indexOf('this.planOverlayMarkerBudget(projection, slices);');
+    const markerLoopIdx = overlays.indexOf('quakesForRender.forEach((eq) => {');
+    const markerDomIdx = overlays.indexOf("document.createElement('div')");
+
+    assert.ok(slicesIdx >= 0, 'renderOverlays should derive its feed slices once');
+    assert.ok(planIdx > slicesIdx, 'the marker budget should be planned from those slices');
+    assert.ok(markerLoopIdx > planIdx, 'marker loop should run after the budget plan');
+    assert.ok(markerDomIdx > slicesIdx, 'mobile cutoff should run before marker DOM creation');
+    assert.match(
+      overlays,
+      /const quakesForRender = slices\.quakes;/,
+      'the earthquake loop must iterate the shared slice',
+    );
+    assert.match(
+      sliceBetween('private planOverlayMarkerBudget(', 'private isOverlayMarkerCut('),
+      /add\('natural', slices\.quakes,/,
+      'the budget must plan on the same earthquake slice the loop draws',
+    );
   });
 
   it('applies the mobile Iran event cap before projection and marker DOM creation', () => {
-    const block = sliceBetween('// Iran events (severity-colored circles matching DeckGL layer)', '// Hotspots');
+    const slices = sliceBetween('private overlayFeedSlices(): {', 'private planOverlayMarkerBudget(');
+    assert.match(
+      slices,
+      /iranEvents: this\.isMobile\s*\?\s*this\.iranEvents\.slice\(0, MapComponent\.MOBILE_MAX_IRAN_EVENTS\)\s*:\s*this\.iranEvents,/,
+      'mobile path must cap Iran events at the named 50-event threshold and desktop must keep the full list',
+    );
 
-    const capIdx = block.indexOf('const iranEventsForRender = this.isMobile');
-    const loopIdx = block.indexOf('iranEventsForRender.forEach((ev) => {');
+    const block = sliceBetween('// Iran events (severity-colored circles matching DeckGL layer)', '// Hotspots');
+    const loopIdx = block.indexOf('slices.iranEvents.forEach((ev) => {');
     const projectionIdx = block.indexOf('const pos = projection([ev.longitude, ev.latitude])');
     const markerDomIdx = block.indexOf("document.createElement('div')");
 
-    assert.ok(capIdx >= 0, 'Iran render list should be capped on mobile');
-    assert.ok(loopIdx > capIdx, 'Iran marker loop should use the capped render list');
+    assert.ok(loopIdx >= 0, 'Iran marker loop should use the capped render slice');
     assert.ok(projectionIdx > loopIdx, 'Iran cap should run before per-event projection');
     assert.ok(markerDomIdx > projectionIdx, 'Iran cap should run before marker DOM creation');
     assert.match(
-      block,
-      /this\.iranEvents\.slice\(0, MapComponent\.MOBILE_MAX_IRAN_EVENTS\)/,
-      'mobile path must cap Iran events at the named 50-event threshold',
+      sliceBetween('private planOverlayMarkerBudget(', 'private isOverlayMarkerCut('),
+      /add\('iranAttacks', slices\.iranEvents\);/,
+      'the budget must plan on the same Iran slice the loop draws',
     );
-    assert.match(block, /: this\.iranEvents;/, 'desktop path must keep the full Iran event list');
   });
 
   it('keeps label overlap measurement disabled on mobile until movement or zoom needs it', () => {

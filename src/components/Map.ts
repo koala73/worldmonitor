@@ -1931,10 +1931,13 @@ export class MapComponent {
       .sort()
       .join(',');
     if (key === this.lastTruncationLabelKey) return;
-    this.lastTruncationLabelKey = key;
 
     const root = this.container.querySelector<HTMLElement>('#layerToggles');
+    // Latch only once the badges were actually written. Latching first would
+    // let a render that ran before the toggle rail existed record the key and
+    // then skip the write forever, because the next identical key short-circuits.
     if (!root) return;
+    this.lastTruncationLabelKey = key;
     for (const row of Array.from(root.querySelectorAll<HTMLElement>('.layer-toggle-row'))) {
       const layer = row.dataset.layer;
       const counts = layer ? this.overlayMarkerTruncation[layer] : undefined;
