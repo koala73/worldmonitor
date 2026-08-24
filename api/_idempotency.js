@@ -22,15 +22,6 @@ async function sha256Hex(input) {
     .join('');
 }
 
-function anonScope(request) {
-  const ip =
-    request.headers.get('cf-connecting-ip') ||
-    request.headers.get('x-real-ip') ||
-    (request.headers.get('x-forwarded-for') || '').split(',')[0]?.trim() ||
-    'unknown';
-  return `ip:${ip}`;
-}
-
 function jsonResponse(status, body, corsHeaders, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
@@ -55,10 +46,10 @@ function isRetryableStatus(status) {
 
 async function getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey) {
   try {
+    if (typeof scope !== 'string' || scope.length === 0) return null;
     const bodyBuf = await request.clone().arrayBuffer();
     const reqHash = await sha256Hex(bodyBuf);
-    const effectiveScope = scope || anonScope(request);
-    const redisKey = `idem:v1:${await sha256Hex(`${effectiveScope}\n${pathname}\n${idempotencyKey}`)}`;
+    const redisKey = `idem:v1:${await sha256Hex(`${scope}\n${pathname}\n${idempotencyKey}`)}`;
     return { reqHash, redisKey };
   } catch {
     return null;

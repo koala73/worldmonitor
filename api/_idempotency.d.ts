@@ -27,7 +27,7 @@ export function getIdempotencyKey(request: Request): string | null;
 export function peekStandaloneIdempotency(args: {
   request: Request;
   pathname: string;
-  scope: string | null;
+  scope: string;
   idempotencyKey: string;
   corsHeaders: Record<string, string>;
 }): Promise<StandaloneIdempotencyPeekOutcome>;
@@ -35,7 +35,7 @@ export function peekStandaloneIdempotency(args: {
 export function beginStandaloneIdempotency(args: {
   request: Request;
   pathname: string;
-  scope: string | null;
+  scope: string;
   idempotencyKey: string;
   corsHeaders: Record<string, string>;
   completedTtlSeconds?: number;

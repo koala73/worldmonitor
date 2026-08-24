@@ -97,6 +97,33 @@ describe('api standalone Idempotency-Key helper', () => {
     assert.equal(out.kind, 'disabled');
   });
 
+  it('fails closed without an explicit scope instead of deriving one from request headers', async () => {
+    for (const scope of [undefined, null, '']) {
+      const calls = installRedisPipelineMock(() => [{ result: 'OK' }, { result: null }]);
+      const { beginStandaloneIdempotency } = await importFreshIdempotencyModule();
+
+      const request = new Request('https://worldmonitor.app/api/test-write', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '198.51.100.10',
+        },
+        body: JSON.stringify({ action: 'write' }),
+      });
+      const out = await beginStandaloneIdempotency({
+        request,
+        pathname: '/api/test-write',
+        scope,
+        idempotencyKey: 'k1',
+        corsHeaders: {},
+      });
+
+      assert.equal(out.kind, 'disabled');
+      assert.equal(calls.length, 0, `scope=${String(scope)} must not reach Redis`);
+      mock.restoreAll();
+    }
+  });
+
   it('claims a new key with SET NX EX and returns a store function', async () => {
     const calls = installRedisPipelineMock((commands) => {
       assert.deepEqual(commands[0].slice(0, 2), ['SET', commands[0][1]]);
