@@ -28,7 +28,12 @@ import { GROQ_DEFAULT_MODEL } from './_llm-model-timeouts.mjs';
 import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
 import {
   FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_COVERAGE_KEY,
   FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+  forecastEvidenceCoversWindow,
+  forecastEvidenceRecordKey,
+  isForecastEvidenceHash,
+  parseForecastEvidenceCoverage,
   parseForecastEvidenceMember,
 } from './_forecast-evidence-archive.mjs';
 
@@ -289,12 +294,12 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
     judgments.push(normalized);
   }
 
+  if (!archiveComplete) {
+    return { status: 'pending', reason: 'archive_unavailable', detail: 'archive_window_incomplete' };
+  }
   const nonVoidOutcomes = judgments.map((judgment) => judgment.outcome).filter((outcome) => outcome !== 'VOID');
   if (nonVoidOutcomes.length === judgments.length && new Set(nonVoidOutcomes).size === 1) {
     return resolvedJudgedResult(nonVoidOutcomes[0], 'dual_model_agreement', entry, judgments, archiveItems, nowMs);
-  }
-  if (!archiveComplete) {
-    return { status: 'pending', reason: 'archive_unavailable', detail: 'archive_window_incomplete' };
   }
   if (judgments.every((judgment) => judgment.outcome === 'VOID')) {
     return resolvedJudgedResult('VOID', 'all_judges_void', entry, judgments, archiveItems, nowMs);
@@ -1224,23 +1229,27 @@ async function readResolutionFeeds(ledger) {
   return Object.fromEntries(pairs);
 }
 
-async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
+export async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
   const dueEntries = Object.values(normalizeLedger(ledger))
     .filter((entry) => entry?.status === 'pending-judge')
     .filter((entry) => Number(entry.deadline ?? entry.spec?.deadline) <= nowMs);
   if (!dueEntries.length) return { items: [], available: false };
+  const cutoverEnabled = typeof options.cutoverEnabled === 'boolean'
+    ? options.cutoverEnabled
+    : (options.env ?? process.env).FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
 
   const windowStartMs = Math.min(...dueEntries.map((entry) => judgedArchiveWindowForEntry(entry, nowMs).startMs));
+  const windowEndMs = Math.max(...dueEntries.map((entry) => judgedArchiveWindowForEntry(entry, nowMs).endMs));
   // #7082: judge from the dedicated evidence archive first — it is
   // self-contained (no story:track dependency) and covers the full 14-day
   // contract. The accumulator reader stays as the migration fallback while
   // both paths exist; divergence between them is logged, not swallowed.
   try {
-    const archived = await readForecastEvidenceArchive(windowStartMs, nowMs, options);
+    const archived = await readForecastEvidenceArchive(windowStartMs, windowEndMs, options);
     if (archived.available) {
-      if (!options.quietArchiveMigration) {
+      if (!cutoverEnabled && !options.quietArchiveMigration) {
         try {
-          const legacy = await readDigestAccumulatorArchive(windowStartMs, nowMs, options);
+          const legacy = await readDigestAccumulatorArchive(windowStartMs, windowEndMs, options);
           if (legacy.available && legacy.items.length !== archived.items.length) {
             console.warn(
               `  [forecast-resolutions] evidence archive/accumulator divergence: ` +
@@ -1255,11 +1264,25 @@ async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
       }
       return archived;
     }
+    // After the explicit deployment cutover, the pruned accumulator is never
+    // a trustworthy fallback. Before it, migration failures may still use the
+    // intact legacy path while operators validate archive parity.
+    if (cutoverEnabled) return { ...archived, available: false };
   } catch (err) {
+    if (cutoverEnabled) {
+      console.warn(`  [forecast-resolutions] evidence archive unavailable after cutover: ${err?.message || err}`);
+      return {
+        items: [],
+        available: false,
+        incomplete: true,
+        cutoverEnabled: true,
+        incompleteReason: 'archive_read_failed',
+      };
+    }
     console.warn(`  [forecast-resolutions] evidence archive unavailable, falling back to accumulator: ${err?.message || err}`);
   }
   try {
-    return await readDigestAccumulatorArchive(windowStartMs, nowMs, options);
+    return await readDigestAccumulatorArchive(windowStartMs, windowEndMs, options);
   } catch (err) {
     console.warn(`  [forecast-resolutions] judged archive unavailable: ${err?.message || err}`);
     return { items: [], available: false };
@@ -1277,6 +1300,7 @@ async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
  */
 export async function readForecastEvidenceArchive(windowStartMs, nowMs, options = {}) {
   const { url, token } = getArchiveRedisCredentials(options);
+  const fetchFn = options.fetchFn ?? ((...args) => globalThis.fetch(...args));
   const configuredMaxLookbackMs = Number.isFinite(options.maxLookbackMs)
     ? Math.max(1, Math.floor(options.maxLookbackMs))
     : resolveJudgedEvidenceMaxLookbackMs();
@@ -1291,23 +1315,47 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
     coverageEndMs: nowMs,
     archive: FORECAST_EVIDENCE_KEY,
   };
-  const zsetResp = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify([
-      'ZREVRANGEBYSCORE',
-      FORECAST_EVIDENCE_KEY,
-      String(nowMs),
-      String(requestedCoverageStartMs),
-      'WITHSCORES',
-      'LIMIT',
-      '0',
-      String(maxHashes + 1),
-    ]),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!zsetResp.ok) throw new Error(`Redis ZREVRANGEBYSCORE ${FORECAST_EVIDENCE_KEY} failed: HTTP ${zsetResp.status}`);
-  const zsetPayload = await zsetResp.json();
+  const requestRedis = async (endpoint, command, context) => {
+    const response = await fetchFn(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(command),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`${context} failed: HTTP ${response.status}`);
+    return response.json();
+  };
+
+  const coveragePayload = await requestRedis(
+    url,
+    ['GET', FORECAST_EVIDENCE_COVERAGE_KEY],
+    `Redis GET ${FORECAST_EVIDENCE_COVERAGE_KEY}`,
+  );
+  const coverage = parseForecastEvidenceCoverage(coveragePayload?.result);
+  if (!forecastEvidenceCoversWindow(coverage, requestedCoverageStartMs, nowMs)) {
+    return {
+      ...base,
+      coverageStartMs: coverage?.coverageStartMs,
+      coverageEndMs: coverage?.coverageEndMs,
+      coverageComplete: false,
+      incomplete: true,
+      incompleteReason: coverage ? 'coverage_window_incomplete' : 'coverage_unverified',
+      cutoverVerified: Boolean(coverage),
+      items: [],
+      available: false,
+    };
+  }
+
+  const zsetPayload = await requestRedis(url, [
+    'ZREVRANGEBYSCORE',
+    FORECAST_EVIDENCE_KEY,
+    String(nowMs),
+    String(requestedCoverageStartMs),
+    'WITHSCORES',
+    'LIMIT',
+    '0',
+    String(maxHashes + 1),
+  ], `Redis ZREVRANGEBYSCORE ${FORECAST_EVIDENCE_KEY}`);
   if (!Array.isArray(zsetPayload?.result)) {
     throw new Error(`Redis ZREVRANGEBYSCORE ${FORECAST_EVIDENCE_KEY} returned non-array WITHSCORES data`);
   }
@@ -1315,59 +1363,89 @@ export async function readForecastEvidenceArchive(windowStartMs, nowMs, options 
   if (zsetRows.length % 2 !== 0) {
     throw new Error(`Redis ZREVRANGEBYSCORE ${FORECAST_EVIDENCE_KEY} returned malformed WITHSCORES data`);
   }
-  const members = [];
+
+  // Determine the cap from raw pairs before filtering. Otherwise malformed
+  // rows can consume the extra sentinel and hide unread valid evidence.
+  const rawPairCount = zsetRows.length / 2;
+  const truncated = rawPairCount > maxHashes;
+  const rawSelected = zsetRows.slice(0, maxHashes * 2);
+  const selectedHashes = [];
+  const selectedScores = [];
+  const seenHashes = new Set();
   let malformedTombstones = 0;
-  for (let index = 0; index < zsetRows.length; index += 2) {
-    const raw = zsetRows[index];
-    const score = Number(zsetRows[index + 1]);
-    if (!raw || !Number.isFinite(score)) {
+  for (let index = 0; index < rawSelected.length; index += 2) {
+    const hash = rawSelected[index];
+    const score = Number(rawSelected[index + 1]);
+    if (!isForecastEvidenceHash(hash) || !Number.isFinite(score) || seenHashes.has(hash)) {
       malformedTombstones += 1;
       continue;
     }
-    const { record, malformed, oversized } = parseForecastEvidenceMember(raw);
-    if (malformed || oversized || !record) {
-      malformedTombstones += 1;
-      continue;
-    }
-    members.push({ record, score });
+    seenHashes.add(hash);
+    selectedHashes.push(hash);
+    selectedScores.push(score);
   }
-  if (!members.length && malformedTombstones === 0) return { ...base, items: [], available: true };
-  const truncated = members.length > maxHashes;
-  const selected = members.slice(0, maxHashes);
-  const oldestRetainedScore = selected.at(-1)?.score;
-  const firstDroppedScore = members[maxHashes]?.score;
-  const retainedCoverageStartMs = firstDroppedScore === oldestRetainedScore
-    ? oldestRetainedScore + 1
-    : oldestRetainedScore;
-  const coverageStartMs = truncated
-    ? Math.max(requestedCoverageStartMs, retainedCoverageStartMs)
-    : requestedCoverageStartMs;
+
+  const recordBatchSize = Number.isFinite(options.recordBatchSize)
+    ? Math.max(1, Math.min(500, Math.floor(options.recordBatchSize)))
+    : 500;
+  const rawRecords = [];
+  for (let offset = 0; offset < selectedHashes.length; offset += recordBatchSize) {
+    const batch = selectedHashes.slice(offset, offset + recordBatchSize);
+    const commands = batch.map(hash => ['GET', forecastEvidenceRecordKey(hash)]);
+    const payload = await requestRedis(`${url}/pipeline`, commands, 'Redis forecast evidence record pipeline');
+    if (!Array.isArray(payload) || payload.length !== commands.length) {
+      throw new Error('Redis forecast evidence record pipeline returned incomplete data');
+    }
+    rawRecords.push(...payload);
+  }
+
+  const records = [];
+  for (let index = 0; index < selectedHashes.length; index += 1) {
+    const row = rawRecords[index];
+    if (row?.error || typeof row?.result !== 'string') {
+      malformedTombstones += 1;
+      continue;
+    }
+    const { record, malformed, oversized } = parseForecastEvidenceMember(row.result);
+    if (malformed || oversized || !record || record.hash !== selectedHashes[index]) {
+      malformedTombstones += 1;
+      continue;
+    }
+    records.push({ record, score: selectedScores[index] });
+  }
+
+  const incomplete = truncated || malformedTombstones > 0;
   if (truncated) {
-    console.warn(`  [forecast-resolutions] evidence archive hash cap reached (${selected.length}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; retained coverage begins ${new Date(coverageStartMs).toISOString()}`);
+    console.warn(`  [forecast-resolutions] evidence archive raw hash cap reached (${rawPairCount}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}`);
   }
   if (malformedTombstones > 0) {
-    console.warn(`  [forecast-resolutions] evidence archive reported ${malformedTombstones} malformed/oversized tombstone member(s)`);
+    console.warn(`  [forecast-resolutions] evidence archive reported ${malformedTombstones} missing/malformed/oversized/duplicate member(s)`);
   }
-  const items = selected.map(({ record }, index) => ({
+  const items = records.map(({ record }, index) => ({
     id: `N${index + 1}`,
     title: record.title,
     description: record.description,
     url: record.link,
-    publishedAt: record.lastSeen,
+    publishedAt: record.publishedAt,
     hash: record.hash,
   }));
   return {
     ...base,
-    coverageStartMs,
+    coverageStartMs: coverage.coverageStartMs,
+    coverageEndMs: coverage.coverageEndMs,
+    coverageComplete: !incomplete,
+    cutoverVerified: true,
+    incomplete,
     truncated,
     malformedTombstones,
     items,
-    available: true,
+    available: !incomplete,
   };
 }
 
 export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options = {}) {
   const { url, token } = getArchiveRedisCredentials(options);
+  const fetchFn = options.fetchFn ?? ((...args) => globalThis.fetch(...args));
   const configuredMaxLookbackMs = Number.isFinite(options.maxLookbackMs)
     ? Math.max(1, Math.floor(options.maxLookbackMs))
     : resolveJudgedEvidenceMaxLookbackMs();
@@ -1381,7 +1459,7 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
     coverageStartMs: requestedCoverageStartMs,
     coverageEndMs: nowMs,
   };
-  const zsetResp = await fetch(url, {
+  const zsetResp = await fetchFn(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify([
@@ -1440,7 +1518,7 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   const rows = await readStoryTracksChunked(selectedHashes, async (commands) => {
     const remainingMs = archiveDeadlineMs - Date.now();
     if (remainingMs <= 0) throw new Error(`Redis story-track pipeline exceeded ${archiveTimeoutMs}ms archive budget`);
-    const pipelineResp = await fetch(`${url}/pipeline`, {
+    const pipelineResp = await fetchFn(`${url}/pipeline`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
       body: JSON.stringify(commands),

@@ -8,7 +8,7 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, readCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -31,10 +31,16 @@ import {
 } from './_attempts';
 import {
   FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_COVERAGE_KEY,
+  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
   FORECAST_EVIDENCE_TTL_S,
   accumulatorPruneBounds,
   buildForecastEvidenceMember,
+  evidencePruneBounds,
+  forecastEvidenceCoversWindow,
+  forecastEvidenceRecordKey,
   isEligibleForecastEvidence,
+  parseForecastEvidenceCoverage,
 } from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -1271,6 +1277,35 @@ export async function listFeedDigest(
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
 
+function redisPipelineConfirmed(
+  results: Array<{ result?: unknown; error?: string }>,
+  expectedCommands: number,
+): boolean {
+  return results.length === expectedCommands && results.every(result => !result?.error);
+}
+
+function shouldPruneAccumulator(options: {
+  evidenceEligible: boolean;
+  cutoverEnabled: boolean;
+  coverage: unknown;
+  nowMs: number;
+  trackingWritesConfirmed: boolean;
+  evidenceWritesConfirmed: boolean;
+  coverageAdvanced: boolean;
+  accumulatorTtlConfirmed: boolean;
+}): boolean {
+  if (!options.trackingWritesConfirmed || !options.accumulatorTtlConfirmed) return false;
+  if (!options.evidenceEligible) return true;
+  return options.cutoverEnabled
+    && options.evidenceWritesConfirmed
+    && options.coverageAdvanced
+    && forecastEvidenceCoversWindow(
+      options.coverage,
+      options.nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+      options.nowMs,
+    );
+}
+
 /**
  * Build the HSET field list for a story:track:v1 row.
  *
@@ -1355,9 +1390,20 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   if (items.length === 0) return;
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
+  const evidenceEligible = isEligibleForecastEvidence(variant, lang);
+  const cutoverEnabled = process.env.FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
+  const coverageRead = evidenceEligible
+    ? await readCachedJson(FORECAST_EVIDENCE_COVERAGE_KEY, true)
+    : { status: 'miss' as const };
+  const coverageReadConfirmed = !evidenceEligible || coverageRead.status !== 'error';
+  const coverageBefore = evidenceEligible && coverageRead.status === 'hit'
+    ? parseForecastEvidenceCoverage(coverageRead.value)
+    : null;
   // #7082 evidence archive publication counters (operator visibility).
-  let evidenceWritten = 0;
+  let evidenceAttempted = 0;
   let evidenceDropped = 0;
+  let trackingWritesConfirmed = true;
+  let evidenceWritesConfirmed = coverageReadConfirmed;
 
   // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
   // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
@@ -1390,6 +1436,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
     const commands: Array<Array<string | number>> = [];
+    const evidenceBatchCommands: Array<Array<string | number>> = [];
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i]!;
@@ -1417,16 +1464,28 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
         // evidence archive member is self-contained (title/link/description
         // ride on the member; no story:track dependency) and only the
         // full/English scope that judging actually reads is archived.
-        if (isEligibleForecastEvidence(variant, lang)) {
+        if (evidenceEligible) {
           const evidenceMember = buildForecastEvidenceMember(
-            { hash, title: item.title, link: item.link, description: item.description, publishedAt: item.publishedAt },
+            {
+              hash,
+              title: representative.title,
+              link: representative.link,
+              description: representative.description,
+              publishedAt: representative.publishedAt,
+            },
             now,
           );
           if (evidenceMember) {
-            commands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, evidenceMember]);
-            evidenceWritten += 1;
+            // The ZSet member is the stable story hash. Mutable lastSeen and
+            // representative fields live in a self-contained, independently
+            // retained record key, so refreshing one story cannot create a
+            // second index member or crowd unique evidence out of the cap.
+            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
+            evidenceAttempted += 1;
           } else {
             evidenceDropped += 1;
+            evidenceWritesConfirmed = false;
           }
         }
         // #4924: alias rows for every member exact-title hash -> the FINAL
@@ -1450,29 +1509,84 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       );
     }
 
-    await runRedisPipeline(commands);
+    const trackingResults = await runRedisPipeline(commands);
+    if (!redisPipelineConfirmed(trackingResults, commands.length)) trackingWritesConfirmed = false;
+    if (evidenceEligible) {
+      // Archive keys are deliberately raw: the Railway resolver and backfill
+      // operate outside a Vercel deployment prefix and must read this same
+      // durable evidence namespace.
+      const evidenceResults = await runRedisPipeline(evidenceBatchCommands, true);
+      if (!redisPipelineConfirmed(evidenceResults, evidenceBatchCommands.length)) {
+        evidenceWritesConfirmed = false;
+      }
+    }
   }
 
   // Refresh accumulator TTL once per build — 48h, shorter than STORY_TTL since digest cron only needs ~24h lookback.
   // The TTL is abandoned-key cleanup only: member retention is the explicit
   // prune below (#7082) — millions of expired members previously lived here
   // forever because the TTL never removed them.
-  const prune = accumulatorPruneBounds(now);
-  const evidenceCommands: Array<Array<string | number>> = [
-    ['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL],
-    ['ZREMRANGEBYSCORE', accKey, prune.min, prune.max],
-  ];
-  if (isEligibleForecastEvidence(variant, lang)) {
-    // Rolling archive retention + TTL (contract + guard band).
-    const evidencePrune = accumulatorPruneBounds(now, FORECAST_EVIDENCE_TTL_S * 1000);
-    evidenceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
-    evidenceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
-    console.info(
-      `[forecast-evidence] published=${evidenceWritten} dropped=${evidenceDropped} ` +
-      `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`,
-    );
+  const accumulatorTtlCommands: Array<Array<string | number>> = [['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]];
+  const accumulatorTtlResults = await runRedisPipeline(accumulatorTtlCommands);
+  const accumulatorTtlConfirmed = redisPipelineConfirmed(accumulatorTtlResults, accumulatorTtlCommands.length);
+  let coverageAdvanced = false;
+  let coverageAfter = coverageBefore;
+  if (evidenceEligible && coverageBefore && trackingWritesConfirmed && evidenceWritesConfirmed && evidenceDropped === 0) {
+    coverageAfter = {
+      ...coverageBefore,
+      coverageEndMs: Math.max(coverageBefore.coverageEndMs, now),
+      sourceDigestAtMs: Math.max(coverageBefore.sourceDigestAtMs, now),
+    };
+    const coverageCommands: Array<Array<string | number>> = [[
+      'SET',
+      FORECAST_EVIDENCE_COVERAGE_KEY,
+      JSON.stringify(coverageAfter),
+      'EX',
+      FORECAST_EVIDENCE_TTL_S,
+    ]];
+    const coverageResults = await runRedisPipeline(coverageCommands, true);
+    coverageAdvanced = redisPipelineConfirmed(coverageResults, coverageCommands.length);
   }
-  await runRedisPipeline(evidenceCommands);
+
+  // For the judged full/en accumulator, pruning is destructive migration:
+  // retain legacy evidence until backfill has installed a verified coverage
+  // marker AND this cycle's archive writes and coverage update are confirmed.
+  // Other accumulator scopes are not used by forecast judging.
+  const pruneAllowed = shouldPruneAccumulator({
+    evidenceEligible,
+    cutoverEnabled,
+    coverage: coverageAfter,
+    nowMs: now,
+    trackingWritesConfirmed,
+    evidenceWritesConfirmed,
+    coverageAdvanced,
+    accumulatorTtlConfirmed,
+  });
+  if (pruneAllowed) {
+    const prune = accumulatorPruneBounds(now);
+    await runRedisPipeline([['ZREMRANGEBYSCORE', accKey, prune.min, prune.max]]);
+  }
+  const archiveMaintenanceCommands: Array<Array<string | number>> = [];
+  if (evidenceEligible) {
+    // Rolling archive retention + TTL (contract + guard band).
+    const evidencePrune = evidencePruneBounds(now);
+    archiveMaintenanceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
+    archiveMaintenanceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
+  }
+  const archiveMaintenanceResults = await runRedisPipeline(archiveMaintenanceCommands, true);
+  const maintenanceConfirmed = redisPipelineConfirmed(archiveMaintenanceResults, archiveMaintenanceCommands.length);
+  if (evidenceEligible) {
+    const published = evidenceWritesConfirmed ? evidenceAttempted : 0;
+    const message =
+      `[forecast-evidence] attempted=${evidenceAttempted} published=${published} dropped=${evidenceDropped} ` +
+      `coverage_read_confirmed=${coverageReadConfirmed} tracking_writes_confirmed=${trackingWritesConfirmed} ` +
+      `writes_confirmed=${evidenceWritesConfirmed} coverage_advanced=${coverageAdvanced} ` +
+      `accumulator_ttl_confirmed=${accumulatorTtlConfirmed} maintenance_confirmed=${maintenanceConfirmed} ` +
+      `cutover_enabled=${cutoverEnabled} cutover_verified=${pruneAllowed} ` +
+      `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`;
+    if (evidenceWritesConfirmed && coverageAdvanced && maintenanceConfirmed) console.info(message);
+    else console.warn(message);
+  }
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
@@ -1867,6 +1981,8 @@ export const __testing__ = {
   RESPONSE_GUARD_BAND_MS,
   OVERALL_DEADLINE_MS,
   BATCH_CONCURRENCY,
+  redisPipelineConfirmed,
+  shouldPruneAccumulator,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

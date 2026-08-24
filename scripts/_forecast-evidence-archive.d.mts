@@ -20,10 +20,30 @@ export interface ForecastEvidenceParseResult {
 }
 
 export const FORECAST_EVIDENCE_KEY: string;
+export const FORECAST_EVIDENCE_RECORD_KEY_PREFIX: string;
+export const FORECAST_EVIDENCE_COVERAGE_KEY: string;
+export const FORECAST_EVIDENCE_SOURCE_KEY: string;
 export const FORECAST_EVIDENCE_VERSION: number;
+export const FORECAST_EVIDENCE_COVERAGE_VERSION: number;
 export const FORECAST_EVIDENCE_TTL_S: number;
 export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS: number;
 export const FORECAST_EVIDENCE_MEMBER_MAX_BYTES: number;
+export function utf8ByteLength(value: string): number;
+export function isForecastEvidenceHash(value: unknown): value is string;
+export function forecastEvidenceRecordKey(hash: string): string;
+export function parseForecastEvidenceCoverage(raw: unknown): {
+  v: number;
+  coverageStartMs: number;
+  coverageEndMs: number;
+  cutoverVerifiedAtMs: number;
+  sourceDigestAtMs: number;
+  maxLookbackMs: number;
+  retentionSeconds: number;
+  sourceKey: string;
+  legacyOldestHash: string;
+  legacyOldestScoreMs: number;
+} | null;
+export function forecastEvidenceCoversWindow(raw: unknown, startMs: number, endMs: number): boolean;
 
 /** Eligibility gate for dual publication: only the full/English scope is archived. */
 export function isEligibleForecastEvidence(variant: string, lang: string): boolean;

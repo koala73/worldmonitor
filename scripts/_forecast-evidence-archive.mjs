@@ -8,10 +8,11 @@
  * pruned members, so production carried millions of expired tombstones.
  *
  * This archive is the separate retention contract from the issue:
- *   - key            forecast:evidence:v1        ZSet, score = lastSeen_ms
- *   - member         compact JSON, self-contained (no story:track dependency —
- *                    those rows expire after 7 days and must not gate 14-day
- *                    judging)
+ *   - index key      forecast:evidence:v1        ZSet, score = lastSeen_ms,
+ *                    member = stable story hash
+ *   - record key     forecast:evidence:record:v1:<hash>, compact JSON and
+ *                    self-contained (no story:track dependency — those rows
+ *                    expire after 7 days and must not gate 14-day judging)
  *   - TTL            15 days: the 14-day reader contract plus a one-day
  *                    cleanup guard band, applied per write
  *
@@ -20,7 +21,11 @@
  */
 
 export const FORECAST_EVIDENCE_KEY = 'forecast:evidence:v1';
+export const FORECAST_EVIDENCE_RECORD_KEY_PREFIX = 'forecast:evidence:record:v1:';
+export const FORECAST_EVIDENCE_COVERAGE_KEY = 'forecast:evidence:coverage:v1';
+export const FORECAST_EVIDENCE_SOURCE_KEY = 'digest:accumulator:v1:full:en';
 export const FORECAST_EVIDENCE_VERSION = 1;
+export const FORECAST_EVIDENCE_COVERAGE_VERSION = 1;
 
 /** 14-day reader contract + 1-day cleanup guard band. */
 export const FORECAST_EVIDENCE_TTL_S = 15 * 24 * 60 * 60;
@@ -34,6 +39,89 @@ export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
  * it, mirroring how the digest ledger counts dropped items).
  */
 export const FORECAST_EVIDENCE_MEMBER_MAX_BYTES = 2048;
+
+const utf8Encoder = new TextEncoder();
+const FORECAST_EVIDENCE_HASH_RE = /^[a-f0-9]{64}$/i;
+
+/** @param {string} value */
+export function utf8ByteLength(value) {
+  return utf8Encoder.encode(value).byteLength;
+}
+
+/** @param {unknown} value */
+export function isForecastEvidenceHash(value) {
+  return typeof value === 'string' && FORECAST_EVIDENCE_HASH_RE.test(value);
+}
+
+/** @param {string} hash */
+export function forecastEvidenceRecordKey(hash) {
+  return `${FORECAST_EVIDENCE_RECORD_KEY_PREFIX}${hash}`;
+}
+
+/**
+ * Coverage is operational evidence, not an inference from retention policy.
+ * A backfill creates the verified start and a confirmed digest publication
+ * advances the end. Readers accept the archive only when both bound the
+ * complete requested window.
+ *
+ * @param {unknown} raw
+ * @returns {{v: number, coverageStartMs: number, coverageEndMs: number, cutoverVerifiedAtMs: number, sourceDigestAtMs: number, maxLookbackMs: number, retentionSeconds: number, sourceKey: string, legacyOldestHash: string, legacyOldestScoreMs: number}|null}
+ */
+export function parseForecastEvidenceCoverage(raw) {
+  let value = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== 'object') return null;
+  const metadata = /** @type {Record<string, unknown>} */ (value);
+  const timeFields = [
+    metadata.coverageStartMs,
+    metadata.coverageEndMs,
+    metadata.cutoverVerifiedAtMs,
+    metadata.sourceDigestAtMs,
+    metadata.legacyOldestScoreMs,
+  ];
+  if (
+    metadata.v !== FORECAST_EVIDENCE_COVERAGE_VERSION
+    || !timeFields.every(value => Number.isSafeInteger(value) && Number(value) >= 0)
+    || metadata.maxLookbackMs !== FORECAST_EVIDENCE_MAX_LOOKBACK_MS
+    || metadata.retentionSeconds !== FORECAST_EVIDENCE_TTL_S
+    || metadata.sourceKey !== FORECAST_EVIDENCE_SOURCE_KEY
+    || !isForecastEvidenceHash(metadata.legacyOldestHash)
+    || Number(metadata.coverageStartMs) > Number(metadata.coverageEndMs)
+    || Number(metadata.coverageEndMs) - Number(metadata.coverageStartMs) < FORECAST_EVIDENCE_MAX_LOOKBACK_MS
+    || Number(metadata.sourceDigestAtMs) !== Number(metadata.coverageEndMs)
+    || Number(metadata.cutoverVerifiedAtMs) < Number(metadata.coverageStartMs)
+    || Number(metadata.cutoverVerifiedAtMs) > Number(metadata.coverageEndMs)
+    || Number(metadata.legacyOldestScoreMs) > Number(metadata.coverageStartMs)
+  ) return null;
+  return {
+    v: FORECAST_EVIDENCE_COVERAGE_VERSION,
+    coverageStartMs: Math.floor(Number(metadata.coverageStartMs)),
+    coverageEndMs: Math.floor(Number(metadata.coverageEndMs)),
+    cutoverVerifiedAtMs: Math.floor(Number(metadata.cutoverVerifiedAtMs)),
+    sourceDigestAtMs: Math.floor(Number(metadata.sourceDigestAtMs)),
+    maxLookbackMs: FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+    retentionSeconds: FORECAST_EVIDENCE_TTL_S,
+    sourceKey: FORECAST_EVIDENCE_SOURCE_KEY,
+    legacyOldestHash: metadata.legacyOldestHash,
+    legacyOldestScoreMs: Math.floor(Number(metadata.legacyOldestScoreMs)),
+  };
+}
+
+/** @param {unknown} raw @param {number} startMs @param {number} endMs */
+export function forecastEvidenceCoversWindow(raw, startMs, endMs) {
+  const metadata = parseForecastEvidenceCoverage(raw);
+  return Boolean(
+    metadata
+    && metadata.coverageStartMs <= startMs
+    && metadata.coverageEndMs >= endMs,
+  );
+}
 
 /**
  * Fields the judged path needs; everything else is deliberately dropped.
@@ -83,7 +171,7 @@ export function buildForecastEvidenceMember(track, lastSeen) {
   const description = typeof track.description === 'string' ? track.description : '';
   const publishedAt = Number(track.publishedAt);
 
-  if (!hash || !title || !link || !Number.isFinite(publishedAt) || !Number.isFinite(lastSeen)) {
+  if (!isForecastEvidenceHash(hash) || !title || !link || !Number.isFinite(publishedAt) || !Number.isFinite(lastSeen)) {
     return null;
   }
 
@@ -100,7 +188,7 @@ export function buildForecastEvidenceMember(track, lastSeen) {
   };
 
   const member = JSON.stringify(record);
-  return member.length <= FORECAST_EVIDENCE_MEMBER_MAX_BYTES ? member : null;
+  return utf8ByteLength(member) <= FORECAST_EVIDENCE_MEMBER_MAX_BYTES ? member : null;
 }
 
 /**
@@ -128,7 +216,7 @@ export function parseForecastEvidenceMember(raw) {
   const record = /** @type {Partial<ForecastEvidenceRecord>} */ (parsed);
   if (
     record.v !== FORECAST_EVIDENCE_VERSION ||
-    typeof record.hash !== 'string' || !record.hash ||
+    !isForecastEvidenceHash(record.hash) ||
     typeof record.title !== 'string' || !record.title ||
     typeof record.link !== 'string' ||
     typeof record.description !== 'string' ||
@@ -137,7 +225,7 @@ export function parseForecastEvidenceMember(raw) {
   ) {
     return { record: null, malformed: true, oversized: false };
   }
-  if (raw.length > FORECAST_EVIDENCE_MEMBER_MAX_BYTES) {
+  if (utf8ByteLength(raw) > FORECAST_EVIDENCE_MEMBER_MAX_BYTES) {
     return { record: null, malformed: false, oversized: true };
   }
   return {
@@ -170,7 +258,7 @@ export function accumulatorPruneBounds(nowMs, retentionMs = 48 * 60 * 60 * 1000)
   if (!Number.isFinite(nowMs)) {
     throw new Error('accumulatorPruneBounds requires a finite nowMs');
   }
-  return { min: '-inf', max: String(Math.floor(nowMs - retentionMs)) };
+  return { min: '-inf', max: `(${Math.floor(nowMs - retentionMs)}` };
 }
 
 /**
@@ -186,5 +274,5 @@ export function evidencePruneBounds(nowMs) {
   if (!Number.isFinite(nowMs)) {
     throw new Error('evidencePruneBounds requires a finite nowMs');
   }
-  return { min: '-inf', max: String(Math.floor(nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - 24 * 60 * 60 * 1000)) };
+  return { min: '-inf', max: `(${Math.floor(nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS - 24 * 60 * 60 * 1000)}` };
 }
