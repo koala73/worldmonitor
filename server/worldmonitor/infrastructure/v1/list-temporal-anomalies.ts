@@ -18,6 +18,7 @@ import {
   TEMPORAL_ANOMALIES_KEY,
   TEMPORAL_ANOMALIES_TTL,
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
+  BASELINE_SAMPLE_INTERVAL_MS,
   BASELINE_LOCK_KEY,
   BASELINE_LOCK_TTL,
   type BaselineEntry,
@@ -184,6 +185,17 @@ export async function listTemporalAnomalies(
         }
 
         const prev: BaselineEntry = baseline || { mean: 0, m2: 0, sampleCount: 0, lastUpdated: '' };
+
+        // The baseline's sampling interval is a STATISTICAL parameter and must not
+        // ride on the cache rebuild cadence. Those two were coupled only by accident
+        // (rebuild folded one sample per cycle), so shortening the rebuild interval
+        // would silently triple the sample rate on a slow-moving signal — shrinking
+        // the variance estimate and shifting every z-score. Sample on its own clock.
+        const lastSampledAt = prev.lastUpdated ? new Date(prev.lastUpdated).getTime() : 0;
+        const dueForSample = !Number.isFinite(lastSampledAt)
+          || now.getTime() - lastSampledAt >= BASELINE_SAMPLE_INTERVAL_MS;
+        if (!dueForSample) continue;
+
         const n = prev.sampleCount + 1;
         const delta = count - prev.mean;
         const newMean = prev.mean + delta / n;

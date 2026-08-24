@@ -66,6 +66,18 @@ export const TEMPORAL_ANOMALIES_TTL = 3600;
  * not just a caching one. See tests/temporal-anomalies-cache.test.mjs.
  */
 export const TEMPORAL_ANOMALIES_REBUILD_AFTER_MS = 20 * 60 * 1000;
+
+/**
+ * How often a rebuild folds a new sample into the `baseline:v2:*` running mean.
+ *
+ * Independent of the rebuild cadence on purpose. These were coupled only by
+ * accident — a rebuild used to sample every time it ran — so changing the cache
+ * interval silently changed the sample rate of a slow-moving signal, shrinking the
+ * variance estimate and shifting every z-score. 60 minutes preserves the sampling
+ * rate the baselines were accumulated at; change it only as a deliberate
+ * statistical decision, never to tune caching.
+ */
+export const BASELINE_SAMPLE_INTERVAL_MS = 60 * 60 * 1000;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
 

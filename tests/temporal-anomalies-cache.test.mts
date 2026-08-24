@@ -5,6 +5,8 @@ import { __testing__ } from '../api/health.js';
 import {
   TEMPORAL_ANOMALIES_TTL,
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
+  BASELINE_SAMPLE_INTERVAL_MS,
+  makeBaselineKeyV2,
 } from '../server/worldmonitor/infrastructure/v1/_shared.ts';
 import { listTemporalAnomalies } from '../server/worldmonitor/infrastructure/v1/list-temporal-anomalies.ts';
 
@@ -29,7 +31,14 @@ async function runWithRedisStub(
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   globalThis.fetch = (async (input: unknown, init: { method?: string; body?: string } = {}) => {
     if (init.method === 'POST') {
-      calls.push({ method: 'POST', key: String(input) });
+      // Writes POST to `${url}/` with the command in the BODY (`['SET', key, ...]`),
+      // not in the URL path — matching on the URL would silently match nothing.
+      let key = '';
+      try {
+        const cmd = JSON.parse(String(init.body ?? '[]'));
+        if (Array.isArray(cmd)) key = String(cmd[1] ?? '');
+      } catch { /* leave key empty; assertions below surface it */ }
+      calls.push({ method: 'POST', key });
       return Response.json({ result: lockGranted ? 'OK' : null });
     }
     const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
@@ -96,6 +105,55 @@ describe('temporal anomalies cache freshness', () => {
 
     const writes = calls.filter((c) => c.method === 'POST');
     assert.ok(writes.length > 0, 'rebuild path must write; otherwise the guard above is vacuous');
+  });
+
+  it('does not fold a new baseline sample when one was taken recently', async () => {
+    // The rebuild cadence must not drive the statistical sampling rate. Shortening
+    // the cache interval previously meant 3x more samples of a slow-moving signal,
+    // which shrinks the variance estimate and shifts every z-score.
+    const recentlySampled = {
+      mean: 1000, m2: 290_000, sampleCount: 30,
+      lastUpdated: new Date(Date.now() - 60_000).toISOString(),
+    };
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': { topStories: [{ id: 'a' }] },
+      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+      ...Object.fromEntries(
+        ['news', 'satellite_fires'].map((t) => [
+          makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
+          recentlySampled,
+        ]),
+      ),
+    });
+
+    const baselineWrites = calls.filter((c) => c.method === 'POST' && c.key.includes('baseline:v2:'));
+    assert.equal(
+      baselineWrites.length, 0,
+      `baseline was resampled ${BASELINE_SAMPLE_INTERVAL_MS / 60000}min-clock too early: ${JSON.stringify(baselineWrites)}`,
+    );
+  });
+
+  it('folds a baseline sample once the sampling interval has elapsed', async () => {
+    // Positive control for the guard above.
+    const dueForSample = {
+      mean: 1000, m2: 290_000, sampleCount: 30,
+      lastUpdated: new Date(Date.now() - BASELINE_SAMPLE_INTERVAL_MS - 60_000).toISOString(),
+    };
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': { topStories: [{ id: 'a' }] },
+      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+      ...Object.fromEntries(
+        ['news', 'satellite_fires'].map((t) => [
+          makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
+          dueForSample,
+        ]),
+      ),
+    });
+
+    const baselineWrites = calls.filter((c) => c.method === 'POST' && c.key.includes('baseline:v2:'));
+    assert.ok(baselineWrites.length > 0, 'an overdue baseline must be resampled');
   });
 
   it('serves the stale body rather than an empty result when the rebuild lock is lost', async () => {
