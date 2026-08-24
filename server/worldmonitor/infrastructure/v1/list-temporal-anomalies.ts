@@ -17,6 +17,7 @@ import {
   COUNT_SOURCE_KEYS,
   TEMPORAL_ANOMALIES_KEY,
   TEMPORAL_ANOMALIES_TTL,
+  TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
   BASELINE_LOCK_KEY,
   BASELINE_LOCK_TTL,
   type BaselineEntry,
@@ -87,23 +88,23 @@ async function writeTemporalAnomaliesSeedMeta(snapshot: AnomalySnapshot): Promis
   }, 604800).catch(() => false);
 }
 
-async function refreshTemporalAnomaliesCacheHit(snapshot: AnomalySnapshot): Promise<void> {
-  const refreshed = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL).catch(() => false);
-  if (refreshed) await writeTemporalAnomaliesSeedMeta(snapshot);
-}
-
 export async function listTemporalAnomalies(
   _ctx: ServerContext,
   _req: ListTemporalAnomaliesRequest,
 ): Promise<ListTemporalAnomaliesResponse> {
   try {
+    // HOT PATH — exactly ONE Redis round trip, no writes.
+    //
+    // This previously re-SET the snapshot and re-stamped seed-meta on every cache
+    // hit, which cost two further serial round trips on ~200k requests/day. Against
+    // a single-region store those round trips dominate the response: measured p50
+    // was ~3x the caller's RTT to us-east (12ms in iad1, 384ms in fra1, 1077ms in
+    // hkg1). The stamp is now written only by a successful rebuild below, so it
+    // reports "the data was rebuilt recently" instead of "somebody asked recently".
     const cached = await getCachedJson(TEMPORAL_ANOMALIES_KEY) as AnomalySnapshot | null;
     if (cached?.computedAt) {
       const age = Date.now() - new Date(cached.computedAt).getTime();
-      if (age < TEMPORAL_ANOMALIES_TTL * 1000) {
-        await refreshTemporalAnomaliesCacheHit(cached);
-        return cached;
-      }
+      if (age < TEMPORAL_ANOMALIES_REBUILD_AFTER_MS) return cached;
     }
 
     const lockAcquired = await tryAcquireLock();
