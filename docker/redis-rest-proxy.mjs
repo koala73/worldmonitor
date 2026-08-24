@@ -10,9 +10,10 @@
  *   POST /multi-exec                  → JSON body [["CMD1",...], ["CMD2",...]]
  *
  * Env:
- *   REDIS_URL  - Redis connection string (default: redis://redis:6379)
- *   SRH_TOKEN  - Bearer token for auth (default: none)
- *   PORT       - Listen port (default: 80)
+ *   REDIS_URL          - Redis connection string (default: redis://redis:6379)
+ *   SRH_TOKEN          - Bearer token for auth (default: none)
+ *   PORT               - Listen port (default: 80)
+ *   SRH_MAX_BODY_BYTES - Max request body size in bytes (default: 8 MB)
  */
 
 import http from 'node:http';
@@ -78,7 +79,16 @@ async function runCommand(args) {
   return client.sendCommand([cmd, ...cmdArgs.map(String)]);
 }
 
-const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+const MAX_BODY_BYTES = parseInt(process.env.SRH_MAX_BODY_BYTES, 10) || 8 * 1024 * 1024; // 8 MB
+
+// Distinguished from a generic Error so the handler below can reply with a
+// real 413 instead of the catch-all 500 path.
+class PayloadTooLargeError extends Error {
+  constructor() {
+    super('Request body too large');
+    this.name = 'PayloadTooLargeError';
+  }
+}
 
 async function readBody(req) {
   const chunks = [];
@@ -86,8 +96,13 @@ async function readBody(req) {
   for await (const chunk of req) {
     totalLength += chunk.length;
     if (totalLength > MAX_BODY_BYTES) {
-      req.destroy();
-      throw new Error('Request body too large');
+      // Don't req.destroy() here: that tears down the underlying socket
+      // before a response can be written, so the client sees a raw
+      // transport error (EPIPE / "other side closed") instead of an HTTP
+      // status. Just stop reading and let the handler send a real 413;
+      // Node closes the connection on its own once res.end() runs without
+      // the request body having been fully drained.
+      throw new PayloadTooLargeError();
     }
     chunks.push(chunk);
   }
@@ -197,6 +212,11 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
   } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      res.writeHead(413);
+      res.end(JSON.stringify({ error: err.message }));
+      return;
+    }
     res.writeHead(500);
     res.end(JSON.stringify({ error: err.message }));
   }
