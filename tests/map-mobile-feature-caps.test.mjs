@@ -29,9 +29,14 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     // invariant is unchanged and still asserted, just in its new home.
     const slices = sliceBetween('private overlayFeedSlices(): {', 'private planOverlayMarkerBudget(');
 
-    const timeFilterIdx = slices.indexOf('const filteredQuakes = withinTimeRange(this.earthquakes);');
+    const timeFilterIdx = slices.indexOf('const filteredQuakes = withinTimeRange(activeQuakes);');
     const mobileFilterIdx = slices.indexOf('quakes: this.isMobile');
 
+    assert.match(
+      slices,
+      /const activeQuakes = layers\.natural \? this\.earthquakes : \[\];/,
+      'a layer that is off must contribute no markers before any filtering runs',
+    );
     assert.ok(timeFilterIdx >= 0, 'earthquake time-range filter should exist');
     assert.ok(mobileFilterIdx > timeFilterIdx, 'mobile cutoff should run after the time-range filter');
     assert.match(
@@ -74,7 +79,7 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     const slices = sliceBetween('private overlayFeedSlices(): {', 'private planOverlayMarkerBudget(');
     assert.match(
       slices,
-      /iranEvents: this\.isMobile\s*\?\s*this\.iranEvents\.slice\(0, MapComponent\.MOBILE_MAX_IRAN_EVENTS\)\s*:\s*this\.iranEvents,/,
+      /iranEvents: this\.isMobile\s*\?\s*activeIranEvents\.slice\(0, MapComponent\.MOBILE_MAX_IRAN_EVENTS\)\s*:\s*activeIranEvents,/,
       'mobile path must cap Iran events at the named 50-event threshold and desktop must keep the full list',
     );
 

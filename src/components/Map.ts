@@ -1764,23 +1764,29 @@ export class MapComponent {
         ? items
         : items.filter((item) => item.occurredAt >= Date.now() - this.getTimeRangeMs())
     );
-    const filteredQuakes = withinTimeRange(this.earthquakes);
+    // Each feed is emptied when its layer is off before any filtering runs, so
+    // this method costs no more per render than the guarded blocks it replaced.
+    // renderOverlays is on the pan/zoom path.
+    const layers = this.state.layers;
+    const activeQuakes = layers.natural ? this.earthquakes : [];
+    const activeIranEvents = layers.iranAttacks ? this.iranEvents : [];
+    const filteredQuakes = withinTimeRange(activeQuakes);
     return {
       quakes: this.isMobile
         ? filteredQuakes.filter((eq) => eq.magnitude >= MapComponent.MOBILE_MIN_EARTHQUAKE_MAGNITUDE)
         : filteredQuakes,
       iranEvents: this.isMobile
-        ? this.iranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
-        : this.iranEvents,
+        ? activeIranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
+        : activeIranEvents,
       // Already capped at 200 by the render loop; planned on the same slice so
       // the budget cannot spend share on the 201st position onwards.
-      aircraft: this.aircraftPositions.slice(0, 200),
+      aircraft: layers.flights ? this.aircraftPositions.slice(0, 200) : [],
       // Only riots and high-severity unrest reach the map; the rest stay in the
       // CII analysis. Budgeting the full feed would cut the ones that render.
-      protests: this.protests.filter(
-        (event) => event.eventType === 'riot' || event.severity === 'high',
-      ),
-      conflictEvents: withinTimeRange(this.conflictEvents),
+      protests: layers.protests
+        ? this.protests.filter((event) => event.eventType === 'riot' || event.severity === 'high')
+        : [],
+      conflictEvents: withinTimeRange(layers.conflicts ? this.conflictEvents : []),
     };
   }
 
