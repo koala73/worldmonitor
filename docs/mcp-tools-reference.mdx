@@ -1234,7 +1234,7 @@ Temporal anomaly watch: current event counts vs day-of-week and seasonal baselin
 - **API endpoints:** none (MCP-only; the REST baseline endpoints are write-through and excluded from parity).
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **45 min** before `stale: true` is flagged (the producer refreshes hourly and is kept warm by the infra seeder).
+- **Freshness budget:** up to **45 min** before `stale: true` is flagged. The snapshot is rebuilt on demand when it is older than 20 min, and `cached_at` tracks that rebuild — not the time of your request — so it advances in ~20-minute steps rather than reading "just now" on every call. A rebuild is triggered by an incoming request, so a genuinely traffic-free period can let the budget lapse.
 
 <CodeGroup>
 

@@ -64,6 +64,14 @@ export const TEMPORAL_ANOMALIES_TTL = 3600;
  *
  * Changing this without moving those consumers' maxStaleMin is a monitoring change,
  * not just a caching one. See tests/temporal-anomalies-cache.test.mts.
+ *
+ * KNOWN LIMIT — this is a rebuild clock, not a content clock. A "successful rebuild"
+ * only means the reads from COUNT_SOURCE_KEYS resolved; it does not check whether
+ * those upstream sources actually advanced. If news:insights:v1 or wildfire:fires:v1
+ * freezes, this route keeps stamping fresh every cycle and the monitor stays green.
+ * Moving the stamp off request traffic closed the larger hole (traffic alone used to
+ * keep it green), but detecting a frozen UPSTREAM needs a content clock — compare the
+ * sources' own timestamps, not merely the success of reading them.
  */
 export const TEMPORAL_ANOMALIES_REBUILD_AFTER_MS = 20 * 60 * 1000;
 
