@@ -10,6 +10,10 @@ type MobileMapIntegrationHarness = {
   getDynamicLayerChildCount: () => number;
   getInitialDynamicRendered: () => boolean;
   getWrapperTransform: () => string;
+  seedOverlayMarkerStress: (perFeed: number) => void;
+  getOverlayMarkerCount: () => number;
+  getOverlayMarkerClassCount: (selector: string) => number;
+  getOverlayBudgetState: () => { rendered: number; truncated: Record<string, { shown: number; total: number }> };
   getPopupRect: () => {
     left: number;
     top: number;
@@ -252,6 +256,66 @@ window.__mobileMapIntegrationHarness = {
     Boolean((map as unknown as { initialDynamicRendered?: boolean }).initialDynamicRendered),
   getWrapperTransform: () =>
     (document.querySelector('.map-wrapper') as HTMLElement | null)?.style.transform ?? '',
+  // #7112: drives the overlay marker budget with feeds far larger than anything
+  // production has produced, so the ceiling is exercised rather than assumed.
+  seedOverlayMarkerStress: (perFeed: number) => {
+    const spread = (index: number): { lat: number; lon: number } => ({
+      // A deterministic spiral, so markers are spread across the projection
+      // instead of stacking on one pixel (which would make the proximity
+      // tie-break meaningless and let clustering hide the count).
+      lat: ((index * 7) % 170) - 85,
+      lon: ((index * 13) % 358) - 179,
+    });
+    const vessels = Array.from({ length: perFeed }, (_, index) => ({
+      id: `stress-vessel-${index}`,
+      mmsi: String(200000000 + index),
+      name: `Stress Vessel ${index}`,
+      vesselType: index % 100 === 0 ? 'carrier' : 'destroyer',
+      operator: 'usn',
+      operatorCountry: 'US',
+      ...spread(index),
+      heading: index % 360,
+      speed: 12,
+      lastAisUpdate: new Date(0),
+      confidence: 'high',
+    }));
+    const flights = Array.from({ length: perFeed }, (_, index) => ({
+      id: `stress-flight-${index}`,
+      callsign: `STRESS${index}`,
+      hexCode: (index + 0x100000).toString(16),
+      aircraftType: 'fighter',
+      operator: 'usaf',
+      operatorCountry: 'US',
+      ...spread(index + 3),
+      altitude: 30000,
+      heading: index % 360,
+      speed: 400,
+      onGround: false,
+      lastSeen: new Date(0),
+    }));
+    const quakes = Array.from({ length: perFeed }, (_, index) => ({
+      id: `stress-quake-${index}`,
+      magnitude: 1 + (index % 60) / 10,
+      place: `Stress Quake ${index}`,
+      occurredAt: 0,
+      location: { latitude: spread(index + 5).lat, longitude: spread(index + 5).lon },
+    }));
+
+    const mapInternals = map as unknown as {
+      state: { layers: Record<string, boolean> };
+    };
+    mapInternals.state.layers.military = true;
+    mapInternals.state.layers.natural = true;
+    map.setMilitaryVessels(vessels as never, []);
+    map.setMilitaryFlights(flights as never, []);
+    map.setEarthquakes(quakes as never);
+    map.render();
+  },
+  getOverlayMarkerCount: () =>
+    document.getElementById('mapOverlays')?.childElementCount ?? -1,
+  getOverlayMarkerClassCount: (selector: string) =>
+    document.getElementById('mapOverlays')?.querySelectorAll(selector).length ?? -1,
+  getOverlayBudgetState: () => map.getOverlayMarkerBudgetState(),
   getPopupRect: () => {
     const element = document.querySelector('.map-popup') as HTMLElement | null;
     if (!element) return null;

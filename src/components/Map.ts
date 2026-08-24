@@ -59,6 +59,15 @@ import { t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
+  MAP_OVERLAY_MARKER_BUDGET_DESKTOP,
+  MAP_OVERLAY_MARKER_BUDGET_MOBILE,
+  proximityRank,
+  selectGlobeMarkers,
+  type GlobeLayerTruncation,
+  type GlobeMarkerGroup,
+  type LatLng,
+} from '@/utils/globe-marker-budget';
+import {
   getLayerExplanation,
   hasCuratedLayerExplanation,
   isLayerExecutable,
@@ -117,6 +126,38 @@ interface WorldTopology extends Topology {
     countries: GeometryCollection;
   };
 }
+
+/**
+ * Reads a marker's coordinates across every feed shape `renderOverlays` iterates
+ * (#7112): most expose `lon`/`lat`, webcams use `lng`, Iran events use the long
+ * spellings, earthquakes and ACLED events nest them under `location`, and
+ * conflict zones carry a `[lon, lat]` `center` tuple. A shape with none of them
+ * yields NaN, which `proximityRank` already sorts last rather than poisoning the
+ * comparator — the same outcome as the render loops, which skip a null position.
+ */
+function overlayMarkerPosition(marker: unknown): LatLng {
+  const m = marker as {
+    lat?: number; lon?: number; lng?: number;
+    latitude?: number; longitude?: number;
+    location?: { latitude?: number; longitude?: number } | null;
+    center?: readonly [number, number];
+  };
+  return {
+    lat: m.lat ?? m.latitude ?? m.location?.latitude ?? m.center?.[1] ?? Number.NaN,
+    lng: m.lon ?? m.lng ?? m.longitude ?? m.location?.longitude ?? m.center?.[0] ?? Number.NaN,
+  };
+}
+
+/**
+ * The AI data centres the SVG overlay actually draws (>=10k GPUs). Hoisted to
+ * module scope so the overlay marker budget (#7112) plans on exactly the list
+ * the render loop iterates, rather than on a superset that would spend fair
+ * share on markers that were never going to appear.
+ */
+const MIN_AI_DATA_CENTER_GPU_COUNT = 10000;
+const RENDERABLE_AI_DATA_CENTERS = AI_DATA_CENTERS.filter(
+  (dc) => (dc.chipCount || 0) >= MIN_AI_DATA_CENTER_GPU_COUNT,
+);
 
 export class MapComponent {
   private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
@@ -223,6 +264,14 @@ export class MapComponent {
   private readonly isMobile: boolean;
   private readonly canToggleLayer: NonNullable<MapComponentOptions['canToggleLayer']>;
   private overlayAppendTarget: ParentNode | null = null;
+  // #7112 overlay marker budget. `overlayMarkerCut` holds the marker objects
+  // this render pass withheld; it is consulted by identity, so a feed that is
+  // NOT in the plan simply never appears here and renders in full. That makes a
+  // plan/render mismatch fail safe (an unbudgeted layer, not a blank one).
+  private overlayMarkerCut: Set<unknown> = new Set();
+  private overlayMarkerTruncation: Record<string, GlobeLayerTruncation> = {};
+  private renderedOverlayMarkerCount = 0;
+  private lastTruncationLabelKey = '';
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
   private lastContainerSize = { width: 0, height: 0 };
@@ -1604,7 +1653,9 @@ export class MapComponent {
   // Generic marker clustering - groups markers within pixelRadius into clusters
   // groupKey function ensures only items with same key can cluster (e.g., same city)
   private clusterMarkers<T extends { lat: number; lon: number }>(
-    items: T[],
+    // readonly so a budget-filtered feed (#7112) can be passed straight in
+    // without a defensive copy; the body only reads from it.
+    items: readonly T[],
     projection: d3.GeoProjection,
     pixelRadius: number,
     getGroupKey?: (item: T) => string
@@ -1675,9 +1726,203 @@ export class MapComponent {
     return Boolean(this.layerZoomOverrides[layer]) || this.state.zoom >= thresholds.minZoom;
   }
 
+  /**
+   * Chooses which overlay markers this render pass is allowed to create (#7112).
+   *
+   * `renderOverlays` rebuilds every HTML marker from scratch on every render, and
+   * each marker is a `<div>` with its own `click` listener. With an uncapped feed
+   * that makes both the live DOM size and the renderer's detached-node count a
+   * function of upstream traffic: production measured 2,088 overlay markers on a
+   * desktop cold load (1,502 of them military vessels), 17.4k renderer nodes and
+   * 2.8k listeners at rest, spiking to 49.7k / 21.5k while a rebuild's previous
+   * generation waited for GC. Desktop reaches this path whenever the client has
+   * no hardware WebGL2 context, which is the normal state of a lab runner.
+   *
+   * The selection is the globe's (#5368) — same module, same ceilings, so a
+   * client that falls back from Deck to SVG does not silently change how much of
+   * a layer it can see. The plan is stored as the set of markers to WITHHOLD, so
+   * a feed absent from the plan renders in full rather than disappearing.
+   */
+  private planOverlayMarkerBudget(projection: d3.GeoProjection): void {
+    const groups: GlobeMarkerGroup<unknown>[] = [];
+    const add = (
+      layer: string,
+      markers: readonly unknown[],
+      // Only the tuning knobs, mirroring GlobeMap.flushMarkers: spreading a full
+      // Partial would let a caller overwrite the layer/markers just set.
+      extra: Pick<Partial<GlobeMarkerGroup<unknown>>, 'rank' | 'exempt'> = {},
+    ): void => { if (markers.length) groups.push({ layer, markers, ...extra }); };
+
+    const layers = this.state.layers;
+    if (layers.waterways) add('waterways', STRATEGIC_WATERWAYS);
+    if (layers.ais) {
+      add('ais', this.aisDisruptions);
+      add('ais', PORTS);
+    }
+    if (layers.cyberThreats && SITE_VARIANT !== 'tech') add('cyberThreats', this.aptGroups);
+    // The zoom gates below mirror the render conditions exactly: a group that
+    // is planned but not rendered would spend fair share it never uses, and
+    // tighten the cap on the layers that do render.
+    if (this.isLayerZoomVisible('nuclear')) add('nuclear', NUCLEAR_FACILITIES);
+    if (layers.irradiators) add('irradiators', GAMMA_IRRADIATORS);
+    if (layers.conflicts) {
+      add('conflicts', CONFLICT_ZONES);
+      add('conflicts', this.conflictEvents, { rank: (m) => (m as AcledConflictEvent).fatalities ?? 0 });
+    }
+    // Planned on the whole feed rather than the mobile-trimmed slice the loop
+    // iterates. The trim only ever removes markers, so planning the superset
+    // can render fewer than the cap but never more — and both feeds rank so the
+    // markers the trim keeps are the ones the budget keeps too.
+    if (layers.iranAttacks) add('iranAttacks', this.iranEvents);
+    if (layers.hotspots) add('hotspots', this.hotspots);
+    if (this.isLayerZoomVisible('bases')) add('bases', this.getMilitaryBasesForRender());
+    if (layers.natural) {
+      add('natural', this.earthquakes, { rank: (m) => (m as Earthquake).magnitude ?? 0 });
+      add('natural', this.naturalEvents);
+    }
+    if (layers.economic) add('economic', ECONOMIC_CENTERS);
+    if (layers.weather) add('weather', this.weatherAlerts);
+    if (layers.radiationWatch) add('radiationWatch', this.radiationObservations);
+    if (layers.outages) add('outages', this.outages);
+    if (layers.cables) {
+      add('cables', this.cableAdvisories);
+      add('cables', this.repairShips);
+    }
+    if (layers.datacenters) add('datacenters', RENDERABLE_AI_DATA_CENTERS);
+    if (layers.spaceports) add('spaceports', SPACEPORTS);
+    if (layers.minerals) add('minerals', CRITICAL_MINERALS);
+    if (layers.startupHubs) add('startupHubs', STARTUP_HUBS);
+    if (layers.cloudRegions) add('cloudRegions', CLOUD_REGIONS);
+    if (layers.techHQs) add('techHQs', TECH_HQS);
+    if (layers.accelerators) add('accelerators', ACCELERATORS);
+    if (layers.techEvents) add('techEvents', this.techEvents);
+    if (layers.stockExchanges) add('stockExchanges', STOCK_EXCHANGES);
+    if (layers.financialCenters) add('financialCenters', FINANCIAL_CENTERS);
+    if (layers.centralBanks) add('centralBanks', CENTRAL_BANKS);
+    if (layers.commodityHubs) add('commodityHubs', COMMODITY_HUBS);
+    if (layers.protests) add('protests', this.protests);
+    if (layers.flights) {
+      add('flights', this.flightDelays);
+      add('flights', this.aircraftPositions);
+    }
+    if (layers.military) {
+      add('military', this.militaryFlights);
+      add('military', this.militaryFlightClusters);
+      // Carriers first: AIS is the largest feed on the page and the one the
+      // ceiling actually bites on (1,502 of 2,088 markers measured).
+      add('military', this.militaryVessels, {
+        rank: (m) => ((m as MilitaryVessel).vesselType === 'carrier' ? 1 : 0),
+      });
+      add('military', this.militaryVesselClusters);
+    }
+    if (layers.fires) {
+      add('fires', this.firmsFireData, { rank: (m) => (m as { brightness?: number }).brightness ?? 0 });
+    }
+    if (layers.webcams && this.state.zoom >= 2) add('webcams', this.webcamData);
+    // Variant hub overlays have no layer-toggle row, so a truncation here would
+    // have nowhere to be disclosed — exempt like the globe's `news` group. Both
+    // are bounded by the hub registry, not by an upstream feed.
+    if (SITE_VARIANT === 'tech') add('techHubs', this.techActivities, { exempt: true });
+    if (SITE_VARIANT === 'full') add('geoHubs', this.geoActivities, { exempt: true });
+
+    // Layers with no severity signal rank by nearness to the centre of the
+    // current view rather than by raw feed order, so a capped reference layer
+    // drops whatever is furthest from what the user is looking at instead of
+    // whatever happens to sort last. See proximityRank.
+    const { width, height } = this.getKnownContainerSize();
+    const centre = projection.invert?.([width / 2, height / 2]);
+    const nearestFirst = proximityRank<unknown>(
+      { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 },
+      overlayMarkerPosition,
+    );
+    for (const group of groups) {
+      if (group.exempt) continue;
+      if (group.rank) group.tieBreak = nearestFirst;
+      else group.rank = nearestFirst;
+    }
+
+    const budget = this.isMobile
+      ? MAP_OVERLAY_MARKER_BUDGET_MOBILE
+      : MAP_OVERLAY_MARKER_BUDGET_DESKTOP;
+    const { markers, truncated } = selectGlobeMarkers(groups, budget);
+
+    const kept = new Set(markers);
+    const cut = new Set<unknown>();
+    for (const group of groups) {
+      if (group.exempt) continue;
+      for (const marker of group.markers) {
+        if (!kept.has(marker)) cut.add(marker);
+      }
+    }
+    this.overlayMarkerCut = cut;
+    this.overlayMarkerTruncation = truncated;
+    this.renderedOverlayMarkerCount = markers.length;
+    this.updateLayerTruncationLabels();
+  }
+
+  /** True when this render pass withheld `marker` under the overlay budget (#7112). */
+  private isOverlayMarkerCut(marker: unknown): boolean {
+    return this.overlayMarkerCut.size > 0 && this.overlayMarkerCut.has(marker);
+  }
+
+  /**
+   * The same decision applied to a whole feed, for the paths that cluster their
+   * input before producing markers — clustering is many-to-one, so the cut has
+   * to happen on the way in or it cannot bound the markers on the way out.
+   */
+  private keepBudgetedMarkers<T>(markers: readonly T[]): readonly T[] {
+    if (this.overlayMarkerCut.size === 0) return markers;
+    return markers.filter((marker) => !this.overlayMarkerCut.has(marker));
+  }
+
+  /**
+   * Discloses a capped layer as `shown/total` on its toggle row, the way the
+   * globe does — a ceiling the user cannot see is indistinguishable from missing
+   * data. Skipped when nothing changed: this runs on every render pass, and the
+   * writes would restyle the toggle rows each time (#5080).
+   */
+  private updateLayerTruncationLabels(): void {
+    const key = Object.entries(this.overlayMarkerTruncation)
+      .map(([layer, counts]) => `${layer}:${counts.shown}/${counts.total}`)
+      .sort()
+      .join(',');
+    if (key === this.lastTruncationLabelKey) return;
+    this.lastTruncationLabelKey = key;
+
+    const root = this.container.querySelector<HTMLElement>('#layerToggles');
+    if (!root) return;
+    for (const row of Array.from(root.querySelectorAll<HTMLElement>('.layer-toggle-row'))) {
+      const layer = row.dataset.layer;
+      const counts = layer ? this.overlayMarkerTruncation[layer] : undefined;
+      const existing = row.querySelector<HTMLElement>('.layer-truncation-count');
+      if (!counts) { existing?.remove(); continue; }
+      const badge = existing ?? document.createElement('span');
+      if (!existing) {
+        // Sibling of the toggle button, not a child: inside it every click on
+        // the badge would toggle the layer off.
+        badge.className = 'layer-truncation-count';
+        row.appendChild(badge);
+      }
+      badge.textContent = `${counts.shown}/${counts.total}`;
+      // Untranslated literal, matching GlobeMap.updateLayerTruncationLabels — a
+      // new i18n key is a ~29-file change across locales and the badge itself is
+      // numeric. Tracked as the same follow-up.
+      badge.title = `Showing ${counts.shown} of ${counts.total} markers — the most significant, and those nearest the current view. The map caps markers per layer to keep interaction responsive; pan or zoom to bring others in.`;
+    }
+  }
+
+  /** Markers this render pass drew, and what the budget withheld (#7112). */
+  public getOverlayMarkerBudgetState(): {
+    rendered: number;
+    truncated: Record<string, GlobeLayerTruncation>;
+  } {
+    return { rendered: this.renderedOverlayMarkerCount, truncated: this.overlayMarkerTruncation };
+  }
+
   private renderOverlays(projection: d3.GeoProjection): void {
     setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
     this.labelVisibilityScheduled = false;
+    this.planOverlayMarkerBudget(projection);
     const fragment = document.createDocumentFragment();
     const previousTarget = this.overlayAppendTarget;
     this.overlayAppendTarget = fragment;
@@ -1701,6 +1946,7 @@ export class MapComponent {
     // Nuclear facilities (always HTML - shapes convey status)
     if (this.state.layers.nuclear && this.isLayerZoomVisible('nuclear')) {
       NUCLEAR_FACILITIES.forEach((facility) => {
+        if (this.isOverlayMarkerCut(facility)) return;
         const pos = projection([facility.lon, facility.lat]);
         if (!pos) return;
 
@@ -1729,6 +1975,7 @@ export class MapComponent {
     // Gamma irradiators (IAEA DIIF) - no labels, click to see details
     if (this.state.layers.irradiators) {
       GAMMA_IRRADIATORS.forEach((irradiator) => {
+        if (this.isOverlayMarkerCut(irradiator)) return;
         const pos = projection([irradiator.lon, irradiator.lat]);
         if (!pos) return;
 
@@ -1756,6 +2003,7 @@ export class MapComponent {
     // Conflict zone click areas
     if (this.state.layers.conflicts) {
       CONFLICT_ZONES.forEach((zone) => {
+        if (this.isOverlayMarkerCut(zone)) return;
         const centerPos = projection(zone.center as [number, number]);
         if (!centerPos) return;
 
@@ -1790,6 +2038,7 @@ export class MapComponent {
         ? this.iranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
         : this.iranEvents;
       iranEventsForRender.forEach((ev) => {
+        if (this.isOverlayMarkerCut(ev)) return;
         const pos = projection([ev.longitude, ev.latitude]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
 
@@ -1823,6 +2072,7 @@ export class MapComponent {
     // Hotspots (always HTML - level colors and BREAKING badges)
     if (this.state.layers.hotspots) {
       this.hotspots.forEach((spot) => {
+        if (this.isOverlayMarkerCut(spot)) return;
         const pos = projection([spot.lon, spot.lat]);
         if (!pos) return;
 
@@ -1857,6 +2107,7 @@ export class MapComponent {
     // Military bases (always HTML - nation colors matter)
     if (this.state.layers.bases && this.isLayerZoomVisible('bases')) {
       this.getMilitaryBasesForRender().forEach((base) => {
+        if (this.isOverlayMarkerCut(base)) return;
         const pos = projection([base.lon, base.lat]);
         if (!pos) return;
 
@@ -1898,6 +2149,7 @@ export class MapComponent {
       console.log('[Map] After time/mobile filter:', quakesForRender.length, 'earthquakes. TimeRange:', this.state.timeRange);
       let rendered = 0;
       quakesForRender.forEach((eq) => {
+        if (this.isOverlayMarkerCut(eq)) return;
         const pos = projection([eq.location?.longitude ?? 0, eq.location?.latitude ?? 0]);
         if (!pos) {
           console.log('[Map] Earthquake position null for:', eq.place, eq.location?.longitude, eq.location?.latitude);
@@ -1938,6 +2190,7 @@ export class MapComponent {
     // Economic Centers (always HTML - emoji icons for type distinction)
     if (this.state.layers.economic) {
       ECONOMIC_CENTERS.forEach((center) => {
+        if (this.isOverlayMarkerCut(center)) return;
         const pos = projection([center.lon, center.lat]);
         if (!pos) return;
 
@@ -1970,6 +2223,7 @@ export class MapComponent {
     // Weather Alerts (severity icons)
     if (this.state.layers.weather) {
       this.weatherAlerts.forEach((alert) => {
+        if (this.isOverlayMarkerCut(alert)) return;
         if (!alert.centroid) return;
         const pos = projection(alert.centroid);
         if (!pos) return;
@@ -2002,6 +2256,7 @@ export class MapComponent {
 
     if (this.state.layers.radiationWatch) {
       this.radiationObservations.forEach((observation) => {
+        if (this.isOverlayMarkerCut(observation)) return;
         const pos = projection([observation.lon, observation.lat]);
         if (!pos) return;
 
@@ -2036,6 +2291,7 @@ export class MapComponent {
     // Internet Outages (severity colors)
     if (this.state.layers.outages) {
       this.outages.forEach((outage) => {
+        if (this.isOverlayMarkerCut(outage)) return;
         const pos = projection([outage.lon, outage.lat]);
         if (!pos) return;
 
@@ -2072,6 +2328,7 @@ export class MapComponent {
     // Cable advisories & repair ships
     if (this.state.layers.cables) {
       this.cableAdvisories.forEach((advisory) => {
+        if (this.isOverlayMarkerCut(advisory)) return;
         const pos = projection([advisory.lon, advisory.lat]);
         if (!pos) return;
 
@@ -2105,6 +2362,7 @@ export class MapComponent {
       });
 
       this.repairShips.forEach((ship) => {
+        if (this.isOverlayMarkerCut(ship)) return;
         const pos = projection([ship.lon, ship.lat]);
         if (!pos) return;
 
@@ -2138,10 +2396,11 @@ export class MapComponent {
       });
     }
 
-    // AI Data Centers (always HTML - 🖥️ icons, filter to ≥10k GPUs)
-    const MIN_GPU_COUNT = 10000;
+    // AI Data Centers (always HTML - icons; RENDERABLE_AI_DATA_CENTERS is the
+    // >=10k-GPU list, shared with the overlay budget plan)
     if (this.state.layers.datacenters) {
-      AI_DATA_CENTERS.filter(dc => (dc.chipCount || 0) >= MIN_GPU_COUNT).forEach((dc) => {
+      RENDERABLE_AI_DATA_CENTERS.forEach((dc) => {
+        if (this.isOverlayMarkerCut(dc)) return;
         const pos = projection([dc.lon, dc.lat]);
         if (!pos) return;
 
@@ -2174,6 +2433,7 @@ export class MapComponent {
     // Spaceports (🚀 icon)
     if (this.state.layers.spaceports) {
       SPACEPORTS.forEach((port) => {
+        if (this.isOverlayMarkerCut(port)) return;
         const pos = projection([port.lon, port.lat]);
         if (!pos) return;
 
@@ -2210,6 +2470,7 @@ export class MapComponent {
     // Critical Minerals (💎 icon)
     if (this.state.layers.minerals) {
       CRITICAL_MINERALS.forEach((mine) => {
+        if (this.isOverlayMarkerCut(mine)) return;
         const pos = projection([mine.lon, mine.lat]);
         if (!pos) return;
 
@@ -2249,6 +2510,7 @@ export class MapComponent {
     // Startup Hubs (🚀 icon by tier)
     if (this.state.layers.startupHubs) {
       STARTUP_HUBS.forEach((hub) => {
+        if (this.isOverlayMarkerCut(hub)) return;
         const pos = projection([hub.lon, hub.lat]);
         if (!pos) return;
 
@@ -2287,6 +2549,7 @@ export class MapComponent {
     // Cloud Regions (☁️ icons by provider)
     if (this.state.layers.cloudRegions) {
       CLOUD_REGIONS.forEach((region) => {
+        if (this.isOverlayMarkerCut(region)) return;
         const pos = projection([region.lon, region.lat]);
         if (!pos) return;
 
@@ -2329,7 +2592,7 @@ export class MapComponent {
       // Cluster radius depends on zoom - tighter clustering when zoomed out
       const clusterRadius = this.state.zoom >= 4 ? 15 : this.state.zoom >= 3 ? 25 : 40;
       // Group by city to prevent clustering companies from different cities
-      const clusters = this.clusterMarkers(TECH_HQS, projection, clusterRadius, hq => hq.city);
+      const clusters = this.clusterMarkers(this.keepBudgetedMarkers(TECH_HQS), projection, clusterRadius, hq => hq.city);
 
       clusters.forEach((cluster) => {
         if (cluster.items.length === 0) return;
@@ -2397,6 +2660,7 @@ export class MapComponent {
     // Accelerators (🎯 icons)
     if (this.state.layers.accelerators) {
       ACCELERATORS.forEach((acc) => {
+        if (this.isOverlayMarkerCut(acc)) return;
         const pos = projection([acc.lon, acc.lat]);
         if (!pos) return;
 
@@ -2437,7 +2701,7 @@ export class MapComponent {
       const { width: mapWidth, height: mapHeight } = this.getKnownContainerSize();
 
       // Map events to have lon property for clustering, filter visible
-      const visibleEvents = this.techEvents
+      const visibleEvents = this.keepBudgetedMarkers(this.techEvents)
         .map(e => ({ ...e, lon: e.lng }))
         .filter(e => {
           const pos = projection([e.lon, e.lat]);
@@ -2494,6 +2758,7 @@ export class MapComponent {
     // Stock Exchanges (🏛️ icon by tier)
     if (this.state.layers.stockExchanges) {
       STOCK_EXCHANGES.forEach((exchange) => {
+        if (this.isOverlayMarkerCut(exchange)) return;
         const pos = projection([exchange.lon, exchange.lat]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
 
@@ -2531,6 +2796,7 @@ export class MapComponent {
     // Financial Centers (💰 icon by type)
     if (this.state.layers.financialCenters) {
       FINANCIAL_CENTERS.forEach((center) => {
+        if (this.isOverlayMarkerCut(center)) return;
         const pos = projection([center.lon, center.lat]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
 
@@ -2568,6 +2834,7 @@ export class MapComponent {
     // Central Banks (🏛️ icon by type)
     if (this.state.layers.centralBanks) {
       CENTRAL_BANKS.forEach((bank) => {
+        if (this.isOverlayMarkerCut(bank)) return;
         const pos = projection([bank.lon, bank.lat]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
 
@@ -2605,6 +2872,7 @@ export class MapComponent {
     // Commodity Hubs (⛽ icon by type)
     if (this.state.layers.commodityHubs) {
       COMMODITY_HUBS.forEach((hub) => {
+        if (this.isOverlayMarkerCut(hub)) return;
         const pos = projection([hub.lon, hub.lat]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
 
@@ -2716,7 +2984,7 @@ export class MapComponent {
     // Protests / Social Unrest Events (severity colors + icons) - with clustering
     // Filter to show only significant events on map (all events still used for CII analysis)
     if (this.state.layers.protests) {
-      const significantProtests = this.protests.filter((event) => {
+      const significantProtests = this.keepBudgetedMarkers(this.protests).filter((event) => {
         // Only show riots and high severity (red markers)
         // All protests still counted in CII analysis
         return event.eventType === 'riot' || event.severity === 'high';
@@ -2782,6 +3050,7 @@ export class MapComponent {
     // Flight Delays (delay severity colors + ✈️ icons)
     if (this.state.layers.flights) {
       this.flightDelays.forEach((delay) => {
+        if (this.isOverlayMarkerCut(delay)) return;
         const pos = projection([delay.lon, delay.lat]);
         if (!pos) return;
 
@@ -2825,6 +3094,7 @@ export class MapComponent {
     // Aircraft positions (simplified dots in SVG fallback, limited to 200)
     if (this.state.layers.flights) {
       this.aircraftPositions.slice(0, 200).forEach((ac) => {
+        if (this.isOverlayMarkerCut(ac)) return;
         const pt = projection([ac.lon, ac.lat]);
         if (!pt) return;
 
@@ -2860,6 +3130,7 @@ export class MapComponent {
     if (this.state.layers.military) {
       // Render individual flights
       this.militaryFlights.forEach((flight) => {
+        if (this.isOverlayMarkerCut(flight)) return;
         const pos = projection([flight.lon, flight.lat]);
         if (!pos) return;
 
@@ -2928,6 +3199,7 @@ export class MapComponent {
 
       // Render flight clusters
       this.militaryFlightClusters.forEach((cluster) => {
+        if (this.isOverlayMarkerCut(cluster)) return;
         const pos = projection([cluster.lon, cluster.lat]);
         if (!pos) return;
 
@@ -2963,6 +3235,7 @@ export class MapComponent {
       // Military Vessels (warships, carriers, submarines)
       // Render individual vessels
       this.militaryVessels.forEach((vessel) => {
+        if (this.isOverlayMarkerCut(vessel)) return;
         const pos = projection([vessel.lon, vessel.lat]);
         if (!pos) return;
 
@@ -3030,6 +3303,7 @@ export class MapComponent {
 
       // Render vessel clusters
       this.militaryVesselClusters.forEach((cluster) => {
+        if (this.isOverlayMarkerCut(cluster)) return;
         const pos = projection([cluster.lon, cluster.lat]);
         if (!pos) return;
 
@@ -3066,6 +3340,7 @@ export class MapComponent {
     // Natural Events (NASA EONET) - part of NATURAL layer
     if (this.state.layers.natural) {
       this.naturalEvents.forEach((event) => {
+        if (this.isOverlayMarkerCut(event)) return;
         const pos = projection([event.lon, event.lat]);
         if (!pos) return;
 
@@ -3111,6 +3386,7 @@ export class MapComponent {
     // Satellite Fires (NASA FIRMS) - separate fires layer
     if (this.state.layers.fires) {
       this.firmsFireData.forEach((fire) => {
+        if (this.isOverlayMarkerCut(fire)) return;
         const pos = projection([fire.lon, fire.lat]);
         if (!pos) return;
 
@@ -3137,6 +3413,7 @@ export class MapComponent {
         nature: '#96ceb4', beach: '#f4a460', water: '#4169e1', other: '#888888',
       };
       this.webcamData.forEach((cam) => {
+        if (this.isOverlayMarkerCut(cam)) return;
         const pos = projection([cam.lng, cam.lat]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
         const isCluster = 'count' in cam;
@@ -3188,9 +3465,10 @@ export class MapComponent {
   }
 
   private renderConflictEventMarkers(projection: d3.GeoProjection): void {
+    const budgetedEvents = this.keepBudgetedMarkers(this.conflictEvents);
     const visibleEvents = this.state.timeRange === 'all'
-      ? this.conflictEvents
-      : this.conflictEvents.filter((event) => event.occurredAt >= Date.now() - this.getTimeRangeMs());
+      ? budgetedEvents
+      : budgetedEvents.filter((event) => event.occurredAt >= Date.now() - this.getTimeRangeMs());
     const clusters = this.clusterMarkers(
       visibleEvents
         .map((event) => ({
@@ -3404,6 +3682,7 @@ export class MapComponent {
 
   private renderWaterways(projection: d3.GeoProjection): void {
     STRATEGIC_WATERWAYS.forEach((waterway) => {
+      if (this.isOverlayMarkerCut(waterway)) return;
       const pos = projection([waterway.lon, waterway.lat]);
       if (!pos) return;
 
@@ -3434,6 +3713,7 @@ export class MapComponent {
 
   private renderAisDisruptions(projection: d3.GeoProjection): void {
     this.aisDisruptions.forEach((event) => {
+      if (this.isOverlayMarkerCut(event)) return;
       const pos = projection([event.lon, event.lat]);
       if (!pos) return;
 
@@ -3495,6 +3775,7 @@ export class MapComponent {
 
   private renderPorts(projection: d3.GeoProjection): void {
     PORTS.forEach((port) => {
+      if (this.isOverlayMarkerCut(port)) return;
       const pos = projection([port.lon, port.lat]);
       if (!pos) return;
 
@@ -3537,6 +3818,7 @@ export class MapComponent {
 
   private renderAPTMarkers(projection: d3.GeoProjection): void {
     this.aptGroups.forEach((apt) => {
+      if (this.isOverlayMarkerCut(apt)) return;
       const pos = projection([apt.lon, apt.lat]);
       if (!pos) return;
 
