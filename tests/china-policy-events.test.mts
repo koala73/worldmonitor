@@ -192,7 +192,7 @@ describe('China official policy adapters (#5576)', () => {
     // `test:data` runs this file at concurrency 16. A discarded warmup plus a
     // 12x gate still fail quadratic (~16x) and ReDoS, but tolerate the ~10x
     // linear+GC ratios that 16-way CI has produced.
-    const timeAtSize = (repeat: number, attempts: number): number => {
+    const timeOnce = (repeat: number): number => {
       const openers = '<div class="content">'.repeat(repeat);
       const closers = '</div>'.repeat(repeat);
       const nested = `<body>${openers}正文内容足够长且必须保留${closers}</body>`;
@@ -203,22 +203,29 @@ describe('China official policy adapters (#5576)', () => {
       // Inputs are built once, outside the timed region: allocating them is
       // linear bookkeeping, not parser work, and including it would flatter a
       // superlinear parser at large sizes.
-      let best = Number.POSITIVE_INFINITY;
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        const startedAt = performance.now();
-        __testing__.stripHtml(script);
-        parseAgencyListing('CAC', anchors);
-        parsePolicyDocumentHtml(nested);
-        parsePolicyDocumentHtml(unbalanced);
-        best = Math.min(best, performance.now() - startedAt);
-      }
-      return best;
+      const startedAt = performance.now();
+      __testing__.stripHtml(script);
+      parseAgencyListing('CAC', anchors);
+      parsePolicyDocumentHtml(nested);
+      parsePolicyDocumentHtml(unbalanced);
+      return performance.now() - startedAt;
     };
 
-    timeAtSize(4_000, 1);
-    timeAtSize(16_000, 1);
-    const base = timeAtSize(4_000, 5);
-    const quadrupled = timeAtSize(16_000, 5);
+    // Discarded warmup, one per size.
+    timeOnce(4_000);
+    timeOnce(16_000);
+
+    // Interleaved, not sequential: timing all of base then all of quadrupled
+    // concentrates any transient runner stall into whichever series happens
+    // to be running, which can push the ratio over the gate on a loaded box
+    // even though neither size is actually slow. Alternating means a stall
+    // lands on both series' running minimum instead of just one (#6985).
+    let base = Number.POSITIVE_INFINITY;
+    let quadrupled = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      base = Math.min(base, timeOnce(4_000));
+      quadrupled = Math.min(quadrupled, timeOnce(16_000));
+    }
     const ratio = quadrupled / base;
 
     assert.ok(
