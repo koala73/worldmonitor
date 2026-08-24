@@ -354,16 +354,10 @@ function parseMcpAppsInventory({
 // some later block's closing brace and parsed that instead. Counting braces
 // bounds the body to the object actually declared. Safe here because these
 // blocks hold only header strings, which contain no braces.
-//
-// The `{` does not have to sit on the `=`. `Object.freeze({` and a JSDoc
-// `/** @type {const} */ (` assertion are wrappers around the same map; a
-// parser that demanded `= {` reported `could not parse TIER_CACHE` and took
-// Docker inventory generation offline (#7115). Skip comments, identifiers,
-// and grouping parens between `=` and the object. A JSDoc `{const}` is a
-// comment, not the literal — taking the first `{` after `=` would close on
-// that instead.
+// Skip wrappers (`Object.freeze(`, JSDoc `/** @type … */ (`) between `=` and
+// `{`; JSDoc braces are comments, not the literal (#7115).
 function parseObjectBlockBody(source, declaration, label) {
-  const assignment = source.match(new RegExp(`${declaration}\\s*=`));
+  const assignment = source.match(new RegExp(`(?:export\\s+)?${declaration}\\s*=`));
   if (!assignment || assignment.index === undefined) {
     throw new Error(`docs-stats: could not parse ${label}`);
   }
@@ -379,36 +373,29 @@ function parseObjectBlockBody(source, declaration, label) {
   throw new Error(`docs-stats: could not parse ${label} (unbalanced braces)`);
 }
 
+function skipLineAndBlockComments(source, i) {
+  const character = source[i];
+  const next = source[i + 1];
+  if (character === '/' && next === '/') {
+    const newline = source.indexOf('\n', i + 2);
+    return newline === -1 ? source.length : newline + 1;
+  }
+  if (character === '/' && next === '*') {
+    const close = source.indexOf('*/', i + 2);
+    return close === -1 ? source.length : close + 2;
+  }
+  return i;
+}
+
 function findAssignedObjectLiteralOpen(source, from, label) {
   let i = from;
-  let state = 'code';
   while (i < source.length) {
+    const skipped = skipLineAndBlockComments(source, i);
+    if (skipped !== i) {
+      i = skipped;
+      continue;
+    }
     const character = source[i];
-    const next = source[i + 1];
-    if (state === 'line-comment') {
-      if (character === '\n') state = 'code';
-      i += 1;
-      continue;
-    }
-    if (state === 'block-comment') {
-      if (character === '*' && next === '/') {
-        state = 'code';
-        i += 2;
-        continue;
-      }
-      i += 1;
-      continue;
-    }
-    if (character === '/' && next === '/') {
-      state = 'line-comment';
-      i += 2;
-      continue;
-    }
-    if (character === '/' && next === '*') {
-      state = 'block-comment';
-      i += 2;
-      continue;
-    }
     if (/\s/.test(character)) {
       i += 1;
       continue;
@@ -418,9 +405,9 @@ function findAssignedObjectLiteralOpen(source, from, label) {
       i += 1;
       continue;
     }
-    if (/[A-Za-z_$]/.test(character)) {
-      i += 1;
-      while (i < source.length && /[A-Za-z0-9_$.]/.test(source[i])) i += 1;
+    const identifier = source.slice(i).match(/^[A-Za-z_$][\w$.]*/)?.[0];
+    if (identifier) {
+      i += identifier.length;
       continue;
     }
     throw new Error(`docs-stats: could not parse ${label}`);

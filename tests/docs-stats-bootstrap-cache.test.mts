@@ -162,42 +162,20 @@ describe('parseBootstrapCacheContract', () => {
     );
   });
 
-  // #7115: Docker inventory generation failed with
-  // `could not parse TIER_CACHE in api/bootstrap.js` when the assignment was
-  // not a bare `= {`. The declaration still names the same map; only the
-  // wrapper changed. Accept the wrappers this file already uses elsewhere
-  // (`Object.freeze`, a JSDoc const assertion) so a formatter or a later
-  // hardening of the literal cannot take the generator offline.
-  it('parses TIER_CACHE when the object is wrapped in Object.freeze', () => {
-    const source = SYNTHETIC_BOOTSTRAP.replace(
-      'const TIER_CACHE = {',
-      'const TIER_CACHE = Object.freeze({',
-    );
-    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: TIER_CACHE declaration not found');
-    const cache = parseBootstrapCacheContract(source);
-    assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
-    assert.equal(cache.tierCache.slow, 'max-age=300, stale-while-revalidate=600, stale-if-error=3600');
-  });
-
-  it('parses TIER_CACHE when a JSDoc const assertion sits between = and the object', () => {
-    const source = SYNTHETIC_BOOTSTRAP.replace(
-      'const TIER_CACHE = {',
-      'const TIER_CACHE = /** @type {const} */ ({',
-    );
-    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: TIER_CACHE declaration not found');
-    const cache = parseBootstrapCacheContract(source);
-    assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
-  });
-
-  it('parses TIER_CDN_CACHE when export and Object.freeze wrap the literal', () => {
-    const source = SYNTHETIC_BOOTSTRAP.replace(
-      'const TIER_CDN_CACHE = {',
-      'export const TIER_CDN_CACHE = Object.freeze({',
-    );
-    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: TIER_CDN_CACHE declaration not found');
-    const cache = parseBootstrapCacheContract(source);
-    assert.equal(cache.tierCdnCache.fast, 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900');
-  });
+  for (const [label, from, to] of [
+    ['TIER_CACHE wrapped in Object.freeze', 'const TIER_CACHE = {', 'const TIER_CACHE = Object.freeze({'],
+    ['TIER_CACHE behind a JSDoc const assertion', 'const TIER_CACHE = {', 'const TIER_CACHE = /** @type {const} */ ({'],
+    ['TIER_CDN_CACHE wrapped in export and Object.freeze', 'const TIER_CDN_CACHE = {', 'export const TIER_CDN_CACHE = Object.freeze({'],
+  ] as [string, string, string][]) {
+    it(`parses ${label}`, () => {
+      const source = SYNTHETIC_BOOTSTRAP.replace(from, to);
+      assert.notEqual(source, SYNTHETIC_BOOTSTRAP, `fixture drift: ${from} not found`);
+      const cache = parseBootstrapCacheContract(source);
+      assert.equal(cache.tierCache.fast, 'max-age=60, stale-while-revalidate=120, stale-if-error=900');
+      assert.equal(cache.tierCache.slow, 'max-age=300, stale-while-revalidate=600, stale-if-error=3600');
+      assert.equal(cache.tierCdnCache.fast, 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900');
+    });
+  }
 
   it('throws when a tier loses its entry', () => {
     const source = SYNTHETIC_BOOTSTRAP.replace(
