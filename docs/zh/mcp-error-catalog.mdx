@@ -12,9 +12,13 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
   - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
   - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
+  - Billing -32002 / -32603 denials     api/mcp/auth.ts (getMcpBillingVerificationDenial) + api/mcp/dispatch.ts (BillingDenialError re-emit)
   - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
+  - Free tool-scope -32002 (HTTP 403)   api/mcp/dispatch.ts (upgrade-required guard)
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
+  - Source-unavailable -32003           api/mcp/dispatch.ts (McpSourceUnavailableError re-emit)
+  - SSE replay -32004 / -32600          api/mcp/handler.ts (handleSseReplay + replay cursor check)
   - _budget_exceeded envelope           api/mcp/dispatch.ts (budget cap handling)
   - _jmespath_error envelope            api/mcp/jmespath.ts (applyJmespath)
   - JMESPath caps                       api/mcp/constants.ts (JMESPATH_LIMITS)
@@ -38,7 +42,10 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 
 | 代码      | 含义（本服务器）                                                      | 配对 HTTP 状态码        | 恢复方式                                                              |
 |-----------|------------------------------------------------------------------------|---------------------------|-----------------------------------------------------------------------|
-| `-32001`  | 未鉴权、令牌无效或订阅未激活             | **401**                   | 通过 OAuth 重新鉴权，或修正 `X-WorldMonitor-Key` 头      |
+| `-32001`  | 未鉴权或凭证无效                                       | **401**                   | 通过 OAuth 重新鉴权，或修正 `X-WorldMonitor-Key` 头      |
+| `-32002`  | 终止性权益拒绝 —— 执行中的 Pro 调用才可能遇到失效订阅，或所调工具超出当前套餐 | **403**（下文所述的账户额度资源读取为 **200**） | 对已发出的拒绝不要重新鉴权；已在预检查中确认失效的账户改走受限免费账户路径 |
+| `-32003`  | 必需数据输入不可用 —— 工具无法读取上游种子数据 | **200** | 可重试；`error.data` 会列出不可用或失败的输入 |
+| `-32004`  | 找不到 SSE 重放光标 —— 恢复的流已过期或落在另一个实例 | **404** | 重新发出原始 POST，而不是继续恢复 |
 | `-32029`  | 被限流 —— 每分钟节流或 Pro 每日配额上限              | **200**（每分钟）/ **429**（每日） | 遵循 `Retry-After`；对于 200/每分钟，退避约 1 秒                    |
 | `-32600`  | 格式错误的 JSON-RPC 请求信封                                    | **200**                   | 修正请求编码器；这是客户端 bug                         |
 | `-32601`  | 方法未找到                                                       | **200**                   | 使用 initialize 结果中 `capabilities` 所宣告的方法     |
@@ -49,13 +56,14 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 
 ### `-32001` —— 未鉴权 / 凭证无效
 
-在 `api/mcp/auth.ts` 的六个发出站点触发，总是配对 HTTP **401** 和 `WWW-Authenticate` 头。这些站点归并为五个用户可见的触发点，按客户端命中顺序排列如下：
+由 `api/mcp/auth.ts` 的鉴权解析路径触发，总是配对 HTTP **401** 和 `WWW-Authenticate` 头。用户可见的触发点按客户端命中顺序如下：
 
 1. **既无 `Authorization` bearer 也无 `X-WorldMonitor-Key`** —— 客户端在调用 `/mcp` 时未携带任何凭证。
 2. **`Authorization: Bearer <token>` 但 `<token>` 无效或已过期** —— 令牌无法解析到上下文（被撤销 / TTL 过期 / 从未由 `/api/oauth/token` 签发）。
 3. **`X-WorldMonitor-Key: <key>` 但 `<key>` 不在有效集合中** —— API key 错误。
 4. **OAuth 令牌可解析但 Pro MCP 令牌行缺失或跨绑定** —— `mcpTokenId` 不再映射到该 userId。通常是 Settings → Connected MCP clients 中的撤销操作所致。
-5. **OAuth 令牌可解析但订阅已失效** —— 权益重新检查发现 `tier < 1`、`mcpAccess !== true` 或 `validUntil < now`。包括权益服务不可用时的故障关闭路径。
+
+订阅不活跃故意不属于此列表。已确认的免费账户（配置正确但无权益行，或内部一致的 tier-0 行）使用免费账户额度。服务方已确认失效的订阅也遵循同一路径：共享权益门禁将已结束的覆盖期视为已确认的免费状态。不带该失效标记的付费权益过期或停用才会返回终止性 `-32002` / HTTP 403；无法确定或可重试的校验故障使用 `-32603` / HTTP 503。
 
 示例线上负载（情况 1）：
 
@@ -77,6 +85,62 @@ Content-Type: application/json
 ```
 
 **如何处理。** 重新走一遍 OAuth 流程（`/api/oauth/token` 使用新的授权码，或用有效 refresh token 做刷新授权）。对于 API key 客户端，复核 `X-WorldMonitor-Key` 头 —— 用户签发的 `wm_` key 与运维签发的企业 key 必须放在该头中，**而不是**作为 `Authorization: Bearer`。`WWW-Authenticate` 头中的 `resource_metadata` 指针是从零开始发起发现流程的权威入口。
+
+### `-32002` —— 终止性权益拒绝
+
+权益拒绝通常为 HTTP **403**，带 `Cache-Control: no-store`，且**不带** `WWW-Authenticate`：凭证仍有效，但当前权益不允许该调用，重新鉴权无法改变结果。`error.data.reason` 区分两种情况：
+
+- **`lapsed-subscription`**：这是一个罕见的执行中竞态：订阅在权益预检查通过之后、Pro 工具的下游抓取之前失效。如果权益预检查时已有服务方确认的失效结果，账户会被重新分类到受限免费账户路径，不会在预检查中发出此拒绝。较晚出现的下游 `BillingDenialError` 会由 `api/mcp/dispatch.ts` 重新发出，并带 `X-Billing-Verification: subscription_lapsed`，因为该次执行中的 Pro 操作已无法完成。
+- **`upgrade-required`**：免费额度账户调用了 `subscription` 工具，或经确认的非免费权益不足（例如已过期或停用的付费权益行）。这类拒绝发生在额度预留之前，不消耗调用槽位。
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": {
+    "code": -32002,
+    "message": "This tool requires a WorldMonitor Pro subscription.",
+    "data": {
+      "reason": "upgrade-required",
+      "nextStep": "Call a free-account tool or subscribe to Pro.",
+      "upgradeUrl": "https://worldmonitor.app/pro"
+    }
+  }
+}
+```
+
+一个例外是：使用非用户绑定凭证读取 `worldmonitor://account/mcp-allowance` 时，`-32002` 位于 **HTTP 200** 的普通 JSON-RPC 错误中，不带 `data` 负载。
+
+**如何处理。** 对于已发出的 `-32002`，不要重试，也不要重新运行 OAuth，两者都会重现同一拒绝。向用户显示权益状态：执行中失效的操作需要恢复订阅后再发起，`upgrade-required` 需要改用 `free-account` 工具或订阅 Pro。后续预检查若已确认覆盖期结束，会改走受限免费账户路径，客户端可继续使用 `free-account` 工具。如果订阅仍在服务方复核中，服务器会改为返回可重试的 `-32603` / HTTP 503，并附带 `Retry-After`。
+
+### `-32003` —— 必需数据输入不可用
+
+工具已开始运行，但无法读取所需的上游种子数据（例如 Redis 瞬时故障，或 seeder 尚未发布）。响应位于 **HTTP 200** 中，并通过结构化 `data` 负载列出问题输入：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "error": {
+    "code": -32003,
+    "message": "Required data inputs are unavailable",
+    "data": {
+      "retryable": true,
+      "stale": true,
+      "unavailable_inputs": ["news:insights:v1"],
+      "failed_inputs": []
+    }
+  }
+}
+```
+
+**如何处理。** 按退避策略重试；`retryable: true` 就是此契约。如果某个工具持续返回 `-32003`，请检查 `data` 中列出的输入及 [status.worldmonitor.app](https://status.worldmonitor.app)。
+
+### `-32004` —— 找不到 SSE 重放光标
+
+带 `Last-Event-ID` 的 `GET /mcp` 尝试恢复一个当前 edge 实例不再保留的流：有界内存重放缓冲可能已过期，或重连落到了另一个实例。返回 **HTTP 404**。
+
+**如何处理。** 重新发出原始 POST，不要继续恢复；将 SSE 重放视为容许丢失的传输层恢复，而非持久化存储。若重放 GET 缺少 `Accept: text/event-stream`，会返回 HTTP 406；若缺少有效 `Mcp-Session-Id`，则会在到达此检查前以 `-32600` / HTTP 400 失败。
 
 ### `-32029` —— 被限流（每分钟或每日）
 
@@ -183,7 +247,7 @@ Content-Type: application/json
 
 ### `-32603` —— 内部错误
 
-三种不同条件共用此代码；HTTP 状态码区分重试是否合理。
+四类不同条件共用此代码；HTTP 状态码以及计费校验场景下的 `X-Billing-Verification` 响应头用于区分重试方式。
 
 **HTTP 200 —— 工具执行失败。** 工具分发器抛出异常。最常见情形：工具读取的每个 Redis key 都返回 null（`cache_all_null` —— 瞬时 Redis 抖动或仍在预热的种子程序），或一个同侪内部抓取在调用中途失败。Pro 配额不会回滚：工具已执行，因此重试会再消耗一个槽位。
 
@@ -195,7 +259,7 @@ Content-Type: application/json
 }
 ```
 
-**HTTP 503 + `Retry-After: 5` —— 服务不可用。** 要么 OAuth 解析服务抛出（Convex 瞬时抖动），要么部署中未设置 `MCP_INTERNAL_HMAC_SECRET`（配置错误 —— 没有它 Pro 工具调用无法签名其下游请求），要么 Pro 每日配额预留的 Redis pipeline 因 `cap-exceeded` 以外的错误失败。
+**HTTP 503 —— 服务不可用。** OAuth/权益解析服务抛出、匿名免费层限流后端故障关闭、部署中缺少 `MCP_INTERNAL_HMAC_SECRET`，或 Pro/免费账户额度预留 Redis 失败时使用固定 `Retry-After: 5`。续订校验进行中或失败时也返回 503，但携带 `X-Billing-Verification` 与动态 `Retry-After`；权益后端不可达使用固定 5 秒。
 
 ```json
 {
@@ -211,15 +275,19 @@ Retry-After: 5
 Content-Type: application/json
 ```
 
-`message` 文本标识了触发条件。三个站点发出 503；有两种不同字符串：
+`message` 文本标识触发条件：
 
 | 触发条件                                         | `message`                                              | 站点                              |
 |-------------------------------------------------|--------------------------------------------------------|-----------------------------------|
-| OAuth 解析服务抛出（Convex 抖动）    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts` `resolveAuthContext` bearer 分支 |
+| 鉴权/权益后端抛出（Convex 抖动、Pro token 或 `wm_…` key 校验故障） | `Auth service temporarily unavailable. Try again.` | `api/mcp/auth.ts` 的解析与校验路径 |
+| 匿名免费层限流后端不可达（故障关闭） | `Rate-limit service temporarily unavailable. Try again.` | `api/mcp/auth.ts` 免费层限流守卫 |
 | `MCP_INTERNAL_HMAC_SECRET` 未设置（Pro 路径）     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts` `runProPreChecks` 密钥预检 |
-| Pro 配额预留 Redis 失败（非上限）   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts` `dispatchToolsCall` 配额预留 |
+| Pro 或免费账户额度预留 Redis 失败（非上限） | `Service temporarily unavailable, retry in a moment.` | `api/mcp/dispatch.ts` 额度预留守卫 |
+| 续订校验进行中 | `Renewal verification pending. Retry shortly.` | `api/mcp/auth.ts` 预检查或 `api/mcp/dispatch.ts` 执行中重发 |
+| 续订校验失败并处于冷却期 | `Renewal verification failed. Retry shortly.` | 同上 |
+| 权益后端不可达 | `Unable to verify API access. Retry shortly.` | `api/mcp/auth.ts` 预检查或 `api/mcp/dispatch.ts` 执行中重发 |
 
-三种情况的客户端恢复方式一致（遵循 `Retry-After: 5`）；message 仅用于日志分析时的区分。
+非计费校验基础设施故障遵循固定 `Retry-After: 5`。计费校验行会携带 `X-Billing-Verification`，其 `data.code` 与该响应头一致；`renewal_verification_pending` / `renewal_verification_failed` 使用与实际提供方复查相匹配的动态 `Retry-After`（1–60 秒），客户端必须遵循响应头而不是假定 5 秒。`entitlement_verification_unavailable` 表示权益后端没有给出结论，固定使用 `Retry-After: 5`。续订校验状态表示本地订阅刚到期、服务器正在向计费提供方复核；已续订账户通常会在一到两次重试内恢复。
 
 **HTTP 200 —— `resources/read` 负载为空或不可解析。** `resources/read` 内部的防御性检查，针对内部 `tools/call` 分发器返回的 `content[0].text` 为空或非 JSON 文本的不应发生情形。
 
@@ -231,17 +299,21 @@ MCP handler 可能返回的每个状态码。大多数 JSON-RPC 回复 —— �
 
 | 状态码 | 主体形状                | JSON-RPC 代码 | 原因                                                                 |
 |--------|---------------------------|------------------|-----------------------------------------------------------------------|
-| **200** | JSON-RPC 信封         | 成功 或 `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | 任意成功调用，或不需要传输层升级的应用层错误 |
+| **200** | JSON-RPC 信封         | 成功 或 `-32002`（账户额度资源读取）/ `-32003` / `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | 任意成功调用，或不需要传输层升级的应用层错误。浏览器式的普通 `GET`/`HEAD /mcp` 也返回 200 markdown 指南，而不是 JSON-RPC。 |
 | **202** | 空                     | n/a              | `notifications/initialized` —— 按规范，JSON-RPC 通知不返回响应体 |
 | **204** | 空                     | n/a              | `OPTIONS` 预检                                                  |
-| **401** | JSON-RPC 信封         | `-32001`         | 凭证缺失/无效/过期、Pro MCP 令牌被撤销、订阅未激活。设置了 `WWW-Authenticate` 头。 |
-| **405** | 空                     | n/a              | 请求方法不是 `POST`、`GET`、`HEAD` 或 `OPTIONS`（或无 `Last-Event-ID` 的裸 `GET`）。设置了 `Allow: POST, GET, HEAD, OPTIONS` 头。 |
-| **429** | JSON-RPC 信封         | `-32029`         | **仅 Pro 每日上限超限。** 设置了 `Retry-After: <距 UTC 午夜的秒数>`。（每分钟节流在 HTTP 200 内返回 `-32029` —— 见上文 `-32029`。） |
-| **503** | JSON-RPC 信封         | `-32603`         | 鉴权服务不可用、`MCP_INTERNAL_HMAC_SECRET` 配置错误，或配额预留 Redis 失败。`Retry-After: 5`。 |
+| **400** | JSON-RPC 信封         | `-32600`         | SSE 重放 `GET` 缺少有效的 `Mcp-Session-Id`。 |
+| **401** | JSON-RPC 信封         | `-32001`         | 凭证缺失/无效/过期，或 Pro MCP 令牌被撤销。设置了 `WWW-Authenticate` 头。 |
+| **403** | JSON-RPC 信封         | `-32002`         | 终止性权益拒绝：`lapsed-subscription` 仅在服务方确认的失效结果落在 Pro 调用执行中时出现（同时设置 `X-Billing-Verification: subscription_lapsed`）；`upgrade-required` 表示免费额度调用 Pro-only 工具，或非免费权益不活跃。预检查时已存在的失效结果会改走受限免费账户路径。不设置 `WWW-Authenticate`，因为重新鉴权无法修复已发出的拒绝。 |
+| **404** | JSON-RPC 信封         | `-32004`         | SSE 重放光标不存在（流已过期或重连落到另一实例）。 |
+| **405** | 空                     | n/a              | 请求方法不是 `POST`、`GET`、`HEAD` 或 `OPTIONS`，或带 SSE `Accept` 但不带 `Last-Event-ID` 的 `GET`/`HEAD`（不提供独立服务器→客户端流）。设置 `Allow: POST, GET, HEAD, OPTIONS`。 |
+| **406** | JSON-RPC 信封         | `-32600`         | SSE 重放 `GET` 未接受 `text/event-stream`。 |
+| **429** | JSON-RPC 信封         | `-32029`         | Pro 每日上限、免费账户额度、匿名免费层上限，或鉴权前 key 验证洪泛。设置 `Retry-After`；每分钟节流仍在 HTTP 200 内返回 `-32029`。 |
+| **503** | JSON-RPC 信封         | `-32603`         | 鉴权服务不可用、`MCP_INTERNAL_HMAC_SECRET` 配置错误、限流后端故障关闭或额度预留 Redis 失败时使用 `Retry-After: 5`；续订校验进行中/失败时携带 `X-Billing-Verification` 与动态 `Retry-After`（1–60 秒）；权益后端不可达固定为 5 秒。 |
 
 有一个 HTTP 状态码不属于 JSON-RPC 错误：
 
-- **405 携带空主体**来自 JSON-RPC **之前**的方法校验。handler 接受 `POST`（JSON-RPC 路径）、`GET`（独立 SSE 流 / `Last-Event-ID` 重放通道）、`HEAD`（以 200 ack 携带 `Content-Type: application/json`，供可用性探测使用）和 `OPTIONS`（CORS 预检）。无 `Last-Event-ID` 的裸 `GET` 也返回 405（不提供独立流）。其他方法得到 405 + `Allow: POST, GET, HEAD, OPTIONS`。该端点不强制 `Origin` 允许列表：它通告通配 CORS，并通过显式 `Authorization` / `X-WorldMonitor-Key` 头鉴权，因此浏览器来源客户端（任意来源）均被接受。
+- **405 携带空主体**来自 JSON-RPC **之前**的方法校验。handler 接受 `POST`（JSON-RPC 路径）、`GET`（`Last-Event-ID` SSE 重放；无 SSE `Accept` 时也可返回 200 markdown 指南）、`HEAD`（与 GET 相同的路由：重放确认、指南响应头，或非 `/mcp` 路径上的 JSON 200 探针确认）和 `OPTIONS`（CORS 预检）。只有带 SSE `Accept` 但缺少 `Last-Event-ID` 的 `GET`/`HEAD` 才以 405 表示“不提供独立流”；其他不支持的方法也返回 405 + `Allow: POST, GET, HEAD, OPTIONS`。该端点不强制 `Origin` 允许列表：它通告通配 CORS，并通过显式 `Authorization` / `X-WorldMonitor-Key` 头鉴权，因此浏览器来源客户端（任意来源）均被接受。
 
 ## 软行为信封
 

@@ -57,7 +57,7 @@ The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`, `/opena
 
 ## Agent front doors
 
-Beyond static discovery documents, several live endpoints exist specifically for agents. All of them are anonymous and quota-free; each has its own per-IP rate limit.
+Beyond static discovery documents, several live endpoints exist specifically for agents. All of them are anonymous and quota-free. `/ask`, `/a2a`, and `/docs/mcp` each enforce their documented 60/min/IP policy; `/agent/auth` and the markdown twins do not claim an endpoint-specific per-IP limit.
 
 ### `GET|POST /ask` — natural-language routing (NLWeb)
 

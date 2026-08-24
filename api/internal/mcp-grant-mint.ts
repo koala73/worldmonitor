@@ -31,9 +31,10 @@
  *   - INVALID_NONCE                400  Redis nonce miss / expired
  *   - UNKNOWN_CLIENT               400  Redis client miss
  *   - INVALID_REDIRECT_URI         400  client redirect_uri no longer allowlisted
- *   - INSUFFICIENT_TIER            403  user tier < 1, no mcpAccess, expired,
- *                                       or a provider-CONFIRMED lapse (which
- *                                       additionally sets X-Billing-Verification)
+ *   - INSUFFICIENT_TIER            403  genuinely insufficient non-free tier,
+ *                                       no mcpAccess, expired, or malformed.
+ *                                       Provider-confirmed ended coverage uses
+ *                                       the restricted free-account path.
  *   - NONCE_CLAIMED_BY_OTHER_USER  403  nonce already claimed by a different
  *                                       Clerk userId (anti-hijack — see F2)
  *   - TIER_VERIFICATION_UNAVAILABLE 503 entitlement could not be VERIFIED, or a
@@ -273,15 +274,17 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
   // reachable only by accounts that had ALREADY been Pro, while
   // SERVER_INSTRUCTIONS advertised it to every client on `initialize`.
   //
-  // This widens ISSUANCE only. `checkProMcpAccess` still returns a denial for
-  // free accounts, `server/gateway.ts` and `server/_shared/premium-check.ts`
-  // still refuse them, and `api/mcp/dispatch.ts` restricts the allowance to
-  // cache-backed tools — so the credential grants nothing on its own.
+  // This widens ISSUANCE only. `checkProMcpAccess` classifies confirmed free
+  // accounts (including provider-confirmed lapses) as `free_account`; the MCP
+  // dispatcher restricts that credential to cache-backed allowance tools, while
+  // `server/gateway.ts` and `server/_shared/premium-check.ts` still refuse
+  // downstream Pro execution — so the credential grants no paid capability.
   //
   // Every other denial kind still refuses: `insufficient_tier` (an expired or
   // disabled paid row, or a malformed entitlement) and `billing_verification`
-  // (a lapse, or a read we could not trust). Minting on an unverifiable read
-  // would hand out credentials during an entitlement outage.
+  // (a retryable renewal/unverifiable read). A provider-confirmed lapse becomes
+  // `free_account`; minting on an unverifiable read would hand out credentials
+  // during an entitlement outage.
   if (gate && gate.kind !== 'free_account') return proMcpGateDenialResponse(gate);
 
   // Mint the signed grant first (cheaper to fail before the Redis write).

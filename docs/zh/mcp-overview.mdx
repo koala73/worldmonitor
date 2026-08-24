@@ -14,7 +14,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 </Note>
 
 <Info>
-**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。已确认的**免费账户**同样可以完成 OAuth 流程：其令牌仅限 `free-account` 工具，并按免费额度计量。只有已失效或被停用的付费权益才会在 OAuth 步骤被拒绝并看到 Pro-required 页面。
+**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。已确认的**免费账户**以及服务方确认已结束付费覆盖期的账户同样可以完成 OAuth 流程：其令牌仅限 `free-account` 工具，并按免费额度计量。只有经确认但不具备免费账户资格的权益不足或已停用套餐，才会在 OAuth 步骤被拒绝并看到 Pro-required 页面。
 
 `get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
@@ -58,7 +58,8 @@ WorldMonitor 支持 Streamable HTTP POST 流程，可返回 JSON 或 SSE 响应�
 - `initialize` 的 SSE 响应包含 `Mcp-Session-Id`；后续的 POST 应发送相同的 `Mcp-Session-Id` 头。
 - 每个 SSE 响应以带有事件 `id` 的单个 `message` 事件承载 JSON-RPC 结果。不存在开头的空预热事件 —— 根据 WHATWG SSE 规范，空的 `data:` 字段仍会派发一个 `message`（其 `data === ""`），这会导致严格的握手扫描器在 `JSON.parse("")` 上失败。
 - 如果客户端在唯一的那个事件之后断开连接，可以通过发送带有 `Accept: text/event-stream`、相同 `Mcp-Session-Id` 和 `Last-Event-ID` 的 `GET /mcp` 来重新连接；在已投递的事件之后恢复会返回一个空流。在收到该事件之前就断开的客户端没有已确认的 `Last-Event-ID`，因此会改为重新发起该 POST。
-- **裸 `GET /mcp`** —— 即**不带** `Last-Event-ID` 的请求 —— 是客户端在开启可选的服务器→客户端独立 SSE 流。这条无状态的 edge 路由不提供任何由服务器发起的流，因此它以 `405 Method Not Allowed` 应答（并声明 `Allow`），MCP 规范将其定义为优雅的"无独立流"信号。MCP SDK 客户端会透明地处理它并完成握手；`GET` 动词本身保留给上文提到的经过认证的 `Last-Event-ID` 重放。
+- **带有 `Accept: text/event-stream` 但不带 `Last-Event-ID` 的 `GET /mcp`**表示客户端尝试打开可选的服务器→客户端独立 SSE 流。这条无状态 edge 路由不提供服务器发起的流，因此返回 `405 Method Not Allowed`（并声明 `Allow`）；MCP SDK 会将其作为“无独立流”的正常信号处理。
+- **浏览器式的普通 `GET /mcp`** —— 既无 SSE `Accept`，也无 `Last-Event-ID` —— 返回 `200` 和人类/agent 可读的 markdown 服务器指南（与 `/mcp-server.md` 相同）。普通 `HEAD /mcp` 采用同一路由，只省略响应体。
 
 重放缓冲区在内存中，且按每个 edge 实例设有上限。请将 `Last-Event-ID` 恢复视为容忍丢失的传输层恢复，而非持久化的消息存储。
 
@@ -71,7 +72,7 @@ MCP handler 按优先级顺序接受两种认证模式：
 1. **OAuth 2.1 bearer** —— `Authorization: Bearer <token>`，其中 `<token>` 由 `/api/oauth/token` 颁发。这是 Claude Desktop、claude.ai、Cursor 和 MCP Inspector 自动使用的方式。任何从浏览器源访问 MCP 的客户端都必须使用此方式。
 2. **直接 API key** —— 对于用户颁发的 key 使用 `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567`，或使用由运营方颁发的不透明企业 key。适用于服务端脚本、`curl` 和自定义集成。**不要**把 API key 当作 `Bearer` token 发送 —— 它会通过 OAuth 解析失败并返回 `401 invalid_token`。
 
-OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户绑定和有效权益，因此订阅降级会在下一次请求时撤销 OAuth MCP 访问权限。控制面板签发的 `X-WorldMonitor-Key: wm_…` 请求会校验密钥所有者和有效权益，然后使用与 OAuth 路径相同的按用户分钟桶和每日 50 次默认值。部署许可名单中的旧版运营方密钥使用按密钥分钟桶，并跳过每日预留。
+OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户绑定和当前权益，因此套餐降级会在下一次请求时移除不再具备的付费能力，但不会无条件撤销 OAuth 身份。服务方确认付费覆盖期已经结束时，该身份会转入受限、按额度计量的免费账户路径，仅能调用 `free-account` 工具；不具备免费账户资格的非免费权益不足或已停用权益仍会被拒绝。控制面板签发的 `X-WorldMonitor-Key: wm_…` 请求会校验密钥所有者和有效权益，然后使用与 OAuth 路径相同的按用户分钟桶和每日 50 次默认值。部署许可名单中的旧版运营方密钥使用按密钥分钟桶，并跳过每日预留。
 
 ### Redirect URI 允许列表
 
@@ -109,7 +110,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，7 天 refresh）。
 
 <Note>
-如果登录步骤提示无法校验你的订阅 —— 一个 `503` 页面，或来自 grant 端点的 `503 TIER_VERIFICATION_UNAVAILABLE` —— 那是暂时性的，并不代表你的订阅有任何问题。请等待响应中标注的 `Retry-After`，然后从你的客户端重新发起连接；该授权会话是一次性的，因此需要重新发起而不是刷新页面。付费权益已过期或被停用的已确认账户会收到 `403 INSUFFICIENT_TIER`（已确认的**免费**账户不会被拒绝 —— 它以按额度计量的令牌完成流程），而已失效的订阅会收到带 `X-Billing-Verification: subscription_lapsed` 的 `403`。参见[错误处理](/zh/usage-errors)。
+如果登录步骤提示无法校验你的订阅 —— 例如返回 `503` 页面或 `503 TIER_VERIFICATION_UNAVAILABLE` —— 这是可重试的校验状态，并不代表你的订阅已失效。请等待响应中的 `Retry-After`，然后从客户端重新发起连接；授权会话是一次性的，不要只刷新页面。服务方确认已失效且付费覆盖期已结束的订阅会转为免费账户，以受限的 `free-account` 令牌完成 OAuth，并按免费额度计量；它不会因该失效标记收到 `403`。真正的权益不足或已停用套餐仍会收到 `403 INSUFFICIENT_TIER`。参见[错误处理](/zh/usage-errors)。
 </Note>
 
 如果你更愿意粘贴 API key（Starter+ / 脚本化客户端），可在授权页展开 "Use API key instead" 并提交你的 `wm_` 用户 key 或由运营方颁发的企业 key —— 该路径保持不变。
@@ -536,14 +537,14 @@ MCP handler 在三个独立层次上发出失败信号 —— **HTTP 状态**、
 
 | 层次        | 常见形态                                                    | 查看位置       |
 |--------------|------------------------------------------------------------------|---------------------|
-| HTTP 状态  | `200`（JSON-RPC 默认）、`401`、`403`、`429`、`503`                | `WWW-Authenticate` / `Retry-After` 头 |
-| JSON-RPC     | `-32001` 认证 · `-32002` 需要升级 · `-32029` 速率受限 · `-32602` 参数错误 · `-32603` 内部错误 | `error.code` + `error.message`           |
+| HTTP 状态  | `200`（JSON-RPC 默认）、`400`、`401`、`403`、`404`、`405`、`406`、`429`、`503` | `WWW-Authenticate` / `Retry-After` / `X-Billing-Verification` 头 |
+| JSON-RPC     | `-32001` 认证 · `-32002` 权益拒绝 · `-32003` 数据不可用 · `-32004` 重放光标缺失 · `-32029` 速率受限 · `-32600` 请求无效 · `-32602` 参数错误 · `-32603` 内部错误 | `error.code` + `error.message`           |
 | Soft envelope | `_budget_exceeded`（响应过大）、`_jmespath_error`（投影失败） | 将 `result.content[0].text` 解析为 JSON |
 
 由外向内分诊：HTTP 状态 → JSON-RPC 错误码 → soft envelope。完整的每种形态参考（触发条件、配对状态、恢复方式、示例 payload）位于 [MCP 错误目录](/zh/mcp-error-catalog)。几个高频要点：
 
 - **401 + `-32001`** 携带一个 `WWW-Authenticate` 头，其 `resource_metadata` 指向 `/.well-known/oauth-protected-resource`。支持 RFC 9728 的客户端会在此头上自动重新运行 OAuth 流程。
-- **403 + `-32002`** 是终止性授权结果，例如订阅已失效或当前工具需要升级。它不携带 `WWW-Authenticate`；重新运行 OAuth 无法修复此状态。
+- **403 + `-32002`** 是已经发出的终止性权益拒绝。`lapsed-subscription` 只会在罕见竞态中出现：服务方确认的失效在 Pro 调用预检查通过后、执行中途才落地；若预检查时已经确认覆盖期结束，OAuth 身份会改走受限、按额度计量的 `free_account` 路径。`upgrade-required` 表示免费账户调用了订阅工具，或不具备免费账户资格的非免费权益不足。该错误不携带 `WWW-Authenticate`，重新运行 OAuth 无法修复这一次已经发出的拒绝。
 - **429 + `-32029`** 是 Pro 每日上限（`Retry-After: <距离 UTC 午夜的秒数>`）。每分钟速率限制在 HTTP 200 内返回 `-32029`，而不是 429 —— 区别请见错误目录。
 - **Soft envelope 返回 HTTP 200** 且没有 JSON-RPC `error` 字段 —— 仅检查 JSON-RPC 层的客户端会静默地将它们视为成功。务必解析 `result.content[0].text` 并在将 payload 当作数据消费前检查带前导下划线的判别 key（`_budget_exceeded`、`_jmespath_error`）。
 

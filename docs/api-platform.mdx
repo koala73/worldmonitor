@@ -161,11 +161,11 @@ Settings-UI revocation of one Pro MCP token. Requires a Clerk session; the user 
 
 ## Operational endpoints
 
-Internal ops surfaces — anonymous but origin-gated to WorldMonitor origins (other origins get a plain `403 Forbidden`), and not part of the public API contract.
+These anonymous internal-operations surfaces are not part of the public API contract. `/api/analytics-health` and `/api/correlation-runtime-mode` are origin-gated to WorldMonitor origins (other origins get a plain `403 Forbidden`). `/api/security/report` is the bounded, wildcard-CORS exception described below.
 
 ### `POST /api/security/report`
 
-Browser Reporting API sink for COOP/COEP violation reports (wired via the site-wide `Reporting-Endpoints: wm-coop-coep="/api/security/report"` header). Accepts `application/reports+json` / `application/report+json` / `application/json` (else `415`), bodies up to 32 KiB (else `413`), and always answers `204` with no body. Report URLs are reduced to origins before logging — no query strings or tokens are retained.
+Anonymous browser Reporting API sink for COOP/COEP violation reports (wired via the site-wide `Reporting-Endpoints: wm-coop-coep="/api/security/report"` header). It intentionally uses wildcard CORS (`Access-Control-Allow-Origin: *`) rather than the operational origin guard. It accepts `application/reports+json` / `application/report+json` / `application/json` (else `415`), bodies up to 32 KiB (else `413`), applies the shared per-IP limiter, and answers successful reports with `204` and no body. Report URLs are reduced to origins before logging — no query strings or tokens are retained.
 
 ### `POST /api/analytics-health`
 

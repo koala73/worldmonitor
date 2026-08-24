@@ -52,13 +52,14 @@ WorldMonitor 在 Railway 上为每个用户生成情报简报，将每一期存�
 
 ## 轮播（社交媒体图片）
 
-### `GET /api/brief/carousel/{userId}/{issueSlot}/{page}.png`
+### `GET /api/brief/carousel/{userId}/{issueDate}/{page}.png?t={token}`
 
-服务器渲染的简报 PNG 页面（`page` = 1..N），用于 Telegram `sendMediaGroup`、Slack `chat.postMessage`、LinkedIn 等。
+服务器渲染的简报 PNG 页面，用于 Telegram `sendMediaGroup`、Slack `chat.postMessage`、LinkedIn 等。
 
-- 通过 `@resvg/resvg-js` 及捆绑的 Linux 原生绑定渲染。
-- `Content-Type: image/png`，1080×1350（4:5 竖版）。
-- 不设门禁 — 使用 HMAC 签名的路径作为能力凭证。
+- `page` 只能是 **0、1 或 2**，分别表示 `cover`、`threads`和 `story`；其他值返回 `404 invalid_page`。
+- 通过 `@vercel/og` 渲染。
+- `Content-Type: image/png`，1200×630。
+- HMAC 能力令牌必须放在 `?t=` 查询参数中；缺失或无效令牌均返回 `403`。
 
 ## 辅助
 
