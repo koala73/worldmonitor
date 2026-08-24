@@ -430,6 +430,69 @@ function polymarketPlugin(): Plugin {
   };
 }
 
+const LEGACY_EDGE_API_MODULES = new Map([
+  ['/api/bootstrap', '/api/bootstrap.js'],
+  ['/api/correlation-runtime-mode', '/api/correlation-runtime-mode.js'],
+  ['/api/geo', '/api/geo.js'],
+  ['/api/health', '/api/health.js'],
+  ['/api/product-catalog', '/api/product-catalog.js'],
+  ['/api/wm-session', '/api/wm-session.js'],
+]);
+
+/**
+ * Execute the flat Edge functions needed by the dashboard during local dev.
+ *
+ * Vite otherwise treats these URLs as source modules and returns transformed
+ * JavaScript with a 200 status. Browser callers then try to parse that source
+ * as JSON, which makes healthy cached datasets look unavailable locally.
+ */
+function legacyEdgeApiPlugin(): Plugin {
+  return {
+    name: 'legacy-edge-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url) return next();
+        const url = new URL(req.url, 'http://localhost');
+        const modulePath = LEGACY_EDGE_API_MODULES.get(url.pathname);
+        if (!modulePath) return next();
+
+        try {
+          const edgeModule = await server.ssrLoadModule(modulePath) as {
+            default: (
+              request: Request,
+              context: { waitUntil: (promise: Promise<unknown>) => void },
+            ) => Response | Promise<Response>;
+          };
+          const port = server.config.server.port || 3000;
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (typeof value === 'string') headers.set(key, value);
+            else if (Array.isArray(value)) headers.set(key, value.join(', '));
+          }
+          const request = new Request(new URL(req.url, `http://localhost:${port}`), {
+            method: req.method,
+            headers,
+          });
+          const response = await edgeModule.default(request, {
+            waitUntil(promise) {
+              void promise.catch((error) => console.error('[legacy-edge-api] waitUntil error:', error));
+            },
+          });
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(await response.text());
+        } catch (error) {
+          console.error(`[legacy-edge-api] ${url.pathname} error:`, error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Local API execution failed' }));
+        }
+      });
+    },
+  };
+}
+
 /**
  * Vite dev server plugin for sebuf API routes.
  *
@@ -938,6 +1001,7 @@ export default defineConfig(({ mode }) => {
       rssProxyPlugin(),
       youtubeLivePlugin(),
       gpsjamDevPlugin(),
+      legacyEdgeApiPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
       VitePWA({
