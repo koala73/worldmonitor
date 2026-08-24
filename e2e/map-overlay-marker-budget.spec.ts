@@ -32,6 +32,7 @@ type HarnessWindow = Window & {
   __mobileMapIntegrationHarness?: {
     ready: boolean;
     seedOverlayMarkerStress: (perFeed: number) => void;
+    seedTimeFilteredEarthquakes: (recent: number, stale: number) => void;
     getOverlayMarkerCount: () => number;
     getOverlayMarkerClassCount: (selector: string) => number;
     getOverlayBudgetState: () => BudgetState;
@@ -176,5 +177,47 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
       .filter((value) => Number.isFinite(value));
     expect(magnitudes.length).toBeGreaterThan(0);
     expect(Math.min(...magnitudes)).toBeGreaterThan(1.5);
+  });
+  test('budgets the time-filtered slice, not the whole feed', async ({ page }) => {
+    await page.goto('/tests/mobile-map-integration-harness.html');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    // 40 recent low-magnitude events behind 2,000 stale high-magnitude ones.
+    // The render loop only draws the 40; a budget planned over the unfiltered
+    // 2,040 would rank the stale ones first, spend its whole share on them and
+    // draw a handful of the 40 — or none.
+    const RECENT = 40;
+    await page.evaluate(
+      (recent) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedTimeFilteredEarthquakes(
+          recent,
+          2000,
+        ),
+      RECENT,
+    );
+
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayMarkerClassCount(
+              '.earthquake-marker',
+            ),
+          ),
+        { timeout: 15000 },
+      )
+      .toBe(RECENT);
+
+    // Nothing was withheld: 40 in-window events sit well under the per-group cap.
+    const state = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState(),
+    );
+    expect(state.truncated.natural).toBeUndefined();
   });
 });

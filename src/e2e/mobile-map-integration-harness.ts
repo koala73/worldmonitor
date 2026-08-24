@@ -11,6 +11,7 @@ type MobileMapIntegrationHarness = {
   getInitialDynamicRendered: () => boolean;
   getWrapperTransform: () => string;
   seedOverlayMarkerStress: (perFeed: number) => void;
+  seedTimeFilteredEarthquakes: (recent: number, stale: number) => void;
   getOverlayMarkerCount: () => number;
   getOverlayMarkerClassCount: (selector: string) => number;
   getOverlayBudgetState: () => { rendered: number; truncated: Record<string, { shown: number; total: number }> };
@@ -310,6 +311,33 @@ window.__mobileMapIntegrationHarness = {
     map.setMilitaryFlights(flights as never, []);
     map.setEarthquakes(quakes as never);
     map.render();
+  },
+  // #7112: the budget plan must be computed over the SAME time-filtered slice
+  // the render loop iterates. The stale events here carry the HIGHEST
+  // magnitudes, so a plan that ranked the unfiltered feed would spend its whole
+  // fair share on events the 24h filter then discards.
+  seedTimeFilteredEarthquakes: (recent: number, stale: number) => {
+    const now = Date.now();
+    const quakes = [
+      ...Array.from({ length: stale }, (_, index) => ({
+        id: `stale-quake-${index}`,
+        magnitude: 6 + (index % 30) / 100,
+        place: `Stale Quake ${index}`,
+        occurredAt: now - 30 * 24 * 60 * 60 * 1000,
+        location: { latitude: ((index * 7) % 170) - 85, longitude: ((index * 13) % 358) - 179 },
+      })),
+      ...Array.from({ length: recent }, (_, index) => ({
+        id: `recent-quake-${index}`,
+        magnitude: 1 + (index % 30) / 100,
+        place: `Recent Quake ${index}`,
+        occurredAt: now - 60 * 1000,
+        location: { latitude: ((index * 11) % 170) - 85, longitude: ((index * 17) % 358) - 179 },
+      })),
+    ];
+    const mapInternals = map as unknown as { state: { layers: Record<string, boolean> } };
+    mapInternals.state.layers.natural = true;
+    map.setEarthquakes(quakes as never);
+    map.setTimeRange('24h');
   },
   getOverlayMarkerCount: () =>
     document.getElementById('mapOverlays')?.childElementCount ?? -1,

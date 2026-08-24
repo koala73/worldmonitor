@@ -1743,7 +1743,51 @@ export class MapComponent {
    * a layer it can see. The plan is stored as the set of markers to WITHHOLD, so
    * a feed absent from the plan renders in full rather than disappearing.
    */
-  private planOverlayMarkerBudget(projection: d3.GeoProjection): void {
+  /**
+   * The exact slice of each filtered feed that `renderOverlays` will draw.
+   *
+   * The budget plan and the render loops MUST agree on these (#7112). Planning
+   * on the unfiltered field instead would let the budget spend its fair share
+   * on markers the loop then filters away: a 24-hour time filter over a
+   * 2,000-event earthquake feed would keep the 300 largest of all time, most of
+   * them outside the window, and render a fraction of what the ceiling allows.
+   */
+  private overlayFeedSlices(): {
+    quakes: readonly Earthquake[];
+    iranEvents: readonly IranEvent[];
+    aircraft: readonly PositionSample[];
+    protests: readonly SocialUnrestEvent[];
+    conflictEvents: readonly AcledConflictEvent[];
+  } {
+    const withinTimeRange = <T extends { occurredAt: number }>(items: readonly T[]): readonly T[] => (
+      this.state.timeRange === 'all'
+        ? items
+        : items.filter((item) => item.occurredAt >= Date.now() - this.getTimeRangeMs())
+    );
+    const filteredQuakes = withinTimeRange(this.earthquakes);
+    return {
+      quakes: this.isMobile
+        ? filteredQuakes.filter((eq) => eq.magnitude >= MapComponent.MOBILE_MIN_EARTHQUAKE_MAGNITUDE)
+        : filteredQuakes,
+      iranEvents: this.isMobile
+        ? this.iranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
+        : this.iranEvents,
+      // Already capped at 200 by the render loop; planned on the same slice so
+      // the budget cannot spend share on the 201st position onwards.
+      aircraft: this.aircraftPositions.slice(0, 200),
+      // Only riots and high-severity unrest reach the map; the rest stay in the
+      // CII analysis. Budgeting the full feed would cut the ones that render.
+      protests: this.protests.filter(
+        (event) => event.eventType === 'riot' || event.severity === 'high',
+      ),
+      conflictEvents: withinTimeRange(this.conflictEvents),
+    };
+  }
+
+  private planOverlayMarkerBudget(
+    projection: d3.GeoProjection,
+    slices: ReturnType<MapComponent['overlayFeedSlices']>,
+  ): void {
     const groups: GlobeMarkerGroup<unknown>[] = [];
     const add = (
       layer: string,
@@ -1767,17 +1811,17 @@ export class MapComponent {
     if (layers.irradiators) add('irradiators', GAMMA_IRRADIATORS);
     if (layers.conflicts) {
       add('conflicts', CONFLICT_ZONES);
-      add('conflicts', this.conflictEvents, { rank: (m) => (m as AcledConflictEvent).fatalities ?? 0 });
+      add('conflicts', slices.conflictEvents, { rank: (m) => (m as AcledConflictEvent).fatalities ?? 0 });
     }
     // Planned on the whole feed rather than the mobile-trimmed slice the loop
     // iterates. The trim only ever removes markers, so planning the superset
     // can render fewer than the cap but never more — and both feeds rank so the
     // markers the trim keeps are the ones the budget keeps too.
-    if (layers.iranAttacks) add('iranAttacks', this.iranEvents);
+    if (layers.iranAttacks) add('iranAttacks', slices.iranEvents);
     if (layers.hotspots) add('hotspots', this.hotspots);
     if (this.isLayerZoomVisible('bases')) add('bases', this.getMilitaryBasesForRender());
     if (layers.natural) {
-      add('natural', this.earthquakes, { rank: (m) => (m as Earthquake).magnitude ?? 0 });
+      add('natural', slices.quakes, { rank: (m) => (m as Earthquake).magnitude ?? 0 });
       add('natural', this.naturalEvents);
     }
     if (layers.economic) add('economic', ECONOMIC_CENTERS);
@@ -1800,10 +1844,10 @@ export class MapComponent {
     if (layers.financialCenters) add('financialCenters', FINANCIAL_CENTERS);
     if (layers.centralBanks) add('centralBanks', CENTRAL_BANKS);
     if (layers.commodityHubs) add('commodityHubs', COMMODITY_HUBS);
-    if (layers.protests) add('protests', this.protests);
+    if (layers.protests) add('protests', slices.protests);
     if (layers.flights) {
       add('flights', this.flightDelays);
-      add('flights', this.aircraftPositions);
+      add('flights', slices.aircraft);
     }
     if (layers.military) {
       add('military', this.militaryFlights);
@@ -1922,7 +1966,8 @@ export class MapComponent {
   private renderOverlays(projection: d3.GeoProjection): void {
     setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
     this.labelVisibilityScheduled = false;
-    this.planOverlayMarkerBudget(projection);
+    const slices = this.overlayFeedSlices();
+    this.planOverlayMarkerBudget(projection, slices);
     const fragment = document.createDocumentFragment();
     const previousTarget = this.overlayAppendTarget;
     this.overlayAppendTarget = fragment;
@@ -2029,15 +2074,12 @@ export class MapComponent {
 
         this.appendOverlay(clickArea);
       });
-      this.renderConflictEventMarkers(projection);
+      this.renderConflictEventMarkers(projection, slices.conflictEvents);
     }
 
     // Iran events (severity-colored circles matching DeckGL layer)
     if (this.state.layers.iranAttacks && this.iranEvents.length > 0) {
-      const iranEventsForRender = this.isMobile
-        ? this.iranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
-        : this.iranEvents;
-      iranEventsForRender.forEach((ev) => {
+      slices.iranEvents.forEach((ev) => {
         if (this.isOverlayMarkerCut(ev)) return;
         const pos = projection([ev.longitude, ev.latitude]);
         if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return;
@@ -2140,12 +2182,7 @@ export class MapComponent {
     // Earthquakes (magnitude-based sizing) - part of NATURAL layer
     if (this.state.layers.natural) {
       console.log('[Map] Rendering earthquakes. Total:', this.earthquakes.length, 'Layer enabled:', this.state.layers.natural);
-      const filteredQuakes = this.state.timeRange === 'all'
-        ? this.earthquakes
-        : this.earthquakes.filter((eq) => eq.occurredAt >= Date.now() - this.getTimeRangeMs());
-      const quakesForRender = this.isMobile
-        ? filteredQuakes.filter((eq) => eq.magnitude >= MapComponent.MOBILE_MIN_EARTHQUAKE_MAGNITUDE)
-        : filteredQuakes;
+      const quakesForRender = slices.quakes;
       console.log('[Map] After time/mobile filter:', quakesForRender.length, 'earthquakes. TimeRange:', this.state.timeRange);
       let rendered = 0;
       quakesForRender.forEach((eq) => {
@@ -2984,11 +3021,7 @@ export class MapComponent {
     // Protests / Social Unrest Events (severity colors + icons) - with clustering
     // Filter to show only significant events on map (all events still used for CII analysis)
     if (this.state.layers.protests) {
-      const significantProtests = this.keepBudgetedMarkers(this.protests).filter((event) => {
-        // Only show riots and high severity (red markers)
-        // All protests still counted in CII analysis
-        return event.eventType === 'riot' || event.severity === 'high';
-      });
+      const significantProtests = this.keepBudgetedMarkers(slices.protests);
 
       const clusterRadius = this.state.zoom >= 4 ? 12 : this.state.zoom >= 3 ? 20 : 35;
       const clusters = this.clusterMarkers(significantProtests, projection, clusterRadius, p => p.country);
@@ -3093,7 +3126,7 @@ export class MapComponent {
 
     // Aircraft positions (simplified dots in SVG fallback, limited to 200)
     if (this.state.layers.flights) {
-      this.aircraftPositions.slice(0, 200).forEach((ac) => {
+      slices.aircraft.forEach((ac) => {
         if (this.isOverlayMarkerCut(ac)) return;
         const pt = projection([ac.lon, ac.lat]);
         if (!pt) return;
@@ -3464,11 +3497,11 @@ export class MapComponent {
     }, MapComponent.MARKER_SETTLE_MS);
   }
 
-  private renderConflictEventMarkers(projection: d3.GeoProjection): void {
-    const budgetedEvents = this.keepBudgetedMarkers(this.conflictEvents);
-    const visibleEvents = this.state.timeRange === 'all'
-      ? budgetedEvents
-      : budgetedEvents.filter((event) => event.occurredAt >= Date.now() - this.getTimeRangeMs());
+  private renderConflictEventMarkers(
+    projection: d3.GeoProjection,
+    conflictEvents: readonly AcledConflictEvent[],
+  ): void {
+    const visibleEvents = this.keepBudgetedMarkers(conflictEvents);
     const clusters = this.clusterMarkers(
       visibleEvents
         .map((event) => ({
