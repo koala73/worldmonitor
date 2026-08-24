@@ -10,7 +10,7 @@
 import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { GetFredSeriesResponse, GetFredSeriesBatchResponse, ListWorldBankIndicatorsResponse, WorldBankCountryData as ProtoWorldBankCountryData, GetEnergyPricesResponse, EnergyPrice as ProtoEnergyPrice, GetEnergyCapacityResponse, GetBisPolicyRatesResponse, GetBisExchangeRatesResponse, GetBisCreditResponse, GetChinaMacroSnapshotResponse, BisPolicyRate, BisExchangeRate, BisCreditToGdp, GetNationalDebtResponse, NationalDebtEntry, GetBlsSeriesResponse, GetCrudeInventoriesResponse, CrudeInventoryWeek, GetNatGasStorageResponse, NatGasStorageWeek, GetEcbFxRatesResponse, EcbFxRate, GetEuGasStorageResponse, EuGasStorageHistoryEntry, GetEurostatCountryDataResponse, EurostatCountryEntry, GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica } from '@/generated/client/worldmonitor/economic/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
@@ -417,7 +417,11 @@ export type { CrudeInventoryWeek };
 export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyCrudeFallback;
   const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
-  if (hydrated?.weeks?.length) return hydrated;
+  if (hydrated?.weeks?.length) {
+    crudeBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
+
   try {
     return await crudeBreaker.execute(async () => {
       return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });
@@ -436,7 +440,11 @@ export type { NatGasStorageWeek };
 export async function fetchNatGasStorageRpc(): Promise<GetNatGasStorageResponse> {
   if (!isFeatureAvailable('energyEia')) return emptyNatGasFallback;
   const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
-  if (hydrated?.weeks?.length) return hydrated;
+  if (hydrated?.weeks?.length) {
+    natGasBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
+
   try {
     return await natGasBreaker.execute(async () => {
       return client.getNatGasStorage({}, { signal: AbortSignal.timeout(20_000) });
@@ -781,7 +789,11 @@ export async function getChinaMacroSnapshotData(): Promise<GetChinaMacroSnapshot
 
 export async function getBisCreditData(): Promise<GetBisCreditResponse> {
   const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
-  if (hydrated?.entries?.length) return hydrated;
+  if (hydrated?.entries?.length) {
+    bisCreditBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
+
   try {
     return await bisCreditBreaker.execute(
       () => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }),
@@ -799,6 +811,14 @@ export async function fetchBisData(): Promise<BisData> {
   const hPolicy = getHydratedData('bisPolicy') as GetBisPolicyRatesResponse | undefined;
   const hEer = getHydratedData('bisExchange') as GetBisExchangeRatesResponse | undefined;
   const hCredit = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
+
+  // Warm the three breakers with the accepted hydration so a later recurring
+  // fetchBisData/getBisCreditData reads them from cache instead of refetching
+  // (#7048). The same acceptance guards as the Promise.resolve fast paths
+  // below mirror each breaker's shouldCache.
+  if (hPolicy?.rates?.length) bisPolicyBreaker.recordSuccess(hPolicy);
+  if (hEer?.rates?.length) bisEerBreaker.recordSuccess(hEer);
+  if (hCredit?.entries?.length) bisCreditBreaker.recordSuccess(hCredit);
 
   // BIS WS_CBPOL has no Russia (scripts/seed-bis-data.mjs covers 12 banks and the
   // CBR is not one), so the key rate comes from its own seeder and is appended to
@@ -835,7 +855,10 @@ const emptyEcbFxRatesFallback: GetEcbFxRatesResponse = { rates: [], updatedAt: '
 
 export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
   const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
-  if (hydrated?.rates?.length) return hydrated;
+  if (hydrated?.rates?.length) {
+    ecbFxRatesBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await ecbFxRatesBreaker.execute(
@@ -914,7 +937,10 @@ export type { GetEuGasStorageResponse, EuGasStorageHistoryEntry };
 
 export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
   const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
-  if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) return hydrated;
+  if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) {
+    euGasBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await euGasBreaker.execute(
@@ -935,7 +961,10 @@ export type { GetEurostatCountryDataResponse, EurostatCountryEntry };
 
 export async function getEurostatCountryData(): Promise<GetEurostatCountryDataResponse> {
   const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
-  if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) return hydrated;
+  if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) {
+    eurostatBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await eurostatBreaker.execute(
@@ -956,7 +985,10 @@ export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRe
 
 export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
   const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
-  if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) return hydrated;
+  if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) {
+    oilStocksAnalysisBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await oilStocksAnalysisBreaker.execute(

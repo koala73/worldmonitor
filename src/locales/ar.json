@@ -3068,7 +3068,11 @@
       "heading": "الاتجاه",
       "hexCode": "الرمز السداسي",
       "squawk": "رمز الاستجابة",
-      "attribution": "المصدر: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "المصدر: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "معدل الارتفاع",
+      "manufacturer": "الشركة المصنعة",
+      "owner": "المالك",
+      "builtYear": "سنة الصنع"
     },
     "militaryVessel": {
       "aisDark": "AIS مظلم",
@@ -3113,7 +3117,8 @@
       "moreVessels": "+{{count}} سفينة إضافية",
       "vesselsCount": "{{count}} سفينة",
       "vessels": "سفن",
-      "trackedVessels": "سفن مُتتبَّعة"
+      "trackedVessels": "سفن مُتتبَّعة",
+      "showLess": "عرض أقل"
     },
     "naturalEvent": {
       "closed": "مغلق",
@@ -3410,7 +3415,9 @@
     "fontFamily": "عائلة الخط",
     "fontFamilyDesc": "خط أحادي المسافة للمظهر التقني، أو الخط الافتراضي للقراءة الأسهل.",
     "fontMono": "أحادي المسافة",
-    "fontSystem": "الخط الافتراضي"
+    "fontSystem": "الخط الافتراضي",
+    "panelFontScale": "حجم النص",
+    "followGlobalFontScale": "استخدام الحجم العام"
   },
   "contextMenu": {
     "openCountryBrief": "فتح ملخص البلد",

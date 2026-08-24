@@ -3004,7 +3004,11 @@
       "heading": "ПОСОКА",
       "hexCode": "HEX КОД",
       "squawk": "SQUAWK",
-      "attribution": "Източник: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Източник: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "СКОРОСТ НА ИЗДИГАНЕ",
+      "manufacturer": "ПРОИЗВОДИТЕЛ",
+      "owner": "СОБСТВЕНИК",
+      "builtYear": "ГОДИНА НА ПРОИЗВОДСТВО"
     },
     "militaryVessel": {
       "aisDark": "AIS ТЪМНО",
@@ -3049,7 +3053,8 @@
       "moreVessels": "+{{count}} още кораби",
       "vesselsCount": "{{count}} КОРАБИ",
       "vessels": "КОРАБИ",
-      "trackedVessels": "ПРОСЛЕДЕНИ КОРАБИ"
+      "trackedVessels": "ПРОСЛЕДЕНИ КОРАБИ",
+      "showLess": "Покажи по-малко"
     },
     "naturalEvent": {
       "closed": "ЗАТВОРЕНА",
@@ -3338,7 +3343,9 @@
     "fontFamily": "Семейство шрифтове",
     "fontFamilyDesc": "Монопространствен за технически вид, системен по подразбиране за по-лесно четене.",
     "fontMono": "Монопространствен",
-    "fontSystem": "Системен по подразбиране"
+    "fontSystem": "Системен по подразбиране",
+    "panelFontScale": "Размер на текста",
+    "followGlobalFontScale": "Използвай глобален размер"
   },
   "contextMenu": {
     "openCountryBrief": "Отвори обзор на страната",

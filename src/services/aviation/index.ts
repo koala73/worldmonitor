@@ -327,7 +327,17 @@ function toDisplayDatePrice(p: ProtoDatePriceEntry): DatePrice {
 // this same client (delays, ops summary, news, tracking) are unaffected.
 const client = new AviationServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
-const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({ name: 'Flight Delays v2', cacheTtlMs: 2 * 60 * 60 * 1000, persistCache: true });
+const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({
+  name: 'Flight Delays v2',
+  cacheTtlMs: 2 * 60 * 60 * 1000,
+  persistCache: true,
+  revivePersistedData: (alerts) => alerts.map((alert) => ({
+    ...alert,
+    updatedAt: alert.updatedAt instanceof Date
+      ? alert.updatedAt
+      : new Date(alert.updatedAt as unknown as string | number),
+  })),
+});
 const breakerOps = createCircuitBreaker<AirportOpsSummary[]>({ name: 'Airport Ops', cacheTtlMs: 6 * 60 * 1000, persistCache: true });
 const breakerFlights = createCircuitBreaker<FlightInstance[]>({ name: 'Airport Flights', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
 const breakerCarrier = createCircuitBreaker<CarrierOps[]>({ name: 'Carrier Ops', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
@@ -344,12 +354,18 @@ const breakerGoogleDates = createCircuitBreaker<GoogleDatesResult>({ name: 'Goog
 
 export async function fetchFlightDelays(): Promise<AirportDelayAlert[]> {
   const hydrated = getHydratedData('flightDelays') as { alerts?: ProtoAlert[] } | undefined;
-  if (hydrated?.alerts?.length) return hydrated.alerts.map(toDisplayAlert);
-
-  const onDemand = await ensureHydrated('flightDelays') as { alerts?: ProtoAlert[] } | undefined;
-  if (onDemand?.alerts?.length) return onDemand.alerts.map(toDisplayAlert);
+  if (hydrated?.alerts?.length) {
+    // Warm the delays breaker under the same key a later recurring call reads
+    // (#7048); the non-empty guard mirrors its shouldCache.
+    const alerts = hydrated.alerts.map(toDisplayAlert);
+    breakerDelays.recordSuccess(alerts);
+    return alerts;
+  }
 
   return breakerDelays.execute(async () => {
+    const onDemand = await ensureHydrated('flightDelays') as { alerts?: ProtoAlert[] } | undefined;
+    if (onDemand?.alerts?.length) return onDemand.alerts.map(toDisplayAlert);
+
     const r = await client.listAirportDelays({ region: 'AIRPORT_REGION_UNSPECIFIED', minSeverity: 'FLIGHT_DELAY_SEVERITY_UNSPECIFIED', pageSize: 0, cursor: '' });
     return r.alerts.map(toDisplayAlert);
   }, [], { shouldCache: (r) => r.length > 0 });

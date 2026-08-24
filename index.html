@@ -502,7 +502,7 @@
       var attempted=false;
       try{if(sessionStorage.getItem(key))return}catch(e){}
       window.addEventListener('error',function(e){
-        var u=e.target&&(e.target.src||e.target.href)||'';
+        var t=e.target;var u=t&&(t.tagName==="SCRIPT"||t.tagName==="LINK")&&(t.src||t.href)||'';
         if(u&&/\/assets\//.test(u)){
           try{sessionStorage.setItem(key,'1')}catch(err){if(attempted)return;attempted=true}
           navigator.serviceWorker.getRegistrations().then(function(regs){

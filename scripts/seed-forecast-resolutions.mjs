@@ -737,7 +737,14 @@ function truncateText(value, maxLength) {
 function toFiniteMs(value) {
   if (value == null || value === '') return undefined;
   const numeric = Number(value);
-  if (Number.isFinite(numeric)) return numeric > 0 && numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  if (Number.isFinite(numeric)) {
+    // Epoch-seconds heuristic needs a plausibility FLOOR, not just > 0:
+    // bare calendar years (2026) and small offsets are otherwise multiplied
+    // into 1970-era ms. 1e9 s = 2001-09 - no tracked feed predates it.
+    if (numeric >= 1_000_000_000_000) return numeric;
+    if (numeric > 1_000_000_000 && numeric < 1_000_000_000_000) return numeric * 1000;
+    return undefined;
+  }
   const parsed = Date.parse(String(value));
   return Number.isFinite(parsed) ? parsed : undefined;
 }

@@ -165,9 +165,7 @@
       "energyMix": "電源構成",
       "coal": "石炭",
       "noMajorDisruptions": "重大な障害は報告されていません",
-      "activeDisruptions_one": "{{count}}件のアクティブな障害",
       "activeDisruptions_other": "{{count}}件のアクティブな障害",
-      "activeSignals_one": "{{count}}件のアクティブなシグナル",
       "activeSignals_other": "{{count}}件のアクティブなシグナル",
       "aviationSource": "航空モニタリング",
       "hazardSource": "国別インテリジェンスシグナル",
@@ -1404,7 +1402,6 @@
       "clusters": "クラスター",
       "alertsLabel": "アラート",
       "alert": "アラート",
-      "sources_one": "{{count}} ソース",
       "sources_other": "{{count}} ソース",
       "briefTech": "テック速報",
       "briefCommodity": "商品速報",
@@ -2036,17 +2033,12 @@
       },
       "time": {
         "justNow": "たった今",
-        "hoursAgo_one": "{{count}}時間前",
         "hoursAgo_other": "{{count}}時間前",
-        "daysAgo_one": "{{count}}日前",
         "daysAgo_other": "{{count}}日前"
       },
       "filters": {
-        "alert_one": "{{count}} アラート",
         "alert_other": "{{count}} アラート",
-        "warning_one": "{{count}} 警告",
         "warning_other": "{{count}} 警告",
-        "watch_one": "{{count}} 監視",
         "watch_other": "{{count}} 監視"
       },
       "errors": {
@@ -2209,7 +2201,6 @@
       "rationale": "根拠:",
       "driver": "ドライバー:",
       "appliesToNext": "次のAI再生成に適用",
-      "signals_one": "{{count}}シグナル",
       "signals_other": "{{count}}シグナル",
       "disclaimer": "AI生成トレードシグナルは情報提供のみを目的としています。投資助言ではありません。常に独自の調査を行ってください。",
       "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。"
@@ -2440,7 +2431,6 @@
         "new": "新規",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}}件の指定",
       "designations_other": "{{count}}件の指定",
       "fallbacks": {
         "unattributed": "未帰属",
@@ -2478,9 +2468,7 @@
         "updated": "更新 {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}時間前",
         "hoursAgo_other": "{{count}}時間前",
-        "daysAgo_one": "{{count}}日前",
         "daysAgo_other": "{{count}}日前"
       },
       "confidence": {
@@ -2510,7 +2498,6 @@
     "correlation": {
       "loading": "データを待機中...",
       "empty": "アクティブな収束は検出されていません",
-      "signals_one": "{{count}} シグナル",
       "signals_other": "{{count}} シグナル",
       "analyzing": "分析中...",
       "viewOnMap": "地図で表示"
@@ -2537,16 +2524,11 @@
         "industrial": "産業",
         "strategic": "戦略的"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
       "sources_other": "{{count}} src",
       "age": {
-        "minutesAgo_one": "{{count}}m前",
         "minutesAgo_other": "{{count}}m前",
-        "hoursAgo_one": "{{count}}h前",
         "hoursAgo_other": "{{count}}h前",
-        "daysAgo_one": "{{count}}d前",
         "daysAgo_other": "{{count}}d前"
       }
     },
@@ -3004,7 +2986,11 @@
       "heading": "方位",
       "hexCode": "HEXコード",
       "squawk": "スコーク",
-      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "上昇率",
+      "manufacturer": "製造元",
+      "owner": "所有者",
+      "builtYear": "製造年"
     },
     "militaryVessel": {
       "aisDark": "AIS消失",
@@ -3049,7 +3035,8 @@
       "moreVessels": "+{{count}}隻の追加艦艇",
       "vesselsCount": "{{count}}隻",
       "vessels": "艦艇",
-      "trackedVessels": "追跡中の艦艇"
+      "trackedVessels": "追跡中の艦艇",
+      "showLess": "表示を減らす"
     },
     "naturalEvent": {
       "closed": "終了",
@@ -3338,7 +3325,9 @@
     "fontFamily": "フォントファミリー",
     "fontFamilyDesc": "テクニカルな見た目にはモノスペース、より読みやすくするにはシステムデフォルトを選択できます。",
     "fontMono": "モノスペース",
-    "fontSystem": "システムデフォルト"
+    "fontSystem": "システムデフォルト",
+    "panelFontScale": "テキストサイズ",
+    "followGlobalFontScale": "グローバル設定を使用"
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",

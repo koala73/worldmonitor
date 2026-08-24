@@ -3014,7 +3014,11 @@
       "heading": "ROTTA",
       "hexCode": "CODICE ESAGONALE",
       "squawk": "SQUAWK",
-      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "VELOCITÀ DI SALITA",
+      "manufacturer": "PRODUTTORE",
+      "owner": "PROPRIETARIO",
+      "builtYear": "ANNO DI COSTRUZIONE"
     },
     "militaryVessel": {
       "aisDark": "AIS OSCURO",
@@ -3059,7 +3063,8 @@
       "moreVessels": "+{{count}} altre navi",
       "vesselsCount": "{{count}} VASI",
       "vessels": "VASI",
-      "trackedVessels": "NAVI CINGOLATE"
+      "trackedVessels": "NAVI CINGOLATE",
+      "showLess": "Mostra meno"
     },
     "naturalEvent": {
       "closed": "CHIUSO",
@@ -3356,7 +3361,9 @@
     "fontFamily": "Famiglia di Caratteri",
     "fontFamilyDesc": "Monospace per un aspetto tecnico, predefinito di sistema per una lettura più agevole.",
     "fontMono": "Monospace",
-    "fontSystem": "Predefinito di Sistema"
+    "fontSystem": "Predefinito di Sistema",
+    "panelFontScale": "Dimensione testo",
+    "followGlobalFontScale": "Usa globale"
   },
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",

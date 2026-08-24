@@ -90,6 +90,7 @@ const FORECAST_DEEP_TASK_QUEUE_KEY = 'forecast:deep-task-queue:v1';
 const FORECAST_DEEP_LOCK_KEY_PREFIX = 'forecast:deep-lock:v1';
 const FORECAST_DEEP_TASK_TTL_SECONDS = 30 * 60;
 const FORECAST_DEEP_LOCK_TTL_SECONDS = 20 * 60;
+const FORECAST_DEEP_LOCK_HEARTBEAT_INTERVAL_MS = Math.floor((FORECAST_DEEP_LOCK_TTL_SECONDS * 1000) / 3);
 const FORECAST_DEEP_POLL_INTERVAL_MS = 30 * 1000;
 const FORECAST_DEEP_MAX_CANDIDATES = 3;
 const FORECAST_DEEP_RUN_PREFIX = 'seed-data/forecast-traces';
@@ -112,6 +113,7 @@ const SIM_LOCK_STATUS_EXPIRED = 'EXPIRED';
 const SIM_LOCK_STATUS_OWNED_BY_OTHER = 'OWNED_BY_OTHER';
 const SIM_TASK_COMPLETE_STATUS_COMPLETED = 'COMPLETED';
 const SIM_TASK_COMPLETE_STATUS_MISSING_WORKER = 'MISSING_WORKER';
+const DEEP_LOCK_STATUS_RENEW_FAILED = 'RENEW_FAILED';
 const SIMULATION_POLL_INTERVAL_MS = 30 * 1000;
 const PUBLISH_MIN_PROBABILITY = 0;
 // Publish-selection lift for hard-resolvable forecasts (helps the canonical set
@@ -13525,18 +13527,177 @@ async function claimDeepForecastTask(runId, workerId) {
   return task;
 }
 
-async function completeDeepForecastTask(runId) {
-  if (!runId) return;
-  const { url, token } = getRedisCredentials();
-  await redisCommand(url, token, ['ZREM', FORECAST_DEEP_TASK_QUEUE_KEY, runId]);
-  await redisDel(url, token, buildDeepForecastTaskKey(runId));
-  await redisDel(url, token, buildDeepForecastLockKey(runId));
+// Owner-checked cleanup for the deep-forecast task queue. A worker whose
+// lock expired mid-run (FORECAST_DEEP_LOCK_TTL_SECONDS = 20 min) must not
+// delete a lock that has been re-claimed by another worker: unconditional
+// DELs let a stale worker release someone else's claim and let a third
+// worker double-run the same runId. Mirrors _SIM_TASK_COMPLETE_LUA /
+// _SIM_LOCK_RELEASE_LUA from the simulation pipeline.
+const _DEEP_TASK_COMPLETE_LUA = `
+local owner = redis.call('GET', KEYS[3])
+if not owner then return 'EXPIRED' end
+if owner ~= ARGV[1] then return 'OWNED_BY_OTHER' end
+redis.call('ZREM', KEYS[1], ARGV[2])
+redis.call('DEL', KEYS[2])
+redis.call('DEL', KEYS[3])
+return 'COMPLETED'
+`.trim();
+
+const _DEEP_LOCK_RELEASE_LUA = `
+local owner = redis.call('GET', KEYS[1])
+if not owner then return 'EXPIRED' end
+if owner ~= ARGV[1] then return 'OWNED_BY_OTHER' end
+redis.call('DEL', KEYS[1])
+return 'DELETED'
+`.trim();
+
+function logDeepForecastCleanupStatus(runId, workerId, status) {
+  if (status === 'COMPLETED' || status === 'DELETED') return;
+  if (status === 'EXPIRED') {
+    console.warn(`  [DeepForecast] Cleanup skipped for ${runId}; lock expired before cleanup (${workerId})`);
+  } else if (status === 'OWNED_BY_OTHER') {
+    console.warn(`  [DeepForecast] Cleanup skipped for ${runId}; lock owned by another worker (${workerId})`);
+  } else {
+    console.warn(`  [DeepForecast] Unexpected cleanup status ${status} for ${runId} (${workerId})`);
+  }
 }
 
-async function releaseDeepForecastTask(runId) {
-  if (!runId) return;
+async function renewDeepForecastTaskLease(runId, workerId, ttlSeconds = FORECAST_DEEP_LOCK_TTL_SECONDS) {
+  if (!runId || !workerId) return SIM_LOCK_STATUS_EXPIRED;
+  const lockKey = buildDeepForecastLockKey(runId);
   const { url, token } = getRedisCredentials();
-  await redisDel(url, token, buildDeepForecastLockKey(runId));
+  return redisCompareAndExpireLock(
+    url,
+    token,
+    lockKey,
+    workerId,
+    ttlSeconds,
+    FORECAST_DEEP_LOCK_TTL_SECONDS,
+  );
+}
+
+class DeepForecastLeaseError extends Error {
+  constructor(runId, status, cause = null) {
+    super(`Deep-forecast lease lost for ${runId}: ${status}`);
+    this.name = 'DeepForecastLeaseError';
+    this.code = 'DEEP_FORECAST_LEASE_LOST';
+    this.lockStatus = status;
+    if (cause) this.cause = cause;
+  }
+}
+
+function isDeepForecastLeaseError(error) {
+  return error instanceof DeepForecastLeaseError;
+}
+
+function createDeepForecastLeaseGuard(runId, workerId, options = {}) {
+  const heartbeatIntervalMs = Number.isFinite(options.heartbeatIntervalMs)
+    ? Math.max(1, Math.floor(options.heartbeatIntervalMs))
+    : FORECAST_DEEP_LOCK_HEARTBEAT_INTERVAL_MS;
+  const renewLease = options.renewLease
+    || (() => renewDeepForecastTaskLease(runId, workerId));
+  let stopped = false;
+  let lastStatus = SIM_LOCK_STATUS_EXTENDED;
+  let renewalError = null;
+  let renewalQueue = Promise.resolve(lastStatus);
+
+  const enqueueRenewal = () => {
+    renewalQueue = renewalQueue.then(async () => {
+      if (stopped || lastStatus !== SIM_LOCK_STATUS_EXTENDED) return lastStatus;
+      try {
+        const status = String((await renewLease()) || SIM_LOCK_STATUS_EXPIRED);
+        if (status !== SIM_LOCK_STATUS_EXTENDED) lastStatus = status;
+      } catch (error) {
+        renewalError = error;
+        lastStatus = DEEP_LOCK_STATUS_RENEW_FAILED;
+      }
+      return lastStatus;
+    });
+    return renewalQueue;
+  };
+
+  const heartbeat = setInterval(() => {
+    void enqueueRenewal();
+  }, heartbeatIntervalMs);
+  heartbeat.unref?.();
+
+  return {
+    async assertOwned() {
+      const status = await enqueueRenewal();
+      if (status !== SIM_LOCK_STATUS_EXTENDED) {
+        throw new DeepForecastLeaseError(runId, status, renewalError);
+      }
+    },
+    async stop() {
+      stopped = true;
+      clearInterval(heartbeat);
+      await renewalQueue;
+    },
+  };
+}
+
+async function completeDeepForecastTask(runId, workerId = '') {
+  if (!runId) return;
+  if (_testRedisStore) {
+    // Test path (_testRedisStore set): equivalent JavaScript logic.
+    const taskKey = buildDeepForecastTaskKey(runId);
+    const lockKey = buildDeepForecastLockKey(runId);
+    if (workerId) {
+      const owner = _testRedisStore[lockKey];
+      const status = !owner ? 'EXPIRED' : owner !== workerId ? 'OWNED_BY_OTHER' : 'COMPLETED';
+      logDeepForecastCleanupStatus(runId, workerId, status);
+      if (status !== 'COMPLETED') return;
+    }
+    removeRunIdFromDeepForecastTestQueue(runId);
+    delete _testRedisStore[taskKey];
+    delete _testRedisStore[lockKey];
+    return;
+  }
+  const { url, token } = getRedisCredentials();
+  if (!workerId) {
+    // No worker identity: legacy unconditional cleanup. Only reachable from
+    // callers that never held the claim lock.
+    await redisCommand(url, token, ['ZREM', FORECAST_DEEP_TASK_QUEUE_KEY, runId]);
+    await redisDel(url, token, buildDeepForecastTaskKey(runId));
+    await redisDel(url, token, buildDeepForecastLockKey(runId));
+    return;
+  }
+  const result = String((await redisCommand(url, token, [
+    'EVAL', _DEEP_TASK_COMPLETE_LUA, '3',
+    FORECAST_DEEP_TASK_QUEUE_KEY,
+    buildDeepForecastTaskKey(runId),
+    buildDeepForecastLockKey(runId),
+    workerId,
+    runId,
+  ]))?.result || 'COMPLETED');
+  logDeepForecastCleanupStatus(runId, workerId, result);
+}
+
+async function releaseDeepForecastTask(runId, workerId = '') {
+  if (!runId) return;
+  if (_testRedisStore) {
+    // Test path (_testRedisStore set): equivalent JavaScript logic.
+    const lockKey = buildDeepForecastLockKey(runId);
+    if (workerId) {
+      const owner = _testRedisStore[lockKey];
+      const status = !owner ? 'EXPIRED' : owner !== workerId ? 'OWNED_BY_OTHER' : 'DELETED';
+      logDeepForecastCleanupStatus(runId, workerId, status);
+      if (status !== 'DELETED') return;
+    }
+    delete _testRedisStore[lockKey];
+    return;
+  }
+  const { url, token } = getRedisCredentials();
+  if (!workerId) {
+    await redisDel(url, token, buildDeepForecastLockKey(runId));
+    return;
+  }
+  const result = String((await redisCommand(url, token, [
+    'EVAL', _DEEP_LOCK_RELEASE_LUA, '1',
+    buildDeepForecastLockKey(runId),
+    workerId,
+  ]))?.result || 'DELETED');
+  logDeepForecastCleanupStatus(runId, workerId, result);
 }
 
 function buildDeepForecastSnapshotPayload(data = {}, context = {}) {
@@ -16416,7 +16577,10 @@ function buildDeepForecastRejectedPreview(paths = []) {
     }));
 }
 
-async function processDeepForecastTask(task = {}) {
+async function processDeepForecastTask(task = {}, options = {}) {
+  const assertLeaseOwned = typeof options.assertLeaseOwned === 'function'
+    ? options.assertLeaseOwned
+    : async () => {};
   const storageConfig = resolveR2StorageConfig();
   if (!storageConfig) return { status: 'skipped', reason: 'storage_not_configured' };
   const snapshot = await getR2JsonObject(storageConfig, task.snapshotKey);
@@ -16432,6 +16596,7 @@ async function processDeepForecastTask(task = {}) {
     }
     throw new Error(errors.join(';'));
   }
+  await assertLeaseOwned();
   await writeForecastRunStatusArtifact({
     runId: snapshot.runId,
     generatedAt: snapshot.generatedAt,
@@ -16483,11 +16648,13 @@ async function processDeepForecastTask(task = {}) {
       simulationEvidence = mergeResult.simulationEvidence;
       // Awaited so patchPublishedForecastsWithSimDecorations completes before artifact writing
       // continues. Fast path (~200ms Redis ops) so no meaningful delay to artifact export.
+      await assertLeaseOwned();
       await writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
         console.warn(`  [SimulationDecorations] write failed (deep path): ${err.message}`)
       );
     }
   } catch (err) {
+    if (isDeepForecastLeaseError(err)) throw err;
     console.warn('[SimulationMerge] Error during merge:', err.message);
   }
 
@@ -16519,6 +16686,7 @@ async function processDeepForecastTask(task = {}) {
       status: 'completed',
       selectedStateIds: (evaluation.selectedPaths || []).filter((path) => path.type === 'expanded').map((path) => path.candidateStateId),
     };
+    await assertLeaseOwned();
     await writeForecastTraceArtifacts({
       ...dataForWrite,
       forecastDepth: 'deep',
@@ -16548,6 +16716,7 @@ async function processDeepForecastTask(task = {}) {
     status: evaluation.status || 'completed_no_material_change',
     selectedStateIds: snapshot.deepForecast?.selectedStateIds || [],
   };
+  await assertLeaseOwned();
   await writeForecastTraceArtifacts({
     ...dataForWrite,
     forecastDepth: 'deep',
@@ -16570,7 +16739,10 @@ async function processDeepForecastTask(task = {}) {
   return { status: deepForecast.status, deepForecast, convergence };
 }
 
-async function writeFailedDeepForecastArtifacts(task = {}, failureReason = '') {
+async function writeFailedDeepForecastArtifacts(task = {}, failureReason = '', options = {}) {
+  const assertLeaseOwned = typeof options.assertLeaseOwned === 'function'
+    ? options.assertLeaseOwned
+    : async () => {};
   const storageConfig = resolveR2StorageConfig();
   if (!storageConfig || !task?.snapshotKey) return;
   const snapshot = await getR2JsonObject(storageConfig, task.snapshotKey).catch(() => null);
@@ -16584,6 +16756,7 @@ async function writeFailedDeepForecastArtifacts(task = {}, failureReason = '') {
     rejectedPathsPreview: Array.isArray(snapshot.deepForecast?.rejectedPathsPreview) ? snapshot.deepForecast.rejectedPathsPreview : [],
     selectedPathCount: 0,
   };
+  await assertLeaseOwned();
   await writeForecastTraceArtifacts({
     ...snapshot,
     forecastDepth: 'fast',
@@ -16889,17 +17062,40 @@ async function processNextDeepForecastTask(options = {}) {
   for (const runId of queuedRunIds) {
     const task = await claimDeepForecastTask(runId, workerId);
     if (!task) { console.log(`  [DeepForecast] ${runId}: already claimed or completed`); continue; }
+    const leaseGuard = createDeepForecastLeaseGuard(runId, workerId);
     try {
-      const result = await processDeepForecastTask(task);
-      await completeDeepForecastTask(runId);
+      await leaseGuard.assertOwned();
+      const result = await processDeepForecastTask(task, {
+        assertLeaseOwned: () => leaseGuard.assertOwned(),
+      });
+      await completeDeepForecastTask(runId, workerId);
       return result;
     } catch (err) {
+      if (isDeepForecastLeaseError(err)) {
+        const reason = err.lockStatus === SIM_LOCK_STATUS_EXPIRED
+          ? 'lease_expired'
+          : err.lockStatus === SIM_LOCK_STATUS_OWNED_BY_OTHER
+            ? 'lease_ownership_lost'
+            : 'lease_renewal_failed';
+        console.warn(`  [DeepForecast] ${runId}: ${reason}; leaving task for reclaim`);
+        return { status: 'skipped', reason, runId };
+      }
       console.warn(`  [DeepForecast] Task failed for ${runId}: ${err.message}`);
-      await writeFailedDeepForecastArtifacts(task, err.message).catch((writeErr) => {
+      try {
+        await writeFailedDeepForecastArtifacts(task, err.message, {
+          assertLeaseOwned: () => leaseGuard.assertOwned(),
+        });
+      } catch (writeErr) {
+        if (isDeepForecastLeaseError(writeErr)) {
+          console.warn(`  [DeepForecast] ${runId}: lease lost before failure publication; leaving task for reclaim`);
+          return { status: 'skipped', reason: 'lease_lost_before_failure_publish', runId };
+        }
         console.warn(`  [DeepForecast] Failed to write failed-task artifacts for ${runId}: ${writeErr.message}`);
-      });
-      await completeDeepForecastTask(runId);
+      }
+      await completeDeepForecastTask(runId, workerId);
       return { status: 'failed', reason: err.message, runId };
+    } finally {
+      await leaseGuard.stop();
     }
   }
   return { status: 'idle' };
@@ -18204,13 +18400,18 @@ redis.call('DEL', KEYS[3])
 return 'COMPLETED'
 `.trim();
 
-const _SIM_LOCK_EXPIRE_LUA = `
+const _LOCK_EXPIRE_IF_OWNED_LUA = `
 local owner = redis.call('GET', KEYS[1])
 if not owner then return 'EXPIRED' end
 if owner ~= ARGV[1] then return 'OWNED_BY_OTHER' end
 redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
 return 'EXTENDED'
 `.trim();
+
+function removeRunIdFromDeepForecastTestQueue(runId) {
+  if (!_testRedisStore || !Array.isArray(_testRedisStore[FORECAST_DEEP_TASK_QUEUE_KEY])) return;
+  _testRedisStore[FORECAST_DEEP_TASK_QUEUE_KEY] = _testRedisStore[FORECAST_DEEP_TASK_QUEUE_KEY].filter((entry) => entry !== runId);
+}
 
 function removeRunIdFromTestQueue(runId) {
   if (!_testRedisStore || !Array.isArray(_testRedisStore[SIMULATION_TASK_QUEUE_KEY])) return;
@@ -18313,19 +18514,30 @@ async function redisCompareAndDeleteSimulationLock(url, token, lockKey, workerId
  * @param {number} ttlSeconds
  * @returns {Promise<string>}
  */
-async function redisCompareAndExpireSimulationLock(url, token, lockKey, workerId, ttlSeconds) {
+async function redisCompareAndExpireLock(url, token, lockKey, workerId, ttlSeconds, defaultTtlSeconds) {
   if (!workerId) return SIM_TASK_COMPLETE_STATUS_MISSING_WORKER;
-  const ttl = Number.isFinite(ttlSeconds) ? Math.max(1, Math.floor(ttlSeconds)) : SIMULATION_LOCK_TTL_SECONDS;
+  const ttl = Number.isFinite(ttlSeconds) ? Math.max(1, Math.floor(ttlSeconds)) : defaultTtlSeconds;
   if (_testRedisStore) {
     return simulationLockStatusFromTestStore(lockKey, workerId, SIM_LOCK_STATUS_EXTENDED);
   }
   const result = await redisCommand(url, token, [
-    'EVAL', _SIM_LOCK_EXPIRE_LUA, '1',
+    'EVAL', _LOCK_EXPIRE_IF_OWNED_LUA, '1',
     lockKey,
     workerId,
     String(ttl),
   ]);
   return String(result?.result || SIM_LOCK_STATUS_EXPIRED);
+}
+
+async function redisCompareAndExpireSimulationLock(url, token, lockKey, workerId, ttlSeconds) {
+  return redisCompareAndExpireLock(
+    url,
+    token,
+    lockKey,
+    workerId,
+    ttlSeconds,
+    SIMULATION_LOCK_TTL_SECONDS,
+  );
 }
 
 // Lua script for atomic compare-and-swap patch of the canonical forecast key.
@@ -19282,6 +19494,10 @@ export {
   SIMULATION_PACKAGE_SCHEMA_VERSION,
   SIMULATION_PACKAGE_LATEST_KEY,
   enqueueDeepForecastTask,
+  completeDeepForecastTask,
+  createDeepForecastLeaseGuard,
+  releaseDeepForecastTask,
+  renewDeepForecastTaskLease,
   processNextDeepForecastTask,
   runDeepForecastWorker,
   SIMULATION_OUTCOME_LATEST_KEY,

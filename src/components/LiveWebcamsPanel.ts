@@ -311,6 +311,7 @@ export class LiveWebcamsPanel extends Panel {
       // The sidecar serves the embed from http://127.0.0.1:PORT which YouTube accepts.
       const params = new URLSearchParams({ videoId, autoplay: '1', mute: '1' });
       if (quality !== 'auto') params.set('vq', quality);
+      params.set('parentOrigin', window.location.origin);
       return `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
     }
     const vq = quality !== 'auto' ? `&vq=${quality}` : '';

@@ -20,6 +20,16 @@ import { __testing__ as healthTesting } from '../api/health.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
+function hasHydrationConsumer(source, key) {
+  if (source.includes(`getHydratedData('${key}')`) || source.includes(`ensureHydrated('${key}')`)) {
+    return true;
+  }
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `\\bcreateHydrationHandoff(?:\\s*<[^>]+>)?\\s*\\(\\s*['"]${escapedKey}['"]`,
+  ).test(source);
+}
+
 // Keys the repo already knows nothing consumes: planned-but-unwired, or fetched by
 // some route other than tier hydration. Module-scoped so BOTH guards can use it —
 // the hydration-coverage test (which allows them) and the tier-freeloader test
@@ -357,14 +367,15 @@ describe('Bootstrap key hydration coverage', () => {
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       if (derivedRoadKeys.has(key)) continue;
-      // Two valid consumer forms. `getHydratedData(k)` reads a key delivered by a
+      // Three valid consumer forms. `getHydratedData(k)` reads a key delivered by a
       // tier bundle. `ensureHydrated(k)` (#5300) reads a key that rides in no
       // tier: it returns the tier value if one is present and otherwise fetches
-      // the key through its own CDN-shielded `?keys=<k>&public=1` URL. Both prove
-      // the key is actually consumed — which is what this guard is for.
+      // the key through its own CDN-shielded `?keys=<k>&public=1` URL.
+      // `createHydrationHandoff(k)` (#7048) consumes through the same one-shot
+      // reader and retains only accepted data in a bounded service cache.
       assert.ok(
-        allSrc.includes(`getHydratedData('${key}')`) || allSrc.includes(`ensureHydrated('${key}')`),
-        `Bootstrap key '${key}' has no getHydratedData('${key}') or ensureHydrated('${key}') consumer in src/ — data is fetched but never used`,
+        hasHydrationConsumer(allSrc, key),
+        `Bootstrap key '${key}' has no direct, ensured, or handoff hydration consumer in src/ — data is fetched but never used`,
       );
     }
   });
@@ -444,8 +455,7 @@ describe('Bootstrap tier definitions', () => {
     walk(join(root, 'src'));
     const allSrc = srcFiles.map((f) => readFileSync(f, 'utf-8')).join('\n');
 
-    const freight = [...slow, ...fast].filter((k) =>
-      !allSrc.includes(`getHydratedData('${k}')`) && !allSrc.includes(`ensureHydrated('${k}')`));
+    const freight = [...slow, ...fast].filter((k) => !hasHydrationConsumer(allSrc, k));
 
     assert.deepEqual(
       freight,

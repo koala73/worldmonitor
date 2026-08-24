@@ -3344,15 +3344,17 @@ export class GlobeMap {
   }
 
   public setImageryScenes(scenes: ImageryScene[]): void {
-    const valid = (scenes ?? []).filter(s => {
+    // Parse each scene's GeoJSON once — the filter, marker, and polygon
+    // passes previously re-parsed the identical string up to 3x per scene.
+    const parsed = (scenes ?? []).flatMap(s => {
       try {
-        const geom = JSON.parse(s.geometryGeojson);
-        return geom?.type === 'Polygon' && geom.coordinates?.[0]?.[0];
-      } catch { return false; }
+        const geom = JSON.parse(s.geometryGeojson) as { type?: string; coordinates?: number[][][] };
+        if (geom?.type !== 'Polygon' || !geom.coordinates?.[0]?.[0]) return [];
+        return [{ s, geom }];
+      } catch { return []; }
     });
-    this.imagerySceneMarkers = valid.map(s => {
-      const geom = JSON.parse(s.geometryGeojson);
-      const coords = geom.coordinates[0] as number[][];
+    this.imagerySceneMarkers = parsed.map(({ s, geom }) => {
+      const coords = geom.coordinates![0] as number[][];
       const lats = coords.map(c => c[1] ?? 0);
       const lons = coords.map(c => c[0] ?? 0);
       const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
@@ -3368,8 +3370,7 @@ export class GlobeMap {
         previewUrl: s.previewUrl,
       };
     });
-    this.imageryFootprintPolygons = valid.map(s => {
-      const geom = JSON.parse(s.geometryGeojson);
+    this.imageryFootprintPolygons = parsed.map(({ s, geom }) => {
       return {
         coords: geom.coordinates as number[][][],
         name: `${s.satellite} ${s.datetime}`,

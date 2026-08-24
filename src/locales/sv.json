@@ -2681,7 +2681,11 @@
       "heading": "RUBRIK",
       "hexCode": "HEXKOD",
       "squawk": "SKRIANDE",
-      "attribution": "Källa: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Källa: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "STIGNINGSHASTIGHET",
+      "manufacturer": "TILLVERKARE",
+      "owner": "ÄGARE",
+      "builtYear": "BYGGÅR"
     },
     "militaryVessel": {
       "aisDark": "AIS MÖRK",
@@ -2726,7 +2730,8 @@
       "moreVessels": "+{{count}} fartyg till",
       "vesselsCount": "{{count}} FARTYG",
       "vessels": "FARTYG",
-      "trackedVessels": "BÅRDA FARTYG"
+      "trackedVessels": "BÅRDA FARTYG",
+      "showLess": "Visa mindre"
     },
     "naturalEvent": {
       "closed": "STÄNGD",
@@ -3338,7 +3343,9 @@
     "fontFamily": "Teckensnitt",
     "fontFamilyDesc": "Monospace för teknisk stil, systemstandard för lättare läsning.",
     "fontMono": "Monospace",
-    "fontSystem": "Systemstandard"
+    "fontSystem": "Systemstandard",
+    "panelFontScale": "Textstorlek",
+    "followGlobalFontScale": "Använd global"
   },
   "contextMenu": {
     "openCountryBrief": "Öppna landsöversikt",
