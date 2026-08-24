@@ -2126,10 +2126,10 @@ export async function scoreFinancialSystemExposure(
     RESILIENCE_FATF_LISTING_KEY,
   ] as const;
   const unhealthy: string[] = [];
-  // Independent keys — read concurrently instead of serially (+2 Redis RTTs).
+  // Independent keys — read concurrently instead of serially (saves ~2 Redis RTTs of latency).
   const metas = await Promise.all(requiredSeedKeys.map((key) => reader(resolveSeedMetaKey(key))));
-  for (const [key, meta] of requiredSeedKeys.map((key, i) => [key, metas[i]] as const)) {
-    if (isSeedMetaPreflightUnhealthy(key, meta)) unhealthy.push(key);
+  for (const [i, key] of requiredSeedKeys.entries()) {
+    if (isSeedMetaPreflightUnhealthy(key, metas[i])) unhealthy.push(key);
   }
   if (unhealthy.length > 0) {
     throw new ResilienceConfigurationError(

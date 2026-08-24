@@ -58,8 +58,13 @@ export async function getCountryPortActivity(
   _ctx: ServerContext,
   req: GetCountryPortActivityRequest,
 ): Promise<CountryPortActivityResponse> {
+  // ISO 3166-1 alpha-2 shape, not merely "two code units". The payload read below
+  // now runs concurrently with the allowlist read, so this guard — not the
+  // allowlist — is what bounds the key space a caller can reach (676, not ~1.1M).
+  // The gateway applies no field validation to this request (the sibling
+  // GetCountryRiskRequest carries stringPattern ^[A-Z]{2}$), so it must be here.
   const code = req.countryCode?.trim().toUpperCase() ?? '';
-  if (!code || code.length !== 2) return EMPTY;
+  if (!/^[A-Z]{2}$/.test(code)) return EMPTY;
 
   // PERF: allowlist + payload reads run concurrently; the gate is applied on
   // the combined result. Valid codes save a serial RTT; invalid ones cost one

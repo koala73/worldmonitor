@@ -234,6 +234,43 @@ describe('weather alert selection', () => {
     assert.deepEqual(extractRings(multiPolygon), [roundedA, roundedB]);
   });
 
+  it('omits geometry when rounding collapses a ring to zero area', () => {
+    // Every vertex within ~1m rounds onto the same position. The ring still has
+    // 4 positions and matching endpoints, so a length+endpoint check alone would
+    // publish a degenerate Polygon to third-party webhooks.
+    const subMetreRing = [
+      [-100.000004, 40.000004],
+      [-100.000001, 40.000004],
+      [-100.000001, 40.000001],
+      [-100.000004, 40.000004],
+    ];
+    const rounded = extractRings({ type: 'Polygon', coordinates: [subMetreRing] })[0];
+    assert.deepEqual(rounded, [[-100, 40], [-100, 40], [-100, 40], [-100, 40]],
+      'precondition: the ring really does collapse');
+    assert.equal(rounded.length, 4, 'precondition: position count still passes the old check');
+
+    const location = weatherAlertNotifyLocation({
+      centroid: [-100, 40],
+      coordinates: rounded,
+    });
+    assert.equal(location.lat, 40, 'the coarse anchor still publishes');
+    assert.equal(location.geometry, undefined, 'the degenerate polygon must NOT publish');
+  });
+
+  it('still publishes geometry for a real polygon after rounding', () => {
+    // Positive control for the test above — the distinct-vertex guard must not
+    // suppress ordinary county-scale alert polygons.
+    const realRing = [
+      [-100.1234567, 40.7654321],
+      [-99.9876543, 40.7654321],
+      [-99.9876543, 41.2345678],
+      [-100.1234567, 40.7654321],
+    ];
+    const rounded = extractRings({ type: 'Polygon', coordinates: [realRing] })[0];
+    const location = weatherAlertNotifyLocation({ centroid: [-100, 41], coordinates: rounded });
+    assert.equal(location.geometry.type, 'Polygon');
+  });
+
   it('returns undefined centroid for an empty ring', () => {
     assert.equal(calculateCentroid([]), undefined);
   });

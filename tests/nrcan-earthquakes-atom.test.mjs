@@ -16,6 +16,7 @@ import {
   earthquakeIdentity,
   earthquakesAfterPublish,
   earthquakesContentMeta,
+  earthquakesPublishTransform,
   fetchApprovedAtom,
   fetchMergedEarthquakes,
   isIndustryRelated,
@@ -105,7 +106,10 @@ describe('nrcan atom fixture (live host capture)', () => {
     }
   });
 
-  it('rounds Atom coordinates to five decimals', () => {
+  it('keeps FULL upstream precision at parse time', () => {
+    // Rounding happens in earthquakesPublishTransform, after dedup. Parsing must
+    // not round: isCrossAgencyMatch compares haversine distance against a 10km
+    // threshold and rounded inputs move pairs across it.
     const { earthquakes } = parseNrcanAtom(`
       <feed xmlns="http://www.w3.org/2005/Atom" xmlns:georss="http://www.georss.org/georss">
         <entry>
@@ -117,8 +121,8 @@ describe('nrcan atom fixture (live host capture)', () => {
     `);
 
     assert.deepEqual(earthquakes[0].location, {
-      latitude: 49.12346,
-      longitude: -123.76543,
+      latitude: 49.1234567,
+      longitude: -123.7654321,
     });
   });
 });
@@ -537,10 +541,71 @@ describe('module import contract', () => {
     });
     assert.equal(parsed.earthquakes[0].source, 'usgs');
     assert.equal(parsed.earthquakes[0].depthKm, 12);
+    // Full precision at parse — see earthquakesPublishTransform for the rounding.
     assert.deepEqual(parsed.earthquakes[0].location, {
-      latitude: 40.12346,
-      longitude: -120.76543,
+      latitude: 40.1234567,
+      longitude: -120.7654321,
     });
     assert.equal(parsed.newestAt, 1_700_000_000_000);
+  });
+});
+
+describe('coordinate rounding happens at the publish boundary, after dedup', () => {
+  const eq = (id, source, latitude, longitude) => ({
+    id,
+    place: 'somewhere',
+    magnitude: 5,
+    depthKm: 10,
+    location: { latitude, longitude },
+    occurredAt: 1_700_000_000_000,
+    sourceUrl: `https://example.test/${id}`,
+    source,
+  });
+
+  it('rounds published coordinates to five decimals', () => {
+    const published = earthquakesPublishTransform({
+      earthquakes: [eq('a', 'usgs', 49.1234567, -123.7654321)],
+    });
+
+    assert.deepEqual(published.earthquakes[0].location, {
+      latitude: 49.12346,
+      longitude: -123.76543,
+    });
+  });
+
+  it('preserves every non-location field through the transform', () => {
+    const input = eq('a', 'usgs', 49.1234567, -123.7654321);
+    const published = earthquakesPublishTransform({ earthquakes: [input] });
+    const { location: _drop, ...rest } = input;
+
+    for (const [key, value] of Object.entries(rest)) {
+      assert.deepEqual(published.earthquakes[0][key], value, `field ${key} must survive`);
+    }
+  });
+
+  it('does not let rounding move a cross-agency pair across the 10km dedup threshold', () => {
+    // 9.99977km apart at full precision -> ONE event after dedup. Rounding both
+    // sides first pushes the pair to 10.00054km, which would publish both.
+    // Regression guard for rounding creeping back into parsePoint/parseUsgsGeojson.
+    const usgs = eq('us1', 'usgs', 45.0000024, -74.9999952);
+    const nrcan = eq('nrcan:1', 'nrcan', 45.0000024, -74.87281496);
+
+    const merged = mergeEarthquakeFeeds([usgs], [nrcan], 1_700_000_000_000);
+    assert.equal(merged.length, 1, 'near-threshold duplicate must merge at full precision');
+
+    const preRounded = [usgs, nrcan].map((e) => ({
+      ...e,
+      location: {
+        latitude: Number(e.location.latitude.toFixed(5)),
+        longitude: Number(e.location.longitude.toFixed(5)),
+      },
+    }));
+    const mergedPreRounded = mergeEarthquakeFeeds(
+      [preRounded[0]], [preRounded[1]], 1_700_000_000_000,
+    );
+    assert.equal(
+      mergedPreRounded.length, 2,
+      'positive control: pre-rounded input SHOULD double-publish, proving the guard is live',
+    );
   });
 });

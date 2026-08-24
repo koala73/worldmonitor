@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { roundGeoCoordinate } from './_seed-utils.mjs';
+
 const ISO3_TO_ISO2 = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'shared/iso3-to-iso2.json'), 'utf8'),
 );
@@ -81,13 +83,11 @@ export function requireAlertFeatures(data) {
 }
 
 // NWS ships 6-7 decimal coordinates. Five decimals retain metre-level detail
-// while reducing the FAST-tier weather-alert payload.
-function roundCoordinate(value) {
-  return Number.isFinite(value) ? Number(value.toFixed(5)) : value;
-}
-
+// while reducing the FAST-tier weather-alert payload. Shared with the earthquake
+// seeder via _seed-utils.mjs (both files, and _seed-utils.mjs itself, are COPY'd
+// into the relay image — see Dockerfile.relay and tests/dockerfile-relay-imports.test.mjs).
 function roundPosition(position) {
-  return [roundCoordinate(position[0]), roundCoordinate(position[1])];
+  return [roundGeoCoordinate(position[0]), roundGeoCoordinate(position[1])];
 }
 
 export function extractCoordinates(geometry) {
@@ -136,8 +136,18 @@ function isClosedLinearRing(ring) {
   if (!Array.isArray(ring) || ring.length < 4) return false;
   const first = ring[0];
   const last = ring[ring.length - 1];
-  return Array.isArray(first) && Array.isArray(last)
-    && first[0] === last[0] && first[1] === last[1];
+  if (!Array.isArray(first) || !Array.isArray(last)) return false;
+  if (first[0] !== last[0] || first[1] !== last[1]) return false;
+  // Position count and endpoint equality are not sufficient once coordinates are
+  // rounded: sub-metre-adjacent vertices collapse onto each other, so a ring can
+  // keep 4+ positions and matching endpoints while enclosing zero area. PostGIS
+  // accepts that as "closed" and it reaches third-party webhooks as a degenerate
+  // Polygon. A real ring has at least 3 distinct vertices.
+  const distinct = new Set();
+  for (const position of ring) {
+    if (Array.isArray(position)) distinct.add(`${position[0]},${position[1]}`);
+  }
+  return distinct.size >= 3;
 }
 
 export function calculateCentroid(coords) {

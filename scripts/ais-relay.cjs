@@ -2367,9 +2367,20 @@ function _parseYahooChartJson(body) {
     // (_seed-utils.mjs). Raw float64 noise made these FAST-tier keys ~2x the
     // rounded size, and whichever writer wins the relay/cron race decides
     // what every visitor downloads on cold load.
+    //
+    // The guard below MIRRORS toSignificantDigits in _seed-utils.mjs exactly:
+    // non-numbers, non-finite values and 0 pass through untouched so a malformed
+    // upstream degrades identically on both writers. Without it a string close
+    // ("N/A") becomes NaN and serialises to null, denting the curve on the relay
+    // path only. CJS cannot import the ESM helper, so the copy is deliberate and
+    // tests/ais-relay-sparkline-precision.test.mjs pins the two in lockstep.
     const closes = result.indicators?.quote?.[0]?.close;
     const sparkline = Array.isArray(closes)
-      ? closes.filter((v) => v != null).map((v) => Number(Number(v).toPrecision(7)))
+      ? closes.filter((v) => v != null).map((v) => (
+        typeof v === 'number' && Number.isFinite(v) && v !== 0
+          ? Number(v.toPrecision(7))
+          : v
+      ))
       : [];
     return { price, change, sparkline };
   } catch { return null; }
