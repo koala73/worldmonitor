@@ -10,6 +10,7 @@ import { AIRCRAFT_DETAILS_BATCH_LIMIT } from '../../../_shared/aircraft-details-
 import {
   AIRCRAFT_DETAILS_CACHE_KEY,
   AIRCRAFT_DETAILS_CACHE_TTL,
+  isValidAircraftIcao24,
   type CachedAircraftDetails,
   fetchWingbitsAircraftDetails,
 } from './_wingbits-aircraft-details';
@@ -24,7 +25,7 @@ export async function getAircraftDetailsBatch(
 
     const normalized = req.icao24s
       .map((id) => id.trim().toLowerCase())
-      .filter((id) => id.length > 0);
+      .filter((id) => isValidAircraftIcao24(id));
     const limitedList = toUniqueSortedLimited(normalized, AIRCRAFT_DETAILS_BATCH_LIMIT);
 
     // Redis shared cache — batch GET all keys in a single pipeline round-trip

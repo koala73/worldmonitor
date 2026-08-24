@@ -5,6 +5,11 @@ import { mapWingbitsDetails } from './_shared';
 
 export const AIRCRAFT_DETAILS_CACHE_KEY = 'military:aircraft:v1';
 export const AIRCRAFT_DETAILS_CACHE_TTL = 24 * 60 * 60; // 24 hours — aircraft metadata is mostly static
+export const AIRCRAFT_ICAO24_PATTERN = /^[0-9a-f]{6}$/i;
+
+export function isValidAircraftIcao24(value: string): boolean {
+  return AIRCRAFT_ICAO24_PATTERN.test(value);
+}
 
 export interface CachedAircraftDetails {
   details: AircraftDetails | null;

@@ -22013,8 +22013,12 @@ paths:
             tags:
                 - MilitaryService
             summary: GetAircraftDetails
-            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
+            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex. PRO-gated. Requires an active Pro subscription.
             operationId: GetAircraftDetails
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: icao24
                   in: query
@@ -22061,7 +22065,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
