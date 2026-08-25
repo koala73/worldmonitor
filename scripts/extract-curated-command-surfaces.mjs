@@ -10,7 +10,14 @@ import { CURATED_COMMANDS } from '../cli/src/core.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 
-/** @typedef {{ command: string, tool: string, requiredArgs: string[] }} CuratedEntry */
+/**
+ * @typedef {{
+ *   command: string,
+ *   tool: string,
+ *   requiredArgs: string[],
+ *   forwardedArgs?: string[],
+ * }} CuratedEntry
+ */
 
 /**
  * @returns {Map<string, CuratedEntry>}
@@ -33,17 +40,24 @@ export function extractCliCuratedCommands() {
  * @returns {Map<string, CuratedEntry>}
  */
 export function extractPythonCuratedCommands(source) {
-  const section = sliceSection(source, '# -- curated helpers', '# -- plumbing');
+  const startMarker = '# -- curated helpers';
+  const section = maskPythonNonCode(sliceSection(source, startMarker, '# -- plumbing'));
+  const indent = markerIndent(source, startMarker);
   /** @type {Map<string, CuratedEntry>} */
   const table = new Map();
-  const pattern = /def (\w+)\(self(?:, ([^)]*))?\):\s*(?:\n\s+"""[^"]*""")?\s*\n\s+return self\.call_tool\("([^"]+)"/g;
+  const pattern = new RegExp(
+    `^${escapeRegExp(indent)}def (\\w+)\\(self(?:, ([^)]*))?\\):[ \\t]*\\n`
+      + `(?:[ \\t]*\\n)*${escapeRegExp(indent)}[ \\t]+return self\\.call_tool\\("([^"]+)"([^\\n]*)`,
+    'gm',
+  );
   for (const match of section.matchAll(pattern)) {
-    const [, method, params = '', tool] = match;
+    const [, method, params = '', tool, callTail] = match;
     const command = methodToCommand(method, tool);
     table.set(command, {
       command,
       tool,
       requiredArgs: parsePythonRequiredArgs(params),
+      forwardedArgs: parsePythonForwardedArgs(callTail),
     });
   }
   return table;
@@ -54,17 +68,24 @@ export function extractPythonCuratedCommands(source) {
  * @returns {Map<string, CuratedEntry>}
  */
 export function extractRubyCuratedCommands(source) {
-  const section = sliceSection(source, '# -- curated helpers', '# -- body decoding');
+  const startMarker = '# -- curated helpers';
+  const section = maskRubyNonCode(sliceSection(source, startMarker, '# -- body decoding'));
+  const indent = markerIndent(source, startMarker);
   /** @type {Map<string, CuratedEntry>} */
   const table = new Map();
-  const pattern = /def (\w+)(?:\(([^)]*)\))?\s*\n\s*call_tool\("([^"]+)"/g;
+  const pattern = new RegExp(
+    `^${escapeRegExp(indent)}def (\\w+)(?:\\(([^)]*)\\))?[ \\t]*\\n`
+      + `(?:[ \\t]*\\n)*${escapeRegExp(indent)}[ \\t]+call_tool\\("([^"]+)"([^\\n]*)`,
+    'gm',
+  );
   for (const match of section.matchAll(pattern)) {
-    const [, method, params = '', tool] = match;
+    const [, method, params = '', tool, callTail] = match;
     const command = methodToCommand(method, tool);
     table.set(command, {
       command,
       tool,
       requiredArgs: parseRubyRequiredArgs(params),
+      forwardedArgs: parseRubyForwardedArgs(callTail),
     });
   }
   return table;
@@ -75,17 +96,25 @@ export function extractRubyCuratedCommands(source) {
  * @returns {Map<string, CuratedEntry>}
  */
 export function extractGoCuratedCommands(source) {
-  const section = sliceSection(source, '// -- curated helpers', '// -- plumbing');
+  const startMarker = '// -- curated helpers';
+  const section = maskGoNonCode(sliceSection(source, startMarker, '// -- plumbing'));
+  const indent = markerIndent(source, startMarker);
   /** @type {Map<string, CuratedEntry>} */
   const table = new Map();
-  const pattern = /func \(c \*Client\) (\w+)\(ctx context\.Context(?:, ([^)]*))?\) \(json\.RawMessage, error\) \{\s*return c\.CallTool\(ctx, "([^"]+)"/g;
+  const pattern = new RegExp(
+    `^${escapeRegExp(indent)}func \\(c \\*Client\\) (\\w+)\\(ctx context\\.Context(?:, ([^)]*))?\\) `
+      + `\\(json\\.RawMessage, error\\) \\{[ \\t]*\\n(?:[ \\t]*\\n)*[ \\t]+return `
+      + `c\\.CallTool\\(ctx, "([^"]+)"([^\\n]*)`,
+    'gm',
+  );
   for (const match of section.matchAll(pattern)) {
-    const [, method, params = '', tool] = match;
+    const [, method, params = '', tool, callTail] = match;
     const command = methodToCommand(pascalToSnake(method), tool);
     table.set(command, {
       command,
       tool,
       requiredArgs: parseGoRequiredArgs(params),
+      forwardedArgs: parseGoForwardedArgs(callTail),
     });
   }
   return table;
@@ -129,6 +158,12 @@ export function diffCuratedTables(canonical, mirror, surfaceLabel) {
           + `!= canonical ${formatArgs(expected.requiredArgs)}`,
       );
     }
+    if (actual.forwardedArgs && !sameStringSet(actual.forwardedArgs, expected.requiredArgs)) {
+      errors.push(
+        `${surfaceLabel}: command "${command}" forwards required args ${formatArgs(actual.forwardedArgs)} `
+          + `!= canonical ${formatArgs(expected.requiredArgs)}`,
+      );
+    }
   }
 
   return errors;
@@ -155,6 +190,46 @@ function sliceSection(source, startMarker, endMarker) {
     throw new Error(`Could not locate curated helper section between ${startMarker} and ${endMarker}`);
   }
   return source.slice(start, end);
+}
+
+function markerIndent(source, marker) {
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex === -1) return '';
+  const lineStart = source.lastIndexOf('\n', markerIndex - 1) + 1;
+  return source.slice(lineStart, markerIndex);
+}
+
+function maskPythonNonCode(source) {
+  return maskCommentLines(maskDelimited(source, /"""[\s\S]*?"""|'''[\s\S]*?'''/g), '#');
+}
+
+function maskRubyNonCode(source) {
+  const withoutBlocks = maskDelimited(
+    source,
+    /^[ \t]*=begin\b[\s\S]*?^[ \t]*=end\b[^\n]*/gm,
+  );
+  return maskCommentLines(withoutBlocks, '#');
+}
+
+function maskGoNonCode(source) {
+  return maskCommentLines(maskDelimited(source, /\/\*[\s\S]*?\*\//g), '//');
+}
+
+function maskDelimited(source, pattern) {
+  return source.replace(pattern, maskText);
+}
+
+function maskCommentLines(source, prefix) {
+  const pattern = new RegExp(`^[ \\t]*${escapeRegExp(prefix)}.*$`, 'gm');
+  return source.replace(pattern, maskText);
+}
+
+function maskText(text) {
+  return text.replace(/[^\n]/g, ' ');
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function methodToCommand(method, tool) {
@@ -202,9 +277,13 @@ function parsePythonRequiredArgs(params) {
   const names = trimmed
     .split(',')
     .map((part) => part.trim())
-    .filter((part) => part && !part.startsWith('**'))
-    .map((part) => part.split('=')[0].trim());
+    .filter((part) => part && part !== '*' && !part.startsWith('*') && !part.includes('='))
+    .map((part) => part.split(':')[0].trim());
   return names;
+}
+
+function parsePythonForwardedArgs(callTail) {
+  return [...callTail.matchAll(/(?:^|,)\s*([a-z_]\w*)\s*=/g)].map((match) => match[1]);
 }
 
 function parseRubyRequiredArgs(params) {
@@ -213,9 +292,12 @@ function parseRubyRequiredArgs(params) {
   const names = trimmed
     .split(',')
     .map((part) => part.trim())
-    .filter((part) => part && !part.startsWith('args'))
-    .map((part) => part.split('=')[0].trim());
+    .filter((part) => part && !part.includes('=') && part !== 'args');
   return names.map(rubyToSnakeArg);
+}
+
+function parseRubyForwardedArgs(callTail) {
+  return [...callTail.matchAll(/\b([a-z_]\w*):/g)].map((match) => match[1]);
 }
 
 function parseGoRequiredArgs(params) {
@@ -227,6 +309,10 @@ function parseGoRequiredArgs(params) {
     .filter((part) => part && part !== 'args Args')
     .map((part) => part.split(' ')[0].trim());
   return names.map(goToSnakeArg);
+}
+
+function parseGoForwardedArgs(callTail) {
+  return [...callTail.matchAll(/withArg\(\s*args,\s*"([^"]+)"/g)].map((match) => match[1]);
 }
 
 function rubyToSnakeArg(name) {
@@ -243,6 +329,10 @@ function pascalToSnake(name) {
 
 function sameStringArray(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameStringSet(left, right) {
+  return left.length === right.length && left.every((value) => right.includes(value));
 }
 
 function formatArgs(args) {

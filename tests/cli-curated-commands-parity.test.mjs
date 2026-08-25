@@ -107,6 +107,112 @@ def country_risk(args = {})
     assert.ok(errors.some((error) => error.includes('command "risk" required args')));
   });
 
+  it('extractPythonCuratedCommands treats a defaulted parameter as optional', () => {
+    const source = `
+# -- curated helpers
+def country_risk(self, country_code=None, **args):
+    return self.call_tool("get_country_risk", args, country_code=country_code)
+# -- plumbing
+`;
+    const mirror = extractPythonCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'python-fixture');
+    assert.ok(errors.some((error) => error.includes('command "risk" required args []')));
+  });
+
+  it('extractRubyCuratedCommands treats a defaulted parameter as optional', () => {
+    const source = `
+# -- curated helpers
+def country_risk(country_code = nil, args = {})
+  call_tool("get_country_risk", args.merge(country_code: country_code))
+end
+# -- body decoding
+`;
+    const mirror = extractRubyCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'ruby-fixture');
+    assert.ok(errors.some((error) => error.includes('command "risk" required args []')));
+  });
+
+  it('extractPythonCuratedCommands fails when a required arg is not forwarded', () => {
+    const source = `
+# -- curated helpers
+def country_risk(self, country_code, **args):
+    return self.call_tool("get_country_risk", args)
+# -- plumbing
+`;
+    const mirror = extractPythonCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'python-fixture');
+    assert.ok(errors.some((error) => error.includes('command "risk" forwards required args []')));
+  });
+
+  it('extractRubyCuratedCommands fails when a required arg is not forwarded', () => {
+    const source = `
+# -- curated helpers
+def country_risk(country_code, args = {})
+  call_tool("get_country_risk", args)
+end
+# -- body decoding
+`;
+    const mirror = extractRubyCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'ruby-fixture');
+    assert.ok(errors.some((error) => error.includes('command "risk" forwards required args []')));
+  });
+
+  it('extractGoCuratedCommands fails when a required arg is not forwarded', () => {
+    const source = `
+// -- curated helpers
+func (c *Client) CountryRisk(ctx context.Context, countryCode string, args Args) (json.RawMessage, error) {
+	return c.CallTool(ctx, "get_country_risk", args)
+}
+// -- plumbing
+`;
+    const mirror = extractGoCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'go-fixture');
+    assert.ok(errors.some((error) => error.includes('command "risk" forwards required args []')));
+  });
+
+  it('extractPythonCuratedCommands ignores an unreachable nested helper', () => {
+    const source = `
+# -- curated helpers
+if False:
+    def country_risk(self, country_code, **args):
+        return self.call_tool("get_country_risk", args, country_code=country_code)
+# -- plumbing
+`;
+    const mirror = extractPythonCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'python-fixture');
+    assert.ok(errors.some((error) => error.includes('missing curated command "risk"')));
+  });
+
+  it('extractRubyCuratedCommands ignores a helper in a block comment', () => {
+    const source = `
+# -- curated helpers
+=begin
+def country_risk(country_code, args = {})
+  call_tool("get_country_risk", args.merge(country_code: country_code))
+end
+=end
+# -- body decoding
+`;
+    const mirror = extractRubyCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'ruby-fixture');
+    assert.ok(errors.some((error) => error.includes('missing curated command "risk"')));
+  });
+
+  it('extractGoCuratedCommands ignores a helper in a block comment', () => {
+    const source = `
+// -- curated helpers
+/*
+func (c *Client) CountryRisk(ctx context.Context, countryCode string, args Args) (json.RawMessage, error) {
+	return c.CallTool(ctx, "get_country_risk", withArg(args, "country_code", countryCode))
+}
+*/
+// -- plumbing
+`;
+    const mirror = extractGoCuratedCommands(source);
+    const errors = diffCuratedTables(extractCliCuratedCommands(), mirror, 'go-fixture');
+    assert.ok(errors.some((error) => error.includes('missing curated command "risk"')));
+  });
+
   it('extractGoCuratedCommands fails on an induced missing command', () => {
     const source = `
 // -- curated helpers
