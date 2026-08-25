@@ -6,7 +6,7 @@ import type {
     AirportDelayAlert,
     FlightDelaySeverity,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
+import { MONITORED_AIRPORTS, AVIATIONSTACK_AIRPORTS } from '../../../../src/config/airports';
 import { getCachedJson } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
@@ -19,6 +19,8 @@ import {
 } from './_shared';
 
 const SEED_CACHE_KEY = 'aviation:delays:intl:v3';
+const AVIATIONSTACK_AIRPORT_SET = new Set(AVIATIONSTACK_AIRPORTS);
+type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
 
 export async function getAirportOpsSummary(
     _ctx: ServerContext,
@@ -38,11 +40,22 @@ export async function getAirportOpsSummary(
         // Read delay alerts from relay seed cache (no direct AviationStack call)
         let alerts: AirportDelayAlert[] = [];
         let healthy = false;
+        // Per-hub coverage the seeder recorded this tick (see #3707's fix to the
+        // sibling list-airport-delays route). A hit on SEED_CACHE_KEY only proves
+        // *some* hubs came back healthy, not that every requested airport did —
+        // and airports outside AVIATIONSTACK_AIRPORTS entirely (e.g. ESB, SAW)
+        // are never covered by this source at all. See #7106.
+        let intlCoveredIatas = new Set<string>();
         try {
-            const seedData = await getCachedJson(SEED_CACHE_KEY, true) as { alerts?: AirportDelayAlert[] } | null;
+            const seedData = await getCachedJson(SEED_CACHE_KEY, true) as { alerts?: AirportDelayAlert[]; coverage?: IntlCoverage[] } | null;
             if (seedData?.alerts) {
                 alerts = seedData.alerts;
                 healthy = true;
+                if (Array.isArray(seedData.coverage)) {
+                    intlCoveredIatas = new Set(seedData.coverage
+                        .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
+                        .map((hub) => hub.iata));
+                }
             }
         } catch (err) {
             // Degrade to "no delay telemetry" (healthy stays false) but surface
@@ -74,10 +87,12 @@ export async function getAirportOpsSummary(
             const isRestricted = notamRestrictedIcaos.has(airport.icao);
             const notamText = notamReasons[airport.icao];
 
-            const delayPct = alert?.delayedFlightsPct ?? 0;
-            const avgDelay = alert?.avgDelayMinutes ?? 0;
-            const cancelledFlights = alert?.cancelledFlights ?? 0;
-            const totalFlights = alert?.totalFlights ?? 0;
+            const isCovered = healthy && AVIATIONSTACK_AIRPORT_SET.has(airport.iata) && intlCoveredIatas.has(airport.iata);
+
+            const delayPct = isCovered ? (alert?.delayedFlightsPct ?? 0) : 0;
+            const avgDelay = isCovered ? (alert?.avgDelayMinutes ?? 0) : 0;
+            const cancelledFlights = isCovered ? (alert?.cancelledFlights ?? 0) : 0;
+            const totalFlights = isCovered ? (alert?.totalFlights ?? 0) : 0;
             const cancelRate = totalFlights > 0 ? (cancelledFlights / totalFlights) * 100 : 0;
 
             const cancelSev = severityFromCancelRate(cancelRate);
@@ -91,7 +106,13 @@ export async function getAirportOpsSummary(
                 sevOrder.indexOf(delaySev),
                 sevOrder.indexOf(notamFloor),
             )] ?? 'normal';
-            const severity = `FLIGHT_DELAY_SEVERITY_${sevStr.toUpperCase()}` as FlightDelaySeverity;
+            // No real delay/cancellation telemetry AND no NOTAM signal either —
+            // don't fabricate a "normal" reading (see #7106). A NOTAM closure or
+            // restriction is still worth surfacing even for an uncovered airport,
+            // so isClosed/isRestricted keep the computed severity instead.
+            const severity = (!isCovered && !isClosed && !isRestricted
+                ? 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
+                : `FLIGHT_DELAY_SEVERITY_${sevStr.toUpperCase()}`) as FlightDelaySeverity;
 
             const notamFlags: string[] = [];
             if (isClosed) notamFlags.push('CLOSED');
@@ -115,7 +136,7 @@ export async function getAirportOpsSummary(
                 notamFlags,
                 severity,
                 topDelayReasons,
-                source: healthy ? 'aviationstack' : 'degraded',
+                source: isCovered ? 'aviationstack' : (healthy ? 'unknown' : 'degraded'),
                 updatedAt: now,
             });
         }
