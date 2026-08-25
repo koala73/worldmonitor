@@ -58,6 +58,11 @@ import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderLayerTruncationBadges } from '@/utils/layer-truncation-badge';
+import {
+  overlayMarkerPosition,
+  projectionPointAtScreenCentre,
+} from '@/utils/overlay-marker-geometry';
 import {
   MAP_OVERLAY_MARKER_BUDGET_DESKTOP,
   MAP_OVERLAY_MARKER_BUDGET_MOBILE,
@@ -128,27 +133,6 @@ interface WorldTopology extends Topology {
 }
 
 /**
- * Reads a marker's coordinates across every feed shape `renderOverlays` iterates
- * (#7112): most expose `lon`/`lat`, webcams use `lng`, Iran events use the long
- * spellings, earthquakes and ACLED events nest them under `location`, and
- * conflict zones carry a `[lon, lat]` `center` tuple. A shape with none of them
- * yields NaN, which `proximityRank` already sorts last rather than poisoning the
- * comparator — the same outcome as the render loops, which skip a null position.
- */
-function overlayMarkerPosition(marker: unknown): LatLng {
-  const m = marker as {
-    lat?: number; lon?: number; lng?: number;
-    latitude?: number; longitude?: number;
-    location?: { latitude?: number; longitude?: number } | null;
-    center?: readonly [number, number];
-  };
-  return {
-    lat: m.lat ?? m.latitude ?? m.location?.latitude ?? m.center?.[1] ?? Number.NaN,
-    lng: m.lon ?? m.lng ?? m.longitude ?? m.location?.longitude ?? m.center?.[0] ?? Number.NaN,
-  };
-}
-
-/**
  * The AI data centres the SVG overlay actually draws (>=10k GPUs). Hoisted to
  * module scope so the overlay marker budget (#7112) plans on exactly the list
  * the render loop iterates, rather than on a superset that would spend fair
@@ -168,6 +152,11 @@ export class MapComponent {
   // the count), so after the attention window the pulses are switched off via
   // the .markers-settled class. Any overlay re-render re-arms the window.
   private static readonly MARKER_SETTLE_MS = 6000;
+  // #7112: how long the view must be still before the overlay marker budget is
+  // re-planned for the new centre. Longer than a frame so a drag or an inertia
+  // fling coalesces into ONE rebuild; short enough that the badge's "pan or zoom
+  // to bring others in" is true promptly once the user stops.
+  private static readonly OVERLAY_BUDGET_REPLAN_SETTLE_MS = 200;
   private static readonly LAYER_ZOOM_THRESHOLDS: Partial<
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
   > = {
@@ -269,7 +258,12 @@ export class MapComponent {
   // NOT in the plan simply never appears here and renders in full. That makes a
   // plan/render mismatch fail safe (an unbudgeted layer, not a blank one).
   private overlayMarkerCut: Set<unknown> = new Set();
+  // Pending settle-debounced budget re-plan; see scheduleOverlayBudgetReplan().
+  private overlayBudgetReplanTimer: ReturnType<typeof setTimeout> | null = null;
   private overlayMarkerTruncation: Record<string, GlobeLayerTruncation> = {};
+  // Truncated layer keys with no toggle row to disclose them on; see
+  // updateLayerTruncationLabels().
+  private overlayUndisclosedTruncation: string[] = [];
   private renderedOverlayMarkerCount = 0;
   private lastTruncationLabelKey = '';
   private labelVisibilityScheduled = false;
@@ -432,6 +426,10 @@ export class MapComponent {
     if (this.markerSettleTimer !== null) {
       clearTimeout(this.markerSettleTimer);
       this.markerSettleTimer = null;
+    }
+    if (this.overlayBudgetReplanTimer !== null) {
+      clearTimeout(this.overlayBudgetReplanTimer);
+      this.overlayBudgetReplanTimer = null;
     }
     window.removeEventListener('theme-changed', this.handleThemeChange);
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
@@ -1829,10 +1827,10 @@ export class MapComponent {
       add('conflicts', CONFLICT_ZONES);
       add('conflicts', slices.conflictEvents, { rank: (m) => (m as AcledConflictEvent).fatalities ?? 0 });
     }
-    // Planned on the whole feed rather than the mobile-trimmed slice the loop
-    // iterates. The trim only ever removes markers, so planning the superset
-    // can render fewer than the cap but never more — and both feeds rank so the
-    // markers the trim keeps are the ones the budget keeps too.
+    // The mobile-trimmed slice, i.e. exactly what the loop iterates. Planning the
+    // untrimmed field here would spend this layer's fair share on events the
+    // MOBILE_MAX_IRAN_EVENTS cut then discards — the same slice/loop mismatch
+    // that 3356f19c8 fixed for earthquakes.
     if (layers.iranAttacks) add('iranAttacks', slices.iranEvents);
     if (layers.hotspots) add('hotspots', this.hotspots);
     if (this.isLayerZoomVisible('bases')) add('bases', this.getMilitaryBasesForRender());
@@ -1940,12 +1938,7 @@ export class MapComponent {
     width: number,
     height: number,
   ): LatLng {
-    const zoom = Math.max(this.state.zoom, Number.EPSILON);
-    const rawCentre = [
-      width / (2 * zoom) - this.state.pan.x,
-      height / (2 * zoom) - this.state.pan.y,
-    ] as [number, number];
-    const centre = projection.invert?.(rawCentre);
+    const centre = projection.invert?.(projectionPointAtScreenCentre(width, height, this.state.pan));
     return { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 };
   }
 
@@ -1969,6 +1962,14 @@ export class MapComponent {
    * globe does — a ceiling the user cannot see is indistinguishable from missing
    * data. Skipped when nothing changed: this runs on every render pass, and the
    * writes would restyle the toggle rows each time (#5080).
+   *
+   * A layer the budget trimmed that has no toggle row in this variant's picker
+   * (`fires` outside the energy variant, `webcams`, `radiationWatch`,
+   * `spaceports`) has nowhere to show a badge. Those stay budgeted — an
+   * unbounded feed is what #7112 is about, and `toMapFires` caps nothing — but
+   * the cut is recorded on `overlayUndisclosedTruncation` and surfaced through
+   * getOverlayMarkerBudgetState() rather than vanishing, so it is assertable and
+   * a newly-added rowless layer trips the guard test instead of going quiet.
    */
   private updateLayerTruncationLabels(): void {
     const key = Object.entries(this.overlayMarkerTruncation)
@@ -1983,32 +1984,23 @@ export class MapComponent {
     // then skip the write forever, because the next identical key short-circuits.
     if (!root) return;
     this.lastTruncationLabelKey = key;
-    for (const row of Array.from(root.querySelectorAll<HTMLElement>('.layer-toggle-row'))) {
-      const layer = row.dataset.layer;
-      const counts = layer ? this.overlayMarkerTruncation[layer] : undefined;
-      const existing = row.querySelector<HTMLElement>('.layer-truncation-count');
-      if (!counts) { existing?.remove(); continue; }
-      const badge = existing ?? document.createElement('span');
-      if (!existing) {
-        // Sibling of the toggle button, not a child: inside it every click on
-        // the badge would toggle the layer off.
-        badge.className = 'layer-truncation-count';
-        row.appendChild(badge);
-      }
-      badge.textContent = `${counts.shown}/${counts.total}`;
-      // Untranslated literal, matching GlobeMap.updateLayerTruncationLabels — a
-      // new i18n key is a ~29-file change across locales and the badge itself is
-      // numeric. Tracked as the same follow-up.
-      badge.title = `Showing ${counts.shown} of ${counts.total} markers — the most significant, and those nearest the current view. The map caps markers per layer to keep interaction responsive; pan or zoom to bring others in.`;
-    }
+    const { undisclosed } = renderLayerTruncationBadges(root, this.overlayMarkerTruncation, 'pan');
+    this.overlayUndisclosedTruncation = undisclosed;
   }
 
   /** Markers this render pass drew, and what the budget withheld (#7112). */
   public getOverlayMarkerBudgetState(): {
     rendered: number;
     truncated: Record<string, GlobeLayerTruncation>;
+    undisclosed: string[];
   } {
-    return { rendered: this.renderedOverlayMarkerCount, truncated: this.overlayMarkerTruncation };
+    return {
+      rendered: this.renderedOverlayMarkerCount,
+      truncated: this.overlayMarkerTruncation,
+      // Layers trimmed with no toggle row to show a `shown/total` badge on.
+      // Should be empty for any layer this variant's picker exposes.
+      undisclosed: this.overlayUndisclosedTruncation,
+    };
   }
 
   private renderOverlays(projection: d3.GeoProjection): void {
@@ -4405,8 +4397,13 @@ export class MapComponent {
     const { width, height } = this.getKnownContainerSize();
     this.clampPan(width, height);
     const zoom = this.state.zoom;
+    // Only when something is actually being withheld: with nothing truncated the
+    // selection is view-independent, so a rebuild cannot change a single marker
+    // and would be pure churn on the very path this feature exists to make
+    // cheaper. Same guard, and same reason, as GlobeMap.reselectMarkersForViewport.
     const overlayBudgetViewportChanged =
       this.initialDynamicRendered &&
+      Object.keys(this.overlayMarkerTruncation).length > 0 &&
       (this.lastOverlayBudgetViewport.width !== width ||
         this.lastOverlayBudgetViewport.height !== height ||
         this.lastOverlayBudgetViewport.zoom !== zoom ||
@@ -4446,9 +4443,38 @@ export class MapComponent {
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
     const zoomVisibilityChanged = this.updateZoomLayerVisibility();
     this.emitStateChange();
-    if ((rebuildOnZoomVisibilityChange && zoomVisibilityChanged) || overlayBudgetViewportChanged) {
+    if (rebuildOnZoomVisibilityChange && zoomVisibilityChanged) {
       this.scheduleRender();
+    } else if (overlayBudgetViewportChanged) {
+      this.scheduleOverlayBudgetReplan();
     }
+  }
+
+  /**
+   * Re-plan the overlay budget once the view stops moving (#7112).
+   *
+   * applyTransform() runs on every mousemove/touchmove/wheel and on each frame
+   * of the touch-inertia loop. Re-planning from there directly would put a full
+   * renderDynamicLayers() pass — which wipes and rebuilds cables, pipelines,
+   * conflicts, AIS density, clusters AND every overlay marker with a fresh
+   * click listener — on the interaction path at up to 1000/MIN_RENDER_INTERVAL_MS
+   * per second, where a pan used to be a pure CSS transform with no DOM work at
+   * all. It would also re-arm armMarkerSettle() continuously, holding every
+   * marker in the infinite-pulse state (and its compositing layer, #4669) for
+   * the whole gesture.
+   *
+   * So coalesce to the settle instead, which is what GlobeMap does by re-selecting
+   * on the controls 'end' event rather than during the drag. The markers on
+   * screen stay correct for the pre-gesture POV while the finger is down and
+   * are re-ranked once, when the user stops.
+   */
+  private scheduleOverlayBudgetReplan(): void {
+    if (this.overlayBudgetReplanTimer !== null) clearTimeout(this.overlayBudgetReplanTimer);
+    this.overlayBudgetReplanTimer = setTimeout(() => {
+      this.overlayBudgetReplanTimer = null;
+      if (this.destroyed) return;
+      this.scheduleRender();
+    }, MapComponent.OVERLAY_BUDGET_REPLAN_SETTLE_MS);
   }
 
   private shouldUpdateLabelVisibility(): boolean {
@@ -4617,10 +4643,9 @@ export class MapComponent {
     const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     if (!projection.invert) return null;
-    const zoom = this.state.zoom;
-    const centerX = width / (2 * zoom) - this.state.pan.x;
-    const centerY = height / (2 * zoom) - this.state.pan.y;
-    const coords = projection.invert([centerX, centerY]);
+    const coords = projection.invert(
+      projectionPointAtScreenCentre(width, height, this.state.pan),
+    );
     if (!coords) return null;
     return { lon: coords[0], lat: coords[1] };
   }

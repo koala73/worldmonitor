@@ -18,7 +18,13 @@ type MobileMapIntegrationHarness = {
   getOverlayMarkerCount: () => number;
   getOverlayMarkerClassCount: (selector: string) => number;
   getOverlayPositionSignature: (selector: string) => string;
-  getOverlayBudgetState: () => { rendered: number; truncated: Record<string, { shown: number; total: number }> };
+  getKeptHotspotCoords: () => Array<{ lat: number; lon: number }>;
+  getSeededHotspotCoords: () => Array<{ lat: number; lon: number }>;
+  getOverlayBudgetState: () => {
+    rendered: number;
+    truncated: Record<string, { shown: number; total: number }>;
+    undisclosed: string[];
+  };
   getPopupRect: () => {
     left: number;
     top: number;
@@ -375,6 +381,24 @@ window.__mobileMapIntegrationHarness = {
       .map((element) => `${element.style.left},${element.style.top}`)
       .sort()
       .join('|'),
+  // #7112: the budget's proximity ranking is a claim about WHICH markers survive,
+  // not merely that the set changes on pan/zoom — a centre computed from the
+  // wrong inverse transform also changes the set. These expose the geography of
+  // the surviving hotspots so a test can assert the kept set actually clusters
+  // on the requested view centre.
+  getKeptHotspotCoords: () => {
+    const internals = map as unknown as {
+      hotspots: Array<{ lat: number; lon: number }>;
+      overlayMarkerCut: Set<unknown>;
+    };
+    return internals.hotspots
+      .filter((spot) => !internals.overlayMarkerCut.has(spot))
+      .map((spot) => ({ lat: spot.lat, lon: spot.lon }));
+  },
+  getSeededHotspotCoords: () => {
+    const internals = map as unknown as { hotspots: Array<{ lat: number; lon: number }> };
+    return internals.hotspots.map((spot) => ({ lat: spot.lat, lon: spot.lon }));
+  },
   getOverlayBudgetState: () => map.getOverlayMarkerBudgetState(),
   getPopupRect: () => {
     const element = document.querySelector('.map-popup') as HTMLElement | null;
