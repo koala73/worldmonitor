@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PRO_DIR = resolve(__dirname, '..', 'public', 'pro');
@@ -31,7 +32,8 @@ function entryChunksFor(html) {
     .filter((name) => !/^sentry-/.test(name));
 }
 
-describe('pro Sentry chunk split contract (#5019)', () => {
+describe('pro Sentry chunk split contract (#5019)', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
   const sentryChunks = readdirSync(ASSETS_DIR).filter((f) => /^sentry-[A-Za-z0-9_-]+\.js$/.test(f));
   const indexHtml = readFileSync(resolve(PRO_DIR, 'index.html'), 'utf8');
   const welcomeHtml = readFileSync(resolve(PRO_DIR, 'welcome.html'), 'utf8');
