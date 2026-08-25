@@ -21,6 +21,7 @@ type MobileMapIntegrationHarness = {
   seedWeatherAlerts: (withCentroid: number, withoutCentroid: number) => void;
   forceRender: () => void;
   burstFlashes: (count: number) => void;
+  clearOverlayFeeds: () => void;
   getActiveFlashCount: () => number;
   getFlashNodeCount: () => number;
   getKeptHotspotCoords: () => Array<{ lat: number; lon: number }>;
@@ -451,6 +452,22 @@ window.__mobileMapIntegrationHarness = {
     for (let index = 0; index < count; index += 1) {
       map.flashLocation(((index * 7) % 170) - 85, ((index * 13) % 358) - 179, 60000);
     }
+  },
+  // #7112: drop the seeded feeds so nothing is over budget any more — proves the
+  // disclosure is removed when the cut clears, not stranded over a complete map.
+  clearOverlayFeeds: () => {
+    const internals = map as unknown as {
+      hotspots: unknown[];
+      state: { layers: Record<string, boolean> };
+    };
+    internals.hotspots = [];
+    map.setMilitaryVessels([] as never, []);
+    map.setMilitaryFlights([] as never, []);
+    map.setEarthquakes([] as never);
+    map.setWeatherAlerts([] as never);
+    internals.state.layers.military = false;
+    internals.state.layers.natural = false;
+    map.render();
   },
   getActiveFlashCount: () => map.getActiveFlashCount(),
   getFlashNodeCount: () =>

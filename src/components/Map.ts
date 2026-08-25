@@ -2016,6 +2016,7 @@ export class MapComponent {
       // advances when badges were actually written, so a map that never has a
       // rail would otherwise keep a stale set once truncation changed or cleared.
       this.overlayUndisclosedTruncation = Object.keys(this.overlayMarkerTruncation);
+      this.renderCompactTruncationSummary();
       return;
     }
 
@@ -2030,6 +2031,57 @@ export class MapComponent {
     this.lastTruncationLabelKey = key;
     const { undisclosed } = renderLayerTruncationBadges(root, this.overlayMarkerTruncation, 'pan');
     this.overlayUndisclosedTruncation = undisclosed;
+  }
+
+  /**
+   * The one disclosure a chrome-less map can still make (#7112).
+   *
+   * `chrome: false` (src/embed/panels/map.ts) deliberately builds no controls, so
+   * there is no toggle row to hang a per-layer `shown/total` badge on. Recording
+   * the undisclosed set above makes the state honest, but the person looking at
+   * the embed still sees a partial map and no reason for it — and "a ceiling the
+   * user cannot see is indistinguishable from missing data" is the whole argument
+   * the per-layer badge rests on.
+   *
+   * So state the total, compactly, inside the map itself. Deliberately NOT a
+   * control: no click target, no toggle, nothing that reintroduces the chrome the
+   * embed opted out of — just the count and a `title` carrying the explanation.
+   * Idempotent (one node, updated in place) and removed the moment nothing is
+   * being withheld, so it cannot accumulate across renders or outlive the cut.
+   *
+   * Only for the no-rail case. A map that HAS a rail but whose trimmed layer has
+   * no row in that variant's picker is the separate problem tracked in #7144;
+   * fixing it with a second, parallel disclosure surface would be the wrong shape.
+   */
+  private renderCompactTruncationSummary(): void {
+    const entries = Object.values(this.overlayMarkerTruncation);
+    const existing = this.container.querySelector<HTMLElement>('.map-truncation-summary');
+
+    if (entries.length === 0) {
+      existing?.remove();
+      return;
+    }
+
+    const shown = entries.reduce((sum, counts) => sum + counts.shown, 0);
+    const total = entries.reduce((sum, counts) => sum + counts.total, 0);
+    const summary = existing ?? document.createElement('div');
+    if (!existing) {
+      summary.className = 'map-truncation-summary';
+      // The summary is absolutely positioned, and MapComponent does not own the
+      // container's CSS — an embed host supplies it. `.map-container` happens to
+      // be `position: relative`, but a static container would let the summary
+      // escape to some ancestor and land anywhere on the host page. Establish the
+      // containing block once, on creation only, so this costs a style resolution
+      // the first time a chrome-less map is over budget and never again.
+      if (getComputedStyle(this.container).position === 'static') {
+        this.container.style.position = 'relative';
+      }
+      this.container.appendChild(summary);
+    }
+    summary.textContent = `${shown}/${total} markers`;
+    // Untranslated literal, matching the per-layer badge and its existing i18n
+    // follow-up.
+    summary.title = `Showing ${shown} of ${total} markers — the most significant, and those nearest the current view. The map caps markers per layer to keep interaction responsive; pan or zoom to bring others in.`;
   }
 
   /** Markers this render pass drew, and what the budget withheld (#7112). */

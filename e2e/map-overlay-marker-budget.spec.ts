@@ -82,6 +82,7 @@ type HarnessWindow = Window & {
     seedWeatherAlerts: (withCentroid: number, withoutCentroid: number) => void;
     forceRender: () => void;
     burstFlashes: (count: number) => void;
+    clearOverlayFeeds: () => void;
     getActiveFlashCount: () => number;
     getFlashNodeCount: () => number;
     getKeptHotspotCoords: () => Coord[];
@@ -563,6 +564,28 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
     expect(Object.keys(state.truncated).length).toBeGreaterThan(0);
     expect(state.undisclosed.sort()).toEqual(Object.keys(state.truncated).sort());
     expect(state.rendered).toBeLessThanOrEqual(DESKTOP_TOTAL);
+
+    // Honest private state is necessary but not sufficient: the person looking at
+    // the embed must be able to SEE that the map is partial. With no toggle rail
+    // to badge, the compact summary is the only disclosure surface there is.
+    const summary = page.locator('.map-truncation-summary');
+    await expect(summary).toHaveCount(1);
+    const shown = Object.values(state.truncated).reduce((sum, counts) => sum + counts.shown, 0);
+    const total = Object.values(state.truncated).reduce((sum, counts) => sum + counts.total, 0);
+    await expect(summary).toHaveText(`${shown}/${total} markers`);
+    expect(shown).toBeLessThan(total);
+    await expect(summary).toBeVisible();
+
+    // Idempotent: another render must update the one node, not append a second.
+    await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.forceRender());
+    await expect(summary).toHaveCount(1);
+
+    // ...and it must disappear once nothing is being withheld, rather than
+    // stranding a stale count over a complete map.
+    await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.clearOverlayFeeds(),
+    );
+    await expect(page.locator('.map-truncation-summary')).toHaveCount(0);
   });
 
   test('bounds concurrent news flashes, which are overlay children outside the budget', async ({ page }) => {
@@ -609,11 +632,55 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
       };
     }, 300);
 
-    expect(flashes.active).toBeLessThanOrEqual(MAX_CONCURRENT_FLASHES);
+    // EXACTLY the cap, not `<=`. Every assertion here is satisfied by zero —
+    // 0 <= 12, 0 === 0, and 0 is under the overlay ceiling — so a flashLocation()
+    // that early-returned on every call (no container size, unprojectable point)
+    // would have made this test green while creating no flashes at all. 300 calls
+    // with valid coordinates must leave the ceiling exactly full.
+    expect(flashes.active).toBe(MAX_CONCURRENT_FLASHES);
     // The evicted ones must actually leave the DOM, not just the bookkeeping.
-    expect(flashes.nodes).toBe(flashes.active);
+    expect(flashes.nodes).toBe(MAX_CONCURRENT_FLASHES);
     // The composed ceiling: budgeted markers plus the bounded flash exemption.
     expect(flashes.overlayChildren).toBeLessThanOrEqual(DESKTOP_TOTAL + MAX_CONCURRENT_FLASHES);
+    // ...and the flashes really are on top of a full overlay, so this measures the
+    // composed DOM rather than flashes on an empty map.
+    expect(flashes.overlayChildren).toBeGreaterThan(MAX_CONCURRENT_FLASHES);
+  });
+
+  test('clears live flash timers and nodes when the map is destroyed', async ({ page }) => {
+    await page.goto('/tests/mobile-map-integration-harness.html');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    // Long-duration flashes so they are unambiguously still live at teardown —
+    // otherwise natural expiry, not destroy(), would be what cleared them.
+    const before = await page.evaluate(() => {
+      const harness = (window as HarnessWindow).__mobileMapIntegrationHarness!;
+      harness.burstFlashes(5);
+      return { active: harness.getActiveFlashCount(), nodes: harness.getFlashNodeCount() };
+    });
+
+    // Active precondition: without this the assertions below pass on a map that
+    // never had a flash to clear.
+    expect(before.active).toBe(5);
+    expect(before.nodes).toBe(5);
+
+    const after = await page.evaluate(() => {
+      const harness = (window as HarnessWindow).__mobileMapIntegrationHarness!;
+      harness.destroyMap();
+      return { active: harness.getActiveFlashCount(), nodes: harness.getFlashNodeCount() };
+    });
+
+    // destroy() must clear the tracking AND remove the nodes. A leaked expiry
+    // timer would later fire `flash.remove()` against a torn-down instance, and
+    // leaked nodes outlive the renderer that owns them.
+    expect(after.active).toBe(0);
+    expect(after.nodes).toBe(0);
   });
 
   test('keeps the highest-magnitude earthquakes when the natural feed is cut', async ({ page }) => {
