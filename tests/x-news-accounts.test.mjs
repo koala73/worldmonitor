@@ -898,6 +898,85 @@ describe('per-cycle request budget (#6654)', () => {
   });
 });
 
+describe('402 credits-depleted circuit breaker', () => {
+  const accounts = Array.from({ length: 64 }, (_, i) => ({
+    handle: `News${i}`,
+    accountId: i < 17 ? String(1000 + i) : '',
+  }));
+  const now = () => Date.parse('2026-08-25T12:00:00.000Z');
+  const creditsDepleted = () => new Response(
+    JSON.stringify({
+      title: 'Payment Required',
+      detail: 'credits depleted',
+      status: 402,
+      type: 'https://api.x.com/2/problems/credits-depleted',
+    }),
+    { status: 402, headers: { 'content-type': 'application/json' } },
+  );
+
+  it('stops the whole cycle on the first HTTP 402 and backs off', async () => {
+    // Observed in production 2026-08-25: the plan ran out of credits and every
+    // call answered 402. Only 429 and 401/403 broke the loop, so 402 fell to the
+    // per-account failure path — all 64 accounts rejected, every cycle, with no
+    // backoff, exactly the ~6.1k/day the 401/403 breaker exists to prevent.
+    // Rate-limit headers were untouched (remaining 1999/2000), so nothing else
+    // would have slowed it down either.
+    let requests = 0;
+    const state = await xNews.pollXFeed({
+      accounts,
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => { requests += 1; return creditsDepleted(); },
+      now,
+      wait: async () => {},
+    });
+
+    assert.equal(requests, 1, 'the breaker must trip on the first 402');
+    assert.equal(state.accountsAttempted, 1);
+    assert.equal(state.cycleComplete, false);
+    assert.equal(state.rateLimitedUntil, now() + xNews.AUTH_FAILURE_BACKOFF_MS);
+    assert.equal(state.rateLimitAttempt, 0, '402 is not the 429 exponential');
+  });
+
+  it('names billing, not the token, so the operator is not sent to rotate a working bearer', async () => {
+    // The whole point of separating this from 401/403: the bearer is VALID and
+    // rotating it fixes nothing. A message saying "check X_BEARER_TOKEN" would
+    // cost an operator a credential rotation before they found the real cause.
+    const state = await xNews.pollXFeed({
+      accounts,
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => creditsDepleted(),
+      now,
+      wait: async () => {},
+    });
+
+    assert.match(state.lastError, /credits/i, 'the cause must be named');
+    assert.doesNotMatch(state.lastError, /X_BEARER_TOKEN/,
+      'a valid bearer must not be implicated');
+    assert.doesNotMatch(state.lastError, /auth failed/i);
+    assert.doesNotMatch(state.lastError, /rate limited/i);
+  });
+
+  it('trips on the timeline leg too, not only the username lookup', async () => {
+    // Accounts with a pinned id skip the lookup entirely and go straight to the
+    // timeline call, so a breaker on only one leg leaves the other burning.
+    let requests = 0;
+    const state = await xNews.pollXFeed({
+      accounts: accounts.map((account, i) => ({ ...account, accountId: String(2000 + i) })),
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => { requests += 1; return creditsDepleted(); },
+      now,
+      wait: async () => {},
+    });
+
+    assert.equal(requests, 1, 'the timeline leg must trip on the first 402 too');
+    assert.equal(state.rateLimitedUntil, now() + xNews.AUTH_FAILURE_BACKOFF_MS);
+    assert.match(state.lastError, /credits/i);
+  });
+});
+
 describe('401/403 circuit breaker (#6654)', () => {
   const accounts = Array.from({ length: 64 }, (_, i) => ({
     handle: `News${i}`,

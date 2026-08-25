@@ -64,6 +64,18 @@ const TOLERATED_FAILED_ACCOUNT_FRACTION = 0.05;
 // one whole cycle is skipped even at the slowest cadence, while keeping recovery
 // automatic within 30 minutes of the token landing.
 const AUTH_FAILURE_BACKOFF_MS = 2 * MAX_POLL_INTERVAL_MS;
+// 402 is the same CLASS as 401/403 — it does not heal on API time — but it is a
+// different remediation. Observed 2026-08-25: the plan ran out of credits and
+// every call answered
+//   {"title":"Payment Required","detail":"credits depleted","status":402}
+// with rate-limit headers untouched (remaining 1999/2000), so neither the 429
+// backoff nor the auth breaker engaged and all 64 accounts were rejected every
+// cycle — the same ~6.1k/day the auth breaker exists to prevent.
+//
+// It gets the auth backoff (recovery stays automatic within one deferral of a
+// top-up) but its OWN message: the bearer is valid here, and telling an operator
+// to "check X_BEARER_TOKEN" would cost a credential rotation that fixes nothing.
+const CREDITS_EXHAUSTED_STATUS = 402;
 const X_FEED_SNAPSHOT_VERSION = 1;
 const USER_AGENT = 'WorldMonitor/1.0 (curated news-account monitoring; +https://worldmonitor.app)';
 
@@ -525,6 +537,15 @@ function recordAuthFailure(nextState, status, context, now) {
   nextState.lastError = `X auth failed (HTTP ${status}) ${context}: check X_BEARER_TOKEN — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
 }
 
+function isCreditsExhaustedStatus(status) {
+  return status === CREDITS_EXHAUSTED_STATUS;
+}
+
+function recordCreditsExhausted(nextState, context, now) {
+  nextState.rateLimitedUntil = now() + AUTH_FAILURE_BACKOFF_MS;
+  nextState.lastError = `X credits depleted (HTTP ${CREDITS_EXHAUSTED_STATUS}) ${context}: the bearer is valid — top up the X API plan — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
+}
+
 /**
  * X reports an unreadable ACCOUNT with HTTP 200 and a top-level `errors` array,
  * not a 4xx: a protected account yields `Authorization Error`, a renamed or
@@ -698,6 +719,10 @@ async function pollXFeed({
           recordAuthFailure(nextState, response.status, `resolving @${account.handle}`, now);
           break;
         }
+        if (isCreditsExhaustedStatus(response.status)) {
+          recordCreditsExhausted(nextState, `resolving @${account.handle}`, now);
+          break;
+        }
         if (!response.ok || !body?.data?.id) {
           nextState.accountsFailed += 1;
           // A missing handle also answers 200-with-errors, so the status alone
@@ -750,6 +775,15 @@ async function pollXFeed({
         }
         if (isAuthFailureStatus(response.status)) {
           recordAuthFailure(nextState, response.status, `polling @${account.handle}`, now);
+          break;
+        }
+        // Accounts with a pinned id skip the lookup entirely, so a breaker on
+        // only that leg would leave this one burning the whole roster.
+        if (isCreditsExhaustedStatus(response.status)) {
+          // recordCreditsExhausted sets rateLimitedUntil, which the check after
+          // this page loop already uses to stop admitting accounts — no separate
+          // flag, and the catch-up hand-off is shared with the rate-limit path.
+          recordCreditsExhausted(nextState, `polling @${account.handle}`, now);
           break;
         }
         if (!response.ok) {
