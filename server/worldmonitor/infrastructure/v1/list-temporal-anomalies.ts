@@ -76,16 +76,31 @@ async function tryAcquireLock(): Promise<boolean> {
   }
 }
 
-function countSnapshotCoverage(snapshot: AnomalySnapshot): number {
-  if (Array.isArray(snapshot.trackedTypes)) return snapshot.trackedTypes.length;
-  if (Array.isArray(snapshot.anomalies)) return snapshot.anomalies.length;
-  return 0;
-}
-
-async function writeTemporalAnomaliesSeedMeta(snapshot: AnomalySnapshot): Promise<boolean> {
+/**
+ * `recordCount` must report the coverage actually ACHIEVED, not the coverage
+ * configured.
+ *
+ * It used to be derived from `snapshot.trackedTypes`, which is the constant
+ * `Object.keys(COUNT_SOURCE_KEYS)` — so it reported full coverage (2) even when
+ * BOTH count sources were missing and the rebuild had zero inputs. Verified by
+ * execution: with both source keys absent the route still stamped recordCount 2.
+ *
+ * Nothing branches on it for this key today — none of the three consumers sets
+ * `minRecordCount`, and both `evaluateFreshness` and health.js gate their
+ * coverage checks behind that field being present. The cost of leaving it was
+ * latent rather than active: a coverage floor added here later would have been
+ * born unable to fire, against a number that can never drop. Callers pass the
+ * observed count instead.
+ */
+async function writeTemporalAnomaliesSeedMeta(
+  snapshot: AnomalySnapshot,
+  coveredSourceCount: number,
+): Promise<boolean> {
   return setCachedJson('seed-meta:temporal:anomalies', {
     fetchedAt: Date.now(),
-    recordCount: countSnapshotCoverage(snapshot),
+    recordCount: Number.isFinite(coveredSourceCount)
+      ? coveredSourceCount
+      : (Array.isArray(snapshot.anomalies) ? snapshot.anomalies.length : 0),
   }, 604800).catch(() => false);
 }
 
@@ -236,7 +251,9 @@ export async function listTemporalAnomalies(
         // A silent failure here reads as a stalled producer 45min later with nothing
         // in the logs to explain it, and the next attempt is a full rebuild cycle
         // away — so surface it with a grep-able marker rather than discarding it.
-        const stamped = await writeTemporalAnomaliesSeedMeta(snapshot);
+        // typesWithCounts is the sources that actually returned a count this
+        // rebuild — the achieved coverage, not the configured one.
+        const stamped = await writeTemporalAnomaliesSeedMeta(snapshot, typesWithCounts.length);
         if (!stamped) {
           console.warn(
             '[TemporalAnomalies] seed-meta stamp FAILED after a successful publish; '

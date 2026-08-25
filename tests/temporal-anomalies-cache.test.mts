@@ -25,7 +25,7 @@ async function runWithRedisStub(
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
   const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-  const calls: { method: string; key: string }[] = [];
+  const calls: { method: string; key: string; recordCount?: number }[] = [];
 
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
@@ -34,11 +34,20 @@ async function runWithRedisStub(
       // Writes POST to `${url}/` with the command in the BODY (`['SET', key, ...]`),
       // not in the URL path — matching on the URL would silently match nothing.
       let key = '';
+      let recordCount: number | undefined;
       try {
         const cmd = JSON.parse(String(init.body ?? '[]'));
-        if (Array.isArray(cmd)) key = String(cmd[1] ?? '');
-      } catch { /* leave key empty; assertions below surface it */ }
-      calls.push({ method: 'POST', key });
+        if (Array.isArray(cmd)) {
+          key = String(cmd[1] ?? '');
+          // cmd[2] is the JSON-encoded value; capture recordCount so coverage
+          // assertions can check WHAT was written, not just that a write happened.
+          const written = JSON.parse(String(cmd[2] ?? 'null'));
+          if (written && typeof written.recordCount === 'number') {
+            recordCount = written.recordCount;
+          }
+        }
+      } catch { /* leave undefined; assertions below surface it */ }
+      calls.push({ method: 'POST', key, recordCount });
       return Response.json({ result: lockGranted ? 'OK' : null });
     }
     const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
@@ -128,6 +137,38 @@ describe('temporal anomalies cache freshness', () => {
       'a successful rebuild must stamp seed-meta exactly once -- three health consumers '
       + `watch it at maxStaleMin 45. Writes seen: ${JSON.stringify(writes.map((w) => w.key))}`,
     );
+  });
+
+  it('stamps the coverage it ACHIEVED, not the coverage it configured', async () => {
+    // recordCount used to come from trackedTypes — the constant
+    // Object.keys(COUNT_SOURCE_KEYS) — so it reported 2 even with zero inputs
+    // read. Nothing branches on it today (no consumer sets minRecordCount), but
+    // a coverage floor added later would be born unable to fire.
+    // Both count sources absent -> achieved coverage is 0.
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      // news:insights:v1 and wildfire:fires:v1 deliberately absent
+    });
+
+    const stamp = calls.find((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies');
+    assert.ok(stamp, 'rebuild must still stamp seed-meta');
+    assert.equal(
+      stamp.recordCount, 0,
+      `zero count sources read must stamp recordCount 0, got ${stamp.recordCount}`,
+    );
+  });
+
+  it('stamps full coverage when both count sources are present', async () => {
+    // Positive control: the assertion above must not pass merely because the
+    // stamp is always 0.
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': { topStories: [{ id: 'a' }] },
+      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+    });
+
+    const stamp = calls.find((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies');
+    assert.equal(stamp?.recordCount, 2, 'both sources read must stamp recordCount 2');
   });
 
   it('does not fold a new baseline sample when one was taken recently', async () => {
