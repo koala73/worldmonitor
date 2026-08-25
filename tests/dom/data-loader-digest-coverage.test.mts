@@ -44,6 +44,11 @@ function digest(state: string, itemCount = 2): ListFeedDigestResponse {
       droppedUndated: 0,
       droppedFreshness: 0,
       droppedCategoryCap: 0,
+      // #7084: keep the fixture self-consistent — a body describing itself as
+      // 'stale' is exactly the one a replay produces.
+      servedStale: state === 'stale',
+      staleAgeSeconds: state === 'stale' ? 1800 : 0,
+      staleReason: state === 'stale' ? 'build-error' : '',
     },
   };
 }
