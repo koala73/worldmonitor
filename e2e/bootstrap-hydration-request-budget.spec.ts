@@ -280,22 +280,6 @@ async function installHydrationRequestAccounting(
   return log;
 }
 
-/**
- * Turn on the app's own opt-in LCP mark recorder before any page script runs.
- *
- * markLcpDebug() is a no-op unless the recorder is installed, and its
- * `wm:hydration:viewport-trigger` mark is the only proof that the post-startup
- * hydration handler actually ran. Every test that calls fireHydrationTrigger()
- * must set this first, or the trigger's own positive control reads zero.
- * The flag is the supported entry point — hand-installing the state object
- * would fabricate a shape the app never builds.
- */
-async function installHydrationTriggerRecorder(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    localStorage.setItem('wm_lcp_debug', '1');
-  });
-}
-
 /** The `full` variant enables 39 priority-1 panels and free tier caps at 40, so
  * a fixture may promote exactly ONE priority-2 panel into range. Promoting two
  * pushes the set over the cap and enforceFreePanelLimit silently drops one. */
@@ -313,34 +297,24 @@ async function seedHydrationDashboard(
   page: Page,
   promotedPanels: Record<string, unknown> = SANCTIONS_PANEL_PROMOTION,
 ): Promise<void> {
-  // The clear has to run BEFORE seedAnonymousDashboard writes the variant and
-  // dismissal flags, so it gets its own earlier init script rather than being
-  // folded into the shared helper.
-  await page.addInitScript(() => {
-    if (sessionStorage.getItem('__bootstrap_hydration_budget_e2e__')) return;
-    localStorage.clear();
-    sessionStorage.clear();
+  await seedAnonymousDashboard(page, 'full', {
+    initializeOnce: {
+      sessionKey: '__bootstrap_hydration_budget_e2e__',
+      clearStorage: true,
+      localStorage: {
+        // loadNatural() and loadFirmsData() are gated on the `natural` map
+        // layer, which the full variant defaults OFF. The fixture enables the
+        // real consumers rather than asserting about loaders that never run.
+        'worldmonitor-layers': JSON.stringify({ natural: true }),
+        // Partial panel settings: App.ts merges every other key at its variant
+        // default, so this only overrides the panel named here.
+        'worldmonitor-panels': JSON.stringify(promotedPanels),
+      },
+    },
+    // markLcpDebug() is a no-op without this supported recorder flag. Apply it
+    // on every document so reloads preserve the trigger's positive control.
+    localStorage: { wm_lcp_debug: '1' },
   });
-  // The variant + three dismissal flags come from the shared helper rather than
-  // a fourth hand-maintained copy of the same policy.
-  await seedAnonymousDashboard(page, 'full');
-  await page.addInitScript((panels: Record<string, unknown>) => {
-    if (sessionStorage.getItem('__bootstrap_hydration_budget_e2e__')) return;
-    // loadNatural() and loadFirmsData() are gated on the `natural` map layer,
-    // which the full variant defaults OFF. AE1/AE2 describe what happens when
-    // those loaders run twice, so the fixture turns on the layer that owns them
-    // rather than asserting about a loader that never runs.
-    localStorage.setItem('worldmonitor-layers', JSON.stringify({ natural: true }));
-    // Partial panel settings: App.ts merges every other key in at its variant
-    // default, so this only overrides the panel named here.
-    localStorage.setItem('worldmonitor-panels', JSON.stringify(panels));
-    sessionStorage.setItem('__bootstrap_hydration_budget_e2e__', '1');
-  }, promotedPanels);
-  // Registered LAST on purpose: init scripts run in registration order and the
-  // seeder above calls localStorage.clear(), which would erase the recorder flag
-  // if it were set first. That erasure is silent — countViewportTriggers() just
-  // reads zero — so the ordering is load-bearing, not cosmetic.
-  await installHydrationTriggerRecorder(page);
 }
 
 function countMarks(page: Page, markName: string): Promise<number> {
@@ -377,13 +351,33 @@ async function fireHydrationTrigger(page: Page): Promise<void> {
     .toBeGreaterThan(before);
 }
 
-/** Bring the sanctions panel into range so its viewport-gated loader runs. */
-async function mountSanctionsPanel(page: Page) {
-  const panel = page.locator('[data-panel="sanctions-pressure"]');
+/**
+ * Drive the InsightsPanel's real repeat-read path. Insights is populated by
+ * loadNews(), not by the viewport-triggered loadAllData() pass, so the resize
+ * alone cannot prove a second insights read. A framework change is a supported
+ * consumer event subscribed by InsightsPanel on both desktop and mobile; its
+ * handler calls updateInsights() with the panel's latest clusters.
+ */
+async function fireInsightsRepeatConsumer(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('wm-framework-changed', {
+      detail: { panelId: 'insights', frameworkId: null },
+    }));
+  });
+}
+
+/** Bring a deferred panel into range and wait for its real implementation. */
+async function mountPanel(page: Page, panelId: string) {
+  const panel = page.locator(`[data-panel="${panelId}"]`);
   await panel.scrollIntoViewIfNeeded();
   await expect(panel).toBeVisible();
   await expect(panel).not.toHaveAttribute('data-deferred-panel', 'true');
   return panel;
+}
+
+/** Bring the sanctions panel into range so its viewport-gated loader runs. */
+function mountSanctionsPanel(page: Page) {
+  return mountPanel(page, 'sanctions-pressure');
 }
 
 // Viewport only — both arms still use the WEB tier deadlines. The desktop
@@ -464,18 +458,42 @@ for (const [deviceClass, deviceViewport] of [
 
     test('without tier hydration the same flow refetches — the counters are live', async ({ page }) => {
       await seedHydrationDashboard(page);
-      const log = await installHydrationRequestAccounting(page, { hydrate: false });
+      const log = await installHydrationRequestAccounting(page, {
+        hydrate: false,
+        uncacheableFallbacks: true,
+      });
 
       await waitForStartup(page);
+      // The panel owns the insights subscription. Mounting it makes both the
+      // first update and the framework-change repeat a real consumer action.
+      await mountPanel(page, 'insights');
       await mountSanctionsPanel(page);
-      await fireHydrationTrigger(page);
+
+      // Establish that every loader's first fallback pass is visible, then
+      // compare only traffic caused by the repeat consumers. Startup retries
+      // can raise these baselines, so exact absolute counts are not meaningful.
+      for (const dataset of HYDRATION_DATASETS) {
+        await expect.poll(() => log.counts[dataset.key] ?? 0, {
+          message: `${dataset.key} did not exercise its first fallback pass`,
+          timeout: REPEAT_LOAD_SETTLE_MS,
+        }).toBeGreaterThan(0);
+      }
+      // Some loaders cascade from an RPC miss to the public per-key endpoint.
+      // Let that first pass finish before freezing the baseline, or its tail
+      // could be misattributed to the repeat trigger below.
       await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
+      const firstPassCounts = Object.fromEntries(
+        HYDRATION_DATASETS.map(({ key }) => [key, log.counts[key] ?? 0]),
+      );
+
+      await fireHydrationTrigger(page);
+      await fireInsightsRepeatConsumer(page);
 
       for (const dataset of HYDRATION_DATASETS) {
-        expect(
-          log.counts[dataset.key] ?? 0,
-          `${dataset.key} has no live fallback path here, so the zero-refetch assertion is vacuous`,
-        ).toBeGreaterThan(0);
+        await expect.poll(() => log.counts[dataset.key] ?? 0, {
+          message: `${dataset.key} did not refetch after its repeat consumer ran`,
+          timeout: REPEAT_LOAD_SETTLE_MS,
+        }).toBeGreaterThan(firstPassCounts[dataset.key] ?? 0);
       }
     });
   });

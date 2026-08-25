@@ -91,16 +91,58 @@ export function requestedKeys(url: string): string[] {
   return keys ? keys.split(',').filter(Boolean) : [];
 }
 
+type AnonymousDashboardSeedOptions = {
+  /** Values written on every document before the app starts. */
+  localStorage?: Record<string, string>;
+  /**
+   * One-time initialization guarded by a session-storage sentinel. The clear,
+   * configured writes, and sentinel update run in that order inside the same
+   * init script, so callers never depend on Playwright's ordering across
+   * separate addInitScript registrations.
+   */
+  initializeOnce?: {
+    sessionKey: string;
+    clearStorage?: boolean;
+    localStorage?: Record<string, string>;
+  };
+};
+
 export async function seedAnonymousDashboard(
   page: Page,
   variant: 'full' | 'happy' | 'energy',
+  options: AnonymousDashboardSeedOptions = {},
 ): Promise<void> {
-  await page.addInitScript((selectedVariant) => {
+  await page.addInitScript(({ selectedVariant, seedOptions }) => {
+    const initializeOnce = seedOptions.initializeOnce;
+    const shouldInitialize = !initializeOnce
+      || !sessionStorage.getItem(initializeOnce.sessionKey);
+
+    if (shouldInitialize && initializeOnce?.clearStorage) {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+
+    // Keep the anonymous variant and dismissal policy shared by every request-
+    // budget spec. These values are restored on each document, matching the
+    // original helper behavior across reloads.
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     localStorage.setItem('worldmonitor-variant', selectedVariant);
-  }, variant);
+
+    if (shouldInitialize && initializeOnce) {
+      for (const [key, value] of Object.entries(initializeOnce.localStorage ?? {})) {
+        localStorage.setItem(key, value);
+      }
+    }
+    for (const [key, value] of Object.entries(seedOptions.localStorage ?? {})) {
+      localStorage.setItem(key, value);
+    }
+
+    if (shouldInitialize && initializeOnce) {
+      sessionStorage.setItem(initializeOnce.sessionKey, '1');
+    }
+  }, { selectedVariant: variant, seedOptions: options });
 }
 
 export async function waitForStartup(page: Page): Promise<void> {
