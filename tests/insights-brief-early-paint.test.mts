@@ -38,7 +38,7 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
     );
     assert.match(
       method,
-      /await this\.loadBriefFromCache\(\);[\s\S]*?if \(this\.updateGeneration > 0 \|\| !this\.cachedBrief\) return;/,
+      /await this\.loadBriefFromCache\(\);\s*if \(this\.updateGeneration > 0\) return;/,
       'must re-check updateGeneration AFTER the async cache read — updateInsights() may have started during the await',
     );
     assert.match(
@@ -48,8 +48,40 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
     );
     assert.match(
       method,
-      /this\.renderWorldBrief\(this\.cachedBrief, this\.cachedBriefSources\)/,
+      /this\.renderWorldBrief\(brief, sources\)/,
       'the early paint must reuse renderWorldBrief (it formats and links the cached summary)',
+    );
+  });
+
+  // #7118: the cache-only early paint helped repeat visitors and did nothing
+  // on a cold visit, so the brief still became the field LCP element at
+  // p75 ~3.5s (#7113). Behavioural coverage lives in
+  // tests/dom/insights-brief-cold-early-paint.test.mts; this pins the ordering
+  // contract the DOM test cannot see — that the cache is tried FIRST and the
+  // bootstrap read only happens on a miss.
+  it('falls back to the hydrated bootstrap brief only after the cache misses (#7118)', () => {
+    const method = sliceBetween('private async paintCachedBriefEarly()', 'private extractISQInput');
+    assert.match(
+      method,
+      /await this\.loadBriefFromCache\(\);[\s\S]*?if \(!brief\) \{[\s\S]*?getServerInsights\(\)/,
+      'the bootstrap read must sit behind the cache miss — the cache is the cheaper path and #4890 owns it',
+    );
+    assert.match(
+      method,
+      /sources = InsightsPanel\.serverBriefSources\(server\)/,
+      'the server fallback must use the shared citation bound, not a fresh literal that can drift from renderServerInsights',
+    );
+  });
+
+  it('does not hold the server brief behind the sentiment worker (#7118)', () => {
+    const method = sliceBetween('private async updateFromServer(', 'private async updateFromClient(');
+    const paintIdx = method.indexOf("#7118 pre-sentiment paint");
+    const sentimentIdx = method.indexOf('await mlWorker.classifySentiment');
+    assert.notEqual(paintIdx, -1, 'updateFromServer must paint the brief before classifying sentiment');
+    assert.notEqual(sentimentIdx, -1, 'slice must still contain the sentiment await');
+    assert.ok(
+      paintIdx < sentimentIdx,
+      'the brief paint must come BEFORE the sentiment await — classifySentiment can cost seconds while the ONNX model loads',
     );
   });
 

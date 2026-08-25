@@ -125,13 +125,45 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 
 ## 地理工具
 
-### `GET /api/geo?iso2=US`
+### `GET /api/geo`
 
-返回国家元数据:质心、bbox、首都、ISO 代码。
+Geo-IP 回显：根据调用方 IP 的 CDN 国家头返回 `{ "country": "<ISO2>" }`。不接受任何参数。（坐标反向地理编码请使用 `GET /api/infrastructure/v1/reverse-geocode?lat=…&lon=…`。）
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
 通过 OpenStreetMap Nominatim 将 lat/lon 反向地理编码为最近的国家 + 城市。结果按 0.1 度网格缓存七天，该路由限制为 60 请求/分钟/IP。
+
+## 账户与会话辅助端点
+
+这些路由服务于仪表盘和设置界面。在此记录以便可被发现，但它们是**内部辅助端点，不是有版本的产品契约** —— 其形状会随消费它们的 UI 变化。
+
+### `GET /api/me/entitlement`
+
+返回已登录用户的 `{"isPro": true|false}`。需要 Clerk bearer token（`Authorization: Bearer …`）；缺失或无效的 token 返回 `401 {"error":"unauthenticated"}`，以便调用方区分"未登录"与"已登录的免费层"。供 `/pro` 营销页切换升级 CTA 使用。始终 `Cache-Control: private, no-store`。
+
+### `GET /api/user/mcp-quota`
+
+设置界面读取调用者的 MCP 每日配额，读取的正是 MCP 服务器执行限额所用的同一计数器。需要 Clerk 会话。返回 `{"used": 12, "limit": 250, "resetsAt": "<下一个 UTC 午夜>"}`；`limit: null` 表示不限量。免费账户调用者看到的是免费额度计量。后端故障软失败（`used: 0` / 套餐默认值）而不报错。`Cache-Control: no-store`。
+
+### `POST /api/user/mcp-revoke`
+
+设置界面撤销单个 Pro MCP token。需要 Clerk 会话；用户 id 来自已验证的会话，绝不取自 body。Body：`{"tokenId": "<id>"}`。返回 `200 {"ok":true}`；错误：`400`（`invalid_json`、`missing_token_id`）、`401`、`404 not_found`（为防枚举而刻意折叠）、`409 already_revoked`、`503 service_unavailable` 附 `Retry-After: 5`。撤销在 MCP 服务器 60 秒负缓存窗口内生效。
+
+## 运维端点
+
+内部运维表面 —— 匿名但按来源门控为 WorldMonitor 来源（其他来源得到纯文本 `403 Forbidden`），不属于公开 API 契约。
+
+### `POST /api/security/report`
+
+浏览器 Reporting API 的 COOP/COEP 违规报告接收端（通过站点级 `Reporting-Endpoints: wm-coop-coep="/api/security/report"` 头接线）。接受 `application/reports+json` / `application/report+json` / `application/json`（否则 `415`），body 上限 32 KiB（否则 `413`），始终以无 body 的 `204` 应答。记录前 URL 会被裁剪到 origin —— 不保留查询串或令牌。
+
+### `POST /api/analytics-health`
+
+分析采集器自身健康状况的聚合遥测计数器。接受一个很小的 JSON body（≤1 KiB），内容为按 cohort 的写入/失败计数 —— 不接受事件负载、用户 id、URL 或指纹。应答 `204`。限流每分钟 60 次（失败关闭）。
+
+### `GET /api/correlation-runtime-mode`
+
+只读控制面开关：返回 `{"mode": "legacy"|"exact"|"fuzzy"}`，告知浏览器与 seeder 路径当前激活的关联引擎，无需重新部署。没有写入表面。后备存储不可达时仍返回 `200` 与 `"legacy"`。`Cache-Control: no-store`。
 
 ## 实用工具
 

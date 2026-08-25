@@ -205,6 +205,20 @@ node scripts/seed-military-flights.mjs
 >   wired for `redis-rest` in `docker-compose.yml`) to opt into using the proxy from
 >   inside the relay container.
 
+> **`redis-rest` request body limit**: the proxy accepts request bodies up to **16 MB**,
+> overridable with `SRH_MAX_BODY_BYTES` (bytes) on the `redis-rest` service. The default is
+> sized for the seeders: every seeder publishing through `atomicPublish` is capped at 5 MB per
+> key (`MAX_PAYLOAD_BYTES` in `scripts/_seed-utils.mjs`), and `atomicPublish` sends that payload
+> as a JSON string nested inside `["SET", key, <payload>, "EX", ttl]`, so escaping makes the
+> wire body larger than the payload.
+>
+> An over-limit body is answered with `413 Payload Too Large` and logged by the proxy, so a
+> rejection shows up as a clear HTTP status in the seeder log *and* a matching line in
+> `docker compose logs redis-rest` — never a bare `EPIPE`-style connection error. That holds at
+> any value you set, so lowering the limit is safe to diagnose. The `redis-rest` service also
+> carries a `mem_limit`, since the proxy buffers each accepted body in full; raise both together
+> if you raise `SRH_MAX_BODY_BYTES`.
+
 ## 🔨 Building from Source
 
 ```bash

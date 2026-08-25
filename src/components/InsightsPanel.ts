@@ -10,7 +10,7 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
+import { collectBriefCitationSources, collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
@@ -129,20 +129,60 @@ export class InsightsPanel extends Panel {
   }
 
   /**
-   * #4890: early-paint the persisted World Brief at construction time so the
-   * LCP text block exists at shell paint instead of after the full insights
-   * pipeline. Generation guards on BOTH sides of the async cache read keep
-   * this from clobbering a real updateInsights() pass that races the
-   * IndexedDB read (updateInsights bumps updateGeneration synchronously on
-   * entry, so a stale early paint can never land on top of real content).
+   * #4928 external review: the synthesis cites up to 8 stories — a 6-source
+   * cap orphaned [7]/[8]. Cap to the payload's own citation index space
+   * (bounded at BRIEF_CACHE_MAX_SOURCES defensively). Shared by every path
+   * that renders a server brief so the citation bound cannot drift between
+   * the early paint (#7118) and the full render.
+   */
+  private static serverBriefSources(insights: ServerInsights): BriefSource[] {
+    return collectBriefCitationSources(
+      insights.worldBriefSources ?? [],
+      Math.min(
+        InsightsPanel.BRIEF_CACHE_MAX_SOURCES,
+        Math.max(6, insights.worldBriefSources?.length ?? 6),
+      ),
+    );
+  }
+
+  /**
+   * #4890: early-paint the World Brief at construction time so the LCP text
+   * block exists at shell paint instead of after the full insights pipeline.
+   * Generation guards on BOTH sides of the async cache read keep this from
+   * clobbering a real updateInsights() pass that races the IndexedDB read
+   * (updateInsights bumps updateGeneration synchronously on entry, so a stale
+   * early paint can never land on top of real content).
+   *
+   * #7118: the persistent cache only exists for REPEAT visitors, so before
+   * this the early paint did nothing on a cold visit — the brief waited for
+   * the whole pipeline and became the field LCP element at p75 ~3.5s (#7113,
+   * docs/perf/field-lcp-dashboard-2026-08-24.md). `insights` rides the FAST
+   * bootstrap tier (api/_bootstrap-tier-keys.js), so on a cold visit the
+   * brief is usually already hydrated — fall back to it. The cache is still
+   * preferred: it is the cheaper read and needs no bootstrap round trip.
    */
   private async paintCachedBriefEarly(): Promise<void> {
     if (this.updateGeneration > 0) return;
     await this.loadBriefFromCache();
-    if (this.updateGeneration > 0 || !this.cachedBrief) return;
+    if (this.updateGeneration > 0) return;
+
+    let brief = this.cachedBrief;
+    let sources = this.cachedBriefSources;
+    if (!brief) {
+      // getServerInsights() is synchronous and memoises on success, so this
+      // opens no new race window and does not deprive the later
+      // updateInsights() pass of the payload.
+      const server = getServerInsights();
+      if (server?.worldBrief) {
+        brief = server.worldBrief;
+        sources = InsightsPanel.serverBriefSources(server);
+      }
+    }
+    if (!brief) return;
+
     this.setDataBadge('cached');
     this.setSafeContent(unsafeRawHtml(
-      this.renderWorldBrief(this.cachedBrief, this.cachedBriefSources),
+      this.renderWorldBrief(brief, sources),
       'renderWorldBrief formats and links the cached summary (#4890 early brief paint)',
     ));
   }
@@ -317,6 +357,21 @@ export class InsightsPanel extends Panel {
 
       // Sentiment classification uses positional indexing — must happen AFTER re-sort
       const titles = sortedStories.slice(0, 5).map(s => s.primaryTitle);
+
+      // #7118: the brief is already in hand, so paint it BEFORE the sentiment
+      // worker round trip rather than after. classifySentiment can cost
+      // seconds on first use while the ONNX model loads, and the brief is the
+      // field LCP element on ~38% of desktop /dashboard views (#7113). The
+      // full render below supersedes this; Panel drops a debounced
+      // setSafeContent write that has not committed yet, so when sentiment
+      // resolves inside the debounce window this paint costs nothing.
+      if (serverInsights.worldBrief) {
+        this.setSafeContent(unsafeRawHtml(
+          this.renderWorldBrief(serverInsights.worldBrief, InsightsPanel.serverBriefSources(serverInsights)),
+          'renderWorldBrief formats and links the server summary (#7118 pre-sentiment paint)',
+        ));
+      }
+
       let sentiments: Array<{ label: string; score: number }> | null = null;
       if (mlWorker.isAvailable) {
         sentiments = await mlWorker.classifySentiment(titles).catch(() => null);
@@ -530,13 +585,7 @@ export class InsightsPanel extends Panel {
     insights: ServerInsights,
     sentiments: Array<{ label: string; score: number }> | null,
   ): void {
-    // #4928 external review: the synthesis cites up to 8 stories — a
-    // 6-source cap orphaned [7]/[8]. Cap to the payload's own citation
-    // index space (bounded at 12 defensively).
-    const worldBriefSources = collectBriefSources(
-      insights.worldBriefSources ?? [],
-      Math.min(12, Math.max(6, insights.worldBriefSources?.length ?? 6)),
-    );
+    const worldBriefSources = InsightsPanel.serverBriefSources(insights);
     const briefHtml = insights.worldBrief
       ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, this.renderBriefExtras(insights))
       : '';

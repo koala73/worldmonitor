@@ -237,10 +237,11 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(upstream.body, { status: upstream.status, headers: upstreamResponseHeaders(upstream) });
   }
 
-  const bodyText = await req.text();
-  if (bodyText.length > MAX_REQUEST_BODY_BYTES) {
+  const bodyBytes = await req.arrayBuffer();
+  if (bodyBytes.byteLength > MAX_REQUEST_BODY_BYTES) {
     return jsonRpcErrorResponse(413, null, -32600, `Request body exceeds ${MAX_REQUEST_BODY_BYTES} bytes`);
   }
+  const bodyText = new TextDecoder().decode(bodyBytes);
   const classified = classifyJsonRpcRequest(bodyText);
   if (classified.kind === 'invalid-json') {
     return jsonRpcErrorResponse(400, null, -32700, 'Parse error: request body is not valid JSON');

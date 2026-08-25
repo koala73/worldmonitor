@@ -23,42 +23,5 @@
     "block in api/health.js exists to prevent."
   ],
   "expiresAt": "2026-08-27",
-  "acknowledged": [
-    {
-      "name": "flightDelays",
-      "status": "STALE_SEED",
-      "issue": 6987,
-      "reason": "Probe meta moves from seed-meta:aviation:faa (FAA-only alert count) to seed-meta:aviation:delays-bootstrap, written from the aggregate this probe actually serves. The new key does not exist until seed-aviation next runs, and this probe is meta-only against a served aggregate, so the gap reads STALE_SEED rather than EMPTY -- measured with classifyKey against this branch, not assumed. aviation:faa runs on a 45-minute interval, so the first tick after deploy closes it.",
-      "expiresAt": "2026-08-21T00:00:00.000Z",
-      "cutover": {
-        "probeKey": "seed-meta:aviation:delays-bootstrap",
-        "activatedAt": "2026-08-20T10:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-21T00:00:00.000Z"
-      }
-    },
-    {
-      "name": "tpsMci",
-      "status": "EMPTY",
-      "issue": 7035,
-      "reason": "New on-demand Toronto Police Open Data probe (tpsMci). seed-meta:safety:tps-mci cannot exist until the first on-demand fetch after deploy. EMPTY after that first scheduled window is a dead producer, not a deploy window.",
-      "expiresAt": "2026-08-22T04:05:00.000Z",
-      "cutover": {
-        "probeKey": "seed-meta:safety:tps-mci",
-        "activatedAt": "2026-08-21T04:05:00.000Z",
-        "firstScheduledRunAt": "2026-08-22T04:05:00.000Z"
-      }
-    },
-    {
-      "name": "tpsCallsAttended",
-      "status": "EMPTY",
-      "issue": 7036,
-      "reason": "New on-demand Toronto Police Open Data probe (tpsCallsAttended). seed-meta:safety:tps-calls-attended cannot exist until the first on-demand fetch after deploy. EMPTY after that first scheduled window is a dead producer, not a deploy window.",
-      "expiresAt": "2026-08-22T04:05:00.000Z",
-      "cutover": {
-        "probeKey": "seed-meta:safety:tps-calls-attended",
-        "activatedAt": "2026-08-21T04:05:00.000Z",
-        "firstScheduledRunAt": "2026-08-22T04:05:00.000Z"
-      }
-    }
-  ]
+  "acknowledged": []
 }

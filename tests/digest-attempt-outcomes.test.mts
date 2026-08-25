@@ -3,7 +3,7 @@ import { before, describe, it } from 'node:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { readFile } from 'node:fs/promises';
+import { __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest';
 
 type AttemptsModule = {
   FEED_ATTEMPT_OUTCOMES: readonly string[];
@@ -12,6 +12,37 @@ type AttemptsModule = {
     attempt: { source: string; failure: string | null; negativeCache: boolean },
     counters: { parsedTotal: number; keptItems: number; droppedUndated: number },
   ) => string;
+  resolveTerminalFetchFailure: (
+    input: { directFailure: string | null; relayFailure: string | null; relayAttempted: boolean; deadlineAborted: boolean },
+  ) => string | null;
+  cachedAttemptFrom: (prior: { source: string; failure: string | null; negativeCache: boolean } | undefined) => {
+    source: string; failure: string | null; negativeCache: boolean;
+  };
+  runFeedAttemptBatches: <T>(
+    allEntries: readonly { attemptId: string; category: string }[],
+    batches: readonly (readonly { attemptId: string; category: string }[])[],
+    signal: AbortSignal,
+    execute: (entry: { attemptId: string; category: string }) => Promise<{ value: T; outcome: string }>,
+    now?: () => number,
+  ) => Promise<{
+    fulfilled: Array<{ entry: { attemptId: string; category: string }; value: T }>;
+    startedAttemptIds: Set<string>;
+    attemptCategories: Map<string, string>;
+    attemptOutcomes: Map<string, string>;
+    firstStartMs: number | null;
+    firstCompletionMs: number | null;
+    finalCompletionMs: number | null;
+  }>;
+  summarizeFeedAttempts: (
+    attemptCategories: ReadonlyMap<string, string>,
+    attemptOutcomes: ReadonlyMap<string, string>,
+    overallDeadlineMs: number,
+    elapsedMs: number,
+  ) => {
+    byOutcome: Record<string, number>;
+    byCategory: Record<string, Record<string, number>>;
+    headroomMs: number;
+  };
   interleaveByCategory: <T extends { category: string }>(entries: readonly T[]) => T[];
 };
 
@@ -60,7 +91,7 @@ describe('classifyFeedAttempt (#7083)', () => {
     );
   });
 
-  it('distinguishes direct timeout, deadline abort, and relay failure', () => {
+  it('distinguishes direct timeout, deadline abort, relay failure, and other fetch failure', () => {
     const zero = { parsedTotal: 0, keptItems: 0, droppedUndated: 0 };
     assert.equal(
       attempts.classifyFeedAttempt(true, { source: 'direct', failure: 'per-feed-timeout', negativeCache: false }, zero),
@@ -76,7 +107,7 @@ describe('classifyFeedAttempt (#7083)', () => {
     );
     assert.equal(
       attempts.classifyFeedAttempt(true, { source: 'direct', failure: 'direct-error', negativeCache: false }, zero),
-      'relay-failure',
+      'other-fetch-failure',
     );
   });
 
@@ -106,6 +137,25 @@ describe('classifyFeedAttempt (#7083)', () => {
       attempts.classifyFeedAttempt(true, healthy, { parsedTotal: 0, keptItems: 0, droppedUndated: 0 }),
       'empty',
     );
+  });
+});
+
+describe('fetch attempt helpers (#7083)', () => {
+  it('uses deadline precedence, then the final relay leg, then direct failure', () => {
+    assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'per-feed-timeout', relayFailure: 'relay-error', relayAttempted: true, deadlineAborted: false }), 'relay-error');
+    assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'direct-error', relayFailure: 'per-feed-timeout', relayAttempted: true, deadlineAborted: false }), 'relay-error');
+    assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'direct-error', relayFailure: 'relay-error', relayAttempted: true, deadlineAborted: true }), 'deadline-abort');
+    assert.equal(attempts.resolveTerminalFetchFailure({ directFailure: 'direct-error', relayFailure: null, relayAttempted: false, deadlineAborted: false }), 'direct-error');
+  });
+
+  it('keeps successful empty cache hits empty and marks cached failures negative', () => {
+    const successfulEmpty = attempts.cachedAttemptFrom({ source: 'direct', failure: null, negativeCache: false });
+    assert.deepEqual(successfulEmpty, { source: 'cache', failure: null, negativeCache: false });
+    assert.equal(attempts.classifyFeedAttempt(true, successfulEmpty, { parsedTotal: 0, keptItems: 0, droppedUndated: 0 }), 'empty');
+
+    const failed = attempts.cachedAttemptFrom({ source: 'relay', failure: 'relay-error', negativeCache: false });
+    assert.deepEqual(failed, { source: 'cache', failure: 'relay-error', negativeCache: true });
+    assert.equal(attempts.classifyFeedAttempt(true, failed, { parsedTotal: 0, keptItems: 0, droppedUndated: 0 }), 'negative-cache');
   });
 });
 
@@ -143,45 +193,102 @@ describe('interleaveByCategory (#7083)', () => {
   });
 });
 
-describe('list-feed-digest wiring (#7083)', () => {
-  let digestSource: string;
+describe('runFeedAttemptBatches (#7083)', () => {
+  it('uses distinct attempt IDs for duplicate display names in the real digest inventory', () => {
+    const { allEntries, batches } = digestTesting.buildDigestFeedBatches('full', 'en');
+    const ids = allEntries.map((entry) => entry.attemptId);
+    assert.equal(new Set(ids).size, ids.length, 'each inventory entry must have a unique attempt ID');
+    assert.ok(allEntries.length > digestTesting.BATCH_CONCURRENCY, 'fixture must require more than one real scheduling wave');
+    assert.ok(batches.length > 1, 'full inventory must be split into multiple scheduling waves');
+    assert.equal(batches[0]?.length, digestTesting.BATCH_CONCURRENCY);
+    const allCategories = new Set(allEntries.map((entry) => entry.category));
+    const firstWaveCategories = new Set(batches[0]?.map((entry) => entry.category));
+    assert.deepEqual(
+      [...allCategories].filter((category) => !firstWaveCategories.has(category)),
+      [],
+      'the first real scheduling wave must cover every eligible category',
+    );
 
-  before(async () => {
-    digestSource = await readFile(resolve(root, 'server/worldmonitor/news/v1/list-feed-digest.ts'), 'utf8');
+    const byName = new Map<string, typeof allEntries>();
+    for (const entry of allEntries) {
+      const entries = byName.get(entry.feed.name) ?? [];
+      entries.push(entry);
+      byName.set(entry.feed.name, entries);
+    }
+    const duplicate = [...byName.values()].find((entries) => entries.length > 1);
+    assert.ok(duplicate, 'the full inventory must contain a duplicate display name regression fixture');
+    assert.equal(new Set(duplicate.map((entry) => entry.attemptId)).size, duplicate.length);
   });
 
-  it('batches from the priority head plus category-interleaved ordering', () => {
-    // The China coverage trio's deadlinePriority promise stays absolute —
-    // pinned before the interleave — while every other category round-robins
-    // so no single slow category can starve the rest behind the deadline.
-    assert.match(digestSource, /priorityHead/);
-    assert.match(digestSource, /interleaveByCategory\(/);
-    assert.match(digestSource, /deadlinePriority \?\? 0\) > 0/);
+  it('keeps duplicate display names distinct by attempt ID across more than one wave', async () => {
+    const calls: string[] = [];
+    const entries = [{ attemptId: 'slow:1', category: 'slow' }, { attemptId: 'fast:1', category: 'fast' }, { attemptId: 'slow:2', category: 'slow' }];
+    let releaseSlow!: () => void;
+    const slow = new Promise<void>((resolveSlow) => { releaseSlow = resolveSlow; });
+    const running = attempts.runFeedAttemptBatches(
+      entries,
+      [[entries[0], entries[1]], [entries[2]]],
+      new AbortController().signal,
+      async (entry) => {
+        calls.push(entry.attemptId);
+        if (entry.attemptId === 'slow:1') await slow;
+        return { value: entry.attemptId, outcome: 'completed' };
+      },
+      (() => { let tick = 0; return () => tick++ * 10; })(),
+    );
+    await Promise.resolve();
+    assert.deepEqual(calls, ['slow:1', 'fast:1'], 'the slow first-wave entry must not prevent fast-category start');
+    releaseSlow();
+    const result = await running;
+    assert.deepEqual(calls, ['slow:1', 'fast:1', 'slow:2']);
+    assert.deepEqual(result.fulfilled.map(({ value }) => value), ['slow:1', 'fast:1', 'slow:2']);
+    assert.equal(result.attemptCategories.get('slow:1'), 'slow');
+    assert.equal(result.attemptCategories.get('slow:2'), 'slow');
+    assert.equal(result.attemptOutcomes.size, 3);
+    assert.notEqual(result.firstCompletionMs, null);
+    assert.notEqual(result.finalCompletionMs, null);
   });
 
-  it('records started feeds before awaiting and labels the rest not-started', () => {
-    assert.match(digestSource, /startedFeeds\.add\(feed\.name\)/);
-    // The precise 'not-started' verdict is internal (attemptOutcomes +
-    // telemetry); the public map keeps the coarse 'timeout' contract.
-    assert.match(digestSource, /attemptOutcomes\.set\(entry\.feed\.name, 'not-started'\)/);
-    assert.match(digestSource, /feedStatuses\[entry\.feed\.name\] = 'timeout'/);
+  it('does not start later waves after global abort and labels them not-started', async () => {
+    const controller = new AbortController();
+    const entries = [{ attemptId: 'started', category: 'slow' }, { attemptId: 'later', category: 'fast' }];
+    const result = await attempts.runFeedAttemptBatches(
+      entries,
+      [[entries[0]], [entries[1]]],
+      controller.signal,
+      async (entry) => {
+        controller.abort();
+        return { value: entry.attemptId, outcome: 'completed' };
+      },
+    );
+    assert.deepEqual([...result.startedAttemptIds], ['started']);
+    assert.equal(result.attemptOutcomes.get('later'), 'not-started');
+    assert.equal(result.attemptCategories.get('later'), 'fast');
   });
 
-  it('classifies every started feed through the closed vocabulary', () => {
-    assert.match(digestSource, /classifyFeedAttempt\(/);
+  it('records rejected executors as other fetch failures', async () => {
+    const result = await attempts.runFeedAttemptBatches(
+      [{ attemptId: 'broken', category: 'slow' }],
+      [[{ attemptId: 'broken', category: 'slow' }]],
+      new AbortController().signal,
+      async () => { throw new Error('network failure'); },
+    );
+    assert.deepEqual(result.fulfilled, []);
+    assert.equal(result.attemptOutcomes.get('broken'), 'other-fetch-failure');
   });
 
-  it('emits the per-build attempt telemetry line', () => {
-    assert.match(digestSource, /\[digest-attempts\]/);
-    assert.match(digestSource, /by_outcome=/);
-    assert.match(digestSource, /headroom_ms=/);
-  });
-
-  it('keeps healthy completed feeds out of the public status map', () => {
-    // The public map only ever assigns the coarse states for non-healthy
-    // outcomes ('all-undated'/'empty'/'partial-undated'); a healthy parse
-    // leaves the feed absent, and fine-grained outcomes stay internal.
-    assert.match(digestSource, /feedStatuses\[feed\.name\] = 'empty'/);
-    assert.doesNotMatch(digestSource, /feedStatuses\[feed\.name\] = outcome/);
+  it('summarizes every unique attempt by outcome/category and computes deadline headroom', () => {
+    const summary = attempts.summarizeFeedAttempts(
+      new Map([['shared:1', 'tech'], ['shared:2', 'intel'], ['later:3', 'intel']]),
+      new Map([['shared:1', 'completed'], ['shared:2', 'relay-failure'], ['later:3', 'not-started']]),
+      10_000,
+      8_250,
+    );
+    assert.deepEqual(summary.byOutcome, { completed: 1, 'relay-failure': 1, 'not-started': 1 });
+    assert.deepEqual(summary.byCategory, {
+      tech: { completed: 1 },
+      intel: { 'relay-failure': 1, 'not-started': 1 },
+    });
+    assert.equal(summary.headroomMs, 1_750);
   });
 });

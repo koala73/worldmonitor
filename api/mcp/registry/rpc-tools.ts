@@ -1063,7 +1063,7 @@ export const RPC_TOOLS: ToolDef[] = [
               storyPhase: {
                 type: 'string',
                 enum: ['STORY_PHASE_UNSPECIFIED', 'STORY_PHASE_BREAKING', 'STORY_PHASE_DEVELOPING', 'STORY_PHASE_SUSTAINED', 'STORY_PHASE_FADING'],
-                description: 'Lifecycle phase from the digest story tracker. STORY_PHASE_FADING is reserved and is not currently emitted by derivePhase.',
+                description: 'Lifecycle phase from the digest story tracker. STORY_PHASE_FADING is reserved and is not currently emitted by this surface: a fading story stops appearing in the digest, so the phase cannot be observed where it is derived (#7081). Do not read the absence of STORY_PHASE_FADING as evidence that a story is still active.',
               },
             },
           },

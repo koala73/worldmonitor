@@ -481,7 +481,7 @@ curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=c
 }
 ```
 
-恢复方式始终相同：**让投影更具选择性**，或在它之下叠加一层工具级过滤器（`country`、`since`、`limit`）。当这个信封触发时，Pro 每日配额会自动回滚——你不会为一个用不上的响应付一个配额槽。
+恢复方式始终相同：**让投影更具选择性**，或在它之下叠加一层工具级过滤器（`country`、`since`、`limit`）。当这个信封触发时，Pro 每日配额槽**保持已扣除**——工具在测量输出大小之前已经完成了完整的上游获取/计算，成本已经发生（如果在这里退款，调用方就能通过总是超出预算来无限消耗真实成本）。请先通过 `describe_tool` 的 `outputSchema` 规划投影，而不是依赖重试。
 
 ### `_jmespath_error`——投影本身失败时
 

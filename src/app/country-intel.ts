@@ -408,7 +408,7 @@ export class CountryIntelManager implements AppModule {
       page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
       const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
-      const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
+      const stockPromise = marketClient.getCountryStockIndex({ countryCode: code.toUpperCase() })
         .then((resp) => ({
           available: resp.available,
           code: resp.code,
@@ -496,7 +496,7 @@ export class CountryIntelManager implements AppModule {
             this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(null);
           }
         });
-      intelClient.getCountryFacts({ countryCode: code })
+      intelClient.getCountryFacts({ countryCode: code.toUpperCase() })
         .then((facts) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           this.ctx.countryBriefPage.updateCountryFacts?.({
@@ -521,7 +521,7 @@ export class CountryIntelManager implements AppModule {
           });
         });
 
-      intelClient.getCountryEnergyProfile({ countryCode: code })
+      intelClient.getCountryEnergyProfile({ countryCode: code.toUpperCase() })
         .then((profile) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           this.ctx.countryBriefPage.updateEnergyProfile?.({
@@ -610,7 +610,7 @@ export class CountryIntelManager implements AppModule {
           });
         });
 
-      intelClient.getCountryPortActivity({ countryCode: code })
+      intelClient.getCountryPortActivity({ countryCode: code.toUpperCase() })
         .then((activity) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           this.ctx.countryBriefPage.updateMaritimeActivity?.({
@@ -874,7 +874,7 @@ export class CountryIntelManager implements AppModule {
       if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateNationalDebt?.(null);
     });
 
-    intelClientPro.getCountryRisk({ countryCode: code }).then(resp => {
+    intelClientPro.getCountryRisk({ countryCode: code.toUpperCase() }).then(resp => {
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
       this.ctx.countryBriefPage.updateSanctionsPressure?.(resp.sanctionsCount > 0 ? {
         entryCount: resp.sanctionsCount,

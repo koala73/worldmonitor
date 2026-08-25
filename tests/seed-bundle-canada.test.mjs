@@ -250,8 +250,11 @@ test('is registered as an active service now that it is provisioned', () => {
   assert.ok(Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
   assert.deepEqual(
     entry.requiredEnv,
-    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MANITOBA_511_KEY'],
-    'members publish through runSeed (Upstash REST pair); Manitoba 511 needs its Railway key',
+    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MANITOBA_511_KEY', 'ALBERTA_511_KEY'],
+    'members publish through runSeed (Upstash REST pair); Manitoba and Alberta 511 each '
+    + 'need their Railway key. Alberta was keyless until 2026-08-19, when the vendor began '
+    + 'answering an unkeyed GET with HTTP 400 "Invalid Key" and the jurisdiction went stale '
+    + 'for 88 hours while the bundle still reported OK.',
   );
 });
 

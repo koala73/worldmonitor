@@ -1320,7 +1320,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // Late-import so non-energy variants can tree-shake these modules at
     // build time if the Atlas panels aren't bundled. Static imports are
     // safe here because all four stores are pure client caches.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     import('@/shared/pipeline-registry-store').then(({ getCachedPipelineRegistries }) => {
       const { gas, oil } = getCachedPipelineRegistries() as {
         gas: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;

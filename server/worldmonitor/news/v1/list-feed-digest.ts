@@ -8,7 +8,7 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, readCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -20,7 +20,30 @@ import {
   type ServerFeed,
 } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
-import { buildDigestCoverage, classifyFeedAttempt, interleaveByCategory, type FeedFetchAttempt } from './_attempts';
+import {
+  buildDigestCoverage,
+  cachedAttemptFrom,
+  classifyFeedAttempt,
+  interleaveByCategory,
+  resolveTerminalFetchFailure,
+  runFeedAttemptBatches,
+  summarizeFeedAttempts,
+  type FeedFetchAttempt,
+} from './_attempts';
+import {
+  FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_COVERAGE_KEY,
+  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+  FORECAST_EVIDENCE_TTL_S,
+  accumulatorPruneBounds,
+  advanceForecastEvidenceCoverage,
+  buildForecastEvidenceMember,
+  evidencePruneBounds,
+  forecastEvidenceCoversWindow,
+  forecastEvidenceRecordKey,
+  isEligibleForecastEvidence,
+  parseForecastEvidenceCoverage,
+} from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
@@ -68,7 +91,7 @@ const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
 
-type DigestFeedEntry = { category: string; feed: ServerFeed };
+type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
@@ -527,9 +550,10 @@ async function fetchAndParseRss(
     const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
     if (cached) {
       if (cached.parsedTotal === 0 && cached.items.length === 0) {
-        // A cached zero-item entry is the negative cache written by a
-        // previous failed attempt — say so instead of reporting 'empty'.
-        return { ...cached, attempt: { source: 'cache', failure: null, negativeCache: true } };
+        // Only a cached prior fetch failure is negative. A valid RSS body
+        // can also contain no entries; preserve that successful empty result
+        // so cache hits keep the normal `empty` verdict.
+        return { ...cached, attempt: cachedAttemptFrom(cached.attempt) };
       }
       return cached;
     }
@@ -541,12 +565,14 @@ async function fetchAndParseRss(
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
     let relayFailure: FeedFetchAttempt['failure'] = null;
+    let relayAttempted = false;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
     // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
     if (!text) {
       const relayBase = getRelayBaseUrl();
       if (relayBase) {
+        relayAttempted = true;
         relayBodyShape = 'fetch-error';
         const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
         const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
@@ -594,12 +620,13 @@ async function fetchAndParseRss(
       // global deadline abort (#7083) so a deadline-starved build is not
       // later reported as an upstream failure.
       const attempt: FeedFetchAttempt = {
-        source: 'cache',
-        failure: failure === 'deadline-abort'
-          ? 'deadline-abort'
-          : failure === 'per-feed-timeout'
-            ? 'per-feed-timeout'
-            : relayFailure ?? 'relay-error',
+        source: relayAttempted ? 'relay' : 'direct',
+        failure: resolveTerminalFetchFailure({
+          directFailure: failure,
+          relayFailure,
+          relayAttempted,
+          deadlineAborted: signal.aborted,
+        }),
         negativeCache: false,
       };
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
@@ -630,7 +657,7 @@ async function fetchAndParseRss(
       items: [],
       parsedTotal: 0,
       droppedUndated: 0,
-      attempt: { source: 'cache', failure: 'direct-error', negativeCache: false },
+      attempt: { source: 'direct', failure: 'direct-error', negativeCache: false },
     };
   }
 }
@@ -939,9 +966,13 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   // so the cache prefix (currently classify:sebuf:v6:) lives in exactly
   // one place — bumping it again only requires touching _shared.ts and
   // the relay's independent .cjs helper. See U4 of the plan.
+  // Titles are independent — hash them concurrently instead of N sequential
+  // WebCrypto hops on this hot fast-tier surface.
+  const keyed = await Promise.all(
+    candidates.map((item) => buildClassifyCacheKey(item.title).then((key) => ({ key, item }))),
+  );
   const keyMap = new Map<string, ParsedItem[]>();
-  for (const item of candidates) {
-    const key = await buildClassifyCacheKey(item.title);
+  for (const { key, item } of keyed) {
     const existing = keyMap.get(key) ?? [];
     existing.push(item);
     keyMap.set(key, existing);
@@ -1142,18 +1173,52 @@ interface StoryTrack {
   lastSeen: number;
   mentionCount: number;
   sourceCount: number;
-  currentScore: number;
-  peakScore: number;
 }
 
-function derivePhase(track: StoryTrack): ProtoStoryPhase {
-  const ageMs = Date.now() - track.firstSeen;
+/**
+ * Derive the wire lifecycle phase for a story appearing in THIS build cycle.
+ *
+ * FADING is deliberately not derivable here. #7081 ran a bounded study against
+ * frozen production evidence (tests/fixtures/story-phase-fading-study.json,
+ * replayed by scripts/study-story-phase-fading.mjs) and recorded a no-go for
+ * the previously documented `currentScore < 0.5 * peakScore` rule. Three
+ * findings, each reproducible from that fixture:
+ *
+ *   1. The rule was unreachable. It read `peakScore` from the story:track hash,
+ *      but the peak is written to the story:peak:v1 ZSet and that hash field has
+ *      no writer — the field was absent on 14,000/14,000 sampled rows, so the
+ *      branch could never be taken. The old comment here blamed "HSETNX
+ *      placeholders" for both scores; that was wrong about currentScore, which
+ *      is written on every cycle and was positive on all 14,000 rows.
+ *
+ *   2. Repaired to read the real peak, the ratio measures article age, not
+ *      traction. importanceScore weights severity at 0.55 and recency at 0.10,
+ *      so the score's dynamic range at fixed severity is min/max = 0.63
+ *      (critical), 0.57 (high), 0.49 (medium), 0.37 (low), 0.18 (info). A
+ *      critical or high story therefore cannot reach half its peak without a
+ *      severity downgrade, while an info story crosses it on the recency term
+ *      alone once its article passes 24h (18 -> 8). Measured on the same rows:
+ *      673 firings, 670 of them info/low, and 0 of 679 critical/high rows.
+ *
+ *   3. Fading is not observable at this call site at all. derivePhase only runs
+ *      for stories present in the current cycle, and it is handed a track whose
+ *      lastSeen is `now` — a story that stopped being covered is absent from the
+ *      cycle and never reaches this function. Silence, the one signal that does
+ *      identify a fading story, is only visible where the non-serving population
+ *      is in scope: scripts/seed-digest-notifications.mjs derives its own phase
+ *      over the accumulator and already treats >24h of silence as fading.
+ *
+ * The STORY_PHASE_FADING wire value is retained for compatibility and is still
+ * handled by consumers (the client alert gate suppresses it), but this handler
+ * does not emit it. Do not reintroduce a score-ratio branch here without new
+ * evidence that clears the acceptance bar recorded in the study.
+ *
+ * `nowMs` is injectable so the phase boundaries are testable without a live clock.
+ */
+function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryPhase {
+  const ageMs = nowMs - track.firstSeen;
   if (track.mentionCount <= 1) return 'STORY_PHASE_BREAKING';
   if (track.mentionCount <= 5 && ageMs < 2 * 60 * 60 * 1000) return 'STORY_PHASE_DEVELOPING';
-  // FADING requires real scores from E1. Until E1 ships, currentScore and
-  // peakScore are both 0 (HSETNX placeholders), so this branch is intentionally
-  // inactive — stories fall through to SUSTAINED rather than incorrectly FADING.
-  if (track.currentScore > 0 && track.peakScore > 0 && track.currentScore < track.peakScore * 0.5) return 'STORY_PHASE_FADING';
   return 'STORY_PHASE_SUSTAINED';
 }
 
@@ -1163,7 +1228,15 @@ function derivePhase(track: StoryTrack): ProtoStoryPhase {
  */
 async function readStoryTracks(titleHashes: string[]): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
-  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', 'currentScore', 'peakScore'];
+  // currentScore and peakScore are deliberately NOT read here. derivePhase is
+  // the only consumer this handler ever had for them, and it no longer uses a
+  // score at all (#7081 no-go — see derivePhase). peakScore in particular never
+  // existed as a hash field: the peak lives in the story:peak:v1 ZSet, so the
+  // HMGET slot returned null on every sampled production row. Dropping both
+  // trims two fields from every per-story HMGET in the batch. The WRITE side is
+  // unchanged — buildStoryTrackHsetFields still persists currentScore, which
+  // scripts/seed-digest-notifications.mjs reads.
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount'];
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
@@ -1177,8 +1250,6 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
       lastSeen:     Number(vals[1] ?? 0),
       mentionCount: Number(vals[2] ?? 0),
       sourceCount:  Number(vals[3] ?? 0),
-      currentScore: Number(vals[4] ?? 0),
-      peakScore:    Number(vals[5] ?? 0),
     });
   }
   return map;
@@ -1274,6 +1345,47 @@ export async function listFeedDigest(
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
 
+function redisPipelineConfirmed(
+  results: Array<{ result?: unknown; error?: string }>,
+  expectedCommands: number,
+): boolean {
+  return results.length === expectedCommands && results.every(result => !result?.error);
+}
+
+/**
+ * The prune is destructive, so this gate takes no staleness budget: the marker
+ * handed in was written by THIS publication and must already reach `nowMs`.
+ * (The read path in seed-forecast-resolutions.mjs is the only caller that opts
+ * into FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS.)
+ *
+ * `evidenceDropped` is deliberately separate from `evidenceWritesConfirmed`:
+ * a story whose member could not be built never reached Redis, so it says
+ * nothing about whether the writes that DID happen were confirmed. It still
+ * blocks the marker advance (and therefore this gate, via coverageAdvanced),
+ * but it must not be laundered into a write-failure signal.
+ */
+function shouldPruneAccumulator(options: {
+  evidenceEligible: boolean;
+  cutoverEnabled: boolean;
+  coverage: unknown;
+  nowMs: number;
+  trackingWritesConfirmed: boolean;
+  evidenceWritesConfirmed: boolean;
+  coverageAdvanced: boolean;
+  accumulatorTtlConfirmed: boolean;
+}): boolean {
+  if (!options.trackingWritesConfirmed || !options.accumulatorTtlConfirmed) return false;
+  if (!options.evidenceEligible) return true;
+  return options.cutoverEnabled
+    && options.evidenceWritesConfirmed
+    && options.coverageAdvanced
+    && forecastEvidenceCoversWindow(
+      options.coverage,
+      options.nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+      options.nowMs,
+    );
+}
+
 /**
  * Build the HSET field list for a story:track:v1 row.
  *
@@ -1358,6 +1470,27 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   if (items.length === 0) return;
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
+  // The archive/coverage keys are written raw (see the pipeline call below), so
+  // getKeyPrefix() does NOT isolate them per deployment the way the accumulator
+  // ZADD on the adjacent line is isolated. Preview and dev deployments share
+  // this Upstash instance, and the marker they would rewrite is the artefact
+  // that authorises destructive accumulator pruning — so production is the only
+  // deployment allowed to publish evidence at all.
+  const productionDeployment = (process.env.VERCEL_ENV ?? 'production') === 'production';
+  const evidenceEligible = isEligibleForecastEvidence(variant, lang) && productionDeployment;
+  const cutoverEnabled = process.env.FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
+  const coverageRead = evidenceEligible
+    ? await readCachedJson(FORECAST_EVIDENCE_COVERAGE_KEY, true)
+    : { status: 'miss' as const };
+  const coverageReadConfirmed = !evidenceEligible || coverageRead.status !== 'error';
+  const coverageBefore = evidenceEligible && coverageRead.status === 'hit'
+    ? parseForecastEvidenceCoverage(coverageRead.value)
+    : null;
+  // #7082 evidence archive publication counters (operator visibility).
+  let evidenceAttempted = 0;
+  let evidenceDropped = 0;
+  let trackingWritesConfirmed = true;
+  let evidenceWritesConfirmed = coverageReadConfirmed;
 
   // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
   // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
@@ -1390,6 +1523,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
     const commands: Array<Array<string | number>> = [];
+    const evidenceBatchCommands: Array<Array<string | number>> = [];
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i]!;
@@ -1412,6 +1546,38 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
           ['EXPIRE', trackKey, ttl],
           ['ZADD', accKey, nowStr, hash],
         );
+        // #7082 dual publication: forecast judging needs this story for up
+        // to 14 days, beyond the accumulator's retention contract. The
+        // evidence archive member is self-contained (title/link/description
+        // ride on the member; no story:track dependency) and only the
+        // full/English scope that judging actually reads is archived.
+        if (evidenceEligible) {
+          const evidenceMember = buildForecastEvidenceMember(
+            {
+              hash,
+              title: representative.title,
+              link: representative.link,
+              description: representative.description,
+              publishedAt: representative.publishedAt,
+            },
+            now,
+          );
+          if (evidenceMember) {
+            // The ZSet member is the stable story hash. Mutable lastSeen and
+            // representative fields live in a self-contained, independently
+            // retained record key, so refreshing one story cannot create a
+            // second index member or crowd unique evidence out of the cap.
+            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
+            evidenceAttempted += 1;
+          } else {
+            // Counted, but NOT folded into evidenceWritesConfirmed: nothing was
+            // attempted against Redis, so this says nothing about whether the
+            // writes that did happen were confirmed. evidenceDropped gates the
+            // coverage advance on its own below.
+            evidenceDropped += 1;
+          }
+        }
         // #4924: alias rows for every member exact-title hash -> the FINAL
         // (post-adoption) canonical, story-track TTL — next cycle's
         // adoption source. Includes the canonical's own hash.
@@ -1433,11 +1599,107 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       );
     }
 
-    await runRedisPipeline(commands);
+    // The two pipelines touch disjoint keyspaces and neither reads the other's
+    // result, so they run concurrently: this path is inside the digest's own
+    // OVERALL_DEADLINE_MS budget and serialising them doubled its Redis
+    // round-trips per batch.
+    //
+    // Archive keys are deliberately raw: the Railway resolver and backfill
+    // operate outside a Vercel deployment prefix and must read this same
+    // durable evidence namespace.
+    const [trackingResults, evidenceResults] = await Promise.all([
+      runRedisPipeline(commands),
+      evidenceEligible
+        ? runRedisPipeline(evidenceBatchCommands, true)
+        : Promise.resolve([]),
+    ]);
+    if (!redisPipelineConfirmed(trackingResults, commands.length)) trackingWritesConfirmed = false;
+    if (evidenceEligible) {
+      if (!redisPipelineConfirmed(evidenceResults, evidenceBatchCommands.length)) {
+        evidenceWritesConfirmed = false;
+      }
+    }
   }
 
-  // Refresh accumulator TTL once per build — 48h, shorter than STORY_TTL since digest cron only needs ~24h lookback.
-  await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
+  // Refresh accumulator TTL once per build. The TTL is abandoned-key cleanup
+  // only: member retention is the explicit prune below (#7082) — millions of
+  // expired members previously lived here forever because the TTL never
+  // removed them.
+  const accumulatorTtlCommands: Array<Array<string | number>> = [['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]];
+  const accumulatorTtlResults = await runRedisPipeline(accumulatorTtlCommands);
+  const accumulatorTtlConfirmed = redisPipelineConfirmed(accumulatorTtlResults, accumulatorTtlCommands.length);
+  let coverageAdvanced = false;
+  let coverageAfter = coverageBefore;
+  if (evidenceEligible && coverageBefore) {
+    const canAdvance = trackingWritesConfirmed && evidenceWritesConfirmed && evidenceDropped === 0;
+    // Even when this cycle cannot advance the window, re-SET the marker so its
+    // EX is refreshed. Otherwise a condition that recurs for 15 days (a feed
+    // that keeps emitting one unbuildable item, say) lets the marker EXPIRE,
+    // coverageBefore becomes null forever, and the only way back is another
+    // backfill run — a self-inflicted outage on top of a recoverable blip.
+    const advanced = advanceForecastEvidenceCoverage(coverageBefore, now);
+    coverageAfter = canAdvance && advanced ? advanced : coverageBefore;
+    const coverageCommands: Array<Array<string | number>> = [[
+      'SET',
+      FORECAST_EVIDENCE_COVERAGE_KEY,
+      JSON.stringify(coverageAfter),
+      'EX',
+      FORECAST_EVIDENCE_TTL_S,
+    ]];
+    const coverageResults = await runRedisPipeline(coverageCommands, true);
+    coverageAdvanced = canAdvance && redisPipelineConfirmed(coverageResults, coverageCommands.length);
+  }
+
+  // For the judged full/en accumulator, pruning is destructive migration:
+  // retain legacy evidence until backfill has installed a verified coverage
+  // marker AND this cycle's archive writes and coverage update are confirmed.
+  // Other accumulator scopes are not used by forecast judging.
+  const pruneAllowed = shouldPruneAccumulator({
+    evidenceEligible,
+    cutoverEnabled,
+    coverage: coverageAfter,
+    nowMs: now,
+    trackingWritesConfirmed,
+    evidenceWritesConfirmed,
+    coverageAdvanced,
+    accumulatorTtlConfirmed,
+  });
+  let pruneConfirmed = true;
+  if (pruneAllowed) {
+    const prune = accumulatorPruneBounds(now);
+    const pruneCommands: Array<Array<string | number>> = [['ZREMRANGEBYSCORE', accKey, prune.min, prune.max]];
+    const pruneResults = await runRedisPipeline(pruneCommands);
+    // A silently-failing prune is how an unbounded key stays unbounded while
+    // the operator log reports a healthy cutover.
+    pruneConfirmed = redisPipelineConfirmed(pruneResults, pruneCommands.length);
+  }
+  const archiveMaintenanceCommands: Array<Array<string | number>> = [];
+  if (evidenceEligible) {
+    // Rolling archive retention + TTL (contract + guard band).
+    const evidencePrune = evidencePruneBounds(now);
+    archiveMaintenanceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
+    archiveMaintenanceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
+  }
+  const archiveMaintenanceResults = await runRedisPipeline(archiveMaintenanceCommands, true);
+  const maintenanceConfirmed = redisPipelineConfirmed(archiveMaintenanceResults, archiveMaintenanceCommands.length);
+  if (evidenceEligible) {
+    // `published` counts what the confirmed pipeline actually wrote. Drops are
+    // reported separately — folding them in here reported published=0 for a
+    // cycle where every attempted member landed.
+    const published = evidenceWritesConfirmed ? evidenceAttempted : 0;
+    const message =
+      `[forecast-evidence] attempted=${evidenceAttempted} published=${published} dropped=${evidenceDropped} ` +
+      `coverage_read_confirmed=${coverageReadConfirmed} tracking_writes_confirmed=${trackingWritesConfirmed} ` +
+      `writes_confirmed=${evidenceWritesConfirmed} coverage_advanced=${coverageAdvanced} ` +
+      `accumulator_ttl_confirmed=${accumulatorTtlConfirmed} maintenance_confirmed=${maintenanceConfirmed} ` +
+      `accumulator_pruned=${pruneAllowed} accumulator_prune_confirmed=${pruneConfirmed} ` +
+      `cutover_enabled=${cutoverEnabled} cutover_verified=${pruneAllowed} ` +
+      `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`;
+    if (evidenceWritesConfirmed && coverageAdvanced && maintenanceConfirmed && pruneConfirmed) console.info(message);
+    else console.warn(message);
+  } else if (!pruneConfirmed) {
+    console.warn(`[forecast-evidence] accumulator prune unconfirmed key=${accKey}`);
+  }
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
@@ -1450,14 +1712,14 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   for (const [category, feeds] of Object.entries(feedsByCategory)) {
     const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
     for (const feed of filtered) {
-      allEntries.push({ category, feed });
+      allEntries.push({ attemptId: `${category}:${allEntries.length}`, category, feed });
     }
   }
 
   if (variant === 'full') {
     const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
     for (const feed of filteredIntel) {
-      allEntries.push({ category: 'intel', feed });
+      allEntries.push({ attemptId: `intel:${allEntries.length}`, category: 'intel', feed });
     }
   }
 
@@ -1494,84 +1756,64 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
 
     const results = new Map<string, ParsedItem[]>();
-    // #7083 attempt tracking: which feeds STARTED (vs never reached before
-    // the deadline), when the first start/completion happened, and a precise
-    // terminal outcome per feed from the closed vocabulary — so scheduling
-    // starvation is never reported as an upstream failure.
-    const startedFeeds = new Set<string>();
-    const attemptCategories = new Map<string, string>();
-    const attemptOutcomes = new Map<string, ReturnType<typeof classifyFeedAttempt>>();
     const buildStart = Date.now();
-    let firstStartMs: number | null = null;
-    let firstCompletionMs: number | null = null;
-    let finalCompletionMs: number | null = null;
+    const attempts = await runFeedAttemptBatches(
+      allEntries,
+      batches,
+      deadlineController.signal,
+      async (entry) => {
+        const { category, feed } = entry;
+        const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
+        const outcome = classifyFeedAttempt(true, result.attempt ?? {
+          source: 'cache', failure: null, negativeCache: false,
+        }, {
+          parsedTotal: result.parsedTotal,
+          keptItems: result.items.length,
+          droppedUndated: result.droppedUndated,
+        });
 
-    for (const batch of batches) {
-      if (deadlineController.signal.aborted) break;
+        // Public feed status keeps the historical four-value contract
+        // (docs/methodology + the proto comment): completed feeds carry
+        // 'all-undated'/'empty'/'partial-undated', feeds that never
+        // completed carry 'timeout'. The fine-grained attempt outcome
+        // stays in telemetry, keyed by the unique inventory attempt ID.
+        if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
+          feedStatuses[feed.name] = 'all-undated';
+        } else if (result.items.length === 0) {
+          feedStatuses[feed.name] = 'empty';
+        } else if (result.droppedUndated > 0) {
+          feedStatuses[feed.name] = 'partial-undated';
+        }
 
-      const settled = await Promise.allSettled(
-        batch.map(async ({ category, feed }) => {
-          startedFeeds.add(feed.name);
-          attemptCategories.set(feed.name, category);
-          if (firstStartMs === null) firstStartMs = Date.now() - buildStart;
-          const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
-          const outcome = classifyFeedAttempt(true, result.attempt ?? {
-            source: 'cache', failure: null, negativeCache: false,
-          }, {
-            parsedTotal: result.parsedTotal,
-            keptItems: result.items.length,
-            droppedUndated: result.droppedUndated,
-          });
-          attemptOutcomes.set(feed.name, outcome);
-          const completionMs = Date.now() - buildStart;
-          if (firstCompletionMs === null) firstCompletionMs = completionMs;
-          finalCompletionMs = completionMs;
-          // Public feed status keeps the historical four-value contract
-          // (docs/methodology + the proto comment): completed feeds carry
-          // 'all-undated'/'empty'/'partial-undated', feeds that never
-          // completed carry 'timeout'. The fine-grained attempt outcome
-          // (deadline-abort vs per-feed-timeout vs relay-error vs
-          // not-started...) stays in attemptOutcomes and the
-          // [digest-attempts] telemetry line; the coverage block (#7085)
-          // is where that precise vocabulary becomes public.
-          if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
-            feedStatuses[feed.name] = 'all-undated';
-          } else if (result.items.length === 0) {
-            feedStatuses[feed.name] = 'empty';
-          } else if (result.droppedUndated > 0) {
-            feedStatuses[feed.name] = 'partial-undated';
-          }
-          return {
+        return {
+          outcome,
+          value: {
             category,
             items: result.items,
             droppedUndated: result.droppedUndated,
             droppedFeedCap: result.droppedFeedCap ?? 0,
-          };
-        }),
-      );
+          },
+        };
+      },
+    );
 
-      for (const result of settled) {
-        if (result.status === 'fulfilled') {
-          const { category, items, droppedUndated, droppedFeedCap } = result.value;
-          const existing = results.get(category) ?? [];
-          existing.push(...items);
-          results.set(category, existing);
-          ledgerDrops.undated += droppedUndated;
-          ledgerDrops.perFeedCap += droppedFeedCap;
-        }
-      }
+    for (const { value } of attempts.fulfilled) {
+      const { category, items, droppedUndated, droppedFeedCap } = value;
+      const existing = results.get(category) ?? [];
+      existing.push(...items);
+      results.set(category, existing);
+      ledgerDrops.undated += droppedUndated;
+      ledgerDrops.perFeedCap += droppedFeedCap;
     }
 
     const deadlineAborted = deadlineController.signal.aborted;
     for (const entry of allEntries) {
-      if (!startedFeeds.has(entry.feed.name)) {
+      if (!attempts.startedAttemptIds.has(entry.attemptId)) {
         // #7083: this feed's batch never ran. The public map keeps the
         // coarse 'timeout' contract; the precise 'not-started' verdict
         // (scheduling starvation, not an upstream failure) lives in
-        // attemptOutcomes and the [digest-attempts] telemetry line.
+        // the helper's attempt-outcome map and telemetry line.
         feedStatuses[entry.feed.name] = 'timeout';
-        attemptOutcomes.set(entry.feed.name, 'not-started');
-        attemptCategories.set(entry.feed.name, entry.category);
       }
     }
 
@@ -1580,21 +1822,16 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // see which stage consumes the deadline. No host names or exceptions
     // here — details stay in the [feed-fetch] lines.
     {
-      const byOutcome: Record<string, number> = {};
-      for (const outcome of attemptOutcomes.values()) {
-        byOutcome[outcome] = (byOutcome[outcome] ?? 0) + 1;
-      }
-      const byCategory: Record<string, Record<string, number>> = {};
-      for (const [feedName, category] of attemptCategories) {
-        const outcome = attemptOutcomes.get(feedName) ?? 'unknown';
-        const cat = (byCategory[category] ??= {});
-        cat[outcome] = (cat[outcome] ?? 0) + 1;
-      }
-      const headroomMs = Math.max(0, OVERALL_DEADLINE_MS - (finalCompletionMs ?? Date.now() - buildStart));
+      const { byOutcome, byCategory, headroomMs } = summarizeFeedAttempts(
+        attempts.attemptCategories,
+        attempts.attemptOutcomes,
+        OVERALL_DEADLINE_MS,
+        attempts.finalCompletionMs ?? Date.now() - buildStart,
+      );
       console.info(
         `[digest-attempts] variant=${variant} lang=${lang} feeds=${allEntries.length} ` +
-        `deadline_aborted=${deadlineAborted} first_start_ms=${firstStartMs ?? 'n/a'} ` +
-        `first_completion_ms=${firstCompletionMs ?? 'n/a'} final_completion_ms=${finalCompletionMs ?? 'n/a'} ` +
+        `deadline_aborted=${deadlineAborted} first_start_ms=${attempts.firstStartMs ?? 'n/a'} ` +
+        `first_completion_ms=${attempts.firstCompletionMs ?? 'n/a'} final_completion_ms=${attempts.finalCompletionMs ?? 'n/a'} ` +
         `headroom_ms=${headroomMs} by_outcome=${JSON.stringify(byOutcome)} by_category=${JSON.stringify(byCategory)}`,
       );
     }
@@ -1781,14 +2018,12 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
             lastSeen: now,
             mentionCount,
             sourceCount,
-            currentScore: stale?.currentScore ?? 0,
-            peakScore: stale?.peakScore ?? 0,
           };
           const storyMeta: ProtoStoryMeta = {
             firstSeen,
             mentionCount,
             sourceCount,
-            phase: derivePhase(merged),
+            phase: derivePhase(merged, now),
           };
           return toProtoItem(item, storyMeta);
         }),
@@ -1829,9 +2064,9 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // servingStale stays false until durable last-good serving (#7084).
     const coverage = buildDigestCoverage({
       entries: allEntries,
-      attemptOutcomes,
+      attemptOutcomes: attempts.attemptOutcomes,
       itemsServed: allSliced.length,
-      publisherSources: allSliced.map((item) => item.source),
+      publisherSources: allSliced.map((item) => publisherFamilyFor(item.originPublisher || item.source)),
       deadlineAborted: deadlineController.signal.aborted,
       servingStale: false,
       drops: { ...ledgerDrops },
@@ -1865,6 +2100,7 @@ export const __testing__ = {
   promoteDiplomacySeverity,
   computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
+  derivePhase,
   readStoryTracks,
   resolveMaxAgeMs,
   capLlmUpgrade,
@@ -1874,6 +2110,10 @@ export const __testing__ = {
   POST_FETCH_HEADROOM_MS,
   RESPONSE_GUARD_BAND_MS,
   OVERALL_DEADLINE_MS,
+  BATCH_CONCURRENCY,
+  redisPipelineConfirmed,
+  shouldPruneAccumulator,
+  writeStoryTracking,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

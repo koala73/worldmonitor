@@ -15,9 +15,6 @@ import {
 } from './maritime';
 import { fetchUSNIFleetReport, mergeUSNIWithAIS } from './usni-fleet';
 
-// Cache for API responses
-let vesselCache: { data: MilitaryVessel[]; timestamp: number } | null = null;
-
 // In-memory vessel tracking
 const trackedVessels = new Map<string, MilitaryVessel>();
 const vesselHistory = new Map<string, { positions: [number, number][]; lastUpdate: number }>();
@@ -35,7 +32,7 @@ const breaker = createCircuitBreaker<{ vessels: MilitaryVessel[]; clusters: Mili
   name: 'Military Vessel Tracking',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 10 * 60 * 1000,
+  cacheTtlMs: 30 * 1000,
   persistCache: true,
   revivePersistedData: (data) => ({
     ...data,
@@ -416,10 +413,9 @@ function processAisPosition(data: AisPositionData): void {
   const previousSize = trackedVessels.size;
   trackedVessels.set(mmsi, vessel);
 
-  // Clear stale caches when first vessels arrive or when we hit significant milestones
-  // This ensures cached empty results don't block fresh data
+  // Clear the breaker cache when first vessels arrive or when we hit significant milestones.
+  // This ensures cached empty results don't block fresh data.
   if (previousSize === 0 || (trackedVessels.size === 10 && previousSize < 10)) {
-    vesselCache = null;
     breaker.clearCache();
   }
 
@@ -519,10 +515,9 @@ startVesselHistoryCleanup();
 export function initMilitaryVesselStream(): void {
   if (isTracking) return;
 
-  // Invalidate in-memory caches when stream starts — real-time AIS data
+  // Invalidate the breaker's in-memory cache when the stream starts — real-time AIS data
   // replaces them within seconds. Do NOT clear persistent storage here:
   // a concurrent execute() may be hydrating from it to serve instant data.
-  vesselCache = null;
   breaker.clearMemoryCache();
 
   // Register callback with shared AIS stream
@@ -556,9 +551,6 @@ export function getMilitaryVesselStatus(): { connected: boolean; vessels: number
   };
 }
 
-// Cache TTL
-const CACHE_TTL = 30 * 1000; // 30 seconds
-
 /**
  * Main function to get military vessels
  */
@@ -568,28 +560,15 @@ export async function fetchMilitaryVessels(): Promise<{
 }> {
 
   return breaker.execute(async () => {
-    let vessels: MilitaryVessel[] = [];
-
-    // Check cache first, but still run USNI merge so output is consistent.
-    if (vesselCache && Date.now() - vesselCache.timestamp < CACHE_TTL) {
-      vessels = vesselCache.data;
-    } else {
-      // Initialize stream if not running
-      if (!isTracking && isAisConfigured()) {
-        initMilitaryVesselStream();
-      }
-
-      // Clean up old data
-      cleanup();
-
-      // Convert tracked vessels to array
-      vessels = Array.from(trackedVessels.values());
-
-      // Only cache non-empty results - empty results due to timing shouldn't block future calls
-      if (vessels.length > 0) {
-        vesselCache = { data: vessels, timestamp: Date.now() };
-      }
+    // Initialize stream if not running
+    if (!isTracking && isAisConfigured()) {
+      initMilitaryVesselStream();
     }
+
+    // Clean up old data and take the current tracking snapshot. The breaker
+    // owns the single 30-second refresh cadence for this payload.
+    cleanup();
+    const vessels = Array.from(trackedVessels.values());
 
     // Generate AIS-only clusters
     const aisClusters = clusterVessels(vessels);

@@ -135,13 +135,45 @@ Invalidates a user's entitlement cache after a subscription change (Dodo webhook
 
 ## Geo utilities
 
-### `GET /api/geo?iso2=US`
+### `GET /api/geo`
 
-Returns country metadata: centroid, bbox, capital, ISO codes.
+Geo-IP echo: returns `{ "country": "<ISO2>" }` derived from the CDN's country header for the calling IP. Takes no parameters. (For reverse geocoding of coordinates, use `GET /api/infrastructure/v1/reverse-geocode?lat=…&lon=…`.)
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
 Reverse geocodes a lat/lon to the nearest country + city via OpenStreetMap Nominatim. Results are cached on a 0.1-degree grid for seven days, and the route is limited to 60 req/min/IP.
+
+## Account & session helpers
+
+These routes back the dashboard and Settings UI. They are documented here so their behavior is discoverable, but they are **internal helpers, not versioned product contracts** — shapes can change with the UI that consumes them.
+
+### `GET /api/me/entitlement`
+
+Returns `{"isPro": true|false}` for the signed-in user. Requires a Clerk bearer token (`Authorization: Bearer …`); a missing or invalid token returns `401 {"error":"unauthenticated"}` so callers can distinguish "not signed in" from "signed in, free tier". Used by the `/pro` marketing page to swap upgrade CTAs. Always `Cache-Control: private, no-store`.
+
+### `GET /api/user/mcp-quota`
+
+Settings-UI read of the caller's MCP daily quota, from the same counter the MCP server enforces against. Requires a Clerk session. Returns `{"used": 12, "limit": 250, "resetsAt": "<next UTC midnight>"}`; `limit: null` means unlimited. Free-account callers see the free-allowance meter instead. Backend failures fail soft (`used: 0` / plan default) rather than erroring. `Cache-Control: no-store`.
+
+### `POST /api/user/mcp-revoke`
+
+Settings-UI revocation of one Pro MCP token. Requires a Clerk session; the user id comes from the verified session, never the body. Body: `{"tokenId": "<id>"}`. Returns `200 {"ok":true}`; errors: `400` (`invalid_json`, `missing_token_id`), `401`, `404 not_found` (deliberately collapsed against token enumeration), `409 already_revoked`, `503 service_unavailable` with `Retry-After: 5`. Revocation takes effect on the MCP server within its 60-second negative-cache window.
+
+## Operational endpoints
+
+These anonymous internal-operations surfaces are not part of the public API contract. `/api/analytics-health` and `/api/correlation-runtime-mode` are origin-gated to WorldMonitor origins (other origins get a plain `403 Forbidden`). `/api/security/report` is the bounded, wildcard-CORS exception described below.
+
+### `POST /api/security/report`
+
+Anonymous browser Reporting API sink for COOP/COEP violation reports (wired via the site-wide `Reporting-Endpoints: wm-coop-coep="/api/security/report"` header). It intentionally uses wildcard CORS (`Access-Control-Allow-Origin: *`) rather than the operational origin guard. It accepts `application/reports+json` / `application/report+json` / `application/json` (else `415`), bodies up to 32 KiB (else `413`), applies the shared per-IP limiter, and answers successful reports with `204` and no body. Report URLs are reduced to origins before logging — no query strings or tokens are retained.
+
+### `POST /api/analytics-health`
+
+Aggregate telemetry counter for the analytics collector's own health. Accepts a tiny JSON body (≤1 KiB) of per-cohort write/failure counters — no event payloads, user ids, URLs, or fingerprints are accepted. Answers `204`. Rate-limited 60/min (fail-closed).
+
+### `GET /api/correlation-runtime-mode`
+
+Read-only control-plane switch: returns `{"mode": "legacy"|"exact"|"fuzzy"}` telling browser and seeder paths which correlation engine is active, without a redeploy. There is no write surface. If the backing store is unreachable it still returns `200` with `"legacy"`. `Cache-Control: no-store`.
 
 ## Utilities
 

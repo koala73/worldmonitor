@@ -17,6 +17,8 @@ import {
   COUNT_SOURCE_KEYS,
   TEMPORAL_ANOMALIES_KEY,
   TEMPORAL_ANOMALIES_TTL,
+  TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
+  BASELINE_SAMPLE_INTERVAL_MS,
   BASELINE_LOCK_KEY,
   BASELINE_LOCK_TTL,
   type BaselineEntry,
@@ -74,22 +76,32 @@ async function tryAcquireLock(): Promise<boolean> {
   }
 }
 
-function countSnapshotCoverage(snapshot: AnomalySnapshot): number {
-  if (Array.isArray(snapshot.trackedTypes)) return snapshot.trackedTypes.length;
-  if (Array.isArray(snapshot.anomalies)) return snapshot.anomalies.length;
-  return 0;
-}
-
-async function writeTemporalAnomaliesSeedMeta(snapshot: AnomalySnapshot): Promise<boolean> {
+/**
+ * `recordCount` must report the coverage actually ACHIEVED, not the coverage
+ * configured.
+ *
+ * It used to be derived from `snapshot.trackedTypes`, which is the constant
+ * `Object.keys(COUNT_SOURCE_KEYS)` — so it reported full coverage (2) even when
+ * BOTH count sources were missing and the rebuild had zero inputs. Verified by
+ * execution: with both source keys absent the route still stamped recordCount 2.
+ *
+ * Nothing branches on it for this key today — none of the three consumers sets
+ * `minRecordCount`, and both `evaluateFreshness` and health.js gate their
+ * coverage checks behind that field being present. The cost of leaving it was
+ * latent rather than active: a coverage floor added here later would have been
+ * born unable to fire, against a number that can never drop. Callers pass the
+ * observed count instead.
+ */
+async function writeTemporalAnomaliesSeedMeta(
+  snapshot: AnomalySnapshot,
+  coveredSourceCount: number,
+): Promise<boolean> {
   return setCachedJson('seed-meta:temporal:anomalies', {
     fetchedAt: Date.now(),
-    recordCount: countSnapshotCoverage(snapshot),
+    recordCount: Number.isFinite(coveredSourceCount)
+      ? coveredSourceCount
+      : (Array.isArray(snapshot.anomalies) ? snapshot.anomalies.length : 0),
   }, 604800).catch(() => false);
-}
-
-async function refreshTemporalAnomaliesCacheHit(snapshot: AnomalySnapshot): Promise<void> {
-  const refreshed = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL).catch(() => false);
-  if (refreshed) await writeTemporalAnomaliesSeedMeta(snapshot);
 }
 
 export async function listTemporalAnomalies(
@@ -97,13 +109,18 @@ export async function listTemporalAnomalies(
   _req: ListTemporalAnomaliesRequest,
 ): Promise<ListTemporalAnomaliesResponse> {
   try {
+    // HOT PATH — exactly ONE Redis round trip, no writes.
+    //
+    // This previously re-SET the snapshot and re-stamped seed-meta on every cache
+    // hit, which cost two further serial round trips on ~200k requests/day. Against
+    // a single-region store those round trips dominate the response: measured p50
+    // was ~3x the caller's RTT to us-east (12ms in iad1, 384ms in fra1, 1077ms in
+    // hkg1). The stamp is now written only by a successful rebuild below, so it
+    // reports "the data was rebuilt recently" instead of "somebody asked recently".
     const cached = await getCachedJson(TEMPORAL_ANOMALIES_KEY) as AnomalySnapshot | null;
     if (cached?.computedAt) {
       const age = Date.now() - new Date(cached.computedAt).getTime();
-      if (age < TEMPORAL_ANOMALIES_TTL * 1000) {
-        await refreshTemporalAnomaliesCacheHit(cached);
-        return cached;
-      }
+      if (age < TEMPORAL_ANOMALIES_REBUILD_AFTER_MS) return cached;
     }
 
     const lockAcquired = await tryAcquireLock();
@@ -120,8 +137,13 @@ export async function listTemporalAnomalies(
       const anomalies: TemporalAnomalyProto[] = [];
 
       const counts: Record<string, number> = {};
-      for (const [type, sourceKey] of Object.entries(COUNT_SOURCE_KEYS)) {
-        const data = await getCachedJson(sourceKey) as Record<string, unknown> | null;
+      const countEntries = await Promise.all(
+        Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
+          type,
+          await getCachedJson(sourceKey) as Record<string, unknown> | null,
+        ] as const),
+      );
+      for (const [type, data] of countEntries) {
         if (!data) continue;
 
         if (type === 'news') {
@@ -149,6 +171,7 @@ export async function listTemporalAnomalies(
       );
 
       let writeFailures = 0;
+      let attemptedWrites = 0;
       for (let i = 0; i < typesWithCounts.length; i++) {
         const type = typesWithCounts[i]!;
         const count = counts[type]!;
@@ -178,26 +201,40 @@ export async function listTemporalAnomalies(
         }
 
         const prev: BaselineEntry = baseline || { mean: 0, m2: 0, sampleCount: 0, lastUpdated: '' };
+
+        // The baseline's sampling interval is a STATISTICAL parameter and must not
+        // ride on the cache rebuild cadence. Those two were coupled only by accident
+        // (rebuild folded one sample per cycle), so shortening the rebuild interval
+        // would silently triple the sample rate on a slow-moving signal — shrinking
+        // the variance estimate and shifting every z-score. Sample on its own clock.
+        const lastSampledAt = prev.lastUpdated ? new Date(prev.lastUpdated).getTime() : 0;
+        const dueForSample = !Number.isFinite(lastSampledAt)
+          || now.getTime() - lastSampledAt >= BASELINE_SAMPLE_INTERVAL_MS;
+        if (!dueForSample) continue;
+
         const n = prev.sampleCount + 1;
         const delta = count - prev.mean;
         const newMean = prev.mean + delta / n;
         const delta2 = count - newMean;
         const newM2 = prev.m2 + delta * delta2;
 
-        try {
-          await setCachedJson(makeBaselineKeyV2(type, 'global', weekday, month), {
-            mean: newMean,
-            m2: newM2,
-            sampleCount: n,
-            lastUpdated: now.toISOString(),
-          }, BASELINE_TTL);
-        } catch {
-          writeFailures++;
-        }
+        // Check the RETURN VALUE, not a thrown error: setCachedJson catches its own
+        // failures and resolves false (server/_shared/redis.ts), so a try/catch here
+        // never runs and a failed baseline write is invisible. Count attempts
+        // separately from tracked types — the dueForSample `continue` above means
+        // most rebuilds attempt none, so typesWithCounts.length is not the denominator.
+        attemptedWrites++;
+        const wrote = await setCachedJson(makeBaselineKeyV2(type, 'global', weekday, month), {
+          mean: newMean,
+          m2: newM2,
+          sampleCount: n,
+          lastUpdated: now.toISOString(),
+        }, BASELINE_TTL);
+        if (!wrote) writeFailures++;
       }
 
       if (writeFailures > 0) {
-        console.warn(`[TemporalBaseline] ${writeFailures}/${typesWithCounts.length} baseline writes failed`);
+        console.warn(`[TemporalBaseline] ${writeFailures}/${attemptedWrites} baseline writes failed`);
       }
 
       anomalies.sort((a, b) => b.zScore - a.zScore);
@@ -210,7 +247,19 @@ export async function listTemporalAnomalies(
 
       const published = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
       if (published) {
-        await writeTemporalAnomaliesSeedMeta(snapshot);
+        // This stamp is now the ONLY freshness producer for three health consumers.
+        // A silent failure here reads as a stalled producer 45min later with nothing
+        // in the logs to explain it, and the next attempt is a full rebuild cycle
+        // away — so surface it with a grep-able marker rather than discarding it.
+        // typesWithCounts is the sources that actually returned a count this
+        // rebuild — the achieved coverage, not the configured one.
+        const stamped = await writeTemporalAnomaliesSeedMeta(snapshot, typesWithCounts.length);
+        if (!stamped) {
+          console.warn(
+            '[TemporalAnomalies] seed-meta stamp FAILED after a successful publish; '
+            + 'health consumers will read STALE_SEED within maxStaleMin if this repeats',
+          );
+        }
       }
       return snapshot;
     }

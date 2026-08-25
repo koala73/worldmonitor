@@ -48,6 +48,7 @@ These rules come from shipped triage write-ups. They override generic Sentry adv
    - `beforeSend` when suppression depends on stack provenance (example: exact `Failed to fetch` plus an extension fetch/apply wrapper).
 8. **Name-shaped allowlists are a treadmill.** Bound tolerances by an enforced invariant (fetch-free chunks, host allowlists), not by another minifier spelling.
 9. **Distinguish product failure from baseline, credential, sandbox, or ingest-gate gaps.** `allowUrls` drops events before `beforeSend`. A silent host is an ingest bug, not "no errors."
+10. **Audit archive mode via `substatus`, never via empty `statusDetails`.** `archived_forever` opts out of Sentry's escalation detection — volume can never reopen the issue. Default mute is `archived_until_escalating` (`update_issue` `ignoreMode: 'untilEscalating'`). `archived_forever` requires a deliberate, recorded won't-fix decision. See the archive-mode table and write trap below.
 
 Canonical write-ups:
 
@@ -60,9 +61,23 @@ Policy lives in `src/bootstrap/sentry-init.ts` and `src/bootstrap/sentry-allow-u
 
 - **Link or short ID** → fetch that issue directly.
 - **Description** → `search_issues` (`is:unresolved`, `firstSeen:-24h`, `error.type:…`, `release:latest` as needed).
-- **Empty / board triage** → unresolved issues for `worldmonitor`, newest or highest-volume first. Skip issues that are already clearly noise-class from title + recent history unless volume just spiked.
+- **Empty / board triage** → unresolved issues for `worldmonitor`, newest or highest-volume first. Skip issues that are already clearly noise-class from title + recent history unless volume just spiked. Always include the ignored-board audit below — the unresolved board cannot see `archived_forever` issues.
+- **Ignored-board audit** → start with `search_issues(organizationSlug='elie-habib', projectSlugOrId='worldmonitor', query='is:ignored', limit=100, period='90d')`. The list returns **status only** and the search is bounded:
+  - Treat 100 results as truncated. Partition the available horizon into non-overlapping supported `lastSeen` time windows and search each window until none reaches the cap. Deduplicate issue IDs across windows. If a stable partition is unavailable, mark coverage incomplete.
+  - The 90-day activity window can still omit older ignored issues. Before falling back to that window, use `search_sentry_tools` to look for a pagination-capable full ignored-issue inventory and inspect the returned input schema. Use a discovered tool only with its supported cursor parameters. If discovery returns no supported tool, record the capability as unavailable and never describe the audit as exhaustive. Report the observed cohort: query, coverage window(s), unique issue count, and every cap or age gap.
+  - For each observed ignored issue, fetch details with `get_sentry_resource` (`resourceType: 'issue'`) or `execute_sentry_tool(name='get_issue_details', …)` and read **`substatus`**. Both `archived_forever` and `archived_until_escalating` report `statusDetails: {}`. Do not treat empty `statusDetails` as clean.
+  - When `substatus` is `archived_forever`, fetch its history with `execute_sentry_tool(name='get_issue_activity', arguments={ organizationSlug: 'elie-habib', issueId: '<ID>', includeComments: true, limit: 100 })` before deciding it lacks a recorded forever decision. Accept only a prior `update_issue` `reason=` comment or activity note that explicitly chose forever. If activity history is unavailable or returns 100 results, decision history is unproved and coverage is incomplete; report that limitation and do not mutate the issue without explicit user direction.
+  - With complete history, flag each `archived_forever` issue that lacks a recorded forever decision (WORLDMONITOR-QK absorbed a 13.6x ramp in silence while `statusDetails` was `{}`). In report-only mode, list those issues. In active mode (or when the user asked to re-archive), re-archive them as `archived_until_escalating` after classifying them, or resolve if genuinely fixed.
 
 Confirm which issue to work when the search returns several.
+
+Archive mode lives in `substatus`. Every archive except `archived_until_condition_met` reports `statusDetails: {}`:
+
+| substatus | statusDetails | reopens? |
+|---|---|---|
+| `archived_forever` | `{}` | **NO** — opts out of escalation detection |
+| `archived_until_escalating` | `{}` | yes (Sentry forecast) |
+| `archived_until_condition_met` | `{ignoreCount, ignoreWindow}` | yes (threshold) |
 
 ## Step 2 — Pull context
 
@@ -102,7 +117,19 @@ State one class before touching code or Sentry status:
 - Cross-check frames against the codebase. If Sentry Releases exist, diff the event's release, not an assumed `main`.
 - Fix the cause. Add a test that reproduces the failure with synthetic data when the surface has a test suite.
 - Resolve by shipping: `Fixes WORLDMONITOR-12A` in the commit or PR body. Follow WorldMonitor delivery rules (preflight, no `--no-verify`, no merge unless asked).
-- Use `update_issue` only to archive a true won't-fix or to apply a status the user explicitly requested. Prefer resolve-by-commit.
+
+**Archive / mute (any class)**
+
+- Use `update_issue` only to archive a classified mute or to apply a status the user explicitly requested. Prefer resolve-by-commit. Report-only mode flags the mute; it does not write.
+- Default archive is `ignoreMode: 'untilEscalating'` (`archived_until_escalating`). Use `ignoreMode: 'forever'` (`archived_forever`) only for a true won't-fix, and record that decision on the issue with `reason=` (or a later `get_issue_activity` note that names forever).
+- Changing `substatus` requires a status **transition**. `update_issue` with `status: 'ignored'` on an already-`ignored` issue returns success and silently no-ops — read-back still shows the old mode (verified 2026-08-22 on WORLDMONITOR-QK). The write's own 200 proves nothing. Required sequence:
+  1. `update_issue(…, status='unresolved')`, then fetch details and read `status` back. Continue only if the observed state is `unresolved`; if read-back is unavailable or shows anything else, stop, report the issue ID and observed state, and do not attempt step 2.
+  2. `update_issue(…, status='ignored', ignoreMode='untilEscalating', reason='…')` — a failed second write leaves the issue briefly unresolved.
+  3. After every step 2 attempt — whether it returns a failed, ambiguous, or successful response — use `get_sentry_resource` / `get_issue_details` and read `status` and `substatus` back. Do not trust the write response.
+- Use the step 3 read-back, not the write response, to decide recovery:
+  - If read-back is `ignored` / `archived_until_escalating`, the cycle succeeded; do not write again.
+  - If the observed state is `unresolved`, retry step 2 once, then perform the step 3 read-back even if the retry reports failure.
+  - If read-back is unavailable, the observed state is anything else, or the post-retry read-back is not `ignored` / `archived_until_escalating`, stop and report the issue ID and observed state (or that it is unavailable). Do not blind-loop or repeat any write.
 
 **Ingest-gate**
 
@@ -115,10 +142,11 @@ End with a short board or single-issue digest:
 - Issue ID and title
 - Class
 - Evidence (event id, release, the frame or signature that decided the class)
+- `substatus` after any archive write (read-back, not the write response)
 - Action taken or recommended
 - Tests run and their result
 - What remains unproved (missing MCP, missing event body, credential/sandbox limits)
 
 ## What "done" looks like
 
-The issue is classified with evidence. Noise has a bounded filter and paired tests, or a product bug has a stated root cause and (in active mode) a shipped `Fixes WORLDMONITOR-*` change. Nothing is resolved with `inNextRelease`.
+The issue is classified with evidence. Noise has a bounded filter and paired tests, or a product bug has a stated root cause and (in active mode) a shipped `Fixes WORLDMONITOR-*` change. Nothing is resolved with `inNextRelease`. No issue sits on `archived_forever` without a recorded forever decision.

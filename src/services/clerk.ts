@@ -638,12 +638,19 @@ function shouldReuseCachedClerkTokenWithExpiry(
 /**
  * Whether the cached token can still sign a request. Both bounds must hold.
  *
- * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ): Clerk's `getToken()`
- * is stale-while-revalidate — within 15s of expiry it returns the CACHED token
- * immediately and refreshes in the background — so the premise this cache was
- * built on ("Clerk tokens expire at 60s", i.e. every token arrives fresh) does
- * not hold. Stamping a token that had 12s left with a flat 50s TTL left ~38s in
- * which every request it signed came back 401, healing only when the TTL lapsed.
+ * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ, and the May–July 2026
+ * WORLDMONITOR-QK ramp): Clerk's `getToken()` is stale-while-revalidate —
+ * within 15s of expiry it returns the CACHED token immediately and refreshes
+ * in the background — so the premise this cache was built on ("Clerk tokens
+ * expire at 60s", i.e. every token arrives fresh) does not hold. Stamping a
+ * token that had 12s left with a flat 50s TTL left ~38s in which every request
+ * it signed came back 401, healing only when the TTL lapsed. Which Sentry
+ * bucket a leftover lands in depends on how dead it is by the time the edge
+ * sees it — three outcomes, not two; see Two-Verifier Seam in CONCEPTS.md.
+ * Still inside `exp` and rejected by Convex is QK; past `exp` but inside the
+ * edge's `clockTolerance` also reaches Convex, and is kept out of QK by the
+ * capture skip rather than by any edge 401; only past `exp` AND past that
+ * tolerance is refused at the edge (XR/XQ).
  *
  * The TTL is still enforced on top: it is what bounds how long a session that
  * was revoked but not yet expired keeps working.

@@ -1357,7 +1357,7 @@ curl -s https://worldmonitor.app/mcp \
 | `country` | string | 二选一 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。未设置 `domain` 时必填 |
 | `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
 | `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
-| `limit` | integer | 否 | 最大事件数。省略时路由返回 50 条，上限为 200 |
+| `limit` | integer | 否 | 最大事件数。省略时返回 40 条，上限为 40 —— schema 声明 `maximum: 40`，更大的值会被钳制 |
 
 - **API 端点：** `GET /api/intelligence/v1/get-intel-timeline`
 - **类型：** 实时 RPC — 一次存储读取，无嵌入。Edge 运行时超时：**8.0s**。

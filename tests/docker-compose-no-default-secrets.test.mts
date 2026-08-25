@@ -199,6 +199,25 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
     );
   });
 
+  it('docker-compose.yml bounds redis-rest memory against its per-request body buffer (#7099)', async () => {
+    const compose = await read('docker-compose.yml');
+    const redisRest = serviceBlock(compose, 'redis-rest');
+
+    // The proxy buffers each accepted body in full (SRH_MAX_BODY_BYTES, 16MB
+    // default), and those Buffers are off-heap so a Node heap flag cannot cap
+    // them. Measured: 64 concurrent 16MB POSTs reached ~933MB RSS. Without a
+    // container limit an unbounded proxy sits next to a Redis capped at 256mb
+    // and can starve the whole stack.
+    const limit = redisRest.match(/mem_limit:\s*(\d+)([mg])/i);
+    assert.ok(limit, 'redis-rest must declare a mem_limit');
+
+    const megabytes = limit[2].toLowerCase() === 'g' ? Number(limit[1]) * 1024 : Number(limit[1]);
+    // One max-size publish costs ~64MB transient (16MB body + concat + UTF-16
+    // string). Too low turns a legitimate 16MB seeder publish into an OOM kill.
+    assert.ok(megabytes >= 256, `mem_limit ${limit[0]} is too low to serve one max-size publish`);
+    assert.ok(megabytes <= 2048, `mem_limit ${limit[0]} is high enough to defeat the point of bounding it`);
+  });
+
   it('docker-compose.yml passes one fail-closed relay secret to both consumers (#6537)', async () => {
     const compose = await read('docker-compose.yml');
     assertRequiredRelaySecretWiring(compose);

@@ -26,10 +26,11 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
       </openapi.json>; rel="service-desc"; type="application/json",
       </openapi.yaml>; rel="service-desc"; type="application/vnd.oai.openapi",
       </docs/documentation>; rel="service-doc"; type="text/html",
-      </api/health>; rel="status"; type="application/json",
+      </api/health?compact=1>; rel="status"; type="application/json",
       </.well-known/oauth-protected-resource>; rel="...oauth-protected-resource",
       </.well-known/oauth-authorization-server>; rel="...oauth-authorization-server",
       </.well-known/mcp/server-card.json>; rel="mcp-server-card"; anchor="/mcp",
+      </.well-known/mcp/docs-server-card.json>; rel="mcp-server-card"; anchor="/docs/mcp",
       </.well-known/agent-skills/index.json>; rel="agent-skills-index"; type="application/json"
 ```
 
@@ -44,12 +45,46 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, streaming, capability flags |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 authorization-server metadata (PKCE, DCR, token endpoints) |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for `https://worldmonitor.app/mcp` |
+| [`/.well-known/mcp/docs-server-card.json`](https://worldmonitor.app/.well-known/mcp/docs-server-card.json) | MCP | Server card for the **documentation** MCP server at `/docs/mcp` (see below) — separate from the data server card above |
+| [`/.well-known/agent-card.json`](https://worldmonitor.app/.well-known/agent-card.json) | [A2A](https://a2a-protocol.org) | Agent card for the `/a2a` JSON-RPC concierge (see below) — transport, protocol version, skills, no auth required |
+| [`/.well-known/http-message-signatures-directory`](https://worldmonitor.app/.well-known/http-message-signatures-directory) | [RFC 9421](https://datatracker.ietf.org/doc/html/rfc9421) / Web Bot Auth | Ed25519 public-key directory (`application/http-message-signatures-directory+json`) so third parties can verify WorldMonitor-originated signed automated requests. Keys advertise a rolling 24 h `nbf`/`exp` window; cached `public, max-age=3600` |
 | [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | (custom) | Index of pre-packaged agent skills (`fetch-country-brief`, `fetch-resilience-score`, …) — each skill is a self-contained recipe |
 | [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM-friendly markdown briefing — overview, capabilities, links |
 | [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | (extension) | Long-form variant covering all data layers, panels, and data sources |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
 
 The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`, `/openapi.json`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
+
+## Agent front doors
+
+Beyond static discovery documents, several live endpoints exist specifically for agents. All of them are anonymous and quota-free. `/ask`, `/a2a`, and `/docs/mcp` each enforce their documented 60/min/IP policy; `/agent/auth` and the markdown twins do not claim an endpoint-specific per-IP limit.
+
+### `GET|POST /ask` — natural-language routing (NLWeb)
+
+An [NLWeb](https://github.com/microsoft/NLWeb)-style front door: send a question, get back the MCP tools that answer it. Accepts `query` (max 2048 chars) as JSON body, form body, or `?query=`; optional `mode` (default `"list"`), `query_id`, and `streaming` (also triggered by `Accept: text/event-stream`).
+
+```bash
+curl -s https://worldmonitor.app/ask -H 'Content-Type: application/json' \
+  -d '{"query": "is there unusual military air activity near Taiwan?"}'
+```
+
+Returns `{ _meta, query_id, query, results[] }` where each result carries `{url, name, site, score, description, schema_object}` pointing at the matching MCP tool. Streaming mode emits `start` → `result` → `complete` SSE frames. A query-less probe returns `200` with usage guidance rather than an error; when nothing matches, a single `llms.txt` pointer result is returned with `score: 0`. Rate limit: 60/min/IP (`429` + `Retry-After`). Responses are `no-store`.
+
+### `POST /a2a` — A2A JSON-RPC concierge
+
+An [A2A protocol](https://a2a-protocol.org) agent (card at `/.well-known/agent-card.json`, protocol `0.3.0`, transport JSONRPC, no auth). Supports `message/send` with text parts (max 2048 chars); replies with an agent message containing a text part plus a data part `{suggestedTools, howToCall, freshness?}` — the freshness envelope attaches when the message asks about staleness or seed health. Streaming, push notifications, and task history are declared unsupported and return `-32004`; rate limiting surfaces as JSON-RPC `-32029` with `Retry-After` (60/min/IP).
+
+### `GET /agent/auth` — authentication challenge
+
+Always answers `401` with a `WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="…"` header and a JSON body linking the RFC 9728 resource metadata, the RFC 8414 authorization-server metadata, and the `/auth.md` skill. It exists because a scanner probing `GET /mcp` for the OAuth challenge can't get one there (that verb is reserved for the SSE handshake) — probe this URL instead to bootstrap the OAuth flow.
+
+### `/docs/mcp` — documentation MCP server
+
+A second, separate MCP server for the documentation itself (card at `/.well-known/mcp/docs-server-card.json`, protocol `2025-06-18`, streamable HTTP, no auth). It serves `search_world_monitor` (docs knowledge-base search returning snippets and links) and `query_docs_filesystem_world_monitor` (read-only `rg`/`ls`/`tree`/`cat`/`head` over a virtualized docs + OpenAPI filesystem). POST bodies are capped at 256 KiB (`413` beyond); rate limit 60/min/IP as JSON-RPC `-32029`. It is a conformance-fixing facade over the upstream docs provider: `tools/call` results carrying `-32601`/`-32602` inside `isError` payloads are lifted into real top-level JSON-RPC errors.
+
+### Markdown twins — `<any-page>.md`
+
+Every page on the site has an agent-readable markdown twin: append `.md` to the path (`/pricing.md`, `/countries/tw.md`, `/home.md` for the front page). Curated twins are static and cached `public, max-age=3600` with `Access-Control-Allow-Origin: *`; everything else is rendered on demand by the twin service (HTML becomes heading-led markdown, JSON becomes a fenced block, output capped at 80 KB) with a `Link: <sibling>; rel="canonical"` header. `GET`/`HEAD` on `.md` twins bypasses the API bot gate, so plain `curl` works without a browser User-Agent.
 
 ## Agent walkthroughs
 

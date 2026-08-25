@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { buildDigestCoverage } from '../server/worldmonitor/news/v1/_attempts';
+import { buildDigestCoverage, type FeedAttemptOutcome } from '../server/worldmonitor/news/v1/_attempts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const digestSource = readFileSync(
@@ -13,15 +13,15 @@ const digestSource = readFileSync(
 );
 
 const ENTRIES = [
-  { category: 'politics', feed: { name: 'BBC World' } },
-  { category: 'politics', feed: { name: 'Guardian World' } },
-  { category: 'tech', feed: { name: 'Hacker News' } },
+  { attemptId: 'politics:0', category: 'politics' },
+  { attemptId: 'politics:1', category: 'politics' },
+  { attemptId: 'tech:2', category: 'tech' },
 ] as const;
 
-const ALL_OK = new Map<string, string>([
-  ['BBC World', 'completed'],
-  ['Guardian World', 'completed'],
-  ['Hacker News', 'zero-items'],
+const ALL_OK = new Map<string, FeedAttemptOutcome>([
+  ['politics:0', 'completed'],
+  ['politics:1', 'completed'],
+  ['tech:2', 'empty'],
 ]);
 
 const BASE = {
@@ -52,11 +52,11 @@ describe('digest coverage block (#7085)', () => {
   it('classifies partial when a configured category has no completed feed', () => {
     const cov = buildDigestCoverage({
       ...BASE,
-      attemptOutcomes: new Map([
-        ['BBC World', 'completed'],
-        ['Guardian World', 'completed'],
+      attemptOutcomes: new Map<string, FeedAttemptOutcome>([
+        ['politics:0', 'completed'],
+        ['politics:1', 'completed'],
         // Hacker News never ran — the whole tech category is missing.
-        ['Hacker News', 'not-started'],
+        ['tech:2', 'not-started'],
       ]),
     });
     assert.equal(cov.state, 'partial');
@@ -64,6 +64,29 @@ describe('digest coverage block (#7085)', () => {
     assert.equal(cov.feedCompleted, 2);
     assert.equal(cov.feedTotal, 3);
   });
+
+  for (const failedOutcome of [
+    'direct-timeout',
+    'relay-failure',
+    'aborted-by-deadline',
+    'other-fetch-failure',
+    'negative-cache',
+    'not-started',
+  ] satisfies FeedAttemptOutcome[]) {
+    it(`does not count ${failedOutcome} as completed coverage`, () => {
+      const cov = buildDigestCoverage({
+        ...BASE,
+        attemptOutcomes: new Map<string, FeedAttemptOutcome>([
+          ['politics:0', 'completed'],
+          ['politics:1', 'completed'],
+          ['tech:2', failedOutcome],
+        ]),
+      });
+      assert.equal(cov.state, 'partial');
+      assert.equal(cov.feedCompleted, 2);
+      assert.deepEqual(cov.categoryStates, { politics: 'ok', tech: 'missing' });
+    });
+  }
 
   it('classifies unavailable when no items were served', () => {
     const cov = buildDigestCoverage({ ...BASE, itemsServed: 0, publisherSources: [] });
@@ -79,7 +102,7 @@ describe('digest coverage block (#7085)', () => {
 
   it('counts distinct publishers of the SERVED items, not feeds or parsed items', () => {
     const cov = buildDigestCoverage({ ...BASE });
-    // 5 served items, 3 distinct publisher labels.
+    // 5 served items, 3 normalized publisher families.
     assert.equal(cov.publisherCount, 3);
     assert.equal(cov.itemsServed, 5);
   });
@@ -111,6 +134,10 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
   it('builds the response coverage through the pure classifier', () => {
     assert.match(digestSource, /buildDigestCoverage\(\{/);
     assert.match(digestSource, /servingStale: false/);
+  });
+
+  it('normalizes served items to publisher families before counting them', () => {
+    assert.match(digestSource, /publisherFamilyFor\(item\.originPublisher \|\| item\.source\)/);
   });
 
   it('returns the coverage block on the digest response', () => {

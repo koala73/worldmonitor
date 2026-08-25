@@ -284,6 +284,14 @@ jobs:
         run: npm run build:pro
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
+      - name: Client bundle size budget (#7111)
+        # The dashboard JS payload grew +151 KB in five weeks with no CI
+        # signal. Compares the build above against the committed snapshot in
+        # scripts/shared/bundle-budgets.json; on an intended size change run
+        # `npm run bundle:budgets` against the same build and commit the diff.
+        # Ordered before the suite so a budget breach costs seconds, not the
+        # full test:data run.
+        run: npm run bundle:check
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
       - name: Edge function bundle check
         # Shared checker with caller-specific profiles. Tracked files are the

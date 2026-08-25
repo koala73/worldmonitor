@@ -95,7 +95,11 @@ async function assertNoLeak(fire: () => void, label: string): Promise<void> {
   }
 }
 
-describe('umami beacon rejection is swallowed (WORLDMONITOR-WW/WX/WY)', () => {
+// Every suite below mutates the shared analytics transport and the process-wide
+// `window` test double. Keep the suites serial even when test:data runs with
+// `--test-concurrency=16`; otherwise another suite can reset or replace the
+// collector between two awaited writes in the wiring assertions.
+describe('umami beacon rejection is swallowed (WORLDMONITOR-WW/WX/WY)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
     stubFailingUmami();
@@ -196,7 +200,7 @@ async function drainPromiseHandlers(until?: () => boolean, label = 'condition'):
   if (until) throw new Error(`drainPromiseHandlers: ${label} never became true`);
 }
 
-describe('Umami client retry policy (#5715)', () => {
+describe('Umami client retry policy (#5715)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -856,7 +860,7 @@ function createNativeTimeoutError(): Error {
   return error;
 }
 
-describe('collector request timeout compatibility (#6086)', () => {
+describe('collector request timeout compatibility (#6086)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -1236,7 +1240,7 @@ function findLatchDeadline(timers: ScheduledTimer[]): ScheduledTimer | undefined
  * The tests below therefore assert what the #6086 fixtures structurally cannot:
  * the latch releases WITHOUT the transport promise ever settling.
  */
-describe('collector latch release is module-owned (#6288)', () => {
+describe('collector latch release is module-owned (#6288)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -2440,7 +2444,7 @@ describe('collector latch release is module-owned (#6288)', () => {
  * the delivery classification, or a suppressed alert silently becomes a
  * suppressed retry and a cleared conversion marker.
  */
-describe('bot-filtered collector writes (#5964 alert-noise regression)', () => {
+describe('bot-filtered collector writes (#5964 alert-noise regression)', { concurrency: false }, () => {
   const botBody = '{"beep":"boop"}';
 
   it('flags a bot-filtered 200 without changing its delivery classification', async () => {
@@ -2497,7 +2501,7 @@ describe('bot-filtered collector writes (#5964 alert-noise regression)', () => {
   });
 });
 
-describe('collector alert policy suppresses expected background conditions', () => {
+describe('collector alert policy suppresses expected background conditions', { concurrency: false }, () => {
   const net = { kind: 'network' as const };
   const timeout = { kind: 'timeout' as const };
 
@@ -2561,7 +2565,7 @@ describe('collector alert policy suppresses expected background conditions', () 
   });
 });
 
-describe('collector alert policy is wired into the reporting path', () => {
+describe('collector alert policy is wired into the reporting path', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -2752,7 +2756,7 @@ describe('collector alert policy is wired into the reporting path', () => {
  * An alarm has to be attacked for the case it exists to catch: can it stay
  * SILENT while the collector is actually dead? #5565 ran for four days unseen.
  */
-describe('collector alert policy still fires when the collector is dead', () => {
+describe('collector alert policy still fires when the collector is dead', { concurrency: false }, () => {
   it('alerts on the first 5xx, with no sample or rate floor to clear', () => {
     // The #5565 shape: Railway origin OOM-dead, Cloudflare answers 502. This is
     // kind:'http', so it is never subject to the environment-noise gating.
