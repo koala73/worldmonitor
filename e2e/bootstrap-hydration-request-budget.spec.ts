@@ -166,6 +166,13 @@ const EMPTY_FALLBACK_PAYLOAD = {
  * being guarded are 30 minutes, so any refetch inside this window is a miss. */
 const REPEAT_LOAD_SETTLE_MS = 6_000;
 
+/** The shared breaker opens after two rejected fallback responses for five
+ * minutes. The uncacheable control intentionally rejects those responses, and
+ * startup can exercise weather twice before the repeat baseline is frozen.
+ * Move Date.now just past that cooldown so the repeat still happens inside the
+ * guarded 30-minute data TTL while remaining observable at the network route. */
+const BREAKER_COOLDOWN_ADVANCE_MS = 5 * 60 * 1000 + 1;
+
 /** Past the web fast-tier abort deadline (BOOTSTRAP_TIER_TIMEOUT_MS.web.fast =
  * 1_200). Held as a local literal on purpose: importing the constant would make
  * the abort fixture follow a deadline change instead of failing on it, and R3
@@ -366,6 +373,13 @@ async function fireInsightsRepeatConsumer(page: Page): Promise<void> {
   });
 }
 
+async function expireRejectedFallbackCooldown(page: Page): Promise<void> {
+  await page.evaluate((advanceMs) => {
+    const realNow = Date.now.bind(Date);
+    Date.now = () => realNow() + advanceMs;
+  }, BREAKER_COOLDOWN_ADVANCE_MS);
+}
+
 /** Bring a deferred panel into range and wait for its real implementation. */
 async function mountPanel(page: Page, panelId: string) {
   const panel = page.locator(`[data-panel="${panelId}"]`);
@@ -486,6 +500,7 @@ for (const [deviceClass, deviceViewport] of [
         HYDRATION_DATASETS.map(({ key }) => [key, log.counts[key] ?? 0]),
       );
 
+      await expireRejectedFallbackCooldown(page);
       await fireHydrationTrigger(page);
       await fireInsightsRepeatConsumer(page);
 
