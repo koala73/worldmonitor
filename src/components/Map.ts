@@ -279,6 +279,16 @@ export class MapComponent {
   // written — lets applyTransform() skip same-value setProperty calls that
   // would restyle every marker on every render pass.
   private lastOverlayVarZoom = '';
+  // The overlay budget is planned for the transformed viewport. Keep the last
+  // planned transform so pan/zoom can request one coalesced rebuild instead of
+  // leaving the previous view's nearest markers on screen.
+  private lastOverlayBudgetViewport = {
+    width: Number.NaN,
+    height: Number.NaN,
+    zoom: Number.NaN,
+    panX: Number.NaN,
+    panY: Number.NaN,
+  };
   // Desktop measures label overlap from the start; mobile defers until the first
   // interaction. The effective value is set in the constructor (= !this.isMobile);
   // false here documents the mobile-off default.
@@ -1880,9 +1890,9 @@ export class MapComponent {
     // drops whatever is furthest from what the user is looking at instead of
     // whatever happens to sort last. See proximityRank.
     const { width, height } = this.getKnownContainerSize();
-    const centre = projection.invert?.([width / 2, height / 2]);
+    const centre = this.getOverlayBudgetCentre(projection, width, height);
     const nearestFirst = proximityRank<unknown>(
-      { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 },
+      centre,
       overlayMarkerPosition,
     );
     for (const group of groups) {
@@ -1907,7 +1917,36 @@ export class MapComponent {
     this.overlayMarkerCut = cut;
     this.overlayMarkerTruncation = truncated;
     this.renderedOverlayMarkerCount = markers.length;
+    this.lastOverlayBudgetViewport = {
+      width,
+      height,
+      zoom: this.state.zoom,
+      panX: this.state.pan.x,
+      panY: this.state.pan.y,
+    };
     this.updateLayerTruncationLabels();
+  }
+
+  /**
+   * Return the geographic point currently at the screen centre.
+   *
+   * The SVG projection is transformed by CSS after it produces marker
+   * coordinates. Inverting the untransformed screen centre therefore ranks the
+   * old map centre after a pan or zoom. Undo the same translate/scale that
+   * applyTransform() applies before asking d3 for the geographic coordinate.
+   */
+  private getOverlayBudgetCentre(
+    projection: d3.GeoProjection,
+    width: number,
+    height: number,
+  ): LatLng {
+    const zoom = Math.max(this.state.zoom, Number.EPSILON);
+    const rawCentre = [
+      width / (2 * zoom) - this.state.pan.x,
+      height / (2 * zoom) - this.state.pan.y,
+    ] as [number, number];
+    const centre = projection.invert?.(rawCentre);
+    return { lat: centre?.[1] ?? 0, lng: centre?.[0] ?? 0 };
   }
 
   /** True when this render pass withheld `marker` under the overlay budget (#7112). */
@@ -4366,6 +4405,13 @@ export class MapComponent {
     const { width, height } = this.getKnownContainerSize();
     this.clampPan(width, height);
     const zoom = this.state.zoom;
+    const overlayBudgetViewportChanged =
+      this.initialDynamicRendered &&
+      (this.lastOverlayBudgetViewport.width !== width ||
+        this.lastOverlayBudgetViewport.height !== height ||
+        this.lastOverlayBudgetViewport.zoom !== zoom ||
+        this.lastOverlayBudgetViewport.panX !== this.state.pan.x ||
+        this.lastOverlayBudgetViewport.panY !== this.state.pan.y);
 
     // With transform-origin: 0 0, we need to offset to keep center in view
     // Formula: translate first to re-center, then scale
@@ -4400,7 +4446,9 @@ export class MapComponent {
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
     const zoomVisibilityChanged = this.updateZoomLayerVisibility();
     this.emitStateChange();
-    if (rebuildOnZoomVisibilityChange && zoomVisibilityChanged) this.scheduleRender();
+    if ((rebuildOnZoomVisibilityChange && zoomVisibilityChanged) || overlayBudgetViewportChanged) {
+      this.scheduleRender();
+    }
   }
 
   private shouldUpdateLabelVisibility(): boolean {

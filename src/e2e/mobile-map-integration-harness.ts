@@ -11,9 +11,13 @@ type MobileMapIntegrationHarness = {
   getInitialDynamicRendered: () => boolean;
   getWrapperTransform: () => string;
   seedOverlayMarkerStress: (perFeed: number) => void;
+  seedOverlayViewportStress: (count: number) => void;
+  setOverlayViewport: (lat: number, lon: number) => void;
+  setOverlayZoom: (zoom: number) => void;
   seedTimeFilteredEarthquakes: (recent: number, stale: number) => void;
   getOverlayMarkerCount: () => number;
   getOverlayMarkerClassCount: (selector: string) => number;
+  getOverlayPositionSignature: (selector: string) => string;
   getOverlayBudgetState: () => { rendered: number; truncated: Record<string, { shown: number; total: number }> };
   getPopupRect: () => {
     left: number;
@@ -312,6 +316,29 @@ window.__mobileMapIntegrationHarness = {
     map.setEarthquakes(quakes as never);
     map.render();
   },
+  // #7112: create one over-budget, proximity-ranked feed so pan/zoom can prove
+  // that the selected marker set follows the transformed viewport centre.
+  seedOverlayViewportStress: (count: number) => {
+    const hotspots = Array.from({ length: count }, (_, index) => ({
+      id: `viewport-hotspot-${index}`,
+      name: `Viewport Hotspot ${index}`,
+      lat: ((index * 7) % 170) - 85,
+      lon: ((index * 13) % 358) - 179,
+      keywords: ['viewport'],
+      level: 'low' as const,
+      description: 'Viewport budget stress marker',
+      status: 'monitoring',
+    }));
+    const mapInternals = map as unknown as {
+      hotspots: typeof hotspots;
+      state: { layers: Record<string, boolean> };
+    };
+    mapInternals.hotspots = hotspots;
+    mapInternals.state.layers.hotspots = true;
+    map.render();
+  },
+  setOverlayViewport: (lat: number, lon: number) => map.setCenter(lat, lon),
+  setOverlayZoom: (zoom: number) => map.setZoom(zoom),
   // #7112: the budget plan must be computed over the SAME time-filtered slice
   // the render loop iterates. The stale events here carry the HIGHEST
   // magnitudes, so a plan that ranked the unfiltered feed would spend its whole
@@ -343,6 +370,11 @@ window.__mobileMapIntegrationHarness = {
     document.getElementById('mapOverlays')?.childElementCount ?? -1,
   getOverlayMarkerClassCount: (selector: string) =>
     document.getElementById('mapOverlays')?.querySelectorAll(selector).length ?? -1,
+  getOverlayPositionSignature: (selector: string) =>
+    Array.from(document.querySelectorAll<HTMLElement>(`#mapOverlays ${selector}`))
+      .map((element) => `${element.style.left},${element.style.top}`)
+      .sort()
+      .join('|'),
   getOverlayBudgetState: () => map.getOverlayMarkerBudgetState(),
   getPopupRect: () => {
     const element = document.querySelector('.map-popup') as HTMLElement | null;

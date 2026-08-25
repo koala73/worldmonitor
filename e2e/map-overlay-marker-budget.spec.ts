@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
  * #7112 — the SVG renderer's HTML overlay must stay bounded.
@@ -22,6 +22,14 @@ import { expect, test } from '@playwright/test';
 const DESKTOP_TOTAL = 800;
 const DESKTOP_PER_LAYER = 300;
 const STRESS_PER_FEED = 2000;
+const DASHBOARD_MAX_DOM_NODES = 12000;
+// Chromium's renderer-wide metric includes a small amount of browser-owned
+// bookkeeping beyond the document nodes returned by querySelectorAll('*').
+const DASHBOARD_MAX_RENDERER_NODES = 15000;
+const DASHBOARD_MAX_LISTENERS = 1500;
+const DASHBOARD_MAX_NODE_VARIANCE = 500;
+const DASHBOARD_MAX_RENDERER_NODE_VARIANCE = 2000;
+const DASHBOARD_MAX_LISTENER_VARIANCE = 200;
 
 type BudgetState = {
   rendered: number;
@@ -32,14 +40,165 @@ type HarnessWindow = Window & {
   __mobileMapIntegrationHarness?: {
     ready: boolean;
     seedOverlayMarkerStress: (perFeed: number) => void;
+    seedOverlayViewportStress: (count: number) => void;
+    setOverlayViewport: (lat: number, lon: number) => void;
+    setOverlayZoom: (zoom: number) => void;
     seedTimeFilteredEarthquakes: (recent: number, stale: number) => void;
     getOverlayMarkerCount: () => number;
     getOverlayMarkerClassCount: (selector: string) => number;
+    getOverlayPositionSignature: (selector: string) => string;
     getOverlayBudgetState: () => BudgetState;
   };
 };
 
+async function installLocalOnlyNetwork(page: Page): Promise<void> {
+  await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => {
+    return route.abort('blockedbyclient');
+  });
+}
+
+async function loadColdDashboard(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('worldmonitor-variant', 'full');
+  });
+  await installLocalOnlyNetwork(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+  await expect(page.locator('#mapContainer')).toBeVisible({ timeout: 30000 });
+  // Let the same local-only boot window settle on every fresh context before
+  // collecting the renderer metrics.
+  await page.waitForTimeout(2000);
+}
+
+async function readDashboardDomMetrics(page: Page): Promise<{
+  domNodes: number;
+  rendererNodes: number;
+  listeners: number;
+}> {
+  const domNodes = await page.evaluate(() => document.querySelectorAll('*').length);
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send('Performance.enable');
+    const result = await session.send('Performance.getMetrics');
+    const value = (name: string): number => {
+      const metric = result.metrics.find((entry: { name: string; value: number }) => entry.name === name);
+      if (!metric || !Number.isFinite(metric.value)) throw new Error(`Missing Chromium metric: ${name}`);
+      return metric.value;
+    };
+    return {
+      domNodes,
+      rendererNodes: value('Nodes'),
+      listeners: value('JSEventListeners'),
+    };
+  } finally {
+    await session.detach().catch(() => {});
+  }
+}
+
 test.describe('SVG map overlay marker budget (#7112)', () => {
+  test('keeps the full dashboard DOM and listener counts bounded across cold loads', async ({ browser }) => {
+    test.setTimeout(90000);
+    const samples: Array<Awaited<ReturnType<typeof readDashboardDomMetrics>>> = [];
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        colorScheme: 'dark',
+        locale: 'en-US',
+        timezoneId: 'UTC',
+      });
+      const page = await context.newPage();
+      try {
+        await loadColdDashboard(page);
+        samples.push(await readDashboardDomMetrics(page));
+      } finally {
+        await context.close();
+      }
+    }
+
+    const domNodes = samples.map((sample) => sample.domNodes);
+    const rendererNodes = samples.map((sample) => sample.rendererNodes);
+    const listeners = samples.map((sample) => sample.listeners);
+    const range = (values: number[]): number => Math.max(...values) - Math.min(...values);
+
+    // #7112 acceptance: this is the real /dashboard document, not only the
+    // harness overlay root. The repeated fresh contexts catch cold-load drift;
+    // the stated ceilings and tolerances are the production guardrail from the
+    // issue investigation (12k document nodes / 15k renderer nodes / 1.5k
+    // listeners).
+    expect(Math.max(...domNodes)).toBeLessThanOrEqual(DASHBOARD_MAX_DOM_NODES);
+    expect(Math.max(...rendererNodes)).toBeLessThanOrEqual(DASHBOARD_MAX_RENDERER_NODES);
+    expect(Math.max(...listeners)).toBeLessThanOrEqual(DASHBOARD_MAX_LISTENERS);
+    expect(range(domNodes)).toBeLessThanOrEqual(DASHBOARD_MAX_NODE_VARIANCE);
+    // Performance.getMetrics().Nodes is renderer-wide and includes transient
+    // browser-owned nodes, so it has a wider explicit tolerance than the live
+    // dashboard document count.
+    expect(range(rendererNodes)).toBeLessThanOrEqual(DASHBOARD_MAX_RENDERER_NODE_VARIANCE);
+    expect(range(listeners)).toBeLessThanOrEqual(DASHBOARD_MAX_LISTENER_VARIANCE);
+  });
+
+  test('replans proximity-ranked markers after a pan and zoom transform', async ({ page }) => {
+    await page.goto('/tests/mobile-map-integration-harness.html');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    await page.evaluate(
+      (count) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedOverlayViewportStress(count),
+      2000,
+    );
+    await expect
+      .poll(
+        async () =>
+          page.evaluate((expected) => {
+            const harness = (window as HarnessWindow).__mobileMapIntegrationHarness!;
+            return harness.getOverlayMarkerClassCount('.hotspot') === expected;
+          }, DESKTOP_PER_LAYER),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+
+    const initial = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayPositionSignature('.hotspot'),
+    );
+    await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.setOverlayViewport(-55, 125),
+    );
+    await expect
+      .poll(
+        async () =>
+          page.evaluate((previous) =>
+            (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayPositionSignature('.hotspot') !== previous,
+          initial),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+
+    const afterPan = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayPositionSignature('.hotspot'),
+    );
+    await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.setOverlayZoom(4),
+    );
+    await expect
+      .poll(
+        async () =>
+          page.evaluate((previous) =>
+            (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayPositionSignature('.hotspot') !== previous,
+          afterPan),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+  });
+
   test('bounds the overlay marker count against feeds far past production volume', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
