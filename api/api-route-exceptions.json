@@ -610,7 +610,7 @@
     {
       "path": "api/fwdstart.js",
       "category": "non-json",
-      "reason": "Scrapes the fwdstart.me newsletter archive and returns application/rss+xml for the dashboard feed panel — response is RSS/XML, not JSON.",
+      "reason": "Scrapes the fwdstart.me newsletter archive for the dashboard feed panel and serves an RSS/XML response with HTTP Content-Type application/xml, not JSON.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
