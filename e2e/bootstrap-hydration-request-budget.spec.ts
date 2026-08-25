@@ -293,6 +293,10 @@ async function mountSanctionsPanel(page: Page) {
   return panel;
 }
 
+// Viewport only — both arms still use the WEB tier deadlines. The desktop
+// 5,000/8,000 ms budgets key off isDesktopRuntime() (the Tauri shell), not
+// window size, so a narrow viewport changes layout and viewport gating without
+// changing which deadline the abort test is measured against.
 for (const [deviceClass, deviceViewport] of [
   ['desktop', { width: 1280, height: 720 }],
   ['mobile', { width: 390, height: 844 }],
