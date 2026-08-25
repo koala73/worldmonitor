@@ -121,10 +121,13 @@ describe('built-output guard contract', () => {
       '        run: npm run build:pro',
       '      - name: Build dashboard artifacts for built-output tests',
       '        run: VITE_VARIANT=full ./node_modules/.bin/vite build',
-      '      - name: Client bundle size budget (#7111)',
+      '      - name: Client bundle size budget (#7111, #7119)',
     ].join('\n');
     const expectedTailSequence = [
-      '        run: npm run bundle:check',
+      '        run: |',
+      '          npm run bundle:check',
+      '          npm run bundle:check:pro',
+      '          npm run bundle:check:embed',
       '      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data',
     ].join('\n');
 

@@ -27,16 +27,18 @@
  * .env.local aside (they are symlinks in worktrees) or the snapshot will fail
  * in CI.
  *
- * Scope: JS assets referenced by dist/dashboard.html — the initial /dashboard
- * payload the issue's DebugBear evidence observes. This includes the entry
- * module and Vite's modulepreload links, but not lazy chunks that are only
- * fetched after the page starts. Hashed rollup chunks aggregate under their
- * stable name; an un-hashed .js emitted there is tracked under its literal
- * filename rather than silently ignored. The /pro subapp payload
- * (dist/pro/assets, built by build:pro from pro-test/) and the embeddable
- * dist-root embed.js are DELIBERATELY out of scope here — they are separate
- * product surfaces with their own build pipelines and follow-up tracking in
- * #7119.
+ * Surfaces (select with --surface):
+ *   dashboard (default) — JS assets referenced by dist/dashboard.html: the
+ *     initial /dashboard payload the issue's DebugBear evidence observes. This
+ *     includes the entry module and Vite's modulepreload links, but not lazy
+ *     chunks that are only fetched after the page starts.
+ *   pro — every dist/pro/assets/*.js chunk emitted by `npm run build:pro`
+ *     (pro-test/) and copied into dist/ by the root vite build.
+ *   embed — the dist-root embed.js partner loader (public/embed.js).
+ *
+ * Hashed rollup chunks aggregate under their stable name; an un-hashed .js
+ * emitted in an assets/ directory is tracked under its literal filename
+ * rather than silently ignored.
  *
  * Gate semantics:
  *   - RAW bytes are the only gated number. The snapshot also records the file
@@ -64,7 +66,7 @@
  *      unparseable, or untrustworthy (fails validateBudgetSnapshot)
  */
 
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { isMainModule } from './lib/main-module.mjs';
 
@@ -74,9 +76,23 @@ export const DEFAULT_TOLERANCE_BYTES = 2048;
 export const TOTAL_TOLERANCE_PCT = 0.25;
 export const TOTAL_TOLERANCE_BYTES = 16384;
 
-const DEFAULT_DIST_DIR = 'dist';
-const DEFAULT_BUDGET_PATH = 'scripts/shared/bundle-budgets.json';
-const BUILD_COMMAND = 'VITE_VARIANT=full ./node_modules/.bin/vite build';
+const SURFACES = ['dashboard', 'pro', 'embed'];
+const DEFAULT_SURFACE = 'dashboard';
+const BUILD_COMMANDS = {
+  dashboard: 'npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build',
+  pro: 'npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build',
+  embed: 'npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build',
+};
+const DEFAULT_DIST_DIRS = {
+  dashboard: 'dist',
+  pro: 'dist/pro',
+  embed: 'dist',
+};
+const DEFAULT_BUDGET_PATHS = {
+  dashboard: 'scripts/shared/bundle-budgets.json',
+  pro: 'scripts/shared/bundle-budgets-pro.json',
+  embed: 'scripts/shared/bundle-budgets-embed.json',
+};
 
 /**
  * 'main-DYSz1bMh.js' -> 'main'. Vite content hashes are exactly 8 chars of
@@ -96,7 +112,7 @@ export function initialDashboardAssetNames(distDir) {
   try {
     html = readFileSync(dashboardPath, 'utf8');
   } catch (error) {
-    throw new Error(`cannot read ${dashboardPath} — run: ${BUILD_COMMAND}: ${error.message}`);
+    throw new Error(`cannot read ${dashboardPath} — run: ${BUILD_COMMANDS.dashboard}: ${error.message}`);
   }
 
   const assets = new Set();
@@ -111,9 +127,80 @@ export function initialDashboardAssetNames(distDir) {
     if (fileName && !fileName.includes('/')) assets.add(fileName);
   }
   if (assets.size === 0) {
-    throw new Error(`no initial JS assets referenced by ${dashboardPath} — run: ${BUILD_COMMAND}`);
+    throw new Error(`no initial JS assets referenced by ${dashboardPath} — run: ${BUILD_COMMANDS.dashboard}`);
   }
   return [...assets].sort();
+}
+
+export function listJsAssetFileNames(assetsDir) {
+  let names;
+  try {
+    names = readdirSync(assetsDir);
+  } catch (error) {
+    throw new Error(`cannot read ${assetsDir}: ${error.message}`);
+  }
+  const jsFiles = names.filter((name) => name.endsWith('.js') && !name.endsWith('.js.map'));
+  if (jsFiles.length === 0) {
+    throw new Error(`no JS assets in ${assetsDir}`);
+  }
+  return jsFiles.sort();
+}
+
+function measureChunkFiles(assetsDir, fileNames, missingLabel) {
+  // Null prototype: a chunk named after an Object.prototype key ("toString",
+  // "constructor") would otherwise hit the inherited property, skip the ??=
+  // assignment, and be silently mismeasured.
+  const chunks = Object.create(null);
+  for (const fileName of fileNames) {
+    const name = chunkNameFromFileName(fileName)
+      ?? (fileName.endsWith('.js') ? fileName : null);
+    if (!name) continue;
+    const filePath = join(assetsDir, fileName);
+    let fileStat;
+    try {
+      fileStat = statSync(filePath);
+    } catch (error) {
+      throw new Error(`${missingLabel} references missing ${filePath} — ${error.message}`);
+    }
+    if (!fileStat.isFile()) {
+      throw new Error(`${missingLabel} references non-file asset ${filePath}`);
+    }
+    const buffer = readFileSync(filePath);
+    const entry = (chunks[name] ??= { raw: 0, files: 0 });
+    entry.files += 1;
+    entry.raw += buffer.length;
+  }
+
+  const total = { raw: 0 };
+  for (const name of Object.keys(chunks)) {
+    total.raw += chunks[name].raw;
+  }
+  return { chunks, total };
+}
+
+export function measureProDistChunks(distDir) {
+  const assetsDir = join(distDir, 'assets');
+  return measureChunkFiles(assetsDir, listJsAssetFileNames(assetsDir), 'pro build');
+}
+
+export function measureEmbedJs(distDir) {
+  const filePath = join(distDir, 'embed.js');
+  let fileStat;
+  try {
+    fileStat = statSync(filePath);
+  } catch (error) {
+    throw new Error(
+      `cannot read ${filePath} — run: ${BUILD_COMMANDS.embed}: ${error.message}`,
+    );
+  }
+  if (!fileStat.isFile()) {
+    throw new Error(`${filePath} is not a file`);
+  }
+  const raw = readFileSync(filePath).length;
+  return {
+    chunks: { 'embed.js': { raw, files: 1 } },
+    total: { raw },
+  };
 }
 
 export function measureDistChunks(distDir) {
@@ -125,56 +212,41 @@ export function measureDistChunks(distDir) {
   // same-name chunks aggregate: sizes sum and the file count is tracked, and a
   // count change forces a re-seed just like a renamed chunk does. Stale mixed
   // dist/ trees are not a concern — vite empties outDir on every build.
-  //
-  // Null prototype: a chunk named after an Object.prototype key ("toString",
-  // "constructor") would otherwise hit the inherited property, skip the ??=
-  // assignment, and be silently mismeasured.
-  const chunks = Object.create(null);
-  for (const fileName of entries) {
-    // An UN-hashed .js in dist/assets (a plugin emitting a fixed-name asset)
-    // still ships to users, so it is tracked under its literal filename
-    // rather than silently ignored. .js.br / .js.map siblings stay excluded.
-    const name = chunkNameFromFileName(fileName)
-      ?? (fileName.endsWith('.js') ? fileName : null);
-    if (!name) continue;
-    const filePath = join(assetsDir, fileName);
-    let fileStat;
-    try {
-      fileStat = statSync(filePath);
-    } catch (error) {
-      throw new Error(`dashboard entry references missing ${filePath} — ${error.message}`);
-    }
-    if (!fileStat.isFile()) {
-      throw new Error(`dashboard entry references non-file asset ${filePath}`);
-    }
-    const buffer = readFileSync(filePath);
-    const entry = (chunks[name] ??= { raw: 0, files: 0 });
-    entry.files += 1;
-    entry.raw += buffer.length;
-  }
-
-  const names = Object.keys(chunks);
-  const total = { raw: 0 };
-  for (const name of names) {
-    total.raw += chunks[name].raw;
-  }
-  return { chunks, total };
+  return measureChunkFiles(assetsDir, entries, 'dashboard entry');
 }
 
-export function buildBudgetSnapshot(measured) {
+export function buildBudgetSnapshot(measured, surface = DEFAULT_SURFACE) {
+  const buildCommand = BUILD_COMMANDS[surface] ?? BUILD_COMMANDS.dashboard;
+  const comments = {
+    dashboard:
+      'Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk '
+      + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total `
+      + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%). Tolerance fields here are `
+      + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
+      + `Regenerate after "${buildCommand}" with: npm run bundle:budgets`,
+    pro:
+      '/pro subapp bundle-size budgets (#7119). Gated on raw bytes: per chunk '
+      + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total `
+      + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%). Tolerance fields here are `
+      + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
+      + `Regenerate after "${buildCommand}" with: npm run bundle:budgets:pro`,
+    embed:
+      'dist-root embed.js bundle-size budget (#7119). Gated on raw bytes: per chunk '
+      + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total `
+      + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%). Tolerance fields here are `
+      + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
+      + `Regenerate after "${buildCommand}" with: npm run bundle:budgets:embed`,
+  };
+  const variants = { dashboard: 'full', pro: 'pro', embed: 'embed' };
   const chunks = Object.create(null);
   for (const name of Object.keys(measured.chunks).sort()) {
     const { raw, files } = measured.chunks[name];
     chunks[name] = { raw, files };
   }
   return {
-    comment:
-      'Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk '
-      + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total `
-      + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%). Tolerance fields here are `
-      + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
-      + `Regenerate after "${BUILD_COMMAND}" with: npm run bundle:budgets`,
-    variant: 'full',
+    comment: comments[surface] ?? comments.dashboard,
+    surface,
+    variant: variants[surface] ?? variants.dashboard,
     tolerancePct: DEFAULT_TOLERANCE_PCT,
     toleranceBytes: DEFAULT_TOLERANCE_BYTES,
     totalTolerancePct: TOTAL_TOLERANCE_PCT,
@@ -294,11 +366,23 @@ export function compareBundleBudgets(measured, budget) {
   return { ok: failures.length === 0, failures, warnings };
 }
 
+function measureSurface(surface, distDir) {
+  if (surface === 'pro') return measureProDistChunks(distDir);
+  if (surface === 'embed') return measureEmbedJs(distDir);
+  return measureDistChunks(distDir);
+}
+
 function parseArgs(argv) {
-  const args = { check: false, dist: DEFAULT_DIST_DIR, budget: DEFAULT_BUDGET_PATH };
+  const args = {
+    check: false,
+    surface: DEFAULT_SURFACE,
+    dist: null,
+    budget: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--check') args.check = true;
+    else if (arg === '--surface') args.surface = argv[(i += 1)];
     else if (arg === '--dist') args.dist = argv[(i += 1)];
     else if (arg === '--budget') args.budget = argv[(i += 1)];
     else {
@@ -306,6 +390,12 @@ function parseArgs(argv) {
       process.exit(2);
     }
   }
+  if (!SURFACES.includes(args.surface)) {
+    console.error(`bundle-budgets: --surface must be one of: ${SURFACES.join(', ')}`);
+    process.exit(2);
+  }
+  if (!args.dist) args.dist = DEFAULT_DIST_DIRS[args.surface];
+  if (!args.budget) args.budget = DEFAULT_BUDGET_PATHS[args.surface];
   if (!args.dist || !args.budget) {
     console.error('bundle-budgets: --dist and --budget need a value');
     process.exit(2);
@@ -318,7 +408,7 @@ function main() {
 
   let measured;
   try {
-    measured = measureDistChunks(resolve(args.dist));
+    measured = measureSurface(args.surface, resolve(args.dist));
   } catch (error) {
     console.error(`bundle-budgets: ${error.message}`);
     process.exit(2);
@@ -335,7 +425,7 @@ function main() {
         + 'the snapshot will not match CI. Move them aside and rebuild before seeding.',
       );
     }
-    const snapshot = buildBudgetSnapshot(measured);
+    const snapshot = buildBudgetSnapshot(measured, args.surface);
     writeFileSync(resolve(args.budget), `${JSON.stringify(snapshot, null, 2)}\n`);
     console.log(
       `bundle-budgets: wrote ${Object.keys(snapshot.chunks).length} chunk budgets `
