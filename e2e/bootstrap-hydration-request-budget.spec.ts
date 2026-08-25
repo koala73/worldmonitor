@@ -4,6 +4,7 @@ import {
   ENERGY_BOOTSTRAP_DATA,
   ENERGY_KEYS,
   requestedKeys,
+  seedAnonymousDashboard,
   waitForStartup,
 } from './bootstrap-request-budget-fixtures';
 
@@ -34,9 +35,20 @@ const NATURAL_EVENT = {
   categoryTitle: 'Severe Storms', lat: 12.5, lon: -70.1,
   date: '2026-08-01T00:00:00Z', closed: false,
 };
+// Field names come from the generated FireDetection contract
+// (src/generated/client/worldmonitor/wildfire/v1/service_client.ts:22-39), NOT
+// from the snake_case shape in tests/bootstrap-hydration-reuse.test.mts. That
+// unit fixture only ever reaches fetchAllFires(), whose sole gate is
+// `fireDetections.length > 0`, so it never notices the mismatch. The browser
+// goes one step further into data-loader's `new Date(f.detectedAt)`, which
+// throws RangeError on a missing field and kills the satellite-fires surface —
+// leaving the request counter green over a dead consumer.
 const FIRE_DETECTION = {
   id: 'fire-1', region: 'BR', brightness: 330.5, frp: 12.5,
-  confidence: 'FIRE_CONFIDENCE_HIGH', acq_date: '2026-08-01', daynight: 'N',
+  confidence: 'FIRE_CONFIDENCE_HIGH', satellite: 'NOAA-20',
+  detectedAt: 1_754_000_000_000, dayNight: 'N',
+  possibleExplosion: false, source: 'FIRMS', kind: 'wildfire', emergency: false,
+  agencyFireId: '', agencyCode: '', fireSize: 0,
   location: { latitude: -10.2, longitude: -55.3 },
 };
 const EARTHQUAKE = {
@@ -56,13 +68,39 @@ const SANCTIONS_PRESSURE = {
   fetchedAt: 1_754_000_000, datasetDate: 1_754_000_000,
 };
 
+const WEATHER_ALERT = {
+  id: 'nws-1', event: 'Severe Thunderstorm Warning', severity: 'Severe',
+  headline: 'Browser Severe Thunderstorm Warning', description: 'Browser test alert',
+  areaDesc: 'Test County', onset: '2026-08-01T00:00:00Z', expires: '2099-08-01T00:00:00Z',
+  coordinates: [[-90, 30], [-89, 30], [-89, 31], [-90, 31]] as [number, number][],
+  centroid: [-89.5, 30.5] as [number, number], countryCode: 'US', source: 'NWS',
+  geometryPrecision: 'polygon' as const,
+};
+
+/** isAcceptedInsightsSnapshot rejects anything older than INSIGHTS_MAX_AGE_MS
+ * (1 hour — shared/insights-snapshot.js:7,84), so this timestamp has to track
+ * the clock. A frozen literal would silently start failing acceptance and turn
+ * the insights arm into a permanent fallthrough that still reads as a pass. */
+const INSIGHTS_SNAPSHOT = {
+  topStories: [{
+    title: 'Browser Insight Headline',
+    summary: 'Browser test insight.',
+    sources: [{ title: 'Example', url: 'https://example.org/insight' }],
+  }],
+  generatedAt: new Date().toISOString(),
+};
+
 type HydrationDataset = {
   /** Bootstrap key, and the label a failure names. */
   key: string;
   tier: 'fast' | 'slow';
-  /** The per-dataset fallback the loader takes when hydration is absent or
-   * rejected. */
-  rpcGlob: string;
+  /**
+   * The per-dataset fallback the loader takes when hydration is absent or
+   * rejected. `null` means the dataset has no RPC of its own and falls back to
+   * the public per-key bootstrap URL, which the bootstrap handler already
+   * counts into the same dataset total.
+   */
+  rpcGlob: string | null;
   payload: unknown;
 };
 
@@ -93,7 +131,36 @@ const HYDRATION_DATASETS: readonly HydrationDataset[] = [
     rpcGlob: '**/api/sanctions/v1/list-sanctions-pressure*',
     payload: SANCTIONS_PRESSURE,
   },
+  // Both of the following are named by U5's own scenario list ("no duplicate
+  // natural, wildfire, earthquake, sanctions, weather, or insights request
+  // within TTL") and neither has an RPC: weather.ts:75 falls back to
+  // `?keys=weatherAlerts&public=1` inside its breaker, and
+  // insights-loader.ts:112 to `?keys=insights` behind a module-local cache.
+  {
+    key: 'weatherAlerts',
+    tier: 'fast',
+    rpcGlob: null,
+    payload: { alerts: [WEATHER_ALERT] },
+  },
+  {
+    key: 'insights',
+    tier: 'fast',
+    rpcGlob: null,
+    payload: INSIGHTS_SNAPSHOT,
+  },
 ];
+
+/**
+ * A body every one of these services REJECTS, so none of them promotes it into
+ * a cache. Superset of the empty shapes each loader checks (`events`,
+ * `fireDetections`, `earthquakes`, `entries`, `alerts`, `topStories`), so one
+ * literal serves every route.
+ */
+const EMPTY_FALLBACK_PAYLOAD = {
+  events: [], fireDetections: [], earthquakes: [], entries: [], alerts: [],
+  topStories: [], countries: [], programs: [], totalCount: 0,
+  dataAvailable: false, fetchedAt: 0,
+};
 
 /** Long enough for a second fan-out to land if one is coming. The service TTLs
  * being guarded are 30 minutes, so any refetch inside this window is a miss. */
@@ -111,8 +178,10 @@ type HydrationRequestLog = {
   tiers: string[];
 };
 
-/** Mark App.ts emits from handleViewportPrime. */
+/** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
+/** Mark data-loader emits at the top of runLoadAllData — proves a fan-out RAN. */
+const LOAD_ALL_DATA_MARK = 'wm:data:load-all-start';
 
 async function installHydrationRequestAccounting(
   page: Page,
@@ -124,6 +193,13 @@ async function installHydrationRequestAccounting(
     /** Extra keys to place in the slow tier, e.g. a pre-#7046 payload still
      * carrying the energy registries during a rolling deploy. */
     extraSlowTierData?: Record<string, unknown>;
+    /**
+     * Serve EMPTY fallback bodies so no service promotes the result into its
+     * cache, making every loader pass observable at the counter. Only useful
+     * with `hydrate: false` — it is what lets a test witness a SECOND loader
+     * invocation rather than a cached no-op.
+     */
+    uncacheableFallbacks?: boolean;
   } = {},
 ): Promise<HydrationRequestLog> {
   const hydrate = options.hydrate ?? true;
@@ -173,9 +249,11 @@ async function installHydrationRequestAccounting(
       body: JSON.stringify({
         data: Object.fromEntries(keys.map((key) => [
           key,
-          HYDRATION_DATASETS.find((dataset) => dataset.key === key)?.payload
-            ?? ENERGY_BOOTSTRAP_DATA[key as (typeof ENERGY_KEYS)[number]]
-            ?? { key, records: [] },
+          options.uncacheableFallbacks
+            ? EMPTY_FALLBACK_PAYLOAD
+            : HYDRATION_DATASETS.find((dataset) => dataset.key === key)?.payload
+              ?? ENERGY_BOOTSTRAP_DATA[key as (typeof ENERGY_KEYS)[number]]
+              ?? { key, records: [] },
         ])),
         missing: [],
       }),
@@ -183,6 +261,7 @@ async function installHydrationRequestAccounting(
   });
 
   for (const dataset of HYDRATION_DATASETS) {
+    if (!dataset.rpcGlob) continue;
     // Fulfilled, not aborted: an aborted RPC opens the circuit breaker after two
     // failures and the loader then stops issuing observable requests, which
     // would cap the control arm's counts instead of measuring them.
@@ -191,7 +270,9 @@ async function installHydrationRequestAccounting(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(dataset.payload),
+        body: JSON.stringify(
+          options.uncacheableFallbacks ? EMPTY_FALLBACK_PAYLOAD : dataset.payload,
+        ),
       }).catch(() => {});
     });
   }
@@ -224,19 +305,27 @@ const SANCTIONS_PANEL_PROMOTION = {
 const PIPELINE_PANEL_PROMOTION = {
   'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 1 },
 };
+const STORAGE_PANEL_PROMOTION = {
+  'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 1 },
+};
 
 async function seedHydrationDashboard(
   page: Page,
   promotedPanels: Record<string, unknown> = SANCTIONS_PANEL_PROMOTION,
 ): Promise<void> {
-  await page.addInitScript((panels: Record<string, unknown>) => {
+  // The clear has to run BEFORE seedAnonymousDashboard writes the variant and
+  // dismissal flags, so it gets its own earlier init script rather than being
+  // folded into the shared helper.
+  await page.addInitScript(() => {
     if (sessionStorage.getItem('__bootstrap_hydration_budget_e2e__')) return;
     localStorage.clear();
     sessionStorage.clear();
-    localStorage.setItem('worldmonitor-variant', 'full');
-    localStorage.setItem('wm-layer-warning-dismissed', 'true');
-    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+  });
+  // The variant + three dismissal flags come from the shared helper rather than
+  // a fourth hand-maintained copy of the same policy.
+  await seedAnonymousDashboard(page, 'full');
+  await page.addInitScript((panels: Record<string, unknown>) => {
+    if (sessionStorage.getItem('__bootstrap_hydration_budget_e2e__')) return;
     // loadNatural() and loadFirmsData() are gated on the `natural` map layer,
     // which the full variant defaults OFF. AE1/AE2 describe what happens when
     // those loaders run twice, so the fixture turns on the layer that owns them
@@ -254,13 +343,17 @@ async function seedHydrationDashboard(
   await installHydrationTriggerRecorder(page);
 }
 
-function countViewportTriggers(page: Page): Promise<number> {
-  return page.evaluate((markName) => {
+function countMarks(page: Page, markName: string): Promise<number> {
+  return page.evaluate((name) => {
     const debug = (window as typeof window & {
       __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string }> } };
     }).__wmLcpDebug;
-    return debug?.getSnapshot?.().marks.filter((mark) => mark.name === markName).length ?? 0;
-  }, VIEWPORT_HYDRATION_MARK);
+    return debug?.getSnapshot?.().marks.filter((mark) => mark.name === name).length ?? 0;
+  }, markName);
+}
+
+function countViewportTriggers(page: Page): Promise<number> {
+  return countMarks(page, VIEWPORT_HYDRATION_MARK);
 }
 
 /**
@@ -329,6 +422,46 @@ for (const [deviceClass, deviceViewport] of [
         .toHaveText(SANCTIONS_ENTRY_NAME);
     });
 
+    // The precondition every zero-refetch assertion in this file rests on.
+    // fireHydrationTrigger() proves handleViewportPrime ENTERED; it does not
+    // prove the pass reached the loaders. If a future change stops
+    // loadAllData() from re-running, every "must not refetch" assertion above
+    // goes green over a page that never asked a second time — the guard would
+    // report U2's contract protected while nothing tests it.
+    //
+    // The witness is data-loader's own `wm:data:load-all-start` mark, NOT a
+    // request counter. A counter cannot tell a second fan-out apart from a
+    // service retry — measured: with the repeat pass deleted from
+    // handleViewportPrime, a counter-based version of this test still passed on
+    // the desktop arm because a retry moved the number. The mark moves only
+    // when runLoadAllData actually runs.
+    //
+    // Scope of the claim, deliberately narrow: this asserts a SECOND FAN-OUT
+    // happens, not that handleViewportPrime is what caused it. Two paths can
+    // supply one — handleViewportPrime (App.ts:360) and panel-layout's
+    // IntersectionObserver via scheduleLoadAllData — and which one fires
+    // depends on the viewport. Deleting the App.ts call reds the desktop arm
+    // while mobile stays green on the observer path. Claiming a specific
+    // trigger would be the stronger-sounding assertion this cannot support.
+    test('a second fan-out runs after startup — the precondition for every zero-refetch assertion', async ({ page }) => {
+      await seedHydrationDashboard(page);
+      await installHydrationRequestAccounting(page, { hydrate: true });
+
+      await waitForStartup(page);
+      await mountSanctionsPanel(page);
+      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
+      expect(fanOutsBefore, 'startup must have run at least one fan-out').toBeGreaterThan(0);
+
+      await fireHydrationTrigger(page);
+
+      await expect
+        .poll(() => countMarks(page, LOAD_ALL_DATA_MARK), {
+          message: 'no second loadAllData() fan-out ran, so every zero-refetch assertion in this file is vacuous',
+          timeout: REPEAT_LOAD_SETTLE_MS,
+        })
+        .toBeGreaterThan(fanOutsBefore);
+    });
+
     test('without tier hydration the same flow refetches — the counters are live', async ({ page }) => {
       await seedHydrationDashboard(page);
       const log = await installHydrationRequestAccounting(page, { hydrate: false });
@@ -361,6 +494,16 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
     await fireHydrationTrigger(page);
     await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
 
+    // Without this, both assertions below are equally satisfied by a run in
+    // which the fast tier was never requested at all: no fast tier means no
+    // earthquake hydration (so the fallback count rises) while the slow tier
+    // still hydrates (so the slow keys stay at 0). The abort has to be the
+    // reason, not merely a consistent story.
+    expect(
+      log.tiers,
+      'the fast tier must have been requested so its abort is the scenario under test',
+    ).toContain('fast');
+
     // The fast tier never delivered, so its consumer must recover through its
     // own fallback rather than settle into an empty state.
     expect(
@@ -379,43 +522,73 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       .toHaveText(SANCTIONS_ENTRY_NAME);
   });
 
-  test('an old slow tier still carrying the energy registries is consumed without a per-key request', async ({ page }) => {
-    // Rolling deploy: a client running #7046 code receives a tier payload
-    // published before the keys were demoted, so the demoted keys arrive in the
-    // universal slow body and the one-shot hydration read must satisfy the
-    // registry demand instead of the public per-key URL.
-    //
-    // Demand comes from the deferred pipeline panel on the `full` variant, not
-    // from an energy-variant startup layer. That ordering is the point: App.ts
-    // awaits the slow-tier checkpoint before its initial fan-out, so a panel
-    // scrolled into range afterwards is guaranteed to ask AFTER the payload
-    // landed. Energy-variant startup demand races the tier and can legitimately
-    // miss it — the #7046 spec already covers that path with its own budget.
-    await seedHydrationDashboard(page, PIPELINE_PANEL_PROMOTION);
-    const log = await installHydrationRequestAccounting(page, {
-      hydrate: true,
-      extraSlowTierData: ENERGY_BOOTSTRAP_DATA,
+  // Rolling deploy: a client running #7046 code receives a tier payload
+  // published before the keys were demoted, so the demoted keys arrive in the
+  // universal slow body and the one-shot hydration read must satisfy the
+  // registry demand instead of the public per-key URL.
+  //
+  // Demand comes from a deferred panel on the `full` variant, not from an
+  // energy-variant startup layer. That ordering is the point: App.ts starts the
+  // slow-tier checkpoint and awaits it before the initial fan-out
+  // (src/App.ts:2356,2372), so a panel scrolled into range afterwards asks
+  // after the payload landed — PROVIDED the tier settles inside
+  // waitForBootstrapSlowTier's 3.5 s web budget, which a route-fulfilled tier
+  // always does. Energy-variant startup demand races the tier instead and can
+  // legitimately miss it, which is why that path is the #7046 spec's job.
+  //
+  // ONE arm per registry, each promoting its own consumer panel, because the
+  // free-tier cap has exactly zero headroom: FULL_PANELS already enables 40
+  // priority-1 panels (39 cap-counted plus `map`, which enforceFreePanelLimit
+  // excludes), so promoting a second panel would silently drop one. A single
+  // arm looping all three keys would assert `toBe(0)` for a registry nothing on
+  // the page ever demanded — true no matter what the store does.
+  for (const { arm, panel, promotion, rowSelector, rowCount, renders, keys } of [
+    {
+      arm: 'pipeline',
+      panel: 'pipeline-status',
+      promotion: PIPELINE_PANEL_PROMOTION,
+      rowSelector: '.pp-row',
+      rowCount: 2,
+      renders: ['Browser Gas Link', 'Browser Oil Link'],
+      keys: ['pipelinesGas', 'pipelinesOil'],
+    },
+    {
+      arm: 'storage',
+      panel: 'storage-facility-map',
+      promotion: STORAGE_PANEL_PROMOTION,
+      rowSelector: '.sf-row',
+      rowCount: 1,
+      renders: ['Browser Storage Hub'],
+      keys: ['storageFacilities'],
+    },
+  ] as const) {
+    test(`an old slow tier still carrying the ${arm} registry is consumed without a per-key request`, async ({ page }) => {
+      await seedHydrationDashboard(page, promotion);
+      const log = await installHydrationRequestAccounting(page, {
+        hydrate: true,
+        extraSlowTierData: ENERGY_BOOTSTRAP_DATA,
+      });
+
+      await waitForStartup(page);
+      const target = page.locator(`[data-panel="${panel}"]`);
+      await target.scrollIntoViewIfNeeded();
+      await expect(target).toBeVisible();
+      await expect(target).not.toHaveAttribute('data-deferred-panel', 'true');
+      await fireHydrationTrigger(page);
+      await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
+
+      // Rendered first: a panel that never asked for its registry would satisfy
+      // the zero-request assertion below for the wrong reason.
+      await expect(target.locator(rowSelector)).toHaveCount(rowCount);
+      for (const text of renders) await expect(target).toContainText(text);
+
+      // Assert only the keys this arm's panel actually consumes.
+      for (const key of keys) {
+        expect(
+          log.counts[key] ?? 0,
+          `${key} arrived in the old tier payload and must not be refetched per key`,
+        ).toBe(0);
+      }
     });
-
-    await waitForStartup(page);
-    const pipelinePanel = page.locator('[data-panel="pipeline-status"]');
-    await pipelinePanel.scrollIntoViewIfNeeded();
-    await expect(pipelinePanel).toBeVisible();
-    await expect(pipelinePanel).not.toHaveAttribute('data-deferred-panel', 'true');
-    await fireHydrationTrigger(page);
-    await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
-
-    // Rendered first: a panel that never asked for its registry would satisfy
-    // the zero-request assertion below for the wrong reason.
-    await expect(pipelinePanel.locator('.pp-row')).toHaveCount(2);
-    await expect(pipelinePanel).toContainText('Browser Gas Link');
-    await expect(pipelinePanel).toContainText('Browser Oil Link');
-
-    for (const key of ENERGY_KEYS) {
-      expect(
-        log.counts[key] ?? 0,
-        `${key} arrived in the old tier payload and must not be refetched per key`,
-      ).toBe(0);
-    }
-  });
+  }
 });

@@ -611,10 +611,11 @@ jobs:
       # One invocation for all three smoke specs: each `playwright test` run
       # boots its own vite dev server (reuseExistingServer is false), so three
       # separate steps paid three boots; the specs are independent and share
-      # VITE_VARIANT=full. The set includes the news-budget guard (#5376) —
-      # named explicitly because nothing in CI runs the e2e/ glob, and a
-      # regression guard no job invokes reports green while the regression
-      # ships.
+      # VITE_VARIANT=full. The set includes the news-budget guard (#5376) and
+      # both bootstrap request-budget guards (#7046 energy on-demand, #7045 U5
+      # hydration reuse) — named explicitly because nothing in CI runs the e2e/
+      # glob, and a regression guard no job invokes reports green while the
+      # regression ships.
       - run: npm run test:e2e:ci-smoke
       # playwright.config.ts already retains a trace, a video and a screenshot
       # for every failed test (retain-on-failure) — but nothing collected them,

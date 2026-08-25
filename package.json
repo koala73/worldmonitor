@@ -131,7 +131,7 @@
     "test:e2e:mcp-grant": "cross-env VITE_VARIANT=full playwright test e2e/mcp-grant-consent.spec.ts",
     "test:e2e:news-budget": "cross-env VITE_VARIANT=full playwright test e2e/dashboard-news-request-budget.spec.ts",
     "test:e2e:source-live-apply": "cross-env VITE_VARIANT=full playwright test e2e/settings-source-live-apply.spec.ts",
-    "test:e2e:ci-smoke": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts e2e/mcp-grant-consent.spec.ts e2e/dashboard-news-request-budget.spec.ts e2e/settings-panel-live-apply.spec.ts e2e/settings-source-live-apply.spec.ts e2e/keyword-spike-flow.spec.ts e2e/breaking-news-banner-provenance.spec.ts e2e/a11y-axe-scan.spec.ts",
+    "test:e2e:ci-smoke": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts e2e/mcp-grant-consent.spec.ts e2e/dashboard-news-request-budget.spec.ts e2e/bootstrap-request-budget.spec.ts e2e/bootstrap-hydration-request-budget.spec.ts e2e/settings-panel-live-apply.spec.ts e2e/settings-source-live-apply.spec.ts e2e/keyword-spike-flow.spec.ts e2e/breaking-news-banner-provenance.spec.ts e2e/a11y-axe-scan.spec.ts",
     "test:e2e:prehydration": "cross-env VITE_VARIANT=full playwright test e2e/prehydration-shell.spec.ts --project=chromium --grep \"server-rendered welcome page|dashboard shell without JavaScript\"",
     "test:e2e:variant-smoke:full": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:tech": "cross-env VITE_VARIANT=tech playwright test e2e/variant-live-smoke.spec.ts",
