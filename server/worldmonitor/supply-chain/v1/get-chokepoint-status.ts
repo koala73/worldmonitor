@@ -466,6 +466,14 @@ export async function getChokepointStatus(
         // minRecordCount threshold. Before this, a partial portwatch failure
         // showed as OK despite the UI rendering 3 zero-state rows.
         const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable !== false).length;
+        // Persist WHICH ones are uncovered alongside the count. recordCount=11
+        // says two are missing and never which two, and the upstream usually
+        // recovers before anyone looks — on 2026-08-25 the partial ran ~4.5h and
+        // was already healthy by the time it was investigated. Bounded by the
+        // canonical set, so this cannot grow past 13 short ids.
+        const uncoveredIds = chokepoints
+          .filter((c) => c.transitSummary?.dataAvailable === false)
+          .map((c) => c.id);
         // Response-level signal: if any canonical chokepoint lost upstream,
         // flip upstreamUnavailable so clients can show a partial-coverage
         // banner without breaking the cached response (data still useful).
@@ -475,7 +483,16 @@ export async function getChokepointStatus(
           fetchedAt: new Date().toISOString(),
           upstreamUnavailable: upstreamUnavailable || partialCoverage,
         };
-        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: coveredCount }, 604800).catch(() => {});
+        setCachedJson('seed-meta:supply_chain:chokepoints', {
+          fetchedAt: Date.now(),
+          recordCount: coveredCount,
+          // Operator-facing only: api/health.js classifies this probe from
+          // minRecordCount and is deliberately left alone. Routing it through
+          // projectFailedDatasets would have surfaced it in the payload but also
+          // forced seedError, turning an upstream COVERAGE_PARTIAL into a
+          // SEED_ERROR — the wrong severity for a partial that self-heals.
+          ...(uncoveredIds.length > 0 ? { uncoveredChokepoints: uncoveredIds } : {}),
+        }, 604800).catch(() => {});
         return response;
       },
     );
