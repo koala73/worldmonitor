@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 // Per-file strip/extract cache. The container guards walk overlapping graphs
 // repeatedly — resolveRuntimeSurface alone re-walks each service's graph up to
@@ -242,6 +242,26 @@ export function resolveNodeRelative(fromFile, relImport, exts = NODE_SOURCE_EXTS
     if (existsSync(abs + ext)) return abs + ext;
   }
   return null;
+}
+
+/**
+ * Express `absolutePath` relative to `root`, forward-slash-separated
+ * regardless of host OS -- Dockerfile COPY sources and the container guards'
+ * tracked-prefix lists (e.g. `scripts/`) are always POSIX-style. Returns
+ * null when `absolutePath` is not inside `root`.
+ *
+ * Used by the relay and digest-notifications Dockerfile guards in place of
+ * their former inline `resolved.startsWith(root + '/') ? resolved.slice(...)
+ * : null` check, which hardcoded a forward slash. path.resolve() returns
+ * backslash-separated paths on Windows, so that check never matched there:
+ * both guards' BFS terminated after the entrypoint and their "every
+ * transitively-imported file is COPY'd" assertions passed vacuously,
+ * regardless of actual Dockerfile coverage, on any Windows dev machine.
+ */
+export function relativeToRepoRoot(root, absolutePath) {
+  const rel = relative(root, absolutePath);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
+  return rel.split(sep).join('/');
 }
 
 // tsx-style resolution: extension guessing (including TypeScript), directory
