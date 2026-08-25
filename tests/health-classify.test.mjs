@@ -29,6 +29,7 @@ const {
   ON_DEMAND_KEYS,
   ZERO_RECORD_DATA_OK_KEYS,
   EMPTY_DATA_OK_KEYS,
+  projectChinaCoverageStatus,
 } = __testing__;
 
 const NOW = 1_700_000_000_000;
@@ -2103,4 +2104,66 @@ test('#6987 — the two aviation probes no longer share a meta key', () => {
   // aggregate probe, which is not allowed to be empty.
   assert.notEqual(SEED_META.flightDelays.key, SEED_META.faaDelays.key);
   assert.equal(SEED_META.faaDelays.key, 'seed-meta:aviation:faa');
+});
+
+// A summary that is degraded for ONE hourly evaluation is far more often a
+// sampling miss than an outage — measured 2026-08-25, a two-minute miss on
+// market.china-stock-connect cost ~50 minutes of CHINA_DEGRADED while 13 of the
+// surrounding 16 monitor runs were clean. Requiring a second consecutive
+// observation trades one cycle of detection latency for that.
+const chinaSummary = (over = {}) => ({
+  schemaVersion: 1,
+  countryCode: 'CN',
+  status: 'degraded',
+  evaluatedAt: '2026-08-25T17:03:23.563Z',
+  // isValidChinaCoverageSummary RECOMPUTES every count from entries and rejects
+  // any mismatch, so the fixture has to be internally consistent or it is thrown
+  // out as invalid and reads CHINA_UNAVAILABLE for the wrong reason.
+  counts: { total: 1, launched: 1, planned: 0, blocked: 0, healthy: 0, degraded: 1, unavailable: 0 },
+  entries: [{
+    id: 'market.china-stock-connect',
+    launchStatus: 'launched',
+    status: 'degraded',
+    reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
+  }],
+  ...over,
+});
+
+test('china coverage: a single degraded evaluation does not alarm', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
+  assert.equal(projected.status, 'OK');
+});
+
+test('china coverage: a second consecutive degraded evaluation alarms', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 2 }));
+  assert.equal(projected.status, 'CHINA_DEGRADED');
+});
+
+test('china coverage: a held verdict stays visible rather than silent', () => {
+  // The counterweight to the debounce. If holding the verdict also hid the
+  // reason, a suppressed cycle would be indistinguishable from health.
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
+  assert.equal(projected.status, 'OK');
+  assert.equal(projected.chinaStatus, 'degraded', 'the summary verdict is still reported');
+  assert.equal(projected.degradedStreak, 1);
+  assert.ok(projected.problems?.some((p) => p.id === 'market.china-stock-connect'));
+});
+
+test('china coverage: a summary with no streak field alarms as before', () => {
+  // Rollout safety. Every summary written before the producer shipped the field
+  // has no streak; absent evidence must not read as evidence of health, or the
+  // rollout window would silence a genuine outage.
+  const projected = projectChinaCoverageStatus(chinaSummary());
+  assert.equal(projected.status, 'CHINA_DEGRADED');
+});
+
+test('china coverage: UNAVAILABLE is never debounced', () => {
+  // The more severe verdict, and the expensive direction to be wrong in.
+  const projected = projectChinaCoverageStatus(chinaSummary({
+    status: 'unavailable',
+    degradedStreak: 1,
+    counts: { total: 1, launched: 1, planned: 0, blocked: 0, healthy: 0, degraded: 0, unavailable: 1 },
+    entries: [{ id: 'market.china-stock-connect', launchStatus: 'launched', status: 'unavailable', reasonCodes: [] }],
+  }));
+  assert.equal(projected.status, 'CHINA_UNAVAILABLE');
 });

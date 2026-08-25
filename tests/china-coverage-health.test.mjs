@@ -472,9 +472,14 @@ describe('China coverage manifest', () => {
       let requestInit;
       globalThis.fetch = async (_url, init) => {
         requestInit = init;
+        // Three commands now: the entry's data key, its meta key, and the
+        // previous summary that readChinaCoverageInputs reads to carry the
+        // degraded streak. A short response would trip the length check first
+        // and never reach the error-count branch this asserts.
         return new Response(JSON.stringify([
           { result: null },
           { error: 'ERR injected' },
+          { result: null },
         ]), { status: 200 });
       };
       await assert.rejects(readChinaCoverageInputs([singleEntry()]), /1 command error/);
@@ -482,6 +487,7 @@ describe('China coverage manifest', () => {
 
       globalThis.fetch = async () => new Response(JSON.stringify([
         { result: '{not-json' },
+        { result: null },
         { result: null },
       ]), { status: 200 });
       await assert.rejects(readChinaCoverageInputs([singleEntry()]), /malformed JSON/);
@@ -491,6 +497,62 @@ describe('China coverage manifest', () => {
       else process.env.UPSTASH_REDIS_REST_URL = priorUrl;
       if (priorToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
       else process.env.UPSTASH_REDIS_REST_TOKEN = priorToken;
+    }
+  });
+});
+
+describe('China coverage degraded streak', () => {
+  // The evaluator samples 16 sources once an hour. A source degraded at the
+  // sampling instant and healthy moments later pinned CHINA_DEGRADED for the
+  // whole cycle: on 2026-08-25 it sampled market.china-stock-connect at
+  // 17:03:23 and that snapshot published `status: healthy` at 17:05:26 — a
+  // two-minute miss that cost ~50 minutes, with 13 of the surrounding 16
+  // monitor runs clean. The streak lets the consumer wait for a second look.
+  const degradedInputs = () => [
+    singleEntry(),
+    { 'data:test': { rows: [{ countryCode: 'US', observedAt: '2026-07-13T11:30:00Z' }] } },
+    { 'seed-meta:test': { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+  ];
+
+  it('starts at 1 on the first degraded evaluation', () => {
+    const [entry, data, meta] = degradedInputs();
+    const result = evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW });
+    assert.equal(result.status, 'degraded');
+    assert.equal(result.degradedStreak, 1);
+  });
+
+  it('increments while the degradation persists', () => {
+    const [entry, data, meta] = degradedInputs();
+    const second = evaluateChinaCoverage({
+      entries: [entry], data, meta, now: NOW, previous: { degradedStreak: 1 },
+    });
+    assert.equal(second.degradedStreak, 2);
+    const third = evaluateChinaCoverage({
+      entries: [entry], data, meta, now: NOW, previous: second,
+    });
+    assert.equal(third.degradedStreak, 3, 'the previous summary can be fed back verbatim');
+  });
+
+  it('resets to 0 as soon as an evaluation lands healthy', () => {
+    const entry = singleEntry();
+    const healthy = evaluateChinaCoverage({
+      entries: [entry],
+      // hasSubstantiveValue: a row carrying only its match field and timestamp
+      // scores empty, so a healthy fixture needs a real value on it.
+      data: { 'data:test': { rows: [{ countryCode: 'CN', observedAt: new Date(NOW - 60_000).toISOString(), value: 42 }] } },
+      meta: { 'seed-meta:test': { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+      now: NOW,
+      previous: { degradedStreak: 7 },
+    });
+    assert.equal(healthy.status, 'healthy');
+    assert.equal(healthy.degradedStreak, 0, 'a recovery must not stay one observation away from alarming');
+  });
+
+  it('treats a missing or malformed previous streak as no history', () => {
+    const [entry, data, meta] = degradedInputs();
+    for (const previous of [null, undefined, {}, { degradedStreak: -3 }, { degradedStreak: 'two' }]) {
+      const result = evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW, previous });
+      assert.equal(result.degradedStreak, 1, `previous=${JSON.stringify(previous)} must restart the streak`);
     }
   });
 });
