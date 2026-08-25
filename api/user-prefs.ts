@@ -249,7 +249,8 @@ export default async function handler(
       // OUT of escalation detection) from 2026-05 and absorbed a 13.6x ramp
       // — 8 ev/wk to 109 ev/wk across 344 users, peaking the week of
       // 2026-07-20 — with no reopen and no notification. Nobody diagnosed
-      // that spike; it self-resolved and its root cause is still unknown.
+      // that spike while it ran; it self-resolved, and its cause was only
+      // recovered months later by the dedicated investigation noted above.
       // Re-archiving as anything that cannot reopen silently deletes the
       // only escalation path this `warning` level leaves.
       if (kind === 'UNAUTHENTICATED') {
