@@ -29,13 +29,25 @@ export async function getAircraftDetails(
   );
 
   if (!req.icao24) return { details: undefined, configured: false };
-  if (!isValidAircraftIcao24(req.icao24)) {
+
+  // Normalize BEFORE validating, matching the batch sibling
+  // (get-aircraft-details-batch.ts): the two routes share this cache-key
+  // namespace, so their handlers should not disagree about what a valid
+  // address is. Previously this validated the RAW value, so ' a835af' was a
+  // 400 here and an accepted lookup there.
+  //
+  // On the gateway path this is defense in depth, not the primary gate: the
+  // generated validator (proto `string.pattern`, wired at gateway.ts:112)
+  // already rejects a malformed or whitespace-padded address before the
+  // handler runs. It still matters for direct/non-gateway callers and keeps
+  // the two handlers reading identically.
+  const icao24 = req.icao24.trim().toLowerCase();
+  if (!isValidAircraftIcao24(icao24)) {
     throw new ApiError(400, 'icao24 must be a 6-character hexadecimal address', '');
   }
   const apiKey = process.env.WINGBITS_API_KEY;
   if (!apiKey) return { details: undefined, configured: false };
 
-  const icao24 = req.icao24.toLowerCase();
   const cacheKey = `${AIRCRAFT_DETAILS_CACHE_KEY}:${icao24}`;
 
   try {

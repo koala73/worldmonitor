@@ -22027,6 +22027,7 @@ paths:
                   example: "a835af"
                   schema:
                     type: string
+                    pattern: '^[0-9a-fA-F]{6}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -47529,7 +47530,7 @@ components:
             properties:
                 icao24:
                     type: string
-                    minLength: 1
+                    pattern: ^[0-9a-fA-F]{6}$
                     description: ICAO 24-bit hex address (lowercase).
             required:
                 - icao24
