@@ -454,7 +454,7 @@
     {
       "path": "api/youtube/embed.js",
       "category": "non-json",
-      "reason": "YouTube oEmbed passthrough — shape dictated by YouTube's oEmbed response, served as-is.",
+      "reason": "Rendered HTML YouTube iframe embed page for dashboard/widget playback — response is text/html, not JSON.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -609,8 +609,8 @@
     },
     {
       "path": "api/fwdstart.js",
-      "category": "ops-admin",
-      "reason": "Tauri desktop updater bootstrap — starts the sidecar forwarding flow. Operator plumbing, not JSON.",
+      "category": "non-json",
+      "reason": "Scrapes the fwdstart.me newsletter archive and returns application/rss+xml for the dashboard feed panel — response is RSS/XML, not JSON.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
