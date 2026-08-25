@@ -215,6 +215,48 @@ describe('digest coverage follows the selected browser response', () => {
     expect((internal as { lastDigestServedStale?: boolean }).lastDigestServedStale).toBe(false);
   });
 
+  it('a fetch failure arms the notification mute -- fallback content is old content (#7084)', async () => {
+    // The mute must follow the body actually SERVED: retained/persisted
+    // fallbacks are old by definition, so a prior fresh digest's cleared
+    // flag must not keep notifications live while the app renders them.
+    const { internal } = await makeLoader();
+    internal.digestCacheKey = () => 'digest:current';
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify(digest('complete')), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    await internal.tryFetchDigest();
+    expect((internal as { lastDigestServedStale?: boolean }).lastDigestServedStale).toBe(false);
+
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('network down'));
+    await internal.tryFetchDigest();
+    expect((internal as { lastDigestServedStale?: boolean }).lastDigestServedStale).toBe(true);
+  });
+
+  it('a discarded old-language response does not control the mute (#7084)', async () => {
+    // The flag is set on the body served for the ACTIVE scope. A fresh
+    // response for a scope the user has already left must not clear the
+    // mute while a retained (old) fallback is what actually renders.
+    const { internal } = await makeLoader();
+    let currentKey = 'digest:requested';
+    internal.digestCacheKey = (language?: string) => language ? 'digest:requested' : currentKey;
+    internal.lastGoodDigest = { key: 'digest:current', data: digest('partial', 1) };
+
+    let resolveFetch!: (response: Response) => void;
+    vi.mocked(globalThis.fetch).mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    const pending = internal.tryFetchDigest();
+    currentKey = 'digest:current';
+    resolveFetch(new Response(JSON.stringify(digest('complete', 4)), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    await pending;
+    expect((internal as { lastDigestServedStale?: boolean }).lastDigestServedStale).toBe(true);
+  });
+
   it('a stale replay renders but is not persisted as the client last-good (#7084)', async () => {
     const { internal } = await makeLoader();
     internal.digestCacheKey = () => 'digest:current';

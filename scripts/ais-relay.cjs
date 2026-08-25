@@ -34,6 +34,7 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
+const { isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -4079,6 +4080,14 @@ async function seedClassifyForVariant(variant, seenTitles) {
     });
     digest = JSON.parse(body);
   } catch {
+    return { total: 0, classified: 0, skipped: 0 };
+  }
+
+  // #7084: a stale replay's titles already had their alert pass when served
+  // fresh — rationale and the executable test live with the predicate in
+  // scripts/lib/digest-stale-gate.cjs.
+  if (isStaleDigestReplay(digest)) {
+    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping alert pass for ${variant}`);
     return { total: 0, classified: 0, skipped: 0 };
   }
 

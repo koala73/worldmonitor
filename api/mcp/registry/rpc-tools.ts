@@ -1092,7 +1092,10 @@ export const RPC_TOOLS: ToolDef[] = [
           signal: AbortSignal.timeout(2_000),
         });
         if (digestRes.ok) {
-          type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
+          type DigestPayload = {
+            categories?: Record<string, { items?: DigestItemForBrief[] }>;
+            coverage?: { servedStale?: boolean; staleAgeSeconds?: number };
+          };
           const digest = await digestRes.json() as DigestPayload;
           const allItems = Object.values(digest.categories ?? {})
             .flatMap(cat => cat.items ?? [])
@@ -1111,7 +1114,20 @@ export const RPC_TOOLS: ToolDef[] = [
           groundingStories = collectBriefGroundingStories(groundingItems, 6);
           const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
           const headlineLines = groundingItems.map(item => item.title ?? '').filter(Boolean);
-          const contextLines = [...sourceLines, 'Headlines:', ...headlineLines].join('\n');
+          // #7084: the digest can legitimately be a stale replay (a live
+          // rebuild failed and accepted older content is served). Grounding
+          // an LLM on hours-old headlines silently presented as current
+          // produces briefs that describe the past as the present — tell the
+          // model what it is looking at so its output can qualify itself.
+          const staleLines = digest.coverage?.servedStale === true
+            ? [
+                `NOTE: the headlines below are a retained snapshot from approximately ` +
+                  `${Math.max(1, Math.round((digest.coverage.staleAgeSeconds ?? 0) / 60))} minutes ago ` +
+                  `(the live news rebuild failed). Treat them as recent context, not as this moment's news, ` +
+                  `and say so if the brief depends on very recent developments.`,
+              ]
+            : [];
+          const contextLines = [...staleLines, ...sourceLines, 'Headlines:', ...headlineLines].join('\n');
           if (contextLines.trim()) contextSnapshot = contextLines.slice(0, 4000);
         }
       } catch { /* proceed without context — better than failing */ }

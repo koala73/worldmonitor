@@ -78,9 +78,51 @@ const ALLOWED_COMMANDS = new Set([
   'APPEND', 'STRLEN',
 ]);
 
+// EVAL stays blocked as a class — arbitrary server-side Lua is exactly what
+// the allowlist exists to prevent — with ONE pinned exception: the digest
+// last-good publish gate. The edge handler needs its read-decide-write to be
+// atomic (two isolates racing a plain SET pair can let a narrower snapshot
+// clobber a richer one), and the only sound way to allow that through a
+// command allowlist is to pin the exact script text.
+//
+// PINNED COPY of shared/digest-lastgood-publish-script.mjs. This image
+// bundles only this file, so it cannot import the shared module — a parity
+// test (tests/digest-lastgood.test.mts) asserts the two stay byte-identical.
+// Change them together or that test goes red.
+const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
+  "local cur = redis.call('GET', KEYS[1])",
+  "if cur and redis.call('EXISTS', KEYS[2]) == 1 then",
+  '  local ok, meta = pcall(cjson.decode, cur)',
+  "  if ok and type(meta) == 'table' then",
+  '    local curAcc = tonumber(meta.acceptedAt) or 0',
+  '    local curCat = tonumber(meta.categoryCount) or 0',
+  '    local curItems = tonumber(meta.itemCount) or 0',
+  '    local delta = tonumber(ARGV[1]) - curAcc',
+  '    local live = delta >= 0 and delta <= tonumber(ARGV[2])',
+  '    if live and (tonumber(ARGV[3]) < curCat or tonumber(ARGV[4]) < curItems) then',
+  '      return 0',
+  '    end',
+  '  end',
+  'end',
+  "redis.call('SET', KEYS[1], ARGV[5], 'EX', ARGV[6])",
+  "redis.call('SET', KEYS[2], ARGV[7], 'EX', ARGV[6])",
+  'return 1',
+].join('\n');
+const ALLOWED_EVAL_SCRIPTS = new Set([DIGEST_LASTGOOD_PUBLISH_SCRIPT]);
+
+// Exact-text pin, not a pattern: any change to the script — including
+// whitespace — must land in both copies deliberately.
+function isAllowedEval(args) {
+  return args.length >= 2 && ALLOWED_EVAL_SCRIPTS.has(String(args[1]));
+}
+
 async function runCommand(args) {
   const cmd = args[0].toUpperCase();
-  if (!ALLOWED_COMMANDS.has(cmd)) {
+  if (cmd === 'EVAL') {
+    if (!isAllowedEval(args)) {
+      throw new Error('Command not allowed: EVAL (script not in the pinned allowlist)');
+    }
+  } else if (!ALLOWED_COMMANDS.has(cmd)) {
     throw new Error(`Command not allowed: ${cmd}`);
   }
   const cmdArgs = args.slice(1);

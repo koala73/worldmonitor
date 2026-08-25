@@ -447,13 +447,17 @@ export class DataLoaderManager implements AppModule {
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
   /**
-   * #7084: true while the most recent digest response was a server-side stale
-   * replay. News items from a replay are up to six hours old, and the
-   * correlation pipeline downstream raises BROWSER NOTIFICATIONS from
-   * clusters of those items — interrupting the user for events that happened
-   * hours ago as if they were breaking. While this flag is set, correlation
-   * signals are still computed and recorded (the panels stay honest); only
-   * the interruptive notification is muted. Cleared by the next fresh digest.
+   * #7084: true while the news the app is currently rendering is NOT a fresh
+   * live digest for the active scope — a server-side stale replay, a
+   * retained/persisted fallback (breaker open, fetch failure), or a
+   * scope-mismatch fallback after an in-flight language switch. All of those
+   * bodies are old, and the correlation pipeline downstream raises BROWSER
+   * NOTIFICATIONS from clusters of their items — interrupting the user for
+   * events that happened hours ago as if they were breaking. While this flag
+   * is set, correlation signals are still computed and recorded (the panels
+   * stay honest); only the interruptive notification is muted. Set strictly
+   * on the body actually SERVED for the active scope (never by a discarded
+   * response); cleared by the next fresh live digest.
    */
   private lastDigestServedStale = false;
   private readonly digestRequestTimeoutMs = 8000;
@@ -644,6 +648,8 @@ export class DataLoaderManager implements AppModule {
     if (this.digestBreaker.state === 'open') {
       if (now < this.digestBreaker.cooldownUntil) {
         const fallback = this.getRetainedDigest(requestKey) ?? await this.loadPersistedDigest(requestKey);
+        // Retained/persisted content is old — keep the notification mute on.
+        this.lastDigestServedStale = true;
         this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
         return fallback;
       }
@@ -677,7 +683,6 @@ export class DataLoaderManager implements AppModule {
       // last-good. The in-memory retained digest below is deliberately still
       // updated: it carries no clock, does not survive a reload, and so cannot
       // extend any window.
-      this.lastDigestServedStale = data.coverage?.servedStale === true;
       if (data.coverage?.servedStale === true) {
         console.info(
           `[News] Digest served stale (${data.coverage.staleReason || 'unknown'}, ` +
@@ -692,11 +697,18 @@ export class DataLoaderManager implements AppModule {
       if (currentKey !== requestKey) {
         // The response is valid for the scope it requested and may refresh that
         // scope's persistent cache, but it must not become live data or an
-        // in-memory fallback for the language now active.
+        // in-memory fallback for the language now active. The staleness flag
+        // must follow the body actually SERVED, so a discarded old-language
+        // response never controls notification behavior for the retained
+        // fallback that replaces it — which is itself old content.
+        this.lastDigestServedStale = true;
         const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
         this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
         return fallback;
       }
+      // Set only once this response is known to be the live body for the
+      // active scope — the same rule reportDigestCoverage follows.
+      this.lastDigestServedStale = data.coverage?.servedStale === true;
       this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
       this.reportDigestCoverage(data);
       return data;
@@ -710,6 +722,9 @@ export class DataLoaderManager implements AppModule {
       }
       const currentKey = this.digestCacheKey();
       const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      // Retained/persisted fallbacks are old content by definition — the
+      // notification mute must cover them, not just server-marked replays.
+      this.lastDigestServedStale = true;
       this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
       return fallback;
     }
@@ -1534,7 +1549,12 @@ export class DataLoaderManager implements AppModule {
         // that classifyEvent writes to. Re-firing classifyEvent from every client wastes
         // edge requests even when they're Redis cache hits.
 
-        checkBatchForBreakingAlerts(items);
+        // #7084: a stale digest replay re-delivers items that already had
+        // their alert opportunity when they were served fresh. The 15-minute
+        // recency gate inside the checker bounds the exposure, but a replay
+        // younger than that would re-fire banners for old events — gate on
+        // the response's own coverage, not on shared loader state.
+        if (digest.coverage?.servedStale !== true) checkBatchForBreakingAlerts(items);
         this.flashMapForNews(items);
         this.renderNewsForCategory(category, items);
 
@@ -1798,7 +1818,8 @@ export class DataLoaderManager implements AppModule {
       const intel = (digest.categories['intel']?.items ?? [])
         .map(protoItemToNewsItem)
         .filter(i => enabledIntelNames.has(i.source));
-      checkBatchForBreakingAlerts(intel);
+      // #7084: same stale-replay gate as the category digest branch above.
+      if (digest.coverage?.servedStale !== true) checkBatchForBreakingAlerts(intel);
       this.renderNewsForCategory('intel', intel);
       if (intelPanel && options.recordBaselineSample) {
         try {

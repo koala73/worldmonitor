@@ -169,8 +169,13 @@ export function shouldReplaceAccepted(
   nowMs: number,
 ): { replace: boolean; reason: string } {
   if (!current) return { replace: true, reason: 'no-accepted-snapshot' };
-  const expired = nowMs - current.acceptedAt > LASTGOOD_MAX_AGE_MS;
-  if (expired) return { replace: true, reason: 'current-expired' };
+  const ageMs = nowMs - current.acceptedAt;
+  // A FUTURE acceptedAt is corrupt, not live — classifyStaleSnapshot already
+  // refuses to SERVE such a row, so letting it VETO here would wedge an
+  // unservable snapshot in place until its TTL expired. Same rule as the
+  // serve path: anything not provably inside the window cannot veto.
+  if (!(ageMs >= 0)) return { replace: true, reason: 'current-corrupt-future' };
+  if (ageMs > LASTGOOD_MAX_AGE_MS) return { replace: true, reason: 'current-expired' };
   // "Materially narrower" is two-dimensional: a candidate must not regress on
   // breadth (categories) OR depth (items). Comparing categories alone let a
   // digest with one item per category replace a live one holding hundreds.

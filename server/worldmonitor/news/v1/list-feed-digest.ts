@@ -11,6 +11,7 @@ import type {
 import { cachedFetchJsonWithMeta, getCachedJson, setCachedJson, getCachedJsonBatch, readCachedJson, runRedisPipeline } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import { DIGEST_LASTGOOD_PUBLISH_SCRIPT } from '../../../../shared/digest-lastgood-publish-script.mjs';
 import {
   ATTEMPT_META_TTL_S,
   LASTGOOD_MAX_AGE_MS,
@@ -113,6 +114,11 @@ const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
+// #7084: latest wall-clock point at which the best-effort snapshot publish may
+// still start. Derivation: 25s platform ceiling - 3s guard band - the
+// publish's own worst case (1.5s metadata read + 5s EVAL pipeline timeout).
+const PUBLISH_DEADLINE_CUTOFF_MS =
+  VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS - 6_500;
 
 type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
 
@@ -179,40 +185,11 @@ function suppressRevoked(
   return { data: next, dropped };
 }
 
-/**
- * #7084: atomic replacement gate, executed inside Redis so concurrent isolates
- * cannot interleave a read-decide-write.
- *
- * MIRROR of shouldReplaceAccepted in _lastgood.ts — the same three rules, in
- * the same order: a missing/expired/unparseable current snapshot never vetoes;
- * a candidate narrower on categories OR items does not displace a live one.
- * The TS function is the tested fast path (it decides whether to attempt the
- * upload at all); this script is the authoritative gate at write time. Change
- * them together.
- *
- * KEYS[1] = metadata key, KEYS[2] = snapshot body key.
- * ARGV: 1=nowMs 2=maxAgeMs 3=candCategoryCount 4=candItemCount
- *       5=metaJson 6=ttlSeconds 7=bodyJson
- * Returns 1 when written, 0 when the live snapshot was kept.
- */
-const PUBLISH_GUARD_SCRIPT = [
-  "local cur = redis.call('GET', KEYS[1])",
-  'if cur then',
-  '  local ok, meta = pcall(cjson.decode, cur)',
-  "  if ok and type(meta) == 'table' then",
-  '    local curAcc = tonumber(meta.acceptedAt) or 0',
-  '    local curCat = tonumber(meta.categoryCount) or 0',
-  '    local curItems = tonumber(meta.itemCount) or 0',
-  '    local live = (tonumber(ARGV[1]) - curAcc) <= tonumber(ARGV[2])',
-  '    if live and (tonumber(ARGV[3]) < curCat or tonumber(ARGV[4]) < curItems) then',
-  '      return 0',
-  '    end',
-  '  end',
-  'end',
-  "redis.call('SET', KEYS[1], ARGV[5], 'EX', ARGV[6])",
-  "redis.call('SET', KEYS[2], ARGV[7], 'EX', ARGV[6])",
-  'return 1',
-].join('\n');
+// #7084 atomic replacement gate — lives in shared/ because the Docker Redis
+// proxy allowlists EVAL for exactly this script text and keeps its own pinned
+// copy (its image bundles only its own file). A parity test keeps the copies
+// byte-identical.
+const PUBLISH_GUARD_SCRIPT = DIGEST_LASTGOOD_PUBLISH_SCRIPT;
 
 /**
  * #7084: publish a freshly built digest as the durable accepted snapshot.
@@ -224,9 +201,12 @@ async function publishAcceptedSnapshot(
   variant: string,
   lang: string,
   data: ListFeedDigestResponse,
+  // Current revocation set: richness is measured on what is SERVABLE. A
+  // candidate (or an incumbent) full of revoked items must not look richer
+  // than one whose items can actually be delivered.
+  revokedUrls: ReadonlySet<string>,
 ): Promise<void> {
   if (!isEligibleScope(variant, lang)) return;
-  const categoryCount = Object.keys(data.categories ?? {}).length;
   const now = Date.now();
   // Anchor acceptance to the CONTENT clock, not the write clock. `generatedAt`
   // dates the news; `now` dates only this write. Using `now` would let a
@@ -236,11 +216,21 @@ async function publishAcceptedSnapshot(
   const generatedAtMs = Date.parse(data.generatedAt ?? '');
   const acceptedAt = Number.isFinite(generatedAtMs) ? generatedAtMs : now;
   try {
-    if (!isAcceptableDigest(data)) {
+    // Acceptance and richness are computed on the SUPPRESSED view; the STORED
+    // body stays unfiltered. Revocations can be lifted (SREM), and serve-time
+    // filtering governs what actually goes out — storing a filtered body
+    // would permanently drop items whose revocation was later withdrawn,
+    // while filtered COUNTS keep the replacement decision honest about what
+    // each snapshot can serve today. The incumbent's stored counts reflect
+    // the revocation view at ITS publish time; each subsequent publish
+    // re-measures, so that drift self-corrects rather than compounds.
+    const servable = suppressRevoked(data, revokedUrls).data;
+    if (!isAcceptableDigest(servable)) {
       console.log(`[digest-lastgood] candidate rejected (not structurally acceptable) variant=${variant} lang=${lang}`);
       return;
     }
-    const itemCount = countDigestItems(data);
+    const categoryCount = Object.keys(servable.categories ?? {}).length;
+    const itemCount = countDigestItems(servable);
     // Read the small metadata key, not the full snapshot: the replacement
     // decision needs two numbers, and the snapshot body is ~126KB.
     const currentRead = await readCachedJson(lastGoodMetaKey(variant, lang));
@@ -291,9 +281,19 @@ async function publishAcceptedSnapshot(
     ]]);
     const outcome = results[0];
     if (!outcome || outcome.error) {
+      // A backend that cannot execute the script (an out-of-date Docker
+      // redis-rest proxy predating the EVAL allowlist, a restricted managed
+      // Redis) must not silently lose the entire durable tier. Degrade to the
+      // pre-read-guarded plain writes: non-atomic, but the pre-read above
+      // already decided replace, and a low-concurrency self-hosted deployment
+      // is exactly where the cross-isolate race is least likely. The
+      // downgrade is logged so the operator knows atomicity is off.
       console.warn(
-        `[digest-lastgood] guarded publish failed (${outcome?.error ?? 'no pipeline result'}) variant=${variant} lang=${lang}`,
+        `[digest-lastgood] guarded publish unavailable (${outcome?.error ?? 'no pipeline result'}) — ` +
+          `falling back to plain writes variant=${variant} lang=${lang}`,
       );
+      await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
+      await setCachedJson(lastGoodMetaKey(variant, lang), meta, LASTGOOD_TTL_S);
     } else if (outcome.result === 0) {
       // Another isolate published a not-narrower snapshot between our read
       // and this write — exactly the race the script exists to lose safely.
@@ -416,6 +416,36 @@ async function serveLastGood(
  */
 const attemptWriteCooldown = new Map<string, number>();
 const ATTEMPT_WRITE_COOLDOWN_MS = 30_000;
+
+/**
+ * #7084: recover the REAL attempt identity for a sentinel replay. A cached
+ * negative sentinel replays a previous failure; stamping the coverage block
+ * with the replaying request's own clock and a hardcoded 'empty-rebuild'
+ * fabricated both the attempt time and the reason (a sentinel written by a
+ * build ERROR replayed as an empty rebuild). The leader that failed recorded
+ * the truth in the attempt-metadata key — read it back, fall back to the
+ * caller's values only when it is missing or malformed.
+ */
+async function readStoredAttempt(
+  variant: string,
+  lang: string,
+  fallbackAt: string,
+  fallbackReason: StaleReason,
+): Promise<{ at: string; reason: StaleReason }> {
+  if (!isEligibleScope(variant, lang)) return { at: fallbackAt, reason: fallbackReason };
+  try {
+    const read = await readCachedJson(attemptMetaKey(variant, lang));
+    if (read.status === 'hit' && read.value && typeof read.value === 'object') {
+      const v = read.value as { ts?: unknown; outcome?: unknown };
+      const ts = typeof v.ts === 'number' && Number.isFinite(v.ts) ? v.ts : null;
+      const outcome = v.outcome === 'build-error' || v.outcome === 'empty-rebuild' ? v.outcome : null;
+      if (ts !== null && outcome) return { at: new Date(ts).toISOString(), reason: outcome };
+    }
+  } catch {
+    /* telemetry recovery only — fall back below */
+  }
+  return { at: fallbackAt, reason: fallbackReason };
+}
 
 /** #7084: best-effort attempt metadata on the degraded paths. */
 async function recordFailedAttempt(variant: string, lang: string, outcome: string): Promise<void> {
@@ -1690,6 +1720,15 @@ export async function listFeedDigest(
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
   const attemptedAt = new Date().toISOString();
+  // Wall-clock budget for optional tail work. The build alone can consume
+  // ~19s worst case (14s fetcher timeout + a 5s sentinel write inside the
+  // cache wrapper); every awaited Redis op after it must fit inside the 25s
+  // Edge response ceiling minus a guard band.
+  const requestStart = Date.now();
+  // ONE revocation read per request, started at t=0 so its worst case
+  // overlaps the build instead of stacking after it. Shared by the fresh
+  // serve path and both replay tiers.
+  const revokedPromise = readRevokedUrlSet();
 
   // #7085: an empty response still carries an explicit `unavailable`
   // coverage block so clients can distinguish "nothing served" from
@@ -1726,6 +1765,7 @@ export async function listFeedDigest(
    */
   const serveIsolateFallback = async (
     reason: StaleReason,
+    at: string,
     revoked: RevocationRead,
   ): Promise<ListFeedDigestResponse> => {
     const entry = fallbackDigestCache.get(fallbackKey);
@@ -1764,7 +1804,7 @@ export async function listFeedDigest(
         `[digest-serving] outcome=isolate-fallback reason=${reason} age_s=${ageSeconds} ` +
           `variant=${variant} lang=${lang} revoked_urls=${revoked.urls.size} revoked_dropped=${dropped}`,
       );
-      return markFallbackCoverageStale(data, attemptedAt, { ageSeconds, reason });
+      return markFallbackCoverageStale(data, at, { ageSeconds, reason });
     } catch (err) {
       fallbackDigestCache.delete(fallbackKey);
       console.warn(`[digest-serving] outcome=unavailable reason=isolate-malformed variant=${variant} lang=${lang}`);
@@ -1793,12 +1833,19 @@ export async function listFeedDigest(
    * the 25s Edge response ceiling on already-degraded requests.
    */
   const serveDegraded = async (reason: StaleReason, attempted: boolean): Promise<ListFeedDigestResponse> => {
-    const revokedPromise = readRevokedUrlSet();
-    const [, stale] = await Promise.all([
+    // #7084: a sentinel replay carries no attempt of its own. Recover the
+    // real attempt identity (time AND reason) the failing leader recorded —
+    // stamping the replaying request's clock and a hardcoded reason
+    // fabricated both, so a build-error sentinel replayed as a brand-new
+    // empty rebuild dated "now".
+    const [attempt] = await Promise.all([
+      attempted
+        ? Promise.resolve({ at: attemptedAt, reason })
+        : readStoredAttempt(variant, lang, attemptedAt, reason),
       attempted ? recordFailedAttempt(variant, lang, reason) : Promise.resolve(),
-      serveLastGood(variant, lang, reason, attemptedAt, revokedPromise),
     ]);
-    return stale ?? serveIsolateFallback(reason, await revokedPromise);
+    const stale = await serveLastGood(variant, lang, attempt.reason, attempt.at, revokedPromise);
+    return stale ?? serveIsolateFallback(attempt.reason, attempt.at, await revokedPromise);
   };
 
   try {
@@ -1836,15 +1883,46 @@ export async function listFeedDigest(
       data: fresh,
       ts: Number.isFinite(contentTs) ? contentTs : Date.now(),
     });
-    // Only the coalescing LEADER of a real build publishes: followers resolve
-    // with source 'fresh' too, and each would repeat the full ~126KB guarded
-    // write for a body identical to the one the leader just published.
-    if (source === 'fresh' && leader) {
-      await publishAcceptedSnapshot(variant, lang, fresh);
-    }
     // Revocation is a SERVE-time gate. Applying it only inside buildDigest
     // would let a cache hit replay the pre-revocation body for up to 900s.
-    const revoked = await readRevokedUrlSet();
+    // The read has been in flight since t=0, so this await is essentially
+    // free by the time a build has run.
+    const revoked = await revokedPromise;
+    if (!revoked.readable) {
+      // Deliberate policy SPLIT with the replay tiers, not an oversight. The
+      // replay tiers fail closed because their content is up to six hours
+      // old, old enough that a revocation plausibly postdates it. This
+      // path's content is at most one digest-cache TTL old (900s), so the
+      // suppression-latency risk is minutes — while failing closed here
+      // would turn a Redis pipeline blip into a full digest outage even
+      // though the build works. Fail open, but never silently: the operator
+      // must know their suppression control is not being consulted.
+      console.warn(
+        `[digest-serving] revocations-unreadable (fail-open, fresh tier) variant=${variant} lang=${lang}`,
+      );
+      captureSilentError(new Error('revocation set unreadable on fresh serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-fresh'],
+      });
+    }
+    // Only the coalescing LEADER of a real build publishes: followers resolve
+    // with source 'fresh' too, and each would repeat the full ~126KB guarded
+    // write for a body identical to the one the leader just published. The
+    // deadline gate keeps the worst case inside the 25s Edge ceiling: a
+    // maximally slow build (~19s with its own cache writes) plus this
+    // publish's worst case (~6.5s of Redis timeouts) would exceed it, and
+    // the publish is best-effort by contract — skipping it under pressure
+    // loses nothing the next uncontended build will not restore.
+    if (source === 'fresh' && leader) {
+      if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
+        await publishAcceptedSnapshot(variant, lang, fresh, revoked.urls);
+      } else {
+        console.warn(
+          `[digest-lastgood] publish skipped (over deadline budget) variant=${variant} lang=${lang} ` +
+            `elapsed_ms=${Date.now() - requestStart}`,
+        );
+      }
+    }
     const { data: served, dropped } = suppressRevoked(fresh, revoked.urls);
     if (dropped > 0) {
       console.log(`[digest-serving] outcome=fresh variant=${variant} lang=${lang} revoked_dropped=${dropped}`);
