@@ -74,6 +74,15 @@ export async function getAirportOpsSummary(
             const isRestricted = notamRestrictedIcaos.has(airport.icao);
             const notamText = notamReasons[airport.icao];
 
+            // healthy = the seed cache read succeeded overall. alert = this
+            // specific airport had a row in that seed. healthy-but-no-alert
+            // means the airport isn't covered by the paid AviationStack feed
+            // this tick (e.g. #7106: ESB/SAW are watched but never seeded) —
+            // that must not be reported the same as a verified "normal"
+            // reading. See #3707 (list-airport-delays.ts): refuse to render
+            // uncovered airports as healthy.
+            const hasDelayData = healthy && alert !== undefined;
+
             const delayPct = alert?.delayedFlightsPct ?? 0;
             const avgDelay = alert?.avgDelayMinutes ?? 0;
             const cancelledFlights = alert?.cancelledFlights ?? 0;
@@ -91,7 +100,13 @@ export async function getAirportOpsSummary(
                 sevOrder.indexOf(delaySev),
                 sevOrder.indexOf(notamFloor),
             )] ?? 'normal';
-            const severity = `FLIGHT_DELAY_SEVERITY_${sevStr.toUpperCase()}` as FlightDelaySeverity;
+            // A NOTAM closure/restriction is independently-sourced real signal,
+            // so it still surfaces (sevStr above 'normal') even with no delay
+            // feed data for this airport. Only suppress the fabricated NORMAL
+            // when nothing — neither AviationStack nor NOTAM — actually says so.
+            const severity = (!hasDelayData && sevStr === 'normal')
+                ? 'FLIGHT_DELAY_SEVERITY_UNKNOWN' as FlightDelaySeverity
+                : `FLIGHT_DELAY_SEVERITY_${sevStr.toUpperCase()}` as FlightDelaySeverity;
 
             const notamFlags: string[] = [];
             if (isClosed) notamFlags.push('CLOSED');
@@ -115,7 +130,7 @@ export async function getAirportOpsSummary(
                 notamFlags,
                 severity,
                 topDelayReasons,
-                source: healthy ? 'aviationstack' : 'degraded',
+                source: hasDelayData ? 'aviationstack' : (healthy ? 'unknown' : 'degraded'),
                 updatedAt: now,
             });
         }
