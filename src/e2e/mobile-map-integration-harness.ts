@@ -20,6 +20,9 @@ type MobileMapIntegrationHarness = {
   getOverlayPositionSignature: (selector: string) => string;
   seedWeatherAlerts: (withCentroid: number, withoutCentroid: number) => void;
   forceRender: () => void;
+  burstFlashes: (count: number) => void;
+  getActiveFlashCount: () => number;
+  getFlashNodeCount: () => number;
   getKeptHotspotCoords: () => Array<{ lat: number; lon: number }>;
   getSeededHotspotCoords: () => Array<{ lat: number; lon: number }>;
   getOverlayBudgetState: () => {
@@ -182,7 +185,12 @@ await initI18n();
 // MAP_OVERLAY_MARKER_BUDGET_MOBILE (150/400) instead of the desktop 300/800.
 // Without this the mobile ceiling has no test at all — every harness page runs
 // `isMobile: false`, so the branch in planOverlayMarkerBudget is never taken.
-const isMobileHarness = new URLSearchParams(window.location.search).get('mobile') === '1';
+const harnessParams = new URLSearchParams(window.location.search);
+const isMobileHarness = harnessParams.get('mobile') === '1';
+// #7112: `?chrome=0` reproduces the embed surface (src/embed/panels/map.ts builds
+// MapContainer with `chrome: false`), which has no #layerToggles rail and so no
+// place to show a shown/total badge.
+const chromeHarness = harnessParams.get('chrome') !== '0';
 
 const map = new MapComponent(app, {
   zoom: 2.7,
@@ -190,7 +198,7 @@ const map = new MapComponent(app, {
   view: 'global',
   layers,
   timeRange: 'all',
-}, { isMobile: isMobileHarness });
+}, { isMobile: isMobileHarness, chrome: chromeHarness });
 
 let ready = false;
 let fallbackInjected = false;
@@ -436,6 +444,17 @@ window.__mobileMapIntegrationHarness = {
   // (setEarthquakes, setMilitaryVessels, ...), so a test can land a render inside
   // the budget replan's settle window.
   forceRender: () => map.render(),
+  // #7112: news flashes are #mapOverlays children created outside the marker
+  // budget. flashMapForNews() fires them "in bursts across load passes (hundreds
+  // of calls shortly after load)", so the burst is what the ceiling must survive.
+  burstFlashes: (count: number) => {
+    for (let index = 0; index < count; index += 1) {
+      map.flashLocation(((index * 7) % 170) - 85, ((index * 13) % 358) - 179, 60000);
+    }
+  },
+  getActiveFlashCount: () => map.getActiveFlashCount(),
+  getFlashNodeCount: () =>
+    document.getElementById('mapOverlays')?.querySelectorAll('.map-flash').length ?? -1,
   getKeptHotspotCoords: () => {
     const internals = map as unknown as {
       hotspots: Array<{ lat: number; lon: number }>;

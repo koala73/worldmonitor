@@ -24,6 +24,9 @@ const DESKTOP_PER_LAYER = 300;
 // MAP_OVERLAY_MARKER_BUDGET_MOBILE — the branch `isMobile` selects.
 const MOBILE_TOTAL = 400;
 const MOBILE_PER_LAYER = 150;
+// MapComponent.MAX_CONCURRENT_MAP_FLASHES — news flashes are overlay children
+// created outside the marker budget, so they carry their own ceiling.
+const MAX_CONCURRENT_FLASHES = 12;
 const STRESS_PER_FEED = 2000;
 const DASHBOARD_MAX_DOM_NODES = 12000;
 // Chromium's renderer-wide metric includes a small amount of browser-owned
@@ -78,6 +81,9 @@ type HarnessWindow = Window & {
     getOverlayPositionSignature: (selector: string) => string;
     seedWeatherAlerts: (withCentroid: number, withoutCentroid: number) => void;
     forceRender: () => void;
+    burstFlashes: (count: number) => void;
+    getActiveFlashCount: () => number;
+    getFlashNodeCount: () => number;
     getKeptHotspotCoords: () => Coord[];
     getSeededHotspotCoords: () => Coord[];
     getOverlayBudgetState: () => BudgetState;
@@ -511,6 +517,103 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
     // Exactly one rebuild for the new viewport — the one the in-window render
     // already performed.
     expect(after).toBe(before + 1);
+  });
+
+  test('reports every trimmed layer as undisclosed when the map has no toggle rail', async ({ page }) => {
+    // The embed surface: src/embed/panels/map.ts builds MapContainer with
+    // `chrome: false`, so no #layerToggles rail is ever created and no
+    // `shown/total` badge has anywhere to go.
+    await page.goto('/tests/mobile-map-integration-harness.html?chrome=0');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    await expect(page.locator('#layerToggles')).toHaveCount(0);
+
+    await page.evaluate(
+      (perFeed) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedOverlayMarkerStress(perFeed),
+      STRESS_PER_FEED,
+    );
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            Object.keys(
+              (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState()
+                .truncated,
+            ).length,
+          ),
+        { timeout: 15000 },
+      )
+      .toBeGreaterThan(0);
+
+    const state = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState(),
+    );
+
+    // The markers ARE capped here — that part works. What must not happen is the
+    // budget state claiming the cut was disclosed: with no rail, every trimmed
+    // layer is undisclosed, and an empty array would report full disclosure while
+    // the embed silently withholds markers.
+    expect(Object.keys(state.truncated).length).toBeGreaterThan(0);
+    expect(state.undisclosed.sort()).toEqual(Object.keys(state.truncated).sort());
+    expect(state.rendered).toBeLessThanOrEqual(DESKTOP_TOTAL);
+  });
+
+  test('bounds concurrent news flashes, which are overlay children outside the budget', async ({ page }) => {
+    await page.goto('/tests/mobile-map-integration-harness.html');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    // A full overlay first, so this measures the composed DOM the ceiling claim
+    // is about rather than flashes on an empty map.
+    await page.evaluate(
+      (perFeed) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedOverlayMarkerStress(perFeed),
+      STRESS_PER_FEED,
+    );
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayMarkerClassCount(
+              '.military-vessel-marker',
+            ),
+          ),
+        { timeout: 15000 },
+      )
+      .toBeGreaterThan(0);
+
+    // 300 flashes with a long duration, so none expire mid-measurement — the
+    // burst shape flashMapForNews() actually produces on load. Burst and measure
+    // in ONE evaluate: renderOverlays() clears #mapOverlays wholesale, so a render
+    // landing between the two would empty the flashes and make this pass for a
+    // reason that has nothing to do with the ceiling.
+    const flashes = await page.evaluate((count) => {
+      const harness = (window as HarnessWindow).__mobileMapIntegrationHarness!;
+      harness.burstFlashes(count);
+      return {
+        active: harness.getActiveFlashCount(),
+        nodes: harness.getFlashNodeCount(),
+        overlayChildren: harness.getOverlayMarkerCount(),
+      };
+    }, 300);
+
+    expect(flashes.active).toBeLessThanOrEqual(MAX_CONCURRENT_FLASHES);
+    // The evicted ones must actually leave the DOM, not just the bookkeeping.
+    expect(flashes.nodes).toBe(flashes.active);
+    // The composed ceiling: budgeted markers plus the bounded flash exemption.
+    expect(flashes.overlayChildren).toBeLessThanOrEqual(DESKTOP_TOTAL + MAX_CONCURRENT_FLASHES);
   });
 
   test('keeps the highest-magnitude earthquakes when the natural feed is cut', async ({ page }) => {

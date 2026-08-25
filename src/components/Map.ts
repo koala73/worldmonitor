@@ -157,6 +157,10 @@ export class MapComponent {
   // fling coalesces into ONE rebuild; short enough that the badge's "pan or zoom
   // to bring others in" is true promptly once the user stops.
   private static readonly OVERLAY_BUDGET_REPLAN_SETTLE_MS = 200;
+  // #7112: ceiling on concurrent news flashes. They are `#mapOverlays` children
+  // created outside the marker budget, so this is what keeps the overlay's total
+  // node count bounded rather than "bounded plus however much news arrived".
+  private static readonly MAX_CONCURRENT_MAP_FLASHES = 12;
   private static readonly LAYER_ZOOM_THRESHOLDS: Partial<
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
   > = {
@@ -260,6 +264,10 @@ export class MapComponent {
   private overlayMarkerCut: Set<unknown> = new Set();
   // Pending settle-debounced budget re-plan; see scheduleOverlayBudgetReplan().
   private overlayBudgetReplanTimer: ReturnType<typeof setTimeout> | null = null;
+  // Live news-flash nodes -> their expiry timer, insertion-ordered so the oldest
+  // can be evicted when MAX_CONCURRENT_MAP_FLASHES is reached. Also lets destroy()
+  // clear timers that would otherwise fire against a torn-down instance.
+  private readonly activeFlashes = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
   private overlayMarkerTruncation: Record<string, GlobeLayerTruncation> = {};
   // Truncated layer keys with no toggle row to disclose them on; see
   // updateLayerTruncationLabels().
@@ -435,6 +443,11 @@ export class MapComponent {
       clearTimeout(this.overlayBudgetReplanTimer);
       this.overlayBudgetReplanTimer = null;
     }
+    for (const [flash, timer] of this.activeFlashes) {
+      clearTimeout(timer);
+      flash.remove();
+    }
+    this.activeFlashes.clear();
     window.removeEventListener('theme-changed', this.handleThemeChange);
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     if (this.resizeObserver) {
@@ -1986,17 +1999,34 @@ export class MapComponent {
    * a newly-added rowless layer trips the guard test instead of going quiet.
    */
   private updateLayerTruncationLabels(): void {
+    const root = this.container.querySelector<HTMLElement>('#layerToggles');
+
+    if (!root) {
+      // No toggle rail exists at all. `chrome: false` builds one of these on
+      // purpose (src/embed/panels/map.ts) — an embed has no controls — so there
+      // is nowhere for any `shown/total` badge to go and EVERY trimmed layer is
+      // undisclosed. Recording the honest set matters more here than anywhere
+      // else: returning early without touching it left
+      // getOverlayMarkerBudgetState().undisclosed reading `[]`, i.e. reporting
+      // full disclosure while the embed silently withheld markers, and any test
+      // asserting `undisclosed` is empty passed for that reason rather than
+      // because the cut was shown.
+      //
+      // Recomputed on every pass rather than latched: the key latch below only
+      // advances when badges were actually written, so a map that never has a
+      // rail would otherwise keep a stale set once truncation changed or cleared.
+      this.overlayUndisclosedTruncation = Object.keys(this.overlayMarkerTruncation);
+      return;
+    }
+
     const key = Object.entries(this.overlayMarkerTruncation)
       .map(([layer, counts]) => `${layer}:${counts.shown}/${counts.total}`)
       .sort()
       .join(',');
+    // Same key means the same truncation, so the badges and the undisclosed set
+    // are both already correct. Latching only after the write above is what lets
+    // a render that ran before the rail existed be redone once it appears.
     if (key === this.lastTruncationLabelKey) return;
-
-    const root = this.container.querySelector<HTMLElement>('#layerToggles');
-    // Latch only once the badges were actually written. Latching first would
-    // let a render that ran before the toggle rail existed record the key and
-    // then skip the write forever, because the next identical key short-circuits.
-    if (!root) return;
     this.lastTruncationLabelKey = key;
     const { undisclosed } = renderLayerTruncationBadges(root, this.overlayMarkerTruncation, 'pan');
     this.overlayUndisclosedTruncation = undisclosed;
@@ -4053,10 +4083,48 @@ export class MapComponent {
     flash.style.top = `${pos[1]}px`;
     flash.style.setProperty('--flash-duration', `${durationMs}ms`);
     this.appendOverlay(flash);
+    this.trackFlash(flash, durationMs);
+  }
 
-    window.setTimeout(() => {
+  /**
+   * Holds concurrent news flashes to a fixed ceiling (#7112).
+   *
+   * A flash is a `#mapOverlays` child like every budgeted marker, but it is
+   * created outside planOverlayMarkerBudget() — so without a bound of its own it
+   * is simply unbounded DOM on the overlay the budget exists to cap. The comment
+   * above records the real volume: flashMapForNews() fires "in bursts across load
+   * passes (hundreds of calls shortly after load)", and each node lives
+   * `durationMs`, so hundreds can coexist with a full 800-marker overlay and the
+   * stated whole-overlay ceiling stops being true.
+   *
+   * A separate bounded exemption rather than a budget group, because a flash is
+   * transient decoration on a news item, not a feed the fair-share cap should be
+   * sized against: making it compete would let a news burst evict real markers.
+   * Newest wins — an old flash is nearly expired anyway, and dropping the newest
+   * would hide the item that just arrived.
+   */
+  private trackFlash(flash: HTMLElement, durationMs: number): void {
+    const expire = setTimeout(() => {
+      this.activeFlashes.delete(flash);
       flash.remove();
     }, durationMs);
+    this.activeFlashes.set(flash, expire);
+
+    while (this.activeFlashes.size > MapComponent.MAX_CONCURRENT_MAP_FLASHES) {
+      // Map iteration is insertion-ordered, so this is the oldest live flash.
+      const [oldest, oldestTimer] = this.activeFlashes.entries().next().value as [
+        HTMLElement,
+        ReturnType<typeof setTimeout>,
+      ];
+      clearTimeout(oldestTimer);
+      this.activeFlashes.delete(oldest);
+      oldest.remove();
+    }
+  }
+
+  /** Live news flashes, so a test can prove the ceiling holds. */
+  public getActiveFlashCount(): number {
+    return this.activeFlashes.size;
   }
 
   public initEscalationGetters(): void {
