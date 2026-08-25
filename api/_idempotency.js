@@ -14,6 +14,30 @@ export function isValidIdempotencyKey(key) {
   return typeof key === 'string' && key.length <= KEY_MAX_LENGTH && KEY_PATTERN.test(key);
 }
 
+function isValidScope(scope) {
+  return typeof scope === 'string' && scope.trim().length > 0;
+}
+
+// A missing or empty scope is a server-side wiring bug, not a runtime condition:
+// every caller derives it from an authenticated principal. Fail CLOSED and make
+// it loud. Routing it through the shared `disabled` outcome would silently drop
+// duplicate-write protection AND be indistinguishable from a Redis outage — on
+// /api/create-checkout that is a second checkout session per retried request.
+function scopeMisconfigured(pathname, corsHeaders) {
+  console.error('[idempotency] missing or empty scope; refusing request for', pathname);
+  return {
+    kind: 'misconfigured',
+    response: jsonResponse(
+      500,
+      {
+        error: 'idempotency_scope_missing',
+        message: 'Idempotency scope is not configured for this route.',
+      },
+      corsHeaders,
+    ),
+  };
+}
+
 async function sha256Hex(input) {
   const data = typeof input === 'string' ? new TextEncoder().encode(input) : input;
   const digest = await crypto.subtle.digest('SHA-256', data);
@@ -46,7 +70,6 @@ function isRetryableStatus(status) {
 
 async function getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey) {
   try {
-    if (typeof scope !== 'string' || scope.length === 0) return null;
     const bodyBuf = await request.clone().arrayBuffer();
     const reqHash = await sha256Hex(bodyBuf);
     const redisKey = `idem:v1:${await sha256Hex(`${scope}\n${pathname}\n${idempotencyKey}`)}`;
@@ -142,6 +165,8 @@ export async function peekStandaloneIdempotency({
     };
   }
 
+  if (!isValidScope(scope)) return scopeMisconfigured(pathname, corsHeaders);
+
   const resolved = await getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey);
   if (!resolved) return { kind: 'disabled' };
 
@@ -175,6 +200,8 @@ export async function beginStandaloneIdempotency({
       ),
     };
   }
+
+  if (!isValidScope(scope)) return scopeMisconfigured(pathname, corsHeaders);
 
   const resolved = await getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey);
   if (!resolved) return { kind: 'disabled' };
