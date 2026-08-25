@@ -528,7 +528,20 @@ describe('news digest methodology parity', () => {
   it('documents news digest cache TTLs from the implementation', () => {
     const healthyTtl = extractNumericConst(digestSrc, 'CACHE_TTL_HEALTHY_S');
     const emptyTtl = extractNumericConst(digestSrc, 'CACHE_TTL_EMPTY_S');
-    const digestTtl = digestSrc.match(/cachedFetchJson<ListFeedDigestResponse>\(\s*digestCacheKey,\s*([0-9_]+)/s);
+    // Matches either cachedFetchJson wrapper — #7084 switched the digest to
+    // cachedFetchJsonWithMeta to learn whether the fetcher actually ran, and
+    // pinning the exact wrapper name made this guard fail on a rename with the
+    // TTL unchanged (the match went null, so the parsed TTL became NaN).
+    const digestTtl = digestSrc.match(
+      /cachedFetchJson(?:WithMeta)?<ListFeedDigestResponse>\(\s*digestCacheKey,\s*([0-9_]+)/s,
+    );
+    // Fail on the LOOKUP before failing on the value: without this, a match
+    // that goes null parses to NaN and the failure reads as "the TTL changed"
+    // when the truth is "this guard can no longer find the TTL".
+    assert.ok(
+      digestTtl,
+      'could not locate the digest cachedFetchJson call to read its TTL; update this guard alongside the call',
+    );
 
     assert.equal(
       healthyTtl,

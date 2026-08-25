@@ -81,9 +81,12 @@ describe('news digest timeout budget', () => {
   });
 
   it('passes the digest-specific timeout to cachedFetchJson', () => {
+    // Matches either wrapper: #7084 switched to cachedFetchJsonWithMeta so the
+    // handler can tell a real build from a cache hit. Pinning the exact name
+    // made this fail on the rename while the timeout argument was unchanged.
     assert.match(
       DIGEST_SRC,
-      /cachedFetchJson<ListFeedDigestResponse>\([\s\S]*\{\s*timeoutMs:\s*DIGEST_RESPONSE_TIMEOUT_MS\s*\}\s*,\s*\)/,
+      /cachedFetchJson(?:WithMeta)?<ListFeedDigestResponse>\([\s\S]*\{\s*timeoutMs:\s*DIGEST_RESPONSE_TIMEOUT_MS\s*\}\s*,\s*\)/,
       'listFeedDigest must not rely on cachedFetchJson default timeout for cold builds',
     );
   });
