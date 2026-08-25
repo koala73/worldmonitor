@@ -191,4 +191,41 @@ describe('digest coverage follows the selected browser response', () => {
       itemsServed: 4,
     }));
   });
+
+  it('a server-stale replay arms the notification mute; a fresh digest clears it (#7084)', async () => {
+    // Correlation clusters over news items and raises BROWSER NOTIFICATIONS
+    // from them. During a stale replay those items are up to six hours old —
+    // notifying on them presents old events as breaking. The loader records
+    // the replay state; the correlation path checks it before notifying.
+    const { internal } = await makeLoader();
+    internal.digestCacheKey = () => 'digest:current';
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify(digest('stale')), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    await internal.tryFetchDigest();
+    expect((internal as { lastDigestServedStale?: boolean }).lastDigestServedStale).toBe(true);
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify(digest('complete')), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    await internal.tryFetchDigest();
+    expect((internal as { lastDigestServedStale?: boolean }).lastDigestServedStale).toBe(false);
+  });
+
+  it('a stale replay renders but is not persisted as the client last-good (#7084)', async () => {
+    const { internal } = await makeLoader();
+    internal.digestCacheKey = () => 'digest:current';
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify(digest('stale')), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    const served = await internal.tryFetchDigest();
+
+    expect(served?.coverage?.state).toBe('stale');
+    expect(internal.persistDigest).not.toHaveBeenCalled();
+  });
 });

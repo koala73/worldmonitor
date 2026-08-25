@@ -264,6 +264,8 @@ describe('#5697 NLP MCP tools', () => {
       'categoriesTotal',
       'missingCategories',
       'stale',
+      'staleAgeSeconds',
+      'staleReason',
     ];
     for (const toolName of ['extract_entities', 'get_news_clusters']) {
       const coverageSchema = byName.get(toolName)?.outputSchema.properties.digestCoverage;
@@ -278,6 +280,10 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(coverageSchema?.properties.servedPublishers.type, 'integer');
       assert.equal(coverageSchema?.properties.missingCategories.items.type, 'string');
       assert.equal(coverageSchema?.properties.stale.type, 'boolean');
+      // #7084: the stale flag alone says the evidence is old without saying
+      // HOW old — the declared schema must carry the age and reason too.
+      assert.equal(coverageSchema?.properties.staleAgeSeconds.type, 'integer');
+      assert.equal(coverageSchema?.properties.staleReason.type, 'string');
     }
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
     const classifyOutput = byName.get('classify_event')?.outputSchema;
@@ -347,6 +353,53 @@ describe('#5697 NLP MCP tools', () => {
       categoriesTotal: 2,
       missingCategories: [],
       stale: false,
+      staleAgeSeconds: 0,
+      staleReason: '',
+    };
+
+    await withDigestCategories(
+      digestResponse.categories,
+      async () => {
+        for (const toolName of ['extract_entities', 'get_news_clusters']) {
+          const { body, result } = await callTool(toolName, {});
+          assert.equal(body.error, undefined, `${toolName} must return a normal tool result`);
+          assert.deepEqual(result.digestCoverage, expected);
+        }
+      },
+      digestResponse.feedStatuses,
+      coverage,
+    );
+  });
+
+  it('projects a stale replay with its age and reason -- a bare flag hides how old the evidence is', async () => {
+    // #7084: a stale digest replay is legitimate evidence, but 90 seconds
+    // and 6 hours warrant different conclusions. The tools must pass the
+    // server's age and reason through, not just the boolean.
+    const coverage = {
+      state: 'stale',
+      itemsServed: 3,
+      publisherCount: 3,
+      feedCompleted: 3,
+      feedTotal: 3,
+      categoryCompleted: 2,
+      categoryTotal: 2,
+      categoryStates: { politics: 'ok', tech: 'ok' },
+      servedStale: true,
+      staleAgeSeconds: 5400,
+      staleReason: 'build-error',
+    };
+    const expected = {
+      state: 'stale',
+      servedItems: 3,
+      servedPublishers: 3,
+      feedsCompleted: 3,
+      feedsTotal: 3,
+      categoriesCompleted: 2,
+      categoriesTotal: 2,
+      missingCategories: [],
+      stale: true,
+      staleAgeSeconds: 5400,
+      staleReason: 'build-error',
     };
 
     await withDigestCategories(
@@ -384,6 +437,8 @@ describe('#5697 NLP MCP tools', () => {
       categoriesTotal: 1,
       missingCategories: ['accelerators'],
       stale: false,
+      staleAgeSeconds: 0,
+      staleReason: '',
     };
 
     await withDigestCategories(

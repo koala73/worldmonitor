@@ -446,6 +446,16 @@ export class DataLoaderManager implements AppModule {
   private xIntelHasLiveData = false;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
+  /**
+   * #7084: true while the most recent digest response was a server-side stale
+   * replay. News items from a replay are up to six hours old, and the
+   * correlation pipeline downstream raises BROWSER NOTIFICATIONS from
+   * clusters of those items — interrupting the user for events that happened
+   * hours ago as if they were breaking. While this flag is set, correlation
+   * signals are still computed and recorded (the panels stay honest); only
+   * the interruptive notification is muted. Cleared by the next fresh digest.
+   */
+  private lastDigestServedStale = false;
   private readonly digestRequestTimeoutMs = 8000;
   private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
@@ -667,6 +677,7 @@ export class DataLoaderManager implements AppModule {
       // last-good. The in-memory retained digest below is deliberately still
       // updated: it carries no clock, does not survive a reload, and so cannot
       // extend any window.
+      this.lastDigestServedStale = data.coverage?.servedStale === true;
       if (data.coverage?.servedStale === true) {
         console.info(
           `[News] Digest served stale (${data.coverage.staleReason || 'unknown'}, ` +
@@ -4268,7 +4279,16 @@ export class DataLoaderManager implements AppModule {
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(allSignals, 'Correlation');
+        // #7084: correlation signals cluster over `ctx.allNews`, and during a
+        // stale digest replay those items are up to six hours old — a browser
+        // notification raised from them interrupts the user for old events
+        // presented as breaking. Signals are still computed and recorded
+        // above; only the interruptive notification is muted until a fresh
+        // digest clears the flag. (Military-surge notifications elsewhere
+        // derive from non-news data and are not gated.)
+        if (this.shouldShowIntelligenceNotifications() && !this.lastDigestServedStale) {
+          this.showSignalNotification(allSignals, 'Correlation');
+        }
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);

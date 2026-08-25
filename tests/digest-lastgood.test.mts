@@ -169,10 +169,18 @@ describe('durable last-good wiring (#7084)', () => {
     reads: new Map<string, Read>(),
     writes: [] as Array<{ key: string; value: unknown; ttl: number }>,
     pipeline: (async () => [{ result: [] }]) as (c: unknown[][]) => Promise<Array<{ result?: unknown; error?: string }>>,
+    // Every runRedisPipeline invocation, recorded so tests can assert on the
+    // EVAL guarded publish and on how many revocation reads a request paid.
+    pipelineCalls: [] as unknown[][][],
     // Lets a test drive listFeedDigest's cache-hit vs fresh-build branch.
     fetchMeta: null as null | { data: unknown; source: string; leader: boolean },
   };
   let mod: any;
+
+  const evalCalls = () =>
+    stub.pipelineCalls.flat().filter((cmd: any) => Array.isArray(cmd) && cmd[0] === 'EVAL');
+  const smembersCalls = () =>
+    stub.pipelineCalls.flat().filter((cmd: any) => Array.isArray(cmd) && cmd[0] === 'SMEMBERS');
 
   before(async () => {
     (globalThis as any).__digestRedisStub = stub;
@@ -184,7 +192,7 @@ describe('durable last-good wiring (#7084)', () => {
       'export async function cachedFetchJsonWithMeta() { return s.fetchMeta ?? { data: null, source: "skipped", leader: false }; }',
       'export async function getCachedJson() { return null; }',
       'export async function getCachedJsonBatch() { return new Map(); }',
-      'export async function runRedisPipeline(c) { return s.pipeline(c); }',
+      'export async function runRedisPipeline(c) { s.pipelineCalls.push(c); return s.pipeline(c); }',
     ].join('\n');
     const result = await build({
       stdin: {
@@ -216,8 +224,13 @@ describe('durable last-good wiring (#7084)', () => {
     stub.reads.clear();
     stub.writes.length = 0;
     stub.pipeline = async () => [{ result: [] }];
+    stub.pipelineCalls.length = 0;
     stub.fetchMeta = null;
     mod.__testing__.fallbackDigestCache.clear();
+    // The in-isolate attempt-write cooldown persists across tests in this
+    // bundle; without clearing it, a later test's attempt write is suppressed
+    // by an earlier test's and the assertion fails for the wrong reason.
+    mod.__testing__.attemptWriteCooldown.clear();
   };
 
   /** Minimal ServerContext — listFeedDigest only touches ctx.request headers. */
@@ -241,24 +254,46 @@ describe('durable last-good wiring (#7084)', () => {
     reset();
     stub.reads.set(lastGoodMetaKey('full', 'en'), { status: 'error', error: new Error('boom') });
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
-    assert.equal(
-      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
-      'a candidate must not clobber a live snapshot we could not read',
-    );
+    assert.equal(evalCalls().length, 0, 'a candidate must not clobber a live snapshot we could not read');
+    assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0);
   });
 
-  it('a genuine MISS does publish', async () => {
+  it('a genuine MISS publishes through one atomic guarded write covering both keys', async () => {
     reset();
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
-    assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 1);
+    const calls = evalCalls();
+    assert.equal(calls.length, 1, 'the publish must be a single EVAL, not a read-decide-write pair');
+    const cmd = calls[0] as string[];
+    // ['EVAL', script, '2', metaKey, bodyKey, ...argv] — both keys inside one
+    // atomic script is what closes the two-isolate lost-update race.
+    assert.equal(cmd[2], '2');
+    assert.equal(cmd[3], lastGoodMetaKey('full', 'en'));
+    assert.equal(cmd[4], lastGoodKey('full', 'en'));
+    assert.match(String(cmd[1]), /return 0/, 'the script must be able to refuse a narrower candidate');
+    assert.equal(
+      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
+      'no plain SET may bypass the guard outside sidecar mode',
+    );
   });
 
   it('anchors acceptedAt to the CONTENT clock, not the write clock', async () => {
     reset();
     const generatedAt = new Date(NOW - 60 * 60 * 1000).toISOString();
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE, generatedAt));
-    const write = stub.writes.find((w) => w.key === lastGoodKey('full', 'en'));
-    assert.equal((write!.value as any).acceptedAt, Date.parse(generatedAt));
+    const cmd = evalCalls()[0] as string[];
+    // ARGV[5] (index 9 of the command) is the metadata JSON the script stores.
+    const meta = JSON.parse(String(cmd[9]));
+    assert.equal(meta.acceptedAt, Date.parse(generatedAt));
+  });
+
+  it('a lost guarded write (script returns 0) is a kept snapshot, not an error', async () => {
+    reset();
+    stub.pipeline = async (cmds) => cmds.some((c: any) => c[0] === 'EVAL')
+      ? [{ result: 0 }]
+      : [{ result: [] }];
+    // Must not throw and must not fall back to plain writes.
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
+    assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0);
   });
 
   it('serveLastGood returns null -- never a durable claim -- when Redis is unreadable', async () => {
@@ -365,19 +400,145 @@ describe('durable last-good wiring (#7084)', () => {
     reset();
     stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
     await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
-    assert.equal(
-      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
-      'a cache hit has nothing new to publish',
-    );
+    assert.equal(evalCalls().length, 0, 'a cache hit has nothing new to publish');
   });
 
   it('a real BUILD does publish the snapshot', async () => {
     reset();
     stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };
     await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(evalCalls().length, 1, 'a fresh build is exactly when the snapshot should be refreshed');
+  });
+
+  it('a coalesced FOLLOWER of a build does not repeat the publication', async () => {
+    // Followers awaiting the leader's in-flight build also resolve with
+    // source 'fresh' — only `leader` distinguishes the one caller whose build
+    // it actually was. Without the leader gate, N concurrent requests during
+    // a rebuild each repeat the full ~126KB guarded write for an identical
+    // body.
+    reset();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: false };
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(evalCalls().length, 0, 'only the leader has something new to publish');
+  });
+
+  it('a sentinel CACHE HIT does not record a new failed attempt', async () => {
+    // A negative-sentinel hit replays a previous failure for up to 120s.
+    // Recording it as a new attempt wrote a fresh attempt row on every
+    // request in that window, telling operators failures were ongoing when
+    // exactly one had occurred.
+    reset();
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
     assert.equal(
-      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 1,
-      'a fresh build is exactly when the snapshot should be refreshed',
+      stub.writes.filter((w) => w.key === attemptMetaKey('full', 'en')).length, 0,
+      'a replayed sentinel is not a new attempt',
+    );
+  });
+
+  it('the LEADER of a failed build does record the attempt', async () => {
+    reset();
+    stub.fetchMeta = { data: null, source: 'fresh', leader: true };
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(
+      stub.writes.filter((w) => w.key === attemptMetaKey('full', 'en')).length, 1,
+      'the one real failure must still reach the operator',
+    );
+  });
+
+  it('a degraded request pays for exactly ONE revocation read across both replay tiers', async () => {
+    // Two serial pipeline reads (durable tier, then isolate tier) were part
+    // of the worst case that pushed an already-degraded request past the 25s
+    // Edge response ceiling.
+    reset();
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    stub.reads.set(lastGoodKey('full', 'en'), { status: 'miss' });
+    mod.__testing__.fallbackDigestCache.set('full:en', {
+      data: body(['https://a/1'], COVERAGE),
+      ts: Date.now() - 60_000,
+    });
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(out.coverage.state, 'stale', 'the isolate tier must still serve');
+    assert.equal(smembersCalls().length, 1, 'one revocation read, shared by both tiers');
+  });
+
+  it('replay tiers fail CLOSED when the revocation set cannot be read', async () => {
+    // Replayed content is old — old enough that a revocation may postdate
+    // it. Serving it unfiltered because the suppression set was unreadable
+    // would honor availability over an operator's explicit pull.
+    reset();
+    stub.pipeline = async () => [{ error: 'ERR' }];
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: {
+        acceptedAt: Date.now() - 60_000, categoryCount: 1, itemCount: 1,
+        data: body(['https://a/1'], COVERAGE),
+      },
+    });
+    mod.__testing__.fallbackDigestCache.set('full:en', {
+      data: body(['https://a/2'], COVERAGE),
+      ts: Date.now() - 60_000,
+    });
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(out.coverage.state, 'unavailable', 'neither replay tier may serve unfiltered old content');
+    assert.deepEqual(out.categories, {});
+  });
+
+  it('fully revoked isolate content is unavailable, not a valid stale response', async () => {
+    // Suppression must run BEFORE the servability gate on the isolate tier
+    // too: classifying the unfiltered body let a fully-revoked entry through
+    // as a "valid" stale response whose every item had been pulled.
+    reset();
+    stub.pipeline = async (cmds) => cmds.some((c: any) => c[0] === 'SMEMBERS')
+      ? [{ result: ['https://a/1'] }]
+      : [{ result: [] }];
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    stub.reads.set(lastGoodKey('full', 'en'), { status: 'miss' });
+    mod.__testing__.fallbackDigestCache.set('full:en', {
+      data: body(['https://a/1'], COVERAGE),
+      ts: Date.now() - 60_000,
+    });
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(out.coverage.state, 'unavailable');
+  });
+
+  it('a cache hit does not re-age the isolate entry -- its clock is the content clock', async () => {
+    // Stamping Date.now() on every response meant a steadily-hit digest
+    // never aged out of the isolate tier, and a later replay reported its
+    // age from the last request rather than from the build.
+    reset();
+    const generatedAt = new Date(NOW - 45 * 60 * 1000).toISOString();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE, generatedAt), source: 'cache', leader: false };
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(
+      mod.__testing__.fallbackDigestCache.get('full:en').ts,
+      Date.parse(generatedAt),
+      'the isolate entry must be dated by its content, not by the request that touched it',
+    );
+  });
+
+  it('a malformed stored snapshot degrades the tier, never the request', async () => {
+    // A null category bucket used to throw inside the servability gate; the
+    // handler catch then re-ran the same degraded path against the same body
+    // and the second throw escaped as a 500 with every fallback unserved.
+    reset();
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: {
+        acceptedAt: Date.now() - 60_000, categoryCount: 1, itemCount: 1,
+        data: { categories: { politics: null }, feedStatuses: {}, generatedAt: new Date(NOW).toISOString() },
+      },
+    });
+    mod.__testing__.fallbackDigestCache.set('full:en', {
+      data: body(['https://a/2'], COVERAGE),
+      ts: Date.now() - 60_000,
+    });
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(out.coverage.state, 'stale', 'the isolate tier must take over from the malformed durable one');
+    assert.deepEqual(
+      out.categories.politics.items.map((i: any) => i.link), ['https://a/2'],
     );
   });
 

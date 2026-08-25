@@ -142,7 +142,10 @@ export interface DigestLike {
 
 /** Total items across every category bucket. */
 export function countDigestItems(data: DigestLike): number {
-  return Object.values(data.categories ?? {}).reduce((sum, b) => sum + (b.items?.length ?? 0), 0);
+  // `b?.` matters: this runs over bodies read back from Redis, where a bucket
+  // can be null/malformed. A throw here propagates out of the servability
+  // gate and can abort EVERY fallback tier for the request.
+  return Object.values(data.categories ?? {}).reduce((sum, b) => sum + (b?.items?.length ?? 0), 0);
 }
 
 /** Structural acceptance: at least one category AND at least one item. */
@@ -209,6 +212,9 @@ export function filterRevokedUrls<T extends { link?: string }>(
   revokedUrls: ReadonlySet<string>,
 ): { kept: T[]; dropped: number } {
   if (revokedUrls.size === 0) return { kept: [...items], dropped: 0 };
-  const kept = items.filter((item) => !item.link || !revokedUrls.has(item.link));
+  // `item?.` matters: replayed bodies come from Redis, and a malformed items
+  // array can carry null entries. Keep them (they carry no link to revoke)
+  // rather than throwing out of the whole serving tier.
+  const kept = items.filter((item) => !item?.link || !revokedUrls.has(item.link));
   return { kept, dropped: items.length - kept.length };
 }

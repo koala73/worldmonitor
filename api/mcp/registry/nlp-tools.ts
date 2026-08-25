@@ -156,6 +156,8 @@ const NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA = {
     'categoriesTotal',
     'missingCategories',
     'stale',
+    'staleAgeSeconds',
+    'staleReason',
   ],
   properties: {
     state: {
@@ -176,6 +178,15 @@ const NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA = {
       description: 'Digest categories that did not complete in the current attempt.',
     },
     stale: { type: 'boolean', description: 'True when the response serves retained content from an earlier attempt.' },
+    staleAgeSeconds: {
+      type: 'integer',
+      minimum: 0,
+      description: 'Age of the replayed content since acceptance, in seconds. 0 when the digest is fresh.',
+    },
+    staleReason: {
+      type: 'string',
+      description: 'Why retained content is served: empty-rebuild or build-error. Empty when fresh.',
+    },
   },
 } as const;
 
@@ -202,6 +213,14 @@ type NlpDigestFetch = {
     categoriesTotal: number;
     missingCategories: string[];
     stale: boolean;
+    /**
+     * #7084: how old the replayed content is, seconds (0 when fresh). A bare
+     * `stale` flag tells an agent the evidence is old without saying HOW old
+     * — 90 seconds and 6 hours warrant different conclusions.
+     */
+    staleAgeSeconds: number;
+    /** #7084: why stale content is served — empty-rebuild | build-error ('' when fresh). */
+    staleReason: string;
   };
 };
 
@@ -250,6 +269,9 @@ async function fetchNlpDigestItems(
       categoryCompleted?: number;
       categoryTotal?: number;
       categoryStates?: Record<string, string>;
+      servedStale?: boolean;
+      staleAgeSeconds?: number;
+      staleReason?: string;
     };
   };
 
@@ -275,6 +297,15 @@ async function fetchNlpDigestItems(
         .map(([k]) => k)
         .slice(0, 12),
       stale: cov.state === 'stale',
+      // #7084: complete the stale disclosure. The flag alone says the
+      // evidence is old without saying how old or why — an agent deciding
+      // whether stale evidence is usable needs the age.
+      staleAgeSeconds: cov.state === 'stale'
+        ? nlpClampInt(cov.staleAgeSeconds ?? 0, 0, Number.MAX_SAFE_INTEGER, 0)
+        : 0,
+      staleReason: cov.state === 'stale'
+        ? nlpTruncateUtf8(cov.staleReason ?? '', NLP_DIGEST_METADATA_MAX_BYTES)
+        : '',
     }
     : undefined;
   if (
