@@ -163,6 +163,15 @@ export async function listTemporalAnomalies(
       }
 
       const typesWithCounts = trackedTypes.filter(t => counts[t] !== undefined);
+      if (typesWithCounts.length === 0) {
+        // A lock only grants rebuild ownership; it does not make an empty set of
+        // upstream reads publishable. Preserve the last-good snapshot without
+        // advancing any baseline or freshness clock. On a cold miss, return the
+        // canonical empty response but leave Redis untouched so health continues
+        // to report the producer as unavailable.
+        if (cached) return cached;
+        return { anomalies: [], trackedTypes: [], computedAt: '' };
+      }
 
       const baselines = await Promise.all(
         typesWithCounts.map(t =>

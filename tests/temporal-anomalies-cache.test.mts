@@ -20,7 +20,10 @@ import { listTemporalAnomalies } from '../server/worldmonitor/infrastructure/v1/
  */
 async function runWithRedisStub(
   keyValues: Record<string, unknown>,
-  { lockGranted = true }: { lockGranted?: boolean } = {},
+  {
+    lockGranted = true,
+    failedPostKeys = [],
+  }: { lockGranted?: boolean; failedPostKeys?: string[] } = {},
 ) {
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -48,6 +51,9 @@ async function runWithRedisStub(
         }
       } catch { /* leave undefined; assertions below surface it */ }
       calls.push({ method: 'POST', key, recordCount });
+      if (failedPostKeys.includes(key)) {
+        return Response.json({ error: `forced POST failure for ${key}` }, { status: 500 });
+      }
       return Response.json({ result: lockGranted ? 'OK' : null });
     }
     const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
@@ -126,6 +132,7 @@ describe('temporal anomalies cache freshness', () => {
     // lock SET alone satisfies it.
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': { topStories: [{ id: 'a' }] },
     });
 
     const writes = calls.filter((c) => c.method === 'POST');
@@ -139,23 +146,41 @@ describe('temporal anomalies cache freshness', () => {
     );
   });
 
-  it('stamps the coverage it ACHIEVED, not the coverage it configured', async () => {
-    // recordCount used to come from trackedTypes — the constant
-    // Object.keys(COUNT_SOURCE_KEYS) — so it reported 2 even with zero inputs
-    // read. Nothing branches on it today (no consumer sets minRecordCount), but
-    // a coverage floor added later would be born unable to fire.
-    // Both count sources absent -> achieved coverage is 0.
-    const { calls } = await runWithRedisStub({
-      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+  it('preserves the last-good snapshot and writes nothing when count-source coverage is zero', async () => {
+    const stale = freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000);
+    const { response, calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': stale,
       // news:insights:v1 and wildfire:fires:v1 deliberately absent
     });
 
-    const stamp = calls.find((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies');
-    assert.ok(stamp, 'rebuild must still stamp seed-meta');
-    assert.equal(
-      stamp.recordCount, 0,
-      `zero count sources read must stamp recordCount 0, got ${stamp.recordCount}`,
+    assert.deepEqual(response, stale, 'zero coverage must preserve the usable last-good snapshot');
+    assert.deepEqual(
+      calls.filter((c) => c.method === 'POST' && c.key !== 'baseline:lock'),
+      [],
+      'zero coverage must not write baselines, publish an empty snapshot, or stamp seed-meta',
     );
+  });
+
+  it('returns the canonical empty response without publishing when zero coverage has no fallback', async () => {
+    const { response, calls } = await runWithRedisStub({});
+
+    assert.deepEqual(response, { anomalies: [], trackedTypes: [], computedAt: '' });
+    assert.deepEqual(
+      calls.filter((c) => c.method === 'POST' && c.key !== 'baseline:lock'),
+      [],
+      'a cold zero-coverage rebuild must not write baselines, a snapshot, or seed-meta',
+    );
+  });
+
+  it('stamps the partial coverage it ACHIEVED, not the coverage it configured', async () => {
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': { topStories: [{ id: 'a' }] },
+      // wildfire:fires:v1 deliberately absent
+    });
+
+    const stamp = calls.find((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies');
+    assert.equal(stamp?.recordCount, 1, 'one source read must stamp recordCount 1');
   });
 
   it('stamps full coverage when both count sources are present', async () => {
@@ -169,6 +194,83 @@ describe('temporal anomalies cache freshness', () => {
 
     const stamp = calls.find((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies');
     assert.equal(stamp?.recordCount, 2, 'both sources read must stamp recordCount 2');
+  });
+
+  it('does not stamp seed-meta when snapshot publication fails', async () => {
+    const stale = freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000);
+    const baseline = {
+      mean: 1,
+      m2: 0,
+      sampleCount: 1,
+      lastUpdated: new Date().toISOString(),
+    };
+    const baselineKey = makeBaselineKeyV2(
+      'news',
+      'global',
+      new Date().getUTCDay(),
+      new Date().getUTCMonth() + 1,
+    );
+    const { calls } = await runWithRedisStub(
+      {
+        'temporal:anomalies:v1': stale,
+        'news:insights:v1': { topStories: [{ id: 'a' }] },
+        [baselineKey]: baseline,
+      },
+      { failedPostKeys: ['temporal:anomalies:v1'] },
+    );
+
+    assert.ok(
+      calls.some((c) => c.method === 'POST' && c.key === 'temporal:anomalies:v1'),
+      'the test must exercise a failed snapshot publication',
+    );
+    assert.equal(
+      calls.some((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies'),
+      false,
+      'seed-meta must describe a published snapshot, never a failed publication',
+    );
+  });
+
+  it('warns with the exact due-baseline failure count while the snapshot still publishes', async () => {
+    const baselineKey = makeBaselineKeyV2(
+      'news',
+      'global',
+      new Date().getUTCDay(),
+      new Date().getUTCMonth() + 1,
+    );
+    const dueBaseline = {
+      mean: 1,
+      m2: 0,
+      sampleCount: 1,
+      lastUpdated: new Date(Date.now() - BASELINE_SAMPLE_INTERVAL_MS - 60_000).toISOString(),
+    };
+    const originalWarn = console.warn;
+    const warnings: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { warnings.push(args); };
+
+    try {
+      const { calls } = await runWithRedisStub(
+        {
+          'news:insights:v1': { topStories: [{ id: 'a' }] },
+          [baselineKey]: dueBaseline,
+        },
+        { failedPostKeys: [baselineKey] },
+      );
+
+      assert.ok(
+        calls.some((c) => c.method === 'POST' && c.key === 'temporal:anomalies:v1'),
+        'a failed baseline write must not prevent snapshot publication',
+      );
+      assert.ok(
+        calls.some((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies'),
+        'a successfully published snapshot must still stamp seed-meta',
+      );
+      assert.ok(
+        warnings.some(([message]) => message === '[TemporalBaseline] 1/1 baseline writes failed'),
+        `missing exact baseline warning; saw ${JSON.stringify(warnings)}`,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 
   it('does not fold a new baseline sample when one was taken recently', async () => {
