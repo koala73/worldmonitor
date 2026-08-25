@@ -1650,24 +1650,3 @@ export function getProPanelKeys(
     panelSettings[key]?.enabled && Boolean(getEffectivePanelConfig(key, variant).premium),
   );
 }
-
-// Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
-export const MONITOR_COLORS = [
-  '#44ff88',
-  '#ff8844',
-  '#4488ff',
-  '#ff44ff',
-  '#ffff44',
-  '#ff4444',
-  '#44ffff',
-  '#88ff44',
-  '#ff88ff',
-  '#88ffff',
-];
-
-export const STORAGE_KEYS = {
-  panels: 'worldmonitor-panels',
-  monitors: 'worldmonitor-monitors',
-  mapLayers: 'worldmonitor-layers',
-  disabledFeeds: 'worldmonitor-disabled-feeds',
-} as const;
