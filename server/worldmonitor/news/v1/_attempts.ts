@@ -324,6 +324,12 @@ export interface DigestCoverageBlock {
   droppedUndated: number;
   droppedFreshness: number;
   droppedCategoryCap: number;
+  /** #7084: true exactly when accepted older content is replayed. */
+  servedStale: boolean;
+  /** Age of the served content since acceptance, seconds (0 when fresh). */
+  staleAgeSeconds: number;
+  /** Closed stale reason: empty-rebuild | build-error ('' when fresh). */
+  staleReason: string;
 }
 
 export interface DigestCoverageInput {
@@ -335,12 +341,6 @@ export interface DigestCoverageInput {
   publisherSources: readonly string[];
   /** True when the global deadline aborted the build. */
   deadlineAborted: boolean;
-  /**
-   * True when accepted older content is served after a failed latest
-   * attempt. No caller sets this until durable last-good serving (#7084)
-   * lands; the classifier and contract are ready for it.
-   */
-  servingStale: boolean;
   drops: {
     perFeedCap: number;
     undated: number;
@@ -374,9 +374,13 @@ export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageB
     categoryStates[category] = (completedByCategory.get(category) ?? 0) > 0 ? 'ok' : 'missing';
   }
   const categoryCompleted = configuredCategories.filter((c) => categoryStates[c] === 'ok').length;
-  const state: DigestCoverageBlock['state'] = input.servingStale
-    ? 'stale'
-    : input.itemsServed === 0
+  // This classifier describes a BUILD. The 'stale' state belongs to a replay,
+  // which has no build to describe — it is stamped by markFallbackCoverageStale on
+  // the serving path (#7084). Keeping a servingStale branch here would give
+  // the stale fields two independent implementations that nothing asserts
+  // agree with each other.
+  const state: DigestCoverageBlock['state'] =
+    input.itemsServed === 0
       ? 'unavailable'
       : input.deadlineAborted || categoryCompleted < configuredCategories.length
         ? 'partial'
@@ -395,5 +399,10 @@ export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageB
     droppedUndated: input.drops.undated,
     droppedFreshness: input.drops.freshnessFloor,
     droppedCategoryCap: input.drops.perCategoryCap,
+    // A freshly built body is never a replay. markFallbackCoverageStale overwrites
+    // these three when (and only when) the body is actually being replayed.
+    servedStale: false,
+    staleAgeSeconds: 0,
+    staleReason: '',
   };
 }

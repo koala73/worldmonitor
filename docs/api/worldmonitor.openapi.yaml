@@ -48706,6 +48706,20 @@ components:
                 droppedCategoryCap:
                     type: integer
                     format: int32
+                servedStale:
+                    type: boolean
+                    description: |-
+                        Durable last-good serving (#7084): true exactly when accepted older
+                         content is replayed after a failed latest attempt. The content counts
+                         above still describe the served body; attempted_at names the FAILED
+                         attempt, so it and generated_at diverge on a replay.
+                staleAgeSeconds:
+                    type: integer
+                    format: int32
+                    description: Age of the served content since acceptance, in seconds (0 when fresh).
+                staleReason:
+                    type: string
+                    description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'
             description: |-
                 Content vs attempt state for one digest response (#7085). generated_at
                  keeps the CONTENT identity (when the served items were produced);

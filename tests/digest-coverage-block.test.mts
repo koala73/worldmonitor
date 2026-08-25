@@ -96,9 +96,20 @@ describe('digest coverage block (#7085)', () => {
     assert.equal(cov.publisherCount, 0);
   });
 
-  it('classifies stale when accepted older content is served (forward-compat with #7084)', () => {
-    const cov = buildDigestCoverage({ ...BASE, servingStale: true });
-    assert.equal(cov.state, 'stale');
+  it('a fresh build never classifies itself as a replay (#7084)', () => {
+    // 'stale' belongs to a replay, which has no build to describe. #7084 stamps
+    // it on the serving path via markFallbackCoverageStale, asserted in
+    // tests/digest-lastgood.test.mts. This classifier must never produce it,
+    // which is what keeps the two from drifting into separate implementations.
+    for (const deadlineAborted of [false, true]) {
+      for (const itemsServed of [0, 5]) {
+        const cov = buildDigestCoverage({ ...BASE, deadlineAborted, itemsServed });
+        assert.notEqual(cov.state, 'stale');
+        assert.equal(cov.servedStale, false);
+        assert.equal(cov.staleAgeSeconds, 0);
+        assert.equal(cov.staleReason, '');
+      }
+    }
   });
 
   it('counts distinct publishers of the SERVED items, not feeds or parsed items', () => {
@@ -134,7 +145,6 @@ describe('digest coverage block (#7085)', () => {
 describe('list-feed-digest coverage wiring (#7085)', () => {
   it('builds the response coverage through the pure classifier', () => {
     assert.match(digestSource, /buildDigestCoverage\(\{/);
-    assert.match(digestSource, /servingStale: false/);
   });
 
   it('normalizes served items to publisher families before counting them', () => {
@@ -149,9 +159,16 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
     assert.match(digestSource, /state: 'unavailable'/);
   });
 
-  it('marks retained content stale for both null and thrown build failures', () => {
-    const fallbackCalls = digestSource.match(/markFallbackCoverageStale\(fallback, attemptedAt\)/g) ?? [];
-    assert.equal(fallbackCalls.length, 2);
+  it('routes both degraded paths through one stale-marking helper', () => {
+    // Was a count of a literal call expression, which broke on the #7084
+    // refactor without any behavior changing -- the grep could not see that
+    // both branches now reach the same marker through serveDegraded().
+    // Assert the shared route instead: both failure branches delegate, and the
+    // delegate is the only thing that returns retained content.
+    assert.match(digestSource, /if \(fresh === null\) \{[\s\S]{0,200}serveDegraded\('empty-rebuild'\)/);
+    assert.match(digestSource, /\} catch \{[\s\S]{0,200}serveDegraded\('build-error'\)/);
+    const markers = digestSource.match(/markFallbackCoverageStale\(/g) ?? [];
+    assert.ok(markers.length >= 2, 'the stale marker must still be the only replay stamp');
   });
 
   it('preserves retained content identity and counts while replacing attempt identity', () => {

@@ -63,6 +63,15 @@ message DigestCoverage {
   int32 dropped_undated = 11;
   int32 dropped_freshness = 12;
   int32 dropped_category_cap = 13;
+  // Durable last-good serving (#7084): true exactly when accepted older
+  // content is replayed after a failed latest attempt. The content counts
+  // above still describe the served body; attempted_at names the FAILED
+  // attempt, so it and generated_at diverge on a replay.
+  bool served_stale = 14;
+  // Age of the served content since acceptance, in seconds (0 when fresh).
+  int32 stale_age_seconds = 15;
+  // Closed stale reason: empty-rebuild | build-error (empty when fresh).
+  string stale_reason = 16;
 }
 
 message CategoryBucket {

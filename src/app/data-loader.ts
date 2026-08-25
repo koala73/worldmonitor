@@ -658,7 +658,23 @@ export class DataLoaderManager implements AppModule {
       if (catCount === 0) throw new Error('digest returned 0 categories');
       markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
-      this.persistDigest(requestKey, data);
+      // #7084: do NOT reset the client's own six-hour clock with content the
+      // server already told us is stale. persistDigest stamps a write clock and
+      // loadPersistedDigest expires on that clock, so re-persisting a body that
+      // is already up to six hours old would buy it another six — roughly
+      // doubling the staleness ceiling the server contract promises. The body
+      // is still fine to render now; it just must not become the client's fresh
+      // last-good. The in-memory retained digest below is deliberately still
+      // updated: it carries no clock, does not survive a reload, and so cannot
+      // extend any window.
+      if (data.coverage?.servedStale === true) {
+        console.info(
+          `[News] Digest served stale (${data.coverage.staleReason || 'unknown'}, ` +
+            `${data.coverage.staleAgeSeconds ?? 0}s) — rendering without re-persisting`,
+        );
+      } else {
+        this.persistDigest(requestKey, data);
+      }
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
 
       const currentKey = this.digestCacheKey();

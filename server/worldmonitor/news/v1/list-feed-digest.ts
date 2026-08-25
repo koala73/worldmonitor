@@ -8,7 +8,29 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, readCachedJson, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta, getCachedJson, setCachedJson, getCachedJsonBatch, readCachedJson, runRedisPipeline } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import {
+  ATTEMPT_META_TTL_S,
+  LASTGOOD_TTL_S,
+  REVOKED_URLS_KEY,
+  attemptMetaKey,
+  classifyStaleSnapshot,
+  countDigestItems,
+  filterRevokedUrls,
+  isAcceptableDigest,
+  isEligibleScope,
+  lastGoodKey,
+  lastGoodMetaKey,
+  parseAcceptedMeta,
+  parseAcceptedSnapshot,
+  shouldReplaceAccepted,
+  type AcceptedSnapshot,
+  type AcceptedSnapshotMeta,
+  type RevocationRead,
+  type StaleReason,
+} from './_lastgood';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -93,9 +115,217 @@ const BATCH_CONCURRENCY = 20;
 
 type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
 
+/**
+ * #7084: read the narrow revocation set. Fail-open — an unreadable set
+ * suppresses nothing, because fail-closed would hide the entire digest behind
+ * a Redis hiccup. But an empty set and an unreadable one are different facts,
+ * and a suppression control that silently stops suppressing must at least say
+ * so, hence `readable`.
+ */
+async function readRevokedUrlSet(): Promise<RevocationRead> {
+  try {
+    const results = await runRedisPipeline([['SMEMBERS', REVOKED_URLS_KEY]]);
+    const entry = results[0];
+    // A successful SMEMBERS yields exactly one entry with an array `result`
+    // (empty array for a missing key). No entry, a per-command `error`, or a
+    // non-array payload all mean we could not read the set.
+    if (!entry || entry.error || !Array.isArray(entry.result)) {
+      return { urls: new Set(), readable: false };
+    }
+    return {
+      urls: new Set(entry.result.filter((x): x is string => typeof x === 'string')),
+      readable: true,
+    };
+  } catch {
+    return { urls: new Set(), readable: false };
+  }
+}
+
+/**
+ * #7084: apply the revocation set to a whole digest body at SERVE time.
+ * Shared by every path that can return bytes — fresh build, digest cache hit,
+ * durable snapshot, warm-isolate replay — so an operator's SADD takes effect
+ * on the next request rather than on the next rebuild. Returns the original
+ * object untouched when nothing was suppressed, so the common path stays free.
+ */
+function suppressRevoked(
+  data: ListFeedDigestResponse,
+  revoked: ReadonlySet<string>,
+): { data: ListFeedDigestResponse; dropped: number } {
+  if (revoked.size === 0) return { data, dropped: 0 };
+  const categories: Record<string, { items: ProtoNewsItem[] }> = {};
+  let dropped = 0;
+  for (const [category, bucket] of Object.entries(data.categories ?? {})) {
+    const { kept, dropped: n } = filterRevokedUrls(
+      (bucket?.items ?? []) as Array<{ link?: string }>,
+      revoked,
+    );
+    dropped += n;
+    categories[category] = { items: kept as ProtoNewsItem[] };
+  }
+  if (dropped === 0) return { data, dropped: 0 };
+  const next = { ...data, categories } as ListFeedDigestResponse;
+  // Counts must describe the body actually served, per the DigestCoverage
+  // contract ("Items served in this response, after every gate").
+  if (next.coverage) {
+    const items = Object.values(categories).flatMap((b) => b.items);
+    next.coverage = {
+      ...next.coverage,
+      itemsServed: items.length,
+      publisherCount: new Set(items.map((i) => publisherFamilyFor(i.source))).size,
+    };
+  }
+  return { data: next, dropped };
+}
+
+/**
+ * #7084: publish a freshly built digest as the durable accepted snapshot.
+ * A candidate always serves the request that built it; whether it REPLACES the
+ * accepted snapshot follows shouldReplaceAccepted. Best-effort — a failure
+ * here never fails the response.
+ */
+async function publishAcceptedSnapshot(
+  variant: string,
+  lang: string,
+  data: ListFeedDigestResponse,
+): Promise<void> {
+  if (!isEligibleScope(variant, lang)) return;
+  const categoryCount = Object.keys(data.categories ?? {}).length;
+  const now = Date.now();
+  // Anchor acceptance to the CONTENT clock, not the write clock. `generatedAt`
+  // dates the news; `now` dates only this write. Using `now` would let a
+  // republish of unchanged cached content slide the six-hour window forward
+  // indefinitely, so staleAgeSeconds would report "time since we last touched
+  // the key" rather than "how old is what you are reading".
+  const generatedAtMs = Date.parse(data.generatedAt ?? '');
+  const acceptedAt = Number.isFinite(generatedAtMs) ? generatedAtMs : now;
+  try {
+    if (!isAcceptableDigest(data)) {
+      console.log(`[digest-lastgood] candidate rejected (not structurally acceptable) variant=${variant} lang=${lang}`);
+      return;
+    }
+    const itemCount = countDigestItems(data);
+    // Read the small metadata key, not the full snapshot: the replacement
+    // decision needs two numbers, and the snapshot body is ~126KB.
+    const currentRead = await readCachedJson(lastGoodMetaKey(variant, lang));
+    if (currentRead.status === 'error') {
+      // We could NOT verify what is live. A read failure is not "no snapshot" —
+      // treating it as one is how a narrower rebuild clobbers a richer live
+      // snapshot during a Redis blip. Skip the write; the candidate still
+      // serves the request that built it.
+      console.warn(`[digest-lastgood] skipped replace (meta unreadable) variant=${variant} lang=${lang}`);
+      return;
+    }
+    const current = parseAcceptedMeta(currentRead.status === 'hit' ? currentRead.value : null);
+    const decision = shouldReplaceAccepted(current, { categoryCount, itemCount }, now);
+    if (!decision.replace) {
+      console.log(`[digest-lastgood] kept live snapshot (${decision.reason}) variant=${variant} lang=${lang}`);
+      return;
+    }
+    const meta: AcceptedSnapshotMeta = { acceptedAt, categoryCount, itemCount };
+    // The metadata key carries the same TTL as the body it describes, so the
+    // pair expires together and a surviving meta row can never veto.
+    await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
+    await setCachedJson(lastGoodMetaKey(variant, lang), meta, LASTGOOD_TTL_S);
+  } catch (err) {
+    // Best-effort for the response, but an operator needs to know: if this
+    // keeps failing there is no durable snapshot to serve when a rebuild later
+    // fails, and the whole last-good tier is silently absent.
+    console.warn('[digest-lastgood] publish failed:', err);
+    captureSilentError(err, {
+      tags: { surface: 'news', component: 'digest-lastgood', stage: 'publish', variant, lang },
+      fingerprint: ['digest-lastgood', 'publish-failed'],
+    });
+  }
+}
+
+/**
+ * #7084: durable last-good serving, tried before the warm-isolate cache on the
+ * degraded paths. Returns a stale-marked response when Redis is readable and
+ * the accepted snapshot is inside the six-hour contract, else null so the
+ * caller falls through to the isolate tier and finally the explicit
+ * unavailable response.
+ */
+async function serveLastGood(
+  variant: string,
+  lang: string,
+  reason: StaleReason,
+  attemptedAt: string,
+): Promise<ListFeedDigestResponse | null> {
+  if (!isEligibleScope(variant, lang)) return null;
+  let snapshot: AcceptedSnapshot<ListFeedDigestResponse> | null = null;
+  try {
+    const read = await readCachedJson(lastGoodKey(variant, lang));
+    if (read.status === 'error') {
+      // Redis unreadable: do NOT claim the durable fallback worked.
+      console.warn(`[digest-serving] outcome=isolate-fallback reason=redis-unreadable variant=${variant} lang=${lang}`);
+      return null;
+    }
+    if (read.status === 'hit') {
+      snapshot = parseAcceptedSnapshot<ListFeedDigestResponse>(read.value);
+    }
+  } catch (err) {
+    console.warn(`[digest-serving] outcome=isolate-fallback reason=redis-read-threw variant=${variant} lang=${lang}`);
+    captureSilentError(err, {
+      tags: { surface: 'news', component: 'digest-lastgood', stage: 'serve-read', variant, lang },
+      fingerprint: ['digest-lastgood', 'serve-read-threw'],
+    });
+    return null;
+  }
+
+  const now = Date.now();
+
+  // Revoke BEFORE the servability gate: a snapshot whose every item has been
+  // revoked is not servable content, and classifying the unfiltered body would
+  // let it through with counts describing items nobody receives.
+  const revoked = await readRevokedUrlSet();
+  const suppressed = snapshot ? suppressRevoked(snapshot.data, revoked.urls) : null;
+
+  const verdict = classifyStaleSnapshot(
+    snapshot && suppressed ? { acceptedAt: snapshot.acceptedAt, data: suppressed.data } : null,
+    now,
+  );
+  if (!verdict.serve) {
+    console.log(`[digest-serving] outcome=${verdict.outcome} reason=${reason} variant=${variant} lang=${lang}`);
+    return null;
+  }
+
+  console.log(
+    `[digest-serving] outcome=stale reason=${reason} age_s=${verdict.ageSeconds} ` +
+      `variant=${variant} lang=${lang} revoked_urls=${revoked.urls.size} ` +
+      `revoked_readable=${revoked.readable} revoked_dropped=${suppressed!.dropped}`,
+  );
+  // attemptedAt names the FAILED attempt, not the content.
+  return markFallbackCoverageStale(suppressed!.data, attemptedAt, {
+    ageSeconds: verdict.ageSeconds,
+    reason,
+  });
+}
+
+/** #7084: best-effort attempt metadata on the degraded paths. */
+async function recordFailedAttempt(variant: string, lang: string, outcome: string): Promise<void> {
+  if (!isEligibleScope(variant, lang)) return;
+  try {
+    await setCachedJson(attemptMetaKey(variant, lang), { ts: Date.now(), outcome }, ATTEMPT_META_TTL_S);
+  } catch {
+    /* telemetry only */
+  }
+}
+
+/**
+ * Stamp a replayed body with the coverage that describes how it is being
+ * served. Every replay tier goes through here — the durable snapshot (#7084)
+ * and the warm in-isolate cache — so no tier can go out wearing the state its
+ * original build stamped on it, and the stale fields have exactly one
+ * implementation.
+ *
+ * `staleAgeSeconds`/`staleReason` are 0/'' for the isolate tier, which knows
+ * only that the content is old, not how old relative to an acceptance.
+ */
 function markFallbackCoverageStale(
   fallback: ListFeedDigestResponse,
   attemptedAt: string,
+  stale: { ageSeconds: number; reason: string } = { ageSeconds: 0, reason: '' },
 ): ListFeedDigestResponse {
   const coverage = fallback.coverage;
   if (coverage) {
@@ -105,6 +335,9 @@ function markFallbackCoverageStale(
         ...coverage,
         state: 'stale',
         attemptedAt,
+        servedStale: true,
+        staleAgeSeconds: stale.ageSeconds,
+        staleReason: stale.reason,
       },
     };
   }
@@ -133,6 +366,9 @@ function markFallbackCoverageStale(
       droppedUndated: 0,
       droppedFreshness: 0,
       droppedCategoryCap: 0,
+      servedStale: true,
+      staleAgeSeconds: stale.ageSeconds,
+      staleReason: stale.reason,
     },
   };
 }
@@ -1354,15 +1590,59 @@ export async function listFeedDigest(
       droppedUndated: 0,
       droppedFreshness: 0,
       droppedCategoryCap: 0,
+      servedStale: false,
+      staleAgeSeconds: 0,
+      staleReason: '',
     },
   });
 
+  /**
+   * #7084: the last serving tier — the warm in-isolate cache, reached when the
+   * durable snapshot was unreadable, absent, or expired. Bounded by the same
+   * six-hour contract as the durable tier: the `ts` recorded at write time was
+   * previously never read, so this tier could replay content of unbounded age.
+   */
+  const serveIsolateFallback = async (reason: StaleReason): Promise<ListFeedDigestResponse> => {
+    const entry = fallbackDigestCache.get(fallbackKey);
+    if (!entry) {
+      console.log(`[digest-serving] outcome=unavailable reason=${reason} variant=${variant} lang=${lang}`);
+      return empty();
+    }
+    // Same window policy as the durable tier — one implementation, so the two
+    // replay tiers cannot drift apart on what "six hours" means.
+    const verdict = classifyStaleSnapshot({ acceptedAt: entry.ts, data: entry.data }, Date.now());
+    if (!verdict.serve) {
+      fallbackDigestCache.delete(fallbackKey);
+      console.log(
+        `[digest-serving] outcome=${verdict.outcome} reason=${reason} variant=${variant} ` +
+          `lang=${lang} tier=isolate age_s=${verdict.ageSeconds}`,
+      );
+      return empty();
+    }
+    const revoked = await readRevokedUrlSet();
+    const { data, dropped } = suppressRevoked(entry.data, revoked.urls);
+    const ageSeconds = verdict.ageSeconds;
+    console.log(
+      `[digest-serving] outcome=isolate-fallback reason=${reason} age_s=${ageSeconds} ` +
+        `variant=${variant} lang=${lang} revoked_urls=${revoked.urls.size} ` +
+        `revoked_readable=${revoked.readable} revoked_dropped=${dropped}`,
+    );
+    return markFallbackCoverageStale(data, attemptedAt, { ageSeconds, reason });
+  };
+
+  /** #7084: durable snapshot first, warm isolate second, unavailable last. */
+  const serveDegraded = async (reason: StaleReason): Promise<ListFeedDigestResponse> => {
+    await recordFailedAttempt(variant, lang, reason);
+    const stale = await serveLastGood(variant, lang, reason, attemptedAt);
+    return stale ?? serveIsolateFallback(reason);
+  };
+
   try {
-    // cachedFetchJson coalesces concurrent cold-path calls: concurrent requests
-    // for the same key share a single buildDigest() run instead of fanning out
-    // across all RSS feeds. Returning null skips the Redis write and caches a
-    // neg-sentinel (120s) to absorb the request storm during degraded periods.
-    const fresh = await cachedFetchJson<ListFeedDigestResponse>(
+    // cachedFetchJsonWithMeta reports whether the fetcher actually ran, which
+    // the plain wrapper hides. Publishing on a cache hit would mean a full
+    // read+write of the ~126KB snapshot on EVERY request, awaited before the
+    // response, and would re-stamp acceptance for content that had not changed.
+    const { data: fresh, source } = await cachedFetchJsonWithMeta<ListFeedDigestResponse>(
       digestCacheKey,
       900,
       async () => {
@@ -1376,17 +1656,27 @@ export async function listFeedDigest(
 
     if (fresh === null) {
       markNoCacheResponse(ctx.request);
-      const fallback = fallbackDigestCache.get(fallbackKey)?.data;
-      return fallback ? markFallbackCoverageStale(fallback, attemptedAt) : empty();
+      return await serveDegraded('empty-rebuild');
     }
 
     if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
     fallbackDigestCache.set(fallbackKey, { data: fresh, ts: Date.now() });
-    return fresh;
+    // Only a build that actually produced this body has something new to
+    // publish; a cache hit does not.
+    if (source === 'fresh') {
+      await publishAcceptedSnapshot(variant, lang, fresh);
+    }
+    // Revocation is a SERVE-time gate. Applying it only inside buildDigest
+    // would let a cache hit replay the pre-revocation body for up to 900s.
+    const revoked = await readRevokedUrlSet();
+    const { data: served, dropped } = suppressRevoked(fresh, revoked.urls);
+    if (dropped > 0) {
+      console.log(`[digest-serving] outcome=fresh variant=${variant} lang=${lang} revoked_dropped=${dropped}`);
+    }
+    return served;
   } catch {
     markNoCacheResponse(ctx.request);
-    const fallback = fallbackDigestCache.get(fallbackKey)?.data;
-    return fallback ? markFallbackCoverageStale(fallback, attemptedAt) : empty();
+    return await serveDegraded('build-error');
   }
 }
 
@@ -2108,14 +2398,13 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // identity (attemptedAt) are separate on purpose — they diverge the day
     // durable last-good serving lands (#7084). Counts only: no raw errors,
     // feed URLs, hostnames, or per-host timings leave the server.
-    // servingStale stays false until durable last-good serving (#7084).
+    // This describes the BUILD; a replay is stamped by markFallbackCoverageStale.
     const coverage = buildDigestCoverage({
       entries: allEntries,
       attemptOutcomes: attempts.attemptOutcomes,
       itemsServed: allSliced.length,
       publisherSources: allSliced.map((item) => publisherFamilyFor(item.originPublisher || item.source)),
       deadlineAborted: deadlineController.signal.aborted,
-      servingStale: false,
       drops: { ...ledgerDrops },
       buildStartMs: buildStart,
     });
@@ -2133,6 +2422,15 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
+  // than asserted against this file's own source text — a grep for
+  // `serveLastGood(...)` passes whether or not the function behaves.
+  publishAcceptedSnapshot,
+  serveLastGood,
+  recordFailedAttempt,
+  readRevokedUrlSet,
+  suppressRevoked,
+  fallbackDigestCache,
   markFallbackCoverageStale,
   buildDigestFeedBatches,
   parseRssXml,

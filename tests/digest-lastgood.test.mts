@@ -1,0 +1,397 @@
+import assert from 'node:assert/strict';
+import { before, describe, it } from 'node:test';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
+
+import {
+  ATTEMPT_META_TTL_S,
+  LASTGOOD_MAX_AGE_MS,
+  LASTGOOD_TTL_S,
+  REVOKED_URLS_KEY,
+  attemptMetaKey,
+  classifyStaleSnapshot,
+  filterRevokedUrls,
+  isAcceptableDigest,
+  isEligibleScope,
+  lastGoodKey,
+  lastGoodMetaKey,
+  parseAcceptedMeta,
+  shouldReplaceAccepted,
+} from '../server/worldmonitor/news/v1/_lastgood';
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+const NOW = Date.UTC(2026, 7, 22, 12, 0, 0);
+const ONE_ITEM = { categories: { politics: { items: [{ link: 'https://a.test/1' }] } } };
+const RICHER = { categories: { politics: { items: [{ link: 'https://a.test/1' }] }, tech: { items: [{ link: 'https://b.test/1' }] } } };
+
+describe('durable last-good policy (#7084)', () => {
+  it('keys the accepted snapshot and attempt metadata by scope', () => {
+    assert.equal(lastGoodKey('full', 'en'), 'news:digest:lastgood:v1:full:en');
+    assert.equal(attemptMetaKey('tech', 'fr'), 'news:digest:attempt:v1:tech:fr');
+    assert.notEqual(lastGoodKey('full', 'en'), lastGoodKey('full', 'fr'));
+    assert.notEqual(lastGoodKey('full', 'en'), lastGoodKey('tech', 'en'));
+  });
+
+  it('clamps scope keys to known-shape variants and 2-letter languages', () => {
+    assert.ok(isEligibleScope('full', 'en'));
+    assert.ok(!isEligibleScope('full', 'english'));
+    assert.ok(!isEligibleScope('../etc', 'en'));
+    assert.ok(!isEligibleScope('full', 'E1'));
+  });
+
+  it('expires the accepted snapshot after six hours', () => {
+    assert.equal(LASTGOOD_TTL_S, 6 * 60 * 60);
+    assert.equal(LASTGOOD_MAX_AGE_MS, 6 * 60 * 60 * 1000);
+    assert.ok(ATTEMPT_META_TTL_S > LASTGOOD_TTL_S, 'attempt metadata outlives the snapshot');
+  });
+
+  it('accepts only structurally valid digests with real content', () => {
+    assert.ok(isAcceptableDigest(ONE_ITEM));
+    assert.ok(isAcceptableDigest(RICHER));
+    assert.ok(!isAcceptableDigest({ categories: {} }));
+    assert.ok(!isAcceptableDigest({ categories: { politics: { items: [] } } }));
+    assert.ok(!isAcceptableDigest(null));
+    assert.ok(!isAcceptableDigest(undefined));
+    assert.ok(!isAcceptableDigest({}));
+  });
+
+  it('replaces when there is no accepted snapshot or it has expired', () => {
+    assert.deepEqual(shouldReplaceAccepted(null, { categoryCount: 1, itemCount: 1 }, NOW), {
+      replace: true,
+      reason: 'no-accepted-snapshot',
+    });
+    const expired = { acceptedAt: NOW - LASTGOOD_MAX_AGE_MS - 1, categoryCount: 5, itemCount: 50 };
+    assert.deepEqual(shouldReplaceAccepted(expired, { categoryCount: 1, itemCount: 1 }, NOW), {
+      replace: true,
+      reason: 'current-expired',
+    });
+  });
+
+  it('does not expire at exactly the six-hour boundary -- only past it', () => {
+    const atBoundary = { acceptedAt: NOW - LASTGOOD_MAX_AGE_MS, categoryCount: 4, itemCount: 40 };
+    // Exactly at the bound is still live, so a narrower candidate must not win.
+    assert.equal(shouldReplaceAccepted(atBoundary, { categoryCount: 1, itemCount: 1 }, NOW).replace, false);
+    const justPast = { acceptedAt: NOW - LASTGOOD_MAX_AGE_MS - 1, categoryCount: 4, itemCount: 40 };
+    assert.equal(shouldReplaceAccepted(justPast, { categoryCount: 1, itemCount: 1 }, NOW).replace, true);
+  });
+
+  it('a materially narrower candidate serves but does not displace a richer live snapshot', () => {
+    const live = { acceptedAt: NOW - 60_000, categoryCount: 4, itemCount: 40 };
+    assert.deepEqual(shouldReplaceAccepted(live, { categoryCount: 2, itemCount: 40 }, NOW), {
+      replace: false,
+      reason: 'narrower-categories:2<4',
+    });
+    // Equal or richer on BOTH dimensions replaces.
+    assert.equal(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 40 }, NOW).replace, true);
+    assert.equal(shouldReplaceAccepted(live, { categoryCount: 6, itemCount: 60 }, NOW).replace, true);
+  });
+
+  it('richness is depth as well as breadth -- same categories, far fewer items does not displace', () => {
+    const live = { acceptedAt: NOW - 60_000, categoryCount: 4, itemCount: 400 };
+    // Comparing categories alone let this through, so a build that produced
+    // one item per category could evict a live snapshot holding hundreds.
+    assert.deepEqual(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 4 }, NOW), {
+      replace: false,
+      reason: 'narrower-items:4<400',
+    });
+  });
+
+  it('a malformed stored snapshot reads as "no snapshot", never as an unreplaceable one', () => {
+    // Missing fields used to produce NaN comparisons that were false in both
+    // directions, wedging the key until its TTL expired.
+    assert.equal(parseAcceptedMeta({ categoryCount: 3 }), null);
+    assert.equal(parseAcceptedMeta({ acceptedAt: 'nope', categoryCount: 3 }), null);
+    assert.equal(parseAcceptedMeta(null), null);
+    assert.deepEqual(parseAcceptedMeta({ acceptedAt: NOW, categoryCount: 3 }), {
+      acceptedAt: NOW, categoryCount: 3, itemCount: 0,
+    });
+  });
+
+  it('serves a valid snapshot inside the window and reports its age', () => {
+    const ageMs = 45 * 60 * 1000;
+    const verdict = classifyStaleSnapshot({ acceptedAt: NOW - ageMs, data: ONE_ITEM }, NOW);
+    assert.equal(verdict.serve, true);
+    assert.equal(verdict.outcome, 'stale');
+    assert.equal(verdict.ageSeconds, 45 * 60);
+  });
+
+  it('does not serve a missing, expired, future-dated, or empty snapshot', () => {
+    assert.equal(classifyStaleSnapshot(null, NOW).outcome, 'unavailable');
+    assert.equal(
+      classifyStaleSnapshot({ acceptedAt: NOW - LASTGOOD_MAX_AGE_MS - 5_000, data: ONE_ITEM }, NOW).outcome,
+      'expired',
+    );
+    // A future acceptedAt is corrupt, not zero-age.
+    assert.equal(classifyStaleSnapshot({ acceptedAt: NOW + 60_000, data: ONE_ITEM }, NOW).outcome, 'expired');
+    assert.equal(
+      classifyStaleSnapshot({ acceptedAt: NOW - 60_000, data: { categories: {} } }, NOW).outcome,
+      'unavailable',
+    );
+  });
+
+  it('applies the same revocation filter to item lists both paths share', () => {
+    const items = [
+      { link: 'https://a.test/1' },
+      { link: 'https://b.test/2' },
+      { link: undefined },
+    ];
+    assert.deepEqual(filterRevokedUrls(items, new Set()), { kept: items, dropped: 0 });
+    const filtered = filterRevokedUrls(items, new Set(['https://a.test/1']));
+    assert.deepEqual(
+      filtered.kept.map((i) => i.link),
+      ['https://b.test/2', undefined],
+    );
+    assert.equal(filtered.dropped, 1);
+  });
+
+  it('names the revocation key as a single narrow versioned set', () => {
+    assert.equal(REVOKED_URLS_KEY, 'news:digest:revoked-urls:v1');
+  });
+});
+
+/**
+ * Executable wiring tests (#7084).
+ *
+ * These replace a block that asserted `assert.match(digestSource, ...)` against
+ * list-feed-digest.ts read as TEXT. Those passed whether or not the code
+ * worked -- deleting a `return null` while leaving its console.warn in place
+ * kept them green -- so every defect in the serving path shipped past them.
+ * Here the module is bundled with its Redis boundary stubbed and the functions
+ * are actually invoked.
+ */
+describe('durable last-good wiring (#7084)', () => {
+  const root = resolve(here, '..');
+  type Read = { status: 'hit'; value: unknown } | { status: 'miss' } | { status: 'error'; error: unknown };
+
+  const stub = {
+    reads: new Map<string, Read>(),
+    writes: [] as Array<{ key: string; value: unknown; ttl: number }>,
+    pipeline: (async () => [{ result: [] }]) as (c: unknown[][]) => Promise<Array<{ result?: unknown; error?: string }>>,
+    // Lets a test drive listFeedDigest's cache-hit vs fresh-build branch.
+    fetchMeta: null as null | { data: unknown; source: string; leader: boolean },
+  };
+  let mod: any;
+
+  before(async () => {
+    (globalThis as any).__digestRedisStub = stub;
+    const shim = [
+      'const s = globalThis.__digestRedisStub;',
+      'export async function readCachedJson(k) { return s.reads.get(k) ?? { status: "miss" }; }',
+      'export async function setCachedJson(k, v, t) { s.writes.push({ key: k, value: v, ttl: t }); return true; }',
+      'export async function cachedFetchJson() { return null; }',
+      'export async function cachedFetchJsonWithMeta() { return s.fetchMeta ?? { data: null, source: "skipped", leader: false }; }',
+      'export async function getCachedJson() { return null; }',
+      'export async function getCachedJsonBatch() { return new Map(); }',
+      'export async function runRedisPipeline(c) { return s.pipeline(c); }',
+    ].join('\n');
+    const result = await build({
+      stdin: {
+        contents: "export * from './server/worldmonitor/news/v1/list-feed-digest.ts';",
+        loader: 'ts',
+        resolveDir: root,
+        sourcefile: 'digest-lastgood-test-entry.ts',
+      },
+      bundle: true,
+      format: 'esm',
+      logLevel: 'silent',
+      platform: 'node',
+      target: 'node20',
+      write: false,
+      plugins: [{
+        name: 'stub-redis',
+        setup(b: any) {
+          b.onResolve({ filter: /_shared\/redis$/ }, () => ({ path: 'redis-stub', namespace: 'redisstub' }));
+          b.onLoad({ filter: /.*/, namespace: 'redisstub' }, () => ({ contents: shim, loader: 'js' }));
+        },
+      }],
+    });
+    const source = result.outputFiles[0]?.text;
+    assert.ok(source, 'esbuild must emit the digest harness');
+    mod = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  });
+
+  const reset = () => {
+    stub.reads.clear();
+    stub.writes.length = 0;
+    stub.pipeline = async () => [{ result: [] }];
+    stub.fetchMeta = null;
+    mod.__testing__.fallbackDigestCache.clear();
+  };
+
+  /** Minimal ServerContext — listFeedDigest only touches ctx.request headers. */
+  const ctx = () => ({ request: new Request('https://x.test/api/news/v1/list-feed-digest') }) as any;
+
+  const COVERAGE = {
+    state: 'complete', attemptedAt: new Date(NOW).toISOString(), itemsServed: 1, publisherCount: 1,
+    feedTotal: 1, feedCompleted: 1, categoryTotal: 1, categoryCompleted: 1, categoryStates: { politics: 'ok' },
+    droppedFeedCap: 0, droppedUndated: 0, droppedFreshness: 0, droppedCategoryCap: 0,
+    servedStale: false, staleAgeSeconds: 0, staleReason: '',
+  };
+
+  const body = (links: string[], coverage?: unknown, generatedAt = new Date(NOW).toISOString()) => ({
+    categories: { politics: { items: links.map((l) => ({ link: l, source: 'S' })) } },
+    feedStatuses: {},
+    generatedAt,
+    ...(coverage === undefined ? {} : { coverage }),
+  });
+
+  it('a Redis READ ERROR never publishes -- it must not read as "no snapshot"', async () => {
+    reset();
+    stub.reads.set(lastGoodMetaKey('full', 'en'), { status: 'error', error: new Error('boom') });
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
+    assert.equal(
+      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
+      'a candidate must not clobber a live snapshot we could not read',
+    );
+  });
+
+  it('a genuine MISS does publish', async () => {
+    reset();
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
+    assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 1);
+  });
+
+  it('anchors acceptedAt to the CONTENT clock, not the write clock', async () => {
+    reset();
+    const generatedAt = new Date(NOW - 60 * 60 * 1000).toISOString();
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE, generatedAt));
+    const write = stub.writes.find((w) => w.key === lastGoodKey('full', 'en'));
+    assert.equal((write!.value as any).acceptedAt, Date.parse(generatedAt));
+  });
+
+  it('serveLastGood returns null -- never a durable claim -- when Redis is unreadable', async () => {
+    reset();
+    stub.reads.set(lastGoodKey('full', 'en'), { status: 'error', error: new Error('down') });
+    assert.equal(await mod.__testing__.serveLastGood('full', 'en', 'build-error', new Date(NOW).toISOString()), null);
+  });
+
+  it('a replayed snapshot is marked stale and its content is not re-dated', async () => {
+    reset();
+    const generatedAt = new Date(NOW - 30 * 60 * 1000).toISOString();
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: {
+        acceptedAt: Date.now() - 30 * 60 * 1000, categoryCount: 1, itemCount: 1,
+        data: body(['https://a/1'], COVERAGE, generatedAt),
+      },
+    });
+    const out = await mod.__testing__.serveLastGood('full', 'en', 'empty-rebuild', new Date(NOW).toISOString());
+    assert.ok(out, 'a snapshot inside the window must serve');
+    assert.equal(out.generatedAt, generatedAt, 'content must not be re-dated');
+    assert.equal(out.coverage.state, 'stale');
+    assert.equal(out.coverage.servedStale, true);
+    assert.equal(out.coverage.staleReason, 'empty-rebuild');
+  });
+
+  it('a snapshot with NO coverage block still comes back marked stale', async () => {
+    reset();
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: {
+        acceptedAt: Date.now() - 60_000, categoryCount: 1, itemCount: 1,
+        data: body(['https://a/1']), // pre-#7085 shape: no coverage at all
+      },
+    });
+    const out = await mod.__testing__.serveLastGood('full', 'en', 'build-error', new Date(NOW).toISOString());
+    assert.ok(out, 'must still serve');
+    assert.equal(out.coverage.servedStale, true, 'an unmarked replay is indistinguishable from fresh');
+    assert.equal(out.coverage.state, 'stale');
+  });
+
+  it('revocation applies to the stale path and the counts follow the served body', async () => {
+    reset();
+    stub.pipeline = async () => [{ result: ['https://a/1'] }];
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: {
+        acceptedAt: Date.now() - 60_000, categoryCount: 1, itemCount: 2,
+        data: body(['https://a/1', 'https://a/2'], { ...COVERAGE, itemsServed: 2 }),
+      },
+    });
+    const out = await mod.__testing__.serveLastGood('full', 'en', 'build-error', new Date(NOW).toISOString());
+    assert.deepEqual(
+      out.categories.politics.items.map((i: any) => i.link), ['https://a/2'],
+      'the revoked URL must be gone',
+    );
+    assert.equal(out.coverage.itemsServed, 1, 'counts must describe what was actually served');
+  });
+
+  it('every replay tier is stamped by the same marker, and it declares itself stale', async () => {
+    // Both the durable snapshot and the warm-isolate cache go through this one
+    // function, so neither tier can go out wearing its original build's state.
+    const out = mod.__testing__.markFallbackCoverageStale(
+      body(['https://a/1'], COVERAGE),
+      new Date(NOW).toISOString(),
+      { ageSeconds: 1800, reason: 'build-error' },
+    );
+    assert.equal(out.coverage.state, 'stale');
+    assert.equal(out.coverage.servedStale, true, 'a replay is not a fresh response');
+    assert.equal(out.coverage.staleAgeSeconds, 1800);
+    assert.equal(out.coverage.staleReason, 'build-error');
+  });
+
+  it('a coverage-less body still comes back marked stale, with reconstructed counts', () => {
+    const out = mod.__testing__.markFallbackCoverageStale(
+      body(['https://a/1', 'https://a/2']), // pre-coverage shape
+      new Date(NOW).toISOString(),
+      { ageSeconds: 60, reason: 'empty-rebuild' },
+    );
+    assert.equal(out.coverage.servedStale, true, 'an unmarked replay is indistinguishable from fresh');
+    assert.equal(out.coverage.state, 'stale');
+    assert.equal(out.coverage.itemsServed, 2);
+  });
+
+  it('the six-hour window is one policy, shared by both replay tiers', () => {
+    // The isolate tier classifies its entry through the same predicate the
+    // durable tier uses, so the two cannot drift on what "six hours" means.
+    const inWindow = classifyStaleSnapshot({ acceptedAt: NOW - 60_000, data: ONE_ITEM }, NOW);
+    assert.equal(inWindow.serve, true);
+    const past = classifyStaleSnapshot(
+      { acceptedAt: NOW - (LASTGOOD_MAX_AGE_MS + 5_000), data: ONE_ITEM },
+      NOW,
+    );
+    assert.equal(past.serve, false, 'content past the window must not be replayed');
+    assert.equal(past.outcome, 'expired');
+  });
+
+  it('a CACHE HIT does not republish the snapshot', async () => {
+    // The publish is a full read+write of the ~126KB snapshot, awaited before
+    // the response. Running it on every request (not just on a real rebuild)
+    // put that on the hot path and re-stamped acceptance for content that had
+    // not changed. Without this test, deleting the source === 'fresh' gate is
+    // a surviving mutant.
+    reset();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(
+      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
+      'a cache hit has nothing new to publish',
+    );
+  });
+
+  it('a real BUILD does publish the snapshot', async () => {
+    reset();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(
+      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 1,
+      'a fresh build is exactly when the snapshot should be refreshed',
+    );
+  });
+
+  it('a failed revocation read is reported unreadable, not as an empty set', async () => {
+    reset();
+    stub.pipeline = async () => [{ error: 'ERR' }];
+    const read = await mod.__testing__.readRevokedUrlSet();
+    assert.equal(read.readable, false);
+    assert.equal(read.urls.size, 0);
+  });
+
+  it('a genuinely empty revocation set is readable', async () => {
+    reset();
+    stub.pipeline = async () => [{ result: [] }];
+    assert.equal((await mod.__testing__.readRevokedUrlSet()).readable, true);
+  });
+});

@@ -94,6 +94,9 @@ export interface DigestCoverage {
   droppedUndated: number;
   droppedFreshness: number;
   droppedCategoryCap: number;
+  servedStale: boolean;
+  staleAgeSeconds: number;
+  staleReason: string;
 }
 
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
