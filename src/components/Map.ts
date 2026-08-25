@@ -265,6 +265,10 @@ export class MapComponent {
   // updateLayerTruncationLabels().
   private overlayUndisclosedTruncation: string[] = [];
   private renderedOverlayMarkerCount = 0;
+  // #7112: how many times renderOverlays() has rebuilt the overlay, surfaced
+  // through getOverlayMarkerBudgetState() so a test can assert that a view
+  // another render already re-planned is not rebuilt again.
+  private overlayRenderCount = 0;
   private lastTruncationLabelKey = '';
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
@@ -1766,6 +1770,7 @@ export class MapComponent {
     aircraft: readonly PositionSample[];
     protests: readonly SocialUnrestEvent[];
     conflictEvents: readonly AcledConflictEvent[];
+    weather: readonly WeatherAlert[];
   } {
     const withinTimeRange = <T extends { occurredAt: number }>(items: readonly T[]): readonly T[] => (
       this.state.timeRange === 'all'
@@ -1795,6 +1800,15 @@ export class MapComponent {
         ? this.protests.filter((event) => event.eventType === 'riot' || event.severity === 'high')
         : [],
       conflictEvents: withinTimeRange(layers.conflicts ? this.conflictEvents : []),
+      // `centroid` is optional on WeatherAlert and the render loop skips an alert
+      // without one, so an alert that can never become a marker must not be
+      // budgeted: it would inflate the `weather` group that fairShareCap sizes
+      // every other layer against, and overstate `total` in the shown/total badge
+      // with markers that were never renderable. Same plan/loop agreement rule as
+      // the earthquake slice (3356f19c8) — this is the only other feed with a
+      // per-marker data precondition; the `newsCount === 0` skips sit on exempt
+      // groups, which are outside the budget entirely.
+      weather: layers.weather ? this.weatherAlerts.filter((alert) => alert.centroid) : [],
     };
   }
 
@@ -1839,7 +1853,7 @@ export class MapComponent {
       add('natural', this.naturalEvents);
     }
     if (layers.economic) add('economic', ECONOMIC_CENTERS);
-    if (layers.weather) add('weather', this.weatherAlerts);
+    if (layers.weather) add('weather', slices.weather);
     if (layers.radiationWatch) add('radiationWatch', this.radiationObservations);
     if (layers.outages) add('outages', this.outages);
     if (layers.cables) {
@@ -1991,11 +2005,15 @@ export class MapComponent {
   /** Markers this render pass drew, and what the budget withheld (#7112). */
   public getOverlayMarkerBudgetState(): {
     rendered: number;
+    renders: number;
     truncated: Record<string, GlobeLayerTruncation>;
     undisclosed: string[];
   } {
     return {
       rendered: this.renderedOverlayMarkerCount,
+      // Overlay rebuild count. Lets a test assert that a view which another
+      // render already re-planned does not get rebuilt a second time.
+      renders: this.overlayRenderCount,
       truncated: this.overlayMarkerTruncation,
       // Layers trimmed with no toggle row to show a `shown/total` badge on.
       // Should be empty for any layer this variant's picker exposes.
@@ -2004,6 +2022,7 @@ export class MapComponent {
   }
 
   private renderOverlays(projection: d3.GeoProjection): void {
+    this.overlayRenderCount += 1;
     setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
     this.labelVisibilityScheduled = false;
     const slices = this.overlayFeedSlices();
@@ -2299,10 +2318,9 @@ export class MapComponent {
 
     // Weather Alerts (severity icons)
     if (this.state.layers.weather) {
-      this.weatherAlerts.forEach((alert) => {
+      slices.weather.forEach((alert) => {
         if (this.isOverlayMarkerCut(alert)) return;
-        if (!alert.centroid) return;
-        const pos = projection(alert.centroid);
+        const pos = projection(alert.centroid as [number, number]);
         if (!pos) return;
 
         const div = document.createElement('div');
@@ -4397,18 +4415,7 @@ export class MapComponent {
     const { width, height } = this.getKnownContainerSize();
     this.clampPan(width, height);
     const zoom = this.state.zoom;
-    // Only when something is actually being withheld: with nothing truncated the
-    // selection is view-independent, so a rebuild cannot change a single marker
-    // and would be pure churn on the very path this feature exists to make
-    // cheaper. Same guard, and same reason, as GlobeMap.reselectMarkersForViewport.
-    const overlayBudgetViewportChanged =
-      this.initialDynamicRendered &&
-      Object.keys(this.overlayMarkerTruncation).length > 0 &&
-      (this.lastOverlayBudgetViewport.width !== width ||
-        this.lastOverlayBudgetViewport.height !== height ||
-        this.lastOverlayBudgetViewport.zoom !== zoom ||
-        this.lastOverlayBudgetViewport.panX !== this.state.pan.x ||
-        this.lastOverlayBudgetViewport.panY !== this.state.pan.y);
+    const overlayBudgetViewportChanged = this.overlayBudgetPlanIsStale(width, height);
 
     // With transform-origin: 0 0, we need to offset to keep center in view
     // Formula: translate first to re-center, then scale
@@ -4473,8 +4480,37 @@ export class MapComponent {
     this.overlayBudgetReplanTimer = setTimeout(() => {
       this.overlayBudgetReplanTimer = null;
       if (this.destroyed) return;
+      // Re-test rather than firing unconditionally. A render triggered by
+      // anything else during the settle window — every setX() data setter calls
+      // render(), and feeds stream continuously — has already re-planned for the
+      // current viewport, so the plan is no longer stale and this timer would
+      // schedule a second full renderDynamicLayers() pass that cannot change a
+      // marker. That duplicate is the exact churn this debounce exists to remove.
+      const { width, height } = this.getKnownContainerSize();
+      if (!this.overlayBudgetPlanIsStale(width, height)) return;
       this.scheduleRender();
     }, MapComponent.OVERLAY_BUDGET_REPLAN_SETTLE_MS);
+  }
+
+  /**
+   * True when the stored budget plan was computed for a different viewport than
+   * the current one, AND re-planning could actually change what is drawn.
+   *
+   * The truncation test is the load-bearing half: with nothing withheld the
+   * selection is view-independent, so a rebuild cannot change a single marker and
+   * would be pure churn on the very path this feature exists to make cheaper.
+   * Same guard, and same reason, as GlobeMap.reselectMarkersForViewport.
+   */
+  private overlayBudgetPlanIsStale(width: number, height: number): boolean {
+    return (
+      this.initialDynamicRendered &&
+      Object.keys(this.overlayMarkerTruncation).length > 0 &&
+      (this.lastOverlayBudgetViewport.width !== width ||
+        this.lastOverlayBudgetViewport.height !== height ||
+        this.lastOverlayBudgetViewport.zoom !== this.state.zoom ||
+        this.lastOverlayBudgetViewport.panX !== this.state.pan.x ||
+        this.lastOverlayBudgetViewport.panY !== this.state.pan.y)
+    );
   }
 
   private shouldUpdateLabelVisibility(): boolean {

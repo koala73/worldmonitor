@@ -21,6 +21,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 const DESKTOP_TOTAL = 800;
 const DESKTOP_PER_LAYER = 300;
+// MAP_OVERLAY_MARKER_BUDGET_MOBILE — the branch `isMobile` selects.
+const MOBILE_TOTAL = 400;
+const MOBILE_PER_LAYER = 150;
 const STRESS_PER_FEED = 2000;
 const DASHBOARD_MAX_DOM_NODES = 12000;
 // Chromium's renderer-wide metric includes a small amount of browser-owned
@@ -58,6 +61,8 @@ type BudgetState = {
   truncated: Record<string, { shown: number; total: number }>;
   /** Trimmed layers with no toggle row to disclose the cut on; see #7112. */
   undisclosed: string[];
+  /** Overlay rebuild count, for the duplicate-rebuild assertion. */
+  renders: number;
 };
 
 type HarnessWindow = Window & {
@@ -71,6 +76,8 @@ type HarnessWindow = Window & {
     getOverlayMarkerCount: () => number;
     getOverlayMarkerClassCount: (selector: string) => number;
     getOverlayPositionSignature: (selector: string) => string;
+    seedWeatherAlerts: (withCentroid: number, withoutCentroid: number) => void;
+    forceRender: () => void;
     getKeptHotspotCoords: () => Coord[];
     getSeededHotspotCoords: () => Coord[];
     getOverlayBudgetState: () => BudgetState;
@@ -345,6 +352,165 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
     await expect(badge).toHaveText(`${state.truncated.military!.shown}/${state.truncated.military!.total}`);
 
     expect(pageErrors).toEqual([]);
+  });
+
+  test('applies the tighter mobile ceiling when the renderer is on its mobile branch', async ({ page }) => {
+    // The desktop tests above all run `isMobile: false`, so without this the
+    // mobile budget constant is referenced by the code and asserted by nothing.
+    await page.goto('/tests/mobile-map-integration-harness.html?mobile=1');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    await page.evaluate(
+      (perFeed) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedOverlayMarkerStress(perFeed),
+      STRESS_PER_FEED,
+    );
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => {
+            const harness = (window as HarnessWindow).__mobileMapIntegrationHarness!;
+            return (
+              harness.getOverlayMarkerClassCount('.military-vessel-marker') > 0 &&
+              harness.getOverlayMarkerClassCount('.military-flight-marker') > 0
+            );
+          }),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+
+    const state = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState(),
+    );
+    const counts = await page.evaluate(() => {
+      const harness = (window as HarnessWindow).__mobileMapIntegrationHarness!;
+      return {
+        overlayChildren: harness.getOverlayMarkerCount(),
+        vessels: harness.getOverlayMarkerClassCount('.military-vessel-marker'),
+        flights: harness.getOverlayMarkerClassCount('.military-flight-marker'),
+      };
+    });
+
+    // The mobile ceilings, and — the point of the test — NOT the desktop ones:
+    // a component that ignored isMobile would sit under 800/300 and pass every
+    // assertion that only bounded from above by the desktop numbers.
+    expect(state.rendered).toBeLessThanOrEqual(MOBILE_TOTAL);
+    expect(counts.overlayChildren).toBeLessThanOrEqual(MOBILE_TOTAL);
+    expect(counts.vessels).toBeLessThanOrEqual(MOBILE_PER_LAYER);
+    expect(counts.flights).toBeLessThanOrEqual(MOBILE_PER_LAYER);
+    expect(counts.vessels).toBeGreaterThan(0);
+    expect(counts.flights).toBeGreaterThan(0);
+    // Strictly tighter than desktop would have been on the same seed, so this
+    // cannot pass with the desktop budget selected.
+    expect(counts.vessels + counts.flights).toBeGreaterThan(MOBILE_TOTAL / 4);
+    expect(counts.vessels + counts.flights).toBeLessThan(DESKTOP_TOTAL);
+    expect(state.undisclosed).toEqual([]);
+  });
+
+  test('does not budget weather alerts that can never be drawn', async ({ page }) => {
+    await page.goto('/tests/mobile-map-integration-harness.html');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    // 400 renderable alerts past the 300 per-layer cap, behind 1,000 that have no
+    // `centroid`. The render loop can only ever draw the 400.
+    const RENDERABLE = 400;
+    await page.evaluate(
+      (renderable) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedWeatherAlerts(renderable, 1000),
+      RENDERABLE,
+    );
+
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayMarkerClassCount(
+              '.weather-marker',
+            ),
+          ),
+        { timeout: 15000 },
+      )
+      .toBeGreaterThan(0);
+
+    const state = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState(),
+    );
+
+    // The badge must count what was renderable, not what arrived. Budgeting the
+    // raw feed would report 1,400 here and tell the user 300/1400 when 1,000 of
+    // those were never going to appear under any budget.
+    expect(state.truncated.weather?.total).toBe(RENDERABLE);
+    expect(state.truncated.weather?.shown).toBe(DESKTOP_PER_LAYER);
+  });
+
+  test('does not rebuild again when another render already re-planned the new view', async ({ page }) => {
+    await page.goto('/tests/mobile-map-integration-harness.html');
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+
+    // Truncation must exist, or the replan is skipped outright and this passes
+    // for the wrong reason.
+    await page.evaluate(
+      (count) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedOverlayViewportStress(count),
+      2000,
+    );
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            Object.keys(
+              (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState()
+                .truncated,
+            ).length,
+          ),
+        { timeout: 15000 },
+      )
+      .toBeGreaterThan(0);
+    await page.waitForTimeout(1200);
+
+    const before = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState().renders,
+    );
+    expect(before).toBeGreaterThan(0);
+
+    // Pan (starts the settle timer), then land a render inside the settle window
+    // — which is what production does constantly, since every data setter calls
+    // render(). That render re-plans for the new viewport, so by the time the
+    // timer fires the plan is no longer stale and a rebuild cannot change a
+    // marker. A timer that fires unconditionally rebuilds the whole dynamic
+    // layer a second time for a viewport it already planned.
+    await page.evaluate(() => {
+      const harness = (window as HarnessWindow).__mobileMapIntegrationHarness!;
+      harness.setOverlayViewport(-30, 60);
+      harness.forceRender();
+    });
+
+    await page.waitForTimeout(2500);
+    const after = await page.evaluate(() =>
+      (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState().renders,
+    );
+
+    // Exactly one rebuild for the new viewport — the one the in-window render
+    // already performed.
+    expect(after).toBe(before + 1);
   });
 
   test('keeps the highest-magnitude earthquakes when the natural feed is cut', async ({ page }) => {
