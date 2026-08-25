@@ -224,9 +224,13 @@ export default async function handler(
       // setPreferences) was the *other* near-expiry feeder: `getClerkToken`
       // stamped Clerk's stale-while-revalidate leftover with a flat 50s TTL,
       // so tokens with ≤15s of life still passed the edge and died at Convex.
-      // #5753 bound reuse by the token's own `exp` (2026-07-28T17:57Z); the
-      // last high-rate event (22:40Z) is stale-bundle tail. Residual ~5 ev/wk
-      // is this designed two-verifier baseline, not an open defect. See
+      // That defect was constant from #1812, though, so it sets the failure
+      // rate per write, not the ramp — the climb was exposure: #4323, #4741
+      // and #4926 each moved more state onto the cloud-prefs write path. Both
+      // terms were cut on 2026-07-28, #5755 (10:32Z, serialized writes) and
+      // #5753 (17:57Z, `exp`-bounded reuse); the last high-rate event (22:40Z)
+      // ran a deploy that already carried both, so it is stale client bundle.
+      // Residual ~5 ev/wk is this designed two-verifier baseline. See
       // docs/solutions/integration-issues/convex-auth-drift-ramp-was-stacked-clerk-token-cache.md.
       //
       // Every other UNAUTHENTICATED here is genuine auth/audience/issuer
@@ -379,6 +383,15 @@ export default async function handler(
       // passed validateBearerToken). Capture at `warning` for visibility
       // without paging — the observed pattern is transient
       // single-event-per-user that recovers on client retry (WORLDMONITOR-QK).
+      //
+      // This is the capture that produced the QK population: the `method` tag
+      // reads POST on 354 of 354 retained events, none from the GET branch.
+      // It is therefore the one to watch after any change that puts more state
+      // on the cloud-prefs write path — QK volume is the near-expiry failure
+      // rate times POST volume, so growing `CLOUD_SYNC_KEYS` raises this
+      // bucket with no auth regression at all. That is what the May–July 2026
+      // 13.6x ramp was; see
+      // docs/solutions/integration-issues/convex-auth-drift-ramp-was-stacked-clerk-token-cache.md.
       if (session.acceptedWithinClockTolerance) {
         console.warn(
           '[user-prefs] POST 401 for token accepted within edge clock tolerance (expected near-expiry, not drift)',
