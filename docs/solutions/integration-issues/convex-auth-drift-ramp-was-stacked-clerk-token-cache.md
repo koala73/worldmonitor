@@ -70,11 +70,13 @@ The stacked cache explains *why any given POST failed*. It cannot on its own exp
 
 What climbed was the number of POSTs. QK volume is the product of two terms — the per-write failure probability (constant) and the write volume (not constant) — so the ramp is an **exposure** curve, and the exposure grew every time another piece of state started riding the cloud-prefs write path:
 
-| Merged | PR | What it added to the write path | QK that week |
-|---|---|---|---|
-| 2026-06-16 | [#4323](https://github.com/koala73/worldmonitor/pull/4323) | Dashboard tabs — each tab persists its own panel selection and order | 26 (from 17) |
-| 2026-07-04 | [#4741](https://github.com/koala73/worldmonitor/pull/4741) | Per-Clerk-user dirty markers for monitor edits, plus a refresh on cloud-applied change | 52 |
-| 2026-07-06 | [#4926](https://github.com/koala73/worldmonitor/pull/4926) | `wm-read-state-v1` added to `CLOUD_SYNC_KEYS` — a visit timestamp flushed on every hide/unload | 109 (peak, two weeks later) |
+| Merged | PR | What it added to the write path |
+|---|---|---|
+| 2026-06-16 | [#4323](https://github.com/koala73/worldmonitor/pull/4323) | Dashboard tabs — each tab persists its own panel selection and order |
+| 2026-07-04 | [#4741](https://github.com/koala73/worldmonitor/pull/4741) | Per-Clerk-user dirty markers for monitor edits, plus a refresh on cloud-applied change |
+| 2026-07-06 | [#4926](https://github.com/koala73/worldmonitor/pull/4926) | `wm-read-state-v1` added to `CLOUD_SYNC_KEYS` — a visit timestamp flushed on every hide/unload |
+
+Set against the weekly series (17 on 2026-06-08, 26 on 06-15, 52 on 07-06, 109 on 07-20), all three land in or just before the weeks that step up, and #4926 in particular precedes the steepest climb to the peak. Be careful how much that is asked to carry: the series in #7092 is abridged, weekly buckets are coarse next to merge timestamps, and no per-week write-volume metric was retained to measure exposure directly. What is solid is the mechanism and the direction — the write path demonstrably grew three times across the ramp, and QK volume is proportional to it. Attributing a particular week's count to a particular PR is not supported.
 
 The apparent counter-example does not hold. [#4588](https://github.com/koala73/worldmonitor/pull/4588) and [#4639](https://github.com/koala73/worldmonitor/pull/4639) (2026-07-01/02) added a per-user write budget, and the ramp went on to peak on 2026-07-20 regardless — but that budget is **30 writes/minute**, a ceiling sized to stop a runaway client, not to shape ordinary sync traffic. It never bound the population producing QK.
 
