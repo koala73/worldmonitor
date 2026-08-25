@@ -644,9 +644,13 @@ function shouldReuseCachedClerkTokenWithExpiry(
  * in the background — so the premise this cache was built on ("Clerk tokens
  * expire at 60s", i.e. every token arrives fresh) does not hold. Stamping a
  * token that had 12s left with a flat 50s TTL left ~38s in which every request
- * it signed came back 401, healing only when the TTL lapsed. Tokens that were
- * still inside `exp` at the edge and dead at Convex landed in QK; tokens
- * already past `exp` 401'd at the edge (XR/XQ).
+ * it signed came back 401, healing only when the TTL lapsed. Which Sentry
+ * bucket a leftover lands in depends on how dead it is by the time the edge
+ * sees it — three outcomes, not two; see Two-Verifier Seam in CONCEPTS.md.
+ * Still inside `exp` and rejected by Convex is QK; past `exp` but inside the
+ * edge's `clockTolerance` also reaches Convex, and is kept out of QK by the
+ * capture skip rather than by any edge 401; only past `exp` AND past that
+ * tolerance is refused at the edge (XR/XQ).
  *
  * The TTL is still enforced on top: it is what bounds how long a session that
  * was revoked but not yet expired keeps working.
