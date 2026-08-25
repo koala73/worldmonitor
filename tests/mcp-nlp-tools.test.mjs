@@ -172,7 +172,12 @@ describe('#5697 NLP MCP tools', () => {
     return { response, body, result, pipe };
   }
 
-  async function withDigestCategories(categories, run, feedStatuses = { fixture: 'empty' }) {
+  async function withDigestCategories(
+    categories,
+    run,
+    feedStatuses = { fixture: 'empty' },
+    coverage = undefined,
+  ) {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (input, init = {}) => {
       const url = String(input);
@@ -182,6 +187,7 @@ describe('#5697 NLP MCP tools', () => {
           generatedAt: '2026-07-28T12:00:00.000Z',
           feedStatuses,
           categories,
+          ...(coverage ? { coverage } : {}),
         });
       }
       return previousFetch(input, init);
@@ -248,6 +254,31 @@ describe('#5697 NLP MCP tools', () => {
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.source.type, 'string');
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.risk.type, 'string');
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.stateAffiliated.type, 'string');
+    const digestCoverageFields = [
+      'state',
+      'servedItems',
+      'servedPublishers',
+      'feedsCompleted',
+      'feedsTotal',
+      'categoriesCompleted',
+      'categoriesTotal',
+      'missingCategories',
+      'stale',
+    ];
+    for (const toolName of ['extract_entities', 'get_news_clusters']) {
+      const coverageSchema = byName.get(toolName)?.outputSchema.properties.digestCoverage;
+      assert.equal(coverageSchema?.type, 'object', `${toolName} must advertise digestCoverage`);
+      assert.equal(coverageSchema?.additionalProperties, false);
+      assert.deepEqual(coverageSchema?.required, digestCoverageFields);
+      assert.deepEqual(
+        coverageSchema?.properties.state.enum,
+        ['complete', 'partial', 'stale', 'unavailable'],
+      );
+      assert.equal(coverageSchema?.properties.servedItems.type, 'integer');
+      assert.equal(coverageSchema?.properties.servedPublishers.type, 'integer');
+      assert.equal(coverageSchema?.properties.missingCategories.items.type, 'string');
+      assert.equal(coverageSchema?.properties.stale.type, 'boolean');
+    }
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
     const classifyOutput = byName.get('classify_event')?.outputSchema;
     assert.deepEqual(classifyOutput.properties.classification.required,
@@ -292,6 +323,114 @@ describe('#5697 NLP MCP tools', () => {
       listedSpike?.description ?? '',
       /title, source, link/,
       'tools/list compressed description must still name the sample shape',
+    );
+  });
+
+  it('projects complete digest coverage through both digest-backed tools', async () => {
+    const coverage = {
+      state: 'complete',
+      itemsServed: 3,
+      publisherCount: 3,
+      feedCompleted: 3,
+      feedTotal: 3,
+      categoryCompleted: 2,
+      categoryTotal: 2,
+      categoryStates: { politics: 'ok', tech: 'ok' },
+    };
+    const expected = {
+      state: 'complete',
+      servedItems: 3,
+      servedPublishers: 3,
+      feedsCompleted: 3,
+      feedsTotal: 3,
+      categoriesCompleted: 2,
+      categoriesTotal: 2,
+      missingCategories: [],
+      stale: false,
+    };
+
+    await withDigestCategories(
+      digestResponse.categories,
+      async () => {
+        for (const toolName of ['extract_entities', 'get_news_clusters']) {
+          const { body, result } = await callTool(toolName, {});
+          assert.equal(body.error, undefined, `${toolName} must return a normal tool result`);
+          assert.deepEqual(result.digestCoverage, expected);
+        }
+      },
+      digestResponse.feedStatuses,
+      coverage,
+    );
+  });
+
+  it('returns explicit unavailable coverage as a normal empty result for both tools', async () => {
+    const coverage = {
+      state: 'unavailable',
+      itemsServed: 0,
+      publisherCount: 0,
+      feedCompleted: 0,
+      feedTotal: 4,
+      categoryCompleted: 0,
+      categoryTotal: 1,
+      categoryStates: { accelerators: 'missing' },
+    };
+    const expected = {
+      state: 'unavailable',
+      servedItems: 0,
+      servedPublishers: 0,
+      feedsCompleted: 0,
+      feedsTotal: 4,
+      categoriesCompleted: 0,
+      categoriesTotal: 1,
+      missingCategories: ['accelerators'],
+      stale: false,
+    };
+
+    await withDigestCategories(
+      {},
+      async () => {
+        const entities = await callTool('extract_entities', {
+          variant: 'tech',
+          category: 'accelerators',
+        });
+        assert.equal(entities.body.error, undefined);
+        assert.equal(entities.result.mode, 'headlines');
+        assert.equal(entities.result.headlineCount, 0);
+        assert.deepEqual(entities.result.entities, []);
+        assert.deepEqual(entities.result.patternEntities, []);
+        assert.equal(entities.result.note, undefined);
+        assert.deepEqual(entities.result.digestCoverage, expected);
+
+        const clusters = await callTool('get_news_clusters', {
+          variant: 'tech',
+          category: 'accelerators',
+        });
+        assert.equal(clusters.body.error, undefined);
+        assert.equal(clusters.result.headlineCount, 0);
+        assert.equal(clusters.result.totalClusters, 0);
+        assert.deepEqual(clusters.result.clusters, []);
+        assert.equal(clusters.result.note, undefined);
+        assert.deepEqual(clusters.result.digestCoverage, expected);
+      },
+      {},
+      coverage,
+    );
+  });
+
+  it('keeps empty malformed coverage on the retryable source-outage path', async () => {
+    await withDigestCategories(
+      {},
+      async () => {
+        for (const toolName of ['extract_entities', 'get_news_clusters']) {
+          const { body, result } = await callTool(toolName, { variant: 'tech' });
+          assert.equal(result, null);
+          assert.equal(body.error?.code, -32003);
+          assert.equal(body.error?.data?.retryable, true);
+          assert.deepEqual(body.error?.data?.unavailable_inputs, ['news:digest:v1:tech:en']);
+        }
+      },
+      {},
+      { state: 'unknown' },
     );
   });
 

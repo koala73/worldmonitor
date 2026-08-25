@@ -93,6 +93,50 @@ const BATCH_CONCURRENCY = 20;
 
 type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
 
+function markFallbackCoverageStale(
+  fallback: ListFeedDigestResponse,
+  attemptedAt: string,
+): ListFeedDigestResponse {
+  const coverage = fallback.coverage;
+  if (coverage) {
+    return {
+      ...fallback,
+      coverage: {
+        ...coverage,
+        state: 'stale',
+        attemptedAt,
+      },
+    };
+  }
+
+  // Redis can still contain a digest written before the coverage field was
+  // introduced. Keep that retained content useful, but do not describe it as
+  // current. Only content-derived counts can be reconstructed here.
+  const categoryEntries = Object.entries(fallback.categories);
+  const items = categoryEntries.flatMap(([, bucket]) => bucket.items);
+  const categoryStates = Object.fromEntries(
+    categoryEntries.map(([category, bucket]) => [category, bucket.items.length > 0 ? 'ok' : 'missing']),
+  );
+  return {
+    ...fallback,
+    coverage: {
+      state: 'stale',
+      attemptedAt,
+      itemsServed: items.length,
+      publisherCount: new Set(items.map(item => publisherFamilyFor(item.source))).size,
+      feedTotal: 0,
+      feedCompleted: 0,
+      categoryTotal: Object.keys(categoryStates).length,
+      categoryCompleted: Object.values(categoryStates).filter(state => state === 'ok').length,
+      categoryStates,
+      droppedFeedCap: 0,
+      droppedUndated: 0,
+      droppedFreshness: 0,
+      droppedCategoryCap: 0,
+    },
+  };
+}
+
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
 // component already treats anything older than 24h as zero recency, so the
@@ -1287,6 +1331,7 @@ export async function listFeedDigest(
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
+  const attemptedAt = new Date().toISOString();
 
   // #7085: an empty response still carries an explicit `unavailable`
   // coverage block so clients can distinguish "nothing served" from
@@ -1331,7 +1376,8 @@ export async function listFeedDigest(
 
     if (fresh === null) {
       markNoCacheResponse(ctx.request);
-      return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
+      const fallback = fallbackDigestCache.get(fallbackKey)?.data;
+      return fallback ? markFallbackCoverageStale(fallback, attemptedAt) : empty();
     }
 
     if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
@@ -1339,7 +1385,8 @@ export async function listFeedDigest(
     return fresh;
   } catch {
     markNoCacheResponse(ctx.request);
-    return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
+    const fallback = fallbackDigestCache.get(fallbackKey)?.data;
+    return fallback ? markFallbackCoverageStale(fallback, attemptedAt) : empty();
   }
 }
 
@@ -2086,6 +2133,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  markFallbackCoverageStale,
   buildDigestFeedBatches,
   parseRssXml,
   decodeXmlEntities,

@@ -633,7 +633,9 @@ export class DataLoaderManager implements AppModule {
 
     if (this.digestBreaker.state === 'open') {
       if (now < this.digestBreaker.cooldownUntil) {
-        return this.getRetainedDigest(requestKey) ?? await this.loadPersistedDigest(requestKey);
+        const fallback = this.getRetainedDigest(requestKey) ?? await this.loadPersistedDigest(requestKey);
+        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+        return fallback;
       }
       this.digestBreaker.state = 'half-open';
     }
@@ -656,7 +658,6 @@ export class DataLoaderManager implements AppModule {
       if (catCount === 0) throw new Error('digest returned 0 categories');
       markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
-      this.reportDigestCoverage(data);
       this.persistDigest(requestKey, data);
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
 
@@ -665,9 +666,12 @@ export class DataLoaderManager implements AppModule {
         // The response is valid for the scope it requested and may refresh that
         // scope's persistent cache, but it must not become live data or an
         // in-memory fallback for the language now active.
-        return this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+        const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+        return fallback;
       }
       this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
+      this.reportDigestCoverage(data);
       return data;
     } catch (e) {
       markLcpDebug('wm:data:feed-digest-error');
@@ -678,7 +682,9 @@ export class DataLoaderManager implements AppModule {
         this.digestBreaker.cooldownUntil = now + this.digestBreakerCooldownMs;
       }
       const currentKey = this.digestCacheKey();
-      return this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+      return fallback;
     }
   }
 
@@ -730,24 +736,31 @@ export class DataLoaderManager implements AppModule {
    * guards throughout — persisted last-good digests from before the coverage
    * rollout carry no coverage field at all.
    */
-  private reportDigestCoverage(digest: ListFeedDigestResponse): void {
-    const cov = digest.coverage;
+  private reportDigestCoverage(
+    digest: ListFeedDigestResponse | null,
+    stateOverride?: 'stale' | 'unavailable',
+  ): void {
+    const cov = digest?.coverage;
     if (!cov || typeof cov.state !== 'string') {
+      const categoryEntries = digest ? Object.entries(digest.categories) : [];
+      const items = categoryEntries.flatMap(([, bucket]) => bucket.items);
       this.ctx.statusPanel?.updateDigestCoverage({
-        state: 'unknown',
-        itemsServed: 0,
-        publisherCount: 0,
+        state: stateOverride ?? 'unknown',
+        itemsServed: items.length,
+        publisherCount: new Set(items.map(item => item.source).filter(Boolean)).size,
         feedsCompleted: 0,
         feedsTotal: 0,
-        categoriesCompleted: 0,
-        categoriesTotal: 0,
-        missingCategories: [],
+        categoriesCompleted: categoryEntries.filter(([, bucket]) => bucket.items.length > 0).length,
+        categoriesTotal: categoryEntries.length,
+        missingCategories: categoryEntries
+          .filter(([, bucket]) => bucket.items.length === 0)
+          .map(([category]) => category),
       });
       return;
     }
-    const state = cov.state === 'complete' || cov.state === 'partial' || cov.state === 'stale' || cov.state === 'unavailable'
+    const state = stateOverride ?? (cov.state === 'complete' || cov.state === 'partial' || cov.state === 'stale' || cov.state === 'unavailable'
       ? cov.state
-      : 'unknown';
+      : 'unknown');
     this.ctx.statusPanel?.updateDigestCoverage({
       state,
       itemsServed: Number(cov.itemsServed) || 0,

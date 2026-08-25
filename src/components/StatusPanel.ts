@@ -118,8 +118,8 @@ export class StatusPanel extends Panel {
     if (!this.digestCoverageRow) {
       this.digestCoverageRow = h('div', {
         className: 'digest-coverage-row',
-        role: 'status',
-        'aria-live': 'polite',
+        role: 'status',
+        'aria-live': 'polite',
         'aria-label': 'Digest coverage status',
       });
       this.element.appendChild(this.digestCoverageRow);

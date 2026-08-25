@@ -140,6 +140,45 @@ type NlpDigestCategoryGroup = {
   }>;
 };
 
+const NLP_DIGEST_COVERAGE_STATES = ['complete', 'partial', 'stale', 'unavailable'] as const;
+type NlpDigestCoverageState = typeof NLP_DIGEST_COVERAGE_STATES[number];
+
+const NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'state',
+    'servedItems',
+    'servedPublishers',
+    'feedsCompleted',
+    'feedsTotal',
+    'categoriesCompleted',
+    'categoriesTotal',
+    'missingCategories',
+    'stale',
+  ],
+  properties: {
+    state: {
+      type: 'string',
+      enum: [...NLP_DIGEST_COVERAGE_STATES],
+      description: 'Coverage state for the digest attempt: complete, partial, stale, or unavailable.',
+    },
+    servedItems: { type: 'integer', minimum: 0, description: 'Headlines served in this response.' },
+    servedPublishers: { type: 'integer', minimum: 0, description: 'Distinct normalized publishers served.' },
+    feedsCompleted: { type: 'integer', minimum: 0 },
+    feedsTotal: { type: 'integer', minimum: 0 },
+    categoriesCompleted: { type: 'integer', minimum: 0 },
+    categoriesTotal: { type: 'integer', minimum: 0 },
+    missingCategories: {
+      type: 'array',
+      maxItems: 12,
+      items: { type: 'string' },
+      description: 'Digest categories that did not complete in the current attempt.',
+    },
+    stale: { type: 'boolean', description: 'True when the response serves retained content from an earlier attempt.' },
+  },
+} as const;
+
 type NlpDigestFetch = {
   items: NewsItemCore[];
   generatedAt: string;
@@ -154,7 +193,7 @@ type NlpDigestFetch = {
    * and missing category names. Agents can condition summaries on it.
    */
   digestCoverage?: {
-    state: string;
+    state: NlpDigestCoverageState;
     servedItems: number;
     servedPublishers: number;
     feedsCompleted: number;
@@ -217,7 +256,32 @@ async function fetchNlpDigestItems(
   const seen = new Set<string>();
   const items: NewsItemCore[] = [];
   const categories = body.categories ?? {};
-  if (Object.keys(categories).length === 0 && Object.keys(body.feedStatuses ?? {}).length === 0) {
+  // #7085: carry the digest's coverage block through to agents in a
+  // compact, closed shape. Unknown states are malformed, not synonyms for
+  // `unavailable`, because only an explicit upstream state can distinguish a
+  // valid empty attempt from an absent digest response.
+  const cov = body.coverage;
+  const digestCoverage = cov && isNlpDigestCoverageState(cov.state)
+    ? {
+      state: cov.state,
+      servedItems: nlpClampInt(cov.itemsServed ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      servedPublishers: nlpClampInt(cov.publisherCount ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      feedsCompleted: nlpClampInt(cov.feedCompleted ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      feedsTotal: nlpClampInt(cov.feedTotal ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      categoriesCompleted: nlpClampInt(cov.categoryCompleted ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      categoriesTotal: nlpClampInt(cov.categoryTotal ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      missingCategories: Object.entries(cov.categoryStates ?? {})
+        .filter(([, v]) => v === 'missing')
+        .map(([k]) => k)
+        .slice(0, 12),
+      stale: cov.state === 'stale',
+    }
+    : undefined;
+  if (
+    Object.keys(categories).length === 0
+    && Object.keys(body.feedStatuses ?? {}).length === 0
+    && digestCoverage?.state !== 'unavailable'
+  ) {
     throw new McpSourceUnavailableError(
       `Feed digest unavailable for ${variant}/en`,
       [`news:digest:v1:${variant}:en`],
@@ -232,6 +296,11 @@ async function fetchNlpDigestItems(
     groups = Object.values(categories);
   } else if (Object.prototype.hasOwnProperty.call(categories, category)) {
     groups = [categories[category]!];
+  } else if (digestCoverage?.state === 'unavailable') {
+    // This is a valid empty response, not an unknown category. Preserve the
+    // requested filter and the explicit coverage state without a misleading
+    // corrective note.
+    groups = [];
   } else {
     groups = [];
     // Prefer the live snapshot keys so agents see what this cycle actually
@@ -276,27 +345,6 @@ async function fetchNlpDigestItems(
       });
     }
   }
-  // #7085: carry the digest's coverage block through to agents in a
-  // compact, closed shape. Counts pass through only when the upstream
-  // digest actually sent them; a digest without coverage simply omits it.
-  const cov = body.coverage;
-  const digestCoverage = cov && typeof cov.state === 'string'
-    ? {
-      state: nlpClampDigestCoverageState(cov.state),
-      servedItems: nlpClampInt(cov.itemsServed ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
-      servedPublishers: nlpClampInt(cov.publisherCount ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
-      feedsCompleted: nlpClampInt(cov.feedCompleted ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
-      feedsTotal: nlpClampInt(cov.feedTotal ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
-      categoriesCompleted: nlpClampInt(cov.categoryCompleted ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
-      categoriesTotal: nlpClampInt(cov.categoryTotal ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
-      missingCategories: Object.entries(cov.categoryStates ?? {})
-        .filter(([, v]) => v === 'missing')
-        .map(([k]) => k)
-        .slice(0, 12),
-      stale: cov.state === 'stale',
-    }
-    : undefined;
-
   return {
     items,
     generatedAt: nlpTruncateUtf8(body.generatedAt ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
@@ -308,10 +356,9 @@ async function fetchNlpDigestItems(
 }
 
 /** Coverage states are a closed vocabulary — pass through only the known four. */
-function nlpClampDigestCoverageState(value: string): string {
-  return value === 'complete' || value === 'partial' || value === 'stale' || value === 'unavailable'
-    ? value
-    : 'unavailable';
+function isNlpDigestCoverageState(value: unknown): value is NlpDigestCoverageState {
+  return typeof value === 'string'
+    && (NLP_DIGEST_COVERAGE_STATES as readonly string[]).includes(value);
 }
 
 function resolveNlpDigestVariant(value: unknown): NlpDigestVariant | null {
@@ -438,7 +485,7 @@ export const NLP_TOOLS: ToolDef[] = [
   {
     name: 'extract_entities',
     _outputBudgetBytes: 16384,
-    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters. No LLM involved.',
+    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters. Headline mode includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. No LLM involved.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -482,6 +529,7 @@ export const NLP_TOOLS: ToolDef[] = [
         variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS], description: 'Applied digest variant in headlines mode. Omitted in text mode.' },
         category: { type: ['string', 'null'], description: 'Applied digest category filter in headlines mode; null when scanning every category. Omitted in text mode.' },
         note: { type: 'string', description: 'Present in headlines mode when category did not match any digest key (typo or missing bucket).' },
+        digestCoverage: NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA,
         error: { type: 'string', description: 'Present instead of a result when input validation fails.' },
       },
     },
@@ -555,7 +603,7 @@ export const NLP_TOOLS: ToolDef[] = [
     // records plus a separate primary record. Keep the dispatcher budget
     // aligned with that supported maximum instead of rejecting valid output.
     _outputBudgetBytes: 262144,
-    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, time span, and credibilityScore (0-100 source reliability, distinct from importance). Deterministic — no LLM.',
+    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, time span, and credibilityScore (0-100 source reliability, distinct from importance). The result includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -625,6 +673,7 @@ export const NLP_TOOLS: ToolDef[] = [
         variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS], description: 'Applied digest variant.' },
         category: { type: ['string', 'null'], description: 'Applied digest category filter; null when clustering every category.' },
         note: { type: 'string', description: 'Present when category did not match any digest key (typo or missing bucket).' },
+        digestCoverage: NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA,
         error: { type: 'string', description: 'Present when variant validation fails.' },
       },
     },

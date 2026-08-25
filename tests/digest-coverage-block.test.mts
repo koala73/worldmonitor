@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildDigestCoverage, type FeedAttemptOutcome } from '../server/worldmonitor/news/v1/_attempts';
+import { __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const digestSource = readFileSync(
@@ -146,6 +147,77 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
 
   it('gives the empty fallback an explicit unavailable coverage block', () => {
     assert.match(digestSource, /state: 'unavailable'/);
+  });
+
+  it('marks retained content stale for both null and thrown build failures', () => {
+    const fallbackCalls = digestSource.match(/markFallbackCoverageStale\(fallback, attemptedAt\)/g) ?? [];
+    assert.equal(fallbackCalls.length, 2);
+  });
+
+  it('preserves retained content identity and counts while replacing attempt identity', () => {
+    const retained = {
+      categories: { politics: { items: [] } },
+      feedStatuses: { Reuters: 'ok' },
+      generatedAt: '2026-08-22T10:00:00.000Z',
+      coverage: {
+        state: 'complete',
+        attemptedAt: '2026-08-22T10:00:00.000Z',
+        itemsServed: 7,
+        publisherCount: 3,
+        feedTotal: 5,
+        feedCompleted: 5,
+        categoryTotal: 2,
+        categoryCompleted: 2,
+        categoryStates: { politics: 'ok', tech: 'ok' },
+        droppedFeedCap: 1,
+        droppedUndated: 2,
+        droppedFreshness: 3,
+        droppedCategoryCap: 4,
+      },
+    };
+
+    const stale = digestTesting.markFallbackCoverageStale(
+      retained,
+      '2026-08-22T10:05:00.000Z',
+    );
+
+    assert.notEqual(stale, retained);
+    assert.equal(stale.categories, retained.categories);
+    assert.equal(stale.feedStatuses, retained.feedStatuses);
+    assert.equal(stale.generatedAt, retained.generatedAt);
+    assert.equal(stale.coverage?.state, 'stale');
+    assert.equal(stale.coverage?.attemptedAt, '2026-08-22T10:05:00.000Z');
+    assert.equal(stale.coverage?.itemsServed, 7);
+    assert.equal(stale.coverage?.publisherCount, 3);
+    assert.equal(stale.coverage?.feedTotal, 5);
+    assert.equal(stale.coverage?.categoryStates, retained.coverage.categoryStates);
+    assert.equal(retained.coverage.state, 'complete');
+    assert.equal(retained.coverage.attemptedAt, '2026-08-22T10:00:00.000Z');
+  });
+
+  it('reconstructs conservative stale coverage for retained pre-coverage content', () => {
+    const retained = {
+      categories: {
+        politics: { items: [{ source: 'Reuters' }] },
+        tech: { items: [] },
+      },
+      feedStatuses: { Reuters: 'ok' },
+      generatedAt: '2026-08-22T10:00:00.000Z',
+    } as never;
+
+    const stale = digestTesting.markFallbackCoverageStale(
+      retained,
+      '2026-08-22T10:05:00.000Z',
+    );
+
+    assert.equal(stale.coverage?.state, 'stale');
+    assert.equal(stale.coverage?.itemsServed, 1);
+    assert.equal(stale.coverage?.publisherCount, 1);
+    assert.equal(stale.coverage?.feedTotal, 0);
+    assert.equal(stale.coverage?.feedCompleted, 0);
+    assert.equal(stale.coverage?.categoryTotal, 2);
+    assert.equal(stale.coverage?.categoryCompleted, 1);
+    assert.deepEqual(stale.coverage?.categoryStates, { politics: 'ok', tech: 'missing' });
   });
 
   it('keeps the public feedStatuses map unchanged (no competing health model)', () => {
