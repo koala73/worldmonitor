@@ -384,7 +384,11 @@
           "Dedizierter Support",
           "Custom-Integrationen",
           "SLA-Garantie",
-          "On-Premise-Option"
+          "On-Premise-Option",
+          "Datenverarbeitungsvereinbarung (DPA)",
+          "Rechnungsstellung per Bestellung",
+          "SAML SSO, SCIM",
+          "Benutzerdefinierte Sicherheits- und Datenschutzeinstellungen"
         ],
         "cta": "Kontakt zum Vertrieb"
       },

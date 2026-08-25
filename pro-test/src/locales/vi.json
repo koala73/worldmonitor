@@ -384,7 +384,11 @@
           "Hỗ trợ chuyên dụng",
           "Tích hợp tùy chỉnh",
           "Bảo đảm SLA",
-          "Tuỳ chọn tại chỗ"
+          "Tuỳ chọn tại chỗ",
+          "Thỏa thuận xử lý dữ liệu (DPA)",
+          "Thanh toán theo đơn đặt hàng",
+          "SAML SSO, SCIM",
+          "Cài đặt bảo mật và quyền riêng tư tùy chỉnh"
         ],
         "cta": "Liên hệ Phòng bán hàng"
       },
