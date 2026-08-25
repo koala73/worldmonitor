@@ -10,7 +10,7 @@ import { isDesktopRuntime } from '@/services/runtime';
  * imports this type so the picker, dispatcher, and shell stay in lockstep.
  */
 export type RendererKind = 'svg' | 'deck' | 'globe';
-export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
+export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy' | 'india' | 'cinema';
 
 const _desktop = isDesktopRuntime();
 
@@ -129,6 +129,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['deck']),
   fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['deck']),
   liveTankers:              def('liveTankers',              '&#128674;', 'liveTankers',              'Live Tanker Positions', ['deck']),
+  cinemaHubs:               def('cinemaHubs',               '&#127916;', 'cinemaHubs',               'Cinema Hubs', ['deck']),
 };
 
 export const V1_LAYER_EXPLANATION_KEYS = [
@@ -387,6 +388,19 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     // Energy-adjacent context
     'sanctions', 'fires', 'climate', 'weather', 'canadaRoads', 'outages', 'natural', 'canadaAlerts',
     'resilienceScore', 'dayNight',
+  ],
+  india: [
+    'iranAttacks', 'hotspots', 'conflicts',
+    'bases', 'nuclear', 'irradiators', 'radiationWatch', 'spaceports',
+    'cables', 'pipelines', 'datacenters', 'military',
+    'ais', 'tradeRoutes', 'flights', 'protests',
+    'ucdpEvents', 'displacement', 'climate', 'weather',
+    'outages', 'cyberThreats', 'natural', 'fires',
+    'waterways', 'economic', 'minerals',
+    'ciiChoropleth', 'resilienceScore', 'sanctions', 'dayNight', 'webcams', 'diseaseOutbreaks',
+  ],
+  cinema: [
+    'cinemaHubs', 'weather', 'natural', 'dayNight',
   ],
 };
 

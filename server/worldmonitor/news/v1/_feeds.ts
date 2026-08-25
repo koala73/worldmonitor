@@ -749,6 +749,64 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
   },
 };
 
+// India / South Asia desk digest: the full geopolitical categories with an
+// India- and South-Asia-first regional news category. (#PR india/cinema variants)
+VARIANT_FEEDS.india = {
+  ...VARIANT_FEEDS.full,
+  asia: [
+    { name: 'The Hindu', url: 'https://www.thehindu.com/news/national/feeder/default.rss', lang: 'en', strategicDefault: true, deadlinePriority: 2 },
+    { name: 'Times of India', url: 'https://timesofindia.indiatimes.com/rssfeedstopstories.cms', strategicDefault: true },
+    { name: 'Indian Express', url: 'https://indianexpress.com/section/india/feed/' },
+    { name: 'Hindustan Times', url: 'https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml' },
+    { name: 'NDTV', url: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
+    { name: 'The Print', url: 'https://theprint.in/feed/' },
+    { name: 'Scroll.in', url: 'https://scroll.in/feeds/all.rss' },
+    { name: 'Economic Times', url: 'https://economictimes.indiatimes.com/rssfeedstopstories.cms' },
+    { name: 'Livemint', url: 'https://www.livemint.com/rss/news' },
+    { name: 'Business Standard', url: 'https://www.business-standard.com/rss/home_page_top_stories.rss' },
+    { name: 'Moneycontrol', url: 'https://www.moneycontrol.com/rss/latestnews.xml' },
+    { name: 'The Diplomat', url: 'https://thediplomat.com/feed/' },
+    { name: 'Dawn (Pakistan)', url: 'https://www.dawn.com/feeds/home' },
+    { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
+  ],
+};
+// India reuses full's categories; drop the one cross-category alias full carries
+// (the Oil & Gas Google-News feed lives under both `commodities` and `energy`)
+// so the india digest keeps it in a single category (feed-catalog-drift guard).
+VARIANT_FEEDS.india.energy = (VARIANT_FEEDS.india.energy ?? []).filter((entry) => entry.name !== 'Oil & Gas');
+
+// Cinema / entertainment desk digest: global coverage with an India lens.
+// Category keys match CINEMA_PANELS in src/config/panels.ts.
+VARIANT_FEEDS.cinema = {
+  entertainment: [
+    { name: 'Variety', url: 'https://variety.com/feed/', strategicDefault: true, deadlinePriority: 2 },
+    { name: 'The Hollywood Reporter', url: 'https://www.hollywoodreporter.com/feed/', strategicDefault: true },
+    { name: 'Deadline', url: 'https://deadline.com/feed/' },
+    { name: 'IndieWire', url: 'https://www.indiewire.com/feed/' },
+    { name: 'Screen Daily', url: 'https://www.screendaily.com/feed' },
+    { name: 'Entertainment Weekly', url: 'https://ew.com/feed/' },
+  ],
+  'india-cinema': [
+    { name: 'Film Companion', url: 'https://www.filmcompanion.in/feed', strategicDefault: true },
+    { name: 'TOI Entertainment', url: 'https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms' },
+    { name: 'Bollywood Hungama', url: gn('site:bollywoodhungama.com when:2d') },
+    { name: 'Bollywood', url: gn('Bollywood film when:2d') },
+    { name: 'South Indian Cinema', url: gn('(Tollywood OR Kollywood OR "Telugu cinema" OR "Tamil cinema") when:2d') },
+  ],
+  boxoffice: [
+    { name: 'Box Office (Global)', url: gn('("box office" (weekend OR collection OR gross OR opening)) when:3d'), strategicDefault: true },
+    { name: 'Box Office India', url: gn('("box office" India (crore OR collection OR opening)) when:3d') },
+  ],
+  'ott-streaming': [
+    { name: 'Streaming News', url: gn('(Netflix OR "Prime Video" OR "Disney Plus") (release OR series OR film) when:2d'), strategicDefault: true },
+    { name: 'India OTT', url: gn('(JioCinema OR "Disney Hotstar" OR "OTT release") when:2d') },
+  ],
+  'festivals-awards': [
+    { name: 'Festivals & Awards', url: gn('("film festival" OR Oscars OR Cannes OR Venice OR Berlinale OR TIFF) when:3d'), strategicDefault: true },
+    { name: 'India Festivals & Awards', url: gn('(IFFI OR Filmfare OR "National Film Awards" OR MAMI) when:5d') },
+  ],
+};
+
 export const INTEL_SOURCES: ServerFeed[] = [
   { name: 'Defense One', url: 'https://www.defenseone.com/rss/all/' },
   { name: 'The War Zone', url: 'https://www.twz.com/feed' },

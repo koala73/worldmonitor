@@ -21,7 +21,7 @@ import {
 } from '../src/config/panels.ts';
 import type { MapLayers, PanelConfig } from '../src/types/index.ts';
 
-const VARIANTS = ['full', 'tech', 'finance', 'commodity', 'happy', 'energy'] as const;
+const VARIANTS = ['full', 'tech', 'finance', 'commodity', 'happy', 'energy', 'india', 'cinema'] as const;
 type DashboardVariant = (typeof VARIANTS)[number];
 
 const EXPECTED_VARIANT_PANEL_SNAPSHOTS: Record<DashboardVariant, {
@@ -34,6 +34,8 @@ const EXPECTED_VARIANT_PANEL_SNAPSHOTS: Record<DashboardVariant, {
   commodity: { enabledCount: 33, enabledSha256: 'b534510a2e814392e3966beb211e300e75a2b33f05c283613dd4f6cee50ddfe0' },
   happy: { enabledCount: 10, enabledSha256: 'f62bbf19c2f7ca75fefeb12a7ba32da991a72f494f91e6d310910d5b7a0468ad' },
   energy: { enabledCount: 26, enabledSha256: '4566c4b42ec77521cddce83cccabe91069ffb211ade9441ef0cf115f11a3cd67' },
+  india: { enabledCount: 86, enabledSha256: '8dfdf10adeab4fe49316b04558477a8bed08042563e190b304610dd1284b2348' },
+  cinema: { enabledCount: 9, enabledSha256: 'ee68445a60d9846a5be89ce529aab3173f8e6030ab06773e011b09990774821c' },
 };
 
 const EXPECTED_VARIANT_DEFAULT_SNAPSHOTS: Record<DashboardVariant, {
@@ -47,6 +49,8 @@ const EXPECTED_VARIANT_DEFAULT_SNAPSHOTS: Record<DashboardVariant, {
   commodity: { total: 36, enabled: 33, sha256: 'cc9e0b178dec33dff354a1eea95b5b215302fc7ce685b3d92b82a356df6d6bee' },
   happy: { total: 10, enabled: 10, sha256: '197a73a578d8734d49e844e0a83b89204d5a6fc6b973b1ed698272d846a2c308' },
   energy: { total: 28, enabled: 26, sha256: 'c29563083968049da7c1c7c0b6a856143c3797c010b9c21d2424bbbbb3febbc1' },
+  india: { total: 107, enabled: 86, sha256: '4cd24491205d160561c4483cb60df5d5f7bfeb5f75e4754cd7dc8e9f7f5dab4f' },
+  cinema: { total: 9, enabled: 9, sha256: '7b801c3f0d02d193488773d695093f32fbdc54a4a0c8c260877264f1b0401ad8' },
 };
 
 function makeContext(
@@ -94,7 +98,7 @@ const applierOptions = {
 };
 
 describe('WebMCP live dashboard bindings', () => {
-  it('locks the canonical panel defaults for all six variants', () => {
+  it('locks the canonical panel defaults for all variants', () => {
     assert.deepEqual(Object.keys(VARIANT_DEFAULTS).sort(), [...VARIANTS].sort());
 
     for (const variant of VARIANTS) {
@@ -521,7 +525,7 @@ describe('WebMCP live dashboard bindings', () => {
     assert.match(result.message, /at most 10 layers/);
   });
 
-  it('preserves per-target variant denials across all six variants', async () => {
+  it('preserves per-target variant denials across all variants', async () => {
     const cases: Record<DashboardVariant, {
       allowed: keyof MapLayers;
       disallowed: keyof MapLayers;
@@ -532,13 +536,15 @@ describe('WebMCP live dashboard bindings', () => {
       commodity: { allowed: 'tradeRoutes', disallowed: 'conflicts' },
       happy: { allowed: 'positiveEvents', disallowed: 'conflicts' },
       energy: { allowed: 'tradeRoutes', disallowed: 'conflicts' },
+      india: { allowed: 'conflicts', disallowed: 'startupHubs' },
+      cinema: { allowed: 'cinemaHubs', disallowed: 'conflicts' },
     };
 
     for (const variant of VARIANTS) {
       const { allowed, disallowed } = cases[variant];
       // Happy's map layers are DeckGL-only; this test isolates variant policy
       // from renderer policy by giving that variant its supported renderer.
-      const ctx = makeContext(variant === 'happy'
+      const ctx = makeContext(variant === 'happy' || variant === 'cinema'
         ? {
             map: {
               ...makeContext().map,
