@@ -90,6 +90,7 @@ import {
 import { stripSourceSuffix } from './lib/brief-dedup-jaccard.mjs';
 import { writeReplayLog } from './lib/brief-dedup-replay-log.mjs';
 import { readStoryTracksChunked } from './lib/story-track-batch-reader.mjs';
+import { derivePhase, PHASE_COLOR } from './_digest-notification-phase.mjs';
 import {
   aggregateResults as aggregateDeliveredResults,
   writeDeliveredEntry,
@@ -540,20 +541,6 @@ function flatArrayToObject(flat) {
     obj[flat[i]] = flat[i + 1];
   }
   return obj;
-}
-
-function derivePhase(track) {
-  const mentionCount = parseInt(track.mentionCount ?? '1', 10);
-  const firstSeen = parseInt(track.firstSeen ?? '0', 10);
-  const lastSeen = parseInt(track.lastSeen ?? String(Date.now()), 10);
-  const now = Date.now();
-  const ageH = (now - firstSeen) / 3600000;
-  const silenceH = (now - lastSeen) / 3600000;
-  if (silenceH > 24) return 'fading';
-  if (mentionCount >= 3 && ageH >= 12) return 'sustained';
-  if (mentionCount >= 2) return 'developing';
-  if (ageH < 2) return 'breaking';
-  return 'unknown';
 }
 
 function matchesSensitivity(ruleSensitivity, severity) {
@@ -1083,7 +1070,6 @@ function formatDigestHtml(stories, nowMs) {
   const highCount = buckets.high.length;
 
   const SEVERITY_BORDER = { critical: '#ef4444', high: '#f97316', medium: '#eab308' };
-  const PHASE_COLOR = { breaking: '#ef4444', developing: '#f97316', sustained: '#60a5fa', fading: '#555' };
 
   function storyCard(s) {
     const borderColor = SEVERITY_BORDER[s.severity] ?? '#4ade80';
