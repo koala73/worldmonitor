@@ -393,6 +393,18 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     assert.deepEqual(body.error?.data?.violations, violations);
   });
 
+  it('a JSON validation body without a JSON content type still yields -32602', async () => {
+    const violations = [{ field: 'country', description: 'country is invalid' }];
+    const res = await callTool(
+      'search_intel_history',
+      { query: 'artillery strikes near Kharkiv' },
+      async () => new Response(JSON.stringify({ violations }), { status: 400 }),
+    );
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+    assert.deepEqual(body.error?.data?.violations, violations);
+  });
+
   // The 16 KB-on-400 budget exists because a dozen localized descriptions
   // overflow the flat 4 KB classification cap; this is the observed-downstream
   // twin of the direct-path >4 KB tests above. Reverting classifyFailure's

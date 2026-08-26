@@ -205,7 +205,13 @@ async function classifyFailure(
     };
   }
 
-  if (type.includes('json')) {
+  const hasJsonContentType = type.includes('json');
+  // Match extractSafeRpcViolations for proto 400s: generated responses are
+  // JSON, but a missing or generic content type must not discard an otherwise
+  // safe validation envelope. HTML remains an explicit rejection, and the
+  // relaxed gate never classifies gateway codes on non-JSON responses.
+  const mayContainValidationBody = response.status === 400 && !type.includes('html');
+  if (hasJsonContentType || mayContainValidationBody) {
     try {
       const parsed = JSON.parse(detail) as { code?: unknown; error?: unknown };
       // A coded gateway rejection is not a proto validation failure: keep the
@@ -215,22 +221,26 @@ async function classifyFailure(
       // classify as the default code anyway, so treating it as coded would
       // discard the violations of a `{"code":null,"violations":[...]}` body.
       const coded = parsed.code ?? parsed.error;
-      const violations = response.status === 400 && (coded === undefined || coded === null)
+      const violations = mayContainValidationBody && (coded === undefined || coded === null)
         ? parseSafeRpcViolations(parsed)
         : [];
-      return {
-        errorCode: violations.length > 0
-          ? 'rpc_validation'
-          : safeGatewayErrorCode(coded, response.status),
-        marker: 'json_error',
-        violations,
-      };
+      if (violations.length > 0 || hasJsonContentType) {
+        return {
+          errorCode: violations.length > 0
+            ? 'rpc_validation'
+            : safeGatewayErrorCode(coded, response.status),
+          marker: 'json_error',
+          violations,
+        };
+      }
     } catch {
-      return {
-        errorCode: defaultSafeErrorCode(response.status),
-        marker: 'json_error',
-        violations: [],
-      };
+      if (hasJsonContentType) {
+        return {
+          errorCode: defaultSafeErrorCode(response.status),
+          marker: 'json_error',
+          violations: [],
+        };
+      }
     }
   }
 
