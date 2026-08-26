@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardBuiltOutput, shouldSkipBuiltOutput } from './_lib/built-output-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PRO_DIR = resolve(__dirname, '..', 'public', 'pro');
 const ASSETS_DIR = resolve(PRO_DIR, 'assets');
+const REBUILD_HINT = 'Run `npm run build:pro` first';
 
 // The pro-test build injects this nonce onto its static <link>/<script> tags
 // (STATIC_SCRIPT_NONCE in pro-test/vite.config.ts) so the strict CSP admits the
@@ -31,7 +33,9 @@ function entryChunksFor(html) {
     .filter((name) => !/^sentry-/.test(name));
 }
 
-describe('pro Sentry chunk split contract (#5019)', () => {
+describe('pro Sentry chunk split contract (#5019)', { skip: shouldSkipBuiltOutput(ASSETS_DIR) }, () => {
+  guardBuiltOutput(ASSETS_DIR, undefined, REBUILD_HINT);
+
   const sentryChunks = readdirSync(ASSETS_DIR).filter((f) => /^sentry-[A-Za-z0-9_-]+\.js$/.test(f));
   const indexHtml = readFileSync(resolve(PRO_DIR, 'index.html'), 'utf8');
   const welcomeHtml = readFileSync(resolve(PRO_DIR, 'welcome.html'), 'utf8');
