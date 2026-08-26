@@ -91,6 +91,7 @@ interface Runtime {
   runtimeConfigListeners: Set<() => void>;
   widgetAccessListeners: Set<() => void>;
   liveFlightQueries: string[];
+  liveFlightSignals: Array<AbortSignal | undefined>;
   liveFlightError: Error | null;
   liveFlightPending: boolean;
   releaseLiveFlight: (() => void) | null;
@@ -296,8 +297,9 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     nativeLikeSetTimeout,
     nativeLikeClearTimeout,
     withTimeout,
-    (request: { callsign?: string }) => {
+    (request: { callsign?: string }, signal?: AbortSignal) => {
       runtime.liveFlightQueries.push(request.callsign ?? '');
+      runtime.liveFlightSignals.push(signal);
       if (runtime.liveFlightError) return Promise.reject(runtime.liveFlightError);
       const livePosition = {
         icao24: 'abc123',
@@ -373,6 +375,7 @@ function makeScenario(
     runtimeConfigListeners: new Set(),
     widgetAccessListeners: new Set(),
     liveFlightQueries: [],
+    liveFlightSignals: [],
     liveFlightError: null,
     liveFlightPending: false,
     releaseLiveFlight: null,
@@ -895,6 +898,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     let mounted = false;
     let notifyMutation = (): void => {};
     let simulatedElapsedMs = 0;
+    let observerObserved = false;
     const suppressionTimes: number[] = [];
     scenario.manager.searchSelection.bindings.suppressNextAgentPanelView = () => {
       suppressionTimes.push(simulatedElapsedMs);
@@ -930,7 +934,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
         notifyMutation = callback;
       }
 
-      observe(): void {}
+      observe(): void { observerObserved = true; }
       disconnect(): void {}
       takeRecords(): MutationRecord[] { return []; }
     }
@@ -947,6 +951,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
       const pendingOpen = scenario.manager.openSearchResult(key);
       await Promise.resolve();
       assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+      assert.equal(observerObserved, true, 'the deferred wait must observe panel mounts');
       assert.equal(
         scenario.runtime.pendingTimers.size,
         1,
@@ -998,6 +1003,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     delete scenario.manager.searchSelection.scrollToPanelWhenReady;
     let notifyMutation = (): void => {};
     let observerDisconnected = false;
+    let observerObserved = false;
     const shell = {
       isConnected: true,
       scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
@@ -1027,7 +1033,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     };
     class MutationObserverDouble {
       constructor(callback: () => void) { notifyMutation = callback; }
-      observe(): void {}
+      observe(): void { observerObserved = true; }
       disconnect(): void { observerDisconnected = true; }
       takeRecords(): MutationRecord[] { return []; }
     }
@@ -1044,6 +1050,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
       );
       await Promise.resolve();
       assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+      assert.equal(observerObserved, true, 'the deferred wait must observe panel mounts');
       assert.equal(scenario.runtime.pendingTimers.size, 1);
 
       scenario.manager.searchSelection.destroy();
@@ -1078,6 +1085,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     let notifyMutation = (): void => {};
     let mounted = false;
     let highlightCount = 0;
+    let observerObserved = false;
     const shell = {
       isConnected: true,
       scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
@@ -1109,7 +1117,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     };
     class MutationObserverDouble {
       constructor(callback: () => void) { notifyMutation = callback; }
-      observe(): void {}
+      observe(): void { observerObserved = true; }
       disconnect(): void {}
       takeRecords(): MutationRecord[] { return []; }
     }
@@ -1125,6 +1133,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
       );
       await Promise.resolve();
       assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+      assert.equal(observerObserved, true, 'the deferred wait must observe panel mounts');
 
       assert.equal(
         scenario.manager.searchSelection.handleCommand(
@@ -1446,6 +1455,27 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.deepEqual(scenario.runtime.liveFlightQueries, ['AB123']);
     assert.equal(response.results[0]?.type, 'flight');
     assert.equal(response.results[0]?.title, 'AB123');
+  });
+
+  it('passes caller cancellation to the live callsign transport', async () => {
+    const scenario = makeScenario([]);
+    scenario.runtime.liveFlightPending = true;
+    const controller = new AbortController();
+    const pending = scenario.manager.fetchAndPublishLiveFlight(
+      'AB123',
+      scenario.manager.liveFlightLookupGeneration,
+      controller.signal,
+    );
+    await Promise.resolve();
+
+    assert.deepEqual(scenario.runtime.liveFlightQueries, ['AB123']);
+    assert.equal(scenario.runtime.liveFlightSignals[0], controller.signal);
+
+    controller.abort();
+    scenario.runtime.releaseLiveFlight?.();
+    await assert.rejects(pending, (error) => (
+      error instanceof Error && error.name === 'AbortError'
+    ));
   });
 
   it('bounds a hung live callsign lookup before returning search results', async () => {

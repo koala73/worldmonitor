@@ -205,7 +205,7 @@ Inspector 的自然语言工作流默认会把提示词发送给外部 Gemini �
 
 ### 生产，相同 SHA
 
-首先在部署控制平面确认目标 URL 确实提供预期 SHA。运行器会把 `WM_WEBMCP_DEPLOYED_SHA` 记录在证据中，但无法独立推导或证明 URL 与 SHA 的对应关系。
+首先在部署控制平面确认目标 URL 确实提供预期 SHA。运行器还会从每个已注册的仪表板源获取 `/build-hash.txt`；如果任何线上构建与 `WM_WEBMCP_DEPLOYED_SHA` 不符，测试就会失败。
 
 执行可选的有头生产套件；它不启用本地测试 flag，因此会测试真实 Origin Trial：
 
@@ -215,7 +215,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-该套件断言 `Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、协作式取消或被测浏览器明确的修改安全拒绝边界、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
+该套件断言线上构建 SHA、`Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、协作式取消或被测浏览器明确的修改安全拒绝边界、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
 
 还要确认 `/embed` 与 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档和嵌入页面没有获得顶层清单。部署控制平面的 SHA 检查、响应头、清单、UI 行为和终态结果应视为独立断言；仅有部署成功或注册日志不等于验收通过。
 

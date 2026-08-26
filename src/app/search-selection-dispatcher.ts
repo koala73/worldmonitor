@@ -112,8 +112,8 @@ export class SearchSelectionDispatcher {
 
   public async selectProgrammaticMatch(
     match: SearchMatch,
-    signal?: AbortSignal,
     resolveCommitMatch: () => SearchMatch | undefined = () => match,
+    signal?: AbortSignal,
   ): Promise<boolean> {
     this.cancelPendingProgrammaticSelection();
     throwIfWebMcpAborted(signal);

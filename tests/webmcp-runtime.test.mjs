@@ -138,6 +138,43 @@ describe('WebMCP registry behavioral contract', () => {
     ]);
   });
 
+  it('does not enter a registered callback for a pre-aborted invocation', async () => {
+    let mutationCalls = 0;
+    const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      applyDashboardAction: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: 'set_view',
+          message: 'Applied dashboard action.',
+          targets: [],
+        };
+      },
+    }), harness.runtime);
+    await settlePromises();
+
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      executeRegistered(
+        provider,
+        'set_map_view',
+        JSON.stringify({ view: 'eu' }),
+        { signal: controller.signal },
+      ),
+      (error) => error.name === 'AbortError',
+    );
+    assert.equal(mutationCalls, 0);
+    assert.equal(provider.executionCalls.length, 0);
+    assert.equal(
+      harness.events.some(({ event }) => event === 'webmcp-tool-invoked'),
+      false,
+    );
+  });
+
   it('fails mutating tools closed when the host omits the target execution signal', async () => {
     let mutationCalls = 0;
     let contextCalls = 0;

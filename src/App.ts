@@ -161,6 +161,7 @@ import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
 import {
   DashboardBindingError,
+  isWebMcpAbortError,
   raceWebMcpAbort,
   registerWebMcpTools,
   throwIfWebMcpAborted,
@@ -1626,7 +1627,7 @@ export class App {
         cleanup();
         if (
           options.signal?.aborted
-          || (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')
+          || isWebMcpAbortError(error)
         ) {
           reject(error);
           return;

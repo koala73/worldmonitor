@@ -285,6 +285,10 @@ function errorName(error: unknown): string {
   }
 }
 
+export function isWebMcpAbortError(error: unknown): boolean {
+  return errorName(error) === 'AbortError';
+}
+
 function isAbortSignal(value: unknown): value is AbortSignal {
   if (!value || typeof value !== 'object') return false;
   try {
@@ -395,7 +399,7 @@ function withInvocationLogging(
       });
       if (signal?.aborted) throwIfWebMcpAborted(signal);
       if (error instanceof SafeWebMcpError) throw error;
-      if (errorName(error) === 'AbortError') throw error;
+      if (isWebMcpAbortError(error)) throw error;
       if (error instanceof DashboardBindingError) {
         throw new SafeWebMcpError(
           `Dashboard unavailable: ${boundedText(error.message, 160)} Reason: ${error.reason}.`,
@@ -467,7 +471,7 @@ function classifyInvocationResult(result: unknown): {
 function classifyInvocationError(error: unknown): WebMcpInvocationReason {
   if (error instanceof SafeWebMcpError) return error.analyticsReason;
   if (error instanceof DashboardBindingError) return 'unavailable';
-  if (errorName(error) === 'AbortError') return 'cancelled';
+  if (isWebMcpAbortError(error)) return 'cancelled';
   return 'internal';
 }
 

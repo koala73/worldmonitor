@@ -1883,6 +1883,8 @@ describe('security header guardrails', () => {
     assert.match(webMcpE2eSource, /writeFile\(path/);
     assert.match(webMcpE2eSource, /testInfo\.attach\(name, \{ path/);
     assert.match(webMcpE2eSource, /webmcp-production-matrix\.json/);
+    assert.match(webMcpE2eSource, /build-hash\.txt/);
+    assert.match(webMcpE2eSource, /expect\(servedSha,[\s\S]*?\.toBe\(expectedDeployedSha\)/);
     assert.match(webMcpE2eSource, /https:\/\/tech\.worldmonitor\.app\/embed/);
     assert.match(webMcpE2eSource, /redirectHeaders\['origin-trial'\]/);
     assert.match(playwrightConfigSource, /preserveOutput:\s*'always'/);

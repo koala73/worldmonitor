@@ -604,6 +604,8 @@ test.describe('top-level WebMCP dashboard contract', () => {
 
   test('records every production origin and cross-origin embed denial', async ({ browser }, testInfo) => {
     test.skip(!productionSmoke, 'The bounded deployed-origin matrix runs only in production mode.');
+    const expectedDeployedSha = deployedSha;
+    expect(expectedDeployedSha).toMatch(/^[0-9a-f]{40}$/i);
     testInfo.setTimeout(180_000);
     const context = await browser.newContext({
       colorScheme: 'dark',
@@ -635,6 +637,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
             status: redirect.status(),
           };
         }
+
+        const buildHashResponse = await context.request.get(
+          `${target.origin}/build-hash.txt?wm_webmcp_evidence=${expectedDeployedSha}`,
+          { headers: { 'cache-control': 'no-cache' } },
+        );
+        expect(buildHashResponse.status(), `${target.origin} build hash status`).toBe(200);
+        const servedSha = (await buildHashResponse.text()).trim();
+        expect(servedSha, `${target.origin} served SHA`).toBe(expectedDeployedSha);
 
         const response = await page.goto(`${target.origin}/dashboard`, {
           waitUntil: 'domcontentloaded',
@@ -674,6 +684,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
         expect(directHeaders['permissions-policy'], target.origin).toContain('tools=(self)');
         dashboards.push({
           ...target,
+          servedSha,
           rootRedirect,
           dashboard: {
             status: response!.status(),

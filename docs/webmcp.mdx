@@ -205,7 +205,7 @@ These commands resolve and print the exact commit, then fail if the worktree has
 
 ### Production, same SHA
 
-First verify in the deployment control plane that the target URL is serving the intended SHA. The runner records `WM_WEBMCP_DEPLOYED_SHA` in its evidence but cannot independently derive or prove the URL-to-SHA mapping.
+First verify in the deployment control plane that the target URL is serving the intended SHA. The runner also fetches `/build-hash.txt` from every enrolled dashboard origin and fails if any served build does not match `WM_WEBMCP_DEPLOYED_SHA`.
 
 Run the opt-in headed production suite without the local testing flag so it exercises the real origin trial:
 
@@ -215,7 +215,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-The suite asserts the `Origin-Trial`, `Origin-Agent-Cluster`, and `Permissions-Policy` headers; the inventory and schemas; an invocation started immediately after discovery and completed after UI readiness; cooperative cancellation or the explicit mutation fail-closed boundary for the tested browser; all six enrolled dashboard inventories; specialized-root redirects; and a cross-origin embed denial. On a target-signal-capable browser it also proves the denied unavailable-panel path. The local strict suite separately proves a visible mutation without changing production state. The production suite writes durable `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` files below `test-results/`; preserve those files with the release evidence. Its guard intentionally accepts only the canonical `https://www.worldmonitor.app` base target, while the reviewed matrix uses fixed absolute URLs for the other enrolled origins.
+The suite asserts the served build SHA; the `Origin-Trial`, `Origin-Agent-Cluster`, and `Permissions-Policy` headers; the inventory and schemas; an invocation started immediately after discovery and completed after UI readiness; cooperative cancellation or the explicit mutation fail-closed boundary for the tested browser; all six enrolled dashboard inventories; specialized-root redirects; and a cross-origin embed denial. On a target-signal-capable browser it also proves the denied unavailable-panel path. The local strict suite separately proves a visible mutation without changing production state. The production suite writes durable `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` files below `test-results/`; preserve those files with the release evidence. Its guard intentionally accepts only the canonical `https://www.worldmonitor.app` base target, while the reviewed matrix uses fixed absolute URLs for the other enrolled origins.
 
 Also verify `/embed` and `/embed.html` return `tools=()`, and that `/?mode=agent`, preview deployments, docs, and embed pages do not gain the top-level inventory. Treat the deployment control-plane SHA check, headers, inventory, UI behavior, and terminal outcomes as separate assertions; a successful deploy or registration log alone is not acceptance.
 

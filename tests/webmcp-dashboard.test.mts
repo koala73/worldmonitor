@@ -24,7 +24,7 @@ import type { MapLayers, PanelConfig } from '../src/types/index.ts';
 
 const VARIANTS = ['full', 'tech', 'finance', 'commodity', 'happy', 'energy'] as const;
 
-it('keeps the advertised pre-ready invocation window above observed cold boots', () => {
+it('keeps the advertised pre-ready invocation window at 30 seconds', () => {
   assert.equal(WEBMCP_UI_READY_TIMEOUT_MS, 30_000);
 });
 type DashboardVariant = (typeof VARIANTS)[number];

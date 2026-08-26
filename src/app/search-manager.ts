@@ -251,8 +251,8 @@ export class SearchManager implements AppModule {
       isMatchExecutable: (match) => this.isSearchMatchExecutable(match),
       selectMatch: (match, signal) => this.searchSelection.selectProgrammaticMatch(
         match,
-        signal,
         () => this.resolveProgrammaticMatchForCommit(match),
+        signal,
       ),
       subscribeAuth: subscribeAuthState,
       subscribeEntitlement: onEntitlementChange,
@@ -533,7 +533,7 @@ export class SearchManager implements AppModule {
     generation = this.liveFlightLookupGeneration,
     signal?: AbortSignal,
   ): Promise<void> {
-    const positions = await fetchAircraftPositions({ callsign });
+    const positions = await fetchAircraftPositions({ callsign }, signal);
     signal?.throwIfAborted();
     if (this.destroyed || generation !== this.liveFlightLookupGeneration) return;
     // Deduplicate by callsign: keep the most recently observed entry per callsign.
