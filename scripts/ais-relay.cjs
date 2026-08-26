@@ -34,7 +34,7 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
-const { isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
+const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -4083,44 +4083,25 @@ async function seedClassifyForVariant(variant, seenTitles) {
     return { total: 0, classified: 0, skipped: 0 };
   }
 
-  // #7084: a stale replay's titles already had their alert pass when served
-  // fresh — rationale and the executable test live with the predicate in
-  // scripts/lib/digest-stale-gate.cjs.
+  // #7084: stale RSS titles already had their alert pass when served fresh.
+  // Exclude only those digest-derived candidates; fresh X candidates remain
+  // eligible because they are an independent input to the combined pass.
   if (isStaleDigestReplay(digest)) {
-    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping alert pass for ${variant}`);
-    return { total: 0, classified: 0, skipped: 0 };
+    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
   }
 
-  // Map of title → item metadata; recency gate: skip articles older than 6h
+  // Map of title → item metadata; recency gate: skip articles older than 6h.
+  // The pure helper keeps the stale-RSS plus fresh-X behavior executable in
+  // tests without importing this boot-on-require relay.
   const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
-  const now6h = Date.now() - RECENCY_GATE_MS;
-  const allTitles = new Map();
-  if (digest?.categories) {
-    for (const bucket of Object.values(digest.categories)) {
-      for (const item of bucket?.items ?? []) {
-        if (!item?.title) continue;
-        if (item.publishedAt && item.publishedAt < now6h) continue; // stale item
-        if (!allTitles.has(item.title)) {
-          allTitles.set(item.title, {
-            source: item.source ?? variant,
-            publishedAt: item.publishedAt ?? Date.now(),
-            corroborationCount: item.corroborationCount ?? 1,
-            link: item.link ?? '',
-          });
-        }
-      }
-    }
-  }
-  for (const candidate of xNewsAccounts.collectXAlertCandidates(xState.items, RELAY_SOURCE_TIERS, Date.now(), RECENCY_GATE_MS)) {
-    if (!allTitles.has(candidate.title)) {
-      allTitles.set(candidate.title, {
-        source: candidate.source,
-        publishedAt: candidate.publishedAt,
-        corroborationCount: candidate.corroborationCount,
-        link: candidate.link,
-      });
-    }
-  }
+  const classifyNow = Date.now();
+  const xCandidates = xNewsAccounts.collectXAlertCandidates(
+    xState.items,
+    RELAY_SOURCE_TIERS,
+    classifyNow,
+    RECENCY_GATE_MS,
+  );
+  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
 
   const titleArr = [...allTitles.keys()];

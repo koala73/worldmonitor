@@ -57,6 +57,14 @@ type DigestItemForBrief = {
   };
 };
 
+type McpDigestCoverage = {
+  state?: string;
+  servedStale?: boolean;
+  staleAgeSeconds?: number;
+  staleReason?: string;
+  attemptedAt?: string;
+};
+
 // Corroboration for the country brief cannot ride on `sources`: that array is
 // the proto BriefSource shape (title/source/url/publishedAt) returned by the
 // gateway, so widening it would be a proto change, and on the common path the
@@ -101,6 +109,19 @@ function includesCountryTerm(text: string, term: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function projectMcpDigestCoverage(value: unknown): McpDigestCoverage | undefined {
+  if (!isRecord(value)) return undefined;
+  const coverage: McpDigestCoverage = {};
+  if (typeof value.state === 'string') coverage.state = value.state.slice(0, 40);
+  if (typeof value.servedStale === 'boolean') coverage.servedStale = value.servedStale;
+  if (typeof value.staleAgeSeconds === 'number' && Number.isFinite(value.staleAgeSeconds)) {
+    coverage.staleAgeSeconds = Math.max(0, value.staleAgeSeconds);
+  }
+  if (typeof value.staleReason === 'string') coverage.staleReason = value.staleReason.slice(0, 240);
+  if (typeof value.attemptedAt === 'string') coverage.attemptedAt = value.attemptedAt.slice(0, 80);
+  return Object.keys(coverage).length > 0 ? coverage : undefined;
 }
 
 function collectMcpBriefSources(
@@ -1023,6 +1044,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "US", "DE", "CN", "IR"' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
+        allow_stale: { type: 'boolean', description: 'Allow a brief grounded in a retained stale news digest. Defaults to false; time-sensitive automated decisions should leave this disabled.' },
       },
       required: ['country_code'],
     },
@@ -1035,6 +1057,17 @@ export const RPC_TOOLS: ToolDef[] = [
         generatedAt: { type: ['string', 'number', 'null'] },
         provider: { type: 'string' },
         model: { type: 'string' },
+        digestCoverage: {
+          type: 'object',
+          description: 'Freshness metadata for the news digest used to ground this brief. Omitted when the digest fetch failed and the brief was generated without digest grounding.',
+          properties: {
+            state: { type: 'string', description: 'Digest coverage state reported by the news service.' },
+            servedStale: { type: 'boolean', description: 'True when the grounding headlines came from a retained accepted snapshot.' },
+            staleAgeSeconds: { type: 'number', minimum: 0, description: 'Age of the retained snapshot in seconds when stale content was served.' },
+            staleReason: { type: 'string', description: 'Reason the live digest attempt could not replace the retained snapshot.' },
+            attemptedAt: { type: 'string', description: 'Timestamp of the digest refresh attempt associated with this coverage result.' },
+          },
+        },
         sources: {
           type: 'array',
           description: 'Original feed articles used as grounding inputs for this brief.',
@@ -1084,6 +1117,7 @@ export const RPC_TOOLS: ToolDef[] = [
       let contextSnapshot = '';
       let sources: McpBriefSource[] = [];
       let groundingStories: McpBriefGroundingStory[] = [];
+      let digestCoverage: McpDigestCoverage | undefined;
       try {
         const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
         const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
@@ -1094,9 +1128,10 @@ export const RPC_TOOLS: ToolDef[] = [
         if (digestRes.ok) {
           type DigestPayload = {
             categories?: Record<string, { items?: DigestItemForBrief[] }>;
-            coverage?: { servedStale?: boolean; staleAgeSeconds?: number };
+            coverage?: unknown;
           };
           const digest = await digestRes.json() as DigestPayload;
+          digestCoverage = projectMcpDigestCoverage(digest.coverage);
           const allItems = Object.values(digest.categories ?? {})
             .flatMap(cat => cat.items ?? [])
             .filter(item => typeof item.title === 'string' && item.title.length > 0);
@@ -1119,10 +1154,10 @@ export const RPC_TOOLS: ToolDef[] = [
           // an LLM on hours-old headlines silently presented as current
           // produces briefs that describe the past as the present — tell the
           // model what it is looking at so its output can qualify itself.
-          const staleLines = digest.coverage?.servedStale === true
+          const staleLines = digestCoverage?.servedStale === true || digestCoverage?.state === 'stale'
             ? [
                 `NOTE: the headlines below are a retained snapshot from approximately ` +
-                  `${Math.max(1, Math.round((digest.coverage.staleAgeSeconds ?? 0) / 60))} minutes ago ` +
+                  `${Math.max(1, Math.round((digestCoverage.staleAgeSeconds ?? 0) / 60))} minutes ago ` +
                   `(the live news rebuild failed). Treat them as recent context, not as this moment's news, ` +
                   `and say so if the brief depends on very recent developments.`,
               ]
@@ -1131,6 +1166,15 @@ export const RPC_TOOLS: ToolDef[] = [
           if (contextLines.trim()) contextSnapshot = contextLines.slice(0, 4000);
         }
       } catch { /* proceed without context — better than failing */ }
+
+      const digestServedStale = digestCoverage?.servedStale === true || digestCoverage?.state === 'stale';
+      if (digestServedStale && params.allow_stale !== true) {
+        throw new McpSourceUnavailableError(
+          'Country brief grounding digest is stale; set allow_stale=true to use the retained snapshot',
+          ['news:digest:v1:full:en'],
+          [],
+        );
+      }
 
       const briefUrl = `${base}/api/intelligence/v1/get-country-intel-brief`;
       // Keep grounding context out of the signed URL; the gateway's POST-to-GET
@@ -1171,7 +1215,12 @@ export const RPC_TOOLS: ToolDef[] = [
       const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
       // groundingStories stays [] when the 2 s digest fetch failed above, which
       // is the honest signal: the brief was written without that grounding.
-      return { ...result, sources: resultSources.length > 0 ? resultSources : sources, groundingStories };
+      return {
+        ...result,
+        sources: resultSources.length > 0 ? resultSources : sources,
+        groundingStories,
+        ...(digestCoverage ? { digestCoverage } : {}),
+      };
     },
     // METHOD DRIFT: _execute POSTs above but OpenAPI declares only GET on this
     // path (verified against docs/api/IntelligenceService.openapi.json). The

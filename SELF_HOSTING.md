@@ -192,8 +192,9 @@ node scripts/seed-military-flights.mjs
 | `worldmonitor-ais-relay` | Live vessel tracking WebSocket | 3004 (internal) |
 
 > **`redis-rest` command allowlist**: the bundled proxy (`docker/redis-rest-proxy.mjs`) only
-> forwards a fixed allowlist of Redis commands and rejects `EVAL`/`EVALSHA`/`SCRIPT` (no Lua
-> scripting). Two consequences for a self-hosted stack:
+> forwards a fixed allowlist of Redis commands. It permits one byte-pinned `EVAL` script for
+> the news digest's atomic last-good publication; all caller-selected Lua plus `EVALSHA` and
+> `SCRIPT` remain rejected. Two consequences for a self-hosted stack:
 >
 > - `@upstash/ratelimit`'s Lua-based sliding-window limiter (`server/_shared/rate-limit.ts`,
 >   `api/_rate-limit.js`) can't run against it. Both automatically detect the rejection once and

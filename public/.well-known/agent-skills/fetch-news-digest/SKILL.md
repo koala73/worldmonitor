@@ -52,7 +52,14 @@ GET https://api.worldmonitor.app/api/news/v1/list-feed-digest
     }
   },
   "feedStatuses": { "SomeFeed": "timeout" },
-  "generatedAt": "2026-07-05T12:00:00Z"
+  "generatedAt": "2026-07-05T12:00:00Z",
+  "coverage": {
+    "state": "complete",
+    "servedStale": false,
+    "staleAgeSeconds": 0,
+    "staleReason": "",
+    "attemptedAt": "2026-07-05T12:00:02Z"
+  }
 }
 ```
 
@@ -60,6 +67,9 @@ GET https://api.worldmonitor.app/api/news/v1/list-feed-digest
 - `publishedAt` is Unix epoch **milliseconds**.
 - `isAlert` marks articles that triggered an alert condition; `threat` carries the AI threat classification when assessed.
 - `feedStatuses` lists only unhealthy feeds (`empty`, `timeout`, `all-undated`, `partial-undated`) — an absent key means the feed is healthy.
+- `coverage` reports digest freshness. `servedStale: true` means the endpoint returned an older accepted snapshot because the latest rebuild failed. `staleAgeSeconds`, `staleReason`, and `attemptedAt` describe that fallback and its latest attempt.
+
+For time-sensitive automated decisions, reject a response when `coverage.servedStale` is `true` or `coverage.state` is `stale`. Use retained content only when the caller explicitly allows stale inputs, and preserve the `coverage` fields in downstream output so another agent can apply the same policy.
 
 ## Worked example
 

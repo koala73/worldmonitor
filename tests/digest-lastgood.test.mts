@@ -178,11 +178,15 @@ describe('durable last-good wiring (#7084)', () => {
 
   const stub = {
     reads: new Map<string, Read>(),
+    readCalls: [] as string[],
     writes: [] as Array<{ key: string; value: unknown; ttl: number }>,
     pipeline: (async () => [{ result: [] }]) as (c: unknown[][]) => Promise<Array<{ result?: unknown; error?: string }>>,
+    transaction: (async (commands: unknown[][]) => commands.map(() => ({ result: 'OK' }))) as
+      (c: unknown[][]) => Promise<Array<{ result?: unknown; error?: string }>>,
     // Every runRedisPipeline invocation, recorded so tests can assert on the
     // EVAL guarded publish and on how many revocation reads a request paid.
     pipelineCalls: [] as unknown[][][],
+    transactionCalls: [] as unknown[][][],
     // Lets a test drive listFeedDigest's cache-hit vs fresh-build branch.
     fetchMeta: null as null | { data: unknown; source: string; leader: boolean },
   };
@@ -197,13 +201,14 @@ describe('durable last-good wiring (#7084)', () => {
     (globalThis as any).__digestRedisStub = stub;
     const shim = [
       'const s = globalThis.__digestRedisStub;',
-      'export async function readCachedJson(k) { return s.reads.get(k) ?? { status: "miss" }; }',
+      'export async function readCachedJson(k) { s.readCalls.push(k); return s.reads.get(k) ?? { status: "miss" }; }',
       'export async function setCachedJson(k, v, t) { s.writes.push({ key: k, value: v, ttl: t }); return true; }',
       'export async function cachedFetchJson() { return null; }',
       'export async function cachedFetchJsonWithMeta() { return s.fetchMeta ?? { data: null, source: "skipped", leader: false }; }',
       'export async function getCachedJson() { return null; }',
       'export async function getCachedJsonBatch() { return new Map(); }',
       'export async function runRedisPipeline(c) { s.pipelineCalls.push(c); return s.pipeline(c); }',
+      'export async function runRedisTransaction(c) { s.transactionCalls.push(c); return s.transaction(c); }',
     ].join('\n');
     const result = await build({
       stdin: {
@@ -233,15 +238,17 @@ describe('durable last-good wiring (#7084)', () => {
 
   const reset = () => {
     stub.reads.clear();
+    stub.readCalls.length = 0;
     stub.writes.length = 0;
     stub.pipeline = async () => [{ result: [] }];
     stub.pipelineCalls.length = 0;
+    stub.transaction = async (commands) => commands.map(() => ({ result: 'OK' }));
+    stub.transactionCalls.length = 0;
     stub.fetchMeta = null;
     mod.__testing__.fallbackDigestCache.clear();
-    // The in-isolate attempt-write cooldown persists across tests in this
-    // bundle; without clearing it, a later test's attempt write is suppressed
-    // by an earlier test's and the assertion fails for the wrong reason.
-    mod.__testing__.attemptWriteCooldown.clear();
+    mod.__testing__.lastGoodStoreTesting.activeAttempts.clear();
+    mod.__testing__.lastGoodStoreTesting.recentFailedAttempts.clear();
+    mod.__testing__.lastGoodStoreTesting.failureCooldowns.clear();
   };
 
   /** Minimal ServerContext — listFeedDigest only touches ctx.request headers. */
@@ -261,23 +268,16 @@ describe('durable last-good wiring (#7084)', () => {
     ...(coverage === undefined ? {} : { coverage }),
   });
 
-  it('a Redis READ ERROR never publishes -- it must not read as "no snapshot"', async () => {
-    reset();
-    stub.reads.set(lastGoodMetaKey('full', 'en'), { status: 'error', error: new Error('boom') });
-    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE), new Set());
-    assert.equal(evalCalls().length, 0, 'a candidate must not clobber a live snapshot we could not read');
-    assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0);
-  });
-
   it('a genuine MISS publishes through one atomic guarded write covering both keys', async () => {
     reset();
-    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE), new Set());
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
     const calls = evalCalls();
     assert.equal(calls.length, 1, 'the publish must be a single EVAL, not a read-decide-write pair');
     const cmd = calls[0] as string[];
-    // ['EVAL', script, '2', metaKey, bodyKey, ...argv] — both keys inside one
+    // ['EVAL', script, '3', metaKey, bodyKey, revocationKey, ...argv] — all
+    // policy inputs and both writes are inside one atomic operation.
     // atomic script is what closes the two-isolate lost-update race.
-    assert.equal(cmd[2], '2');
+    assert.equal(cmd[2], '3');
     assert.equal(cmd[3], lastGoodMetaKey('full', 'en'));
     assert.equal(cmd[4], lastGoodKey('full', 'en'));
     assert.match(String(cmd[1]), /return 0/, 'the script must be able to refuse a narrower candidate');
@@ -290,11 +290,10 @@ describe('durable last-good wiring (#7084)', () => {
   it('anchors acceptedAt to the CONTENT clock, not the write clock', async () => {
     reset();
     const generatedAt = new Date(NOW - 60 * 60 * 1000).toISOString();
-    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE, generatedAt), new Set());
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE, generatedAt));
     const cmd = evalCalls()[0] as string[];
-    // ARGV[5] (index 9 of the command) is the metadata JSON the script stores.
-    const meta = JSON.parse(String(cmd[9]));
-    assert.equal(meta.acceptedAt, Date.parse(generatedAt));
+    const candidate = JSON.parse(String(cmd[10]));
+    assert.equal(candidate.acceptedAt, Date.parse(generatedAt));
   });
 
   it('a lost guarded write (script returns 0) is a kept snapshot, not an error', async () => {
@@ -303,7 +302,7 @@ describe('durable last-good wiring (#7084)', () => {
       ? [{ result: 0 }]
       : [{ result: [] }];
     // Must not throw and must not fall back to plain writes.
-    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE), new Set());
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
     assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0);
   });
 
@@ -412,6 +411,11 @@ describe('durable last-good wiring (#7084)', () => {
     stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
     await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
     assert.equal(evalCalls().length, 0, 'a cache hit has nothing new to publish');
+    assert.equal(
+      stub.readCalls.includes(lastGoodKey('full', 'en')),
+      false,
+      'healthy/cache-hit requests must not read the large last-good body',
+    );
   });
 
   it('a real BUILD does publish the snapshot', async () => {
@@ -441,20 +445,40 @@ describe('durable last-good wiring (#7084)', () => {
     reset();
     stub.fetchMeta = { data: null, source: 'cache', leader: false };
     await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
-    assert.equal(
-      stub.writes.filter((w) => w.key === attemptMetaKey('full', 'en')).length, 0,
-      'a replayed sentinel is not a new attempt',
-    );
+    assert.equal(stub.transactionCalls.length, 0, 'a replayed sentinel is not a new attempt');
   });
 
-  it('the LEADER of a failed build does record the attempt', async () => {
+  it('the leader publishes one immutable attempt identity atomically before its sentinel', async () => {
     reset();
-    stub.fetchMeta = { data: null, source: 'fresh', leader: true };
-    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
-    assert.equal(
-      stub.writes.filter((w) => w.key === attemptMetaKey('full', 'en')).length, 1,
-      'the one real failure must still reach the operator',
+    const startedAt = new Date(NOW - 1234).toISOString();
+    const slot = mod.__testing__.beginDigestAttempt('full', 'en', startedAt);
+    const follower = mod.__testing__.recoverFailedAttempt(
+      'full', 'en', { at: new Date(NOW).toISOString(), reason: 'empty-rebuild' },
     );
+    const leader = mod.__testing__.publishFailedAttempt(
+      'full', 'en', 'news:digest:v1:full:en', slot, 'build-error', 30,
+    );
+    mod.__testing__.completeDigestAttempt('full', 'en', slot);
+    assert.equal(Object.isFrozen(leader), true);
+    assert.deepEqual(leader, { at: startedAt, reason: 'build-error' });
+    assert.strictEqual(await follower, leader, 'the coalesced follower must receive the leader-owned object');
+    assert.equal(stub.transactionCalls.length, 1);
+    const [attemptSet, sentinelSet] = stub.transactionCalls[0] as string[][];
+    assert.equal(attemptSet[0], 'SET');
+    assert.equal(attemptSet[1], attemptMetaKey('full', 'en'));
+    assert.deepEqual(JSON.parse(attemptSet[2]), { ts: Date.parse(startedAt), outcome: 'build-error' });
+    assert.equal(sentinelSet[1], 'news:digest:v1:full:en');
+    assert.equal(JSON.parse(sentinelSet[2]), '__WM_NEG__');
+  });
+
+  it('a failed leader arms the same-isolate retry gate for the sentinel TTL', () => {
+    reset();
+    const cacheKey = 'news:digest:v1:full:en';
+    const slot = mod.__testing__.beginDigestAttempt('full', 'en', new Date(NOW).toISOString());
+    mod.__testing__.publishFailedAttempt('full', 'en', cacheKey, slot, 'empty-rebuild', 120);
+    const expiresAt = mod.__testing__.lastGoodStoreTesting.failureCooldowns.get(cacheKey);
+    assert.equal(mod.__testing__.shouldStartDigestAttempt(cacheKey, expiresAt - 1), false);
+    assert.equal(mod.__testing__.shouldStartDigestAttempt(cacheKey, expiresAt), true);
   });
 
   it('a degraded request pays for exactly ONE revocation read across both replay tiers', async () => {
@@ -471,6 +495,11 @@ describe('durable last-good wiring (#7084)', () => {
     const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
     assert.equal(out.coverage.state, 'stale', 'the isolate tier must still serve');
     assert.equal(smembersCalls().length, 1, 'one revocation read, shared by both tiers');
+    assert.equal(
+      stub.readCalls.filter((key) => key === lastGoodKey('full', 'en')).length,
+      1,
+      'degradation lazily starts one durable body read',
+    );
   });
 
   it('replay tiers fail CLOSED when the revocation set cannot be read', async () => {
@@ -575,13 +604,12 @@ describe('durable last-good wiring (#7084)', () => {
     // the contract the proxy enforces.)
     const { DIGEST_LASTGOOD_PUBLISH_SCRIPT } = await import('../shared/digest-lastgood-publish-script.mjs');
     reset();
-    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE), new Set());
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
     const cmd = evalCalls()[0] as string[];
     assert.equal(cmd[1], DIGEST_LASTGOOD_PUBLISH_SCRIPT, 'the server must send the shared script verbatim');
-    // The script must carry the two #8 guards: a body-existence check (meta
-    // whose paired body was evicted cannot veto) and the corrupt-future rule
-    // (delta >= 0).
-    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /EXISTS', KEYS\[2\]/);
+    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /SMEMBERS', KEYS\[3\]/);
+    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /decodeAndCount\(currentRaw\)/);
+    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /decodeAndCount\(ARGV\[5\]\)/);
     assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /delta >= 0/);
 
     const proxySrc = await import('node:fs').then((fs) =>
@@ -593,22 +621,19 @@ describe('durable last-good wiring (#7084)', () => {
     assert.match(proxySrc, /isAllowedEval/, 'the proxy must gate EVAL through the pinned allowlist');
   });
 
-  it('an EVAL-rejecting backend degrades to plain writes instead of losing the tier', async () => {
-    // An out-of-date Docker proxy rejects EVAL outright. The publish must
-    // fall back to the pre-read-guarded plain writes -- non-atomic, logged --
-    // rather than silently never creating the durable snapshot.
+  it('an EVAL-rejecting backend never falls back to racy plain writes', async () => {
     reset();
     stub.pipeline = async (cmds) => cmds.some((c: any) => c[0] === 'EVAL')
       ? [{ error: 'Command not allowed: EVAL' }]
       : [{ result: [] }];
-    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE), new Set());
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
     assert.equal(
-      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 1,
-      'the snapshot body must still be written',
+      stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
+      'a plain body SET would restore the cross-isolate lost-update race',
     );
     assert.equal(
-      stub.writes.filter((w) => w.key === lastGoodMetaKey('full', 'en')).length, 1,
-      'the metadata must still be written',
+      stub.writes.filter((w) => w.key === lastGoodMetaKey('full', 'en')).length, 0,
+      'metadata must not be detached from the atomic body write',
     );
   });
 
@@ -618,25 +643,41 @@ describe('durable last-good wiring (#7084)', () => {
     // revocations can be lifted and serve-time filtering governs delivery.
     reset();
     const candidate = body(['https://a/1', 'https://a/2'], COVERAGE);
-    await mod.__testing__.publishAcceptedSnapshot('full', 'en', candidate, new Set(['https://a/1']));
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', candidate);
     const cmd = evalCalls()[0] as string[];
-    // ARGV[4] (cmd index 8) is the candidate item count the gate compares.
-    assert.equal(cmd[8], '1', 'richness must count only servable items');
-    const meta = JSON.parse(String(cmd[9]));
-    assert.equal(meta.itemCount, 1, 'stored metadata must describe servable richness');
-    const stored = JSON.parse(String(cmd[11]));
+    assert.equal(cmd[5], REVOKED_URLS_KEY, 'the authoritative gate must read current revocations');
+    const stored = JSON.parse(String(cmd[10]));
     assert.equal(
       stored.data.categories.politics.items.length, 2,
       'the stored body must keep revoked items so a lifted revocation restores them',
     );
   });
 
-  it('a fully revoked candidate is not published at all', async () => {
+  it('revocation drift remeasures incumbent and candidate under the same current view', () => {
     reset();
-    await mod.__testing__.publishAcceptedSnapshot(
-      'full', 'en', body(['https://a/1'], COVERAGE), new Set(['https://a/1']),
+    const measure = mod.__testing__.lastGoodStoreTesting.measureServableRichness;
+    const incumbent = body(['https://a/old-1', 'https://a/old-2', 'https://a/live'], COVERAGE);
+    const candidate = body(['https://a/new-1', 'https://a/new-2'], COVERAGE);
+    const currentRevocations = new Set(['https://a/old-1', 'https://a/old-2']);
+    const current = measure(incumbent, currentRevocations);
+    const next = measure(candidate, currentRevocations);
+    assert.deepEqual(current, { categoryCount: 1, itemCount: 1 });
+    assert.deepEqual(next, { categoryCount: 1, itemCount: 2 });
+    assert.equal(
+      shouldReplaceAccepted({ acceptedAt: Date.now(), ...current }, next, Date.now()).replace,
+      true,
+      'publication-time incumbent counts must not veto a richer currently servable candidate',
     );
-    assert.equal(evalCalls().length, 0, 'nothing servable means nothing to accept');
+  });
+
+  it('an atomically fully-revoked candidate is rejected by the gate', async () => {
+    reset();
+    stub.pipeline = async (commands) => commands.some((command: any) => command[0] === 'EVAL')
+      ? [{ result: -1 }]
+      : [{ result: [] }];
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
+    assert.equal(evalCalls().length, 1, 'the atomic revocation view is authoritative');
+    assert.equal(stub.writes.length, 0);
   });
 
   it('a sentinel replay recovers the REAL attempt identity the failing leader recorded', async () => {
@@ -666,18 +707,46 @@ describe('durable last-good wiring (#7084)', () => {
     );
   });
 
-  it('fresh serving fails OPEN on an unreadable revocation set -- and the content still goes out', async () => {
-    // Deliberate policy split with the replay tiers: this content is at most
-    // one cache TTL old, and failing closed would turn a pipeline blip into
-    // a full digest outage. The split lives here as an executable pin so a
-    // future unification is a decision, not an accident.
+  it('unavailable output preserves the recovered failed-attempt time and reason', async () => {
+    reset();
+    const failedAtMs = NOW - 45_000;
+    stub.reads.set(attemptMetaKey('full', 'en'), {
+      status: 'hit',
+      value: { ts: failedAtMs, outcome: 'build-error' },
+    });
+    stub.reads.set(lastGoodKey('full', 'en'), { status: 'miss' });
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(out.coverage.state, 'unavailable');
+    assert.equal(out.coverage.attemptedAt, new Date(failedAtMs).toISOString());
+    assert.equal(out.coverage.staleReason, 'build-error');
+  });
+
+  it('a hanging telemetry write cannot delay the absolute response fallback', async () => {
+    reset();
+    stub.transaction = async () => new Promise(() => {});
+    const slot = mod.__testing__.beginDigestAttempt('full', 'en', new Date(NOW).toISOString());
+    mod.__testing__.publishFailedAttempt(
+      'full', 'en', 'news:digest:v1:full:en', slot, 'build-error', 30,
+    );
+    const started = Date.now();
+    const result = await mod.__testing__.settleBeforeDeadline(
+      new Promise(() => {}),
+      started + 20,
+      'unavailable',
+    );
+    assert.equal(result, 'unavailable');
+    assert.ok(Date.now() - started < 150, 'the absolute deadline must bound every unresolved tail');
+  });
+
+  it('fresh and cached serving fail CLOSED when revocations are unreadable', async () => {
     reset();
     stub.pipeline = async () => [{ error: 'ERR' }];
     stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
     const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
-    assert.deepEqual(
-      out.categories.politics.items.map((i: any) => i.link), ['https://a/1'],
-      'the fresh tier must keep serving',
-    );
+    assert.deepEqual(out.categories, {}, 'no unfiltered URL may escape');
+    assert.equal(out.coverage.state, 'unavailable');
+    assert.equal(out.coverage.attemptedAt, COVERAGE.attemptedAt);
+    assert.equal(out.coverage.staleReason, '', 'a revocation outage is not a failed-build reason');
   });
 });

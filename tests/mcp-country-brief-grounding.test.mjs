@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { mcpHandler } from '../api/mcp.ts';
+import { __testing__, mcpHandler } from '../api/mcp.ts';
 import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.mjs';
 
 const ENV_KEY = 'operator_test_key_country_brief_grounding';
@@ -64,13 +64,21 @@ const UPSTREAM_SOURCES = [{
   publishedAt: '2026-08-10T01:00:00.000Z',
 }];
 
-function stubDownstream({ digestItems, digestOk = true, briefSources = UPSTREAM_SOURCES }) {
-  globalThis.fetch = async (input) => {
+function stubDownstream({
+  digestItems,
+  digestOk = true,
+  digestCoverage,
+  briefSources = UPSTREAM_SOURCES,
+}) {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
     const { pathname } = new URL(String(input));
+    calls.push({ pathname, init });
     if (pathname === '/api/news/v1/list-feed-digest') {
       if (!digestOk) throw new Error('digest unavailable');
       return new Response(JSON.stringify({
         categories: { world: { items: digestItems } },
+        ...(digestCoverage ? { coverage: digestCoverage } : {}),
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
@@ -86,24 +94,29 @@ function stubDownstream({ digestItems, digestOk = true, briefSources = UPSTREAM_
     }
     throw new Error(`Unexpected downstream URL: ${String(input)}`);
   };
+  return calls;
 }
 
-async function callCountryBriefResult(id = 1) {
+async function callCountryBriefRpc(params = { country_code: 'FR' }, id = 1) {
   const request = new Request(MCP_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': ENV_KEY },
-    body: JSON.stringify(callBody('get_country_brief', { country_code: 'FR' }, id)),
+    body: JSON.stringify(callBody('get_country_brief', params, id)),
   });
   const response = await mcpHandler(request, makeDeps());
   assert.equal(response.status, 200, 'transport status');
-  const rpc = await response.json();
+  return response.json();
+}
+
+async function callCountryBriefResult(params = { country_code: 'FR' }, id = 1) {
+  const rpc = await callCountryBriefRpc(params, id);
   assert.ok(rpc.result?.content?.[0]?.text, `no tool result: ${JSON.stringify(rpc).slice(0, 400)}`);
   const rawText = rpc.result.content[0].text;
   return { payload: JSON.parse(rawText), rawText };
 }
 
-async function callCountryBrief(id = 1) {
-  const { payload } = await callCountryBriefResult(id);
+async function callCountryBrief(params = { country_code: 'FR' }, id = 1) {
+  const { payload } = await callCountryBriefResult(params, id);
   return payload;
 }
 
@@ -128,6 +141,77 @@ afterEach(() => {
 });
 
 describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
+  it('declares the stale opt-in and machine-readable digest coverage contract', () => {
+    const tool = __testing__.TOOL_REGISTRY.find(candidate => candidate.name === 'get_country_brief');
+    assert.ok(tool);
+    assert.equal(tool.inputSchema.properties.allow_stale.type, 'boolean');
+    const coverage = tool.outputSchema.properties.digestCoverage.properties;
+    for (const field of ['state', 'servedStale', 'staleAgeSeconds', 'staleReason', 'attemptedAt']) {
+      assert.ok(coverage[field], `digestCoverage must declare ${field}`);
+    }
+  });
+
+  it('rejects stale digest grounding by default before LLM generation', async () => {
+    const digestCoverage = {
+      state: 'stale',
+      servedStale: true,
+      staleAgeSeconds: 900,
+      staleReason: 'feed_timeout',
+      attemptedAt: '2026-08-10T02:05:00.000Z',
+    };
+    const calls = stubDownstream({ digestItems: [digestItem()], digestCoverage });
+
+    const rpc = await callCountryBriefRpc();
+
+    assert.equal(rpc.error?.code, -32003);
+    assert.equal(rpc.error?.message, 'Required data inputs are unavailable');
+    assert.deepEqual(rpc.error?.data, {
+      retryable: true,
+      stale: true,
+      unavailable_inputs: ['news:digest:v1:full:en'],
+      failed_inputs: [],
+    });
+    assert.equal(
+      calls.some(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief'),
+      false,
+      'stale grounding must be rejected before the LLM brief request',
+    );
+  });
+
+  it('allows explicit stale grounding and returns structured digest coverage', async () => {
+    const digestCoverage = {
+      state: 'stale',
+      servedStale: true,
+      staleAgeSeconds: 900,
+      staleReason: 'feed_timeout',
+      attemptedAt: '2026-08-10T02:05:00.000Z',
+    };
+    const calls = stubDownstream({ digestItems: [digestItem()], digestCoverage });
+
+    const payload = await callCountryBrief({ country_code: 'FR', allow_stale: true });
+
+    assert.deepEqual(payload.digestCoverage, digestCoverage);
+    const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(briefCall, 'explicit stale opt-in should reach the LLM brief endpoint');
+    assert.match(JSON.parse(String(briefCall.init.body)).context, /retained snapshot/i);
+  });
+
+  it('returns structured digest coverage for fresh grounding', async () => {
+    const digestCoverage = {
+      state: 'complete',
+      servedStale: false,
+      staleAgeSeconds: 0,
+      staleReason: '',
+      attemptedAt: '2026-08-10T02:05:00.000Z',
+    };
+    stubDownstream({ digestItems: [digestItem()], digestCoverage });
+
+    const payload = await callCountryBrief();
+
+    assert.equal(payload.brief, 'Synthesized country brief.');
+    assert.deepEqual(payload.digestCoverage, digestCoverage);
+  });
+
   it('emits groundingStories even when the upstream supplies its own sources', async () => {
     // The decision this pins: sources keeps the gateway's proto BriefSource
     // list untouched, and corroboration arrives on a sibling field that is
@@ -178,6 +262,7 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
 
     assert.equal(payload.brief, 'Synthesized country brief.');
     assert.deepEqual(payload.groundingStories, []);
+    assert.equal(payload.digestCoverage, undefined);
   });
 
   it('caps groundingStories at six and dedupes repeated titles', async () => {

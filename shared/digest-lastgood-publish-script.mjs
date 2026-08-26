@@ -12,36 +12,51 @@
 // file, so it cannot import this module). tests/digest-lastgood.test.mts pins
 // the two copies equal — edit both or that test goes red.
 //
-// Gate rules, mirrored from shouldReplaceAccepted:
-// - no current metadata, unparseable metadata, or an EXPIRED current snapshot
-//   never vetoes;
-// - a FUTURE acceptedAt is corrupt, not live — it must not veto (delta < 0);
-// - metadata whose paired BODY is gone cannot veto: Redis eviction is not
-//   TTL-bound and can drop one key of the pair, and a body-less veto would
-//   block repair until the metadata expired;
-// - a candidate narrower on categories OR items does not displace a live,
-//   servable snapshot.
+// The script reads the revocation set and measures BOTH bodies inside this
+// atomic operation. Stored bodies remain unfiltered, but a URL revoked after
+// incumbent publication cannot keep inflating its richness and veto repair.
 //
-// KEYS[1] = metadata key, KEYS[2] = snapshot body key.
-// ARGV: 1=nowMs 2=maxAgeMs 3=candCategoryCount 4=candItemCount
-//       5=metaJson 6=ttlSeconds 7=bodyJson
-// Returns 1 when written, 0 when the live snapshot was kept.
+// KEYS[1] = metadata key, KEYS[2] = snapshot body key,
+// KEYS[3] = revoked URL set.
+// ARGV: 1=nowMs 2=maxAgeMs 3=candidateAcceptedAt 4=ttlSeconds
+//       5=candidateJson ({ acceptedAt, data }).
+// Returns 1 when written, 0 when the live snapshot was kept, -1 when the
+// candidate has no servable items.
 export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
-  "local cur = redis.call('GET', KEYS[1])",
-  "if cur and redis.call('EXISTS', KEYS[2]) == 1 then",
-  '  local ok, meta = pcall(cjson.decode, cur)',
-  "  if ok and type(meta) == 'table' then",
-  '    local curAcc = tonumber(meta.acceptedAt) or 0',
-  '    local curCat = tonumber(meta.categoryCount) or 0',
-  '    local curItems = tonumber(meta.itemCount) or 0',
-  '    local delta = tonumber(ARGV[1]) - curAcc',
-  '    local live = delta >= 0 and delta <= tonumber(ARGV[2])',
-  '    if live and (tonumber(ARGV[3]) < curCat or tonumber(ARGV[4]) < curItems) then',
-  '      return 0',
+  'local revoked = {}',
+  "for _, url in ipairs(redis.call('SMEMBERS', KEYS[3])) do revoked[url] = true end",
+  'local function decodeAndCount(raw)',
+  '  local ok, snapshot = pcall(cjson.decode, raw)',
+  "  if not ok or type(snapshot) ~= 'table' or type(snapshot.data) ~= 'table' or type(snapshot.data.categories) ~= 'table' then",
+  '    return nil',
+  '  end',
+  '  local categories = 0',
+  '  local items = 0',
+  '  for _, bucket in pairs(snapshot.data.categories) do',
+  '    categories = categories + 1',
+  "    if type(bucket) == 'table' and type(bucket.items) == 'table' then",
+  '      for _, item in ipairs(bucket.items) do',
+  "        local isRevoked = type(item) == 'table' and type(item.link) == 'string' and revoked[item.link]",
+  '        if not isRevoked then items = items + 1 end',
+  '      end',
   '    end',
   '  end',
+  '  return { snapshot = snapshot, categories = categories, items = items }',
   'end',
-  "redis.call('SET', KEYS[1], ARGV[5], 'EX', ARGV[6])",
-  "redis.call('SET', KEYS[2], ARGV[7], 'EX', ARGV[6])",
+  'local candidate = decodeAndCount(ARGV[5])',
+  'if not candidate or candidate.categories < 1 or candidate.items < 1 then return -1 end',
+  "local currentRaw = redis.call('GET', KEYS[2])",
+  'if currentRaw then',
+  '  local current = decodeAndCount(currentRaw)',
+  '  if current then',
+  '    local delta = tonumber(ARGV[1]) - (tonumber(current.snapshot.acceptedAt) or 0)',
+  '    local live = delta >= 0 and delta <= tonumber(ARGV[2])',
+  '    if live and (candidate.categories < current.categories or candidate.items < current.items) then return 0 end',
+  '  end',
+  'end',
+  'local meta = { acceptedAt = tonumber(ARGV[3]), categoryCount = candidate.categories, itemCount = candidate.items }',
+  'local stored = { acceptedAt = tonumber(ARGV[3]), categoryCount = candidate.categories, itemCount = candidate.items, data = candidate.snapshot.data }',
+  "redis.call('SET', KEYS[1], cjson.encode(meta), 'EX', ARGV[4])",
+  "redis.call('SET', KEYS[2], cjson.encode(stored), 'EX', ARGV[4])",
   'return 1',
 ].join('\n');

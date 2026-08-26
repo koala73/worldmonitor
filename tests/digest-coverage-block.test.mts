@@ -166,7 +166,7 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
     // Assert the shared route instead: both failure branches delegate, and the
     // delegate is the only thing that returns retained content.
     assert.match(digestSource, /if \(fresh === null\) \{[\s\S]{0,400}serveDegraded\('empty-rebuild'/);
-    assert.match(digestSource, /\} catch \{[\s\S]{0,400}serveDegraded\('build-error'/);
+    assert.match(digestSource, /\} catch \{[\s\S]{0,700}serveDegraded\('build-error'/);
     const markers = digestSource.match(/markFallbackCoverageStale\(/g) ?? [];
     assert.ok(markers.length >= 2, 'the stale marker must still be the only replay stamp');
   });
