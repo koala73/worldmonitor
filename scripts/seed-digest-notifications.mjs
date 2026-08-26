@@ -42,6 +42,10 @@ const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../shared/ephemeral-live-classifier.js';
+import {
+  deriveNotificationStoryPhase,
+  formatStoryPhaseBadge,
+} from '../shared/story-phase.js';
 import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
   composeBriefFromDigestStories,
@@ -542,18 +546,12 @@ function flatArrayToObject(flat) {
   return obj;
 }
 
-function derivePhase(track) {
-  const mentionCount = parseInt(track.mentionCount ?? '1', 10);
-  const firstSeen = parseInt(track.firstSeen ?? '0', 10);
-  const lastSeen = parseInt(track.lastSeen ?? String(Date.now()), 10);
-  const now = Date.now();
-  const ageH = (now - firstSeen) / 3600000;
-  const silenceH = (now - lastSeen) / 3600000;
-  if (silenceH > 24) return 'fading';
-  if (mentionCount >= 3 && ageH >= 12) return 'sustained';
-  if (mentionCount >= 2) return 'developing';
-  if (ageH < 2) return 'breaking';
-  return 'unknown';
+function derivePhase(track, nowMs = Date.now()) {
+  return deriveNotificationStoryPhase({
+    mentionCount: parseInt(track.mentionCount ?? '1', 10),
+    firstSeen: parseInt(track.firstSeen ?? '0', 10),
+    lastSeen: parseInt(track.lastSeen ?? String(nowMs), 10),
+  }, nowMs);
 }
 
 function matchesSensitivity(ruleSensitivity, severity) {
@@ -1083,12 +1081,12 @@ function formatDigestHtml(stories, nowMs) {
   const highCount = buckets.high.length;
 
   const SEVERITY_BORDER = { critical: '#ef4444', high: '#f97316', medium: '#eab308' };
-  const PHASE_COLOR = { breaking: '#ef4444', developing: '#f97316', sustained: '#60a5fa', fading: '#555' };
 
   function storyCard(s) {
     const borderColor = SEVERITY_BORDER[s.severity] ?? '#4ade80';
-    const phaseColor = PHASE_COLOR[s.phase] ?? '#888';
-    const phaseCap = s.phase ? s.phase.charAt(0).toUpperCase() + s.phase.slice(1) : '';
+    const phaseBadge = formatStoryPhaseBadge(s.phase);
+    const phaseColor = phaseBadge?.color;
+    const phaseCap = phaseBadge?.label ?? '';
     const srcText = s.sources.length > 0
       ? s.sources.slice(0, 3).join(', ') + (s.sources.length > 3 ? ` +${s.sources.length - 3}` : '')
       : '';
@@ -1106,7 +1104,7 @@ function formatDigestHtml(stories, nowMs) {
       snippetEl = `<div style="margin-top: 6px; font-size: 12px; color: #999; line-height: 1.45;">${escapeHtml(trimmed)}</div>`;
     }
     const meta = [
-      phaseCap ? `<span style="font-size: 10px; color: ${phaseColor}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">${phaseCap}</span>` : '',
+      phaseBadge ? `<span style="font-size: 10px; color: ${phaseColor}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">${phaseCap}</span>` : '',
       srcText ? `<span style="font-size: 11px; color: #555;">${escapeHtml(srcText)}</span>` : '',
     ].filter(Boolean).join('<span style="color: #333; margin: 0 6px;">&bull;</span>');
     return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${snippetEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
