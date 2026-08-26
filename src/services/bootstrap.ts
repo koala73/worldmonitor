@@ -45,6 +45,11 @@ const EMPTY_TIER_STATE: BootstrapTierHydrationState = { source: 'none', updatedA
  * cascade where aborted tier fetches left panels in empty-state. Desktop gets
  * longer budgets for different network and dependency-loading constraints.
  * Do not move these without RUM / Sentry evidence.
+ *
+ * `web.fast` is ALSO hardcoded, deliberately un-imported, as
+ * WEB_FAST_TIER_DEADLINE_MS in e2e/bootstrap-hydration-request-budget.spec.ts,
+ * whose abort fixture delays the tier past it. That copy is a tripwire: change
+ * this number and that spec must be re-examined, not silently followed.
  */
 export const BOOTSTRAP_TIER_TIMEOUT_MS = {
   web: { fast: 1_200, slow: 3_000 },

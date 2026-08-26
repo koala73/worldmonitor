@@ -109,6 +109,8 @@ const SORTS = [
   ['estimated_value', 'Estimated value'],
   ['relevance', 'Technology relevance'],
 ] as const;
+const SOURCE_VALUES = new Set<string>(SOURCES.map(([value]) => value));
+const SORT_VALUES = new Set<string>(SORTS.map(([value]) => value));
 
 function selected(value: string | undefined, expected: string): string {
   return value === expected ? ' selected' : '';
@@ -579,6 +581,8 @@ export class GlobalProcurementPanel extends Panel {
     const query = String(formData.get('query') ?? '');
     const buyer = String(formData.get('buyer') ?? '');
     const country = String(formData.get('country') ?? '');
+    const source = String(formData.get('source') ?? '');
+    const sort = String(formData.get('sort') || 'closing_soon');
     if (
       query.length > WEBMCP_PROCUREMENT_TEXT_MAX_CHARS
       || buyer.length > WEBMCP_PROCUREMENT_TEXT_MAX_CHARS
@@ -600,14 +604,23 @@ export class GlobalProcurementPanel extends Panel {
         ),
       };
     }
+    if (!SOURCE_VALUES.has(source) || !SORT_VALUES.has(sort)) {
+      return {
+        ok: false,
+        error: new RetryableProcurementSearchError(
+          'invalid_arguments',
+          'The procurement source or sort filter is not available.',
+        ),
+      };
+    }
     return {
       ok: true,
       filters: {
         query: query.trim(),
         buyer: buyer.trim(),
         country: country.toUpperCase(),
-        source: String(formData.get('source') || ''),
-        sort: String(formData.get('sort') || 'closing_soon'),
+        source,
+        sort,
         pageSize: 25,
         cursor: '',
         minAutomationScore: formData.get('techRelevant') ? TECH_RELEVANCE_MIN_SCORE : 0,

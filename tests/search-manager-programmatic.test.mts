@@ -21,6 +21,10 @@ import {
 } from '../src/config/map-layer-definitions.ts';
 import { searchMatchIdentity, type SearchMatch, type SearchResult } from '../src/components/search-types.ts';
 import { OpaqueResultCache } from '../src/services/opaque-result-cache.ts';
+import {
+  raceWebMcpAbort,
+  throwIfWebMcpAborted,
+} from '../src/services/webmcp.ts';
 import { withTimeout } from '../src/utils/with-timeout.ts';
 
 type Variant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
@@ -87,6 +91,7 @@ interface Runtime {
   runtimeConfigListeners: Set<() => void>;
   widgetAccessListeners: Set<() => void>;
   liveFlightQueries: string[];
+  liveFlightSignals: Array<AbortSignal | undefined>;
   liveFlightError: Error | null;
   liveFlightPending: boolean;
   releaseLiveFlight: (() => void) | null;
@@ -100,9 +105,11 @@ interface ModalDouble {
   revision: number;
   openCalls: number;
   closeCalls: number;
+  isOpen: boolean;
   cancelCalls: number;
   clearedSources: string[];
   flightCallsign: string | null;
+  humanInteractionCallback: (() => void) | null;
   search(query: string, scope: string): {
     orderedMatches: SearchMatch[];
     flightCallsign: string | null;
@@ -114,6 +121,8 @@ interface ModalDouble {
   open(): void;
   closeForProgrammaticSelection(): void;
   cancelPendingWork(): void;
+  setOnHumanInteraction(callback: () => void): void;
+  triggerHumanInteraction(): void;
 }
 
 interface Scenario {
@@ -129,7 +138,11 @@ interface Scenario {
     hotspotIds: string[];
     conflictIds: string[];
     pipelineIds: string[];
-    countryBriefs: Array<[string, string, { trackDetailedAnalytics?: boolean } | undefined]>;
+    countryBriefs: Array<[
+      string,
+      string,
+      { trackDetailedAnalytics?: boolean; signal?: AbortSignal } | undefined,
+    ]>;
     enabledPanels: Array<[string, { trackDetailedAnalytics?: boolean } | undefined]>;
     scrolledPanels: string[];
   };
@@ -188,6 +201,8 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     'clearTimeout',
     'withTimeout',
     'fetchAircraftPositions',
+    'raceWebMcpAbort',
+    'throwIfWebMcpAborted',
   ];
   // Regular `function`s, not arrow functions: the receiver check below only
   // reflects how the caller invoked us (arrow functions ignore call-site
@@ -282,8 +297,9 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     nativeLikeSetTimeout,
     nativeLikeClearTimeout,
     withTimeout,
-    (request: { callsign?: string }) => {
+    (request: { callsign?: string }, signal?: AbortSignal) => {
       runtime.liveFlightQueries.push(request.callsign ?? '');
+      runtime.liveFlightSignals.push(signal);
       if (runtime.liveFlightError) return Promise.reject(runtime.liveFlightError);
       const livePosition = {
         icao24: 'abc123',
@@ -302,6 +318,8 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
       }
       return Promise.resolve([livePosition]);
     },
+    raceWebMcpAbort,
+    throwIfWebMcpAborted,
   ];
 
   // eslint-disable-next-line no-new-func
@@ -357,6 +375,7 @@ function makeScenario(
     runtimeConfigListeners: new Set(),
     widgetAccessListeners: new Set(),
     liveFlightQueries: [],
+    liveFlightSignals: [],
     liveFlightError: null,
     liveFlightPending: false,
     releaseLiveFlight: null,
@@ -386,9 +405,11 @@ function makeScenario(
     revision: 1,
     openCalls: 0,
     closeCalls: 0,
+    isOpen: false,
     cancelCalls: 0,
     clearedSources: [],
     flightCallsign: null,
+    humanInteractionCallback: null,
     search: () => ({
       orderedMatches: [...modal.matches],
       flightCallsign: modal.flightCallsign,
@@ -409,9 +430,17 @@ function makeScenario(
       }
     },
     refreshSearch: () => {},
-    open: () => { modal.openCalls += 1; },
-    closeForProgrammaticSelection: () => { modal.closeCalls += 1; },
+    open: () => {
+      modal.openCalls += 1;
+      modal.isOpen = true;
+    },
+    closeForProgrammaticSelection: () => {
+      modal.closeCalls += 1;
+      modal.isOpen = false;
+    },
     cancelPendingWork: () => { modal.cancelCalls += 1; },
+    setOnHumanInteraction: (callback) => { modal.humanInteractionCallback = callback; },
+    triggerHumanInteraction: () => { modal.humanInteractionCallback?.(); },
   };
   const mapLayers = Object.fromEntries(
     Object.keys(LAYER_REGISTRY).map((key) => [key, false]),
@@ -448,7 +477,7 @@ function makeScenario(
     openCountryBriefByCode: (
       code: string,
       name: string,
-      options?: { trackDetailedAnalytics?: boolean },
+      options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
     ) => {
       calls.countryBriefs.push([code, name, options]);
       return true;
@@ -461,13 +490,22 @@ function makeScenario(
       return true;
     },
   });
+  // Mirrors SearchManager.setupSearchModal's production authority seam while
+  // retaining this test's lightweight prebuilt modal double.
+  modal.setOnHumanInteraction(() => manager.cancelPendingProgrammaticSelection());
   manager.updateSearchIndex = () => {
     state.updateCount += 1;
     state.onUpdate?.(state.updateCount);
   };
-  manager.searchSelection.scrollToPanel = (panelId: string) => calls.scrolledPanels.push(panelId);
-  manager.searchSelection.scrollToPanelWhenReady = (panelId: string) => calls.scrolledPanels.push(panelId);
-  manager.searchSelection.dispatchPanelTab = () => {};
+  manager.searchSelection.scrollToPanel = (panelId: string) => {
+    calls.scrolledPanels.push(panelId);
+    return true;
+  };
+  manager.searchSelection.scrollToPanelWhenReady = (panelId: string) => {
+    calls.scrolledPanels.push(panelId);
+    return true;
+  };
+  manager.searchSelection.dispatchPanelTabAfterPresentation = () => true;
   manager.destroyed = false;
 
   return { manager, runtime, modal, ctx, calls, state };
@@ -487,6 +525,17 @@ function flushTimers(runtime: Runtime): void {
     runtime.pendingTimers.clear();
     for (const callback of callbacks) callback();
   }
+}
+
+function summarizeCountryBriefs(calls: Scenario['calls']['countryBriefs']): unknown[] {
+  return calls.map(([code, name, options]) => [
+    code,
+    name,
+    options ? {
+      trackDetailedAnalytics: options.trackDetailedAnalytics,
+      ...(options.signal ? { hasSignal: true } : {}),
+    } : undefined,
+  ]);
 }
 
 describe('SearchManager programmatic dashboard search (#6212)', () => {
@@ -542,11 +591,767 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     flushTimers(scenario.runtime);
     assert.deepEqual(scenario.calls.hotspotIds, []);
     assert.deepEqual(scenario.calls.views, []);
-    assert.deepEqual(scenario.calls.countryBriefs, [[
+    assert.deepEqual(summarizeCountryBriefs(scenario.calls.countryBriefs), [[
       'CA',
       'Canada',
-      { trackDetailedAnalytics: false },
+      { trackDetailedAnalytics: false, hasSignal: true },
     ]]);
+  });
+
+  it('rejects an aborted delayed selection without applying its map effect', async () => {
+    const scenario = makeScenario([
+      resultMatch('hotspot', 'cancelled-hotspot', 'Cancelled hotspot', { id: 'cancelled-hotspot' }),
+    ]);
+    scenario.runtime.deferTimers = true;
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+
+    const controller = new AbortController();
+    const pendingOpen = scenario.manager.openSearchResult(key, undefined, controller.signal);
+    await Promise.resolve();
+    assert.equal(scenario.runtime.pendingTimers.size, 1);
+
+    controller.abort();
+    await assert.rejects(pendingOpen, (error: unknown) => (
+      error instanceof Error && error.name === 'AbortError'
+    ));
+    flushTimers(scenario.runtime);
+    assert.deepEqual(scenario.calls.hotspotIds, []);
+    assert.deepEqual(scenario.calls.views, []);
+  });
+
+  it('aborts promptly while renderer readiness is still pending', async () => {
+    const scenario = makeScenario([
+      resultMatch('pipeline', 'pipe-pending', 'Pending pipeline', { id: 'pipe-pending' }),
+    ]);
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+    let releaseRenderer!: () => void;
+    const rendererReady = new Promise<void>((resolve) => {
+      releaseRenderer = resolve;
+    });
+    const controller = new AbortController();
+    const pendingOpen = scenario.manager.openSearchResult(
+      key,
+      () => rendererReady,
+      controller.signal,
+    );
+    await Promise.resolve();
+    assert.equal(scenario.modal.closeCalls, 0);
+
+    controller.abort();
+    await assert.rejects(pendingOpen, (error: unknown) => error === controller.signal.reason);
+    assert.deepEqual(scenario.calls.pipelineIds, []);
+    assert.deepEqual(scenario.calls.views, []);
+    assert.equal(scenario.modal.closeCalls, 0);
+    releaseRenderer();
+    await Promise.resolve();
+    assert.deepEqual(scenario.calls.pipelineIds, []);
+  });
+
+  it('lets an existing palette interaction cancel an open before renderer readiness', async () => {
+    const scenario = makeScenario([
+      resultMatch('pipeline', 'pipe-human-cancel', 'Human-cancelled pipeline', { id: 'pipe-human-cancel' }),
+    ]);
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+    let releaseRenderer!: () => void;
+    const rendererReady = new Promise<void>((resolve) => { releaseRenderer = resolve; });
+    scenario.modal.open();
+    const pendingOpen = scenario.manager.openSearchResult(key, () => rendererReady);
+    await Promise.resolve();
+
+    scenario.modal.triggerHumanInteraction();
+    assert.deepEqual(await pendingOpen, {
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+    assert.equal(scenario.modal.isOpen, true, 'human interaction keeps the existing palette open');
+    assert.equal(scenario.modal.closeCalls, 0);
+
+    releaseRenderer();
+    await Promise.resolve();
+    assert.deepEqual(scenario.calls.pipelineIds, [], 'released stale readiness must not mutate the map');
+    assert.equal(scenario.modal.closeCalls, 0, 'released stale readiness must not close the palette');
+  });
+
+  it('lets a newer result supersede an older open held in renderer readiness', async () => {
+    const scenario = makeScenario([
+      resultMatch('pipeline', 'pipe-old', 'Old pipeline', { id: 'pipe-old' }),
+      resultMatch('pipeline', 'pipe-new', 'New pipeline', { id: 'pipe-new' }),
+    ]);
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const oldKey = response.results[0]?.key;
+    const newKey = response.results[1]?.key;
+    assert.ok(oldKey);
+    assert.ok(newKey);
+    let releaseOldRenderer!: () => void;
+    const oldRendererReady = new Promise<void>((resolve) => { releaseOldRenderer = resolve; });
+    const oldOpen = scenario.manager.openSearchResult(oldKey, () => oldRendererReady);
+    await Promise.resolve();
+
+    assert.deepEqual(
+      await scenario.manager.openSearchResult(newKey, async () => {}),
+      { ok: true, status: 'opened', type: 'pipeline' },
+    );
+    assert.deepEqual(await oldOpen, {
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+
+    releaseOldRenderer();
+    await Promise.resolve();
+    assert.deepEqual(scenario.calls.pipelineIds, ['pipe-new']);
+    assert.equal(scenario.modal.closeCalls, 1, 'only the newer successful result may close the palette');
+  });
+
+  it('cancels renderer-held opens on security invalidation and destroy', async () => {
+    for (const cause of ['security', 'destroy'] as const) {
+      const scenario = makeScenario([
+        resultMatch('pipeline', `pipe-${cause}`, `${cause} pipeline`, { id: `pipe-${cause}` }),
+      ]);
+      if (cause === 'security') scenario.manager.observeSecurityContext();
+      const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+      const key = response.results[0]?.key;
+      assert.ok(key);
+      let releaseRenderer!: () => void;
+      const rendererReady = new Promise<void>((resolve) => { releaseRenderer = resolve; });
+      const pendingOpen = scenario.manager.openSearchResult(key, () => rendererReady);
+      await Promise.resolve();
+
+      if (cause === 'security') {
+        scenario.runtime.auth = {};
+        scenario.runtime.premium = false;
+        for (const listener of scenario.runtime.authListeners) listener();
+      } else {
+        scenario.manager.destroy();
+      }
+
+      assert.deepEqual(await pendingOpen, cause === 'destroy'
+        ? { ok: false, status: 'denied', reason: 'search_state_changed' }
+        : { ok: false, status: 'denied', reason: 'result_no_longer_executable' });
+      releaseRenderer();
+      await Promise.resolve();
+      assert.deepEqual(scenario.calls.pipelineIds, [], cause);
+      assert.equal(scenario.modal.closeCalls, 0, cause);
+    }
+  });
+
+  it('passes cancellation into an in-flight country presentation', async () => {
+    const scenario = makeScenario([
+      resultMatch('country', 'US', 'United States', { code: 'US', name: 'United States' }),
+    ]);
+    let capturedSignal: AbortSignal | undefined;
+    let releaseCountry!: () => void;
+    let presented = 0;
+    scenario.manager.callbacks.openCountryBriefByCode = (
+      code: string,
+      name: string,
+      options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
+    ) => {
+      scenario.calls.countryBriefs.push([code, name, options]);
+      capturedSignal = options?.signal;
+      return new Promise<boolean>((resolve, reject) => {
+        const signal = options?.signal;
+        const handleAbort = (): void => reject(signal?.reason);
+        signal?.addEventListener('abort', handleAbort, { once: true });
+        releaseCountry = () => {
+          signal?.removeEventListener('abort', handleAbort);
+          if (signal?.aborted) return;
+          presented += 1;
+          resolve(true);
+        };
+      });
+    };
+
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+    scenario.modal.open();
+    const controller = new AbortController();
+    const pendingOpen = scenario.manager.openSearchResult(key, undefined, controller.signal);
+    await Promise.resolve();
+    assert.notEqual(capturedSignal, controller.signal, 'the presentation uses a linked internal signal');
+    assert.equal(capturedSignal?.aborted, false);
+    assert.equal(scenario.calls.countryBriefs[0]?.[2]?.trackDetailedAnalytics, false);
+    assert.equal(scenario.modal.isOpen, true, 'selection entry must not close the human palette');
+
+    controller.abort();
+    await assert.rejects(pendingOpen, (error: unknown) => error === controller.signal.reason);
+    assert.equal(capturedSignal?.aborted, true, 'caller abort must propagate to the internal signal');
+    releaseCountry();
+    await Promise.resolve();
+    assert.equal(presented, 0, 'aborted country work must not present later');
+    assert.equal(scenario.modal.isOpen, true, 'cancellation must leave the human palette open');
+    assert.equal(scenario.modal.closeCalls, 0);
+    assert.deepEqual(await scenario.manager.openSearchResult(key), {
+      ok: false,
+      status: 'denied',
+      reason: 'invalid_or_expired_key',
+    }, 'an entered selection must remain one-use after cancellation');
+  });
+
+  it('aborts an in-flight country presentation when a newer selection starts', async () => {
+    const scenario = makeScenario([
+      resultMatch('country', 'US', 'United States', { code: 'US', name: 'United States' }),
+      resultMatch('country', 'CA', 'Canada', { code: 'CA', name: 'Canada' }),
+    ]);
+    let firstSignal: AbortSignal | undefined;
+    let firstPresented = 0;
+    let releaseFirst!: () => void;
+    scenario.manager.callbacks.openCountryBriefByCode = (
+      code: string,
+      name: string,
+      options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
+    ) => {
+      scenario.calls.countryBriefs.push([code, name, options]);
+      if (code !== 'US') return true;
+      firstSignal = options?.signal;
+      return new Promise<boolean>((resolve, reject) => {
+        const handleAbort = (): void => reject(firstSignal?.reason);
+        firstSignal?.addEventListener('abort', handleAbort, { once: true });
+        releaseFirst = () => {
+          firstSignal?.removeEventListener('abort', handleAbort);
+          if (firstSignal?.aborted) return;
+          firstPresented += 1;
+          resolve(true);
+        };
+      });
+    };
+
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const firstKey = response.results[0]?.key;
+    const secondKey = response.results[1]?.key;
+    assert.ok(firstKey);
+    assert.ok(secondKey);
+    const firstOpen = scenario.manager.openSearchResult(firstKey);
+    await Promise.resolve();
+    assert.equal(firstSignal?.aborted, false);
+
+    assert.deepEqual(await scenario.manager.openSearchResult(secondKey), {
+      ok: true,
+      status: 'opened',
+      type: 'country',
+    });
+    assert.equal(firstSignal?.aborted, true, 'the newer selection must abort prior presentation work');
+    assert.deepEqual(await firstOpen, {
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+    releaseFirst();
+    assert.equal(firstPresented, 0);
+  });
+
+  it('denies a panel result when enabling it never produces a visible target', async () => {
+    const scenario = makeScenario([
+      commandMatch('panel:test-panel', 'panels', 'Test panel'),
+    ]);
+    scenario.runtime.deferTimers = true;
+    delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+    delete scenario.manager.searchSelection.scrollToPanel;
+    delete scenario.manager.searchSelection.dispatchPanelTabAfterPresentation;
+    const runtimeGlobal = globalThis as unknown as {
+      document?: { querySelector: () => null };
+    };
+    const previousDocument = runtimeGlobal.document;
+    runtimeGlobal.document = { querySelector: () => null };
+
+    try {
+      const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+      const key = response.results[0]?.key;
+      assert.ok(key);
+      const pendingOpen = scenario.manager.openSearchResult(key);
+      await Promise.resolve();
+      assert.ok(scenario.runtime.pendingTimers.size > 0);
+      flushTimers(scenario.runtime);
+
+      assert.deepEqual(await pendingOpen, {
+        ok: false,
+        status: 'denied',
+        reason: 'result_no_longer_executable',
+      });
+      assert.deepEqual(scenario.calls.enabledPanels, [[
+        'test-panel',
+        { trackDetailedAnalytics: false },
+      ]]);
+      assert.deepEqual(scenario.calls.scrolledPanels, []);
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+    }
+  });
+
+  it('re-arms agent view suppression when a slow deferred-panel retry finally mounts', async () => {
+    const scenario = makeScenario([
+      commandMatch('panel:test-panel', 'panels', 'Test panel'),
+    ]);
+    scenario.runtime.deferTimers = true;
+    delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+    delete scenario.manager.searchSelection.scrollToPanel;
+    delete scenario.manager.searchSelection.dispatchPanelTabAfterPresentation;
+    let mounted = false;
+    let notifyMutation = (): void => {};
+    let simulatedElapsedMs = 0;
+    let observerObserved = false;
+    const suppressionTimes: number[] = [];
+    scenario.manager.searchSelection.bindings.suppressNextAgentPanelView = () => {
+      suppressionTimes.push(simulatedElapsedMs);
+    };
+    const target = {
+      classList: { add: () => {}, remove: () => {} },
+      isConnected: true,
+      offsetWidth: 1,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('test-panel'),
+    };
+    const shell = {
+      isConnected: true,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
+    };
+    const runtimeGlobal = globalThis as unknown as {
+      document?: {
+        body: object;
+        querySelector: (selector: string) => typeof target | typeof shell | null;
+      };
+      MutationObserver?: typeof MutationObserver;
+    };
+    const previousDocument = runtimeGlobal.document;
+    const previousMutationObserver = Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver');
+    runtimeGlobal.document = {
+      body: {},
+      querySelector: (selector) => {
+        if (selector.includes(':not([data-deferred-panel])')) return mounted ? target : null;
+        return selector.includes('[data-deferred-panel]') ? shell : null;
+      },
+    };
+    class MutationObserverDouble {
+      constructor(callback: () => void) {
+        notifyMutation = callback;
+      }
+
+      observe(): void { observerObserved = true; }
+      disconnect(): void {}
+      takeRecords(): MutationRecord[] { return []; }
+    }
+    Object.defineProperty(globalThis, 'MutationObserver', {
+      configurable: true,
+      writable: true,
+      value: MutationObserverDouble as unknown as typeof MutationObserver,
+    });
+
+    try {
+      const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+      const key = response.results[0]?.key;
+      assert.ok(key);
+      const pendingOpen = scenario.manager.openSearchResult(key);
+      await Promise.resolve();
+      assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+      assert.equal(observerObserved, true, 'the deferred wait must observe panel mounts');
+      assert.equal(
+        scenario.runtime.pendingTimers.size,
+        1,
+        'waiting uses one deadline rather than polling PanelLayout retry timing',
+      );
+      assert.deepEqual(
+        suppressionTimes,
+        [],
+        'a shell-only wait must not leave privacy suppression behind if the agent is cancelled',
+      );
+
+      let settled = false;
+      void pendingOpen.then(() => { settled = true; });
+      simulatedElapsedMs = 5_500;
+      notifyMutation();
+      await Promise.resolve();
+      assert.equal(settled, false, 'the failed initial load must keep waiting for PanelLayout retry');
+
+      simulatedElapsedMs += 1_000;
+      mounted = true;
+      notifyMutation();
+
+      assert.deepEqual(await pendingOpen, {
+        ok: true,
+        status: 'opened',
+        type: 'command',
+      });
+      assert.equal(simulatedElapsedMs, 6_500, 'the real panel mounted after the privacy TTL and retry gap');
+      assert.deepEqual(
+        suppressionTimes,
+        [6_500],
+        'privacy suppression must be armed at the real-panel scroll boundary',
+      );
+      assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell', 'test-panel']);
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+      if (previousMutationObserver) {
+        Object.defineProperty(globalThis, 'MutationObserver', previousMutationObserver);
+      } else {
+        delete runtimeGlobal.MutationObserver;
+      }
+    }
+  });
+
+  it('disconnects a human deferred-panel wait when the dispatcher is destroyed', async () => {
+    const scenario = makeScenario([]);
+    scenario.runtime.deferTimers = true;
+    delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+    let notifyMutation = (): void => {};
+    let observerDisconnected = false;
+    let observerObserved = false;
+    const shell = {
+      isConnected: true,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
+    };
+    const target = {
+      classList: { add: () => {}, remove: () => {} },
+      isConnected: true,
+      offsetWidth: 1,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('real-panel'),
+    };
+    let mounted = false;
+    const runtimeGlobal = globalThis as unknown as {
+      document?: {
+        body: object;
+        querySelector: (selector: string) => typeof target | typeof shell | null;
+      };
+      MutationObserver?: typeof MutationObserver;
+    };
+    const previousDocument = runtimeGlobal.document;
+    const previousMutationObserver = Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver');
+    runtimeGlobal.document = {
+      body: {},
+      querySelector: (selector) => {
+        if (selector.includes(':not([data-deferred-panel])')) return mounted ? target : null;
+        return selector.includes('[data-deferred-panel]') ? shell : null;
+      },
+    };
+    class MutationObserverDouble {
+      constructor(callback: () => void) { notifyMutation = callback; }
+      observe(): void { observerObserved = true; }
+      disconnect(): void { observerDisconnected = true; }
+      takeRecords(): MutationRecord[] { return []; }
+    }
+    Object.defineProperty(globalThis, 'MutationObserver', {
+      configurable: true,
+      writable: true,
+      value: MutationObserverDouble as unknown as typeof MutationObserver,
+    });
+
+    try {
+      const pendingScroll = scenario.manager.searchSelection.scrollToPanelWhenReady(
+        'test-panel',
+        true,
+      );
+      await Promise.resolve();
+      assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+      assert.equal(observerObserved, true, 'the deferred wait must observe panel mounts');
+      assert.equal(scenario.runtime.pendingTimers.size, 1);
+
+      scenario.manager.searchSelection.destroy();
+      assert.equal(await pendingScroll, false);
+      assert.equal(observerDisconnected, true);
+      assert.equal(scenario.runtime.pendingTimers.size, 0);
+
+      mounted = true;
+      notifyMutation();
+      assert.deepEqual(
+        scenario.calls.scrolledPanels,
+        ['deferred-shell'],
+        'a late mount must not scroll after dispatcher teardown',
+      );
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+      if (previousMutationObserver) {
+        Object.defineProperty(globalThis, 'MutationObserver', previousMutationObserver);
+      } else {
+        delete runtimeGlobal.MutationObserver;
+      }
+    }
+  });
+
+  it('cancels an older human deferred-panel wait when a newer human selection begins', async () => {
+    const scenario = makeScenario([]);
+    scenario.runtime.deferTimers = true;
+    delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+    delete scenario.manager.searchSelection.scrollToPanel;
+    delete scenario.manager.searchSelection.dispatchPanelTabAfterPresentation;
+    let notifyMutation = (): void => {};
+    let mounted = false;
+    let highlightCount = 0;
+    let observerObserved = false;
+    const shell = {
+      isConnected: true,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
+    };
+    const target = {
+      classList: {
+        add: () => { highlightCount += 1; },
+        remove: () => {},
+      },
+      isConnected: true,
+      offsetWidth: 1,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('stale-real-panel'),
+    };
+    const runtimeGlobal = globalThis as unknown as {
+      document?: {
+        body: object;
+        querySelector: (selector: string) => typeof target | typeof shell | null;
+      };
+      MutationObserver?: typeof MutationObserver;
+    };
+    const previousDocument = runtimeGlobal.document;
+    const previousMutationObserver = Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver');
+    runtimeGlobal.document = {
+      body: {},
+      querySelector: (selector) => {
+        if (selector.includes(':not([data-deferred-panel])')) return mounted ? target : null;
+        return selector.includes('[data-deferred-panel]') ? shell : null;
+      },
+    };
+    class MutationObserverDouble {
+      constructor(callback: () => void) { notifyMutation = callback; }
+      observe(): void { observerObserved = true; }
+      disconnect(): void {}
+      takeRecords(): MutationRecord[] { return []; }
+    }
+    Object.defineProperty(globalThis, 'MutationObserver', {
+      configurable: true,
+      writable: true,
+      value: MutationObserverDouble as unknown as typeof MutationObserver,
+    });
+
+    try {
+      const pendingPanelOpen = scenario.manager.searchSelection.handleCommand(
+        commandMatch('panel:test-panel', 'panels', 'Test panel').command,
+      );
+      await Promise.resolve();
+      assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+      assert.equal(observerObserved, true, 'the deferred wait must observe panel mounts');
+
+      assert.equal(
+        scenario.manager.searchSelection.handleCommand(
+          commandMatch('time:week', 'time', 'Past week').command,
+        ),
+        true,
+      );
+      assert.equal(await pendingPanelOpen, false, 'the superseded panel wait must be denied');
+      assert.deepEqual(scenario.calls.timeRanges, ['week']);
+
+      mounted = true;
+      notifyMutation();
+      assert.deepEqual(
+        scenario.calls.scrolledPanels,
+        ['deferred-shell'],
+        'a late panel mount must not override the newer human selection',
+      );
+      assert.equal(highlightCount, 0, 'the stale panel must not be highlighted');
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+      if (previousMutationObserver) {
+        Object.defineProperty(globalThis, 'MutationObserver', previousMutationObserver);
+      } else {
+        delete runtimeGlobal.MutationObserver;
+      }
+    }
+  });
+
+  it('scrolls a deferred panel shell but waits for the real panel before reporting opened', async () => {
+    const scenario = makeScenario([
+      commandMatch('panel:test-panel', 'panels', 'Test panel'),
+    ]);
+    scenario.runtime.deferTimers = true;
+    delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+    delete scenario.manager.searchSelection.scrollToPanel;
+    delete scenario.manager.searchSelection.dispatchPanelTabAfterPresentation;
+    let virtualElapsedMs = 0;
+    scenario.manager.searchSelection.bindings.setTimeout = (
+      callback: () => void,
+      delay: number,
+    ) => {
+      const timer = scenario.runtime.nextTimerId++;
+      scenario.runtime.pendingTimers.set(timer, () => {
+        virtualElapsedMs += delay;
+        callback();
+      });
+      return timer;
+    };
+    scenario.manager.searchSelection.bindings.clearTimeout = (timer: number) => {
+      scenario.runtime.pendingTimers.delete(timer);
+    };
+    const shell = {
+      isConnected: true,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
+    };
+    const panel = {
+      classList: { add: () => {}, remove: () => {} },
+      isConnected: true,
+      offsetWidth: 1,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('real-panel'),
+    };
+    const runtimeGlobal = globalThis as unknown as {
+      document?: { querySelector: (selector: string) => typeof shell | typeof panel | null };
+    };
+    const previousDocument = runtimeGlobal.document;
+    runtimeGlobal.document = {
+      querySelector: (selector) => {
+        if (selector.includes(':not([data-deferred-panel])')) {
+          return virtualElapsedMs > 960 ? panel : null;
+        }
+        return selector.includes('[data-deferred-panel]') ? shell : null;
+      },
+    };
+
+    try {
+      const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+      const key = response.results[0]?.key;
+      assert.ok(key);
+      const pendingOpen = scenario.manager.openSearchResult(key);
+      await Promise.resolve();
+      assert.equal(scenario.calls.scrolledPanels[0], 'deferred-shell');
+      assert.equal(scenario.modal.closeCalls, 0, 'a shell is not a successful presentation');
+      flushTimers(scenario.runtime);
+
+      assert.deepEqual(await pendingOpen, {
+        ok: true,
+        status: 'opened',
+        type: 'command',
+      });
+      assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell', 'real-panel']);
+      assert.ok(virtualElapsedMs >= 1_000, 'the real panel mounted after the old 960 ms window');
+      assert.equal(scenario.modal.closeCalls, 1);
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+    }
+  });
+
+  it('denies a deferred panel shell that never resolves to a real panel', async () => {
+    const scenario = makeScenario([
+      commandMatch('panel:test-panel', 'panels', 'Test panel'),
+    ]);
+    scenario.runtime.deferTimers = true;
+    delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+    delete scenario.manager.searchSelection.scrollToPanel;
+    delete scenario.manager.searchSelection.dispatchPanelTabAfterPresentation;
+    const shell = {
+      isConnected: true,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
+    };
+    const runtimeGlobal = globalThis as unknown as {
+      document?: { querySelector: (selector: string) => typeof shell | null };
+    };
+    const previousDocument = runtimeGlobal.document;
+    runtimeGlobal.document = {
+      querySelector: (selector) => (
+        selector.includes(':not([data-deferred-panel])') ? null : shell
+      ),
+    };
+
+    try {
+      const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+      const key = response.results[0]?.key;
+      assert.ok(key);
+      scenario.modal.open();
+      const pendingOpen = scenario.manager.openSearchResult(key);
+      await Promise.resolve();
+      flushTimers(scenario.runtime);
+
+      assert.deepEqual(await pendingOpen, {
+        ok: false,
+        status: 'denied',
+        reason: 'result_no_longer_executable',
+      });
+      assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+      assert.equal(scenario.modal.isOpen, true, 'an unresolved shell must not close the palette');
+      assert.equal(scenario.modal.closeCalls, 0);
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+    }
+  });
+
+  it('does not acknowledge deferred market or prediction shells as opened results', async () => {
+    for (const testCase of [
+      { type: 'market', panelId: 'markets' },
+      { type: 'prediction', panelId: 'polymarket' },
+    ] as const) {
+      const scenario = makeScenario([
+        resultMatch(testCase.type, `${testCase.type}-1`, testCase.type, {}),
+      ]);
+      scenario.runtime.deferTimers = true;
+      delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+      delete scenario.manager.searchSelection.scrollToPanel;
+      const shell = {
+        dataset: { panel: testCase.panelId },
+        isConnected: true,
+        scrollIntoView: () => scenario.calls.scrolledPanels.push(testCase.panelId),
+      };
+      const runtimeGlobal = globalThis as unknown as {
+        document?: {
+          querySelector: (selector: string) => typeof shell | null;
+          querySelectorAll: () => typeof shell[];
+        };
+      };
+      const previousDocument = runtimeGlobal.document;
+      runtimeGlobal.document = {
+        querySelector: (selector) => (
+          selector.includes(':not([data-deferred-panel])') ? null : shell
+        ),
+        querySelectorAll: () => [shell],
+      };
+
+      try {
+        const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+        const key = response.results[0]?.key;
+        assert.ok(key);
+        scenario.modal.open();
+        const pendingOpen = scenario.manager.openSearchResult(key);
+        await Promise.resolve();
+        flushTimers(scenario.runtime);
+
+        assert.deepEqual(await pendingOpen, {
+          ok: false,
+          status: 'denied',
+          reason: 'result_no_longer_executable',
+        }, testCase.type);
+        assert.deepEqual(scenario.calls.scrolledPanels, [testCase.panelId], testCase.type);
+        assert.equal(scenario.modal.isOpen, true, testCase.type);
+        assert.equal(scenario.modal.closeCalls, 0, testCase.type);
+      } finally {
+        if (previousDocument === undefined) delete runtimeGlobal.document;
+        else runtimeGlobal.document = previousDocument;
+      }
+    }
+  });
+
+  it('denies market and prediction selections when their visible panel target disappears', () => {
+    const scenario = makeScenario([]);
+    delete scenario.manager.searchSelection.scrollToPanel;
+    const runtimeGlobal = globalThis as unknown as {
+      document?: { querySelector: () => null };
+    };
+    const previousDocument = runtimeGlobal.document;
+    runtimeGlobal.document = { querySelector: () => null };
+
+    try {
+      assert.equal(scenario.manager.searchSelection.handleSearchResult(
+        resultMatch('market', 'market-1', 'Market', {}).result,
+      ), false);
+      assert.equal(scenario.manager.searchSelection.handleSearchResult(
+        resultMatch('prediction', 'prediction-1', 'Prediction', {}).result,
+      ), false);
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+    }
   });
 
   it('cancels delayed programmatic selection work on destroy', async () => {
@@ -602,10 +1407,10 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
 
     const { opened } = await searchThenOpen(scenario);
     assert.deepEqual(opened, { ok: true, status: 'opened', type: 'country' });
-    assert.deepEqual(scenario.calls.countryBriefs, [[
+    assert.deepEqual(summarizeCountryBriefs(scenario.calls.countryBriefs), [[
       'XZ',
       'Fresh display name',
-      { trackDetailedAnalytics: false },
+      { trackDetailedAnalytics: false, hasSignal: true },
     ]]);
     assert.deepEqual(
       scenario.runtime.detailedCountryAnalytics,
@@ -652,6 +1457,27 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.equal(response.results[0]?.title, 'AB123');
   });
 
+  it('passes caller cancellation to the live callsign transport', async () => {
+    const scenario = makeScenario([]);
+    scenario.runtime.liveFlightPending = true;
+    const controller = new AbortController();
+    const pending = scenario.manager.fetchAndPublishLiveFlight(
+      'AB123',
+      scenario.manager.liveFlightLookupGeneration,
+      controller.signal,
+    );
+    await Promise.resolve();
+
+    assert.deepEqual(scenario.runtime.liveFlightQueries, ['AB123']);
+    assert.equal(scenario.runtime.liveFlightSignals[0], controller.signal);
+
+    controller.abort();
+    scenario.runtime.releaseLiveFlight?.();
+    await assert.rejects(pending, (error) => (
+      error instanceof Error && error.name === 'AbortError'
+    ));
+  });
+
   it('bounds a hung live callsign lookup before returning search results', async () => {
     const scenario = makeScenario([]);
     scenario.modal.flightCallsign = 'AB123';
@@ -677,7 +1503,37 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     );
   });
 
-  it('keeps analytics origin local while an agent country selection is awaiting presentation', async () => {
+  it('cancels a delayed agent hotspot when a human command takes authority', async () => {
+    const scenario = makeScenario([
+      resultMatch('hotspot', 'agent-hotspot', 'Agent hotspot', { id: 'agent-hotspot' }),
+    ]);
+    scenario.runtime.deferTimers = true;
+
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+    const pendingAgentOpen = scenario.manager.openSearchResult(key);
+    await Promise.resolve();
+    assert.ok(scenario.runtime.pendingTimers.size > 0, 'agent hotspot should be awaiting its commit timer');
+
+    assert.equal(
+      scenario.manager.searchSelection.handleCommand(
+        commandMatch('time:week', 'time', 'Past week').command,
+      ),
+      true,
+    );
+    flushTimers(scenario.runtime);
+
+    assert.deepEqual(await pendingAgentOpen, {
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+    assert.deepEqual(scenario.calls.hotspotIds, [], 'superseded agent timer must not mutate the map');
+    assert.deepEqual(scenario.calls.timeRanges, ['week'], 'the human command remains authoritative');
+  });
+
+  it('lets a human country choice supersede an in-flight agent country presentation', async () => {
     const agentMatch = resultMatch(
       'country',
       'US',
@@ -692,15 +1548,17 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     );
     const scenario = makeScenario([agentMatch]);
     let resolveAgentSelection!: (opened: boolean) => void;
+    let agentSignal: AbortSignal | undefined;
     let selectionCount = 0;
     scenario.manager.callbacks.openCountryBriefByCode = (
       code: string,
       name: string,
-      options?: { trackDetailedAnalytics?: boolean },
+      options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
     ) => {
       scenario.calls.countryBriefs.push([code, name, options]);
       selectionCount += 1;
       if (selectionCount === 1) {
+        agentSignal = options?.signal;
         return new Promise<boolean>((resolve) => {
           resolveAgentSelection = resolve;
         });
@@ -715,21 +1573,22 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.equal(scenario.calls.countryBriefs.length, 1, 'agent selection should be awaiting presentation');
 
     assert.equal(scenario.manager.searchSelection.handleSearchResult(humanMatch.result), true);
+    assert.equal(agentSignal?.aborted, true, 'human selection must abort the older agent presentation');
     assert.deepEqual(scenario.runtime.detailedCountryAnalytics, [[
       'CA',
       'Canada',
       'search',
     ]]);
-    assert.deepEqual(scenario.calls.countryBriefs, [
-      ['US', 'United States', { trackDetailedAnalytics: false }],
+    assert.deepEqual(summarizeCountryBriefs(scenario.calls.countryBriefs), [
+      ['US', 'United States', { trackDetailedAnalytics: false, hasSignal: true }],
       ['CA', 'Canada', { trackDetailedAnalytics: true }],
     ]);
 
     resolveAgentSelection(true);
     assert.deepEqual(await pendingAgentOpen, {
-      ok: true,
-      status: 'opened',
-      type: 'country',
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
     });
   });
 
@@ -924,6 +1783,88 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.deepEqual(scenario.calls.pipelineIds, []);
   });
 
+  it('revalidates renderer compatibility at the delayed mutation boundary', async () => {
+    const scenario = makeScenario([
+      resultMatch('pipeline', 'pipe-delayed', 'Delayed pipeline', { id: 'pipe-delayed' }),
+    ]);
+    scenario.runtime.deferTimers = true;
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+    const pendingOpen = scenario.manager.openSearchResult(key);
+    await Promise.resolve();
+    assert.equal(scenario.runtime.pendingTimers.size, 1);
+
+    scenario.state.globe = true;
+    flushTimers(scenario.runtime);
+    assert.deepEqual(await pendingOpen, {
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+    assert.deepEqual(scenario.calls.layers, []);
+    assert.deepEqual(scenario.calls.pipelineIds, []);
+    assert.deepEqual(scenario.calls.views, []);
+  });
+
+  it('denies a delayed selection removed from the live search index before commit', async () => {
+    const scenario = makeScenario([
+      resultMatch('hotspot', 'removed-hotspot', 'Removed hotspot', { id: 'removed-hotspot' }),
+    ]);
+    scenario.runtime.deferTimers = true;
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+    const pendingOpen = scenario.manager.openSearchResult(key);
+    await Promise.resolve();
+    assert.equal(scenario.runtime.pendingTimers.size, 1);
+
+    scenario.modal.matches = [];
+    flushTimers(scenario.runtime);
+    assert.deepEqual(await pendingOpen, {
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+    assert.deepEqual(scenario.calls.hotspotIds, []);
+    assert.deepEqual(scenario.calls.views, []);
+  });
+
+  it('dispatches refreshed same-identity flight coordinates at the delayed commit', async () => {
+    const staleFlight = resultMatch(
+      'flight',
+      'abc123',
+      'NEEDLE1',
+      { kind: 'adsb', lat: 1, lon: 2, layer: 'flights' },
+    );
+    const freshFlight = resultMatch(
+      'flight',
+      'abc123',
+      'NEEDLE1',
+      { kind: 'adsb', lat: 33, lon: 44, layer: 'flights' },
+    );
+    const scenario = makeScenario([staleFlight]);
+    scenario.runtime.deferTimers = true;
+    const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+    const key = response.results[0]?.key;
+    assert.ok(key);
+    const pendingOpen = scenario.manager.openSearchResult(key);
+    await Promise.resolve();
+    assert.equal(scenario.runtime.pendingTimers.size, 1);
+
+    scenario.modal.revision += 1;
+    scenario.modal.matches = [freshFlight];
+    flushTimers(scenario.runtime);
+
+    assert.deepEqual(await pendingOpen, {
+      ok: true,
+      status: 'opened',
+      type: 'flight',
+    });
+    assert.deepEqual(scenario.calls.centers, [[33, 44, 9]]);
+    assert.deepEqual(scenario.calls.layers, ['flights']);
+  });
+
   it('denies cached civilian aircraft after a globe switch while retaining military aircraft', async () => {
     const civilian = resultMatch(
       'flight',
@@ -1074,7 +2015,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     scenario.manager.callbacks.openCountryBriefByCode = (
       code: string,
       name: string,
-      options?: { trackDetailedAnalytics?: boolean },
+      options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
     ) => {
       scenario.calls.countryBriefs.push([code, name, options]);
       // Mirrors App.ts finish(false) when the requested page was superseded.
@@ -1089,15 +2030,15 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
       status: 'denied',
       reason: 'result_no_longer_executable',
     });
-    assert.deepEqual(scenario.calls.countryBriefs, [[
+    assert.deepEqual(summarizeCountryBriefs(scenario.calls.countryBriefs), [[
       'US',
       'United States',
-      { trackDetailedAnalytics: false },
+      { trackDetailedAnalytics: false, hasSignal: true },
     ]]);
     assert.deepEqual(scenario.runtime.detailedCountryAnalytics, []);
   });
 
-  it('awaits country commands and closes an open palette before dispatch', async () => {
+  it('keeps an open palette visible when a country command fails to present', async () => {
     const scenario = makeScenario([
       commandMatch('country:US', 'actions', 'United States'),
     ]);
@@ -1106,12 +2047,19 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     const response = await scenario.manager.searchDashboard('needle', 'all', 10);
     const key = response.results[0]?.key;
     assert.ok(key);
+    scenario.modal.open();
     assert.deepEqual(await scenario.manager.openSearchResult(key), {
       ok: false,
       status: 'denied',
       reason: 'result_no_longer_executable',
     });
-    assert.equal(scenario.modal.closeCalls, 1);
+    assert.equal(scenario.modal.isOpen, true);
+    assert.equal(scenario.modal.closeCalls, 0);
+    assert.deepEqual(await scenario.manager.openSearchResult(key), {
+      ok: false,
+      status: 'denied',
+      reason: 'invalid_or_expired_key',
+    }, 'a failed entered selection must remain one-use');
   });
 
   it('keeps human-only commands visible while denying agent no-op or unsafe paths', () => {
@@ -1129,6 +2077,37 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     const unloadedCountryMap = commandMatch('country-map:US', 'country-map', 'United States').command;
     assert.equal(scenario.manager.isModalCommandVisible(unloadedCountryMap), false);
     assert.equal(scenario.manager.isCommandExecutable(unloadedCountryMap), false);
+  });
+
+  it('reports successful synchronous healing of stale locked resilience state for free users', async () => {
+    for (const command of [
+      commandMatch('layer:resilienceScore', 'layers', 'Resilience layer'),
+      commandMatch('view:resilience', 'view', 'Resilience view'),
+    ]) {
+      if (command.kind !== 'command') throw new Error('expected command match');
+      const commandId = command.command.id;
+      const scenario = makeScenario([command]);
+      scenario.runtime.auth = {};
+      scenario.runtime.premium = false;
+      scenario.runtime.pro = false;
+      scenario.ctx.mapLayers.resilienceScore = true;
+
+      const response = await scenario.manager.searchDashboard('needle', 'all', 10);
+      const issued = response.results[0];
+      assert.ok(issued);
+      assert.equal(issued.executable, true, `${commandId} must remain available to turn off`);
+      assert.deepEqual(await scenario.manager.openSearchResult(issued.key), {
+        ok: true,
+        status: 'opened',
+        type: 'command',
+      }, commandId);
+      assert.equal(
+        scenario.ctx.mapLayers.resilienceScore,
+        false,
+        `${commandId} must heal stale enabled state`,
+      );
+      assert.equal(scenario.modal.closeCalls, 1, commandId);
+    }
   });
 
   it('does not treat an incidental preset overlap as a meaningful agent action', () => {
@@ -1152,10 +2131,10 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
         label: 'country',
         match: resultMatch('country', 'US', 'United States', { code: 'US', name: 'United States' }),
         verify: ({ calls, runtime }) => {
-          assert.deepEqual(calls.countryBriefs, [[
+          assert.deepEqual(summarizeCountryBriefs(calls.countryBriefs), [[
             'US',
             'United States',
-            { trackDetailedAnalytics: false },
+            { trackDetailedAnalytics: false, hasSignal: true },
           ]]);
           assert.deepEqual(runtime.detailedCountryAnalytics, []);
         },
@@ -1417,18 +2396,20 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     assert.equal(scenario.manager.flightSearchItems.length, 0);
   });
 
-  it('reports opened when selection already applied across a security-context change', async () => {
+  it('aborts and denies an in-flight country presentation after a security-context change', async () => {
     const scenario = makeScenario([
       resultMatch('country', 'US', 'United States', { code: 'US', name: 'United States' }),
     ]);
     scenario.manager.observeSecurityContext();
     let resolveBrief!: (opened: boolean) => void;
+    let presentationSignal: AbortSignal | undefined;
     scenario.manager.callbacks.openCountryBriefByCode = (
       code: string,
       name: string,
-      options?: { trackDetailedAnalytics?: boolean },
+      options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
     ) => {
       scenario.calls.countryBriefs.push([code, name, options]);
+      presentationSignal = options?.signal;
       return new Promise<boolean>((resolve) => {
         resolveBrief = resolve;
       });
@@ -1444,12 +2425,13 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     scenario.runtime.auth = {};
     scenario.runtime.premium = false;
     for (const listener of scenario.runtime.authListeners) listener();
+    assert.equal(presentationSignal?.aborted, true);
     resolveBrief(true);
 
     assert.deepEqual(await pendingOpen, {
-      ok: true,
-      status: 'opened',
-      type: 'country',
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
     });
     assert.deepEqual(scenario.runtime.detailedCountryAnalytics, []);
   });
@@ -1475,10 +2457,10 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
       status: 'opened',
       type: 'country',
     });
-    assert.deepEqual(scenario.calls.countryBriefs, [[
+    assert.deepEqual(summarizeCountryBriefs(scenario.calls.countryBriefs), [[
       'C7',
       'Country 7',
-      { trackDetailedAnalytics: false },
+      { trackDetailedAnalytics: false, hasSignal: true },
     ]]);
   });
 

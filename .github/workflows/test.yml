@@ -284,14 +284,17 @@ jobs:
         run: npm run build:pro
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
-      - name: Client bundle size budget (#7111)
+      - name: Client bundle size budget (#7111, #7119)
         # The dashboard JS payload grew +151 KB in five weeks with no CI
-        # signal. Compares the build above against the committed snapshot in
-        # scripts/shared/bundle-budgets.json; on an intended size change run
-        # `npm run bundle:budgets` against the same build and commit the diff.
-        # Ordered before the suite so a budget breach costs seconds, not the
-        # full test:data run.
-        run: npm run bundle:check
+        # signal. Compares the build above against the committed snapshots in
+        # scripts/shared/bundle-budgets*.json; on an intended size change run
+        # the matching `npm run bundle:budgets*` command against the same build
+        # and commit the diff. Ordered before the suite so a budget breach costs
+        # seconds, not the full test:data run.
+        run: |
+          npm run bundle:check
+          npm run bundle:check:pro
+          npm run bundle:check:embed
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
       - name: Edge function bundle check
         # Shared checker with caller-specific profiles. Tracked files are the
@@ -611,10 +614,11 @@ jobs:
       # One invocation for all three smoke specs: each `playwright test` run
       # boots its own vite dev server (reuseExistingServer is false), so three
       # separate steps paid three boots; the specs are independent and share
-      # VITE_VARIANT=full. The set includes the news-budget guard (#5376) —
-      # named explicitly because nothing in CI runs the e2e/ glob, and a
-      # regression guard no job invokes reports green while the regression
-      # ships.
+      # VITE_VARIANT=full. The set includes the news-budget guard (#5376) and
+      # both bootstrap request-budget guards (#7046 energy on-demand, #7045 U5
+      # hydration reuse) — named explicitly because nothing in CI runs the e2e/
+      # glob, and a regression guard no job invokes reports green while the
+      # regression ships.
       - run: npm run test:e2e:ci-smoke
       # playwright.config.ts already retains a trace, a video and a screenshot
       # for every failed test (retain-on-failure) — but nothing collected them,
