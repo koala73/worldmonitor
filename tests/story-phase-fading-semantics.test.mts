@@ -309,9 +309,16 @@ describe('#7081 finding 3 — fading is not observable at this call site', () =>
   });
 
   it('the seeder, which CAN see silence, already has a working fading rule', () => {
+    // #7154 lifted the seeder's derivePhase into scripts/_digest-notification-phase.mjs
+    // so it can be unit tested without importing the cron entrypoint. The rule is still
+    // the seeder's -- assert it still reaches for it, then assert the rule itself.
     const seeder = readFileSync(
       resolve(__dirname, '..', 'scripts', 'seed-digest-notifications.mjs'), 'utf-8');
-    assert.match(seeder, /silenceH\s*>\s*24\)\s*return 'fading'/,
+    assert.match(seeder, /import \{[^}]*derivePhase[^}]*\} from '\.\/_digest-notification-phase\.mjs'/,
+      'the seeder still derives its story phase from the extracted module');
+    const phase = readFileSync(
+      resolve(__dirname, '..', 'scripts', '_digest-notification-phase.mjs'), 'utf-8');
+    assert.match(phase, /silenceH\s*>\s*24\)\s*return 'fading'/,
       'the notification seeder derives fading from silence over the accumulator population');
   });
 });
