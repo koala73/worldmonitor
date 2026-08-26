@@ -384,7 +384,11 @@
           "Suport dedicat",
           "Integrări personalizate",
           "Garanție SLA",
-          "Opțiune on-premise"
+          "Opțiune on-premise",
+          "Acord de prelucrare a datelor (DPA)",
+          "Facturare pe bază de bon de comandă",
+          "SAML SSO, SCIM",
+          "Setări personalizate de securitate și confidențialitate"
         ],
         "cta": "Contactați Vânzări"
       },

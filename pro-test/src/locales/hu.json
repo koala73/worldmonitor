@@ -384,7 +384,11 @@
           "Dedikált támogatás",
           "Egyedi integrációk",
           "SLA-garancia",
-          "On-premise opció"
+          "On-premise opció",
+          "Adatfeldolgozási szerződés (DPA)",
+          "Beszerzési megrendelés alapú számlázás",
+          "SAML SSO, SCIM",
+          "Egyedi biztonsági és adatvédelmi beállítások"
         ],
         "cta": "Kapcsolat az értékesítéssel"
       },

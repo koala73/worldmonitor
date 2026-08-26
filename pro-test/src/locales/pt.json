@@ -384,7 +384,11 @@
           "Suporte dedicado",
           "Integrações personalizadas",
           "Garantia de SLA",
-          "Opção on-premise"
+          "Opção on-premise",
+          "Acordo de Processamento de Dados (DPA)",
+          "Faturamento por ordem de compra",
+          "SAML SSO, SCIM",
+          "Configurações personalizadas de segurança e privacidade"
         ],
         "cta": "Contate Vendas"
       },

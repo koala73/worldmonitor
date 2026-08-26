@@ -158,10 +158,12 @@ describe('seedTransitSummaries (relay)', () => {
     };
     const writes = [];
     const metaWrites = [];
+    const warnings = [];
     const seed = buildSeedTransitSummaries({
       envelopeRead: async key => (key === 'supply_chain:portwatch:v1' ? fakePortwatch : null),
       envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
       upstashSet: async (key, data, ttlSeconds) => { metaWrites.push({ key, data, ttlSeconds }); },
+      warn: msg => warnings.push(msg),
     });
 
     await seed();
@@ -177,6 +179,20 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(summaries.panama.dataAvailable, false);
     assert.equal(summaries.panama.todayTotal, 0);
     assert.equal(summaryWrites[0].meta.recordCount, 2, 'recordCount must reflect pwCovered, not the always-13 shape');
+    // The count alone is unattributable after the fact. On 2026-08-25 portwatch
+    // dropped exactly two chokepoints for ~4.5 hours; every cycle logged an
+    // identical `11/13` and named neither, and the upstream had recovered before
+    // anyone could look. The shortfall warning must say WHICH.
+    const shortfall = warnings.find((line) => line.includes('coverage shortfall'));
+    assert.ok(shortfall, 'a partial portwatch cycle must warn');
+    assert.match(shortfall, /2\/13/, 'the count is still reported');
+    for (const missing of ALL_CANONICAL_IDS.filter((id) => id !== 'suez' && id !== 'hormuz_strait')) {
+      assert.ok(
+        shortfall.includes(missing),
+        `the shortfall warning must name every missing chokepoint; ${missing} was absent from: ${shortfall}`,
+      );
+    }
+    assert.ok(!shortfall.includes('suez'), 'a covered chokepoint must not be listed as missing');
     assert.equal(summaryWrites[0].ttlSeconds, 3600);
 
     const historyWrites = writes.filter(w => w.key.startsWith('supply_chain:transit-summaries:history:v1:'));
