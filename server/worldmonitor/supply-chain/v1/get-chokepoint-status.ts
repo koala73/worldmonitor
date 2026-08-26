@@ -30,9 +30,82 @@ const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 // NEG_SENTINEL (120s) instead of caching a fake 5-min healthy-but-empty response.
 // See docs/plans/chokepoint-rpc-payload-split.md.
 const REDIS_CACHE_TTL = 300; // 5 min
+const CHOKEPOINT_SEED_META_KEY = 'seed-meta:supply_chain:chokepoints';
+/** 7-day retain window for last-shortfall diagnostics on seed-meta. */
+const CHOKEPOINT_SEED_META_TTL_SECONDS = 604800;
 const THREAT_CONFIG_MAX_AGE_DAYS = 120;
 const NEARBY_CHOKEPOINT_RADIUS_KM = 300;
 const THREAT_CONFIG_STALE_NOTE = `Threat baseline last reviewed > ${THREAT_CONFIG_MAX_AGE_DAYS} days ago — review recommended`;
+
+export type ChokepointSeedMeta = {
+  fetchedAt: number;
+  recordCount: number;
+  /** Last PortWatch shortfall ids — live or carried after recovery. */
+  uncoveredChokepoints?: string[];
+  /** Epoch ms when that shortfall was first recorded (not refreshed on carry). */
+  uncoveredAt?: number;
+};
+
+/**
+ * Build the chokepoint seed-meta payload.
+ *
+ * A healthy refresh produces an empty `uncoveredIds` list. Because
+ * `setCachedJson` does a full Redis SET, omitting the shortfall fields would
+ * erase the diagnostic the moment PortWatch recovers — defeating delayed
+ * investigation. Carry the previous shortfall (and its `uncoveredAt`) forward
+ * while it remains inside the seed-meta TTL window.
+ */
+export function buildChokepointSeedMeta(
+  coveredCount: number,
+  uncoveredIds: readonly string[],
+  previous: unknown,
+  nowMs: number,
+  retainMs: number = CHOKEPOINT_SEED_META_TTL_SECONDS * 1000,
+): ChokepointSeedMeta {
+  const meta: ChokepointSeedMeta = {
+    fetchedAt: nowMs,
+    recordCount: coveredCount,
+  };
+
+  if (uncoveredIds.length > 0) {
+    meta.uncoveredChokepoints = [...uncoveredIds];
+    meta.uncoveredAt = nowMs;
+    return meta;
+  }
+
+  const carried = readCarriedShortfall(previous, nowMs, retainMs);
+  if (!carried) return meta;
+
+  meta.uncoveredChokepoints = carried.uncoveredChokepoints;
+  meta.uncoveredAt = carried.uncoveredAt;
+  return meta;
+}
+
+function readCarriedShortfall(
+  previous: unknown,
+  nowMs: number,
+  retainMs: number,
+): { uncoveredChokepoints: string[]; uncoveredAt: number } | null {
+  if (!previous || typeof previous !== 'object') return null;
+  const raw = previous as Record<string, unknown>;
+  const ids = raw.uncoveredChokepoints;
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  if (!ids.every((id): id is string => typeof id === 'string' && id.length > 0)) return null;
+
+  let uncoveredAt: number | null = null;
+  if (typeof raw.uncoveredAt === 'number' && Number.isFinite(raw.uncoveredAt) && raw.uncoveredAt > 0) {
+    uncoveredAt = raw.uncoveredAt;
+  } else if (typeof raw.fetchedAt === 'number' && Number.isFinite(raw.fetchedAt) && raw.fetchedAt > 0) {
+    // Writers before uncoveredAt existed stamped fetchedAt while the shortfall
+    // was live — use that as the retain clock rather than re-dating to now.
+    uncoveredAt = raw.fetchedAt;
+  }
+  if (uncoveredAt === null) return null;
+  if (nowMs - uncoveredAt >= retainMs) return null;
+
+  // Canonical set is 13; never let a corrupt previous meta grow past that.
+  return { uncoveredChokepoints: ids.slice(0, 13), uncoveredAt };
+}
 
 type GeoCoordinates = { latitude: number; longitude: number };
 
@@ -466,6 +539,14 @@ export async function getChokepointStatus(
         // minRecordCount threshold. Before this, a partial portwatch failure
         // showed as OK despite the UI rendering 3 zero-state rows.
         const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable !== false).length;
+        // Persist WHICH ones are uncovered alongside the count. recordCount=11
+        // says two are missing and never which two, and the upstream usually
+        // recovers before anyone looks — on 2026-08-25 the partial ran ~4.5h and
+        // was already healthy by the time it was investigated. Bounded by the
+        // canonical set, so this cannot grow past 13 short ids.
+        const uncoveredIds = chokepoints
+          .filter((c) => c.transitSummary?.dataAvailable === false)
+          .map((c) => c.id);
         // Response-level signal: if any canonical chokepoint lost upstream,
         // flip upstreamUnavailable so clients can show a partial-coverage
         // banner without breaking the cached response (data still useful).
@@ -475,7 +556,24 @@ export async function getChokepointStatus(
           fetchedAt: new Date().toISOString(),
           upstreamUnavailable: upstreamUnavailable || partialCoverage,
         };
-        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: coveredCount }, 604800).catch(() => {});
+        // Operator-facing only: api/health.js classifies this probe from
+        // minRecordCount and is deliberately left alone. Routing it through
+        // projectFailedDatasets would have surfaced it in the payload but also
+        // forced seedError, turning an upstream COVERAGE_PARTIAL into a
+        // SEED_ERROR — the wrong severity for a partial that self-heals.
+        // Healthy refreshes must still preserve the last shortfall — a full
+        // Redis SET that omits uncoveredChokepoints would erase the diagnostic
+        // the moment PortWatch recovers.
+        void (async () => {
+          const previous = uncoveredIds.length === 0
+            ? await getCachedJson(CHOKEPOINT_SEED_META_KEY)
+            : null;
+          await setCachedJson(
+            CHOKEPOINT_SEED_META_KEY,
+            buildChokepointSeedMeta(coveredCount, uncoveredIds, previous, Date.now()),
+            CHOKEPOINT_SEED_META_TTL_SECONDS,
+          );
+        })().catch(() => {});
         return response;
       },
     );
