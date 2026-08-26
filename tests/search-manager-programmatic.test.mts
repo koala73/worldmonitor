@@ -1069,6 +1069,91 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
     }
   });
 
+  it('cancels an older human deferred-panel wait when a newer human selection begins', async () => {
+    const scenario = makeScenario([]);
+    scenario.runtime.deferTimers = true;
+    delete scenario.manager.searchSelection.scrollToPanelWhenReady;
+    delete scenario.manager.searchSelection.scrollToPanel;
+    delete scenario.manager.searchSelection.dispatchPanelTabAfterPresentation;
+    let notifyMutation = (): void => {};
+    let mounted = false;
+    let highlightCount = 0;
+    const shell = {
+      isConnected: true,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('deferred-shell'),
+    };
+    const target = {
+      classList: {
+        add: () => { highlightCount += 1; },
+        remove: () => {},
+      },
+      isConnected: true,
+      offsetWidth: 1,
+      scrollIntoView: () => scenario.calls.scrolledPanels.push('stale-real-panel'),
+    };
+    const runtimeGlobal = globalThis as unknown as {
+      document?: {
+        body: object;
+        querySelector: (selector: string) => typeof target | typeof shell | null;
+      };
+      MutationObserver?: typeof MutationObserver;
+    };
+    const previousDocument = runtimeGlobal.document;
+    const previousMutationObserver = Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver');
+    runtimeGlobal.document = {
+      body: {},
+      querySelector: (selector) => {
+        if (selector.includes(':not([data-deferred-panel])')) return mounted ? target : null;
+        return selector.includes('[data-deferred-panel]') ? shell : null;
+      },
+    };
+    class MutationObserverDouble {
+      constructor(callback: () => void) { notifyMutation = callback; }
+      observe(): void {}
+      disconnect(): void {}
+      takeRecords(): MutationRecord[] { return []; }
+    }
+    Object.defineProperty(globalThis, 'MutationObserver', {
+      configurable: true,
+      writable: true,
+      value: MutationObserverDouble as unknown as typeof MutationObserver,
+    });
+
+    try {
+      const pendingPanelOpen = scenario.manager.searchSelection.handleCommand(
+        commandMatch('panel:test-panel', 'panels', 'Test panel').command,
+      );
+      await Promise.resolve();
+      assert.deepEqual(scenario.calls.scrolledPanels, ['deferred-shell']);
+
+      assert.equal(
+        scenario.manager.searchSelection.handleCommand(
+          commandMatch('time:week', 'time', 'Past week').command,
+        ),
+        true,
+      );
+      assert.equal(await pendingPanelOpen, false, 'the superseded panel wait must be denied');
+      assert.deepEqual(scenario.calls.timeRanges, ['week']);
+
+      mounted = true;
+      notifyMutation();
+      assert.deepEqual(
+        scenario.calls.scrolledPanels,
+        ['deferred-shell'],
+        'a late panel mount must not override the newer human selection',
+      );
+      assert.equal(highlightCount, 0, 'the stale panel must not be highlighted');
+    } finally {
+      if (previousDocument === undefined) delete runtimeGlobal.document;
+      else runtimeGlobal.document = previousDocument;
+      if (previousMutationObserver) {
+        Object.defineProperty(globalThis, 'MutationObserver', previousMutationObserver);
+      } else {
+        delete runtimeGlobal.MutationObserver;
+      }
+    }
+  });
+
   it('scrolls a deferred panel shell but waits for the real panel before reporting opened', async () => {
     const scenario = makeScenario([
       commandMatch('panel:test-panel', 'panels', 'Test panel'),

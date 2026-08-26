@@ -56,6 +56,7 @@ interface SelectionOptions {
   trackDetailedAnalytics?: boolean;
   programmaticEpoch?: number;
   signal?: AbortSignal;
+  cancelPanelWaitOnNextHumanSelection?: boolean;
 }
 
 /** Applies shared CMD+K and WebMCP selections to visible dashboard surfaces. */
@@ -74,11 +75,13 @@ export class SearchSelectionDispatcher {
   private readonly programmaticTimers = new Map<ReturnType<typeof setTimeout>, () => void>();
   private readonly programmaticMatchResolvers = new Map<number, () => SearchMatch | undefined>();
   private readonly activePanelWaitCancels = new Set<() => void>();
+  private activeHumanPanelWaitAbort: AbortController | null = null;
 
   public constructor(private readonly bindings: SearchSelectionDispatcherBindings) {}
 
   public destroy(): void {
     this.cancelPendingProgrammaticSelection();
+    this.cancelPendingHumanPanelWait();
     for (const cancel of this.activePanelWaitCancels) cancel();
     this.activePanelWaitCancels.clear();
   }
@@ -97,12 +100,14 @@ export class SearchSelectionDispatcher {
 
   public handleSearchResult(result: SearchResult): boolean | Promise<boolean> {
     this.cancelPendingProgrammaticSelection();
-    return this.applySearchResult(result);
+    this.cancelPendingHumanPanelWait();
+    return this.applySearchResult(result, { cancelPanelWaitOnNextHumanSelection: true });
   }
 
   public handleCommand(command: Command): boolean | Promise<boolean> {
     this.cancelPendingProgrammaticSelection();
-    return this.applyCommand(command);
+    this.cancelPendingHumanPanelWait();
+    return this.applyCommand(command, { cancelPanelWaitOnNextHumanSelection: true });
   }
 
   public async selectProgrammaticMatch(
@@ -545,6 +550,7 @@ export class SearchSelectionDispatcher {
             trackDetailedAnalytics,
             epoch,
             options.signal,
+            options.cancelPanelWaitOnNextHumanSelection,
           );
           if (!subTab) return scrolled;
           return this.dispatchPanelTabAfterPresentation(scrolled, panelId, subTab, epoch);
@@ -641,6 +647,7 @@ export class SearchSelectionDispatcher {
     trackDetailedAnalytics = true,
     epoch?: number,
     signal?: AbortSignal,
+    cancelOnNextHumanSelection = false,
   ): Promise<boolean> {
     let panel = this.findConnectedPanel(panelId);
     if (panel?.isConnected) {
@@ -656,7 +663,19 @@ export class SearchSelectionDispatcher {
       deferredShell.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
-    panel = await this.waitForConnectedPanel(panelId, epoch, signal);
+    const humanPanelWaitAbort = cancelOnNextHumanSelection ? new AbortController() : null;
+    if (humanPanelWaitAbort) this.activeHumanPanelWaitAbort = humanPanelWaitAbort;
+    try {
+      panel = await this.waitForConnectedPanel(
+        panelId,
+        epoch,
+        humanPanelWaitAbort?.signal ?? signal,
+      );
+    } finally {
+      if (this.activeHumanPanelWaitAbort === humanPanelWaitAbort) {
+        this.activeHumanPanelWaitAbort = null;
+      }
+    }
     if (!panel || !this.isProgrammaticSelectionCurrent(epoch)) return false;
     // The initial privacy mark may expire while a slow lazy import exhausts a
     // retry. Re-arm it at the actual presentation boundary so the eventual
@@ -665,6 +684,11 @@ export class SearchSelectionDispatcher {
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
     this.applyHighlight(panel);
     return true;
+  }
+
+  private cancelPendingHumanPanelWait(): void {
+    this.activeHumanPanelWaitAbort?.abort();
+    this.activeHumanPanelWaitAbort = null;
   }
 
   private dispatchPanelTabAfterPresentation(
