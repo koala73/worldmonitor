@@ -4,6 +4,7 @@
 // generic -32603 "Internal error: data fetch failed".
 import { afterEach, describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
@@ -286,6 +287,20 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     },
   ];
 
+  // Bidirectional guard: every tool whose _execute calls assertMcpToolFetchOk
+  // must appear here, so adding an eighth observed caller fails until its
+  // envelope contract is pinned, and removing one prunes the list. The static
+  // scan is safe because rpc-tools.ts is plain TS with a single helper name;
+  // only the three intel-history tools get envelope tests below (they share
+  // one classification branch), the rest are pinned by name.
+  const ALL_OBSERVED_TOOLS = [
+    ...OBSERVED_TOOLS.map(({ tool }) => tool),
+    'get_defense_industrial_base',
+    'get_china_decision_signals',
+    'get_wto_trade_flows',
+    'get_world_brief',
+  ];
+
   it('registry still exposes every tool this contract covers', () => {
     for (const { tool } of OBSERVED_TOOLS) {
       assert.ok(
@@ -295,6 +310,21 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     }
   });
 
+  it('every assertMcpToolFetchOk call site in the registry is covered by this contract', () => {
+    const source = readFileSync(new URL('../api/mcp/registry/rpc-tools.ts', import.meta.url), 'utf8');
+    const scanned = new Set();
+    for (const match of source.matchAll(/assertMcpToolFetchOk\(/g)) {
+      const before = source.slice(0, match.index);
+      const nameAt = before.lastIndexOf("name: '");
+      assert.notEqual(nameAt, -1, 'assertMcpToolFetchOk call site must follow a tool name literal');
+      scanned.add(source.slice(nameAt + 7, source.indexOf("'", nameAt + 7)));
+    }
+    assert.deepEqual(
+      [...scanned].sort(),
+      [...ALL_OBSERVED_TOOLS].sort(),
+      'the assertMcpToolFetchOk call sites and this contract diverged — pin the new site or prune the list',
+    );
+  });
   for (const { tool, args, route, violations } of OBSERVED_TOOLS) {
     it(`${tool} 400 returns JSON-RPC -32602 with data.violations`, async () => {
       const res = await callTool(tool, args, async (input) => {
@@ -361,6 +391,33 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     const body = await res.json();
     assert.equal(body.error?.code, -32602);
     assert.deepEqual(body.error?.data?.violations, violations);
+  });
+
+  // The 16 KB-on-400 budget exists because a dozen localized descriptions
+  // overflow the flat 4 KB classification cap; this is the observed-downstream
+  // twin of the direct-path >4 KB tests above. Reverting classifyFailure's
+  // status-keyed budget to a constant 4096 turns this red via mid-JSON
+  // truncation collapsing the list into -32603.
+  it('keeps a >4 KB violations body inside the -32602 contract on the observed path', async () => {
+    const violations = Array.from({ length: 14 }, (_, i) => ({
+      field: `field_${i}`,
+      description: 'x'.repeat(400),
+    }));
+    const body = JSON.stringify({ violations });
+    assert.ok(utf8Bytes(body) > 4096 && utf8Bytes(body) <= VALIDATION_BODY_BUDGET_BYTES);
+
+    const res = await callTool(
+      'search_intel_history',
+      { query: 'artillery strikes near Kharkiv', country: 'UA' },
+      async () => json400Response(body),
+    );
+    assert.equal(res.status, 200);
+    const parsed = await res.json();
+    assert.equal(parsed.error.code, -32602, 'a large proto 400 must stay invalid-params on the observed path');
+    assert.equal(parsed.error.data.violations.length, 8,
+      'the MAX_VALIDATION_VIOLATIONS cap still applies to the larger body');
+    assert.deepEqual(parsed.error.data.violations[0], { field: 'field_0', description: 'x'.repeat(200) });
+    assert.equal(parsed.result, undefined);
   });
 
   it('non-validation HTTP errors on the observed path stay on -32603', async () => {
