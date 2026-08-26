@@ -34,38 +34,50 @@ export function lastGoodKey(variant: string, lang: string): string {
   return `news:digest:lastgood:v1:${variant}:${lang}`;
 }
 
-/**
- * Metadata sibling of the accepted snapshot. Holds only the few numbers the
- * replacement decision needs, so publishing does not have to GET (and
- * deserialize) the ~126KB snapshot body just to compare two counts. Written
- * with the same TTL as the body so the pair expires together.
- */
-export function lastGoodMetaKey(variant: string, lang: string): string {
-  return `news:digest:lastgood-meta:v1:${variant}:${lang}`;
-}
+// There is deliberately no counts-only sibling key. One existed and was never
+// read: the gate cannot use publication-time counts, because it has to
+// re-measure BOTH bodies against the CURRENT revocation set (a URL revoked
+// after publication must not keep inflating the incumbent's richness and veto
+// its own repair). That forces the body read the sibling was meant to avoid,
+// so the sibling was pure write amplification — an extra SET and 6h of TTL on
+// data nothing consumed.
 
 export function attemptMetaKey(variant: string, lang: string): string {
   return `news:digest:attempt:v1:${variant}:${lang}`;
 }
 
 /**
- * Versioned, narrow revocation set: exact item URLs suppressed at SERVE time
- * on every path — fresh build, digest cache hit, durable snapshot, and
- * warm-isolate replay. Applying it only inside buildDigest meant a cache hit
- * replayed the pre-revocation body for up to the digest TTL, so "takes effect
- * immediately" was not true of the most common path.
+ * Revocation lives in server/_shared/digest-revocations.ts and is re-exported
+ * here so existing importers keep working. It moved because the suppression
+ * set is a property of the digest CONTENT, not of this endpoint: several
+ * handlers read `news:digest:v1:*` directly, and a filter that lived only in
+ * the digest handler let a revoked URL keep reaching users through
+ * get-country-intel-brief and the chat analyst.
  *
- * Operator invalidation:
- *   SADD news:digest:revoked-urls:v1 <url>
- * That alone is now sufficient — suppression happens on read, so no key
- * deletion is required. Deleting news:digest:v2:<variant>:<lang> and
- * news:digest:lastgood:v1:<variant>:<lang> additionally forces a rebuild, but
- * the URL stops being served either way.
- *
- * Matching is exact string equality on `item.link`; normalize the URL the way
- * the feed emits it (scheme, trailing slash, and query string all count).
+ * OPERATOR RUNBOOK — revoking a URL:
+ *   1. SADD news:digest:revoked-urls:v1 <url>
+ *      Suppression happens on read, so this alone removes the item from every
+ *      Redis-served path immediately: fresh build, digest cache hit, durable
+ *      snapshot, and warm-isolate replay.
+ *   2. PURGE THE CDN for /api/news/v1/list-feed-digest.
+ *      The endpoint is the gateway's `slow` tier (s-maxage=1800,
+ *      CDN-Cache-Control s-maxage=3600), so copies already in shared caches
+ *      survive step 1. Once a revocation is live the handler stops feeding
+ *      shared caches, but it cannot evict what is already stored.
+ *   3. Optional, to force an immediate rebuild rather than waiting out the
+ *      900s digest TTL:
+ *        DEL news:digest:v1:<variant>:<lang>
+ *        DEL news:digest:lastgood:v1:<variant>:<lang>
+ *      Note v1 — `news:digest:v1:` is the real cache key (built in
+ *      list-feed-digest.ts). An earlier version of this comment said v2; that
+ *      DEL silently matched nothing and read as "my forced rebuild did
+ *      nothing".
  */
-export const REVOKED_URLS_KEY = 'news:digest:revoked-urls:v1';
+export {
+  REVOKED_URLS_KEY,
+  filterRevokedUrls,
+  type RevocationRead,
+} from '../../../_shared/digest-revocations';
 
 /** Key-cardinality clamp: variant/lang are request-supplied — only write
  *  scope keys for known variants and well-formed 2-letter languages. */
@@ -127,13 +139,6 @@ export function parseAcceptedSnapshot<T extends DigestLike = DigestLike>(
   const data = (value as Record<string, unknown>).data;
   if (!data || typeof data !== 'object') return null;
   return { ...meta, data: data as T };
-}
-
-/** Result of reading the revocation set: an empty set is not the same as a failed read. */
-export interface RevocationRead {
-  urls: Set<string>;
-  /** False when the set could not be read at all — suppression is fail-open but not silent. */
-  readable: boolean;
 }
 
 export interface DigestLike {
@@ -210,16 +215,5 @@ export function classifyStaleSnapshot(
   return { serve: true, outcome: 'stale', ageSeconds: Math.round(ageMs / 1000) };
 }
 
-/** Filter items by the revocation set. Shared by fresh and stale paths so
- *  a revoked URL disappears from both immediately. */
-export function filterRevokedUrls<T extends { link?: string }>(
-  items: readonly T[],
-  revokedUrls: ReadonlySet<string>,
-): { kept: T[]; dropped: number } {
-  if (revokedUrls.size === 0) return { kept: [...items], dropped: 0 };
-  // `item?.` matters: replayed bodies come from Redis, and a malformed items
-  // array can carry null entries. Keep them (they carry no link to revoke)
-  // rather than throwing out of the whole serving tier.
-  const kept = items.filter((item) => !item?.link || !revokedUrls.has(item.link));
-  return { kept, dropped: items.length - kept.length };
-}
+// filterRevokedUrls now lives in server/_shared/digest-revocations.ts and is
+// re-exported at the top of this file — see the operator runbook there.

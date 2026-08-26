@@ -206,6 +206,7 @@
     "cross-env": "^10.1.0",
     "esbuild": "0.28.1",
     "exceljs": "^4.4.0",
+    "fengari": "^0.1.5",
     "happy-dom": "^20.11.1",
     "js-yaml": "^4.3.1",
     "markdownlint-cli2": "^0.21.0",

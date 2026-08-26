@@ -972,7 +972,10 @@ components:
                 staleAgeSeconds:
                     type: integer
                     format: int32
-                    description: Age of the served content since acceptance, in seconds (0 when fresh).
+                    description: |-
+                        Age of the served content since acceptance, in seconds (0 when fresh).
+                         Bounded at 21600 (six hours): past that window the service reports
+                         state=unavailable rather than serving older content.
                 staleReason:
                     type: string
                     description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'

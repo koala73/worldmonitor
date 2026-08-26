@@ -111,6 +111,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/**
+ * Describe a stale age for the LLM grounding note.
+ *
+ * Never floors an unknown age at a reassuring number: `Math.max(1, ...)` on a
+ * missing staleAgeSeconds rendered content of ARBITRARY age as "approximately
+ * 1 minutes ago", which is the exact misreading the note exists to prevent.
+ * Absent or zero means we genuinely do not know — say so.
+ */
+function describeStaleAge(staleAgeSeconds: number | undefined): string {
+  if (typeof staleAgeSeconds !== 'number' || !Number.isFinite(staleAgeSeconds) || staleAgeSeconds <= 0) {
+    return 'an earlier build of unknown age';
+  }
+  const minutes = Math.round(staleAgeSeconds / 60);
+  if (minutes < 1) return 'less than a minute ago';
+  if (minutes === 1) return 'about 1 minute ago';
+  if (minutes < 90) return `about ${minutes} minutes ago`;
+  const hours = Math.round(staleAgeSeconds / 3600);
+  return hours === 1 ? 'about 1 hour ago' : `about ${hours} hours ago`;
+}
+
 function projectMcpDigestCoverage(value: unknown): McpDigestCoverage | undefined {
   if (!isRecord(value)) return undefined;
   const coverage: McpDigestCoverage = {};
@@ -1038,13 +1058,13 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_brief',
     _outputBudgetBytes: 65536,
-    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is.',
+    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "US", "DE", "CN", "IR"' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
-        allow_stale: { type: 'boolean', description: 'Allow a brief grounded in a retained stale news digest. Defaults to false; time-sensitive automated decisions should leave this disabled.' },
+        allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
       },
       required: ['country_code'],
     },
@@ -1063,7 +1083,7 @@ export const RPC_TOOLS: ToolDef[] = [
           properties: {
             state: { type: 'string', description: 'Digest coverage state reported by the news service.' },
             servedStale: { type: 'boolean', description: 'True when the grounding headlines came from a retained accepted snapshot.' },
-            staleAgeSeconds: { type: 'number', minimum: 0, description: 'Age of the retained snapshot in seconds when stale content was served.' },
+            staleAgeSeconds: { type: 'integer', minimum: 0, description: 'Age of the retained snapshot in seconds when stale content was served. Bounded by the six-hour durable-snapshot TTL.' },
             staleReason: { type: 'string', description: 'Reason the live digest attempt could not replace the retained snapshot.' },
             attemptedAt: { type: 'string', description: 'Timestamp of the digest refresh attempt associated with this coverage result.' },
           },
@@ -1156,8 +1176,7 @@ export const RPC_TOOLS: ToolDef[] = [
           // model what it is looking at so its output can qualify itself.
           const staleLines = digestCoverage?.servedStale === true || digestCoverage?.state === 'stale'
             ? [
-                `NOTE: the headlines below are a retained snapshot from approximately ` +
-                  `${Math.max(1, Math.round((digestCoverage.staleAgeSeconds ?? 0) / 60))} minutes ago ` +
+                `NOTE: the headlines below are a retained snapshot from ${describeStaleAge(digestCoverage.staleAgeSeconds)} ` +
                   `(the live news rebuild failed). Treat them as recent context, not as this moment's news, ` +
                   `and say so if the brief depends on very recent developments.`,
               ]
@@ -1169,10 +1188,20 @@ export const RPC_TOOLS: ToolDef[] = [
 
       const digestServedStale = digestCoverage?.servedStale === true || digestCoverage?.state === 'stale';
       if (digestServedStale && params.allow_stale !== true) {
-        throw new McpSourceUnavailableError(
-          'Country brief grounding digest is stale; set allow_stale=true to use the retained snapshot',
-          ['news:digest:v1:full:en'],
-          [],
+        // #7084: DROP the stale grounding, do not fail the call. Three lines
+        // above, a digest fetch that times out or 500s is swallowed and the
+        // brief is generated ungrounded — so throwing here made the milder
+        // degradation fatal and the worse one tolerated, and an operator could
+        // restore the tool by breaking the digest harder. The caller still
+        // learns exactly what happened from the digestCoverage block below,
+        // which is the freshness policy hook SKILL.md already tells agents to
+        // use. allow_stale=true keeps its meaning: use the retained snapshot.
+        contextSnapshot = '';
+        sources = [];
+        groundingStories = [];
+        console.warn(
+          `[mcp:get_country_brief] dropped stale digest grounding (${digestCoverage?.staleReason || 'unknown'}, ` +
+            `${digestCoverage?.staleAgeSeconds ?? 0}s) — pass allow_stale=true to ground on it`,
         );
       }
 

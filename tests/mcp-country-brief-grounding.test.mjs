@@ -151,30 +151,49 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
     }
   });
 
-  it('rejects stale digest grounding by default before LLM generation', async () => {
+  it('DROPS stale digest grounding by default, and still returns a brief', async () => {
+    // #7084: this used to throw -32003. That made the MILDER degradation fatal
+    // while the worse one was tolerated -- a digest fetch that times out is
+    // swallowed a few lines earlier and the brief is generated ungrounded, so
+    // an operator could restore the tool by breaking the digest harder. The
+    // brief comes from a different upstream; the digest is only grounding.
+    // Default now: drop the stale grounding, still answer, and report what
+    // happened in digestCoverage so the caller can apply its own policy.
     const digestCoverage = {
       state: 'stale',
       servedStale: true,
       staleAgeSeconds: 900,
-      staleReason: 'feed_timeout',
+      staleReason: 'empty-rebuild',
       attemptedAt: '2026-08-10T02:05:00.000Z',
     };
     const calls = stubDownstream({ digestItems: [digestItem()], digestCoverage });
 
     const rpc = await callCountryBriefRpc();
 
-    assert.equal(rpc.error?.code, -32003);
-    assert.equal(rpc.error?.message, 'Required data inputs are unavailable');
-    assert.deepEqual(rpc.error?.data, {
-      retryable: true,
-      stale: true,
-      unavailable_inputs: ['news:digest:v1:full:en'],
-      failed_inputs: [],
-    });
-    assert.equal(
+    assert.equal(rpc.error, undefined, 'a stale digest must not fail the whole tool call');
+    assert.ok(
       calls.some(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief'),
-      false,
-      'stale grounding must be rejected before the LLM brief request',
+      'the brief itself still has to be generated',
+    );
+
+    const payload = JSON.parse(rpc.result.content[0].text);
+    assert.deepEqual(payload.groundingStories, [], 'stale digest grounding is dropped, not used');
+    // `sources` here is the GATEWAY's own source list, a different upstream
+    // that this drop does not touch — only the digest-derived grounding goes.
+    assert.deepEqual(
+      payload.sources.map((entry) => entry.url), ['https://example.com/upstream'],
+      'the gateway source list is unaffected',
+    );
+    assert.equal(
+      payload.digestCoverage?.servedStale, true,
+      'the caller must still learn the grounding was withheld and why',
+    );
+    assert.equal(payload.digestCoverage?.staleAgeSeconds, 900);
+
+    const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(
+      !String(briefCall?.body ?? '').includes('retained snapshot'),
+      'the stale headlines must not reach the LLM prompt when allow_stale is not set',
     );
   });
 

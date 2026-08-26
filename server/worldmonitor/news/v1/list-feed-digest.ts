@@ -198,7 +198,7 @@ async function serveLastGood(
 ): Promise<ListFeedDigestResponse | null> {
   const stored = await snapshotPromise;
   if (!stored.readable) {
-    console.warn(`[digest-serving] outcome=isolate-fallback reason=redis-unreadable variant=${variant} lang=${lang}`);
+    console.warn(`[digest-serving] tier=durable result=redis-unreadable variant=${variant} lang=${lang}`);
     return null;
   }
   const snapshot = stored.snapshot;
@@ -216,9 +216,17 @@ async function serveLastGood(
       // Fail CLOSED on replay: revocation is a content-suppression control,
       // and no path may serve unfiltered content when operator suppressions
       // cannot be checked.
+      // `tier=` lines are hand-offs, not outcomes: only the tier that actually
+      // returns a body emits `outcome=`. Counting `outcome=` occurrences used
+      // to double-count isolate-fallback and record one request as two
+      // different outcomes.
       console.warn(
-        `[digest-serving] outcome=unavailable reason=revocations-unreadable variant=${variant} lang=${lang} tier=durable`,
+        `[digest-serving] tier=durable result=revocations-unreadable variant=${variant} lang=${lang}`,
       );
+      captureSilentError(new Error('revocation set unreadable on durable serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-durable'],
+      });
       return null;
     }
 
@@ -232,7 +240,7 @@ async function serveLastGood(
       now,
     );
     if (!verdict.serve) {
-      console.log(`[digest-serving] outcome=${verdict.outcome} reason=${reason} variant=${variant} lang=${lang}`);
+      console.log(`[digest-serving] tier=durable result=${verdict.outcome} reason=${reason} variant=${variant} lang=${lang}`);
       return null;
     }
 
@@ -247,7 +255,7 @@ async function serveLastGood(
       reason,
     });
   } catch (err) {
-    console.warn(`[digest-serving] outcome=isolate-fallback reason=snapshot-malformed variant=${variant} lang=${lang}`);
+    console.warn(`[digest-serving] tier=durable result=snapshot-malformed variant=${variant} lang=${lang}`);
     captureSilentError(err, {
       tags: { surface: 'news', component: 'digest-lastgood', stage: 'serve-classify', variant, lang },
       fingerprint: ['digest-lastgood', 'serve-classify-threw'],
@@ -1577,6 +1585,10 @@ export async function listFeedDigest(
       console.warn(
         `[digest-serving] outcome=unavailable reason=revocations-unreadable variant=${variant} lang=${lang} tier=isolate`,
       );
+      captureSilentError(new Error('revocation set unreadable on isolate serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-isolate'],
+      });
       return empty(at, reason);
     }
     // The body below was cached in-process, but it originated from a build or
@@ -1674,7 +1686,7 @@ export async function listFeedDigest(
         async () => {
           leaderSlot = beginDigestAttempt(variant, lang, attemptedAt);
           try {
-            const result = await buildDigest(variant, lang);
+            const result = await buildDigest(variant, lang, (await revokedPromise).urls);
             const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
             if (totalItems > 0) {
               completeDigestAttempt(variant, lang, leaderSlot);
@@ -1785,6 +1797,14 @@ export async function listFeedDigest(
         );
       }
     }
+    // #7084: while ANY revocation is live, stop feeding shared caches. This
+    // endpoint is the gateway's `slow` tier (s-maxage=1800, CDN-Cache-Control
+    // s-maxage=3600), so without this an operator's SADD left the revoked item
+    // being served from the CDN for up to an hour from the very endpoint the
+    // runbook calls clean. This does not evict copies already stored — the
+    // runbook in _lastgood.ts still requires a purge for those — it stops new
+    // ones accumulating for as long as the suppression is in force.
+    if (revoked.urls.size > 0) markNoCacheResponse(ctx.request);
     const { data: served, dropped } = suppressRevoked(fresh, revoked.urls);
     if (dropped > 0) {
       console.log(`[digest-serving] outcome=fresh variant=${variant} lang=${lang} revoked_dropped=${dropped}`);
@@ -2209,7 +2229,16 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   return { allEntries, batches };
 }
 
-async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
+async function buildDigest(
+  variant: string,
+  lang: string,
+  // #7084: the operator suppression set, threaded in so a revoked item is
+  // dropped BEFORE the per-category cap rather than after it. Filtering only
+  // at serve time left a hole: the revoked item had already taken a cap slot,
+  // so the category shipped 19 items and the 21st-ranked one was never
+  // promoted, while droppedCategoryCap still counted the item it displaced.
+  revokedUrls: ReadonlySet<string> = new Set(),
+): Promise<ListFeedDigestResponse> {
   const feedStatuses: Record<string, string> = {};
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
@@ -2448,8 +2477,13 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
       );
-      ledgerDrops.perCategoryCap += Math.max(0, items.length - MAX_ITEMS_PER_CATEGORY);
-      slicedByCategory.set(category, items.slice(0, MAX_ITEMS_PER_CATEGORY));
+      // Suppress BEFORE the cap so a revoked item never occupies a slot and
+      // the next-ranked item is promoted into it.
+      const servable = revokedUrls.size === 0
+        ? items
+        : items.filter((item) => typeof item.link !== 'string' || !revokedUrls.has(item.link));
+      ledgerDrops.perCategoryCap += Math.max(0, servable.length - MAX_ITEMS_PER_CATEGORY);
+      slicedByCategory.set(category, servable.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
 
     const allSliced = [...slicedByCategory.values()].flat();

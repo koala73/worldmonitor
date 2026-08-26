@@ -1673,11 +1673,21 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     return { request: new Request(url) };
   }
 
-  function installIntelFetchMock({ store, setKeys, userPrompts, counters }) {
+  function installIntelFetchMock({ store, setKeys, userPrompts, counters, revoked = [] }) {
     globalThis.fetch = async (url, init = {}) => {
       const raw = String(url);
       if (raw === 'https://api.groq.com') {
         return jsonResponse({});
+      }
+      // #7084: the shared country context now reads the operator revocation
+      // set before grounding, so every reader of news:digest:v1:* filters the
+      // same way. Without this branch the mock threw, the read reported
+      // unreadable, and grounding fail-closed to empty.
+      if (raw.includes('/pipeline')) {
+        const commands = JSON.parse(String(init.body || '[]'));
+        return jsonResponse(commands.map(([verb]) => (
+          String(verb).toUpperCase() === 'SMEMBERS' ? { result: revoked } : { result: null }
+        )));
       }
       if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
         counters.groqCalls += 1;
@@ -1711,6 +1721,61 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     VERCEL_ENV: undefined,
     VERCEL_GIT_COMMIT_SHA: undefined,
   };
+
+  it('an operator-revoked URL never reaches the country brief (#7084)', async () => {
+    // The digest body is stored UNFILTERED on purpose (a lifted revocation has
+    // to restore its items), so every reader of news:digest:v1:* must apply the
+    // suppression set itself. This handler read that key directly and did not,
+    // which published a revoked URL in the brief's sources[] -- and the brief
+    // is cached for six hours, so it outlived the digest's own TTL.
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    store.set('news:digest:v1:full:en', JSON.stringify({
+      categories: {
+        conflict: {
+          items: [
+            { title: 'Israel retracted report', source: 'Reuters', link: 'https://example.com/il-revoked', pubDate: '2026-07-05T06:00:00.000Z' },
+            { title: 'Israel announces new security framework', source: 'Reuters', link: 'https://example.com/il-ok', pubDate: '2026-07-05T06:00:00.000Z' },
+          ],
+        },
+      },
+    }));
+    const setKeys = [];
+    const userPrompts = [];
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({
+      store, setKeys, userPrompts, counters,
+      revoked: ['https://example.com/il-revoked'],
+    });
+
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL'),
+        { countryCode: 'IL' },
+      );
+      assert.ok(
+        !userPrompts[0]?.includes('Israel retracted report'),
+        'a revoked headline must not reach the LLM prompt',
+      );
+      assert.ok(
+        !userPrompts[0]?.includes('il-revoked'),
+        'a revoked URL must not reach the LLM prompt',
+      );
+      assert.equal(
+        out.sources.some((entry) => String(entry?.url).includes('il-revoked')), false,
+        'a revoked URL must not be published in the brief sources',
+      );
+      // Positive control: suppression must be surgical, not a blanket wipe.
+      assert.match(userPrompts[0], /Israel announces new security framework/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
 
   it('anon callers share one digest-grounded cache entry regardless of client context', async () => {
     const { module, cleanup } = await importCountryIntelBrief();

@@ -67,7 +67,7 @@ GET https://api.worldmonitor.app/api/news/v1/list-feed-digest
 - `publishedAt` is Unix epoch **milliseconds**.
 - `isAlert` marks articles that triggered an alert condition; `threat` carries the AI threat classification when assessed.
 - `feedStatuses` lists only unhealthy feeds (`empty`, `timeout`, `all-undated`, `partial-undated`) — an absent key means the feed is healthy.
-- `coverage` reports digest freshness. `servedStale: true` means the endpoint returned an older accepted snapshot because the latest rebuild failed. `staleAgeSeconds`, `staleReason`, and `attemptedAt` describe that fallback and its latest attempt.
+- `coverage` reports digest freshness. `servedStale: true` means the endpoint returned an older accepted snapshot because the latest rebuild failed. `staleAgeSeconds`, `staleReason`, and `attemptedAt` describe that fallback and its latest attempt. `staleAgeSeconds` is bounded at 21600 (6 hours) — past that window the endpoint reports `state: "unavailable"` rather than serving older content, so a policy like "accept stale up to N minutes" can be calibrated against a known ceiling.
 
 For time-sensitive automated decisions, reject a response when `coverage.servedStale` is `true` or `coverage.state` is `stale`. Use retained content only when the caller explicitly allows stale inputs, and preserve the `coverage` fields in downstream output so another agent can apply the same policy.
 

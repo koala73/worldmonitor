@@ -15,23 +15,21 @@ import {
   runRedisTransaction,
   setCachedJson,
 } from '../../../_shared/redis';
+import { REVOKED_URLS_KEY } from '../../../_shared/digest-revocations';
 import { getUsageScope } from '../../../_shared/usage';
 import {
   ATTEMPT_META_TTL_S,
   LASTGOOD_MAX_AGE_MS,
   LASTGOOD_TTL_S,
-  REVOKED_URLS_KEY,
   attemptMetaKey,
   isAcceptableDigest,
   isEligibleScope,
   lastGoodKey,
-  lastGoodMetaKey,
   parseAcceptedSnapshot,
   shouldReplaceAccepted,
   type AcceptedSnapshot,
   type AcceptedSnapshotMeta,
   type DigestLike,
-  type RevocationRead,
   type StaleReason,
 } from './_lastgood';
 
@@ -234,25 +232,9 @@ export async function recoverFailedAttempt(
   return fallback;
 }
 
-export async function readRevokedUrlSet(): Promise<RevocationRead> {
-  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
-    // The sidecar has no operator-controlled Redis revocation set.
-    return { urls: new Set(), readable: true };
-  }
-  try {
-    const results = await runRedisPipeline([['SMEMBERS', REVOKED_URLS_KEY]]);
-    const entry = results[0];
-    if (!entry || entry.error || !Array.isArray(entry.result)) {
-      return { urls: new Set(), readable: false };
-    }
-    return {
-      urls: new Set(entry.result.filter((value): value is string => typeof value === 'string')),
-      readable: true,
-    };
-  } catch {
-    return { urls: new Set(), readable: false };
-  }
-}
+// readRevokedUrlSet moved to server/_shared/digest-revocations.ts so every
+// reader of news:digest:v1:* shares one gate. Re-exported for existing callers.
+export { readRevokedUrlSet } from '../../../_shared/digest-revocations';
 
 export async function readAcceptedSnapshot<T extends DigestLike>(variant: string, lang: string): Promise<LastGoodRead<T>> {
   if (!isEligibleScope(variant, lang)) return { snapshot: null, readable: true };
@@ -295,22 +277,24 @@ export async function publishAcceptedSnapshot(
       if (!decision.replace) return;
       const meta: AcceptedSnapshotMeta = { acceptedAt, categoryCount, itemCount };
       await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
-      await setCachedJson(lastGoodMetaKey(variant, lang), meta, LASTGOOD_TTL_S);
       return;
     }
 
+    // ARGV[5] is the digest body ALONE, and the script splices it into the
+    // stored JSON verbatim. Sending the wrapped `{ acceptedAt, data }` and
+    // letting Lua rebuild it meant a cjson decode/encode round trip, which
+    // silently rewrote every empty array in the body as `{}`.
     const results = await runRedisPipeline([[
       'EVAL',
       DIGEST_LASTGOOD_PUBLISH_SCRIPT,
-      '3',
-      lastGoodMetaKey(variant, lang),
+      '2',
       lastGoodKey(variant, lang),
       REVOKED_URLS_KEY,
       String(now),
       String(LASTGOOD_MAX_AGE_MS),
       String(acceptedAt),
       String(LASTGOOD_TTL_S),
-      JSON.stringify({ acceptedAt, data }),
+      JSON.stringify(data),
     ]]);
     const outcome = results[0];
     if (!outcome || outcome.error) {

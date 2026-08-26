@@ -69,6 +69,8 @@ message DigestCoverage {
   // attempt, so it and generated_at diverge on a replay.
   bool served_stale = 14;
   // Age of the served content since acceptance, in seconds (0 when fresh).
+  // Bounded at 21600 (six hours): past that window the service reports
+  // state=unavailable rather than serving older content.
   int32 stale_age_seconds = 15;
   // Closed stale reason: empty-rebuild | build-error (empty when fresh).
   string stale_reason = 16;

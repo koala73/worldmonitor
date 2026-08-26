@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
-import { dirname, resolve } from 'node:path';
+import nodePath, { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
@@ -15,7 +15,6 @@ import {
   isAcceptableDigest,
   isEligibleScope,
   lastGoodKey,
-  lastGoodMetaKey,
   parseAcceptedMeta,
   shouldReplaceAccepted,
 } from '../server/worldmonitor/news/v1/_lastgood';
@@ -189,6 +188,15 @@ describe('durable last-good wiring (#7084)', () => {
     transactionCalls: [] as unknown[][][],
     // Lets a test drive listFeedDigest's cache-hit vs fresh-build branch.
     fetchMeta: null as null | { data: unknown; source: string; leader: boolean },
+    // Requests markNoCacheResponse was called for. The bundle carries its own
+    // copy of _shared/response-headers, so its WeakMap is a different instance
+    // from anything this file could import directly -- stub it instead.
+    noCache: [] as unknown[],
+    // #7084: false models a deployment with no Redis configured at all, which
+    // must read as "no revocation store exists" (readable), NOT as a failed
+    // read — the two were conflated and blanked the endpoint on preview
+    // deploys and local dev runs.
+    redisConfigured: true,
   };
   let mod: any;
 
@@ -207,6 +215,7 @@ describe('durable last-good wiring (#7084)', () => {
       'export async function cachedFetchJsonWithMeta() { return s.fetchMeta ?? { data: null, source: "skipped", leader: false }; }',
       'export async function getCachedJson() { return null; }',
       'export async function getCachedJsonBatch() { return new Map(); }',
+      'export function isRedisConfigured() { return s.redisConfigured !== false; }',
       'export async function runRedisPipeline(c) { s.pipelineCalls.push(c); return s.pipeline(c); }',
       'export async function runRedisTransaction(c) { s.transactionCalls.push(c); return s.transaction(c); }',
     ].join('\n');
@@ -226,8 +235,27 @@ describe('durable last-good wiring (#7084)', () => {
       plugins: [{
         name: 'stub-redis',
         setup(b: any) {
-          b.onResolve({ filter: /_shared\/redis$/ }, () => ({ path: 'redis-stub', namespace: 'redisstub' }));
+          // Resolve to an absolute path before deciding. Matching the import
+          // SPELLING missed `./redis` from inside server/_shared (which is how
+          // digest-revocations.ts reaches it), so that module silently bundled
+          // the REAL redis client and read process.env instead of the stub.
+          b.onResolve({ filter: /redis(\.ts)?$/ }, (args: any) => {
+            const resolved = nodePath.resolve(args.resolveDir ?? root, args.path);
+            return resolved.endsWith(nodePath.join('server', '_shared', 'redis'))
+              || resolved.endsWith(nodePath.join('server', '_shared', 'redis.ts'))
+              ? { path: 'redis-stub', namespace: 'redisstub' }
+              : undefined;
+          });
           b.onLoad({ filter: /.*/, namespace: 'redisstub' }, () => ({ contents: shim, loader: 'js' }));
+          b.onResolve({ filter: /response-headers$/ }, () => ({ path: 'headers-stub', namespace: 'headerstub' }));
+          b.onLoad({ filter: /.*/, namespace: 'headerstub' }, () => ({
+            contents: [
+              'const s = globalThis.__digestRedisStub;',
+              'export function markNoCacheResponse(req) { s.noCache.push(req); }',
+              'export function drainResponseHeaders() { return undefined; }',
+            ].join('\n'),
+            loader: 'js',
+          }));
         },
       }],
     });
@@ -245,6 +273,8 @@ describe('durable last-good wiring (#7084)', () => {
     stub.transaction = async (commands) => commands.map(() => ({ result: 'OK' }));
     stub.transactionCalls.length = 0;
     stub.fetchMeta = null;
+    stub.redisConfigured = true;
+    stub.noCache.length = 0;
     mod.__testing__.fallbackDigestCache.clear();
     mod.__testing__.lastGoodStoreTesting.activeAttempts.clear();
     mod.__testing__.lastGoodStoreTesting.recentFailedAttempts.clear();
@@ -268,18 +298,17 @@ describe('durable last-good wiring (#7084)', () => {
     ...(coverage === undefined ? {} : { coverage }),
   });
 
-  it('a genuine MISS publishes through one atomic guarded write covering both keys', async () => {
+  it('a genuine MISS publishes through one atomic guarded write', async () => {
     reset();
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
     const calls = evalCalls();
     assert.equal(calls.length, 1, 'the publish must be a single EVAL, not a read-decide-write pair');
     const cmd = calls[0] as string[];
-    // ['EVAL', script, '3', metaKey, bodyKey, revocationKey, ...argv] — all
-    // policy inputs and both writes are inside one atomic operation.
-    // atomic script is what closes the two-isolate lost-update race.
-    assert.equal(cmd[2], '3');
-    assert.equal(cmd[3], lastGoodMetaKey('full', 'en'));
-    assert.equal(cmd[4], lastGoodKey('full', 'en'));
+    // ['EVAL', script, '2', bodyKey, revocationKey, ...argv] — every policy
+    // input and the write are inside one atomic operation, which is what
+    // closes the two-isolate lost-update race.
+    assert.equal(cmd[2], '2');
+    assert.equal(cmd[3], lastGoodKey('full', 'en'));
     assert.match(String(cmd[1]), /return 0/, 'the script must be able to refuse a narrower candidate');
     assert.equal(
       stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
@@ -292,8 +321,8 @@ describe('durable last-good wiring (#7084)', () => {
     const generatedAt = new Date(NOW - 60 * 60 * 1000).toISOString();
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE, generatedAt));
     const cmd = evalCalls()[0] as string[];
-    const candidate = JSON.parse(String(cmd[10]));
-    assert.equal(candidate.acceptedAt, Date.parse(generatedAt));
+    // ['EVAL', script, '2', bodyKey, revokedKey, now, maxAge, acceptedAt, ttl, dataJson]
+    assert.equal(Number(cmd[7]), Date.parse(generatedAt), 'acceptedAt rides the content clock');
   });
 
   it('a lost guarded write (script returns 0) is a kept snapshot, not an error', async () => {
@@ -596,6 +625,87 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal((await mod.__testing__.readRevokedUrlSet()).readable, true);
   });
 
+  it('serves the DURABLE snapshot, not the isolate cache, when BOTH hold valid content', async () => {
+    // The ordering claim ("durable snapshot first, warm isolate second") was
+    // untestable before: every degraded case set the durable tier to a miss,
+    // a read error, or a malformed body, so the isolate content won on its own
+    // merits and swapping the two calls in serveDegraded kept the suite green.
+    // This is the case that can actually tell the two tiers apart.
+    reset();
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: {
+        acceptedAt: Date.now() - 60_000, categoryCount: 1, itemCount: 1,
+        data: body(['https://durable/1'], COVERAGE),
+      },
+    });
+    mod.__testing__.fallbackDigestCache.set('full:en', {
+      data: body(['https://isolate/1'], COVERAGE),
+      ts: Date.now() - 60_000,
+    });
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(out.coverage.state, 'stale');
+    assert.deepEqual(
+      out.categories.politics.items.map((i: any) => i.link), ['https://durable/1'],
+      'the cross-isolate durable snapshot outranks this isolate own warm cache',
+    );
+  });
+
+  it('degraded responses are marked no-store', async () => {
+    // markNoCacheResponse is the only thing keeping a degraded body out of the
+    // shared cache, and nothing asserted it -- hoisting a return above it, or
+    // dropping it in a merge, shipped green.
+    reset();
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    stub.reads.set(lastGoodKey('full', 'en'), { status: 'miss' });
+    const c = ctx();
+    await mod.listFeedDigest(c, { variant: 'full', lang: 'en' });
+    assert.ok(
+      stub.noCache.includes(c.request),
+      'a degraded digest response must never be stored by a shared cache',
+    );
+  });
+
+  it('a fresh response is marked no-store once ANY revocation is live', async () => {
+    // The endpoint is the gateway `slow` tier (s-maxage=1800, CDN 3600), so
+    // without this an operator SADD left the revoked item served from shared
+    // caches for up to an hour after suppression went in.
+    reset();
+    stub.pipeline = async () => [{ result: ['https://a/2'] }];
+    stub.fetchMeta = { data: body(['https://a/1', 'https://a/2'], COVERAGE), source: 'fresh', leader: true };
+    const c = ctx();
+    const out = await mod.listFeedDigest(c, { variant: 'full', lang: 'en' });
+    assert.deepEqual(out.categories.politics.items.map((i: any) => i.link), ['https://a/1']);
+    assert.ok(stub.noCache.includes(c.request), 'a live revocation must stop shared caching');
+  });
+
+  it('a fresh response with NO revocations stays cacheable', async () => {
+    // Positive control for the assertion above: without this, marking every
+    // response no-store would satisfy it and silently destroy the CDN hit rate.
+    reset();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };
+    const c = ctx();
+    await mod.listFeedDigest(c, { variant: 'full', lang: 'en' });
+    assert.equal(stub.noCache.includes(c.request), false, 'a clean fresh response stays cacheable');
+  });
+
+  it('an UNCONFIGURED Redis reads as "no revocation store", not as a failed read', async () => {
+    // runRedisPipeline returns [] for missing credentials exactly as it does
+    // for a transport error. Conflating the two made every serving tier fail
+    // closed, so a preview deploy or a local dev run answered every request
+    // with `unavailable` even though the build had succeeded.
+    reset();
+    stub.redisConfigured = false;
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.deepEqual(
+      out.categories.politics.items.map((i: any) => i.link), ['https://a/1'],
+      'a successful build must still be served when there is no Redis at all',
+    );
+    assert.notEqual(out.coverage.state, 'unavailable');
+  });
+
   it('the guarded write is the SHARED pinned script, and the Docker proxy pins the same bytes', async () => {
     // The Docker redis-rest proxy blocklists EVAL as a class and allows
     // exactly one pinned script -- the publish gate. Its image bundles only
@@ -607,10 +717,17 @@ describe('durable last-good wiring (#7084)', () => {
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
     const cmd = evalCalls()[0] as string[];
     assert.equal(cmd[1], DIGEST_LASTGOOD_PUBLISH_SCRIPT, 'the server must send the shared script verbatim');
-    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /SMEMBERS', KEYS\[3\]/);
-    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /decodeAndCount\(currentRaw\)/);
-    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /decodeAndCount\(ARGV\[5\]\)/);
+    // Structural pins only. The script's BEHAVIOUR is covered by
+    // tests/digest-lastgood-script.test.mjs, which executes this exact text in
+    // a Lua VM — a regex over source text cannot tell a correct gate from a
+    // broken one, which is how the cjson round-trip shipped.
+    assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /SMEMBERS', KEYS\[2\]/);
     assert.match(DIGEST_LASTGOOD_PUBLISH_SCRIPT, /delta >= 0/);
+    assert.doesNotMatch(
+      DIGEST_LASTGOOD_PUBLISH_SCRIPT,
+      /cjson\.encode/,
+      'the body must be spliced verbatim; a cjson round trip rewrites every [] as {}',
+    );
 
     const proxySrc = await import('node:fs').then((fs) =>
       fs.readFileSync(resolve(here, '..', 'docker', 'redis-rest-proxy.mjs'), 'utf8'));
@@ -631,10 +748,6 @@ describe('durable last-good wiring (#7084)', () => {
       stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0,
       'a plain body SET would restore the cross-isolate lost-update race',
     );
-    assert.equal(
-      stub.writes.filter((w) => w.key === lastGoodMetaKey('full', 'en')).length, 0,
-      'metadata must not be detached from the atomic body write',
-    );
   });
 
   it('richness is measured on the SERVABLE view; the stored body stays unfiltered', async () => {
@@ -645,11 +758,15 @@ describe('durable last-good wiring (#7084)', () => {
     const candidate = body(['https://a/1', 'https://a/2'], COVERAGE);
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', candidate);
     const cmd = evalCalls()[0] as string[];
-    assert.equal(cmd[5], REVOKED_URLS_KEY, 'the authoritative gate must read current revocations');
-    const stored = JSON.parse(String(cmd[10]));
+    assert.equal(cmd[4], REVOKED_URLS_KEY, 'the authoritative gate must read current revocations');
+    const sent = JSON.parse(String(cmd[9]));
     assert.equal(
-      stored.data.categories.politics.items.length, 2,
+      sent.categories.politics.items.length, 2,
       'the stored body must keep revoked items so a lifted revocation restores them',
+    );
+    assert.equal(
+      String(cmd[9]), JSON.stringify(candidate),
+      'the body is sent as-is so the script can splice it without re-encoding',
     );
   });
 
