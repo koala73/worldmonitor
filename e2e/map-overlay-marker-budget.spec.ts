@@ -44,6 +44,32 @@ const VIEW_CENTRED_MAX_MEAN_DEGREES = 55;
 const VIEW_CENTRED_MEAN_RATIO = 0.65;
 const VIEW_CENTRED_MAX_WORST_DEGREES = 110;
 
+// #7145 — a drag must cost O(1) overlay rebuilds, not one per pointer event.
+// `applyTransform()` runs on every `mousemove`, so a real gesture is many events
+// spread over wall-clock time. Spacing the steps is load-bearing: a single
+// `page.mouse.move(x, y, { steps })` dispatches its steps back-to-back inside one
+// frame, where `scheduleRender()`'s own coalescing collapses even a per-event
+// rebuild to one and the regression is invisible.
+const DRAG_MOVE_STEPS = 24;
+const DRAG_STEP_INTERVAL_MS = 60;
+const DRAG_STEP_DX = 10;
+const DRAG_STEP_DY = 5;
+// Left of centre in the harness viewport, clear of the control rail, legend and
+// time slider that `shouldIgnoreInteractionStart` refuses to start a drag from.
+const DRAG_ORIGIN = { x: 300, y: 400 };
+// MapComponent.OVERLAY_BUDGET_REPLAN_SETTLE_MS.
+const REPLAN_SETTLE_MS = 200;
+// MapComponent.MARKER_SETTLE_MS — how long after the last overlay rebuild the
+// wrapper gets `.markers-settled` and the marker pulses stop (#4669).
+const MARKER_SETTLE_MS = 6000;
+// Measured: 1 rebuild for the whole gesture on the fixed tree, 19 with the
+// replan called straight off the interaction path (the bug costs one rebuild per
+// MIN_RENDER_INTERVAL_MS of gesture, so it scales with drag duration). The slack
+// covers a CI stall longer than the 200 ms settle landing mid-drag and splitting
+// the coalesced rebuild in two; it is nowhere near the mutant, so this ceiling is
+// not a near-miss on the regression it exists to catch.
+const MAX_DRAG_REBUILDS = 3;
+
 type Coord = { lat: number; lon: number };
 
 /** Great-circle separation in degrees. Mirrors what proximityRank orders by. */
@@ -71,6 +97,7 @@ type BudgetState = {
 type HarnessWindow = Window & {
   __mobileMapIntegrationHarness?: {
     ready: boolean;
+    getWrapperTransform: () => string;
     seedOverlayMarkerStress: (perFeed: number) => void;
     seedOverlayViewportStress: (count: number) => void;
     setOverlayViewport: (lat: number, lon: number) => void;
@@ -136,6 +163,77 @@ async function readDashboardDomMetrics(page: Page): Promise<{
   } finally {
     await session.detach().catch(() => {});
   }
+}
+
+/** Ready-gated harness boot, shared by the #7145 interaction tests. */
+async function openOverlayHarness(page: Page): Promise<void> {
+  await page.goto('/tests/mobile-map-integration-harness.html');
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => Boolean((window as HarnessWindow).__mobileMapIntegrationHarness?.ready)),
+      { timeout: 30000 },
+    )
+    .toBe(true);
+}
+
+async function readOverlayBudget(page: Page): Promise<BudgetState> {
+  return page.evaluate(() =>
+    (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayBudgetState(),
+  );
+}
+
+async function readWrapperTransform(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    (window as HarnessWindow).__mobileMapIntegrationHarness!.getWrapperTransform(),
+  );
+}
+
+/**
+ * A real pointer drag: one `mousemove` per step, spaced in wall-clock time, so
+ * `applyTransform()` runs once per event across many frames — the only shape in
+ * which an O(N) replan is distinguishable from an O(1) one.
+ */
+async function dragMapAcross(page: Page): Promise<void> {
+  await page.mouse.move(DRAG_ORIGIN.x, DRAG_ORIGIN.y);
+  await page.mouse.down();
+  for (let step = 1; step <= DRAG_MOVE_STEPS; step += 1) {
+    await page.mouse.move(DRAG_ORIGIN.x + step * DRAG_STEP_DX, DRAG_ORIGIN.y + step * DRAG_STEP_DY);
+    await page.waitForTimeout(DRAG_STEP_INTERVAL_MS);
+  }
+  await page.mouse.up();
+}
+
+type UnsettleProbeWindow = Window & { __wmMarkerUnsettles?: number };
+
+/**
+ * Start counting transitions OUT of `.markers-settled`. `armMarkerSettle()` strips
+ * the class at the end of every `renderOverlays()` pass, so this is the
+ * DOM-observable half of the same property: a gesture that rebuilds per pointer
+ * event holds every marker in the infinite-pulse state — and its compositing
+ * layer (#4669) — for the whole drag.
+ *
+ * Counted rather than sampled at drag end on purpose. A read taken there races
+ * the OVERLAY_BUDGET_REPLAN_SETTLE_MS timer, which is only 200 ms behind the last
+ * move; the transition count is settled-state history and cannot race it.
+ */
+async function watchMarkerUnsettles(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const wrapper = document.querySelector('.map-wrapper');
+    if (!wrapper) throw new Error('Missing .map-wrapper to observe for marker settle state');
+    const probe = window as UnsettleProbeWindow;
+    probe.__wmMarkerUnsettles = 0;
+    let settled = wrapper.classList.contains('markers-settled');
+    new MutationObserver(() => {
+      const nowSettled = wrapper.classList.contains('markers-settled');
+      if (settled && !nowSettled) probe.__wmMarkerUnsettles = (probe.__wmMarkerUnsettles ?? 0) + 1;
+      settled = nowSettled;
+    }).observe(wrapper, { attributes: true, attributeFilter: ['class'] });
+  });
+}
+
+async function readMarkerUnsettles(page: Page): Promise<number> {
+  return page.evaluate(() => (window as UnsettleProbeWindow).__wmMarkerUnsettles ?? 0);
 }
 
 test.describe('SVG map overlay marker budget (#7112)', () => {
@@ -518,6 +616,100 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
     // Exactly one rebuild for the new viewport — the one the in-window render
     // already performed.
     expect(after).toBe(before + 1);
+  });
+
+  test('coalesces a pointer drag into one overlay rebuild, not one per move event', async ({ page }) => {
+    // #7145. #7134 moved the budget replan off the interaction path and behind a
+    // settle debounce; nothing asserted the property it exists for. Before it,
+    // `applyTransform()` called `scheduleRender()` directly from every
+    // `mousemove`/`touchmove`/`wheel` and every touch-inertia frame, so a
+    // one-second drag ran roughly ten full `renderDynamicLayers()` passes — each
+    // wiping and rebuilding cables, pipelines, conflicts, AIS density, clusters
+    // and every overlay marker with a fresh `click` listener — where a pan had
+    // been a pure CSS transform with no DOM work at all.
+    await openOverlayHarness(page);
+
+    // Truncation must be live, or `overlayBudgetPlanIsStale()` short-circuits on
+    // its truncation guard and the drag is free for a reason this test is not
+    // measuring. (That guard has its own test below.)
+    await page.evaluate(
+      (count) =>
+        (window as HarnessWindow).__mobileMapIntegrationHarness!.seedOverlayViewportStress(count),
+      STRESS_PER_FEED,
+    );
+    await expect
+      .poll(async () => Object.keys((await readOverlayBudget(page)).truncated).length, {
+        timeout: 15000,
+      })
+      .toBeGreaterThan(0);
+
+    // Let the seed render's marker pulse expire first. That both quiesces the
+    // render counter and puts the wrapper in the settled state, so every
+    // un-settle counted below belongs to the gesture.
+    await expect(page.locator('.map-wrapper')).toHaveClass(/markers-settled/, {
+      timeout: MARKER_SETTLE_MS + 4000,
+    });
+
+    const before = (await readOverlayBudget(page)).renders;
+    expect(before).toBeGreaterThan(0);
+    const transformBefore = await readWrapperTransform(page);
+    await watchMarkerUnsettles(page);
+
+    await dragMapAcross(page);
+    await page.waitForTimeout(REPLAN_SETTLE_MS + 1500);
+
+    // Positive control. A drag that never reached the map's `mousedown` handler —
+    // wrong coordinates, a control swallowing the press — would satisfy every
+    // count below by doing nothing at all.
+    expect(await readWrapperTransform(page)).not.toBe(transformBefore);
+
+    const rebuilds = (await readOverlayBudget(page)).renders - before;
+    // The load-bearing pair, and the reason this asserts a COUNT rather than that
+    // "a rebuild happened": a per-frame rebuild satisfies the second. The lower
+    // bound keeps the settle replan alive — a build that simply stopped
+    // re-planning would meet the ceiling by never rebuilding, leaving the
+    // pre-gesture view's nearest markers on screen for good.
+    expect(rebuilds).toBeGreaterThanOrEqual(1);
+    expect(rebuilds).toBeLessThanOrEqual(MAX_DRAG_REBUILDS);
+
+    // The `armMarkerSettle()` half, in the DOM the user actually sees.
+    const unsettles = await readMarkerUnsettles(page);
+    expect(unsettles).toBeGreaterThanOrEqual(1);
+    expect(unsettles).toBeLessThanOrEqual(MAX_DRAG_REBUILDS);
+
+    // ...and the pulse is released again once that single rebuild lands, rather
+    // than being re-armed indefinitely. The window is MARKER_SETTLE_MS measured
+    // from the settle-debounced rebuild, not from the end of the drag.
+    await expect(page.locator('.map-wrapper')).toHaveClass(/markers-settled/, {
+      timeout: MARKER_SETTLE_MS + REPLAN_SETTLE_MS + 4000,
+    });
+  });
+
+  test('does not rebuild the overlay at all when a drag pans a view with nothing truncated', async ({ page }) => {
+    // #7145, the other half. `overlayBudgetPlanIsStale()` requires truncation
+    // before it will call a moved viewport stale. It reads like a redundant fast
+    // path, which makes it the easier of the two edits to lose: drop it and every
+    // pan ends in a full `renderDynamicLayers()` pass that cannot change a single
+    // marker, because with nothing withheld the selection is view-independent.
+    await openOverlayHarness(page);
+
+    // No stress seed — the harness's own feed is a single hotspot, far inside the
+    // budget. Wait out the settle so the render counter is quiescent before the
+    // baseline is taken.
+    await expect(page.locator('.map-wrapper')).toHaveClass(/markers-settled/, {
+      timeout: MARKER_SETTLE_MS + 4000,
+    });
+
+    const before = await readOverlayBudget(page);
+    expect(before.renders).toBeGreaterThan(0);
+    expect(Object.keys(before.truncated)).toEqual([]);
+    const transformBefore = await readWrapperTransform(page);
+
+    await dragMapAcross(page);
+    await page.waitForTimeout(REPLAN_SETTLE_MS + 1500);
+
+    expect(await readWrapperTransform(page)).not.toBe(transformBefore);
+    expect((await readOverlayBudget(page)).renders).toBe(before.renders);
   });
 
   test('reports every trimmed layer as undisclosed when the map has no toggle rail', async ({ page }) => {
