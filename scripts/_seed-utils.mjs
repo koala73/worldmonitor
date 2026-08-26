@@ -1268,6 +1268,46 @@ export function isTransientProxyError(message) {
 
 const FRED_JSON_HEADERS = { Accept: 'application/json', 'User-Agent': CHROME_UA };
 
+// FRED's own edge returns sporadic 5xx on individual series. Observed
+// 2026-08-26: four consecutive 24/24 runs, then `FRED T10Y2Y: fetch failed —
+// direct: HTTP 502` and the same for UNRATE, publishing 22/24 — enough to trip
+// health's minRecordCount of 24 for the whole hour. Both series answered 200
+// when queried directly minutes later, and adjacent runs fetched them fine.
+//
+// Deliberately status-only, and deliberately NOT reusing isTransientProxyError:
+// that predicate also matches timeouts and socket tears, and a direct leg that
+// timed out has already burned its 20s budget — retrying it would double the
+// worst case inside runSeed's fetch-phase deadline for a leg that is plainly
+// broken. A 5xx fails fast, so this retry costs a few hundred milliseconds.
+const FRED_DIRECT_ATTEMPTS = 2;
+function isRetriableFredStatus(status) {
+  return Number.isInteger(status) && status >= 500 && status <= 599;
+}
+
+// Direct FRED fetch with a bounded retry on a fast-failing 5xx. Shared by the
+// proxy-fallback path and the no-proxy path: a transient 502 is transient
+// regardless of which leg reached it, and having only one of the two retry is
+// how the asymmetry below went unnoticed — the proxy leg already retried three
+// times while its own fallback got a single attempt.
+async function fredDirectFetchJson(url) {
+  let lastError;
+  for (let attempt = 1; attempt <= FRED_DIRECT_ATTEMPTS; attempt += 1) {
+    try {
+      const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
+      if (r.ok) return await r.json();
+      throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+    } catch (error) {
+      lastError = error;
+      if (attempt < FRED_DIRECT_ATTEMPTS && isRetriableFredStatus(error?.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 350 * attempt + Math.random() * 250));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
 // Fetch JSON from a FRED URL, routing through proxy when available.
 // Proxy-first: FRED consistently blocks/throttles Railway datacenter IPs,
 // so try proxy first to avoid 20s timeout on every direct attempt.
@@ -1291,16 +1331,12 @@ export async function fredFetchJson(url, proxyAuth) {
     }
     console.warn(`  [fredFetch] proxy failed after retries (${lastProxyErr?.message}) — retrying direct`);
     try {
-      const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
-      if (r.ok) return r.json();
-      throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+      return await fredDirectFetchJson(url);
     } catch (directErr) {
       throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
     }
   }
-  const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
-  if (r.ok) return r.json();
-  throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+  return fredDirectFetchJson(url);
 }
 
 // Fetch JSON from an IMF DataMapper URL, direct-first with proxy fallback.
