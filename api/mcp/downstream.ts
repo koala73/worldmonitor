@@ -1,4 +1,11 @@
-import { BillingDenialError, RpcValidationError, throwIfBillingDenial } from './billing-denial';
+import {
+  BillingDenialError,
+  MAX_VALIDATION_BODY_BYTES,
+  RpcValidationError,
+  parseSafeRpcViolations,
+  throwIfBillingDenial,
+} from './billing-denial';
+import type { RpcValidationViolation } from './billing-denial';
 import { readBoundedResponseText } from './bounded-body';
 import { emitTelemetry } from './telemetry';
 import type {
@@ -168,33 +175,61 @@ function safeGatewayErrorCode(value: unknown, status: number): string {
   return SAFE_GATEWAY_ERROR_MESSAGES.get(normalized) ?? defaultSafeErrorCode(status);
 }
 
+type DownstreamFailure = {
+  errorCode: string;
+  marker: DownstreamResponseMarker;
+  violations: readonly RpcValidationViolation[];
+};
+
 async function classifyFailure(
   response: ToolFetchResponse,
-): Promise<{ errorCode: string; marker: DownstreamResponseMarker }> {
+): Promise<DownstreamFailure> {
   if (response.status === 405) {
-    return { errorCode: 'method_not_allowed', marker: 'method_not_allowed' };
+    return { errorCode: 'method_not_allowed', marker: 'method_not_allowed', violations: [] };
   }
 
   const type = contentType(response);
-  const detail = await readBoundedResponseText(response, 4096);
+  // A sibling body can only be read once, so this single read has to serve
+  // both classifications. A proto/sebuf 400 carries its field violations in
+  // the body and a dozen localized descriptions already overflow 4 KB, so
+  // that status reads the validation budget; every other status keeps the
+  // tighter cap. Neither path lets raw text escape — only the closed set of
+  // gateway codes and the sanitized `{field, description}` pairs do.
+  const budget = response.status === 400 ? MAX_VALIDATION_BODY_BYTES : 4096;
+  const detail = await readBoundedResponseText(response, budget);
   if (!detail) {
     return {
       errorCode: defaultSafeErrorCode(response.status),
       marker: 'empty_error',
+      violations: [],
     };
   }
 
   if (type.includes('json')) {
     try {
       const parsed = JSON.parse(detail) as { code?: unknown; error?: unknown };
+      // A coded gateway rejection is not a proto validation failure: keep the
+      // recognised code and leave the violation list empty so the caller stays
+      // on the ToolFetchError contract.
+      // Absent AND explicit-null both mean "no gateway code": a null would
+      // classify as the default code anyway, so treating it as coded would
+      // discard the violations of a `{"code":null,"violations":[...]}` body.
+      const coded = parsed.code ?? parsed.error;
+      const violations = response.status === 400 && (coded === undefined || coded === null)
+        ? parseSafeRpcViolations(parsed)
+        : [];
       return {
-        errorCode: safeGatewayErrorCode(parsed.code ?? parsed.error, response.status),
+        errorCode: violations.length > 0
+          ? 'rpc_validation'
+          : safeGatewayErrorCode(coded, response.status),
         marker: 'json_error',
+        violations,
       };
     } catch {
       return {
         errorCode: defaultSafeErrorCode(response.status),
         marker: 'json_error',
+        violations: [],
       };
     }
   }
@@ -202,6 +237,7 @@ async function classifyFailure(
   return {
     errorCode: defaultSafeErrorCode(response.status),
     marker: type.includes('html') ? 'html_error' : 'other',
+    violations: [],
   };
 }
 
@@ -279,6 +315,14 @@ export async function assertMcpToolFetchOk(
     failure.errorCode,
     failure.marker,
   );
+  // Parity with assertToolFetchOk: a proto/sebuf 400 names the offending
+  // field, and dispatch turns that into JSON-RPC -32602 "Invalid params" with
+  // `error.data.violations`. Collapsing it into ToolFetchError reported the
+  // caller's own bad argument as -32603 "Internal error" and dropped the one
+  // detail that says which argument (WORLDMONITOR-10R / 10Q).
+  if (failure.violations.length > 0) {
+    throw new RpcValidationError(operation, failure.violations);
+  }
   throw new ToolFetchError(
     operation,
     response.status,
