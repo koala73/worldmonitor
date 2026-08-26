@@ -15,6 +15,8 @@ import {
   compareBundleBudgets,
   initialDashboardAssetNames,
   measureDistChunks,
+  measureEmbedJs,
+  measureProDistChunks,
   validateBudgetSnapshot,
 } from '../scripts/bundle-budgets.mjs';
 
@@ -43,7 +45,7 @@ function writeDashboardIndex(root, files) {
   writeFileSync(join(root, 'dashboard.html'), tags.join('\n'));
 }
 
-function makeDistFixture(files) {
+function makeAssetsFixture(files, { distName = 'dashboard.html', writeIndex = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'wm-bundle-budgets-'));
   fixtures.push(root);
   const assets = join(root, 'assets');
@@ -51,7 +53,18 @@ function makeDistFixture(files) {
   for (const [name, bytes] of Object.entries(files)) {
     writeFileSync(join(assets, name), chunkContent(bytes));
   }
-  writeDashboardIndex(root, Object.keys(files));
+  if (writeIndex) writeDashboardIndex(root, Object.keys(files));
+  return root;
+}
+
+function makeDistFixture(files) {
+  return makeAssetsFixture(files);
+}
+
+function makeEmbedFixture(bytes) {
+  const root = mkdtempSync(join(tmpdir(), 'wm-bundle-budgets-'));
+  fixtures.push(root);
+  writeFileSync(join(root, 'embed.js'), chunkContent(bytes));
   return root;
 }
 
@@ -146,6 +159,46 @@ describe('measureDistChunks', () => {
     assert.ok(
       compareBundleBudgets(measured, budgetWithout).failures.some((f) => f.includes('toString')),
     );
+  });
+});
+
+describe('measureProDistChunks', () => {
+  test('measures every JS asset under dist/pro/assets', () => {
+    const dist = makeAssetsFixture(
+      {
+        'index-BLxGuKBb.js': 120_000,
+        'sentry-Ab12Cd34.js': 40_000,
+        'lazy-locale-Xx99Yy88.js': 8_000,
+      },
+      { writeIndex: false },
+    );
+    const measured = measureProDistChunks(dist);
+    assert.deepEqual(Object.keys(measured.chunks).sort(), ['index', 'lazy-locale', 'sentry']);
+    assert.equal(measured.total.raw, 168_000);
+  });
+
+  test('throws when dist/pro/assets has no JS files', () => {
+    const dist = mkdtempSync(join(tmpdir(), 'wm-bundle-budgets-'));
+    fixtures.push(dist);
+    mkdirSync(join(dist, 'assets'), { recursive: true });
+    assert.throws(() => measureProDistChunks(dist), /no JS assets/i);
+  });
+});
+
+describe('measureEmbedJs', () => {
+  test('tracks the dist-root loader as a single chunk', () => {
+    const dist = mkdtempSync(join(tmpdir(), 'wm-bundle-budgets-'));
+    fixtures.push(dist);
+    writeFileSync(join(dist, 'embed.js'), chunkContent(2_048));
+    const measured = measureEmbedJs(dist);
+    assert.deepEqual(measured.chunks, { 'embed.js': { raw: 2_048, files: 1 } });
+    assert.equal(measured.total.raw, 2_048);
+  });
+
+  test('throws when embed.js is missing', () => {
+    const dist = mkdtempSync(join(tmpdir(), 'wm-bundle-budgets-'));
+    fixtures.push(dist);
+    assert.throws(() => measureEmbedJs(dist), /cannot read .*embed\.js/i);
   });
 });
 
@@ -260,6 +313,19 @@ describe('compareBundleBudgets', () => {
     const measured = measureDistChunks(makeDistFixture({ 'tiny-Xx99Yy88.js': 5_900 }));
     assert.equal(compareBundleBudgets(measured, budget).ok, true);
   });
+
+  test('embed budget rejects loader growth above its 128-byte allowance', () => {
+    const dist = makeEmbedFixture(1_956);
+    const budget = buildBudgetSnapshot(measureEmbedJs(dist), 'embed');
+
+    writeFileSync(join(dist, 'embed.js'), chunkContent(2_084));
+    assert.equal(compareBundleBudgets(measureEmbedJs(dist), budget, 'embed').ok, true);
+
+    writeFileSync(join(dist, 'embed.js'), chunkContent(2_085));
+    const result = compareBundleBudgets(measureEmbedJs(dist), budget, 'embed');
+    assert.equal(result.ok, false);
+    assert.ok(result.failures.some((failure) => failure.includes('embed.js') && failure.includes('grew')));
+  });
 });
 
 describe('validateBudgetSnapshot', () => {
@@ -360,5 +426,61 @@ describe('bundle-budgets CLI', () => {
     writeFileSync(budgetPath, JSON.stringify({ comment: 'no chunks or total' }));
     const check = runCli(['--check', '--dist', dist, '--budget', budgetPath]);
     assert.equal(check.status, 2);
+  });
+
+  test('--surface pro seeds and checks against dist/pro/assets', () => {
+    const dist = makeAssetsFixture(
+      { 'index-BLxGuKBb.js': 50_000, 'vendor-Xx99Yy88.js': 20_000 },
+      { writeIndex: false },
+    );
+    const budgetPath = join(dist, 'budget-pro.json');
+    const write = runCli(['--surface', 'pro', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(write.status, 0, write.stderr);
+    const check = runCli(['--check', '--surface', 'pro', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(check.status, 0, check.stderr);
+  });
+
+  test('--surface embed seeds and checks against dist/embed.js', () => {
+    const dist = makeEmbedFixture(3_000);
+    const budgetPath = join(dist, 'budget-embed.json');
+    const write = runCli(['--surface', 'embed', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(write.status, 0, write.stderr);
+    const check = runCli(['--check', '--surface', 'embed', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(check.status, 0, check.stderr);
+  });
+
+  test('--surface pro violations name the pro re-seed command', () => {
+    const dist = makeAssetsFixture({ 'index-BLxGuKBb.js': 100_000 }, { writeIndex: false });
+    const budgetPath = join(dist, 'budget-pro.json');
+    assert.equal(runCli(['--surface', 'pro', '--dist', dist, '--budget', budgetPath]).status, 0);
+    writeFileSync(join(dist, 'assets', 'index-BLxGuKBb.js'), chunkContent(160_000));
+
+    const check = runCli(['--check', '--surface', 'pro', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(check.status, 1, check.stderr);
+    assert.ok(check.stderr.includes('`npm run bundle:budgets:pro`'), check.stderr);
+  });
+
+  test('--surface embed violations name the embed re-seed command', () => {
+    const dist = makeEmbedFixture(1_956);
+    const budgetPath = join(dist, 'budget-embed.json');
+    assert.equal(runCli(['--surface', 'embed', '--dist', dist, '--budget', budgetPath]).status, 0);
+    writeFileSync(join(dist, 'embed.js'), chunkContent(2_085));
+
+    const check = runCli(['--check', '--surface', 'embed', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(check.status, 1, check.stderr);
+    assert.ok(check.stderr.includes('`npm run bundle:budgets:embed`'), check.stderr);
+  });
+
+  test('--surface embed invalid snapshots name the embed re-seed command', () => {
+    const dist = makeEmbedFixture(1_956);
+    const budgetPath = join(dist, 'budget-embed.json');
+    assert.equal(runCli(['--surface', 'embed', '--dist', dist, '--budget', budgetPath]).status, 0);
+    const budget = JSON.parse(readFileSync(budgetPath, 'utf8'));
+    budget.toleranceBytes = 2_048;
+    writeFileSync(budgetPath, JSON.stringify(budget));
+
+    const check = runCli(['--check', '--surface', 'embed', '--dist', dist, '--budget', budgetPath]);
+    assert.equal(check.status, 2, check.stderr);
+    assert.ok(check.stderr.includes('regenerate it: npm run bundle:budgets:embed'), check.stderr);
   });
 });

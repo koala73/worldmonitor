@@ -69,6 +69,7 @@ import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
+import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
@@ -1431,8 +1432,10 @@ interface StoryTrack {
  *      lastSeen is `now` — a story that stopped being covered is absent from the
  *      cycle and never reaches this function. Silence, the one signal that does
  *      identify a fading story, is only visible where the non-serving population
- *      is in scope: scripts/seed-digest-notifications.mjs derives its own phase
- *      over the accumulator and already treats >24h of silence as fading.
+ *      is in scope: scripts/seed-digest-notifications.mjs calls
+ *      deriveNotificationStoryPhase() from shared/story-phase.js, which
+ *      applies the same core mention-count/age rules documented here and
+ *      additionally treats >24h of silence as fading.
  *
  * The STORY_PHASE_FADING wire value is retained for compatibility and is still
  * handled by consumers (the client alert gate suppresses it), but this handler
@@ -1442,9 +1445,9 @@ interface StoryTrack {
  * `nowMs` is injectable so the phase boundaries are testable without a live clock.
  */
 function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryPhase {
-  const ageMs = nowMs - track.firstSeen;
-  if (track.mentionCount <= 1) return 'STORY_PHASE_BREAKING';
-  if (track.mentionCount <= 5 && ageMs < 2 * 60 * 60 * 1000) return 'STORY_PHASE_DEVELOPING';
+  const phase = deriveCoreStoryPhase(track, nowMs);
+  if (phase === 'breaking') return 'STORY_PHASE_BREAKING';
+  if (phase === 'developing') return 'STORY_PHASE_DEVELOPING';
   return 'STORY_PHASE_SUSTAINED';
 }
 

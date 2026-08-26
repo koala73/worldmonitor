@@ -239,6 +239,8 @@
       "shared/publisher-families.d.ts",
       "shared/publisher-families.js",
       "shared/stocks.json",
+      "shared/story-phase.d.ts",
+      "shared/story-phase.js",
       "shared/ticker-extract.d.ts",
       "shared/ticker-extract.js",
       "shared/url-classifier.js"
