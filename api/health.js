@@ -2645,8 +2645,7 @@ function projectChinaCoverageStatus(raw, readError = false) {
   // of health, or the rollout window would silence a genuine outage.
   if (
     status === 'CHINA_DEGRADED'
-    && Number.isInteger(candidate.degradedStreak)
-    && candidate.degradedStreak < CHINA_DEGRADED_MIN_CONSECUTIVE
+    && candidate.degradedStreak === CHINA_DEGRADED_MIN_CONSECUTIVE - 1
   ) {
     status = 'OK';
   }
@@ -2881,7 +2880,14 @@ function healthResponseBody(snapshot, compact) {
   // no-op, which is what makes buildCompactVerdictSnapshot() below safe.
   const problems = snapshot.checks
     ? Object.fromEntries(Object.entries(snapshot.checks).filter(
-      ([name, check]) => name !== 'chinaDecisionSignals' && isProblemStatus(check.status),
+      ([name, check]) => name !== 'chinaDecisionSignals' && (
+        isProblemStatus(check.status)
+        || (
+          name === 'chinaCoverage'
+          && typeof check.chinaStatus === 'string'
+          && check.chinaStatus !== 'healthy'
+        )
+      ),
     ))
     : { ...(snapshot.problems ?? {}) };
   // Older compact snapshots may predate the operator-only China health

@@ -289,9 +289,18 @@ export async function readChinaCoverageInputs(entries = CHINA_COVERAGE_ENTRIES) 
   let previous = null;
   for (let index = 0; index < ordered.length; index++) {
     const key = ordered[index];
+    if (index === ordered.length - 1) {
+      try {
+        previous = parseRedisJson(results[index]?.result);
+      } catch {
+        // History is advisory. A corrupt prior summary must not prevent this
+        // run from publishing a fresh value that repairs the Redis slot.
+        previous = null;
+      }
+      continue;
+    }
     const value = parseRedisJson(results[index]?.result);
-    if (index === ordered.length - 1) previous = value;
-    else if (index < keys.data.length) data[key] = value;
+    if (index < keys.data.length) data[key] = value;
     else meta[key] = value;
   }
   return { data, meta, previous };

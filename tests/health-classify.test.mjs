@@ -2139,6 +2139,13 @@ test('china coverage: a second consecutive degraded evaluation alarms', () => {
   assert.equal(projected.status, 'CHINA_DEGRADED');
 });
 
+test('china coverage: nonpositive streaks cannot suppress a degraded alarm', () => {
+  for (const degradedStreak of [0, -1]) {
+    const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak }));
+    assert.equal(projected.status, 'CHINA_DEGRADED', `degradedStreak=${degradedStreak}`);
+  }
+});
+
 test('china coverage: a held verdict stays visible rather than silent', () => {
   // The counterweight to the debounce. If holding the verdict also hid the
   // reason, a suppressed cycle would be indistinguishable from health.
@@ -2147,6 +2154,24 @@ test('china coverage: a held verdict stays visible rather than silent', () => {
   assert.equal(projected.chinaStatus, 'degraded', 'the summary verdict is still reported');
   assert.equal(projected.degradedStreak, 1);
   assert.ok(projected.problems?.some((p) => p.id === 'market.china-stock-connect'));
+});
+
+test('china coverage: a held verdict survives the compact health projection', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
+  const compact = healthResponseBody({
+    status: 'HEALTHY',
+    summary: { total: 1, ok: 1, warn: 0, crit: 0 },
+    checkedAt: '2026-08-25T17:03:23.563Z',
+    checks: { chinaCoverage: projected },
+  }, true);
+
+  assert.equal(compact.problems?.chinaCoverage?.status, 'OK');
+  assert.equal(compact.problems?.chinaCoverage?.chinaStatus, 'degraded');
+  assert.equal(compact.problems?.chinaCoverage?.degradedStreak, 1);
+  assert.ok(compact.problems?.chinaCoverage?.problems?.some(
+    (problem) => problem.id === 'market.china-stock-connect',
+  ));
+  assert.deepEqual(healthResponseBody(compact, true), compact, 'cached compact snapshots remain stable');
 });
 
 test('china coverage: a summary with no streak field alarms as before', () => {

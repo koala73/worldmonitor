@@ -499,6 +499,37 @@ describe('China coverage manifest', () => {
       else process.env.UPSTASH_REDIS_REST_TOKEN = priorToken;
     }
   });
+
+  it('ignores malformed previous summary history so the next run can repair it', async () => {
+    const priorUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const priorToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const priorFetch = globalThis.fetch;
+    const dataValue = { rows: [{ countryCode: 'CN', value: 42 }] };
+    const metaValue = { fetchedAt: NOW, status: 'ok' };
+    try {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      globalThis.fetch = async () => new Response(JSON.stringify([
+        { result: JSON.stringify(dataValue) },
+        { result: JSON.stringify(metaValue) },
+        { result: '{not-json' },
+      ]), { status: 200 });
+
+      const inputs = await readChinaCoverageInputs([singleEntry()]);
+
+      assert.deepEqual(inputs, {
+        data: { 'data:test': dataValue },
+        meta: { 'seed-meta:test': metaValue },
+        previous: null,
+      });
+    } finally {
+      globalThis.fetch = priorFetch;
+      if (priorUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = priorUrl;
+      if (priorToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = priorToken;
+    }
+  });
 });
 
 describe('China coverage degraded streak', () => {
