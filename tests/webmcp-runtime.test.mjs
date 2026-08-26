@@ -175,7 +175,7 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
-  it('fails mutating tools closed when the host omits the target execution signal', async () => {
+  it('returns a branchable denial when the host omits the target execution signal', async () => {
     let mutationCalls = 0;
     let contextCalls = 0;
     const provider = new FakeWebMcpModelContext();
@@ -202,16 +202,20 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(context.variant, 'full');
     assert.equal(contextCalls, 1);
 
-    await assert.rejects(
-      executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
-      (error) => error.name === 'WebMcpToolError'
-        && error.message === 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+    assert.deepEqual(
+      await executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
+      {
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+        message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+      },
     );
     assert.equal(mutationCalls, 0);
     assert.equal(provider.executionCalls.at(-1).targetSignal, undefined);
     assert.deepEqual(harness.events.at(-1), {
       event: 'webmcp-tool-invoked',
-      data: { tool: 'set_map_view', outcome: 'failure', reason: 'unavailable' },
+      data: { tool: 'set_map_view', outcome: 'denied', reason: 'unavailable' },
     });
   });
 

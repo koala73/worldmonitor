@@ -278,7 +278,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(open.inputSchema.properties.resultKey.pattern, '^sr_[a-f0-9]{32}$');
   });
 
-  it('fails every mutating callback closed without a usable target-side signal', async () => {
+  it('returns a branchable denial without entering mutating callbacks when target cancellation is unavailable', async () => {
     let mutationCalls = 0;
     const events = [];
     const tools = buildProductionWebMcpTools(createBindings({
@@ -319,25 +319,33 @@ describe('webmcp.ts: current API contract', () => {
 
     for (const [name, input] of Object.entries(validInputs)) {
       const tool = tools.find((candidate) => candidate.name === name);
-      await assert.rejects(
-        tool.execute(input),
-        (error) => error.name === 'WebMcpToolError'
-          && error.message === 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+      assert.deepEqual(
+        await tool.execute(input),
+        {
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+        },
         name,
       );
     }
-    await assert.rejects(
-      tools.find(({ name }) => name === 'openCountryBrief').execute(
+    assert.deepEqual(
+      await tools.find(({ name }) => name === 'openCountryBrief').execute(
         { iso2: 'not-valid' },
         { signal: { aborted: false } },
       ),
-      (error) => error.name === 'WebMcpToolError'
-        && error.message === 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+      {
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+        message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+      },
       'a malformed input and signal-like object must not bypass the compatibility gate',
     );
     assert.equal(mutationCalls, 0);
     assert.deepEqual(
-      events.filter(({ data }) => data.outcome === 'failure').map(({ data }) => [
+      events.filter(({ data }) => data.outcome === 'denied').map(({ data }) => [
         data.tool,
         data.reason,
       ]),

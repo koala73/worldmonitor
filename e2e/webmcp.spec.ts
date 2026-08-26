@@ -57,6 +57,7 @@ type CancellationTerminal = {
   errorMessage: string;
   invokedBeforeUiReady: boolean;
   name: string;
+  output?: unknown;
   rejected: boolean;
 };
 
@@ -177,6 +178,14 @@ async function installColdStartCancellationProbe(
       target.__wmLcpDebug?.getSnapshot?.().marks
         .some((mark) => mark.name === 'wm:boot:webmcp-ui-ready') ?? false
     );
+    const parseOutput = (value: unknown): unknown => {
+      if (typeof value !== 'string') return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    };
     const deadline = performance.now() + 60_000;
     let invocationStarted = false;
     const discoverAndInvoke = async (): Promise<void> => {
@@ -191,10 +200,11 @@ async function installColdStartCancellationProbe(
             target.__wmWebMcpCancellationController = controller;
             const invokedBeforeUiReady = !isUiReady();
             const terminal = provider.executeTool(tool, inputJson, { signal: controller.signal }).then(
-              () => ({
+              (output) => ({
                 errorMessage: '',
                 invokedBeforeUiReady,
                 name: '',
+                output: parseOutput(output),
                 rejected: false,
               }),
               (error: unknown) => ({
@@ -372,9 +382,15 @@ test.describe('top-level WebMCP dashboard contract', () => {
         },
       });
     } else {
-      expect(panelProbe.ok).toBe(false);
-      expect(panelProbe.errorName).toBe('UnknownError');
-      expect(panelProbe.errorMessage).toBeTruthy();
+      expect(panelProbe).toEqual({
+        ok: true,
+        output: {
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+        },
+      });
     }
 
     let visibleMutation: (MutationExecutionProbe & { visible: boolean }) | null = null;
@@ -388,7 +404,16 @@ test.describe('top-level WebMCP dashboard contract', () => {
           .find((tool) => tool.name === 'openSearch');
         if (!searchTool) throw new Error('openSearch was not discovered.');
         try {
-          return { ok: true, output: await provider.executeTool(searchTool, '{}') };
+          const raw = await provider.executeTool(searchTool, '{}');
+          let output = raw;
+          if (typeof raw === 'string') {
+            try {
+              output = JSON.parse(raw);
+            } catch {
+              // Preserve non-JSON provider output for the assertion below.
+            }
+          }
+          return { ok: true, output };
         } catch (error) {
           return {
             errorMessage: error && typeof error === 'object' && 'message' in error
@@ -408,9 +433,15 @@ test.describe('top-level WebMCP dashboard contract', () => {
         await page.keyboard.press('Escape');
         await expect(page.locator('.search-overlay')).toHaveCount(0);
       } else {
-        expect(mutation.ok).toBe(false);
-        expect(mutation.errorName).toBe('UnknownError');
-        expect(mutation.errorMessage).toBeTruthy();
+        expect(mutation).toEqual({
+          ok: true,
+          output: {
+            ok: false,
+            status: 'denied',
+            reason: 'target_cancellation_unsupported',
+            message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+          },
+        });
         await expect(page.locator('.search-overlay')).toHaveCount(0);
         visibleMutation = { ...mutation, visible: false };
       }
@@ -574,26 +605,27 @@ test.describe('top-level WebMCP dashboard contract', () => {
       unhandledRejections,
     });
 
-    expect(cancellation.rejected).toBe(true);
     expect(cancellation.invokedBeforeUiReady).toBe(true);
     if (!targetCancellationSupported && !productionSmoke) {
-      expect(cancellation.name).toBe('UnknownError');
-      expect(cancellation.errorMessage).toBeTruthy();
+      expect(cancellation).toMatchObject({
+        rejected: false,
+        output: {
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+        },
+      });
     } else {
+      expect(cancellation.rejected).toBe(true);
       expect(cancellation.name).toBe('AbortError');
     }
     if (!productionSmoke) {
       expect(afterMap, 'cancelled or refused set_map_view must leave the deep-linked map intact')
         .toEqual({ view: 'global', zoom: 2 });
     }
-    const unexpectedPageErrors = !targetCancellationSupported && !productionSmoke
-      ? pageErrors.filter((error) => !(
-        error.name === 'WebMcpToolError'
-        && error.message === 'This browser cannot safely execute dashboard-changing WebMCP tools.'
-      ))
-      : pageErrors;
     expect(
-      unexpectedPageErrors,
+      pageErrors,
       'cancelled execution must not leak an unexpected pageerror',
     ).toEqual([]);
     expect(

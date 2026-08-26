@@ -253,6 +253,15 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
 const UNSUPPORTED_MUTATION_MESSAGE =
   'This browser cannot safely execute dashboard-changing WebMCP tools.';
 
+function unsupportedMutationResult(): Record<string, unknown> {
+  return {
+    ok: false,
+    status: 'denied',
+    reason: 'target_cancellation_unsupported',
+    message: UNSUPPORTED_MUTATION_MESSAGE,
+  };
+}
+
 class SafeWebMcpError extends Error {
   public constructor(
     message: string,
@@ -367,19 +376,23 @@ function withInvocationLogging(
       targetCancellationSupported: Boolean(signal),
     });
     try {
-      // Chrome releases that implement the original one-argument callback can
-      // abort executeTool() without cancelling work already running in this
-      // page. Never enter a mutation-capable binding unless the host supplies
-      // the target-side signal introduced by the cancellable callback API.
+      let result: unknown;
       if (!READ_ONLY_WEBMCP_TOOLS.has(name) && !signal) {
-        throw new SafeWebMcpError(UNSUPPORTED_MUTATION_MESSAGE, 'unavailable');
+        // Chrome releases that implement the original one-argument callback
+        // can abort executeTool() without cancelling work already running in
+        // this page. Never enter a mutation-capable binding unless the host
+        // supplies the target-side signal introduced by the cancellable
+        // callback API. Return a structured denial because some hosts erase
+        // the name and message of errors raised by the page callback.
+        result = unsupportedMutationResult();
+      } else {
+        throwIfWebMcpAborted(signal);
+        result = await fn(args, signal ? { signal } : undefined);
+        // Browser cancellation rejects executeTool independently of this
+        // callback. Re-check here so late work cannot publish success telemetry
+        // after the host has already cancelled the invocation.
+        throwIfWebMcpAborted(signal);
       }
-      throwIfWebMcpAborted(signal);
-      const result = await fn(args, signal ? { signal } : undefined);
-      // Browser cancellation rejects executeTool independently of this
-      // callback. Re-check here so late work cannot publish success telemetry
-      // after the host has already cancelled the invocation.
-      throwIfWebMcpAborted(signal);
       enforceOutputBudget(result);
       const invocation = classifyInvocationResult(result);
       reportWebMcpEvent(trackEvent, 'webmcp-tool-invoked', {
