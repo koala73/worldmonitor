@@ -13693,6 +13693,30 @@ a.prediction-link:hover {
  * "shown/total" for layers the globe's marker budget is trimming (#5368).
  * Muted and right-aligned: it reports a limit, it is not a call to action.
  */
+/* #7112: the marker-budget disclosure for maps with no layer-toggle rail —
+   `chrome: false` embeds. The per-layer `shown/total` badge needs a toggle row to
+   sit on; this states the same fact for the whole overlay when no row exists.
+   Informational only: pointer-events stay on so the title tooltip works, but it
+   is not a control and must not read as one. */
+.map-truncation-summary {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  z-index: 60;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+  /* Theme tokens, not hardcoded colours: an embed inherits the host page's
+     theme and a fixed white would vanish on the light one. */
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  cursor: help;
+  pointer-events: auto;
+}
+
 .layer-truncation-count {
   margin-left: auto;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
