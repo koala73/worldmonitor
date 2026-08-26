@@ -175,6 +175,28 @@ describe('built-output guard contract', () => {
       /guardBuiltOutput\(PRO_BUILT_MARKER/,
       'guardProBuiltOutput must ask the shared primitive about the /pro marker',
     );
+
+    const sentrySource = readFileSync(resolve(repoRoot, 'tests/pro-sentry-chunk.test.mjs'), 'utf8');
+    assert.match(
+      sentrySource,
+      /from '\.\/_lib\/built-output-guard\.mjs'/,
+      'the pro Sentry chunk suite must use the shared built-output primitive',
+    );
+    assert.match(
+      sentrySource,
+      /skip: shouldSkipBuiltOutput\(ASSETS_DIR\)/,
+      'the pro Sentry chunk suite must skip specifically when public/pro/assets is absent',
+    );
+    assert.match(
+      sentrySource,
+      /guardBuiltOutput\(ASSETS_DIR, undefined, REBUILD_HINT\)/,
+      'the pro Sentry chunk suite must fail closed on the same assets path when CI expects built output',
+    );
+    assert.match(
+      sentrySource,
+      /Run `npm run build:pro` first/,
+      'the pro Sentry chunk failure must name the /pro build command',
+    );
   });
 
   it('keeps the /pro build-output existence check in the freshness workflow', () => {
