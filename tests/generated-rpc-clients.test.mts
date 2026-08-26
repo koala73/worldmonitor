@@ -99,7 +99,7 @@ test('lazy generated RPC client memoizes in-flight constructor load', async () =
   assert.equal(loadCalls, 1);
 });
 
-test('lazy generated RPC client is not treated as a thenable', async () => {
+test('lazy generated RPC client is not treated as a thenable', { timeout: 1_000 }, async () => {
   class TestClient {
     async ping(): Promise<string> {
       return 'pong';
@@ -108,6 +108,8 @@ test('lazy generated RPC client is not treated as a thenable', async () => {
 
   const LazyTestClient = createLazyRpcClientConstructor<TestClient>(async () => TestClient);
   const client = new LazyTestClient('https://example.test');
+
+  assert.equal(Reflect.get(client, 'then'), undefined);
 
   const resolved = await Promise.resolve(client);
   assert.equal(resolved, client);
