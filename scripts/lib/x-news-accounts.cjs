@@ -76,6 +76,11 @@ const AUTH_FAILURE_BACKOFF_MS = 2 * MAX_POLL_INTERVAL_MS;
 // top-up) but its OWN message: the bearer is valid here, and telling an operator
 // to "check X_BEARER_TOKEN" would cost a credential rotation that fixes nothing.
 const CREDITS_EXHAUSTED_STATUS = 402;
+const X_BACKOFF_CAUSES = Object.freeze({
+  RATE_LIMIT: 'rate-limit',
+  AUTH: 'auth',
+  CREDITS: 'credits',
+});
 const X_FEED_SNAPSHOT_VERSION = 1;
 const USER_AGENT = 'WorldMonitor/1.0 (curated news-account monitoring; +https://worldmonitor.app)';
 
@@ -324,8 +329,13 @@ function normalizeCoverage(value, expectedAccounts = 0) {
   };
 }
 
+function normalizeBackoffCause(value) {
+  return Object.values(X_BACKOFF_CAUSES).includes(value) ? value : null;
+}
+
 function buildXPollState(state, { expectedAccounts = 0 } = {}) {
   const lastPollAt = Number(state?.lastPollAt) || 0;
+  const rateLimitedUntil = Math.max(0, Number(state?.rateLimitedUntil) || 0);
   const coverage = normalizeCoverage(state?.lastCoverage, expectedAccounts);
   return {
     generation: Math.max(0, Math.floor(Number(state?.generation) || 0)),
@@ -336,8 +346,9 @@ function buildXPollState(state, { expectedAccounts = 0 } = {}) {
     accountOffset: Math.max(0, Math.floor(Number(state?.accountOffset) || 0)),
     lastPollAt,
     lastHealthyAt: Math.max(0, Number(state?.lastHealthyAt) || 0),
-    rateLimitedUntil: Math.max(0, Number(state?.rateLimitedUntil) || 0),
+    rateLimitedUntil,
     rateLimitAttempt: Math.max(0, Math.floor(Number(state?.rateLimitAttempt) || 0)),
+    backoffCause: rateLimitedUntil ? normalizeBackoffCause(state?.backoffCause) : null,
     coverage,
   };
 }
@@ -369,6 +380,7 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
     ? pollStateOverride
     : (inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? inherited : {});
   const itemLimit = Math.max(1, Math.floor(Number(maxItems) || DEFAULT_MAX_FEED_ITEMS));
+  const rateLimitedUntil = Math.max(0, Number(pollState.rateLimitedUntil) || 0);
   return {
     generation: Math.max(0, Math.floor(Number(validSnapshot ? snapshot.generation : pollState.generation) || 0)),
     cursorByAccountId: copyCursorMap(pollState.cursorByAccountId),
@@ -379,8 +391,9 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
     accountOffset: Math.max(0, Math.floor(Number(pollState.accountOffset) || 0)),
     lastPollAt: Math.max(0, Number(pollState.lastPollAt) || 0),
     lastHealthyAt: Math.max(0, Number(pollState.lastHealthyAt) || 0),
-    rateLimitedUntil: Math.max(0, Number(pollState.rateLimitedUntil) || 0),
+    rateLimitedUntil,
     rateLimitAttempt: Math.max(0, Math.floor(Number(pollState.rateLimitAttempt) || 0)),
+    backoffCause: rateLimitedUntil ? normalizeBackoffCause(pollState.backoffCause) : null,
     lastCoverage: normalizeCoverage(pollState.coverage ?? (validSnapshot ? snapshot.coverage : null)),
   };
 }
@@ -401,7 +414,8 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
  *   process just recorded must not be cleared by an older Redis copy. Plain
  *   assignment in either direction loses one of those. The attempt counter takes
  *   the max for the same reason — escalation must not reset when a peer with a
- *   lower count publishes.
+ *   lower count publishes. The typed cause follows the winning deadline so a
+ *   peer keeps the correct operator action for credits, auth, or rate limiting.
  *
  * Returns only the fields to apply, so the caller cannot accidentally clobber
  * serving state (items, coverage) with poll bookkeeping.
@@ -409,6 +423,8 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
 function mergeRefreshedPollState(current, refreshed) {
   const toMs = (value) => Math.max(0, Number(value) || 0);
   const toCount = (value) => Math.max(0, Math.floor(Number(value) || 0));
+  const currentDeadline = toMs(current?.rateLimitedUntil);
+  const currentCause = normalizeBackoffCause(current?.backoffCause);
   if (!refreshed || typeof refreshed !== 'object') {
     return {
       cursorByAccountId: { ...(current?.cursorByAccountId || {}) },
@@ -416,18 +432,28 @@ function mergeRefreshedPollState(current, refreshed) {
       catchupByAccountId: { ...(current?.catchupByAccountId || {}) },
       lookupOffset: toCount(current?.lookupOffset),
       accountOffset: toCount(current?.accountOffset),
-      rateLimitedUntil: toMs(current?.rateLimitedUntil),
+      rateLimitedUntil: currentDeadline,
       rateLimitAttempt: toCount(current?.rateLimitAttempt),
+      backoffCause: currentCause,
     };
   }
+  const refreshedDeadline = toMs(refreshed.rateLimitedUntil);
+  const refreshedCause = normalizeBackoffCause(refreshed.backoffCause);
+  const rateLimitedUntil = Math.max(currentDeadline, refreshedDeadline);
+  const backoffCause = rateLimitedUntil
+    ? (currentDeadline === refreshedDeadline
+        ? (refreshedCause || currentCause)
+        : (currentDeadline > refreshedDeadline ? currentCause : refreshedCause))
+    : null;
   return {
     cursorByAccountId: copyCursorMap(refreshed.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(refreshed.accountIdByHandle),
     catchupByAccountId: copyCatchupMap(refreshed.catchupByAccountId),
     lookupOffset: toCount(refreshed.lookupOffset),
     accountOffset: toCount(refreshed.accountOffset),
-    rateLimitedUntil: Math.max(toMs(current?.rateLimitedUntil), toMs(refreshed.rateLimitedUntil)),
+    rateLimitedUntil,
     rateLimitAttempt: Math.max(toCount(current?.rateLimitAttempt), toCount(refreshed.rateLimitAttempt)),
+    backoffCause,
   };
 }
 
@@ -513,6 +539,7 @@ function recordRateLimit(nextState, headers, now) {
   // Must allow the attempt counter to reach MAX_429_BACKOFF_EXPONENT; the old
   // cap of 7 held the exponential at 128s no matter how long the 429s lasted.
   nextState.rateLimitAttempt = Math.min(MAX_429_BACKOFF_EXPONENT, attempt + 1);
+  nextState.backoffCause = X_BACKOFF_CAUSES.RATE_LIMIT;
 }
 
 function isAuthFailureStatus(status) {
@@ -534,6 +561,7 @@ function isAuthFailureStatus(status) {
  */
 function recordAuthFailure(nextState, status, context, now) {
   nextState.rateLimitedUntil = now() + AUTH_FAILURE_BACKOFF_MS;
+  nextState.backoffCause = X_BACKOFF_CAUSES.AUTH;
   nextState.lastError = `X auth failed (HTTP ${status}) ${context}: check X_BEARER_TOKEN — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
 }
 
@@ -543,7 +571,18 @@ function isCreditsExhaustedStatus(status) {
 
 function recordCreditsExhausted(nextState, context, now) {
   nextState.rateLimitedUntil = now() + AUTH_FAILURE_BACKOFF_MS;
+  nextState.backoffCause = X_BACKOFF_CAUSES.CREDITS;
   nextState.lastError = `X credits depleted (HTTP ${CREDITS_EXHAUSTED_STATUS}) ${context}: the bearer is valid — top up the X API plan — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
+}
+
+function sharedBackoffMessage(cause) {
+  if (cause === X_BACKOFF_CAUSES.CREDITS) {
+    return 'X credits depleted: top up the X API plan; shared backoff window still open; deferring poll';
+  }
+  if (cause === X_BACKOFF_CAUSES.AUTH) {
+    return 'X auth failed: check X_BEARER_TOKEN; shared backoff window still open; deferring poll';
+  }
+  return 'shared X rate-limit window still open; deferring poll';
 }
 
 /**
@@ -636,6 +675,9 @@ async function pollXFeed({
   maxFailedAccounts = null,
   signal,
 } = {}) {
+  const activeBackoffDeadline = Number(state?.rateLimitedUntil) > now()
+    ? Number(state.rateLimitedUntil)
+    : 0;
   const nextState = {
     cursorByAccountId: { ...(state?.cursorByAccountId || {}) },
     accountIdByHandle: { ...(state?.accountIdByHandle || {}) },
@@ -644,8 +686,9 @@ async function pollXFeed({
     lookupOffset: Number(state?.lookupOffset) || 0,
     accountOffset: Number(state?.accountOffset) || 0,
     lastError: null,
-    rateLimitedUntil: Number(state?.rateLimitedUntil) > now() ? Number(state.rateLimitedUntil) : 0,
+    rateLimitedUntil: activeBackoffDeadline,
     rateLimitAttempt: Math.max(0, Math.floor(Number(state?.rateLimitAttempt) || 0)),
+    backoffCause: activeBackoffDeadline ? normalizeBackoffCause(state?.backoffCause) : null,
     accountsPolled: 0,
     accountsFailed: 0,
     newCount: 0,
@@ -908,6 +951,9 @@ async function pollXFeed({
         } else if (isAuthFailureStatus(response.status)) {
           recordAuthFailure(nextState, response.status, 'during deletion lookup', now);
           nextState.cycleComplete = false;
+        } else if (isCreditsExhaustedStatus(response.status)) {
+          recordCreditsExhausted(nextState, 'during deletion lookup', now);
+          nextState.cycleComplete = false;
         } else if (response.status === 200) {
           const missing = collectDeletedTweetIds(body, ids);
           if (missing.length) nextState.items = tombstonePosts(nextState.items, missing, now());
@@ -923,7 +969,10 @@ async function pollXFeed({
     }
   }
 
-  if (nextState.cycleComplete) nextState.rateLimitAttempt = 0;
+  if (nextState.cycleComplete) {
+    nextState.rateLimitAttempt = 0;
+    nextState.backoffCause = null;
+  }
   nextState.requestsUsed = requestsUsed;
   nextState.items = purgeExpiredTombstones(nextState.items, now(), TOMBSTONE_TTL_MS);
   return nextState;
@@ -943,6 +992,7 @@ module.exports = {
   MAX_TOLERATED_FAILED_ACCOUNTS,
   TOLERATED_FAILED_ACCOUNT_FRACTION,
   AUTH_FAILURE_BACKOFF_MS,
+  X_BACKOFF_CAUSES,
   X_FEED_SNAPSHOT_VERSION,
   loadXAccounts,
   countEnabledAccounts,
@@ -964,6 +1014,7 @@ module.exports = {
   parseRateLimitResetMs,
   compute429BackoffMs,
   isAuthFailureStatus,
+  sharedBackoffMessage,
   MAX_429_BACKOFF_MS,
   MAX_429_BACKOFF_EXPONENT,
   buildUserByUsernameUrl,

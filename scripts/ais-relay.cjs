@@ -1317,6 +1317,7 @@ const xState = {
   lastError: null,
   rateLimitedUntil: 0,
   rateLimitAttempt: 0,
+  backoffCause: null,
   // True when a Redis read failed, so last-good state is present but unreadable.
   // Blocks polling/publishing until a clean read (see the cycle's hydrate()).
   hydrationFailed: false,
@@ -10733,6 +10734,7 @@ const server = http.createServer(async (req, res) => {
         pollInFlight: xPollGuard.isInFlight(),
         pollInFlightSince: xPollGuard.startedAt() ? new Date(xPollGuard.startedAt()).toISOString() : null,
         rateLimitedUntil: xState.rateLimitedUntil ? new Date(xState.rateLimitedUntil).toISOString() : null,
+        backoffCause: xState.backoffCause || null,
       },
       oref: {
         enabled: SIREN_ALERTS_ENABLED,
