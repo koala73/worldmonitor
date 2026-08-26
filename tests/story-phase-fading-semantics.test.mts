@@ -311,8 +311,8 @@ describe('#7081 finding 3 — fading is not observable at this call site', () =>
   it('the seeder, which CAN see silence, already has a working fading rule', () => {
     const seeder = readFileSync(
       resolve(__dirname, '..', 'scripts', 'seed-digest-notifications.mjs'), 'utf-8');
-    assert.match(seeder, /silenceH\s*>\s*24\)\s*return 'fading'/,
-      'the notification seeder derives fading from silence over the accumulator population');
+    assert.match(seeder, /deriveNotificationStoryPhase/,
+      'the notification seeder derives fading via shared/story-phase.js');
   });
 });
 
