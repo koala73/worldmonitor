@@ -75,9 +75,33 @@ export const DEFAULT_TOLERANCE_BYTES = 2048;
 // The total gets a far tighter band than any single chunk — see the header.
 export const TOTAL_TOLERANCE_PCT = 0.25;
 export const TOTAL_TOLERANCE_BYTES = 16384;
+// The embed loader is small enough that the dashboard's 2 KB floor would
+// allow a more-than-100% regression. Keep its absolute allowance meaningful.
+export const EMBED_TOLERANCE_BYTES = 128;
+export const EMBED_TOTAL_TOLERANCE_BYTES = 128;
 
 const SURFACES = ['dashboard', 'pro', 'embed'];
 const DEFAULT_SURFACE = 'dashboard';
+const SURFACE_TOLERANCES = {
+  dashboard: {
+    tolerancePct: DEFAULT_TOLERANCE_PCT,
+    toleranceBytes: DEFAULT_TOLERANCE_BYTES,
+    totalTolerancePct: TOTAL_TOLERANCE_PCT,
+    totalToleranceBytes: TOTAL_TOLERANCE_BYTES,
+  },
+  pro: {
+    tolerancePct: DEFAULT_TOLERANCE_PCT,
+    toleranceBytes: DEFAULT_TOLERANCE_BYTES,
+    totalTolerancePct: TOTAL_TOLERANCE_PCT,
+    totalToleranceBytes: TOTAL_TOLERANCE_BYTES,
+  },
+  embed: {
+    tolerancePct: DEFAULT_TOLERANCE_PCT,
+    toleranceBytes: EMBED_TOLERANCE_BYTES,
+    totalTolerancePct: TOTAL_TOLERANCE_PCT,
+    totalToleranceBytes: EMBED_TOTAL_TOLERANCE_BYTES,
+  },
+};
 const BUILD_COMMANDS = {
   dashboard: 'npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build',
   pro: 'npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build',
@@ -93,6 +117,16 @@ const DEFAULT_BUDGET_PATHS = {
   pro: 'scripts/shared/bundle-budgets-pro.json',
   embed: 'scripts/shared/bundle-budgets-embed.json',
 };
+
+function toleranceForSurface(surface) {
+  return SURFACE_TOLERANCES[surface] ?? SURFACE_TOLERANCES.dashboard;
+}
+
+function reseedCommandForSurface(surface) {
+  return surface === DEFAULT_SURFACE
+    ? 'npm run bundle:budgets'
+    : `npm run bundle:budgets:${surface}`;
+}
 
 /**
  * 'main-DYSz1bMh.js' -> 'main'. Vite content hashes are exactly 8 chars of
@@ -217,25 +251,26 @@ export function measureDistChunks(distDir) {
 
 export function buildBudgetSnapshot(measured, surface = DEFAULT_SURFACE) {
   const buildCommand = BUILD_COMMANDS[surface] ?? BUILD_COMMANDS.dashboard;
+  const tolerances = toleranceForSurface(surface);
   const comments = {
     dashboard:
       'Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk '
-      + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total `
-      + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%). Tolerance fields here are `
+      + `±max(${tolerances.toleranceBytes} B, ${tolerances.tolerancePct}%), total `
+      + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%). Tolerance fields here are `
       + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
-      + `Regenerate after "${buildCommand}" with: npm run bundle:budgets`,
+      + `Regenerate after "${buildCommand}" with: ${reseedCommandForSurface(surface)}`,
     pro:
       '/pro subapp bundle-size budgets (#7119). Gated on raw bytes: per chunk '
-      + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total `
-      + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%). Tolerance fields here are `
+      + `±max(${tolerances.toleranceBytes} B, ${tolerances.tolerancePct}%), total `
+      + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%). Tolerance fields here are `
       + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
-      + `Regenerate after "${buildCommand}" with: npm run bundle:budgets:pro`,
+      + `Regenerate after "${buildCommand}" with: ${reseedCommandForSurface(surface)}`,
     embed:
       'dist-root embed.js bundle-size budget (#7119). Gated on raw bytes: per chunk '
-      + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total `
-      + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%). Tolerance fields here are `
+      + `±max(${tolerances.toleranceBytes} B, ${tolerances.tolerancePct}%), total `
+      + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%). Tolerance fields here are `
       + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
-      + `Regenerate after "${buildCommand}" with: npm run bundle:budgets:embed`,
+      + `Regenerate after "${buildCommand}" with: ${reseedCommandForSurface(surface)}`,
   };
   const variants = { dashboard: 'full', pro: 'pro', embed: 'embed' };
   const chunks = Object.create(null);
@@ -247,10 +282,7 @@ export function buildBudgetSnapshot(measured, surface = DEFAULT_SURFACE) {
     comment: comments[surface] ?? comments.dashboard,
     surface,
     variant: variants[surface] ?? variants.dashboard,
-    tolerancePct: DEFAULT_TOLERANCE_PCT,
-    toleranceBytes: DEFAULT_TOLERANCE_BYTES,
-    totalTolerancePct: TOTAL_TOLERANCE_PCT,
-    totalToleranceBytes: TOTAL_TOLERANCE_BYTES,
+    ...tolerances,
     total: { raw: measured.total.raw },
     chunks,
   };
@@ -272,7 +304,7 @@ const isByteCount = (value) => Number.isSafeInteger(value) && value >= 0;
  * and a hand-inflated `total` would decouple the total gate from the chunks
  * it claims to sum. Returns a list of problems; empty means trustworthy.
  */
-export function validateBudgetSnapshot(budget) {
+export function validateBudgetSnapshot(budget, surface = budget?.surface ?? DEFAULT_SURFACE) {
   const problems = [];
   if (!budget || typeof budget !== 'object' || !budget.chunks || typeof budget.chunks !== 'object'
     || !budget.total || typeof budget.total !== 'object') {
@@ -293,11 +325,20 @@ export function validateBudgetSnapshot(budget) {
       `"total.raw" (${budget.total.raw}) does not equal the sum of chunk raw sizes (${chunkSum})`,
     );
   }
+  if (!SURFACES.includes(surface)) {
+    problems.push(`snapshot has an unknown surface "${surface}"`);
+    return problems;
+  }
+  if (budget.surface !== undefined && budget.surface !== surface) {
+    problems.push(`snapshot surface "${budget.surface}" does not match requested surface "${surface}"`);
+  }
+  const tolerances = toleranceForSurface(surface);
   // Tolerances are code constants; the snapshot merely records them. A
   // snapshot claiming different tolerances is stale or hand-edited, and the
   // gate must not read as agreeing with numbers it does not enforce.
-  if (budget.tolerancePct !== DEFAULT_TOLERANCE_PCT || budget.toleranceBytes !== DEFAULT_TOLERANCE_BYTES
-    || budget.totalTolerancePct !== TOTAL_TOLERANCE_PCT || budget.totalToleranceBytes !== TOTAL_TOLERANCE_BYTES) {
+  if (budget.tolerancePct !== tolerances.tolerancePct || budget.toleranceBytes !== tolerances.toleranceBytes
+    || budget.totalTolerancePct !== tolerances.totalTolerancePct
+    || budget.totalToleranceBytes !== tolerances.totalToleranceBytes) {
     problems.push(
       'recorded tolerance fields do not match the gate\'s constants — the gate enforces only its own constants',
     );
@@ -305,12 +346,13 @@ export function validateBudgetSnapshot(budget) {
   return problems;
 }
 
-export function compareBundleBudgets(measured, budget) {
+export function compareBundleBudgets(measured, budget, surface = budget?.surface ?? DEFAULT_SURFACE) {
   const failures = [];
   const warnings = [];
-  const reseed = 'rerun the build above, then `npm run bundle:budgets`, and commit the snapshot diff';
+  const reseed = `rerun the build above, then \`${reseedCommandForSurface(surface)}\`, and commit the snapshot diff`;
+  const tolerances = toleranceForSurface(surface);
 
-  for (const problem of validateBudgetSnapshot(budget)) {
+  for (const problem of validateBudgetSnapshot(budget, surface)) {
     failures.push(`snapshot invalid: ${problem} — ${reseed}`);
   }
   if (failures.length > 0) return { ok: false, failures, warnings };
@@ -326,7 +368,7 @@ export function compareBundleBudgets(measured, budget) {
         `chunk "${name}" is now ${built.files} file(s), budgeted as ${budgeted.files} — code splitting changed; ${reseed}`,
       );
     }
-    const slack = slackFor(budgeted.raw, DEFAULT_TOLERANCE_PCT, DEFAULT_TOLERANCE_BYTES);
+    const slack = slackFor(budgeted.raw, tolerances.tolerancePct, tolerances.toleranceBytes);
     const delta = built.raw - budgeted.raw;
     if (delta > slack) {
       failures.push(
@@ -349,7 +391,11 @@ export function compareBundleBudgets(measured, budget) {
     }
   }
 
-  const totalSlack = slackFor(budget.total.raw, TOTAL_TOLERANCE_PCT, TOTAL_TOLERANCE_BYTES);
+  const totalSlack = slackFor(
+    budget.total.raw,
+    tolerances.totalTolerancePct,
+    tolerances.totalToleranceBytes,
+  );
   const totalDelta = measured.total.raw - budget.total.raw;
   if (totalDelta > totalSlack) {
     failures.push(
@@ -444,25 +490,28 @@ function main() {
 
   // An untrustworthy snapshot is "cannot measure" (exit 2), not a size
   // violation — the numbers it would gate against are not credible.
-  const snapshotProblems = validateBudgetSnapshot(budget);
+  const snapshotProblems = validateBudgetSnapshot(budget, args.surface);
   if (snapshotProblems.length > 0) {
     console.error(`bundle:check cannot trust ${args.budget}:`);
     for (const problem of snapshotProblems) console.error(`  - ${problem}`);
-    console.error('  regenerate it: npm run bundle:budgets (against a fresh CI-parity build)');
+    console.error(
+      `  regenerate it: ${reseedCommandForSurface(args.surface)} (against a fresh CI-parity build)`,
+    );
     process.exit(2);
   }
 
-  const result = compareBundleBudgets(measured, budget);
+  const result = compareBundleBudgets(measured, budget, args.surface);
   if (!result.ok) {
     console.error(`bundle:check FAILED — ${result.failures.length} violation(s):`);
     for (const failure of result.failures) console.error(`  - ${failure}`);
     process.exit(1);
   }
   for (const warning of result.warnings) console.warn(`bundle:check WARNING — ${warning}`);
+  const tolerances = toleranceForSurface(args.surface);
   console.log(
     `bundle:check OK — ${Object.keys(budget.chunks).length} chunks within `
-    + `±max(${DEFAULT_TOLERANCE_BYTES} B, ${DEFAULT_TOLERANCE_PCT}%), total within `
-    + `±max(${TOTAL_TOLERANCE_BYTES} B, ${TOTAL_TOLERANCE_PCT}%) (${kb(measured.total.raw)} raw)`,
+    + `±max(${tolerances.toleranceBytes} B, ${tolerances.tolerancePct}%), total within `
+    + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%) (${kb(measured.total.raw)} raw)`,
   );
 }
 
