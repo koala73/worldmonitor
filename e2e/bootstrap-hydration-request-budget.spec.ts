@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import type { ServerInsights } from '../src/services/insights-loader';
+
 import {
   ENERGY_BOOTSTRAP_DATA,
   ENERGY_KEYS,
@@ -81,14 +83,31 @@ const WEATHER_ALERT = {
  * (1 hour — shared/insights-snapshot.js:7,84), so this timestamp has to track
  * the clock. A frozen literal would silently start failing acceptance and turn
  * the insights arm into a permanent fallthrough that still reads as a pass. */
+const INSIGHTS_ENTRY_NAME = 'Browser Insight Headline';
 const INSIGHTS_SNAPSHOT = {
+  worldBrief: 'Browser world brief.',
+  briefProvider: 'browser-test',
+  status: 'ok',
   topStories: [{
-    title: 'Browser Insight Headline',
-    summary: 'Browser test insight.',
-    sources: [{ title: 'Example', url: 'https://example.org/insight' }],
+    primaryTitle: INSIGHTS_ENTRY_NAME,
+    primarySource: 'Example',
+    primaryLink: 'https://example.org/insight',
+    pubDate: new Date().toISOString(),
+    sourceCount: 1,
+    uniqueSourceCount: 1,
+    importanceScore: 0.8,
+    credibilityScore: 80,
+    velocity: { level: 'normal', sourcesPerHour: 1 },
+    isAlert: false,
+    category: 'general',
+    threatLevel: 'low',
+    countryCode: null,
   }],
   generatedAt: new Date().toISOString(),
-};
+  clusterCount: 1,
+  multiSourceCount: 0,
+  fastMovingCount: 0,
+} satisfies ServerInsights;
 
 type HydrationDataset = {
   /** Bootstrap key, and the label a failure names. */
@@ -410,8 +429,10 @@ for (const [deviceClass, deviceViewport] of [
       const log = await installHydrationRequestAccounting(page, { hydrate: true });
 
       await waitForStartup(page);
+      await mountPanel(page, 'insights');
       await mountSanctionsPanel(page);
       await fireHydrationTrigger(page);
+      await fireInsightsRepeatConsumer(page);
       await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
 
       expect(log.tiers, 'both tiers must have been served').toEqual(
@@ -428,6 +449,8 @@ for (const [deviceClass, deviceViewport] of [
       // reach the DOM, or "zero requests" would also describe a dead panel.
       await expect(page.locator('[data-panel="sanctions-pressure"] .sanctions-entry-name'))
         .toHaveText(SANCTIONS_ENTRY_NAME);
+      await expect(page.locator('[data-panel="insights"] .insight-story-title'))
+        .toHaveText(INSIGHTS_ENTRY_NAME);
     });
 
     // The precondition every zero-refetch assertion in this file rests on.
@@ -523,8 +546,10 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
     });
 
     await waitForStartup(page);
+    await mountPanel(page, 'insights');
     await mountSanctionsPanel(page);
     await fireHydrationTrigger(page);
+    await fireInsightsRepeatConsumer(page);
     await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
 
     // Without this, both assertions below are equally satisfied by a run in
@@ -537,12 +562,16 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       'the fast tier must have been requested so its abort is the scenario under test',
     ).toContain('fast');
 
-    // The fast tier never delivered, so its consumer must recover through its
-    // own fallback rather than settle into an empty state.
-    expect(
-      log.counts.earthquakes ?? 0,
-      'an aborted fast tier must leave the earthquake fallback available',
-    ).toBeGreaterThan(0);
+    // The fast tier never delivered, so every consumer must recover through
+    // its own fallback rather than settle into an empty state. Weather rides
+    // the map fan-out; Insights needs its mounted panel and framework-change
+    // consumer above because loadAllData() does not read it.
+    for (const dataset of HYDRATION_DATASETS.filter((entry) => entry.tier === 'fast')) {
+      expect(
+        log.counts[dataset.key] ?? 0,
+        `an aborted fast tier must leave the ${dataset.key} fallback available`,
+      ).toBeGreaterThan(0);
+    }
 
     // The abort must not cost the slow tier its reuse contract.
     for (const dataset of HYDRATION_DATASETS.filter((entry) => entry.tier === 'slow')) {
@@ -553,6 +582,8 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
     }
     await expect(page.locator('[data-panel="sanctions-pressure"] .sanctions-entry-name'))
       .toHaveText(SANCTIONS_ENTRY_NAME);
+    await expect(page.locator('[data-panel="insights"] .insight-story-title'))
+      .toHaveText(INSIGHTS_ENTRY_NAME);
   });
 
   // Rolling deploy: a client running #7046 code receives a tier payload
