@@ -46,10 +46,24 @@ const VIEW_CENTRED_MAX_WORST_DEGREES = 110;
 
 // #7145 — a drag must cost O(1) overlay rebuilds, not one per pointer event.
 // `applyTransform()` runs on every `mousemove`, so a real gesture is many events
-// spread over wall-clock time. Spacing the steps is load-bearing: a single
-// `page.mouse.move(x, y, { steps })` dispatches its steps back-to-back inside one
-// frame, where `scheduleRender()`'s own coalescing collapses even a per-event
-// rebuild to one and the regression is invisible.
+// spread over wall-clock time. Spacing the steps is load-bearing in BOTH
+// directions, and getting either wrong makes the test worthless:
+//
+//   too fast — a single `page.mouse.move(x, y, { steps })` dispatches its steps
+//   back-to-back inside one frame, where `scheduleRender()`'s own coalescing
+//   collapses even a per-event rebuild to one and the regression is invisible;
+//
+//   too slow — any gap longer than OVERLAY_BUDGET_REPLAN_SETTLE_MS fires the
+//   debounce mid-drag, which is correct behaviour but costs an extra rebuild.
+//
+// So the steps are timed from INSIDE the page (see dragMapAcross), not from the
+// test process. Measured on CI at 4 workers: driving them over CDP round-trips
+// produced 5 and 8 rebuilds on a correct tree, because a round-trip under load
+// routinely exceeds the 200 ms window. Page-side timing does not have that
+// problem on the fixed tree, where the drag leaves the main thread idle — a pan
+// is a pure CSS transform with no DOM work. It is only the regression that makes
+// the main thread busy, and there the rebuild count is set by
+// MIN_RENDER_INTERVAL_MS rather than by the gaps, so the separation holds.
 const DRAG_MOVE_STEPS = 24;
 const DRAG_STEP_INTERVAL_MS = 60;
 const DRAG_STEP_DX = 10;
@@ -62,12 +76,14 @@ const REPLAN_SETTLE_MS = 200;
 // MapComponent.MARKER_SETTLE_MS — how long after the last overlay rebuild the
 // wrapper gets `.markers-settled` and the marker pulses stop (#4669).
 const MARKER_SETTLE_MS = 6000;
-// Measured: 1 rebuild for the whole gesture on the fixed tree, 19 with the
-// replan called straight off the interaction path (the bug costs one rebuild per
-// MIN_RENDER_INTERVAL_MS of gesture, so it scales with drag duration). The slack
-// covers a CI stall longer than the 200 ms settle landing mid-drag and splitting
-// the coalesced rebuild in two; it is nowhere near the mutant, so this ceiling is
-// not a near-miss on the regression it exists to catch.
+// Measured with the page-side drag above: 1 rebuild for the whole gesture on the
+// fixed tree, 15 with the replan called straight off the interaction path (the
+// bug costs one rebuild per MIN_RENDER_INTERVAL_MS of gesture, so it scales with
+// drag duration). The slack covers a runner starving the page long enough for one
+// or two step gaps to overshoot the 200 ms settle and split the coalesced rebuild;
+// it is nowhere near the mutant, so this ceiling is not a near-miss on the
+// regression it exists to catch. Raising it to cover a flake would be — if this
+// ever needs more than 3, the step timing is wrong, not the ceiling.
 const MAX_DRAG_REBUILDS = 3;
 
 type Coord = { lat: number; lon: number };
@@ -190,17 +206,47 @@ async function readWrapperTransform(page: Page): Promise<string> {
 }
 
 /**
- * A real pointer drag: one `mousemove` per step, spaced in wall-clock time, so
+ * A pointer drag: one `mousemove` per step, spaced in wall-clock time, so
  * `applyTransform()` runs once per event across many frames — the only shape in
  * which an O(N) replan is distinguishable from an O(1) one.
+ *
+ * The press and release are real CDP input; neither is timing-sensitive. The
+ * moves are dispatched and timed inside the page instead, because the test
+ * process cannot time them reliably: a CDP round-trip on a loaded CI runner
+ * overshoots the 200 ms settle window, firing the debounce mid-drag and inflating
+ * a correct tree's rebuild count (measured: 5, then 8, at 4 workers). The map
+ * listens for `mousemove` on `document`, so a dispatched event reaches exactly
+ * the same handler and the same `applyTransform()` call as a driven one.
  */
 async function dragMapAcross(page: Page): Promise<void> {
   await page.mouse.move(DRAG_ORIGIN.x, DRAG_ORIGIN.y);
   await page.mouse.down();
-  for (let step = 1; step <= DRAG_MOVE_STEPS; step += 1) {
-    await page.mouse.move(DRAG_ORIGIN.x + step * DRAG_STEP_DX, DRAG_ORIGIN.y + step * DRAG_STEP_DY);
-    await page.waitForTimeout(DRAG_STEP_INTERVAL_MS);
-  }
+  await page.evaluate(
+    ({ origin, steps, intervalMs, dx, dy }) =>
+      new Promise<void>((resolve) => {
+        let step = 0;
+        const tick = (): void => {
+          step += 1;
+          document.dispatchEvent(
+            new MouseEvent('mousemove', {
+              bubbles: true,
+              clientX: origin.x + step * dx,
+              clientY: origin.y + step * dy,
+            }),
+          );
+          if (step >= steps) resolve();
+          else setTimeout(tick, intervalMs);
+        };
+        setTimeout(tick, intervalMs);
+      }),
+    {
+      origin: DRAG_ORIGIN,
+      steps: DRAG_MOVE_STEPS,
+      intervalMs: DRAG_STEP_INTERVAL_MS,
+      dx: DRAG_STEP_DX,
+      dy: DRAG_STEP_DY,
+    },
+  );
   await page.mouse.up();
 }
 
