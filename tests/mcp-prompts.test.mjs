@@ -344,13 +344,48 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
   // contract gate. These values only need to exercise the declared JMESPath
   // branches; the captured fixtures remain the broad payload proof.
   const FIXTURE_BUILDERS = {
+    // Mirrors the GetCountryRiskResponse the handler actually returns
+    // (server/worldmonitor/intelligence/v1/get-country-risk.ts:76-85), NOT the
+    // pre-#7189 shape: `cii` is an OBJECT whose `combinedScore` is the headline
+    // number, the four contributions live under `cii.components` with their
+    // historical names, and advisoryLevel/sanctionsActive/sanctionsCount/
+    // upstreamUnavailable are top-level siblings. Writing this fixture from an
+    // older outputSchema is what made every field project null.
     get_country_risk: () => ({
-      cii: 42,
-      components: { unrest: 10, conflict: 20, security: 30, news: 40 },
-      travelAdvisory: { level: '2' },
-      sanctionsExposure: [],
+      countryCode: 'DE',
+      countryName: 'Germany',
+      cii: {
+        region: 'DE',
+        combinedScore: 42.5,
+        staticBaseline: 38,
+        dynamicScore: 4.5,
+        trend: 'TREND_DIRECTION_RISING',
+        components: {
+          ciiContribution: 10,
+          geoConvergence: 20,
+          militaryActivity: 30,
+          newsActivity: 40,
+        },
+        computedAt: 1717200000000,
+        methodologyVersion: 'v3',
+        eventMultiplier: 1,
+        advisoryLevel: 'caution',
+        advisoryProvenance: 'live',
+      },
+      advisoryLevel: 'caution',
+      sanctionsActive: true,
+      sanctionsCount: 3,
+      fetchedAt: 1717200000000,
+      upstreamUnavailable: false,
     }),
-    get_country_brief: () => ({ country_code: 'DE', brief: 'Stable growth with moderate external risks.' }),
+    // `country_code` is the INPUT parameter name; the response echoes it back
+    // as `countryCode` alongside `countryName` (rpc-tools.ts get_country_brief
+    // outputSchema). Naming the fixture key after the input is what broke this.
+    get_country_brief: () => ({
+      countryCode: 'DE',
+      countryName: 'Germany',
+      brief: 'Stable growth with moderate external risks.',
+    }),
     get_country_macro: () => ({
       cached_at: '2026-08-27T00:00:00.000Z',
       stale: false,
