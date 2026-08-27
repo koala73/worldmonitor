@@ -210,6 +210,28 @@ describe('createXPollCycle — baseline cycle (positive control)', () => {
     assert.equal(harness.calls.setNx.length, 0);
     assert.equal(harness.calls.publish.length, 0);
   });
+
+  it('preserves per-account poll stamps through publication and hydration', async () => {
+    const stamp = NOW - 1;
+    const redis = new Map();
+    const persist = ({ snapshot, pollState }) => {
+      redis.set(CACHE_KEY, snapshot);
+      redis.set(POLL_STATE_KEY, pollState);
+      return true;
+    };
+    const first = createHarness({
+      redis,
+      pollXFeed: async () => pollResult({ lastPolledAtByHandle: { slower: stamp } }),
+      publishResult: persist,
+    });
+
+    await first.cycle.pollOnce({ generation: 1 });
+    assert.deepEqual({ ...first.calls.publish[0].pollState.lastPolledAtByHandle }, { slower: stamp });
+
+    const restarted = createHarness({ redis, publishResult: persist });
+    assert.equal(await restarted.cycle.hydrate(), true);
+    assert.deepEqual({ ...restarted.state.lastPolledAtByHandle }, { slower: stamp });
+  });
 });
 
 describe('createXPollCycle — fail-closed hydration', () => {

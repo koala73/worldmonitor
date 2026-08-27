@@ -102,6 +102,7 @@ function createXPollCycle(deps = {}) {
     xState.cursorByAccountId = hydrated.cursorByAccountId;
     xState.accountIdByHandle = hydrated.accountIdByHandle;
     xState.catchupByAccountId = hydrated.catchupByAccountId;
+    xState.lastPolledAtByHandle = hydrated.lastPolledAtByHandle;
     xState.items = hydrated.items;
     xState.lookupOffset = hydrated.lookupOffset;
     xState.accountOffset = hydrated.accountOffset;
@@ -297,6 +298,7 @@ function createXPollCycle(deps = {}) {
         cursorByAccountId: next.cursorByAccountId,
         accountIdByHandle: next.accountIdByHandle,
         catchupByAccountId: next.catchupByAccountId,
+        lastPolledAtByHandle: next.lastPolledAtByHandle,
         items: next.items,
         lookupOffset: next.lookupOffset || 0,
         accountOffset: next.accountOffset || 0,
