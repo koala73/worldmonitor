@@ -9,6 +9,7 @@ const test = require('node:test');
 const {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
+  OPENSKY_MAX_DEADLINE_SET_LUA,
   accountFingerprint,
   buildCooldownRecord,
   ttlSecondsForCooldown,
@@ -136,6 +137,9 @@ async function createUpstashMock({ getResponses = {}, failGets = false, getDelay
     setsFor: (key) => commands.filter(
       (entry) => Array.isArray(entry.command) && entry.command[0] === 'SET' && entry.command[1] === key,
     ),
+    evalsFor: (key) => commands.filter(
+      (entry) => Array.isArray(entry.command) && entry.command[0] === 'EVAL' && entry.command[3] === key,
+    ),
     env: {
       UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
       UPSTASH_REDIS_REST_TOKEN: 'test-upstash-token',
@@ -161,9 +165,11 @@ test('a header-less relay 429 persists a seeder-cadence fallback, not the 90s lo
     const { port } = await ready;
     const first = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
     assert.equal(first.status, 429);
-    const sets = redis.setsFor(OPENSKY_COOLDOWN_KEY);
-    assert.equal(sets.length, 1, 'relay must write the shared cooldown key on a header-less 429');
-    const record = JSON.parse(sets[0].command[2]);
+    assert.equal(redis.setsFor(OPENSKY_COOLDOWN_KEY).length, 0, 'relay must not last-write-wins SET the shared cooldown');
+    const evals = redis.evalsFor(OPENSKY_COOLDOWN_KEY);
+    assert.equal(evals.length, 1, 'relay must write the shared cooldown key on a header-less 429');
+    assert.equal(evals[0].command[1], OPENSKY_MAX_DEADLINE_SET_LUA);
+    const record = JSON.parse(evals[0].command[4]);
     assert.equal(record.recordedBy, 'ais-relay');
     assert.equal(record.retryAfterSeconds, null);
     assert.equal(record.cooldownMs, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS);
@@ -171,9 +177,8 @@ test('a header-less relay 429 persists a seeder-cadence fallback, not the 90s lo
       record.until >= Date.now() + 300_000,
       `shared deadline ${record.until} must span the seeder */5 cadence`,
     );
-    assert.equal(sets[0].command[3], 'EX');
     assert.equal(
-      sets[0].command[4],
+      evals[0].command[5],
       String(ttlSecondsForCooldown(OPENSKY_SHARED_FALLBACK_COOLDOWN_MS)),
       'Redis TTL must cover the persist fallback, not the short local cooldown',
     );
@@ -198,8 +203,11 @@ test('a relay 429 persists the shared cooldown key the seeder reads (#6253)', as
     const first = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
     assert.equal(first.status, 429);
     const sets = redis.setsFor(OPENSKY_COOLDOWN_KEY);
-    assert.equal(sets.length, 1, 'relay must write the shared cooldown key on 429');
-    const record = JSON.parse(sets[0].command[2]);
+    assert.equal(sets.length, 0, 'relay must not last-write-wins SET the shared cooldown');
+    const evals = redis.evalsFor(OPENSKY_COOLDOWN_KEY);
+    assert.equal(evals.length, 1, 'relay must write the shared cooldown key on 429');
+    assert.equal(evals[0].command[1], OPENSKY_MAX_DEADLINE_SET_LUA);
+    const record = JSON.parse(evals[0].command[4]);
     assert.equal(record.recordedBy, 'ais-relay');
     assert.equal(record.account, accountFingerprint('test-client'));
     assert.equal(record.retryAfterSeconds, 120);

@@ -79,17 +79,186 @@ function buildCooldownRecord({
     cooldownMs,
     account,
     recordedAt: now,
+    // Compare-and-delete identity. Same instant as recordedAt; named so a
+    // success path can drop only the record it observed, not a later write.
+    revision: now,
     recordedBy,
   };
+}
+
+function serializeCooldownRecord(record) {
+  return JSON.stringify(record);
+}
+
+function parseStoredCooldownRecord(raw) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function storedCooldownJson(raw) {
+  if (raw == null || raw === '') return '';
+  return typeof raw === 'string' ? raw : serializeCooldownRecord(raw);
+}
+
+// Last-write-wins SET can let a late 90s relay 429 erase a seeder's 10 min
+// lockout, or the reverse. Both writers EVAL this so the stored `until` is a
+// max, not a coin-flip (#6253 review).
+const OPENSKY_MAX_DEADLINE_SET_LUA = `
+local current = redis.call('GET', KEYS[1])
+local newUntil = tonumber(ARGV[3])
+if newUntil == nil then
+  return 0
+end
+if current then
+  local ok, existing = pcall(cjson.decode, current)
+  local existingUntil = ok and tonumber(existing['until']) or nil
+  if existingUntil ~= nil and existingUntil >= newUntil then
+    return 0
+  end
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[2]))
+return 1
+`.trim();
+
+// Unconditional DEL after a success can erase a newer, longer cooldown that
+// landed while the request was in flight. Delete only the observed revision,
+// an exact stored record, or a deadline that is not newer than the watermark
+// (expired / corrupt leftovers still self-heal when the read failed open).
+const OPENSKY_COMPARE_AND_DEL_LUA = `
+local current = redis.call('GET', KEYS[1])
+if not current then
+  return 0
+end
+if ARGV[1] ~= '' and current == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+local ok, existing = pcall(cjson.decode, current)
+if not ok or type(existing) ~= 'table' then
+  return redis.call('DEL', KEYS[1])
+end
+if ARGV[2] ~= '' then
+  local rev = existing['revision']
+  if rev == nil then rev = existing['recordedAt'] end
+  if tostring(rev) == ARGV[2] then
+    return redis.call('DEL', KEYS[1])
+  end
+end
+local existingUntil = tonumber(existing['until'])
+local watermark = tonumber(ARGV[3])
+if existingUntil == nil or (watermark ~= nil and existingUntil <= watermark) then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`.trim();
+
+function decideMaxDeadlineWrite(existingRecord, incomingRecord) {
+  const incomingUntil = Number(incomingRecord?.until);
+  if (!Number.isFinite(incomingUntil)) {
+    return { write: false, reason: 'invalid-incoming' };
+  }
+  const existingUntil = Number(existingRecord?.until);
+  if (Number.isFinite(existingUntil) && existingUntil >= incomingUntil) {
+    return { write: false, reason: 'existing-deadline-wins', existingUntil };
+  }
+  return { write: true, reason: Number.isFinite(existingUntil) ? 'newer-deadline' : 'missing' };
+}
+
+function decideCompareAndDelete(currentRaw, {
+  expectedJson = '',
+  expectedRevision = '',
+  watermarkUntil,
+} = {}) {
+  if (currentRaw == null || currentRaw === '') {
+    return { delete: false, reason: 'missing' };
+  }
+  const currentJson = storedCooldownJson(currentRaw);
+  if (expectedJson && currentJson === expectedJson) {
+    return { delete: true, reason: 'record-match' };
+  }
+  const parsed = parseStoredCooldownRecord(currentRaw);
+  if (!parsed) {
+    return { delete: true, reason: 'unparseable' };
+  }
+  if (expectedRevision !== '' && expectedRevision != null) {
+    const revision = parsed.revision ?? parsed.recordedAt;
+    if (revision != null && String(revision) === String(expectedRevision)) {
+      return { delete: true, reason: 'revision-match' };
+    }
+  }
+  const existingUntil = Number(parsed.until);
+  if (!Number.isFinite(existingUntil)) {
+    return { delete: true, reason: 'unparseable' };
+  }
+  if (Number.isFinite(watermarkUntil) && existingUntil <= watermarkUntil) {
+    return { delete: true, reason: 'not-newer-than-watermark' };
+  }
+  return { delete: false, reason: 'newer-revision' };
+}
+
+function applyMaxDeadlineWrite(store, key, record, ttlSeconds) {
+  const decision = decideMaxDeadlineWrite(parseStoredCooldownRecord(store[key]), record);
+  if (decision.write) {
+    store[key] = serializeCooldownRecord(record);
+  }
+  return { ...decision, ttlSeconds };
+}
+
+function applyCompareAndDelete(store, key, opts) {
+  const decision = decideCompareAndDelete(store[key], opts);
+  if (decision.delete) {
+    delete store[key];
+  }
+  return decision;
+}
+
+function maxDeadlineSetCommand(key, record, ttlSeconds) {
+  return [
+    'EVAL', OPENSKY_MAX_DEADLINE_SET_LUA, '1',
+    key,
+    serializeCooldownRecord(record),
+    String(ttlSeconds),
+    String(record.until),
+  ];
+}
+
+function compareAndDelCommand(key, {
+  expectedJson = '',
+  expectedRevision = '',
+  watermarkUntil,
+} = {}) {
+  return [
+    'EVAL', OPENSKY_COMPARE_AND_DEL_LUA, '1',
+    key,
+    expectedJson || '',
+    expectedRevision == null ? '' : String(expectedRevision),
+    String(Number.isFinite(watermarkUntil) ? watermarkUntil : 0),
+  ];
 }
 
 module.exports = {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
+  OPENSKY_MAX_DEADLINE_SET_LUA,
+  OPENSKY_COMPARE_AND_DEL_LUA,
   accountFingerprint,
   clampCooldownMs,
   ttlSecondsForCooldown,
   inspectCooldownRecord,
   buildCooldownRecord,
+  serializeCooldownRecord,
+  parseStoredCooldownRecord,
+  decideMaxDeadlineWrite,
+  decideCompareAndDelete,
+  applyMaxDeadlineWrite,
+  applyCompareAndDelete,
+  maxDeadlineSetCommand,
+  compareAndDelCommand,
 };

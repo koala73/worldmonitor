@@ -29,11 +29,13 @@ const {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
+  OPENSKY_MAX_DEADLINE_SET_LUA,
   accountFingerprint: openSkyAccountFingerprint,
   clampCooldownMs,
   ttlSecondsForCooldown,
   inspectCooldownRecord,
   buildCooldownRecord,
+  maxDeadlineSetCommand,
 } = require('./_opensky-account-cooldown.cjs');
 const {
   GROQ_DEFAULT_MODEL,
@@ -597,6 +599,31 @@ function upstashDel(key) {
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
+function upstashEval(script, keys, args) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(null);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const body = JSON.stringify(['EVAL', script, String(keys.length), ...keys, ...args.map((arg) => String(arg))]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(JSON.parse(data)?.result); } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
     req.end(body);
   });
 }
@@ -9188,8 +9215,15 @@ async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Dat
     recordedBy: 'ais-relay',
   });
   try {
-    const ok = await upstashSet(OPENSKY_COOLDOWN_KEY, record, ttlSecondsForCooldown(persistCooldownMs));
-    if (!ok && UPSTASH_ENABLED) {
+    // Atomic max-deadline write: a late shorter persist must not erase a
+    // longer seeder (or earlier relay) lockout already stored at this key.
+    const command = maxDeadlineSetCommand(
+      OPENSKY_COOLDOWN_KEY,
+      record,
+      ttlSecondsForCooldown(persistCooldownMs),
+    );
+    const written = await upstashEval(OPENSKY_MAX_DEADLINE_SET_LUA, [OPENSKY_COOLDOWN_KEY], command.slice(4));
+    if (written == null && UPSTASH_ENABLED) {
       console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
     }
   } catch (err) {

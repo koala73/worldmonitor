@@ -14,8 +14,12 @@ delete process.env.PROXY_URL;
 const { fetchOpenSkyGlobal } = await import('../scripts/seed-military-flights.mjs');
 const {
   OPENSKY_COOLDOWN_KEY,
+  OPENSKY_MAX_DEADLINE_SET_LUA,
+  OPENSKY_COMPARE_AND_DEL_LUA,
   accountFingerprint,
   buildCooldownRecord,
+  applyMaxDeadlineWrite,
+  applyCompareAndDelete,
 } = createRequire(import.meta.url)('../scripts/_opensky-account-cooldown.cjs');
 
 const originalFetch = globalThis.fetch;
@@ -114,6 +118,51 @@ test('an account mismatch fails open and still attempts OpenSky', async () => {
   assert.match(fetchSources.regions[0].authStatus, /^(success|empty):/);
 });
 
+function installInterleavedStore(store, { onOpenSky, allowOpenSky = true } = {}) {
+  redisGets = 0;
+  openskyCalls = 0;
+  globalThis.fetch = async (url, init) => {
+    const raw = typeof url === 'string' ? url : url.url;
+    if (isCooldownGet(raw)) {
+      redisGets += 1;
+      const value = store[OPENSKY_COOLDOWN_KEY];
+      return Response.json({ result: value == null ? null : value });
+    }
+    if (isRedisUrl(raw)) {
+      let command = null;
+      try { command = JSON.parse(init?.body || 'null'); } catch { command = null; }
+      if (Array.isArray(command) && command[0] === 'EVAL') {
+        const key = command[3];
+        if (command[1] === OPENSKY_MAX_DEADLINE_SET_LUA) {
+          const record = JSON.parse(command[4]);
+          const decision = applyMaxDeadlineWrite(store, key, record, Number(command[5]));
+          return Response.json({ result: decision.write ? 1 : 0 });
+        }
+        if (command[1] === OPENSKY_COMPARE_AND_DEL_LUA) {
+          const decision = applyCompareAndDelete(store, key, {
+            expectedJson: command[4],
+            expectedRevision: command[5],
+            watermarkUntil: Number(command[6]),
+          });
+          return Response.json({ result: decision.delete ? 1 : 0 });
+        }
+      }
+      return Response.json({ result: 'OK' });
+    }
+    if (raw.startsWith(TOKEN_URL) || new URL(raw).host === STATES_HOST) {
+      openskyCalls += 1;
+      onOpenSky?.({ raw, store });
+      if (!allowOpenSky) throw new Error(`OpenSky must not be contacted, but requested ${raw}`);
+      if (raw.startsWith(TOKEN_URL)) {
+        return Response.json({ access_token: 'tok', expires_in: 1800 });
+      }
+      if (typeof allowOpenSky === 'function') return allowOpenSky(raw);
+      return Response.json({ states: [] });
+    }
+    throw new Error(`unexpected fetch ${raw}`);
+  };
+}
+
 test('a Redis read failure fails open so the seeder still attempts OpenSky', async () => {
   install({ redisError: true, allowOpenSky: true });
   const fetchSources = emptySources();
@@ -125,4 +174,66 @@ test('a Redis read failure fails open so the seeder still attempts OpenSky', asy
   });
   assert.ok(redisGets >= 1);
   assert.ok(openskyCalls >= 1, 'Redis errors must fail open rather than park OpenSky');
+});
+
+test('a late shorter 429 SET does not overwrite a longer in-flight cooldown', async () => {
+  const now = Date.now();
+  const store = {};
+  const longer = buildCooldownRecord({
+    now,
+    cooldownMs: 20 * 60_000,
+    retryAfterSeconds: 1200,
+    account: accountFingerprint('test-id'),
+    recordedBy: 'ais-relay',
+  });
+  installInterleavedStore(store, {
+    onOpenSky: ({ raw }) => {
+      if (new URL(raw).host === STATES_HOST) {
+        applyMaxDeadlineWrite(store, OPENSKY_COOLDOWN_KEY, longer);
+      }
+    },
+    allowOpenSky: (raw) => {
+      if (raw.startsWith(TOKEN_URL)) return Response.json({ access_token: 'tok', expires_in: 1800 });
+      return new Response('quota', { status: 429, headers: { 'Retry-After': '30' } });
+    },
+  });
+  await fetchOpenSkyGlobal({
+    source: { value: 'none' },
+    fetchSources: emptySources(),
+    seenIds: new Set(),
+    allStates: [],
+  });
+  assert.ok(openskyCalls >= 1);
+  assert.equal(JSON.parse(store[OPENSKY_COOLDOWN_KEY]).until, longer.until);
+  assert.equal(JSON.parse(store[OPENSKY_COOLDOWN_KEY]).recordedBy, 'ais-relay');
+});
+
+test('a stale success DEL does not erase a newer longer cooldown', async () => {
+  const now = Date.now();
+  const store = {};
+  const newer = buildCooldownRecord({
+    now: now + 15,
+    cooldownMs: 15 * 60_000,
+    retryAfterSeconds: 900,
+    account: accountFingerprint('test-id'),
+    recordedBy: 'ais-relay',
+  });
+  installInterleavedStore(store, {
+    onOpenSky: ({ raw }) => {
+      if (new URL(raw).host === STATES_HOST) {
+        applyMaxDeadlineWrite(store, OPENSKY_COOLDOWN_KEY, newer);
+      }
+    },
+  });
+  const fetchSources = emptySources();
+  await fetchOpenSkyGlobal({
+    source: { value: 'none' },
+    fetchSources,
+    seenIds: new Set(),
+    allStates: [],
+  });
+  assert.ok(openskyCalls >= 1);
+  assert.match(fetchSources.regions[0].authStatus, /^(success|empty):/);
+  assert.equal(JSON.parse(store[OPENSKY_COOLDOWN_KEY]).until, newer.until);
+  assert.equal(JSON.parse(store[OPENSKY_COOLDOWN_KEY]).revision, newer.revision);
 });

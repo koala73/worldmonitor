@@ -611,6 +611,8 @@ const {
   ttlSecondsForCooldown,
   inspectCooldownRecord,
   buildCooldownRecord,
+  maxDeadlineSetCommand,
+  compareAndDelCommand,
 } = createRequire(import.meta.url)('./_opensky-account-cooldown.cjs');
 // OpenSky omits the retry-after header on some rejections; those repeat just as
 // reliably, so a header-less 429 still parks the tier. Sized against THIS
@@ -717,7 +719,7 @@ function formatWait(ms) {
 // bug the cooldown exists to fix, so nothing in here may escape (#6241).
 async function readOpenSkyCooldown() {
   const creds = getOptionalRedisCredentials();
-  if (!creds) return { remainingMs: 0 };
+  if (!creds) return { remainingMs: 0, record: null };
   try {
     const record = await redisGet(creds.url, creds.token, OPENSKY_COOLDOWN_KEY);
     const inspected = inspectCooldownRecord(record, {
@@ -728,10 +730,14 @@ async function readOpenSkyCooldown() {
     } else if (inspected.ignoreReason === 'implausible-deadline') {
       console.warn(`  [OpenSky Quota] ignoring implausible cooldown deadline ${inspected.until}`);
     }
-    return { remainingMs: inspected.remainingMs };
+    return {
+      remainingMs: inspected.remainingMs,
+      record,
+      ignoreReason: inspected.ignoreReason || null,
+    };
   } catch (err) {
     console.warn(`  [OpenSky Quota] cooldown read failed, proceeding without it: ${err.message || err}`);
-    return { remainingMs: 0 };
+    return { remainingMs: 0, record: null, ignoreReason: 'read-failed' };
   }
 }
 
@@ -752,13 +758,12 @@ async function recordOpenSkyCooldown(retryAfterSeconds) {
   try {
     // The TTL outlives the deadline so a live key always answers the read; the
     // successful-call path deletes it, and the TTL is only the backstop.
-    await redisSet(
+    await withRetry(() => redisCommand(
       creds.url,
       creds.token,
-      OPENSKY_COOLDOWN_KEY,
-      record,
-      ttlSecondsForCooldown(cooldownMs),
-    );
+      maxDeadlineSetCommand(OPENSKY_COOLDOWN_KEY, record, ttlSecondsForCooldown(cooldownMs)),
+      { label: `Redis EVAL max-deadline ${OPENSKY_COOLDOWN_KEY}`, timeoutMs: 10_000 },
+    ), 2, 1000);
   } catch (err) {
     console.warn(`  [OpenSky Quota] failed to persist cooldown: ${err.message || err}`);
   }
@@ -783,11 +788,24 @@ function combineOpenSkyFetchErrors(directError, proxyError) {
   );
 }
 
-async function clearOpenSkyCooldown() {
+async function clearOpenSkyCooldown({ expectedRecord = null, watermarkUntil = Date.now() } = {}) {
   const creds = getOptionalRedisCredentials();
   if (!creds) return;
   try {
-    await redisDel(creds.url, creds.token, OPENSKY_COOLDOWN_KEY);
+    // Compare-and-delete: a stale success must not erase a newer, longer
+    // cooldown that landed while this request was in flight. Expired or
+    // unreadable leftovers still clear when `until` is not newer than the
+    // watermark, so a fail-open GET cannot strand a dead deadline (#6253).
+    await withRetry(() => redisCommand(
+      creds.url,
+      creds.token,
+      compareAndDelCommand(OPENSKY_COOLDOWN_KEY, {
+        expectedJson: expectedRecord ? JSON.stringify(expectedRecord) : '',
+        expectedRevision: expectedRecord?.revision ?? expectedRecord?.recordedAt ?? '',
+        watermarkUntil,
+      }),
+      { label: `Redis EVAL compare-and-del ${OPENSKY_COOLDOWN_KEY}`, timeoutMs: 10_000 },
+    ), 2, 1000);
   } catch (err) {
     console.warn(`  [OpenSky Quota] failed to clear cooldown: ${err.message || err}`);
   }
@@ -968,6 +986,7 @@ async function fetchOpenSkyGlobal({ source, fetchSources, seenIds, allStates }) 
   // deliberately left this alone. What it costs is a full round-trip and its
   // share of the run's wall clock, every 5 minutes, for a window production has
   // seen run to 22,688s (~6.3h): ~76 doomed requests per outage (#6241).
+  const cooldownReadAt = Date.now();
   const cooldown = await readOpenSkyCooldown();
   if (cooldown.remainingMs > 0) {
     regionSource.authStatus = `quota-cooldown:${Math.ceil(cooldown.remainingMs / 1000)}s`;
@@ -989,12 +1008,10 @@ async function fetchOpenSkyGlobal({ source, fetchSources, seenIds, allStates }) 
     if (authResult?.rateLimited) {
       await recordOpenSkyCooldown(authResult.retryAfterSeconds);
     } else if (regionSource.authStatus.startsWith('success:')) {
-      // Unconditional on success. Gating this on "we read a record earlier"
-      // would tie the cleanup to a read that also returns empty when Redis is
-      // merely unreachable, so one GET blip would strand a dead deadline. A
-      // proven-live upstream is the authoritative signal; one DEL per healthy
-      // run is the whole cost, and it self-heals any corrupt record.
-      await clearOpenSkyCooldown();
+      await clearOpenSkyCooldown({
+        expectedRecord: cooldown.ignoreReason ? null : cooldown.record,
+        watermarkUntil: cooldownReadAt,
+      });
     }
     if (states && states.length > 0) {
       if (source.value === 'none') source.value = 'opensky-auth';
