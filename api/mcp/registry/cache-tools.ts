@@ -468,7 +468,10 @@ export const CACHE_TOOLS: ToolDef[] = [
       crypto: {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
+          // Crypto trades continuously, so there is no prior close to compare
+          // against: scripts/seed-crypto-quotes.mjs carries the provider's
+          // rolling percent_change_24h straight into `change`.
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change over the trailing 24 hours (crypto trades continuously; this is not a prior-close comparison).' } } } },
         },
       },
       sectors: {
