@@ -217,15 +217,32 @@ async function readWrapperTransform(page: Page): Promise<string> {
  * a correct tree's rebuild count (measured: 5, then 8, at 4 workers). The map
  * listens for `mousemove` on `document`, so a dispatched event reaches exactly
  * the same handler and the same `applyTransform()` call as a driven one.
+ *
+ * Returns how many steps observed the wrapper WITHOUT `.markers-settled`. The
+ * sample is taken in the page, immediately before each move is dispatched, so it
+ * reads the state ~one interval after the previous move — late enough for that
+ * move's rebuild to have landed, and with no CDP round-trip to race the 200 ms
+ * settle timer. Sampling here, rather than counting class transitions from a
+ * MutationObserver, is deliberate: `armMarkerSettle()` strips the class on every
+ * rebuild but only re-adds it MARKER_SETTLE_MS later, so under a per-event
+ * rebuild the class goes absent once and stays absent — a transition counter
+ * saturates at 1 and cannot tell one rebuild from twenty.
  */
-async function dragMapAcross(page: Page): Promise<void> {
+async function dragMapAcross(page: Page): Promise<{ stepsUnsettled: number }> {
   await page.mouse.move(DRAG_ORIGIN.x, DRAG_ORIGIN.y);
   await page.mouse.down();
-  await page.evaluate(
+  const stepsUnsettled = await page.evaluate(
     ({ origin, steps, intervalMs, dx, dy }) =>
-      new Promise<void>((resolve) => {
+      new Promise<number>((resolve, reject) => {
+        const wrapper = document.querySelector('.map-wrapper');
+        if (!wrapper) {
+          reject(new Error('Missing .map-wrapper to sample marker settle state'));
+          return;
+        }
         let step = 0;
+        let unsettled = 0;
         const tick = (): void => {
+          if (!wrapper.classList.contains('markers-settled')) unsettled += 1;
           step += 1;
           document.dispatchEvent(
             new MouseEvent('mousemove', {
@@ -234,8 +251,12 @@ async function dragMapAcross(page: Page): Promise<void> {
               clientY: origin.y + step * dy,
             }),
           );
-          if (step >= steps) resolve();
-          else setTimeout(tick, intervalMs);
+          if (step >= steps) {
+            setTimeout(() => {
+              if (!wrapper.classList.contains('markers-settled')) unsettled += 1;
+              resolve(unsettled);
+            }, intervalMs);
+          } else setTimeout(tick, intervalMs);
         };
         setTimeout(tick, intervalMs);
       }),
@@ -248,38 +269,7 @@ async function dragMapAcross(page: Page): Promise<void> {
     },
   );
   await page.mouse.up();
-}
-
-type UnsettleProbeWindow = Window & { __wmMarkerUnsettles?: number };
-
-/**
- * Start counting transitions OUT of `.markers-settled`. `armMarkerSettle()` strips
- * the class at the end of every `renderOverlays()` pass, so this is the
- * DOM-observable half of the same property: a gesture that rebuilds per pointer
- * event holds every marker in the infinite-pulse state — and its compositing
- * layer (#4669) — for the whole drag.
- *
- * Counted rather than sampled at drag end on purpose. A read taken there races
- * the OVERLAY_BUDGET_REPLAN_SETTLE_MS timer, which is only 200 ms behind the last
- * move; the transition count is settled-state history and cannot race it.
- */
-async function watchMarkerUnsettles(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const wrapper = document.querySelector('.map-wrapper');
-    if (!wrapper) throw new Error('Missing .map-wrapper to observe for marker settle state');
-    const probe = window as UnsettleProbeWindow;
-    probe.__wmMarkerUnsettles = 0;
-    let settled = wrapper.classList.contains('markers-settled');
-    new MutationObserver(() => {
-      const nowSettled = wrapper.classList.contains('markers-settled');
-      if (settled && !nowSettled) probe.__wmMarkerUnsettles = (probe.__wmMarkerUnsettles ?? 0) + 1;
-      settled = nowSettled;
-    }).observe(wrapper, { attributes: true, attributeFilter: ['class'] });
-  });
-}
-
-async function readMarkerUnsettles(page: Page): Promise<number> {
-  return page.evaluate(() => (window as UnsettleProbeWindow).__wmMarkerUnsettles ?? 0);
+  return { stepsUnsettled };
 }
 
 test.describe('SVG map overlay marker budget (#7112)', () => {
@@ -699,9 +689,8 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
     const before = (await readOverlayBudget(page)).renders;
     expect(before).toBeGreaterThan(0);
     const transformBefore = await readWrapperTransform(page);
-    await watchMarkerUnsettles(page);
 
-    await dragMapAcross(page);
+    const { stepsUnsettled } = await dragMapAcross(page);
     await page.waitForTimeout(REPLAN_SETTLE_MS + 1500);
 
     // Positive control. A drag that never reached the map's `mousedown` handler —
@@ -718,10 +707,18 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
     expect(rebuilds).toBeGreaterThanOrEqual(1);
     expect(rebuilds).toBeLessThanOrEqual(MAX_DRAG_REBUILDS);
 
-    // The `armMarkerSettle()` half, in the DOM the user actually sees.
-    const unsettles = await readMarkerUnsettles(page);
-    expect(unsettles).toBeGreaterThanOrEqual(1);
-    expect(unsettles).toBeLessThanOrEqual(MAX_DRAG_REBUILDS);
+    // The `armMarkerSettle()` half, in the DOM the user actually sees. The
+    // wrapper entered the drag settled and no rebuild happens until the gesture
+    // ends, so every in-gesture sample must still see `.markers-settled`. Under
+    // the regression the first rebuild strips it within ~100 ms and it stays
+    // stripped for the rest of the drag — every marker held in the infinite-pulse
+    // state, and its compositing layer with it (#4669) — so this reads ~24.
+    //
+    // Strict 0, with no slack: a mid-drag rebuild is exactly the thing being
+    // ruled out. It shares the failure mode of MAX_DRAG_REBUILDS above — a runner
+    // that stalls a step gap past the 200 ms settle breaks both — and the remedy
+    // is the same one, fix the step timing rather than widen the tolerance.
+    expect(stepsUnsettled).toBe(0);
 
     // ...and the pulse is released again once that single rebuild lands, rather
     // than being re-armed indefinitely. The window is MARKER_SETTLE_MS measured
