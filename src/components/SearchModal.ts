@@ -963,6 +963,7 @@ export class SearchModal {
             </div>`, "legacy direct innerHTML migration"));
         } else {
           this.renderFlightSearchTrigger(this.currentFlightCallsign);
+          this.announceResultCount(1);
         }
         return;
       }
@@ -1066,7 +1067,7 @@ export class SearchModal {
     const query = this.lastSearchedQuery ?? '';
     this.resultsStatus.textContent = count === 0
       ? `${t('modals.search.noResults')}${query ? `: ${query}` : ''}`
-      : `${count} ${count === 1 ? 'result' : 'results'}${query ? ` for ${query}` : ''}`;
+      : t('modals.search.resultAnnouncement', { count, query });
   }
 
   private renderFlightSearchTrigger(callsign: string): void {

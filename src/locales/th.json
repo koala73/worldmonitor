@@ -528,6 +528,7 @@
       "recent": "การค้นหาล่าสุด",
       "empty": "ค้นหาข้อมูลหรือรันคำสั่ง",
       "noResults": "ไม่พบผลลัพธ์",
+      "resultAnnouncement_other": "พบ {{count}} ผลลัพธ์สำหรับ {{query}}",
       "commands": "คำสั่ง",
       "results": "ผลลัพธ์",
       "seeAllCommands": "ดูคำสั่งทั้งหมด",

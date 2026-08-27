@@ -530,6 +530,8 @@
       "recent": "Son Aramalar",
       "empty": "Veri ara veya komut çalıştır",
       "noResults": "Sonuc bulunamadi",
+      "resultAnnouncement_one": "{{query}} için {{count}} sonuç",
+      "resultAnnouncement_other": "{{query}} için {{count}} sonuç",
       "commands": "Komutlar",
       "results": "Sonuçlar",
       "seeAllCommands": "Tüm komutları gör",

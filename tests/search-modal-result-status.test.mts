@@ -43,8 +43,17 @@ describe('search modal result-count announcements (#7023)', () => {
     );
   });
 
-  it('the announcement names the query and pluralizes correctly', () => {
-    assert.match(source, /count === 1 \? 'result' : 'results'/);
-    assert.match(source, /for \$\{query\}/);
+  it('announces the live-flight action before its early return', () => {
+    assert.match(
+      source,
+      /this\.renderFlightSearchTrigger\(this\.currentFlightCallsign\);\s*this\.announceResultCount\(1\);/,
+    );
+  });
+
+  it('localizes the complete populated-result announcement', () => {
+    assert.match(
+      source,
+      /t\('modals\.search\.resultAnnouncement', \{ count, query \}\)/,
+    );
   });
 });

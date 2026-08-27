@@ -528,6 +528,8 @@
       "recent": "Aktuelle Suchanfragen",
       "empty": "Daten durchsuchen oder Befehle ausführen",
       "noResults": "Keine Ergebnisse",
+      "resultAnnouncement_one": "{{count}} Ergebnis für {{query}}",
+      "resultAnnouncement_other": "{{count}} Ergebnisse für {{query}}",
       "navigate": "navigieren",
       "select": "wählen",
       "close": "schließen",

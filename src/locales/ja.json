@@ -528,6 +528,7 @@
       "recent": "最近の検索",
       "empty": "データ検索またはコマンド実行",
       "noResults": "結果なし",
+      "resultAnnouncement_other": "「{{query}}」の検索結果は{{count}}件です",
       "commands": "コマンド",
       "results": "結果",
       "seeAllCommands": "コマンド一覧を見る",

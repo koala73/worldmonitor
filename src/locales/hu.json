@@ -599,6 +599,8 @@
       "recent": "Legutóbbi keresések",
       "empty": "Adatok keresése vagy parancsok futtatása",
       "noResults": "Nincs találat",
+      "resultAnnouncement_one": "{{count}} találat erre: {{query}}",
+      "resultAnnouncement_other": "{{count}} találat erre: {{query}}",
       "commands": "Parancsok",
       "results": "Eredmények",
       "seeAllCommands": "Összes parancs megtekintése",
