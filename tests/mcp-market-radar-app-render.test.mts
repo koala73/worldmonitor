@@ -21,6 +21,7 @@ import path from 'node:path';
 import { Window } from 'happy-dom';
 
 import { MARKET_RADAR_APP_HTML } from '../api/mcp/ui/market-radar-app';
+import { buildProducerBackedMarketFixture } from './helpers/mcp-producer-fixtures.mjs';
 
 const FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -39,7 +40,7 @@ function textOf(selector: string): string[] {
 
 describe('api/mcp/ui/market-radar-app.ts — renders the captured get_market_data response', () => {
   before(async () => {
-    const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+    const fixture = buildProducerBackedMarketFixture(JSON.parse(readFileSync(FIXTURE, 'utf8')));
 
     win = new Window({ url: 'https://worldmonitor.app/' });
     win.document.write(MARKET_RADAR_APP_HTML);
@@ -62,7 +63,10 @@ describe('api/mcp/ui/market-radar-app.ts — renders the captured get_market_dat
       data: {
         jsonrpc: '2.0',
         method: 'ui/notifications/tool-result',
-        params: { result: { structuredContent: fixture } },
+        // Production dispatch sends the JSON payload as content[0].text.
+        // Keep this harness on that wire path so structuredContent shortcuts
+        // cannot hide a real response-decoding regression.
+        params: { result: { content: [{ type: 'text', text: JSON.stringify(fixture) }] } },
       },
       source: hostWindow,
     }));

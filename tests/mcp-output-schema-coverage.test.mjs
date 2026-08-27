@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { validate } from './helpers/json-schema-mini.mjs';
+import { buildProducerBackedMarketFixture } from './helpers/mcp-producer-fixtures.mjs';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
@@ -111,6 +112,18 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       assert.deepEqual(errors, [], `fixture ${file} fails schema:\n  ${errors.join('\n  ')}`);
     });
   }
+
+  it('get_market_data schema validates a deterministic producer-backed fixture', () => {
+    const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
+    const captured = JSON.parse(readFileSync(
+      path.join(fixtureDir, 'fixtures', 'jmespath-samples', 'fat-get-market-data.response.json'),
+      'utf8',
+    ));
+    const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_market_data');
+    assert.ok(tool, 'tool get_market_data not found in registry');
+    const errors = validate(tool.outputSchema, buildProducerBackedMarketFixture(captured));
+    assert.deepEqual(errors, [], `producer-backed market fixture fails schema:\n  ${errors.join('\n  ')}`);
+  });
 
   it('interactive cache-tool schemas declare the authoritative fields consumed by their apps', () => {
     const dataProperties = (toolName) => {

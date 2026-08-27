@@ -35,6 +35,7 @@ import jmespath from 'jmespath';
 import {
   BASE_URL,
 } from './helpers/mcp-pro-deps.mjs';
+import { buildProducerBackedMarketFixture } from './helpers/mcp-producer-fixtures.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -337,6 +338,44 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
     get_chokepoint_status: 'thin-get-chokepoint-status.response.json',
   };
 
+  // The prompt registry spans more tools than the retained captures above.
+  // Keep deterministic, representative producer-shaped fixtures for every
+  // remaining tool so a new prompt step cannot silently disappear from this
+  // contract gate. These values only need to exercise the declared JMESPath
+  // branches; the captured fixtures remain the broad payload proof.
+  const FIXTURE_BUILDERS = {
+    get_country_risk: () => ({
+      cii: 42,
+      components: { unrest: 10, conflict: 20, security: 30, news: 40 },
+      travelAdvisory: { level: '2' },
+      sanctionsExposure: [],
+    }),
+    get_country_brief: () => ({ country_code: 'DE', brief: 'Stable growth with moderate external risks.' }),
+    get_country_macro: () => ({
+      cached_at: '2026-08-27T00:00:00.000Z',
+      stale: false,
+      data: {
+        macro: { countries: { DE: { inflationPct: 2.1 } } },
+        growth: { countries: { DE: { gdpGrowthPct: 1.2 } } },
+        labor: { countries: { DE: { unemploymentPct: 5.9 } } },
+      },
+    }),
+    get_energy_intelligence: () => ({
+      cached_at: '2026-08-27T00:00:00.000Z',
+      stale: false,
+      data: {
+        disruptions: { events: [{ id: 'disruption-1', countries: ['DE'], severity: 'medium' }] },
+        'fuel-shortages': { shortages: [{ country: 'DE', product: 'diesel', status: 'watch' }] },
+        'crisis-policies': { policies: [{ country: 'DE', policy: 'reserve release' }] },
+      },
+    }),
+    get_news_intelligence: () => ({
+      cached_at: '2026-08-27T00:00:00.000Z',
+      stale: false,
+      data: { insights: { topStories: [{ primaryTitle: 'Market alert', primarySource: 'Wire', isAlert: true }] } },
+    }),
+  };
+
   // Report every array-of-objects column whose value is null/undefined on all
   // rows. Rows are homogeneous, so an all-null column means the projection is
   // reading a key the payload does not have — not that the data is sparse.
@@ -362,49 +401,65 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
 
   it('every prompt step JMESPath projects live values when evaluated against the captured fixture', () => {
     const fixtureDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'jmespath-samples');
+    const totalSteps = PROMPT_REGISTRY.reduce((count, prompt) => count + prompt.steps.length, 0);
     let covered = 0;
+    const uncovered = [];
 
     for (const prompt of PROMPT_REGISTRY) {
       for (const [i, step] of prompt.steps.entries()) {
         const file = FIXTURE_BY_TOOL[step.tool];
-        if (!file) continue;
+        const sources = file
+          ? [{ fixture: JSON.parse(readFileSync(path.join(fixtureDir, file), 'utf8')), label: file }]
+          : FIXTURE_BUILDERS[step.tool]
+            ? [{ fixture: FIXTURE_BUILDERS[step.tool](), label: 'producer-backed fixture' }]
+            : [];
+        if (sources.length === 0) {
+          uncovered.push(`prompt "${prompt.name}" step ${i + 1} (${step.tool})`);
+          continue;
+        }
         covered++;
-        const fixture = JSON.parse(readFileSync(path.join(fixtureDir, file), 'utf8'));
-        const label = `prompt "${prompt.name}" step ${i + 1} (${step.tool})`;
 
-        const projected = jmespath.search(fixture, step.jmespath);
-        assert.ok(
-          projected != null,
-          `${label}: JMESPath "${step.jmespath}" projected null from ${file} — the expression matches nothing in a real response`,
-        );
+        for (const { fixture: rawFixture, label: fixtureLabel } of sources) {
+          const fixture = step.tool === 'get_market_data'
+            ? buildProducerBackedMarketFixture(rawFixture)
+            : rawFixture;
+          const label = `prompt "${prompt.name}" step ${i + 1} (${step.tool})`;
 
-        // A drifted SECTION name (data."stocks-bootstrapp") collapses its whole
-        // branch to null rather than to a column of nulls, so the row walk below
-        // would never see it. Checked only at the top level: a nested null is
-        // ordinary sparse data, a null the prompt asked for by name is not.
-        if (!Array.isArray(projected) && typeof projected === 'object') {
-          const emptyBranches = Object.entries(projected)
-            .filter(([, v]) => v == null)
-            .map(([k]) => k);
+          const projected = jmespath.search(fixture, step.jmespath);
+          assert.ok(
+            projected != null,
+            `${label}: JMESPath "${step.jmespath}" projected null from ${fixtureLabel} — the expression matches nothing in a real response`,
+          );
+
+          // A drifted SECTION name (data."stocks-bootstrapp") collapses its whole
+          // branch to null rather than to a column of nulls, so the row walk below
+          // would never see it. Checked only at the top level: a nested null is
+          // ordinary sparse data, a null the prompt asked for by name is not.
+          if (!Array.isArray(projected) && typeof projected === 'object') {
+            const emptyBranches = Object.entries(projected)
+              .filter(([, v]) => v == null)
+              .map(([k]) => k);
+            assert.deepEqual(
+              emptyBranches, [],
+              `${label}: JMESPath "${step.jmespath}" projected null for ${emptyBranches.join(', ')} against ` +
+              `${fixtureLabel} — that path does not exist in a real response`,
+            );
+          }
+
+          const dead = [];
+          collectDeadColumns(projected, 'result', dead);
           assert.deepEqual(
-            emptyBranches, [],
-            `${label}: JMESPath "${step.jmespath}" projected null for ${emptyBranches.join(', ')} against ` +
-            `${file} — that path does not exist in a real response`,
+            dead, [],
+            `${label}: JMESPath "${step.jmespath}" projects columns that are null on every row of ${fixtureLabel}. ` +
+            'The prompt is reading a field name the payload does not serve — align the projection with the ' +
+            "producer's keys (and fix the tool's outputSchema if it advertises the same phantom).",
           );
         }
-
-        const dead = [];
-        collectDeadColumns(projected, 'result', dead);
-        assert.deepEqual(
-          dead, [],
-          `${label}: JMESPath "${step.jmespath}" projects columns that are null on every row of ${file}. ` +
-          'The prompt is reading a field name the payload does not serve — align the projection with the ' +
-          "producer's keys (and fix the tool's outputSchema if it advertises the same phantom).",
-        );
       }
     }
 
-    assert.ok(covered > 0, 'no prompt step mapped to a captured fixture — FIXTURE_BY_TOOL has gone stale');
+    assert.deepEqual(uncovered, [], `prompt steps without a fixture or producer-backed builder:\n  ${uncovered.join('\n  ')}`);
+    assert.equal(covered, totalSteps, 'every prompt step must be exercised by a fixture or producer-backed builder');
   });
 });
 

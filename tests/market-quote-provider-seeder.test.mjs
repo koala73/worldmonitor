@@ -12,6 +12,7 @@ import {
   hasSufficientFreshQuoteCoverage,
   toSeedQuote,
 } from '../scripts/shared/market-quote-provider.mjs';
+import { toSeedEtfFlow } from '../scripts/shared/etf-flow-provider.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_ENV = {
@@ -33,6 +34,22 @@ describe('toSeedQuote', () => {
     assert.deepEqual(
       toSeedQuote('AAPL', { price: 1, change: 2, sparkline: [1, 2] }, { name: 'Apple', display: 'AAPL' }),
       { symbol: 'AAPL', name: 'Apple', display: 'AAPL', price: 1, change: 2, sparkline: [1, 2] },
+    );
+  });
+});
+
+describe('toSeedEtfFlow', () => {
+  it('publishes the authoritative estFlow field from deterministic inputs', () => {
+    assert.deepEqual(
+      toSeedEtfFlow({
+        ticker: 'IBIT', issuer: 'BlackRock', price: 40, priceChange: 2.5,
+        volume: 1_000_000, avgVolume: 900_000, volumeRatio: 1.11,
+      }),
+      {
+        ticker: 'IBIT', issuer: 'BlackRock', price: 40, priceChange: 2.5,
+        volume: 1_000_000, avgVolume: 900_000, volumeRatio: 1.11,
+        direction: 'inflow', estFlow: 4_000_000,
+      },
     );
   });
 });
