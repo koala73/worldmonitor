@@ -286,20 +286,20 @@ describe('China official policy adapters (#5576)', () => {
     // parsePolicyHtmlFields' closing-tag unwind
     // (scripts/china-policy/adapters.mjs) degenerates into once the open-tag
     // count stops bounding it — the regression this suite exists to catch. It
-    // runs at a smaller base size because a genuinely quadratic scan at 16k
-    // would dominate the file's runtime.
-    let scanned = 0;
+    // uses a test-only probe around that real parser path and runs at a smaller
+    // base size because a genuinely quadratic scan at 16k would dominate the
+    // file's runtime.
+    let stackComparisons = 0;
     const scaling = measureScaling((fixtures) => {
-      const text = fixtures.unbalanced;
-      for (let index = 0; index < text.length; index += 1) {
-        if (text[index] !== '<') continue;
-        for (let prefix = 0; prefix < index; prefix += 1) {
-          if (text[prefix] === '<') scanned += 1;
-        }
-      }
-    }, 250);
+      stackComparisons += __testing__.runPolicyHtmlClosingTagRegressionProbe(
+        fixtures.unbalanced,
+      );
+    }, 1_000);
 
-    assert.ok(scanned > 0, 'the control must actually scan the hostile input');
+    assert.ok(
+      stackComparisons > 0,
+      'the control must actually scan the parser closing-tag stack',
+    );
     assert.ok(
       scaling.marginMs > 0,
       `the quadratic control must trip the gate, but scaled only ${scalingDetail(scaling)}`,
