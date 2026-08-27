@@ -796,7 +796,15 @@ export async function cachedFetchJson<T extends object>(
   negativeTtlSeconds = 120,
   opts?: CachedFetchOpts,
 ): Promise<T | null> {
-  const result = await cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, opts, 'cachedFetchJson');
+  // Rebuild the public option shape so structurally assignable objects cannot
+  // leak cachedFetchJsonWithMeta-only fields into the shared implementation.
+  const coreOpts = opts === undefined
+    ? undefined
+    : {
+        timeoutMs: opts.timeoutMs,
+        cacheFetcherErrors: opts.cacheFetcherErrors,
+      };
+  const result = await cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, coreOpts, 'cachedFetchJson');
   return result.data;
 }
 
