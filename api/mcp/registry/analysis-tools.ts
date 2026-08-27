@@ -851,7 +851,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
         { key: 'seed-meta:cable-health', maxStaleMin: 90 },
         { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
-        { key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 },
+        { key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }, // liveness 45min; content-age is stamped on the same key (newestItemAt) and evaluated by evaluateFreshness
         { key: 'seed-meta:thermal:escalation', maxStaleMin: 360 },
         { key: 'seed-meta:supply_chain:shipping_stress', maxStaleMin: 45 },
       ];

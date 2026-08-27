@@ -631,6 +631,39 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(freshness.cached_at, new Date(now - 12 * 60 * 60_000).toISOString());
   });
 
+  it('evaluateFreshness marks content-age stale even when fetchedAt is fresh (#7141)', () => {
+    const now = Date.UTC(2026, 7, 27, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+      [{
+        fetchedAt: now - 5 * 60_000,
+        recordCount: 2,
+        newestItemAt: now - 72 * 60 * 60_000,
+        maxContentAgeMin: 48 * 60,
+      }],
+      now,
+    );
+
+    assert.equal(freshness.stale, true, 'a frozen-but-200 feed must not read stale:false');
+    assert.equal(freshness.cached_at, new Date(now - 5 * 60_000).toISOString());
+  });
+
+  it('evaluateFreshness stays fresh when content-age is inside budget', () => {
+    const now = Date.UTC(2026, 7, 27, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+      [{
+        fetchedAt: now - 5 * 60_000,
+        recordCount: 2,
+        newestItemAt: now - 20 * 60_000,
+        maxContentAgeMin: 48 * 60,
+      }],
+      now,
+    );
+
+    assert.equal(freshness.stale, false);
+  });
+
   it('get_chokepoint_status declares the PortWatch 174-country freshness floor', async () => {
     const { CACHE_TOOLS } = await import(`../api/mcp/registry/cache-tools.ts?t=${Date.now()}`);
     const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_chokepoint_status');

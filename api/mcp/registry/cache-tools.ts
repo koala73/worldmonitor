@@ -2710,7 +2710,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: ['temporal:anomalies:v1'],
     _cacheLabels: { 'temporal:anomalies:v1': 'snapshot' },
-    _freshnessChecks: [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+    _freshnessChecks: [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }], // liveness 45min; content-age is stamped on the same key (newestItemAt) and evaluated by evaluateFreshness
     _apiPaths: [],
   },
 

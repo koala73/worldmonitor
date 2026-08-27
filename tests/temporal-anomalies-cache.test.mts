@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { __testing__ } from '../api/health.js';
+import { evaluateFreshness } from '../api/mcp/freshness.ts';
+import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import {
   TEMPORAL_ANOMALIES_TTL,
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
+  TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   BASELINE_SAMPLE_INTERVAL_MS,
   makeBaselineKeyV2,
+  temporalAnomaliesContentMeta,
 } from '../server/worldmonitor/infrastructure/v1/_shared.ts';
 import { listTemporalAnomalies } from '../server/worldmonitor/infrastructure/v1/list-temporal-anomalies.ts';
 
@@ -28,7 +32,7 @@ async function runWithRedisStub(
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
   const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-  const calls: { method: string; key: string; recordCount?: number }[] = [];
+  const calls: { method: string; key: string; recordCount?: number; value?: unknown }[] = [];
 
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
@@ -38,19 +42,22 @@ async function runWithRedisStub(
       // not in the URL path — matching on the URL would silently match nothing.
       let key = '';
       let recordCount: number | undefined;
+      let value: unknown;
       try {
         const cmd = JSON.parse(String(init.body ?? '[]'));
         if (Array.isArray(cmd)) {
           key = String(cmd[1] ?? '');
-          // cmd[2] is the JSON-encoded value; capture recordCount so coverage
-          // assertions can check WHAT was written, not just that a write happened.
+          // cmd[2] is the JSON-encoded value; capture the written seed-meta so
+          // content-age assertions can check WHAT was stamped, not just that
+          // a write happened.
           const written = JSON.parse(String(cmd[2] ?? 'null'));
+          value = written;
           if (written && typeof written.recordCount === 'number') {
             recordCount = written.recordCount;
           }
         }
       } catch { /* leave undefined; assertions below surface it */ }
-      calls.push({ method: 'POST', key, recordCount });
+      calls.push({ method: 'POST', key, recordCount, value });
       if (failedPostKeys.includes(key)) {
         return Response.json({ error: `forced POST failure for ${key}` }, { status: 500 });
       }
@@ -77,6 +84,58 @@ const freshSnapshot = (ageMs = 0) => ({
   trackedTypes: ['news', 'satellite_fires'],
   computedAt: new Date(Date.now() - ageMs).toISOString(),
 });
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function liveNews(now = Date.now(), ageMs = 10 * 60_000) {
+  const newest = now - ageMs;
+  return {
+    topStories: [{ id: 'a', pubDate: new Date(newest).toISOString() }],
+    sourceAgeRange: { newestMs: newest, oldestMs: newest },
+  };
+}
+
+function liveFires(now = Date.now(), ageMs = 15 * 60_000, totalCount = 5) {
+  return {
+    fireDetections: [{ id: 'fire-1', source: 'firms', detectedAt: now - ageMs }],
+    pagination: { nextCursor: '', totalCount },
+  };
+}
+
+function frozenNews(now = Date.now(), ageMs = 72 * HOUR_MS) {
+  return liveNews(now, ageMs);
+}
+
+function frozenFires(now = Date.now(), ageMs = 72 * HOUR_MS, totalCount = 5) {
+  return liveFires(now, ageMs, totalCount);
+}
+
+function seedMetaStamp(calls: { method: string; key: string; value?: unknown }[]) {
+  return calls.find((call) => call.method === 'POST' && call.key === 'seed-meta:temporal:anomalies');
+}
+
+function temporalAnomaliesCheck() {
+  const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_temporal_anomalies');
+  assert.ok(tool, 'get_temporal_anomalies must exist');
+  const check = tool._freshnessChecks?.find((candidate) => candidate.key === 'seed-meta:temporal:anomalies');
+  assert.ok(check, 'get_temporal_anomalies must declare the temporal-anomalies freshness check');
+  return check;
+}
+
+function classifyTemporalMeta(meta: Record<string, unknown>, now: number) {
+  return __testing__.classifyKey(
+    'temporalAnomalies',
+    'temporal:anomalies:v1',
+    { allowOnDemand: true },
+    {
+      keyStrens: new Map([['temporal:anomalies:v1', 96]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([['seed-meta:temporal:anomalies', JSON.stringify(meta)]]),
+      keyMetaErrors: new Map(),
+      now,
+    },
+  );
+}
 
 describe('temporal anomalies cache freshness', () => {
   it('rebuilds often enough that the health stale budget has real margin', () => {
@@ -132,7 +191,7 @@ describe('temporal anomalies cache freshness', () => {
     // lock SET alone satisfies it.
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'news:insights:v1': { topStories: [{ id: 'a' }] },
+      'news:insights:v1': liveNews(),
     });
 
     const writes = calls.filter((c) => c.method === 'POST');
@@ -175,7 +234,7 @@ describe('temporal anomalies cache freshness', () => {
   it('stamps the partial coverage it ACHIEVED, not the coverage it configured', async () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'news:insights:v1': { topStories: [{ id: 'a' }] },
+      'news:insights:v1': liveNews(),
       // wildfire:fires:v1 deliberately absent
     });
 
@@ -188,12 +247,19 @@ describe('temporal anomalies cache freshness', () => {
     // stamp is always 0.
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'news:insights:v1': { topStories: [{ id: 'a' }] },
-      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+      'news:insights:v1': liveNews(),
+      'wildfire:fires:v1': liveFires(),
     });
 
     const stamp = calls.find((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies');
     assert.equal(stamp?.recordCount, 2, 'both sources read must stamp recordCount 2');
+    const meta = stamp?.value as { maxContentAgeMin?: number; newestItemAt?: number } | undefined;
+    assert.equal(
+      meta?.maxContentAgeMin,
+      TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
+      'a successful rebuild must opt into the content-age contract',
+    );
+    assert.equal(typeof meta?.newestItemAt, 'number', 'datable live sources must stamp a newestItemAt');
   });
 
   it('does not stamp seed-meta when snapshot publication fails', async () => {
@@ -213,7 +279,7 @@ describe('temporal anomalies cache freshness', () => {
     const { calls } = await runWithRedisStub(
       {
         'temporal:anomalies:v1': stale,
-        'news:insights:v1': { topStories: [{ id: 'a' }] },
+        'news:insights:v1': liveNews(),
         [baselineKey]: baseline,
       },
       { failedPostKeys: ['temporal:anomalies:v1'] },
@@ -250,7 +316,7 @@ describe('temporal anomalies cache freshness', () => {
     try {
       const { calls } = await runWithRedisStub(
         {
-          'news:insights:v1': { topStories: [{ id: 'a' }] },
+          'news:insights:v1': liveNews(),
           [baselineKey]: dueBaseline,
         },
         { failedPostKeys: [baselineKey] },
@@ -283,8 +349,8 @@ describe('temporal anomalies cache freshness', () => {
     };
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'news:insights:v1': { topStories: [{ id: 'a' }] },
-      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+      'news:insights:v1': liveNews(),
+      'wildfire:fires:v1': liveFires(),
       ...Object.fromEntries(
         ['news', 'satellite_fires'].map((t) => [
           makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
@@ -318,8 +384,8 @@ describe('temporal anomalies cache freshness', () => {
     };
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'news:insights:v1': { topStories: [{ id: 'a' }] },
-      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+      'news:insights:v1': liveNews(),
+      'wildfire:fires:v1': liveFires(),
       ...Object.fromEntries(
         ['news', 'satellite_fires'].map((t) => [
           makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
@@ -344,8 +410,8 @@ describe('temporal anomalies cache freshness', () => {
     };
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
-      'news:insights:v1': { topStories: [{ id: 'a' }] },
-      'wildfire:fires:v1': { fireDetections: [], pagination: { totalCount: 5 } },
+      'news:insights:v1': liveNews(),
+      'wildfire:fires:v1': liveFires(),
       ...Object.fromEntries(
         ['news', 'satellite_fires'].map((t) => [
           makeBaselineKeyV2(t, 'global', new Date().getUTCDay(), new Date().getUTCMonth() + 1),
@@ -392,7 +458,11 @@ describe('temporal anomalies cache freshness', () => {
     // `pagination`. Counting the array would report the cap as the fire volume.
     const FIRMS_TOTAL = 21_600;
     const firesPayload = {
-      fireDetections: Array.from({ length: 10 }, (_, index) => ({ id: `fire-${index}` })),
+      fireDetections: Array.from({ length: 10 }, (_, index) => ({
+        id: `fire-${index}`,
+        source: 'firms',
+        detectedAt: Date.now() - 10 * 60_000,
+      })),
       pagination: { nextCursor: '', totalCount: FIRMS_TOTAL },
     };
     // stdDev 100 around a mean of 1000: both the correct count (21,600) and the buggy one (10)
@@ -425,5 +495,215 @@ describe('temporal anomalies cache freshness', () => {
       if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
       else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
     }
+  });
+});
+
+describe('temporal anomalies content-age extractor (#7141)', () => {
+  const NOW = Date.parse('2026-08-27T12:00:00.000Z');
+
+  it('reduces independently-failing sources with min, not max', () => {
+    const newsAge = 72 * HOUR_MS;
+    const firesAge = 10 * 60_000;
+    const meta = temporalAnomaliesContentMeta({
+      news: frozenNews(NOW, newsAge),
+      satellite_fires: liveFires(NOW, firesAge),
+    }, NOW);
+
+    assert.ok(meta, 'both sources datable');
+    assert.equal(
+      meta.newestItemAt,
+      NOW - newsAge,
+      'frozen news must win over live fires — max() would hide the freeze',
+    );
+  });
+
+  it('a live news clock must not hide frozen FIRMS detections', () => {
+    const newsAge = 8 * 60_000;
+    const firesAge = 72 * HOUR_MS;
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, newsAge),
+      satellite_fires: frozenFires(NOW, firesAge),
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, NOW - firesAge);
+  });
+
+  it('skips an empty FIRMS window rather than failing the news clock', () => {
+    const newsAge = 12 * 60_000;
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, newsAge),
+      satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, NOW - newsAge);
+  });
+
+  it('fails closed when a contributing news payload has items but no dates', () => {
+    const meta = temporalAnomaliesContentMeta({
+      news: { topStories: [{ id: 'a' }] },
+      satellite_fires: liveFires(NOW),
+    }, NOW);
+
+    assert.equal(meta, null, 'undatable news items are STALE_CONTENT, not skipped');
+  });
+
+  it('ignores agency ignition dates when FIRMS rows are present', () => {
+    const firmsAt = NOW - 20 * 60_000;
+    const agencyAt = NOW - 10 * 24 * HOUR_MS;
+    const meta = temporalAnomaliesContentMeta({
+      satellite_fires: {
+        fireDetections: [
+          { id: 'cwfis-1', source: 'cwfis', detectedAt: agencyAt },
+          { id: 'firms-1', source: 'firms', detectedAt: firmsAt },
+        ],
+      },
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, firmsAt);
+  });
+
+  it('drops future-dated observations beyond the 1h clock-skew tolerance', () => {
+    const real = NOW - 30 * 60_000;
+    const future = NOW + 2 * HOUR_MS;
+    const meta = temporalAnomaliesContentMeta({
+      news: {
+        topStories: [
+          { id: 'future', pubDate: new Date(future).toISOString() },
+          { id: 'real', pubDate: new Date(real).toISOString() },
+        ],
+      },
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, real);
+  });
+});
+
+describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
+  it('stamps content age from the payloads, not the rebuild clock', async () => {
+    const now = Date.now();
+    const frozenAge = 72 * HOUR_MS;
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': frozenNews(now, frozenAge),
+      'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+    });
+
+    const stamp = seedMetaStamp(calls);
+    const meta = stamp?.value as {
+      fetchedAt?: number;
+      newestItemAt?: number;
+      maxContentAgeMin?: number;
+    } | undefined;
+    assert.ok(meta, 'rebuild must stamp seed-meta');
+    assert.equal(typeof meta.fetchedAt, 'number');
+    assert.ok(
+      Math.abs((meta.fetchedAt ?? 0) - now) < 5_000,
+      'fetchedAt is the rebuild clock and stays fresh on a frozen feed',
+    );
+    assert.equal(meta.maxContentAgeMin, TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN);
+    assert.ok(
+      Math.abs((meta.newestItemAt ?? 0) - (now - frozenAge)) < 5_000,
+      `newestItemAt must be the frozen news observation, not rebuild time; got ${meta.newestItemAt}`,
+    );
+  });
+
+  it('a frozen-but-200 feed does not read green on health or MCP', async () => {
+    const now = Date.now();
+    const frozenAge = 72 * HOUR_MS;
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': frozenNews(now, frozenAge),
+      'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+    });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'precondition: rebuild stamped seed-meta');
+
+    const health = classifyTemporalMeta(meta, now);
+    assert.equal(
+      health.status,
+      'STALE_CONTENT',
+      'health must not stay OK when upstream observations are past the content budget',
+    );
+
+    const mcp = evaluateFreshness([temporalAnomaliesCheck()], [meta], now);
+    assert.equal(
+      mcp.stale,
+      true,
+      'MCP must not answer stale:false for the key health calls STALE_CONTENT',
+    );
+  });
+
+  it('stays green on both surfaces when observations are inside the content budget', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now, 20 * 60_000),
+      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+    });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'precondition: rebuild stamped seed-meta');
+
+    const health = classifyTemporalMeta(meta, now);
+    assert.equal(health.status, 'OK', 'live payloads must not false-alarm as STALE_CONTENT');
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      false,
+      'MCP must stay fresh when content is inside budget',
+    );
+  });
+
+  it('stamps newestItemAt null when a contributing payload is undatable', async () => {
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': { topStories: [{ id: 'a' }] },
+    });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, null);
+    assert.equal(meta.maxContentAgeMin, TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN);
+    assert.equal(
+      classifyTemporalMeta(meta, Date.now()).status,
+      'STALE_CONTENT',
+      'undatable contributing payloads fail closed, matching runSeed contentMeta null',
+    );
+  });
+
+  it('diverges again if the content-age trio is dropped from the stamp', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': frozenNews(now, 72 * HOUR_MS),
+      'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+    });
+
+    const stamped = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(stamped);
+    const livenessOnly = {
+      fetchedAt: stamped.fetchedAt,
+      recordCount: stamped.recordCount,
+    };
+
+    assert.equal(
+      classifyTemporalMeta(livenessOnly, now).status,
+      'OK',
+      'without the content-age trio the rebuild clock reads green — the #7141 gap',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [livenessOnly], now).stale,
+      false,
+      'MCP liveness-only is also green, proving the trio is what closes the gap',
+    );
+    assert.equal(
+      classifyTemporalMeta(stamped, now).status,
+      'STALE_CONTENT',
+      'while the stamped trio still alarms',
+    );
   });
 });
