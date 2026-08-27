@@ -1083,7 +1083,7 @@ components:
                     description: currency_code is the ISO 4217 currency code.
                 range:
                     type: string
-                    description: range echoes the requested range.
+                    description: range is the effective normalized range used for the returned snapshot.
                 essentialsSeries:
                     type: array
                     items:
@@ -1132,7 +1132,7 @@ components:
                     description: as_of is the Unix millisecond timestamp of the snapshot.
                 range:
                     type: string
-                    description: range echoes the requested range.
+                    description: range is the effective normalized range used for the returned snapshot.
                 categories:
                     type: array
                     items:

@@ -25,7 +25,7 @@ message GetConsumerPriceBasketSeriesResponse {
   int64 as_of = 3;
   // currency_code is the ISO 4217 currency code.
   string currency_code = 4;
-  // range echoes the requested range.
+  // range is the effective normalized range used for the returned snapshot.
   string range = 5;
   // essentials_series is the fixed basket index series.
   repeated BasketPoint essentials_series = 6;

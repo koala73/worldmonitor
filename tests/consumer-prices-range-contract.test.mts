@@ -128,6 +128,14 @@ describe('consumer-prices range producer parity', () => {
     );
     assert.match(basketProto, /Unsupported values use "30d"\./);
     assert.match(categoriesProto, /Unsupported values use "30d"\./);
+    assert.match(
+      basketProto,
+      /range is the effective normalized range used for the returned snapshot\./,
+    );
+    assert.match(
+      categoriesProto,
+      /range is the effective normalized range used for the returned snapshot\./,
+    );
 
     for (const range of basketHandlerRanges) {
       assertManualSeederWritesRange(manualWrites, 'basket-series', ':${BASKET}', range);
