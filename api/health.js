@@ -793,7 +793,21 @@ const SEED_META = {
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
   temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // rebuild-stamped ONLY (TEMPORAL_ANOMALIES_REBUILD_AFTER_MS=20min in infrastructure/v1/_shared.ts) — only producer-route traffic can rebuild and refresh this request-driven stamp, so a traffic lull can age it past 45min; 45min leaves ~2.25x margin. Data TTL is 60min so health reaches STALE_SEED before EMPTY. Content freshness is a separate clock: the producer stamps newestItemAt/maxContentAgeMin from the news+FIRMS payloads (TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN); a frozen-but-200 upstream keeps fetchedAt fresh and reads STALE_CONTENT.
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
-  imdCycloneMarine: { key: 'seed-meta:weather:imd-cyclone-marine', maxStaleMin: 45 }, // planned seeder; 45 = 3× */15 once provisioned. sourceState unavailable while rights/key are unqualified.
+  // Planned/rights-gated seeder (#7005). Live fetch stays off until
+  // WM_IMD_RIGHTS_ACCEPTED=1 and IMD_API_KEY are set, so this is an
+  // activation-marker cutover rather than a 24h expiring acknowledgement.
+  // Softening stays on-demand until the durable marker is written.
+  imdCycloneMarine: {
+    key: 'seed-meta:weather:imd-cyclone-marine',
+    maxStaleMin: 45, // 3× */15 once the planned Railway cron is provisioned
+    activationKey: 'seed-activated:weather:imd-cyclone-marine',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 7005,
+      activationKey: 'seed-activated:weather:imd-cyclone-marine',
+    },
+  },
   canadaRoads:      {
     key: 'seed-meta:infra:ontario-511',
     maxStaleMin: 45, // seed-provincial-511 cron */15; 45 = 3× interval
@@ -1478,6 +1492,7 @@ const ACTIVATION_MARKERS = {
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
+  imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
   // Written by scripts/_seed-history.mjs on every ingest-health report,

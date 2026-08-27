@@ -342,6 +342,7 @@ test('seeder stays off weather:alerts:v1 and uses the dedicated canonical key', 
   assert.doesNotMatch(seeder, /runSeed\('weather', 'alerts'/);
   assert.equal(IMD_CANONICAL_KEY, 'weather:imd-cyclone-marine:v1');
   assert.match(seeder, /#7005/);
+  assert.match(seeder, /seed-activated:weather:imd-cyclone-marine/);
   const lib = readFileSync(join(root, 'scripts/lib/imd-cyclone-marine.mjs'), 'utf8');
   assert.doesNotMatch(lib, /\/api\/v1\/districtnowcast/);
   assert.doesNotMatch(lib, /\/api\/v1\/districtwarning/);
