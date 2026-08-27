@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 // Shared scanner/resolver (comment-stripping tokenizer + edge extraction) —
 // one home for the machinery this guard previously hand-rolled; see
 // tests/_lib/import-graph-walk.mjs (#5231 review follow-up).
-import { collectRelativeImports, parseDockerfileCopy, resolveNodeRelative } from './_lib/import-graph-walk.mjs';
+import { collectRelativeImports, parseDockerfileCopy, relativeToRepoRoot, resolveNodeRelative } from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -85,7 +85,7 @@ describe('Dockerfile.relay — transitive-import closure', () => {
       for (const rel of collectRelativeImports(file)) {
         const resolved = resolveNodeRelative(file, rel);
         if (!resolved) continue;
-        const relToRoot = resolved.startsWith(root + '/') ? resolved.slice(root.length + 1) : null;
+        const relToRoot = relativeToRepoRoot(root, resolved);
         if (!relToRoot || !relToRoot.startsWith('scripts/')) continue;
         if (!copied.has(relToRoot)) {
           missing.push(`${relToRoot} (imported by ${file.slice(root.length + 1)})`);

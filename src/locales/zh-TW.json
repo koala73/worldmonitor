@@ -528,6 +528,7 @@
       "recent": "最近搜尋",
       "empty": "搜尋資料或執行命令",
       "noResults": "無結果",
+      "resultAnnouncement_other": "“{{query}}”有 {{count}} 個結果",
       "commands": "命令",
       "results": "結果",
       "seeAllCommands": "檢視所有命令",

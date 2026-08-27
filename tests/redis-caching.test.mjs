@@ -820,6 +820,203 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     }
   });
 
+  it('cachedFetchJson ignores WithMeta-only fields on a superset options object', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      USAGE_TELEMETRY: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+
+    const writes = [];
+    const warnings = [];
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        writes.push(parseSetRequest(url, init));
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+    console.warn = (...args) => { warnings.push(args); };
+
+    let shouldFetchCalls = 0;
+    let callerLocalChecks = 0;
+    let usageWaits = 0;
+    const supersetOpts = {
+      timeoutMs: 500,
+      cacheFetcherErrors: true,
+      shouldFetch: () => {
+        shouldFetchCalls += 1;
+        return true;
+      },
+      cacheFailures: false,
+      inflightKey: 'plain:test:shared-inflight-key',
+      isCallerLocalError: () => {
+        callerLocalChecks += 1;
+        return true;
+      },
+      usage: {
+        provider: 'plain-helper-regression',
+        ctx: {
+          waitUntil() {
+            usageWaits += 1;
+          },
+        },
+      },
+    };
+
+    try {
+      let releaseFetchers;
+      const fetcherGate = new Promise((resolvePromise) => {
+        releaseFetchers = resolvePromise;
+      });
+      const first = redis.cachedFetchJson(
+        'plain:test:first',
+        300,
+        async () => {
+          await fetcherGate;
+          return { value: 'first' };
+        },
+        60,
+        supersetOpts,
+      );
+      const second = redis.cachedFetchJson(
+        'plain:test:second',
+        300,
+        async () => {
+          await fetcherGate;
+          return { value: 'second' };
+        },
+        60,
+        supersetOpts,
+      );
+
+      await new Promise((resolvePromise) => setImmediate(resolvePromise));
+      releaseFetchers();
+      const [firstResult, secondResult] = await Promise.all([first, second]);
+
+      assert.deepEqual(firstResult, { value: 'first' });
+      assert.deepEqual(
+        secondResult,
+        { value: 'second' },
+        'plain calls with distinct keys must not share a WithMeta inflightKey',
+      );
+
+      const nullResult = await redis.cachedFetchJson(
+        'plain:test:null',
+        300,
+        async () => null,
+        60,
+        supersetOpts,
+      );
+      assert.equal(nullResult, null);
+
+      const rejection = new Error('plain superset rejection');
+      await assert.rejects(
+        () => redis.cachedFetchJson(
+          'plain:test:rejection',
+          300,
+          async () => {
+            throw rejection;
+          },
+          60,
+          supersetOpts,
+        ),
+        (error) => {
+          assert.strictEqual(error, rejection, 'plain helper must propagate the original fetcher error');
+          return true;
+        },
+      );
+
+      const writesByKey = new Map(writes.map((write) => [write.key, write]));
+      const nullWrite = writesByKey.get('plain:test:null');
+      const rejectionWrite = writesByKey.get('plain:test:rejection');
+      assert.ok(nullWrite, 'plain null results must keep legacy negative caching');
+      assert.ok(rejectionWrite, 'plain fetcher errors must keep legacy negative caching');
+      assert.equal(JSON.parse(nullWrite.value), '__WM_NEG__');
+      assert.equal(JSON.parse(rejectionWrite.value), '__WM_NEG__');
+      assert.equal(shouldFetchCalls, 0, 'plain helper must not evaluate WithMeta shouldFetch');
+      assert.equal(callerLocalChecks, 0, 'plain helper must not evaluate WithMeta isCallerLocalError');
+      assert.equal(usageWaits, 0, 'plain helper must not emit WithMeta usage telemetry');
+      assert.deepEqual(warnings, [[
+        '[redis] cachedFetchJson fetcher failed for "plain:test:rejection":',
+        'plain superset rejection',
+      ]]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      restoreEnv();
+    }
+  });
+
+  it('keeps rejected-fetcher warnings attributed to each public cache helper', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+    console.warn = (...args) => { warnings.push(args); };
+
+    try {
+      const plainError = new Error('plain helper rejected');
+      await assert.rejects(
+        () => redis.cachedFetchJson(
+          'warn:test:plain',
+          300,
+          async () => {
+            throw plainError;
+          },
+        ),
+        (error) => {
+          assert.strictEqual(error, plainError);
+          return true;
+        },
+      );
+
+      const metaError = new Error('meta helper rejected');
+      await assert.rejects(
+        () => redis.cachedFetchJsonWithMeta(
+          'warn:test:meta',
+          300,
+          async () => {
+            throw metaError;
+          },
+        ),
+        (error) => {
+          assert.strictEqual(error, metaError);
+          return true;
+        },
+      );
+
+      assert.deepEqual(warnings, [
+        ['[redis] cachedFetchJson fetcher failed for "warn:test:plain":', 'plain helper rejected'],
+        ['[redis] cachedFetchJsonWithMeta fetcher failed for "warn:test:meta":', 'meta helper rejected'],
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      restoreEnv();
+    }
+  });
+
   it('retries fetcher errors when error negative caching is disabled', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({

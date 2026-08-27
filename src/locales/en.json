@@ -599,6 +599,8 @@
       "recent": "Recent Searches",
       "empty": "Search data or run commands",
       "noResults": "No results",
+      "resultAnnouncement_one": "{{count}} result for {{query}}",
+      "resultAnnouncement_other": "{{count}} results for {{query}}",
       "commands": "Commands",
       "results": "Results",
       "addPanel": "Add",

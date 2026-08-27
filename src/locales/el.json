@@ -530,6 +530,8 @@
       "recent": "Πρόσφατες Αναζητήσεις",
       "empty": "Αναζήτηση δεδομένων ή εκτέλεση εντολών",
       "noResults": "Κανένα αποτέλεσμα",
+      "resultAnnouncement_one": "{{count}} αποτέλεσμα για {{query}}",
+      "resultAnnouncement_other": "{{count}} αποτελέσματα για {{query}}",
       "commands": "Εντολές",
       "results": "Αποτελέσματα",
       "seeAllCommands": "Εμφάνιση όλων των εντολών",
