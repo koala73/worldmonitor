@@ -353,7 +353,16 @@ describe('marketingBeforeSend — Safari-masked injected script (WORLDMONITOR-11
 });
 
 describe('marketingBeforeSend — unparseable module (WORLDMONITOR-TS)', () => {
-  const typedEvent = (type: string, value: string, filenames: string[] = []): PolicyEvent => ({
+  // `action: null` means "no tags on the event at all". It must NOT be spelled
+  // `undefined`: a default parameter fires on an explicit `undefined` argument,
+  // so the no-tag case would silently get `load-clerk` and the gate's positive
+  // control would assert nothing.
+  const typedEvent = (
+    type: string,
+    value: string,
+    filenames: string[] = [],
+    action: string | null = 'load-clerk',
+  ): PolicyEvent => ({
     exception: {
       values: [{
         type,
@@ -361,6 +370,7 @@ describe('marketingBeforeSend — unparseable module (WORLDMONITOR-TS)', () => {
         stacktrace: { frames: filenames.map((filename) => ({ filename })) },
       }],
     },
+    ...(action === null ? {} : { tags: { action } }),
   });
 
   it("drops the zero-frame Clerk parse failure on a 2020 browser", () => {
@@ -368,6 +378,31 @@ describe('marketingBeforeSend — unparseable module (WORLDMONITOR-TS)', () => {
     // `action: load-clerk`, no frames — the throw happens at parse time.
     assert.equal(marketingBeforeSend(typedEvent('SyntaxError', "Unexpected token '('")), null);
     assert.equal(marketingBeforeSend(typedEvent('SyntaxError', 'Invalid or unexpected token')), null);
+  });
+
+  it('drops the same failure from the other two Clerk loader catches', () => {
+    for (const action of ['load-clerk-for-nav', 'open-sign-in']) {
+      assert.equal(
+        marketingBeforeSend(typedEvent('SyntaxError', "Unexpected token '('", [], action)),
+        null,
+        `expected ${action} dropped`,
+      );
+    }
+  });
+
+  // Positive control for the action gate — the whole point of PR #7218's review
+  // round. An identically-shaped parse rejection that did NOT come from a named
+  // SDK-loader catch (an unhandled `import()` rejection, or a loader added
+  // later without being allowlisted) must still report: that shape is how a
+  // genuinely broken chunk would arrive, and swallowing it would hide it.
+  it('keeps an identically-shaped parse failure with no action tag', () => {
+    const kept = typedEvent('SyntaxError', "Unexpected token '('", [], null);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps a parse failure from an action that is not an SDK loader', () => {
+    const kept = typedEvent('SyntaxError', "Unexpected token '('", [], 'check-entitlement');
+    assert.equal(marketingBeforeSend(kept), kept);
   });
 
   // Positive control for the type gate: a first-party bug raises TypeError, not
@@ -387,6 +422,24 @@ describe('marketingBeforeSend — unparseable module (WORLDMONITOR-TS)', () => {
   it('keeps a SyntaxError whose message is not a parse failure', () => {
     const kept = typedEvent('SyntaxError', 'Invalid regular expression: missing /');
     assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
+describe('third-party SDK loader allowlist stays true to the call sites', () => {
+  // The parse rule's safety argument is "these are the only catches that stamp
+  // an SDK-load action". Pin it to the source so a new loader tag added without
+  // updating THIRD_PARTY_SDK_LOAD_ACTIONS is caught here rather than silently
+  // widening (or narrowing) the suppression.
+  it('every allowlisted action exists as a capture tag under pro-test/src', () => {
+    const files = ['App.tsx', 'services/checkout.ts', 'services/clerk.ts']
+      .map((f) => readFileSync(resolve(root, 'pro-test/src', f), 'utf8'))
+      .join('\n');
+    for (const action of ['load-clerk', 'load-clerk-for-nav', 'open-sign-in']) {
+      assert.ok(
+        files.includes(`action: '${action}'`),
+        `allowlisted action ${action} has no capture call site`,
+      );
+    }
   });
 });
 

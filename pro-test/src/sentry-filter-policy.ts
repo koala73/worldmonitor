@@ -37,6 +37,7 @@ interface PolicyException {
 }
 export interface PolicyEvent {
   exception?: { values?: PolicyException[] };
+  tags?: Record<string, string | number | boolean | undefined>;
 }
 
 const SAFE_MARKETING_PATH = /^\/(?:pro\/?)?$/;
@@ -183,6 +184,22 @@ const MASKED_URL_FRAME = /^webkit-masked-url:/;
  * body throws exactly these phrasings), so it must stay behind the frame gate.
  */
 const PARSE_FAILURE = /^(?:Unexpected token|Unexpected identifier|Invalid or unexpected token|Unexpected end of (?:script|input))\b/;
+/**
+ * The `action` tags our third-party-SDK loader call sites stamp on a capture.
+ *
+ * This is the load-bearing gate on the parse rule below, and it is a call-site
+ * allowlist rather than a message/shape heuristic on purpose. Keying the
+ * suppression on the exception's SHAPE alone would stay correct only while the
+ * marketing bundle happens to have no other dynamic import whose rejection
+ * reaches Sentry — an invariant nothing enforces, which a future `import()`
+ * (or a removed `.catch`) would silently break, widening the rule to swallow a
+ * real broken-chunk report. Naming the call sites makes it structural: a new
+ * SDK loader has to be added here deliberately.
+ *
+ * All three are Clerk: `ensureClerk` (`services/clerk.ts`) is the only live
+ * dynamic import on this surface, awaited by these three catches.
+ */
+const THIRD_PARTY_SDK_LOAD_ACTIONS = new Set(['load-clerk', 'load-clerk-for-nav', 'open-sign-in']);
 
 /**
  * Stack-gated suppressors for messages that our own minified bundle COULD
@@ -257,14 +274,23 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // Unactionable: the third-party SDK targets modern engines and the user's
   // browser predates them by six years.
   //
-  // Gated three ways so a real defect still surfaces. `SyntaxError` excludes
-  // the `TypeError`/`Error` families a first-party bug would raise; the empty
-  // stack excludes every in-bundle `JSON.parse` (those carry the calling frame);
-  // and `!hasFirstParty` excludes anything attributable to `/pro/assets/*.js`.
-  // A build regression that broke parsing for everyone would still page —
-  // it fails the dashboard bundle and CI long before this gate is consulted.
+  // Gated four ways so a real defect still surfaces. The `action` tag is the
+  // load-bearing one: it proves the throw came from one of our own named
+  // third-party-SDK loader catches, so an unhandled parse rejection from
+  // anywhere else on this surface is never eligible (see
+  // THIRD_PARTY_SDK_LOAD_ACTIONS for why a shape-only rule was not enough).
+  // The other three narrow within that: `SyntaxError` excludes the
+  // `TypeError`/`Error` families a first-party bug would raise, the empty stack
+  // excludes every in-bundle `JSON.parse` (those carry the calling frame), and
+  // `!hasFirstParty` excludes anything attributable to `/pro/assets/*.js`.
   const excType = event.exception?.values?.[0]?.type ?? '';
-  if (!hasFirstParty && frames.length === 0 && excType === 'SyntaxError' && PARSE_FAILURE.test(msg)) return null;
+  const action = event.tags?.action;
+  if (!hasFirstParty
+      && frames.length === 0
+      && excType === 'SyntaxError'
+      && PARSE_FAILURE.test(msg)
+      && typeof action === 'string'
+      && THIRD_PARTY_SDK_LOAD_ACTIONS.has(action)) return null;
 
   return event;
 }
