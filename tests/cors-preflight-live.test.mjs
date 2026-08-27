@@ -26,6 +26,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const CRAWLER_UA = 'Twitterbot/1.0';
 const ORIGIN = 'https://www.worldmonitor.app';
 
 // Endpoints we hit. /api/health is canonical (always available, no auth).
@@ -137,3 +138,46 @@ for (const url of ENDPOINTS) {
     }
   });
 }
+
+test('GET /api/story keeps cacheable crawler HTML isolated from browser redirects', { skip: !SHOULD_RUN }, async () => {
+  // The unique query string guarantees a cold cache key. Both requests use the
+  // exact same URL and run back-to-back from one runner, so a Worker that ignores
+  // Vary: User-Agent will cache the crawler 200 and incorrectly replay it to the
+  // browser request instead of returning the origin's redirect.
+  const probe = new URL('https://api.worldmonitor.app/api/story');
+  probe.searchParams.set('c', 'US');
+  probe.searchParams.set('t', 'ciianalysis');
+  probe.searchParams.set('ts', `cors-live-${Date.now()}-${process.pid}`);
+
+  const crawlerResp = await fetch(probe, {
+    redirect: 'manual',
+    headers: { 'User-Agent': CRAWLER_UA },
+  });
+  await crawlerResp.arrayBuffer();
+  assert.equal(crawlerResp.status, 200, 'crawler should receive cacheable story HTML');
+  const crawlerVary = (crawlerResp.headers.get('vary') || '')
+    .split(',').map((name) => name.trim().toLowerCase());
+  assert.ok(
+    crawlerVary.includes('user-agent'),
+    `crawler response must vary by User-Agent; got: ${crawlerResp.headers.get('vary')}`,
+  );
+
+  const browserResp = await fetch(probe, {
+    redirect: 'manual',
+    headers: { 'User-Agent': BROWSER_UA },
+  });
+  await browserResp.arrayBuffer();
+  const crawlerColo = crawlerResp.headers.get('cf-ray')?.split('-').at(-1);
+  const browserColo = browserResp.headers.get('cf-ray')?.split('-').at(-1);
+  assert.ok(crawlerColo, 'crawler response must include a Cloudflare colo in CF-Ray');
+  assert.equal(
+    browserColo,
+    crawlerColo,
+    `both cache probes must hit the same Cloudflare colo; crawler=${crawlerColo}, browser=${browserColo}`,
+  );
+  assert.equal(
+    browserResp.status,
+    302,
+    `browser should receive the story redirect, not cached crawler HTML; CF-Cache-Status=${browserResp.headers.get('cf-cache-status')}`,
+  );
+});

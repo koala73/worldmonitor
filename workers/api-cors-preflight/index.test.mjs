@@ -210,21 +210,40 @@ test('GET response from origin has CORS headers stamped by the Worker', async ()
 
 test('GET response preserves origin cache variance when the Worker adds Origin variance', async () => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => new Response('<html></html>', {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      Vary: 'User-Agent',
-    },
-  });
+  const calls = [];
+  globalThis.fetch = async (request, options) => {
+    calls.push({ request, options });
+    return new Response('<html></html>', {
+      status: 200,
+      headers: request.url.endsWith('/api/story')
+        ? { 'Content-Type': 'text/html; charset=utf-8', Vary: 'User-Agent' }
+        : { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  };
   try {
-    const req = makeRequest('GET', 'https://api.worldmonitor.app/api/story', {
+    const storyReq = makeRequest('GET', 'https://api.worldmonitor.app/api/story', {
       Origin: KNOWN_GOOD,
       'User-Agent': 'Twitterbot/1.0',
     });
-    const resp = await worker.fetch(req);
-    assert.equal(resp.status, 200);
-    assert.equal(resp.headers.get('vary'), 'User-Agent, Origin');
+    const storyResp = await worker.fetch(storyReq);
+    assert.equal(storyResp.status, 200);
+    assert.equal(storyResp.headers.get('vary'), 'User-Agent, Origin');
+    assert.deepEqual(calls[0].options, {
+      cf: {
+        vary: {
+          default: { action: 'bypass' },
+          headers: {
+            'user-agent': { action: 'passthrough' },
+          },
+        },
+      },
+    });
+
+    const healthReq = makeRequest('GET', 'https://api.worldmonitor.app/api/health', {
+      Origin: KNOWN_GOOD,
+    });
+    await worker.fetch(healthReq);
+    assert.equal(calls[1].options, undefined, 'other API routes must keep the default fetch policy');
   } finally {
     globalThis.fetch = original;
   }
