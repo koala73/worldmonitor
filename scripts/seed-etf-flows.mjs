@@ -26,8 +26,14 @@ function parseEtfChartData(chart, ticker, issuer) {
   const closes = quote?.close || [];
   const volumes = quote?.volume || [];
 
-  const validCloses = closes.filter((p) => p != null);
-  const validVolumes = volumes.filter((v) => v != null);
+  // Filter closes and volumes TOGETHER so price and volume always come from
+  // the same bar — Yahoo routinely nulls one but not the other, and pairing
+  // today's volume with yesterday's close fabricated false flows.
+  const alignedBars = closes
+    .map((p, i) => ({ p, v: volumes[i] }))
+    .filter(({ p, v }) => p != null && v != null);
+  const validCloses = alignedBars.map(({ p }) => p);
+  const validVolumes = alignedBars.map(({ v }) => v);
 
   if (validCloses.length < 2) return null;
 

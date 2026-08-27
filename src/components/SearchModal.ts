@@ -25,6 +25,7 @@ import {
   searchSourceItemsEqual,
   type SearchIndexQueryResult,
 } from '@/components/search-engine';
+import { decorateSearchResultOptions } from '@/components/search-result-options';
 import {
   searchMatchIdentity,
   type SearchCommandMatch,
@@ -120,6 +121,8 @@ export class SearchModal {
   private focusTrap: FocusTrap | null = null;
   private input: HTMLInputElement | null = null;
   private resultsList: HTMLElement | null = null;
+  private resultsStatus: HTMLElement | null = null;
+  private resultsObserver: MutationObserver | null = null;
   private chipsContainer: HTMLElement | null = null;
   private scopeContainer: HTMLElement | null = null;
   private closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -143,6 +146,7 @@ export class SearchModal {
   private recentSearches: string[] = [];
   private onSelect?: (result: SearchResult) => void;
   private onCommand?: (command: Command) => void;
+  private onHumanInteraction?: () => void;
   private onQueryChange?: (rawInput: string) => void;
   private onFlightSearch?: (callsign: string) => void;
   private currentFlightCallsign: string | null = null;
@@ -276,6 +280,10 @@ export class SearchModal {
     this.onCommand = callback;
   }
 
+  public setOnHumanInteraction(callback: () => void): void {
+    this.onHumanInteraction = callback;
+  }
+
   public setOnQueryChange(callback: (rawInput: string) => void): void {
     this.onQueryChange = callback;
   }
@@ -387,6 +395,11 @@ export class SearchModal {
   }
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
+    this.onHumanInteraction?.();
+    this.closeInternal(origin);
+  }
+
+  private closeInternal(origin: OverlayCloseOrigin): void {
     // Drop any pending debounced search so it can't fire against a torn-down modal.
     this.debouncedSearch.cancel();
     this.focusTrap?.deactivate();
@@ -400,6 +413,8 @@ export class SearchModal {
     if (this.overlay) {
       this.overlay.classList.remove('open');
       const remove = () => {
+        this.resultsObserver?.disconnect();
+        this.resultsObserver = null;
         this.overlay?.remove();
         this.overlay = null;
         this.input = null;
@@ -429,7 +444,7 @@ export class SearchModal {
 
   /** Close the palette before an agent reveals a selected dashboard target. */
   public closeForProgrammaticSelection(): void {
-    if (this.overlay) this.close();
+    if (this.overlay) this.closeInternal('control');
   }
 
   /**
@@ -468,6 +483,13 @@ export class SearchModal {
     this.overlay.setAttribute('aria-modal', 'true');
     this.overlay.setAttribute('aria-label', 'World Monitor intelligence command deck');
     this.overlay.dataset.searchScope = this.activeScope;
+    // Claim human authority in capture phase, before a click can close the
+    // palette or start a new selection. Keyboard-generated clicks have no
+    // pointerdown, while pointer gestures may not produce a click, so retain
+    // both event types; cancellation is intentionally idempotent.
+    const notifyHumanInteraction = (): void => this.onHumanInteraction?.();
+    this.overlay.addEventListener('pointerdown', notifyHumanInteraction, { capture: true });
+    this.overlay.addEventListener('click', notifyHumanInteraction, { capture: true });
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';
@@ -486,6 +508,7 @@ export class SearchModal {
           ${this.renderScopeMarkup()}
           <div class="search-sheet-chips"></div>
           <div class="search-results"></div>
+          <div class="search-results-status wm-visually-hidden"></div>
         </div>
       `, "legacy direct innerHTML migration"));
 
@@ -531,6 +554,7 @@ export class SearchModal {
           </div>
           ${this.renderScopeMarkup()}
           <div class="search-results"></div>
+          <div class="search-results-status wm-visually-hidden"></div>
           <div class="search-footer">
             <span class="search-footer-ready"><i></i> READY FOR TASKING</span>
             <span><kbd>\u2191\u2193</kbd> ${t('modals.search.navigate')}</span>
@@ -549,9 +573,36 @@ export class SearchModal {
 
     this.input = this.overlay.querySelector('.search-input');
     this.resultsList = this.overlay.querySelector('.search-results');
+    this.resultsStatus = this.overlay.querySelector('.search-results-status');
     this.scopeContainer = this.overlay.querySelector('.search-scope-rail');
 
-    this.input?.addEventListener('input', () => this.debouncedSearch());
+    // Combobox/listbox contract: results are options, arrow-key selection is
+    // reported through aria-activedescendant (see decorateResultOptions).
+    if (this.input && this.resultsList) {
+      this.resultsList.id = 'searchResultsListbox';
+      this.resultsList.setAttribute('role', 'listbox');
+      this.input.setAttribute('role', 'combobox');
+      this.input.setAttribute('aria-expanded', 'true');
+      this.input.setAttribute('aria-controls', 'searchResultsListbox');
+      this.input.setAttribute('aria-autocomplete', 'list');
+      // Every render path replaces the listbox's children wholesale; the
+      // observer re-applies option semantics without each path having to know.
+      this.resultsObserver?.disconnect();
+      this.resultsObserver = new MutationObserver(() => this.decorateResultOptions());
+      this.resultsObserver.observe(this.resultsList, { childList: true, subtree: true });
+    }
+    // Combobox search results are async to the typing ear: without a polite
+    // status region, a screen-reader user never hears how many results (or
+    // "no results") the last keystroke produced (#7023).
+    if (this.resultsStatus) {
+      this.resultsStatus.setAttribute('role', 'status');
+      this.resultsStatus.setAttribute('aria-live', 'polite');
+    }
+
+    this.input?.addEventListener('input', () => {
+      this.onHumanInteraction?.();
+      this.debouncedSearch();
+    });
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -887,8 +938,8 @@ export class SearchModal {
         const id = (el as HTMLElement).dataset.command;
         const command = getAllCommands().find(c => c.id === id);
         if (command) {
-          this.onCommand?.(command);
           this.close();
+          this.onCommand?.(command);
         }
       });
     });
@@ -912,6 +963,7 @@ export class SearchModal {
             </div>`, "legacy direct innerHTML migration"));
         } else {
           this.renderFlightSearchTrigger(this.currentFlightCallsign);
+          this.announceResultCount(1);
         }
         return;
       }
@@ -921,6 +973,7 @@ export class SearchModal {
           <div>${t('modals.search.noResults')}</div>
         </div>
       `, "legacy direct innerHTML migration"));
+      this.announceResultCount(0);
       return;
     }
 
@@ -998,6 +1051,23 @@ export class SearchModal {
         this.selectResult(index);
       });
     });
+    this.announceResultCount(this.totalResultCount);
+  }
+
+  /**
+   * Announce the outcome of the last keystroke to assistive tech (#7023):
+   * how many results the current query produced, or that there are none.
+   * Polite (not assertive) so it follows, rather than interrupts, the
+   * keystroke echo. Render paths that never reach the count (idle deck,
+   * command list) leave the last announcement standing, which is correct —
+   * those views are not search outcomes.
+   */
+  private announceResultCount(count: number): void {
+    if (!this.resultsStatus) return;
+    const query = this.lastSearchedQuery ?? '';
+    this.resultsStatus.textContent = count === 0
+      ? `${t('modals.search.noResults')}${query ? `: ${query}` : ''}`
+      : t('modals.search.resultAnnouncement', { count, query });
   }
 
   private renderFlightSearchTrigger(callsign: string): void {
@@ -1080,6 +1150,7 @@ export class SearchModal {
   }
 
   private handleKeydown(e: KeyboardEvent): void {
+    this.onHumanInteraction?.();
     // The keystroke search is debounced (180ms). Flush it before Arrow/Enter so
     // selection runs against results for the CURRENT query, not stale ones from
     // before the debounce fired (#4537 follow-up — review #4556).
@@ -1134,8 +1205,23 @@ export class SearchModal {
       el.classList.toggle('selected', i === this.selectedIndex);
     });
 
+    this.decorateResultOptions();
     const selected = this.resultsList.querySelector('.selected');
     selected?.scrollIntoView({ block: 'nearest' });
+  }
+
+  /**
+   * Apply option semantics to whatever the last render left in the listbox:
+   * each result becomes an id'd role="option" with aria-selected, section
+   * headers become presentational, and the input's aria-activedescendant
+   * tracks the visually selected row — without this, arrow keys move a CSS
+   * class that screen readers never hear about.
+   */
+  private decorateResultOptions(): void {
+    if (!this.resultsList || !this.input) return;
+    decorateSearchResultOptions(this.resultsList, this.input, {
+      skipOptions: this.showingAllCommands,
+    });
   }
 
   private selectResult(index: number): void {

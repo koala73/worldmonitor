@@ -207,6 +207,10 @@ export class Panel {
     const title = document.createElement('span');
     title.className = 'panel-title';
     title.textContent = options.title;
+    // Panels are the dashboard's sections, but a real <h2> would drag along
+    // element styles; role/aria-level gives the outline with zero visual change.
+    title.setAttribute('role', 'heading');
+    title.setAttribute('aria-level', '2');
     headerLeft.appendChild(title);
 
     this.severityDotEl = document.createElement('span');
@@ -1020,6 +1024,24 @@ export class Panel {
   }
 
   /**
+   * Run a content write WITHOUT crediting the upstream with a recovery
+   * (#6679). The setContent* helpers clear the whole error state — chip,
+   * countdown, AND the exponential-backoff rung — because a success render
+   * normally proves the upstream recovered. Replaying a cache while the live
+   * fetch still fails proves no such thing. Wrapping that write here keeps the
+   * visible clears while the still-failing upstream keeps its rung instead of
+   * dropping back to the 15s floor. Callers must know from the result's
+   * provenance that the write is non-authoritative; an empty payload alone is
+   * not enough. Safe to nest; the setContent* clear is synchronous, so the
+   * restore cannot race a debounced write.
+   */
+  protected withRetryBackoffPreserved(write: () => void): void {
+    const rung = this.retryAttempt;
+    write();
+    this.retryAttempt = rung;
+  }
+
+  /**
    * Drop the error badge, the pending auto-retry countdown, and the backoff.
    * The single owner of "this panel has recovered": `setContentHtml`,
    * `setContentNodes` and `setTrustedContent` all clear through here, so the
@@ -1523,6 +1545,15 @@ export class Panel {
     this.severityDotEl.className = 'panel-severity-dot';
     if (level !== 'none') {
       this.severityDotEl.classList.add(`severity-${level}`);
+      // Severity was color+animation only (and aria-hidden), i.e. absent from
+      // the accessibility tree entirely; expose it as a named image.
+      this.severityDotEl.removeAttribute('aria-hidden');
+      this.severityDotEl.setAttribute('role', 'img');
+      this.severityDotEl.setAttribute('aria-label', `${level} severity`);
+    } else {
+      this.severityDotEl.setAttribute('aria-hidden', 'true');
+      this.severityDotEl.removeAttribute('role');
+      this.severityDotEl.removeAttribute('aria-label');
     }
   }
 

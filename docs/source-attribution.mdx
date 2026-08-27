@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **749 active source hosts** representing **743 active providers** (**318 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **753 active source hosts** representing **746 active providers** (**322 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -300,6 +300,7 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | gpsjam.org (gpsjam.org) | structured — scripts/fetch-gpsjam.mjs |
 | gr.euronews.com (gr.euronews.com) | feed — src/config/feeds.ts |
 | greatergood.berkeley.edu (greatergood.berkeley.edu) | feed — src/config/feeds.ts |
+| GTA Update (gtaupdate.com) | structured — scripts/lib/gta-update.mjs |
 | haaretz.com (haaretz.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | hacker-news.firebaseio.com (hacker-news.firebaseio.com) | structured — scripts/seed-research.mjs |
 | hai.stanford.edu (hai.stanford.edu) | feed — src/config/feeds.ts |
@@ -604,6 +605,10 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | Times of India (timesofindia.indiatimes.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | timesca.com (timesca.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | tools.cdc.gov (tools.cdc.gov) | structured — scripts/seed-disease-outbreaks.mjs |
+| Toronto Fire Services (www.toronto.ca) | structured — scripts/lib/toronto-official-cad.mjs |
+| Toronto Police Service (services.arcgis.com) | structured — scripts/lib/toronto-official-cad.mjs, scripts/lib/tps-open-data.mjs |
+| Toronto Police Service Open Data (data.tps.ca) | structured — scripts/lib/tps-open-data.mjs |
+| Toronto Police Service Open Data (www.tps.ca) | structured — scripts/lib/tps-open-data.mjs |
 | Toronto Transit Commission (TTC) GTFS-RT (gtfsrt.ttc.ca) | structured — scripts/seed-ttc-alerts.mjs |
 | travel.state.gov (travel.state.gov) | structured — scripts/seed-security-advisories.mjs |
 | Travelpayouts flight-price data (api.travelpayouts.com) | structured — server/worldmonitor/aviation/v1/_providers/travelpayouts_data.ts |
@@ -660,7 +665,7 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | World Bank Open Data (api.worldbank.org) | structured — scripts/_defense-industrial-source.mjs, scripts/_demographics-capability-source.mjs, scripts/ais-relay.cjs, scripts/seed-bis-lbs.mjs, +10 more |
 | World Monitor hosted API (api.worldmonitor.app) | structured — api/a2a.ts, api/internal/mcp-grant-mint.ts, api/mcp/downstream.ts, scripts/ais-relay.cjs, +18 more |
 | World Monitor proxy (proxy.worldmonitor.app) | structured — api/widget-agent.ts, scripts/seed-security-advisories.mjs, src/utils/proxy.ts |
-| World Monitor web app (worldmonitor.app) | feed+structured — api/_agent-metadata.ts, api/a2a.ts, api/ask.ts, api/fwdstart.js, +39 more |
+| World Monitor web app (worldmonitor.app) | feed+structured — api/_agent-metadata.ts, api/a2a.ts, api/ask.ts, api/fwdstart.js, +40 more |
 | World Monitor web app (www.worldmonitor.app) | structured — api/a2a.ts, api/ask.ts, api/not-found.ts, scripts/build-crawlable-corpus.mjs, +15 more |
 | WorldMonitor test origin (worldmonitor.invalid) | structured — src/shared/public-rpc-cache.ts |
 | worldmonitor.mintlify.dev (worldmonitor.mintlify.dev) | structured — api/docs-mcp.ts |
@@ -879,7 +884,7 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | www.zdnet.com (www.zdnet.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
 | www.zoomstatus.com (www.zoomstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | wwwnc.cdc.gov (wwwnc.cdc.gov) | structured — scripts/seed-security-advisories.mjs |
-| X API (api.x.com) | structured — scripts/lib/company-monitoring-x-provider.mjs |
+| X API (api.x.com) | structured — scripts/lib/company-monitoring-x-provider.mjs, scripts/lib/x-news-accounts.cjs, scripts/verify-x-accounts.mjs |
 | x.com (x.com) | structured — server/worldmonitor/leads/v1/register-interest.ts |
 | xinhuanet.com (xinhuanet.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | yandex.com (yandex.com) | structured — scripts/seo-indexnow-submit.mjs |

@@ -87,6 +87,9 @@ function serveFromKv(env, ctx, { tier, body, cf, started, corsHeaders }) {
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'X-WorldMonitor-Bootstrap-Source': 'kv',
+      // This response bypasses api/bootstrap.js, whose public responses set TAO for bootstrap
+      // transfer RUM. It is safe here because KV serving is limited to explicit public tiers.
+      'Timing-Allow-Origin': '*',
     },
   });
 }

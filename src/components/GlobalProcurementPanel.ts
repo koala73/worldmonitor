@@ -1,4 +1,10 @@
 import { Panel } from './Panel';
+import {
+  WEBMCP_PROCUREMENT_COUNTRY_CODE_CHARS,
+  WEBMCP_PROCUREMENT_COUNTRY_CODE_PATTERN,
+  WEBMCP_PROCUREMENT_TEXT_MAX_CHARS,
+  WEBMCP_PROCUREMENT_TOOL_NAME,
+} from '@/config/webmcp';
 import type { GlobalTender, ListGlobalTendersResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GlobalTenderFilters } from '@/services/global-tenders';
 import { PanelGateReason } from '@/services/panel-gating';
@@ -62,6 +68,10 @@ class RetryableProcurementSearchError extends Error {
   }
 }
 
+type ProcurementFilterParseResult =
+  | { ok: true; filters: GlobalTenderFilters }
+  | { ok: false; error: RetryableProcurementSearchError };
+
 const DEFAULT_FILTERS: GlobalTenderFilters = {
   query: '',
   buyer: '',
@@ -76,12 +86,12 @@ const DEFAULT_FILTERS: GlobalTenderFilters = {
 // Any evidence-backed keyword match (automationFit level "low" scores 30), so
 // the toggle means "has technology-relevance evidence", nothing stronger.
 const TECH_RELEVANCE_MIN_SCORE = 30;
-const DECLARATIVE_TOOL_NAME = 'search_procurement';
 const DECLARATIVE_TOOL_DESCRIPTION = 'Search official global procurement opportunities using visible filters.';
 const MAX_AGENT_SOURCE_STATUSES = 8;
 const MAX_AGENT_APPLIED_FILTERS = 16;
 const MAX_AGENT_FILTER_NAME_LENGTH = 32;
 const MAX_AGENT_RESULT_JSON_LENGTH = 1_500;
+const PROCUREMENT_COUNTRY_CODE = new RegExp(WEBMCP_PROCUREMENT_COUNTRY_CODE_PATTERN);
 
 const SOURCES = [
   ['', 'All sources'],
@@ -99,6 +109,8 @@ const SORTS = [
   ['estimated_value', 'Estimated value'],
   ['relevance', 'Technology relevance'],
 ] as const;
+const SOURCE_VALUES = new Set<string>(SOURCES.map(([value]) => value));
+const SORT_VALUES = new Set<string>(SORTS.map(([value]) => value));
 
 function selected(value: string | undefined, expected: string): string {
   return value === expected ? ' selected' : '';
@@ -155,8 +167,13 @@ export class GlobalProcurementPanel extends Panel {
         // declarative schema, so ignore a keyboard-generated human submit
         // instead of letting it replace the filters for the in-flight result.
         if (this.loading || this.pendingAgentInvocation !== null || this.settlingAgentForm !== null) return;
+        const parsedFilters = this.readFilters(form);
+        if (!parsedFilters.ok) {
+          form.reportValidity();
+          return;
+        }
         const previousFilters = { ...this.filters };
-        this.filters = this.readFilters(form);
+        this.filters = parsedFilters.filters;
         this.setAgentToolActive(false);
         this.request({ ...this.filters, cursor: '' }, false, previousFilters);
         return;
@@ -170,7 +187,7 @@ export class GlobalProcurementPanel extends Panel {
         ));
         return;
       }
-      if (!this.canDeclareTool() || form.getAttribute('toolname') !== DECLARATIVE_TOOL_NAME) {
+      if (!this.canDeclareTool() || form.getAttribute('toolname') !== WEBMCP_PROCUREMENT_TOOL_NAME) {
         this.respondWithRetryableFailure(submitEvent, new RetryableProcurementSearchError(
           'panel_unavailable',
           'The procurement search form is not currently available. Retry after the panel is visible and its data is ready.',
@@ -178,8 +195,13 @@ export class GlobalProcurementPanel extends Panel {
         return;
       }
 
+      const parsedFilters = this.readFilters(form);
+      if (!parsedFilters.ok) {
+        this.respondWithRetryableFailure(submitEvent, parsedFilters.error);
+        return;
+      }
       const previousFilters = { ...this.filters };
-      this.filters = this.readFilters(form);
+      this.filters = parsedFilters.filters;
       const pending = this.beginAgentInvocation(form, previousFilters);
       try {
         submitEvent.respondWith(pending.promise);
@@ -232,12 +254,12 @@ export class GlobalProcurementPanel extends Panel {
     if (typeof window !== 'undefined') {
       window.addEventListener('toolactivated', (event) => {
         const toolEvent = event as DeclarativeToolEvent;
-        if (toolEvent.toolName !== DECLARATIVE_TOOL_NAME || !this.canDeclareTool()) return;
+        if (toolEvent.toolName !== WEBMCP_PROCUREMENT_TOOL_NAME || !this.canDeclareTool()) return;
         this.setAgentToolActive(true);
       }, { signal: this.signal });
       window.addEventListener('toolcancel', (event) => {
         const toolEvent = event as DeclarativeToolEvent;
-        if (toolEvent.toolName !== DECLARATIVE_TOOL_NAME) return;
+        if (toolEvent.toolName !== WEBMCP_PROCUREMENT_TOOL_NAME) return;
         this.cancelAgentOperation();
       }, { signal: this.signal });
       window.addEventListener('resize', () => this.handlePanelVisibilityChange(), { signal: this.signal });
@@ -554,17 +576,55 @@ export class GlobalProcurementPanel extends Panel {
     return true;
   }
 
-  private readFilters(form: HTMLFormElement): GlobalTenderFilters {
+  private readFilters(form: HTMLFormElement): ProcurementFilterParseResult {
     const formData = new FormData(form);
+    const query = String(formData.get('query') ?? '');
+    const buyer = String(formData.get('buyer') ?? '');
+    const country = String(formData.get('country') ?? '');
+    const source = String(formData.get('source') ?? '');
+    const sort = String(formData.get('sort') || 'closing_soon');
+    if (
+      query.length > WEBMCP_PROCUREMENT_TEXT_MAX_CHARS
+      || buyer.length > WEBMCP_PROCUREMENT_TEXT_MAX_CHARS
+    ) {
+      return {
+        ok: false,
+        error: new RetryableProcurementSearchError(
+          'invalid_arguments',
+          `Procurement query and buyer filters must be at most ${WEBMCP_PROCUREMENT_TEXT_MAX_CHARS} characters.`,
+        ),
+      };
+    }
+    if (country && !PROCUREMENT_COUNTRY_CODE.test(country)) {
+      return {
+        ok: false,
+        error: new RetryableProcurementSearchError(
+          'invalid_arguments',
+          'The procurement country filter must be exactly two ASCII letters.',
+        ),
+      };
+    }
+    if (!SOURCE_VALUES.has(source) || !SORT_VALUES.has(sort)) {
+      return {
+        ok: false,
+        error: new RetryableProcurementSearchError(
+          'invalid_arguments',
+          'The procurement source or sort filter is not available.',
+        ),
+      };
+    }
     return {
-      query: String(formData.get('query') || '').trim(),
-      buyer: String(formData.get('buyer') || '').trim(),
-      country: String(formData.get('country') || '').trim().toUpperCase().slice(0, 2),
-      source: String(formData.get('source') || ''),
-      sort: String(formData.get('sort') || 'closing_soon'),
-      pageSize: 25,
-      cursor: '',
-      minAutomationScore: formData.get('techRelevant') ? TECH_RELEVANCE_MIN_SCORE : 0,
+      ok: true,
+      filters: {
+        query: query.trim(),
+        buyer: buyer.trim(),
+        country: country.toUpperCase(),
+        source,
+        sort,
+        pageSize: 25,
+        cursor: '',
+        minAutomationScore: formData.get('techRelevant') ? TECH_RELEVANCE_MIN_SCORE : 0,
+      },
     };
   }
 
@@ -614,13 +674,13 @@ export class GlobalProcurementPanel extends Panel {
   private renderControls(): string {
     const declareTool = this.canDeclareTool();
     const toolAttributes = declareTool
-      ? ` toolname="${DECLARATIVE_TOOL_NAME}" tooldescription="${DECLARATIVE_TOOL_DESCRIPTION}" toolautosubmit`
+      ? ` toolname="${WEBMCP_PROCUREMENT_TOOL_NAME}" tooldescription="${DECLARATIVE_TOOL_DESCRIPTION}" toolautosubmit`
       : '';
     const activeClass = this.agentToolActive || this.pendingAgentInvocation ? ' webmcp-tool-active' : '';
     return `<form class="global-procurement-controls${activeClass}" data-procurement-filters aria-busy="${this.loading}"${toolAttributes}>
-      <input class="global-procurement-input" name="query" data-procurement-query type="search" value="${escapeHtml(String(this.filters.query || ''))}" placeholder="Search title or description" aria-label="Search procurement opportunities" toolparamdescription="Words to match in opportunity titles or descriptions.">
-      <input class="global-procurement-input" name="buyer" type="search" value="${escapeHtml(String(this.filters.buyer || ''))}" placeholder="Buyer" aria-label="Filter by buyer" toolparamdescription="Buyer or contracting authority name to match.">
-      <input class="global-procurement-input global-procurement-country" name="country" data-procurement-country type="text" maxlength="2" value="${escapeHtml(String(this.filters.country || ''))}" placeholder="Country" aria-label="Filter by ISO country code" toolparamdescription="Optional two-letter ISO 3166-1 alpha-2 country code; normalized to uppercase.">
+      <input class="global-procurement-input" name="query" data-procurement-query type="search" maxlength="${WEBMCP_PROCUREMENT_TEXT_MAX_CHARS}" value="${escapeHtml(String(this.filters.query || ''))}" placeholder="Search title or description" aria-label="Search procurement opportunities" toolparamdescription="Words to match in opportunity titles or descriptions.">
+      <input class="global-procurement-input" name="buyer" type="search" maxlength="${WEBMCP_PROCUREMENT_TEXT_MAX_CHARS}" value="${escapeHtml(String(this.filters.buyer || ''))}" placeholder="Buyer" aria-label="Filter by buyer" toolparamdescription="Buyer or contracting authority name to match.">
+      <input class="global-procurement-input global-procurement-country" name="country" data-procurement-country type="text" minlength="${WEBMCP_PROCUREMENT_COUNTRY_CODE_CHARS}" maxlength="${WEBMCP_PROCUREMENT_COUNTRY_CODE_CHARS}" pattern="${WEBMCP_PROCUREMENT_COUNTRY_CODE_PATTERN}" value="${escapeHtml(String(this.filters.country || ''))}" placeholder="Country" aria-label="Filter by ISO country code" toolparamdescription="Optional two-letter ISO 3166-1 alpha-2 country code; normalized to uppercase.">
       <select class="global-procurement-select" name="source" data-procurement-source aria-label="Filter by source" toolparamdescription="Official procurement source to search; select All sources to search every source.">
         ${SOURCES.map(([value, label]) => `<option value="${value}"${selected(this.filters.source, value)}>${label}</option>`).join('')}
       </select>
@@ -902,7 +962,7 @@ export class GlobalProcurementPanel extends Panel {
     const form = this.content.querySelector<HTMLFormElement>('[data-procurement-filters]');
     if (!form) return;
     if (this.canDeclareTool()) {
-      form.setAttribute('toolname', DECLARATIVE_TOOL_NAME);
+      form.setAttribute('toolname', WEBMCP_PROCUREMENT_TOOL_NAME);
       form.setAttribute('tooldescription', DECLARATIVE_TOOL_DESCRIPTION);
       form.setAttribute('toolautosubmit', '');
     } else {

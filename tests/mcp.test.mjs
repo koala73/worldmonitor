@@ -337,6 +337,13 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32601);
   });
 
+  it('caps reflected unknown method names at 100 characters', async () => {
+    const method = 'm'.repeat(101);
+    const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 5, method, params: {} }));
+    const body = await res.json();
+    assert.equal(body.error?.message, `Method not found: ${method.slice(0, 100)}`);
+  });
+
   it('malformed body returns JSON-RPC -32600', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
@@ -346,6 +353,34 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     const body = await res.json();
     assert.equal(body.error?.code, -32600);
+  });
+
+  it('accepts ordinary scalar JSON-RPC IDs and echoes them unchanged', async () => {
+    for (const id of [42, 'correlation-id']) {
+      const res = await handler(makeReq('POST', { jsonrpc: '2.0', id, method: 'ping', params: {} }));
+      const body = await res.json();
+      assert.equal(body.id, id);
+      assert.equal(body.error, undefined);
+    }
+  });
+
+  it('rejects oversized, structured, and non-finite JSON-RPC IDs with id:null', async () => {
+    const invalidBodies = [
+      { label: 'oversized string', body: JSON.stringify({ jsonrpc: '2.0', id: '🚀'.repeat(65), method: 'ping', params: {} }) },
+      { label: 'object', body: JSON.stringify({ jsonrpc: '2.0', id: { nested: true }, method: 'ping', params: {} }) },
+      { label: 'array', body: JSON.stringify({ jsonrpc: '2.0', id: [1], method: 'ping', params: {} }) },
+      { label: 'non-finite number', body: '{"jsonrpc":"2.0","id":1e400,"method":"ping","params":{}}' },
+    ];
+    for (const { label, body: requestBody } of invalidBodies) {
+      const res = await handler(new Request(BASE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: requestBody,
+      }));
+      const body = await res.json();
+      assert.equal(body.error?.code, -32600, `${label} must be an Invalid Request`);
+      assert.equal(body.id, null, `${label} must not be reflected`);
+    }
   });
 
   it('sets Cache-Control: no-store on representative MCP success and error responses', async () => {
@@ -403,6 +438,33 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     );
     assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id must survive the SSE envelope');
     await res.body?.cancel();
+  });
+
+  it('does not retain oversized SSE responses for Last-Event-ID replay', async () => {
+    const sessionId = crypto.randomUUID();
+    const sse = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 'large-tools-list', method: 'tools/list', params: {},
+    }, {
+      Accept: 'text/event-stream',
+      'Mcp-Session-Id': sessionId,
+    }));
+    assert.equal(sse.status, 200);
+    const frame = await sse.text();
+    assert.ok(new TextEncoder().encode(frame).byteLength > 128 * 1024,
+      'fixture must exceed the replay response ceiling');
+    const eventId = /^id:\s*(.+)$/m.exec(frame)?.[1];
+    assert.ok(eventId, 'oversized SSE response must still deliver an event id to its current client');
+
+    const replay = await handler(new Request(BASE_URL, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        'X-WorldMonitor-Key': VALID_KEY,
+        'Mcp-Session-Id': sessionId,
+        'Last-Event-ID': eventId,
+      },
+    }));
+    assert.equal(replay.status, 404, 'oversized response must not be retained in the replay map');
   });
 
   // --- logging/setLevel ---
@@ -483,6 +545,16 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }));
     const body = await res.json();
     assert.equal(body.error?.code, -32602);
+  });
+
+  it('caps reflected unknown tool names at 100 characters', async () => {
+    const name = 't'.repeat(101);
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 3, method: 'tools/call',
+      params: { name, arguments: {} },
+    }));
+    const body = await res.json();
+    assert.equal(body.error?.message, `Unknown tool: ${name.slice(0, 100)}`);
   });
 
   it('tools/call with known tool returns -32603 when EVERY cache read is null (F6: cache_all_null)', async () => {

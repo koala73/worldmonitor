@@ -30,6 +30,7 @@ import {
   createDefaultCheckoutTransportDeps,
   postCreateCheckout,
 } from './checkout-transport';
+import { createTimeoutSignal } from './timeout-signal';
 import {
   checkoutRetryAtMs,
   checkoutRetryRemainingSeconds,
@@ -895,7 +896,7 @@ async function openBillingPortal(token: string, preopened?: Window | null): Prom
       headers: {
         Authorization: `Bearer ${token}`,
       },
-      signal: AbortSignal.timeout(15_000),
+      signal: createTimeoutSignal(15_000),
     });
 
     const result = await resp.json().catch(() => ({}));

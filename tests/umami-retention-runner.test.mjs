@@ -202,6 +202,93 @@ describe('Umami retention runner check (#6375)', () => {
     assert.match(missing.stderr, /not found/);
   });
 
+
+  // 2026-08-22 production incident: the alarm fired NO_RUNNING_DEPLOYMENT
+  // reading "none of the newest 200 records reached a running state (200 were
+  // SKIPPED refusals)" while `umami-retention` was perfectly healthy — 71 of 71
+  // scheduled ticks fired that day, zero errors, the newest at 06:52:59Z
+  // retiring rows normally.
+  //
+  // The runner was invisible, not dead. Its active deployment sat at index 206
+  // of the recency-ordered history; the window read 200. Refusals accrue at
+  // ~29.5/day (one per push to main), so ANY fixed window N is exhausted after
+  // N/29.5 days — 200 lasted 6.8 — while a healthy deployment routinely lives
+  // longer than that. The old comment here called depth "the only defence";
+  // depth alone guarantees a false alarm on a schedule.
+  //
+  // Both states must keep alarming: neither one observes the runner. But they
+  // demand opposite responses — one says "the retention runner is dead, Postgres
+  // will fill", the other says "widen the window" — so they must not share a
+  // verdict.
+  it('separates a saturated window from a runner that genuinely never ran', () => {
+    const refusals = (count) => Array.from({ length: count }, (_, index) => record({
+      id: `skip-${index}`,
+      status: 'SKIPPED',
+      // Newest first; one per ~49 minutes, the observed push cadence.
+      createdAt: new Date(Date.parse('2026-08-22T06:00:00.000Z') - index * 2_940_000).toISOString(),
+    }));
+
+    // Window filled to the requested depth: the deciding record may sit just
+    // past the edge, exactly as it did in production.
+    const saturated = evaluateRetentionRunner(refusals(RETENTION_HISTORY_WINDOW));
+    assert.equal(saturated.verdict, 'HISTORY_WINDOW_SATURATED');
+    assert.equal(saturated.alarming, true, 'a window we cannot see past is still unobserved');
+    assert.match(
+      saturated.detail,
+      /window/i,
+      'the operator must be told the window is the problem, not the database',
+    );
+
+    // Short of the requested depth: this IS the service's entire history, so
+    // "nothing ever ran" is a fact about the runner rather than the window.
+    const complete = evaluateRetentionRunner(refusals(RETENTION_HISTORY_WINDOW - 1));
+    assert.equal(complete.verdict, 'NO_RUNNING_DEPLOYMENT');
+    assert.equal(complete.alarming, true);
+
+    // A saturated window that DOES contain a running record is not saturated in
+    // any way that matters — the record it needed is present.
+    const saturatedButAnswered = [
+      ...refusals(RETENTION_HISTORY_WINDOW - 1),
+      record({ id: 'tick', status: 'SUCCESS', createdAt: '2026-01-01T00:00:00.000Z' }),
+    ];
+    assert.equal(evaluateRetentionRunner(saturatedButAnswered).verdict, 'HEALTHY');
+    assert.equal(evaluateRetentionRunner(saturatedButAnswered).deploymentId, 'tick');
+  });
+
+  it('names the window in the saturated alarm so the remedy is unambiguous', () => {
+    const refusals = Array.from({ length: RETENTION_HISTORY_WINDOW }, (_, index) => record({
+      id: `skip-${index}`,
+      status: 'SKIPPED',
+      createdAt: new Date(Date.parse('2026-08-22T06:00:00.000Z') - index * 2_940_000).toISOString(),
+    }));
+    const cli = runCli(refusals);
+
+    assert.equal(cli.status, 1, 'saturation must still fail the run — the runner is unobserved');
+    assert.match(cli.stdout, /HISTORY_WINDOW_SATURATED/);
+    // The operator consequence must not claim the database is filling: that was
+    // the misdiagnosis this verdict exists to prevent.
+    assert.doesNotMatch(cli.stderr, /will fill/);
+    assert.match(cli.stderr, /unobserved/);
+  });
+
+  // The saturation branch triggers on "no record REACHED a running state", which
+  // a window of FAILED builds satisfies just as well as a window of refusals.
+  // An earlier draft of the detail asserted "all N records read were SKIPPED
+  // refusals" — false in exactly that case, in the one sentence an operator
+  // reads at 03:00. The count must be counted, never assumed.
+  it('counts refusals rather than asserting every saturating record is one', () => {
+    const failedBuilds = Array.from({ length: RETENTION_HISTORY_WINDOW }, (_, index) => record({
+      id: `failed-${index}`,
+      status: 'FAILED',
+      createdAt: new Date(Date.parse('2026-08-22T06:00:00.000Z') - index * 2_940_000).toISOString(),
+    }));
+
+    const result = evaluateRetentionRunner(failedBuilds);
+    assert.equal(result.verdict, 'HISTORY_WINDOW_SATURATED');
+    assert.equal(result.alarming, true);
+    assert.match(result.detail, /\(0 were SKIPPED refusals\)/, 'zero refusals must report as zero');
+    assert.doesNotMatch(result.detail, /all \d+ records read were SKIPPED/);
+  });
   it('reads the runner history deeply enough to see past push refusals', () => {
     const readStep = steps.find((step) => /railway deployment list/.test(step.run ?? ''));
 

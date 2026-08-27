@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+
+import { isMainModule } from './lib/main-module.mjs';
 
 export const FORBIDDEN_LOCAL_ENV_DUMPS = [
   '.env.vercel-backup',
@@ -175,11 +176,7 @@ export function runLocalSecretDumpCheck(
   }
 }
 
-const isDirectRun = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
-
-if (isDirectRun) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   try {
     const prePushFlagIndex = process.argv.indexOf('--pre-push');
     const prePushInput = prePushFlagIndex >= 0 ? readFileSync(0, 'utf8') : '';

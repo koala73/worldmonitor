@@ -384,7 +384,11 @@
           "Speciale ondersteuning",
           "Aangepaste integraties",
           "SLA-garantie",
-          "On-premise optie"
+          "On-premise optie",
+          "Data Processing Agreement (DPA)",
+          "Factuurbetaling per inkooporder",
+          "SAML SSO, SCIM",
+          "Aangepaste beveiligings- en privacyinstellingen"
         ],
         "cta": "Contact Verkoop"
       },

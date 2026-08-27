@@ -1,7 +1,7 @@
 // Pure Earthquakes Canada (NRCan) Atom parser + USGS merge/dedup helpers.
 // Tests import this module, not the seeder entrypoint.
 
-import { CHROME_UA } from '../_seed-utils.mjs';
+import { CHROME_UA, roundGeoCoordinate } from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 
 export const NRCAN_ATOM_HOST = 'www.earthquakescanada.nrcan.gc.ca';
@@ -60,6 +60,10 @@ function parsePoint(block) {
   const latitude = Number(parts[0]);
   const longitude = Number(parts[1]);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  // Full upstream precision is kept HERE on purpose. Coordinates are rounded for
+  // the published payload in earthquakesPublishTransform, after dedup has run —
+  // isCrossAgencyMatch compares haversine distance against a 10km threshold, and
+  // rounding before that comparison moves pairs across it.
   return { latitude, longitude };
 }
 
@@ -258,6 +262,7 @@ export function parseUsgsGeojson(geojson) {
       place: String(feature.properties?.place || ''),
       magnitude: feature.properties?.mag ?? 0,
       depthKm: feature.geometry?.coordinates?.[2] ?? 0,
+      // Full precision — rounded in earthquakesPublishTransform, after dedup.
       location: {
         latitude: feature.geometry?.coordinates?.[1] ?? 0,
         longitude: feature.geometry?.coordinates?.[0] ?? 0,
@@ -447,8 +452,33 @@ export function earthquakesContentMeta(data, nowMs = Date.now()) {
   return { newestItemAt, oldestItemAt };
 }
 
+/**
+ * The serialization boundary — the ONLY place earthquake coordinates are rounded.
+ *
+ * 5 decimals is ~1.1m, invisible on the map, and roughly halves the coordinate
+ * bytes in the published payload. It happens here rather than in parsePoint /
+ * parseUsgsGeojson because mergeEarthquakeFeeds runs first and its
+ * isCrossAgencyMatch gates on `haversineDistanceKm(usgs, nrcan) <= 10`: rounding
+ * both sides before that comparison perturbs the distance by up to ~2m, which is
+ * enough to move a pair across the threshold in either direction (publishing a
+ * duplicate, or merging two genuinely distinct events).
+ */
 export function earthquakesPublishTransform(data) {
-  return { earthquakes: Array.isArray(data?.earthquakes) ? data.earthquakes : [] };
+  const earthquakes = Array.isArray(data?.earthquakes) ? data.earthquakes : [];
+  return {
+    earthquakes: earthquakes.map((eq) => (
+      eq?.location
+        ? {
+          ...eq,
+          location: {
+            ...eq.location,
+            latitude: roundGeoCoordinate(eq.location.latitude),
+            longitude: roundGeoCoordinate(eq.location.longitude),
+          },
+        }
+        : eq
+    )),
+  };
 }
 
 /**

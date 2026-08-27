@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -27,6 +27,7 @@ const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), '
 const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.config.ts'), 'utf-8');
 const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
+const webMcpE2eSource = readFileSync(resolve(__dirname, '../e2e/webmcp.spec.ts'), 'utf-8');
 const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
@@ -41,7 +42,7 @@ const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
-const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
+const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOSTS = [
@@ -80,6 +81,47 @@ const GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES = [
   'public/pro/welcome.html',
 ];
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
+const WEBMCP_PLAYWRIGHT_ENV_KEYS = [
+  'WM_REQUIRE_WEBMCP',
+  'WM_WEBMCP_PRODUCTION',
+  'WM_WEBMCP_PRODUCTION_URL',
+  'WM_WEBMCP_DEPLOYED_SHA',
+  'WM_WEBMCP_CHROME_CHANNEL',
+  'WM_WEBMCP_CHROME_EXECUTABLE_PATH',
+];
+
+function probePlaywrightWebMcpEnvironment(overrides = {}) {
+  const env = { ...process.env, NODE_NO_WARNINGS: '1' };
+  for (const key of WEBMCP_PLAYWRIGHT_ENV_KEYS) delete env[key];
+  Object.assign(env, overrides);
+
+  const probe = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '-e',
+      [
+        "const { default: config } = await import('./playwright.config.ts');",
+        "const chromium = config.projects?.find(({ name }) => name === 'chromium');",
+        'console.log(JSON.stringify({',
+        '  baseURL: config.use?.baseURL ?? null,',
+        '  hasWebServer: Boolean(config.webServer),',
+        '  launchArgs: chromium?.use?.launchOptions?.args ?? [],',
+        '  testMatch: config.testMatch ?? null,',
+        '}));',
+      ].join('\n'),
+    ],
+    {
+      cwd: resolve(__dirname, '..'),
+      encoding: 'utf8',
+      env,
+    },
+  );
+  assert.ifError(probe.error);
+  return probe;
+}
 
 const getCacheHeaderValue = (sourcePath) => {
   let value = null;
@@ -761,9 +803,17 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /navigateFallbackDenylist:\s*\[/);
   });
 
-  it('uses network-only runtime caching for navigation requests', () => {
-    assert.match(viteConfigSource, /request\.mode === 'navigate'/);
-    assert.match(viteConfigSource, /handler:\s*'NetworkOnly'/);
+  it('delegates navigation requests to the SW script with an offline fallback', () => {
+    // Navigations are handled by public/sw-navigation.js: network-first with
+    // NO cache write (a cached index.html outlives its hashed chunks across
+    // deploys -> blank offline reloads), falling back to the precached
+    // offline.html when the network is unreachable.
+    assert.match(viteConfigSource, /importScripts:\s*\[[^\]]*'\/sw-navigation\.js'/);
+    assert.doesNotMatch(viteConfigSource, /html-navigation/);
+    const navScript = readFileSync(resolve(__dirname, '../public/sw-navigation.js'), 'utf-8');
+    assert.match(navScript, /request\.mode !== 'navigate'/);
+    assert.match(navScript, /OFFLINE_URL = '\/offline\.html'/);
+    assert.match(navScript, /caches\.match\(OFFLINE_URL/);
   });
 
   it('contains variant-specific metadata fields used by html replacement and manifest', () => {
@@ -1469,7 +1519,7 @@ const getNginxHeaderValueFrom = (file, key) => {
   const line = nginxConf
     .split('\n')
     .find((candidate) => new RegExp(`^add_header\\s+${escapedKey}\\s+"`, 'i').test(candidate));
-  const match = line?.match(/^add_header\s+\S+\s+"(.*)"\s+always;$/i);
+  const match = line?.match(/^add_header\s+\S+\s+"(.*)"\s+always;(?:\s*#.*)?$/i);
   return match?.[1].replace(/\\"/g, '"') ?? null;
 };
 
@@ -1620,13 +1670,193 @@ describe('security header guardrails', () => {
     );
   });
 
-  it('runs the strict WebMCP iframe probe in an enabled Chrome milestone', () => {
+  it('keeps local suites local unless the complete production-smoke environment is present', () => {
+    const deployedSha = 'a'.repeat(40);
+    const matrix = [
+      {
+        name: 'ordinary suite',
+        env: {},
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: false,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'strict local WebMCP suite',
+        env: { WM_REQUIRE_WEBMCP: '1' },
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: true,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'strict local WebMCP evidence with a deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: true,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'bounded production smoke',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        expected: {
+          baseURL: 'https://www.worldmonitor.app',
+          hasWebServer: false,
+          testingFlag: false,
+          testMatch: '**/webmcp.spec.ts',
+        },
+      },
+    ];
+
+    for (const entry of matrix) {
+      const probe = probePlaywrightWebMcpEnvironment(entry.env);
+      assert.equal(
+        probe.status,
+        0,
+        `${entry.name} should load playwright.config.ts:\n${probe.stderr}`,
+      );
+      const resolved = JSON.parse(probe.stdout.trim());
+      assert.equal(resolved.baseURL, entry.expected.baseURL, `${entry.name} baseURL`);
+      assert.equal(resolved.hasWebServer, entry.expected.hasWebServer, `${entry.name} webServer`);
+      assert.equal(resolved.testMatch, entry.expected.testMatch, `${entry.name} testMatch`);
+      assert.equal(
+        resolved.launchArgs.includes('--enable-features=WebMCPTesting'),
+        entry.expected.testingFlag,
+        `${entry.name} testing flag`,
+      );
+    }
+  });
+
+  it('rejects every incomplete or inconsistent WebMCP evidence environment', () => {
+    const deployedSha = 'b'.repeat(40);
+    const matrix = [
+      {
+        name: 'URL without production mode',
+        env: { WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app' },
+        error: /WM_WEBMCP_PRODUCTION_URL requires WM_WEBMCP_PRODUCTION=1/,
+      },
+      {
+        name: 'local SHA without strict WebMCP mode',
+        env: { WM_WEBMCP_DEPLOYED_SHA: deployedSha },
+        error: /WM_WEBMCP_DEPLOYED_SHA requires WM_REQUIRE_WEBMCP=1 outside production mode/,
+      },
+      {
+        name: 'explicit local mode with a remote URL',
+        env: {
+          WM_WEBMCP_PRODUCTION: '0',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL requires WM_WEBMCP_PRODUCTION=1/,
+      },
+      {
+        name: 'strict local mode with a malformed deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: 'not-a-sha',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'strict local mode with an empty deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: '',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'strict local mode with a whitespace-only deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: '   ',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'production mode without strict WebMCP mode',
+        env: {
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION=1 requires WM_REQUIRE_WEBMCP=1/,
+      },
+      {
+        name: 'production mode without a URL',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL must be https:\/\/www\.worldmonitor\.app/,
+      },
+      {
+        name: 'production mode with a different URL',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://tech.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL must be https:\/\/www\.worldmonitor\.app/,
+      },
+      {
+        name: 'production mode without a deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record the exact 40-character SHA/,
+      },
+      {
+        name: 'production mode with a malformed deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: 'not-a-sha',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record the exact 40-character SHA/,
+      },
+    ];
+
+    for (const entry of matrix) {
+      const probe = probePlaywrightWebMcpEnvironment(entry.env);
+      assert.notEqual(probe.status, 0, `${entry.name} must fail closed`);
+      assert.match(`${probe.stdout}\n${probe.stderr}`, entry.error, entry.name);
+    }
+  });
+
+  it('runs strict WebMCP invocation and iframe probes in an enabled Chrome milestone', () => {
     const script = packageJson.scripts?.['test:e2e:webmcp'] ?? '';
+    const productionScript = packageJson.scripts?.['test:e2e:webmcp:production'] ?? '';
     const variantSmokeJob = testWorkflowSource.match(
       /\n  variant-smoke-full:\n[\s\S]*?(?=\n  [a-z][a-z0-9-]+:\n|$)/,
     )?.[0] ?? '';
     assert.match(script, /WM_REQUIRE_WEBMCP=1/);
-    assert.match(script, /playwright test e2e\/embed\.spec\.ts --project=chromium/);
+    assert.match(script, /e2e\/webmcp\.spec\.ts/);
+    assert.match(script, /e2e\/embed\.spec\.ts/);
+    assert.match(script, /--project=chromium/);
+    assert.match(productionScript, /WM_REQUIRE_WEBMCP=1/);
+    assert.match(productionScript, /WM_WEBMCP_PRODUCTION=1/);
+    assert.match(productionScript, /e2e\/webmcp\.spec\.ts/);
+    assert.match(productionScript, /--headed/);
     assert.ok(variantSmokeJob, 'Test workflow must define the full-variant smoke job');
     assert.match(
       variantSmokeJob,
@@ -1638,6 +1868,26 @@ describe('security header guardrails', () => {
     assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);
     assert.match(playwrightConfigSource, /executablePath: webMcpChromeExecutablePath/);
     assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting/);
+    assert.match(playwrightConfigSource, /requireWebMcp && !webMcpProduction/);
+    assert.match(playwrightConfigSource, /https:\/\/www\.worldmonitor\.app/);
+    assert.match(playwrightConfigSource, /WM_WEBMCP_DEPLOYED_SHA/);
+    assert.match(webMcpE2eSource, /document\.modelContext/);
+    assert.match(webMcpE2eSource, /\.getTools\(\)/);
+    assert.match(webMcpE2eSource, /provider\.executeTool/);
+    assert.match(webMcpE2eSource, /new AbortController\(\)/);
+    assert.match(webMcpE2eSource, /page\.on\('pageerror'/);
+    assert.match(webMcpE2eSource, /window\.addEventListener\('unhandledrejection'/);
+    assert.match(webMcpE2eSource, /lateLeakWindowMs/);
+    assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
+    assert.match(webMcpE2eSource, /testInfo\.outputPath\(name\)/);
+    assert.match(webMcpE2eSource, /writeFile\(path/);
+    assert.match(webMcpE2eSource, /testInfo\.attach\(name, \{ path/);
+    assert.match(webMcpE2eSource, /webmcp-production-matrix\.json/);
+    assert.match(webMcpE2eSource, /build-hash\.txt/);
+    assert.match(webMcpE2eSource, /expect\(servedSha,[\s\S]*?\.toBe\(expectedDeployedSha\)/);
+    assert.match(webMcpE2eSource, /https:\/\/tech\.worldmonitor\.app\/embed/);
+    assert.match(webMcpE2eSource, /redirectHeaders\['origin-trial'\]/);
+    assert.match(playwrightConfigSource, /preserveOutput:\s*'always'/);
     assert.match(embedE2eSource, /WEBMCP_MIN_CHROME_MAJOR = 149/);
     assert.match(embedE2eSource, /WM_REQUIRE_WEBMCP requires Chrome/);
   });
@@ -1686,36 +1936,41 @@ describe('security header guardrails', () => {
     }
   });
 
-  it('enrolls only eligible production pages with exact-origin WebMCP trial tokens', () => {
+  it('enrolls only eligible production documents with exact-origin WebMCP trial tokens', () => {
     const rules = vercelConfig.headers.filter((entry) =>
       entry.headers?.some((header) => header.key.toLowerCase() === 'origin-trial')
     );
-    assert.equal(rules.length, WEBMCP_PRODUCTION_HOSTS.length * 3);
+    assert.equal(rules.length, 3 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
 
     for (const host of WEBMCP_PRODUCTION_HOSTS) {
       const hostPattern = '^' + host.replaceAll('.', '\\.') + '$';
       const hostRules = rules.filter((rule) =>
         rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
       );
+      const expectedSources = host === 'www.worldmonitor.app'
+        ? ['/', '/dashboard', '/dashboard.html']
+        : ['/dashboard', '/dashboard.html'];
       assert.deepEqual(
         hostRules.map((rule) => rule.source).sort(),
-        ['/', '/dashboard', '/dashboard.html'],
-        host + ' must enroll the homepage, canonical dashboard, and direct dashboard document',
+        expectedSources,
+        host + ' must enroll only documents that directly return WebMCP HTML',
       );
-      const rootRule = hostRules.find((rule) => rule.source === '/');
-      assert.ok(rootRule, host + ' must define a homepage origin-trial rule');
-      assert.deepEqual(
-        rootRule.missing,
-        [{ type: 'query', key: 'mode', value: 'agent' }],
-        host + ' must exclude the /?mode=agent JSON representation from enrollment',
-      );
-      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host }), true);
-      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'reader' } }), true);
-      assert.equal(
-        headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'agent' } }),
-        false,
-        host + ' must not attach an Origin-Trial token to /?mode=agent',
-      );
+      if (host === 'www.worldmonitor.app') {
+        const rootRule = hostRules.find((rule) => rule.source === '/');
+        assert.ok(rootRule, host + ' must define a homepage origin-trial rule');
+        assert.deepEqual(
+          rootRule.missing,
+          [{ type: 'query', key: 'mode', value: 'agent' }],
+          host + ' must exclude the /?mode=agent JSON representation from enrollment',
+        );
+        assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host }), true);
+        assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'reader' } }), true);
+        assert.equal(
+          headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'agent' } }),
+          false,
+          host + ' must not attach an Origin-Trial token to /?mode=agent',
+        );
+      }
       assert.equal(
         hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard', host })),
         true,
@@ -1787,6 +2042,38 @@ describe('security header guardrails', () => {
       getHeaderValue('Permissions-Policy'),
       'Self-hosted docker users must have the same Permissions-Policy as Vercel.'
     );
+  });
+
+  it('every shipped CSP directive name is a real CSP directive', () => {
+    // A detect-secrets pragma once leaked into the header value itself
+    // (`object-src 'none'; x-allowlist // pragma: allowlist secret;
+    // form-action ...`), which Chrome reported on every production page load
+    // as "Unrecognized Content-Security-Policy directive 'x-allowlist'". JSON
+    // has no comment syntax, so any such annotation ships to browsers.
+    const KNOWN_CSP_DIRECTIVES = new Set([
+      'base-uri', 'block-all-mixed-content', 'child-src', 'connect-src',
+      'default-src', 'font-src', 'form-action', 'frame-ancestors', 'frame-src',
+      'img-src', 'manifest-src', 'media-src', 'object-src', 'prefetch-src',
+      'report-to', 'report-uri', 'require-trusted-types-for', 'sandbox',
+      'script-src', 'script-src-attr', 'script-src-elem', 'style-src',
+      'style-src-attr', 'style-src-elem', 'trusted-types',
+      'upgrade-insecure-requests', 'worker-src',
+    ]);
+    const surfaces = [
+      ['vercel', getHeaderValue('Content-Security-Policy')],
+      ['docker/nginx', getNginxHeaderValue('Content-Security-Policy')],
+    ];
+    for (const [label, csp] of surfaces) {
+      assert.ok(csp, `${label} must define a Content-Security-Policy`);
+      for (const segment of csp.split(';')) {
+        const name = segment.trim().split(/\s+/)[0];
+        if (!name) continue;
+        assert.ok(
+          KNOWN_CSP_DIRECTIVES.has(name),
+          `${label} CSP ships unrecognized directive "${name}" — browsers ignore it and log an error on every page load`,
+        );
+      }
+    }
   });
 
   it('CSP connect-src does not allow unencrypted WebSocket (ws:)', () => {
@@ -2184,10 +2471,24 @@ describe('embeddable map route guardrails', () => {
     assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
   });
 
-  it('keeps the global security header anti-framing rule off the embed entry', () => {
-    assert.equal(GLOBAL_SECURITY_HEADER_SOURCE, '/((?!docs|embed|embed\\.html).*)');
+  it('keeps the global security header anti-framing rule off the embed entries', () => {
+    // Both /embed (partner iframe) and /wm-widget-sandbox.html (agent widget
+    // sandbox) need cross-origin framing + their own dedicated CSP; the
+    // global SAMEORIGIN/dashboard-CSP rule must skip both.
+    assert.equal(GLOBAL_SECURITY_HEADER_SOURCE, '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)');
     const globalXfo = getHeaderValueForSource(GLOBAL_SECURITY_HEADER_SOURCE, 'X-Frame-Options');
     assert.equal(globalXfo, 'SAMEORIGIN');
+  });
+
+  it('/wm-widget-sandbox.html keeps its dedicated headers instead of inheriting app XFO/CSP', () => {
+    const source = '/wm-widget-sandbox.html';
+    assert.equal(
+      sourceToRegExp(GLOBAL_SECURITY_HEADER_SOURCE).test(source),
+      false,
+      `${source} must not match the global security-header rule`,
+    );
+    assert.equal(getHeaderValueForSource(source, 'X-Frame-Options'), null);
+    assert.match(getHeaderValueForSource(source, 'Content-Security-Policy') ?? '', /default-src 'none'/);
   });
 
   for (const source of ['/embed', '/embed.html']) {

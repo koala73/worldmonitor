@@ -5,6 +5,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { flattenKeys } from '../scripts/_locale-keys.mjs';
+import {
+  expectedKeysForLocale,
+  findPluralBases,
+  flatten,
+  getPluralCategories,
+} from '../scripts/translate-locales.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, '..', 'src', 'locales');
@@ -45,6 +51,8 @@ const STALE_WEATHER_SCOPE_BY_LOCALE = Object.freeze({
 describe('locale completeness', () => {
   const en = JSON.parse(readFileSync(join(LOCALES_DIR, 'en.json'), 'utf8'));
   const enKeys = flattenKeys(en);
+  const enFlat = flatten(en);
+  const pluralBases = findPluralBases(enFlat);
   const localeFiles = readdirSync(LOCALES_DIR)
     .filter((name) => name.endsWith('.json') && name !== 'en.json' && name !== 'en.shell.json')
     .sort();
@@ -58,12 +66,16 @@ describe('locale completeness', () => {
   });
 
   for (const file of localeFiles) {
-    it(`${file} contains every en.json key`, () => {
+    it(`${file} contains every key required by its CLDR plural rules`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const localeKeySet = new Set(flattenKeys(locale));
-      const missing = enKeys.filter((key) => !localeKeySet.has(key));
+      const localeCode = file.replace(/\.json$/, '');
+      const expected = Object.keys(
+        expectedKeysForLocale(enFlat, pluralBases, getPluralCategories(localeCode)),
+      );
+      const missing = expected.filter((key) => !localeKeySet.has(key));
 
-      // inventory-contract: locale-key-completeness; classification: parity; reason: missing-key parity is an exact completeness contract, not a catalog total
+      // inventory-contract: locale-key-completeness; classification: parity; reason: missing-key parity follows each locale's exact CLDR contract, not English-only plural suffixes or a catalog total
       assert.equal(
         missing.length,
         0,

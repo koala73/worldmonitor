@@ -12,8 +12,10 @@ function sanitizeVideoId(value) {
 
 const ALLOWED_ORIGINS = [
   /^https:\/\/(.*\.)?worldmonitor\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+-elie-habib-projects\.vercel\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+\.vercel\.app$/,
+  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
+  // Team-pinned only (mirrors public/wm-widget-sandbox.html): the unprefixed
+  // worldmonitor-[a-z0-9-].vercel.app pattern matched ANY Vercel team's
+  // look-alike project preview.
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
   /^tauri:\/\/localhost$/,

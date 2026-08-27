@@ -2,7 +2,7 @@
 
 // Canada ingest bundle.
 //
-// WHY A BUNDLE, NOT EIGHT SERVICES: the Canada pack (#6604-#6659) introduced
+// WHY A BUNDLE, NOT TEN SERVICES: the Canada pack (#6604-#6659) introduced
 // seeders. Provisioned individually they would consume a Railway slot each against
 // a fleet whose own runbook targets 65 services, for a combined measured tick
 // cost of ~33s — 6% of this runner's 570s admission budget. #6670 already made
@@ -12,8 +12,8 @@
 //
 // WHY THE CRON IS */5 WITH PER-MEMBER intervalMs: the runner gates each section
 // on its own `intervalMs` against that section's seed-meta age, so a single
-// service hosts members at different effective cadences. TTC needs 5 minutes;
-// nothing else does. The remaining members declare the cadence their upstream
+// service hosts members at different effective cadences. TTC and Toronto Fire
+// CAD need 5 minutes; nothing else does. The remaining members declare the cadence their upstream
 // actually justifies rather than inheriting TTC's.
 //
 // CADENCES ARE DELIBERATE, NOT INHERITED. Measured payloads per tick (live,
@@ -66,6 +66,13 @@ const CANADA_SECTIONS = [
   // (domain, resource) = ('transit', 'ttc-alerts'). It is NOT the canonical key
   // with :v1 stripped.
   { label: 'TTC-Alerts', script: 'seed-ttc-alerts.mjs', seedMetaKey: 'seed-meta:transit:ttc-alerts', canonicalKey: 'transit:ttc:alerts:v1', intervalMs: 5 * MIN, timeoutMs: 60_000 },
+  // Official TFS live CAD XML. Own key; 5min matches the source update cycle
+  // and a durable activation marker makes the first-deploy health bridge strict
+  // after the first successful canonical publish.
+  { label: 'Toronto-TFS', script: 'seed-toronto-tfs.mjs', seedMetaKey: 'seed-meta:safety:toronto-tfs', canonicalKey: 'safety:toronto-tfs:v1', completionMetaKey: 'seed-completion:safety:toronto-tfs', intervalMs: 5 * MIN, timeoutMs: 60_000 },
+  // Official TPS C4S_Public_NoGO FeatureServer. Own key; privacy exclusions
+  // stay empty. 15min matches the 15–20min map refresh; stale at 45min.
+  { label: 'Toronto-TPS', script: 'seed-toronto-tps.mjs', seedMetaKey: 'seed-meta:safety:toronto-tps', canonicalKey: 'safety:toronto-tps:v1', completionMetaKey: 'seed-completion:safety:toronto-tps', intervalMs: 15 * MIN, timeoutMs: 105_000 },
 ];
 
 // This bundle is registered before its members merge, so on an intermediate

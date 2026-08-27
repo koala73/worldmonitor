@@ -305,6 +305,98 @@ export function applySectorValuationFreshness(
 
 export const CACHE_TOOLS: ToolDef[] = [
   {
+    name: 'get_toronto_reported_occurrences',
+    _outputBudgetBytes: 65536,
+    description: 'Bounded Toronto Police Service Major Crime Indicators rows. Retrospective reported occurrences only; coordinates are approximate and this is not live dispatch.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        division: { type: 'string', description: 'Case-insensitive TPS division filter.' },
+        neighbourhood: { type: 'string', description: 'Case-insensitive neighbourhood filter.' },
+        offence: { type: 'string', description: 'Case-insensitive offence filter.' },
+        limit: { type: 'number', description: 'Maximum rows to return, from 1 to 100 (default 50).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      reported_occurrences: {
+        type: ['object', 'null'],
+        properties: {
+          semantic: { type: 'string', enum: ['reported_occurrence'] },
+          source: { type: 'string', enum: ['tps-mci'] },
+          attribution: { type: 'string' },
+          fetchedAt: { type: 'string' },
+          newestContentAt: { type: ['number', 'null'] },
+          records: { type: 'array', maxItems: 100, items: { type: 'object' } },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const division = argStr(params.division);
+      const neighbourhood = argStr(params.neighbourhood);
+      const offence = argStr(params.offence);
+      narrowNested(data, 'reported_occurrences', 'records', (row) => (
+        (!division || ciIncludes(row.division, division))
+        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
+        && (!offence || ciIncludes(row.offence, offence))
+      ));
+      const requested = argNum(params.limit);
+      capNested(data, 'reported_occurrences', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
+      return data;
+    },
+    _cacheKeys: ['safety:toronto:tps-mci:v1'],
+    _cacheLabels: { 'safety:toronto:tps-mci:v1': 'reported_occurrences' },
+    _freshnessChecks: [{ key: 'seed-meta:safety:tps-mci', maxStaleMin: 20160 }],
+    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
+  },
+  {
+    name: 'get_toronto_calls_attended',
+    _outputBudgetBytes: 65536,
+    description: 'Bounded Toronto Police Service Calls for Service Attended annual aggregates. These are neighbourhood and division counts, not incident points.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        year: { type: 'number', description: 'Exact event year.' },
+        division: { type: 'string', description: 'Case-insensitive original or final TPS division filter.' },
+        neighbourhood: { type: 'string', description: 'Case-insensitive neighbourhood filter.' },
+        limit: { type: 'number', description: 'Maximum rows to return, from 1 to 100 (default 50).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      annual_aggregates: {
+        type: ['object', 'null'],
+        properties: {
+          semantic: { type: 'string', enum: ['annual_aggregate'] },
+          source: { type: 'string', enum: ['tps-calls-attended'] },
+          attribution: { type: 'string' },
+          fetchedAt: { type: 'string' },
+          newestContentYear: { type: ['number', 'null'] },
+          records: { type: 'array', maxItems: 100, items: { type: 'object' } },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const year = argNum(params.year);
+      const division = argStr(params.division);
+      const neighbourhood = argStr(params.neighbourhood);
+      narrowNested(data, 'annual_aggregates', 'records', (row) => (
+        (year == null || row.eventYear === year)
+        && (!division || ciIncludes(row.divisionOriginal, division) || ciIncludes(row.divisionFinal, division))
+        && (!neighbourhood || ciIncludes(row.neighbourhood158, neighbourhood))
+      ));
+      const requested = argNum(params.limit);
+      capNested(data, 'annual_aggregates', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
+      return data;
+    },
+    _cacheKeys: ['safety:toronto:tps-calls-attended:v1'],
+    _cacheLabels: { 'safety:toronto:tps-calls-attended:v1': 'annual_aggregates' },
+    _freshnessChecks: [{ key: 'seed-meta:safety:tps-calls-attended', maxStaleMin: 20160 }],
+    _apiPaths: ['GET /api/safety/v1/get-toronto-safety'],
+  },
+  {
     // Intentionally fixed-universe, unlike the ListMarketQuotes RPC: this reads
     // and filters the seeded bootstrap snapshot and never gap-fetches an
     // unseeded ticker through a provider (#6305). An arbitrary equity the

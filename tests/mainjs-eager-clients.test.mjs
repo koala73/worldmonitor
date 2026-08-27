@@ -494,10 +494,12 @@ describe('main.js eager diet — review feedback guards', () => {
   it('shows a loading brief before waiting on lazy country signals', () => {
     const openStart = countryIntelSource.indexOf('async openCountryBriefByCode');
     const loadingIndex = countryIntelSource.indexOf('page.showLoading();', openStart);
-    const signalsIndex = countryIntelSource.indexOf('const signals = await this.getCountrySignals(code, country);', openStart);
+    const signalsIndex = countryIntelSource.indexOf('const signals = await raceWebMcpAbort(', openStart);
+    const signalLoadIndex = countryIntelSource.indexOf('this.getCountrySignals(code, country)', signalsIndex);
     assert.ok(openStart >= 0, 'openCountryBriefByCode should exist');
     assert.ok(loadingIndex > openStart, 'openCountryBriefByCode should show the loading shell');
     assert.ok(signalsIndex > loadingIndex, 'openCountryBriefByCode should show loading before lazy signal aggregation');
+    assert.ok(signalLoadIndex > signalsIndex, 'country signal aggregation should remain inside the abort-aware wait');
   });
 
   it('keeps country signals resilient to signal-aggregator chunk failures', () => {

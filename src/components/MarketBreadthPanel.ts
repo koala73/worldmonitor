@@ -170,7 +170,7 @@ function buildChart(points: BreadthSnapshot[]): string {
   const midLine = yPos(50);
   const mid = `<line x1="${ML}" y1="${midLine.toFixed(1)}" x2="${SVG_W - MR}" y2="${midLine.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 3"/>`;
 
-  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${yAxis}${mid}${xAxis}${areas}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Market breadth: advancing versus declining issues over time" style="width:100%;height:auto;display:block">${yAxis}${mid}${xAxis}${areas}${lines}</svg>`;
 }
 
 function readingBadge(val: number, color: string): string {

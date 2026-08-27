@@ -10,7 +10,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { onEntitlementChange } from '@/services/entitlements';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import type { GetTradeRestrictionsResponse, GetTariffTrendsResponse, GetTradeFlowsResponse, GetTradeBarriersResponse, GetCustomsRevenueResponse, ListComtradeFlowsResponse, ComtradeFlowRecord, TradeRestriction, TariffDataPoint, EffectiveTariffRate, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth } from '@/generated/client/worldmonitor/trade/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 import { TradeServiceClient } from '@/services/generated-rpc-clients';
@@ -180,7 +180,11 @@ export async function fetchTradeBarriers(countries: string[] = [], measureType =
 
 export async function fetchCustomsRevenue(): Promise<GetCustomsRevenueResponse> {
   const hydrated = getHydratedData('customsRevenue') as GetCustomsRevenueResponse | undefined;
-  if (hydrated?.months?.length) return hydrated;
+  if (hydrated?.months?.length) {
+    revenueBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
+
   try {
     return await revenueBreaker.execute(async () => {
       return publicClient.getCustomsRevenue({});

@@ -272,6 +272,7 @@ const HOST_ORIGINS = Object.freeze({
   'freeipapi.com': null,
   'gain.nd.edu': 'US',
   'gcaptain.com': 'US',
+  'gtaupdate.com': 'CA',
   'geospatial-usace.opendata.arcgis.com': 'US',
   'ghoapi.azureedge.net': null,
   'github.blog': null,
@@ -350,6 +351,7 @@ const HOST_ORIGINS = Object.freeze({
   'schema.org': 'US',
   'seekingalpha.com': 'US',
   'serpapi.com': 'US',
+  'services.arcgis.com': 'CA',
   'services7.arcgis.com': 'US',
   'services9.arcgis.com': 'US',
   'simpleflying.com': 'GB',
@@ -566,6 +568,9 @@ const HOST_ORIGINS = Object.freeze({
 // platform that would otherwise point at the wrong country.
 const PROVIDER_ORIGINS = Object.freeze({
   'B.C. Evacuation Orders and Alerts': 'CA',
+  'Toronto Police Service': 'CA',
+  'Toronto Police Service Open Data': 'CA',
+  'GTA Update': 'CA',
   'Ember electricity data': 'GB',
   'Fast Company': 'US',
   'Mexico Energy Regulatory Commission (CRE)': 'MX',

@@ -6,6 +6,7 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
+import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -193,6 +194,7 @@ function injectStyles(): void {
     .fc-prob-hdr { display: grid; grid-template-columns: 1fr 80px 100px 60px; padding: 8px 14px; border-bottom: 1px solid var(--border-color, #30363d); }
     .fc-prob-hdr span { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.08em; }
     .fc-prob-item { border-bottom: 1px solid var(--border-color, #30363d); }
+    .fc-prob-item:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
     .fc-prob-item:last-child { border-bottom: none; }
     .fc-prob-row { display: grid; grid-template-columns: 1fr 80px 100px 60px; align-items: center; padding: 9px 14px; cursor: pointer; transition: background 0.1s; }
     .fc-prob-item:hover .fc-prob-row { background: rgba(255,255,255,0.02); }
@@ -207,7 +209,9 @@ function injectStyles(): void {
     /* ── Detail toggle (hidden by default; shown on item hover) ──────────── */
     .fc-hidden { display: none; }
     .fc-toggle-row { display: none; flex-wrap: wrap; gap: 8px; padding: 0 14px 8px; }
-    .fc-prob-item:hover .fc-toggle-row { display: flex; }
+    .fc-prob-item:hover .fc-toggle-row,
+    .fc-prob-item:focus-within .fc-toggle-row { display: flex; }
+    .fc-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
     .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
     .fc-toggle:hover { color: var(--text-primary, #e6edf3); }
     .fc-detail { padding: 8px 14px 4px; border-top: 1px solid var(--border-color, #2a2a2a); }
@@ -287,6 +291,7 @@ export class ForecastPanel extends Panel {
   constructor() {
     super({ id: 'forecast', title: 'AI Forecasts', showCount: true, infoTooltip: t('components.forecast.infoTooltip') });
     injectStyles();
+    bindActivationKeys(this.content, '[data-fc-toggle]');
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
@@ -323,7 +328,10 @@ export class ForecastPanel extends Panel {
         const item = toggle.closest('.fc-prob-item');
         const panelId = toggle.dataset.fcToggle;
         const detail = panelId ? item?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
-        if (detail) detail.classList.toggle('fc-hidden');
+        if (detail) {
+          detail.classList.toggle('fc-hidden');
+          toggle.setAttribute('aria-expanded', String(!detail.classList.contains('fc-hidden')));
+        }
         // The bootstrap payload carries the LIST, not the dossiers — 78% of the old
         // key was caseFile prose nobody expands (#5300). Fetch them the first time
         // someone actually opens one; the feed is CDN-shielded, so this is cheap.
@@ -662,7 +670,7 @@ export class ForecastPanel extends Panel {
     const demoted = f.demotedBySimulation ?? false;
 
     return `
-      <div class="fc-prob-item">
+      <div class="fc-prob-item" tabindex="0">
         <div class="fc-prob-row"${demoted ? ' style="opacity:0.5"' : ''}>
           <div class="fc-prob-label"
                style="border-left:2px solid ${catColor}47;padding-left:6px">
@@ -685,8 +693,8 @@ export class ForecastPanel extends Panel {
           </span>
         </div>
         <div class="fc-toggle-row">
-          <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
-          ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${sigs.length})</span>` : ''}
+          <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}" role="button" tabindex="0" aria-expanded="false">Analysis</span>
+          ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}" role="button" tabindex="0" aria-expanded="false">Signals (${sigs.length})</span>` : ''}
         </div>
         <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${f.caseFile ? this.renderDetailBody(f) : ''}</div>
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}

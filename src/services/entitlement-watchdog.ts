@@ -24,6 +24,8 @@
  * change one, change both.
  */
 
+import { createTimeoutSignal } from './timeout-signal';
+
 export interface EntitlementWatchdogDeps {
   /** Returns a Bearer token or null if the user isn't signed in yet. */
   getToken: () => Promise<string | null>;
@@ -93,7 +95,7 @@ export function createEntitlementWatchdog(
       if (!token) return;
       const resp = await deps.fetch(config.endpoint, {
         headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(fetchTimeoutMs),
+        signal: createTimeoutSignal(fetchTimeoutMs),
       });
       if (tickGeneration !== generation || intervalId === null || fired) return;
       if (!resp.ok) return;

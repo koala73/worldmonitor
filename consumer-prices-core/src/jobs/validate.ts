@@ -37,6 +37,7 @@ interface MatchRow {
   retailerSlug: string;
   canonicalName: string;
   price: number;
+  currencyCode?: string;
 }
 
 async function validateBasket(basketSlug: string, marketCode: string): Promise<void> {
@@ -47,9 +48,10 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     retailer_slug: string;
     canonical_name: string;
     price: string;
+    currency_code: string | null;
   }>(
     `SELECT pm.id AS match_id, pm.basket_item_id, pm.match_status,
-            r.slug AS retailer_slug, cp.canonical_name, po.price
+            r.slug AS retailer_slug, cp.canonical_name, po.price, r.currency_code
      FROM product_matches pm
      JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
      JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
@@ -73,6 +75,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     retailerSlug: r.retailer_slug,
     canonicalName: r.canonical_name,
     price: parseFloat(r.price),
+    currencyCode: typeof r.currency_code === 'string' ? r.currency_code : undefined,
   }));
 
   // Group by basket item
@@ -117,7 +120,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
         );
         logger.warn(
           `  FLAGGED  ${row.canonicalName.padEnd(30)} ${row.retailerSlug.padEnd(20)}` +
-          `AED ${row.price.toFixed(2).padStart(7)}  (median=${med.toFixed(2)}, ratio=${ratio.toFixed(2)}x)`,
+          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  (median=${med.toFixed(2)}, ratio=${ratio.toFixed(2)}x)`,
         );
         flagged++;
       } else if (!isOutlier && wasReview) {
@@ -139,7 +142,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
         );
         logger.info(
           `  RESTORED ${row.canonicalName.padEnd(30)} ${row.retailerSlug.padEnd(20)}` +
-          `AED ${row.price.toFixed(2).padStart(7)}  now within range`,
+          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  now within range`,
         );
         restored++;
       }

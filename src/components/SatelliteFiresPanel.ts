@@ -65,10 +65,10 @@ export class SatelliteFiresPanel extends Panel {
         <table class="fires-table">
           <thead>
             <tr>
-              <th>${t('components.satelliteFires.region')}</th>
-              <th>${t('components.satelliteFires.fires')}</th>
-              <th>${t('components.satelliteFires.high')}</th>
-              <th>FRP</th>
+              <th scope="col">${t('components.satelliteFires.region')}</th>
+              <th scope="col">${t('components.satelliteFires.fires')}</th>
+              <th scope="col">${t('components.satelliteFires.high')}</th>
+              <th scope="col">FRP</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

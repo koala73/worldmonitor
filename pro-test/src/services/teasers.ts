@@ -14,6 +14,7 @@
  */
 
 import fallbackJson from '../generated/teasers.json';
+import { createTimeoutSignal } from './timeout-signal';
 
 export interface TeaserHeadline {
   title: string;
@@ -84,7 +85,7 @@ async function mintSession(): Promise<void> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: createTimeoutSignal(FETCH_TIMEOUT_MS),
     });
     // fetch() resolves on 4xx/5xx too (e.g. CORS-blocked preview domains) —
     // only an OK response means the cookie actually exists, otherwise the
@@ -97,7 +98,7 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   const doFetch = () => fetch(path, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: createTimeoutSignal(FETCH_TIMEOUT_MS),
   });
   try {
     let resp = await doFetch();

@@ -127,11 +127,11 @@ export class ETFFlowsPanel extends Panel {
           <table class="etf-table">
             <thead>
               <tr>
-                <th>${t('components.etfFlows.table.ticker')}</th>
-                <th>${t('components.etfFlows.table.issuer')}</th>
-                <th>${t('components.etfFlows.table.estFlow')}</th>
-                <th>${t('components.etfFlows.table.volume')}</th>
-                <th>${t('components.etfFlows.table.change')}</th>
+                <th scope="col">${t('components.etfFlows.table.ticker')}</th>
+                <th scope="col">${t('components.etfFlows.table.issuer')}</th>
+                <th scope="col">${t('components.etfFlows.table.estFlow')}</th>
+                <th scope="col">${t('components.etfFlows.table.volume')}</th>
+                <th scope="col">${t('components.etfFlows.table.change')}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>

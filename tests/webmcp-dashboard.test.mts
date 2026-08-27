@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import {
   applyWebMcpDashboardAction,
   getWebMcpDashboardContext,
+  WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '../src/app/webmcp-dashboard.ts';
 import { runDashboardActionBinding } from '../src/app/dashboard-action-binding.ts';
@@ -22,13 +23,17 @@ import {
 import type { MapLayers, PanelConfig } from '../src/types/index.ts';
 
 const VARIANTS = ['full', 'tech', 'finance', 'commodity', 'happy', 'energy'] as const;
+
+it('keeps the advertised pre-ready invocation window at 30 seconds', () => {
+  assert.equal(WEBMCP_UI_READY_TIMEOUT_MS, 30_000);
+});
 type DashboardVariant = (typeof VARIANTS)[number];
 
 const EXPECTED_VARIANT_PANEL_SNAPSHOTS: Record<DashboardVariant, {
   enabledCount: number;
   enabledSha256: string;
 }> = {
-  full: { enabledCount: 86, enabledSha256: '8dfdf10adeab4fe49316b04558477a8bed08042563e190b304610dd1284b2348' },
+  full: { enabledCount: 87, enabledSha256: 'f88a8223a3b1ae42a80a9a4d55678b4e0dbaf942632408fe0987e3a956bd5372' },
   tech: { enabledCount: 38, enabledSha256: 'de9f78179aa2c75301883511ad0bab48fc67cba5cd4eb4445906abf17458a290' },
   finance: { enabledCount: 60, enabledSha256: 'e9cbe30455e107add242019de29d44335abf9da2a8a44c9c204076ed279bcfe8' },
   commodity: { enabledCount: 33, enabledSha256: 'b534510a2e814392e3966beb211e300e75a2b33f05c283613dd4f6cee50ddfe0' },
@@ -41,7 +46,7 @@ const EXPECTED_VARIANT_DEFAULT_SNAPSHOTS: Record<DashboardVariant, {
   enabled: number;
   sha256: string;
 }> = {
-  full: { total: 107, enabled: 86, sha256: '4cd24491205d160561c4483cb60df5d5f7bfeb5f75e4754cd7dc8e9f7f5dab4f' },
+  full: { total: 109, enabled: 87, sha256: '9b761c8ce3685acbcc233b25b639d1998fbdb3d303cd6d9cbc5b8da1e53d4958' },
   tech: { total: 41, enabled: 38, sha256: '43d7c788ff599baae171f7f46532653370e03ca4d322a8e6614f9f0a1cee5045' },
   finance: { total: 65, enabled: 60, sha256: 'cfcd641367902fe1966986633577763df178f5a1ea9d22038aa350276b55abbb' },
   commodity: { total: 36, enabled: 33, sha256: 'cc9e0b178dec33dff354a1eea95b5b215302fc7ce685b3d92b82a356df6d6bee' },
@@ -216,6 +221,118 @@ describe('WebMCP live dashboard bindings', () => {
     await assert.rejects(wait, /Dashboard is no longer available/);
   });
 
+  it('keeps a pre-ready invocation pending until UI readiness resolves', async () => {
+    let resolveReady!: () => void;
+    const uiReady = new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    });
+    const appDestroyed = new Promise<void>(() => {});
+    let settled = false;
+    const wait = waitForWebMcpUiReady(uiReady, appDestroyed, 10_000)
+      .then(() => { settled = true; });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(settled, false);
+    resolveReady();
+    await wait;
+    assert.equal(settled, true);
+  });
+
+  it('rejects deterministically when UI readiness exceeds its bound', async () => {
+    const never = new Promise<void>(() => {});
+    await assert.rejects(
+      waitForWebMcpUiReady(never, never, 5, 'Test UI'),
+      /Test UI did not initialise within 5ms/,
+    );
+  });
+
+  it('rejects UI readiness promptly when the invocation is cancelled', async () => {
+    const never = new Promise<void>(() => {});
+    const controller = new AbortController();
+    const pending = waitForWebMcpUiReady(
+      never,
+      never,
+      10_000,
+      'Test UI',
+      controller.signal,
+    );
+
+    controller.abort();
+    await assert.rejects(pending, (error) => (
+      error instanceof Error && error.name === 'AbortError'
+    ));
+  });
+
+  it('does not apply an action cancelled during UI readiness', async () => {
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((resolve) => { resolveReady = resolve; });
+    const never = new Promise<void>(() => {});
+    const controller = new AbortController();
+    const ctx = makeContext();
+    const pending = runDashboardActionBinding(
+      ctx,
+      { type: 'set_layers', layers: { weather: true } },
+      {
+        waitForUiReady: () => waitForWebMcpUiReady(
+          ready,
+          never,
+          10_000,
+          'Test UI',
+          controller.signal,
+        ),
+        waitForMapReady: () => Promise.resolve(),
+        signal: controller.signal,
+        applierOptions,
+        syncUrlStateNow: () => {},
+      },
+    );
+
+    controller.abort();
+    await assert.rejects(pending, (error) => (
+      error instanceof Error && error.name === 'AbortError'
+    ));
+    resolveReady();
+    await Promise.resolve();
+    assert.equal(ctx.mapLayers.weather, false);
+  });
+
+  it('does not apply an action cancelled during renderer readiness', async () => {
+    let resolveRendererWaitStarted!: () => void;
+    const rendererWaitStarted = new Promise<void>((resolve) => {
+      resolveRendererWaitStarted = resolve;
+    });
+    const never = new Promise<void>(() => {});
+    const controller = new AbortController();
+    const ctx = makeContext();
+    const pending = runDashboardActionBinding(
+      ctx,
+      { type: 'set_layers', layers: { weather: true } },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => {
+          resolveRendererWaitStarted();
+          return waitForWebMcpUiReady(
+            never,
+            never,
+            10_000,
+            'Test renderer',
+            controller.signal,
+          );
+        },
+        signal: controller.signal,
+        applierOptions,
+        syncUrlStateNow: () => {},
+      },
+    );
+
+    await rendererWaitStarted;
+    controller.abort();
+    await assert.rejects(pending, (error) => (
+      error instanceof Error && error.name === 'AbortError'
+    ));
+    assert.equal(ctx.mapLayers.weather, false);
+  });
+
   it('reuses the real applier and preserves its denial reason', async () => {
     const result = await applyWebMcpDashboardAction(
       makeContext(),
@@ -283,10 +400,14 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(rendererReadyCalls, 0);
   });
 
-  it('waits for concrete renderer readiness before applying layer actions', async () => {
+  it('waits for concrete renderer readiness before applying layer actions', { timeout: 5_000 }, async () => {
     let resolveRendererReady!: () => void;
     const rendererReady = new Promise<void>((resolve) => {
       resolveRendererReady = resolve;
+    });
+    let resolveRendererWaitStarted!: () => void;
+    const rendererWaitStarted = new Promise<void>((resolve) => {
+      resolveRendererWaitStarted = resolve;
     });
     let rendererReadyCalls = 0;
     const ctx = makeContext();
@@ -298,6 +419,7 @@ describe('WebMCP live dashboard bindings', () => {
         waitForUiReady: () => Promise.resolve(),
         waitForMapReady: () => {
           rendererReadyCalls += 1;
+          resolveRendererWaitStarted();
           return rendererReady;
         },
         applierOptions,
@@ -305,7 +427,10 @@ describe('WebMCP live dashboard bindings', () => {
       },
     );
 
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    // The binding crosses a lazy import before it knows this is a map action.
+    // Observe the callback itself instead of assuming that import settles in a
+    // particular event-loop turn on every supported Node runtime.
+    await rendererWaitStarted;
     assert.equal(rendererReadyCalls, 1);
     assert.equal(ctx.mapLayers.weather, false, 'layers must not mutate before renderer readiness');
 
@@ -353,10 +478,65 @@ describe('WebMCP live dashboard bindings', () => {
     assert.deepEqual(getWebMcpDashboardContext(ctx, 'full').map.center, center);
   });
 
-  it('orders renderer readiness, view settlement, and final URL sync', async () => {
+  it('cancels promptly after a view commit without publishing a late URL sync', async () => {
+    let resolveSetViewStarted!: () => void;
+    const setViewStarted = new Promise<void>((resolve) => {
+      resolveSetViewStarted = resolve;
+    });
+    let resolveSettled!: () => void;
+    const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+    let setViewCalls = 0;
+    let syncCalls = 0;
+    const controller = new AbortController();
+    const ctx = makeContext();
+    Object.assign(ctx.map!, {
+      setView: () => {
+        setViewCalls += 1;
+        resolveSetViewStarted();
+      },
+      whenViewportSettled: () => settled,
+    });
+
+    const pending = runDashboardActionBinding(
+      ctx,
+      { type: 'set_view', view: 'eu', zoom: 4 },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => Promise.resolve(),
+        signal: controller.signal,
+        applierOptions,
+        syncUrlStateNow: () => { syncCalls += 1; },
+      },
+    );
+
+    await setViewStarted;
+    controller.abort();
+    await assert.rejects(pending, (error) => (
+      error instanceof Error && error.name === 'AbortError'
+    ));
+    assert.equal(setViewCalls, 1, 'the already-committed viewport action is not rolled back');
+    assert.equal(syncCalls, 0);
+
+    resolveSettled();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(syncCalls, 0, 'settlement after cancellation must not sync a stale URL');
+  });
+
+  it('orders renderer readiness, view settlement, and final URL sync', { timeout: 5_000 }, async () => {
     const events: string[] = [];
+    let resolveUiWaitStarted!: () => void;
+    const uiWaitStarted = new Promise<void>((resolve) => { resolveUiWaitStarted = resolve; });
+    let resolveUiReady!: () => void;
+    const uiReady = new Promise<void>((resolve) => { resolveUiReady = resolve; });
+    let resolveMapWaitStarted!: () => void;
+    const mapWaitStarted = new Promise<void>((resolve) => { resolveMapWaitStarted = resolve; });
     let resolveReady!: () => void;
     const ready = new Promise<void>((resolve) => { resolveReady = resolve; });
+    let resolveSettlementWaitStarted!: () => void;
+    const settlementWaitStarted = new Promise<void>((resolve) => {
+      resolveSettlementWaitStarted = resolve;
+    });
     let resolveSettled!: () => void;
     const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
     const ctx = makeContext();
@@ -364,6 +544,7 @@ describe('WebMCP live dashboard bindings', () => {
       setView: () => { events.push('set_view'); },
       whenViewportSettled: async () => {
         events.push('wait_settlement');
+        resolveSettlementWaitStarted();
         await settled;
         events.push('settled');
       },
@@ -375,9 +556,12 @@ describe('WebMCP live dashboard bindings', () => {
       {
         waitForUiReady: async () => {
           events.push('wait_ui');
+          resolveUiWaitStarted();
+          await uiReady;
         },
         waitForMapReady: async () => {
           events.push('wait_map');
+          resolveMapWaitStarted();
           await ready;
           events.push('map_ready');
         },
@@ -386,12 +570,13 @@ describe('WebMCP live dashboard bindings', () => {
       },
     );
 
-    await Promise.resolve();
+    await uiWaitStarted;
     assert.deepEqual(events, ['wait_ui']);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    resolveUiReady();
+    await mapWaitStarted;
     assert.deepEqual(events, ['wait_ui', 'wait_map']);
     resolveReady();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await settlementWaitStarted;
     assert.deepEqual(events, ['wait_ui', 'wait_map', 'map_ready', 'set_view', 'wait_settlement']);
     resolveSettled();
     const result = await pending;

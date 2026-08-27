@@ -483,7 +483,7 @@ import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
-const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
+const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.
@@ -578,7 +578,19 @@ if (urlParams.get('settings') === '1') {
     .then(() => {
       clearChunkReloadGuard(chunkReloadStorageKey);
     })
-    .catch(console.error);
+    .catch((error: unknown) => {
+      console.error(error);
+      try {
+        // init() registers WebMCP before its first await. A failed boot must
+        // therefore run normal teardown so the browser cannot retain tools
+        // bound to an App that will never become ready.
+        app.destroy();
+      } catch (cleanupError) {
+        // Cleanup is best-effort on a partially initialised App; never replace
+        // the original boot failure with an unhandled teardown rejection.
+        console.error('[App] Failed to clean up after initialization failure:', cleanupError);
+      }
+    });
 }
 
 // Debug helpers for geo-convergence testing (remove in production)

@@ -3,7 +3,6 @@ declare module 'globe.gl' {
     [key: string]: unknown;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   export interface GlobeInstance {
     pointOfView(pov?: { lat?: number; lng?: number; altitude?: number }, transitionMs?: number): { lat: number; lng: number; altitude: number };
     toGlobeCoords(x: number, y: number): { lat: number; lng: number } | null;

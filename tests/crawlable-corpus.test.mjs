@@ -126,6 +126,36 @@ describe('sources catalog domain assignment', () => {
     assert.equal(catalog[0].domainId, 'environment');
   });
 
+  it('keeps C4S CAD and TPS Open Data on distinct catalog domains', () => {
+    const catalog = buildSourceCatalog([
+      {
+        provider: 'Toronto Police Service',
+        host: 'services.arcgis.com',
+        kind: 'structured',
+        references: [{ path: 'scripts/lib/toronto-official-cad.mjs' }],
+      },
+      {
+        provider: 'Toronto Police Service Open Data',
+        host: 'data.tps.ca',
+        kind: 'structured',
+        references: [{ path: 'scripts/lib/tps-open-data.mjs' }],
+      },
+      {
+        provider: 'Toronto Police Service Open Data',
+        host: 'www.tps.ca',
+        kind: 'structured',
+        references: [{ path: 'scripts/lib/tps-open-data.mjs' }],
+      },
+    ]);
+    assert.deepEqual(
+      Object.fromEntries(catalog.map((row) => [row.provider, row.domainId])),
+      {
+        'Toronto Police Service': 'environment',
+        'Toronto Police Service Open Data': 'geopolitics',
+      },
+    );
+  });
+
   it('assigns Manitoba 511 to infrastructure instead of failing the corpus build', () => {
     const catalog = buildSourceCatalog([
       {
@@ -308,6 +338,25 @@ describe('sources catalog provider names', () => {
     assert.equal(sourceProviderDisplayName('airlinegeeks.com', ['airlinegeeks.com']), 'AirlineGeeks');
     assert.equal(sourceProviderDisplayName('feeds.arstechnica.com', ['feeds.arstechnica.com']), 'Ars Technica');
     assert.equal(sourceProviderDisplayName('api.gdeltproject.org', ['api.gdeltproject.org']), 'GDELT');
+  });
+});
+
+const SOURCE_COUNTRY_FILTER_NOTE = (
+  'This list shows monitored sources based in the selected country or region. Sources based elsewhere also cover it.'
+);
+
+describe('sources catalog country note layout', () => {
+  it('does not cap the country filter note below the sentence length', () => {
+    const src = readFileSync(join(repoRoot, 'scripts/crawlable-sources-page.mjs'), 'utf8');
+    const rule = src.match(/\.catalog-country-note \{([^}]+)\}/)?.[1];
+    assert.ok(rule, 'sources page must style the country coverage note');
+    const maxWidth = rule.match(/max-width:\s*([^;]+)/)?.[1]?.trim();
+    if (!maxWidth) return;
+    const chMatch = maxWidth.match(/^(\d+(?:\.\d+)?)ch$/);
+    assert.ok(
+      chMatch && Number(chMatch[1]) >= SOURCE_COUNTRY_FILTER_NOTE.length,
+      `country note max-width ${maxWidth} wraps a ${SOURCE_COUNTRY_FILTER_NOTE.length}-character sentence on a full-width catalog; omit max-width or size it to the sentence`,
+    );
   });
 });
 
@@ -914,18 +963,12 @@ describe('crawlable corpus generator', () => {
         'Origin: Hungary',
       );
       assert.equal(countryNote.hidden, false, 'country selection must show the coverage clarification');
-      assert.equal(
-        countryNote.textContent,
-        'This list shows monitored sources based in the selected country or region. Sources based elsewhere also cover it.',
-      );
+      assert.equal(countryNote.textContent, SOURCE_COUNTRY_FILTER_NOTE);
       for (const country of ['us', 'eu']) {
         countrySelect.value = country;
         countrySelect.dispatchEvent(new window.Event('change'));
         assert.equal(countryNote.hidden, false, `${country} selection must show the coverage clarification`);
-        assert.equal(
-          countryNote.textContent,
-          'This list shows monitored sources based in the selected country or region. Sources based elsewhere also cover it.',
-        );
+        assert.equal(countryNote.textContent, SOURCE_COUNTRY_FILTER_NOTE);
       }
       countrySelect.value = 'intl';
       countrySelect.dispatchEvent(new window.Event('change'));

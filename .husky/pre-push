@@ -80,19 +80,35 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
     BASE_REF="$PR_BASE_REF"
   fi
   BASE_REF="${BASE_REF:-main}"
-  # Refresh the remote-tracking ref before trusting it. A stacked branch's
-  # base may not be fetched locally at all yet, and even origin/main can be
-  # stale in a long-lived worktree — either way, counting against a stale
-  # ref reintroduces the exact false-positive this guard is meant to avoid.
-  # A failed fetch (offline, network hiccup) is not fatal: fall through to
-  # whatever's already cached locally, same as before this change.
-  git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
-  if ! git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then
-    echo "  Base ref 'origin/$BASE_REF' not resolvable, falling back to origin/main."
-    BASE_REF="main"
-    git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
+  # Lazy ahead-count (#6764): count against the CACHED remote-tracking ref
+  # and fetch only to disprove a suspected violation or resolve a base that
+  # was never fetched — a fetch can only shrink the count, so a cached pass
+  # is a real pass. Decision + fixtures live in scripts/prepush-attest.sh
+  # (`base-guard`), where tests/prepush-attest.test.mjs executes them against
+  # real git fixtures instead of grepping this hook.
+  GUARD_STATUS=0
+  GUARD_OUT=$(bash scripts/prepush-attest.sh base-guard "$BASE_REF" 20) || GUARD_STATUS=$?
+  case "$GUARD_STATUS" in
+    0 | 3) ;;
+    *)
+      echo "ERROR: branch-contamination guard failed (status $GUARD_STATUS); refusing to push."
+      exit 1
+      ;;
+  esac
+  if ! printf '%s' "$GUARD_OUT" | awk -F '\t' '
+    NR != 1 { exit 1 }
+    NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }
+    END { if (NR != 1) exit 1 }
+  ' >/dev/null; then
+    echo "ERROR: branch-contamination guard returned malformed output; refusing to push."
+    exit 1
   fi
-  COMMIT_COUNT=$(git rev-list --count "origin/$BASE_REF..HEAD" 2>/dev/null || echo 0)
+  BASE_REF=$(printf '%s' "$GUARD_OUT" | cut -f1)
+  COMMIT_COUNT=$(printf '%s' "$GUARD_OUT" | cut -f2)
+  if [ "$GUARD_STATUS" -eq 3 ] && ! [ "$COMMIT_COUNT" -gt 20 ] 2>/dev/null; then
+    echo "ERROR: branch-contamination guard returned an inconsistent result; refusing to push."
+    exit 1
+  fi
   if [ "$COMMIT_COUNT" -gt 20 ]; then
     echo ""
     echo "============================================================"
@@ -345,8 +361,15 @@ if [ -L node_modules ]; then
   echo "ERROR: node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
   exit 1
 fi
-if [ ! -d node_modules ]; then
-  echo "node_modules missing, running npm ci..."
+# Test the install MARKER, not the directory. `-d` is satisfied by an empty
+# node_modules/ — which a half-finished install, an interrupted npm ci, or a
+# `mkdir node_modules` leaves behind — so the gate would skip the install and
+# then die later on a missing binary (`sh: tsc: command not found`), pointing
+# at the wrong thing. npm writes .package-lock.json only on a completed install,
+# which is exactly the check shouldInstallDependencies() in
+# scripts/bootstrap-worktree.mjs already uses. Keep the two in agreement.
+if [ ! -f node_modules/.package-lock.json ]; then
+  echo "node_modules missing or incomplete, running npm ci..."
   npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
 fi
 
@@ -629,7 +652,8 @@ if [ -n "$PRO_BUILT_OUTPUT_TEST" ]; then
     echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
     exit 1
   fi
-  if [ ! -d pro-test/node_modules ]; then
+  # Marker, not directory — see the root node_modules check above.
+  if [ ! -f pro-test/node_modules/.package-lock.json ]; then
     (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
   fi
   (cd pro-test && npm run build >/dev/null) || {
@@ -743,7 +767,8 @@ if [ "$RUN_ALL" = true ] || path_matches '^pro-test/|^convex/config/productCatal
     echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
     exit 1
   fi
-  if [ ! -d pro-test/node_modules ]; then
+  # Marker, not directory — see the root node_modules check above.
+  if [ ! -f pro-test/node_modules/.package-lock.json ]; then
     echo "  Installing pro-test deps..."
     (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
   fi

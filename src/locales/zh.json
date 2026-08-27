@@ -165,9 +165,7 @@
       "energyMix": "电力结构",
       "coal": "煤炭",
       "noMajorDisruptions": "未报告重大中断",
-      "activeDisruptions_one": "{{count}} 起活跃中断",
       "activeDisruptions_other": "{{count}} 起活跃中断",
-      "activeSignals_one": "{{count}} 个活跃信号",
       "activeSignals_other": "{{count}} 个活跃信号",
       "aviationSource": "航空监测",
       "hazardSource": "国家情报信号",
@@ -363,6 +361,7 @@
     "securityAdvisories": "安全警告",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram 情报",
+    "xIntel": "X News Accounts",
     "startups": "创业公司与风投",
     "vcblogs": "风投洞察与文章",
     "regionalStartups": "全球创业新闻",
@@ -529,6 +528,7 @@
       "recent": "最近搜索",
       "empty": "搜索数据或执行命令",
       "noResults": "无结果",
+      "resultAnnouncement_other": "“{{query}}”有 {{count}} 个结果",
       "commands": "命令",
       "results": "结果",
       "seeAllCommands": "查看所有命令",
@@ -1403,7 +1403,6 @@
       "clusters": "聚类",
       "alertsLabel": "警报",
       "alert": "警报",
-      "sources_one": "{{count}} 个来源",
       "sources_other": "{{count}} 个来源",
       "briefTech": "技术简报",
       "briefCommodity": "商品简报",
@@ -1760,6 +1759,21 @@
       "filterGeopolitics": "地缘政治",
       "filterCyber": "网络"
     },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
     "investments": {
       "infoTooltip": "沙特阿拉伯和阿联酋在全球关键基础设施领域的对外直接投资数据库。点击某行可在地图上飞到该投资所在位置。",
       "searchPlaceholder": "Search assets, countries, entities…",
@@ -2020,17 +2034,12 @@
       },
       "time": {
         "justNow": "刚才",
-        "hoursAgo_one": "{{count}}小时前",
         "hoursAgo_other": "{{count}}小时前",
-        "daysAgo_one": "{{count}}天前",
         "daysAgo_other": "{{count}}天前"
       },
       "filters": {
-        "alert_one": "{{count}} 条警报",
         "alert_other": "{{count}} 条警报",
-        "warning_one": "{{count}} 条警告",
         "warning_other": "{{count}} 条警告",
-        "watch_one": "{{count}} 条监测",
         "watch_other": "{{count}} 条监测"
       },
       "errors": {
@@ -2193,7 +2202,6 @@
       "rationale": "理由：",
       "driver": "驱动因素：",
       "appliesToNext": "适用于下一次AI重新生成",
-      "signals_one": "{{count}}个信号",
       "signals_other": "{{count}}个信号",
       "disclaimer": "AI生成的交易信号仅供参考。非投资建议。请自行研究。",
       "unavailable": "AI市场影响在每次预测运行后生成。请稍后查看。"
@@ -2424,7 +2432,6 @@
         "new": "新增",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}} 项指定",
       "designations_other": "{{count}} 项指定",
       "fallbacks": {
         "unattributed": "未归属",
@@ -2462,9 +2469,7 @@
         "updated": "更新于 {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h 前",
         "hoursAgo_other": "{{count}}h 前",
-        "daysAgo_one": "{{count}}d 前",
         "daysAgo_other": "{{count}}d 前"
       },
       "confidence": {
@@ -2494,7 +2499,6 @@
     "correlation": {
       "loading": "等待数据...",
       "empty": "未检测到活跃收敛",
-      "signals_one": "{{count}} 个信号",
       "signals_other": "{{count}} 个信号",
       "analyzing": "分析中...",
       "viewOnMap": "在地图上查看"
@@ -2521,16 +2525,11 @@
         "industrial": "工业",
         "strategic": "战略性"
       },
-      "observations_one": "{{count}} 次观测",
       "observations_other": "{{count}} 次观测",
-      "sources_one": "{{count}} 个来源",
       "sources_other": "{{count}} 个来源",
       "age": {
-        "minutesAgo_one": "{{count}} 分钟前",
         "minutesAgo_other": "{{count}} 分钟前",
-        "hoursAgo_one": "{{count}} 小时前",
         "hoursAgo_other": "{{count}} 小时前",
-        "daysAgo_one": "{{count}} 天前",
         "daysAgo_other": "{{count}} 天前"
       }
     },
@@ -2988,7 +2987,11 @@
       "heading": "航向",
       "hexCode": "HEX代码",
       "squawk": "应答机代码",
-      "attribution": "来源：adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "来源：adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "爬升率",
+      "manufacturer": "制造商",
+      "owner": "所有者",
+      "builtYear": "制造年份"
     },
     "militaryVessel": {
       "aisDark": "AIS信号消失",
@@ -3033,7 +3036,8 @@
       "moreVessels": "还有{{count}}艘舰艇",
       "vesselsCount": "{{count}}艘舰艇",
       "vessels": "舰艇",
-      "trackedVessels": "跟踪舰艇"
+      "trackedVessels": "跟踪舰艇",
+      "showLess": "显示更少"
     },
     "naturalEvent": {
       "closed": "已结束",
@@ -3322,7 +3326,9 @@
     "fontFamily": "字体",
     "fontFamilyDesc": "等宽字体用于技术外观，系统默认字体便于阅读。",
     "fontMono": "等宽字体",
-    "fontSystem": "系统默认"
+    "fontSystem": "系统默认",
+    "panelFontScale": "文本大小",
+    "followGlobalFontScale": "使用全局设置"
   },
   "contextMenu": {
     "openCountryBrief": "打开国家简报",
@@ -3413,7 +3419,9 @@
       "orefSirens1": "实时以色列导弹和火箭警报",
       "orefSirens2": "警报区域地图及威胁分类",
       "telegramIntel1": "精选 Telegram 开源情报频道",
-      "telegramIntel2": "近实时冲突与地缘政治更新"
+      "telegramIntel2": "近实时冲突与地缘政治更新",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

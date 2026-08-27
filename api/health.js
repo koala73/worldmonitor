@@ -152,6 +152,10 @@ const HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS = 60;
 // Edge runtime mirror of scripts/china-coverage-manifest.mjs. Edge functions
 // cannot import scripts/; tests enforce key and status-projection parity.
 const CHINA_COVERAGE_SUMMARY_KEY = 'health:china-coverage:v1';
+// Consecutive non-healthy evaluations required before CHINA_DEGRADED is
+// reported. See projectChinaCoverageStatus for why the debounce lives here and
+// not in the summary's own `status` field.
+const CHINA_DEGRADED_MIN_CONSECUTIVE = 2;
 const HEALTH_VERDICT_SNAPSHOT_TTL_MS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS * 1_000;
 const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-lock`;
 // The sweep can consume its full 8s timeout, followed by a 4s failure-log read
@@ -519,6 +523,7 @@ const STANDALONE_KEYS = {
   staticRefBundleTick:           'bundle:heartbeat:static-ref',
   staticRefHeavyBundleTick:      'bundle:heartbeat:static-ref-heavy',
   telegramFeed:                  'intelligence:telegram-feed:v1',
+  xFeed:                         'intelligence:x-feed:v1',
   digestNotifications:           'digest:last-run',
   webcams:                       'webcam:cameras:active',
   forecastResolutions:           'forecast:resolutions:v1',
@@ -538,8 +543,18 @@ const STANDALONE_KEYS = {
   intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',
   // VIA Rail Tracker unofficial live JSON (#6615). No dashboard consumer.
   viarailLive:           'transit:viarail:live',
+  // #7012 TPS Open Data — on-demand only. Retrospective MCI + annual Calls
+  // Attended. Not live CAD, not bootstrap, not a Canada-bundle member.
+  tpsMci: 'safety:toronto:tps-mci:v1',
+  tpsCallsAttended: 'safety:toronto:tps-calls-attended:v1',
   // Seeded and health-monitored; no transit panel yet (#6623).
   ttcAlerts: 'transit:ttc:alerts:v1',
+  // Official Toronto Fire Services live CAD (#6682). Own key; not folded into
+  // canadaAlerts / canadaRoads / torontoRoads. No map panel yet.
+  torontoTfs: 'safety:toronto-tfs:v1',
+  // Official TPS public-safety calls for service (#6682). Own key; not folded
+  // into canadaAlerts / canadaRoads / torontoRoads. No map panel yet.
+  torontoTps: 'safety:toronto-tps:v1',
 };
 
 const SEED_META = {
@@ -775,7 +790,7 @@ const SEED_META = {
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
-  temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // request-driven producer kept warm by seed-infra; data TTL is 60min so health reaches STALE_SEED before EMPTY
+  temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // rebuild-stamped ONLY (TEMPORAL_ANOMALIES_REBUILD_AFTER_MS=20min in infrastructure/v1/_shared.ts) — only producer-route traffic can rebuild and refresh this request-driven stamp, so a traffic lull can age it past 45min; 45min leaves ~2.25x margin. Data TTL is 60min so health reaches STALE_SEED before EMPTY
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   canadaRoads:      {
     key: 'seed-meta:infra:ontario-511',
@@ -857,6 +872,33 @@ const SEED_META = {
   // :v1 stripped. The colon form probed a key the seeder never writes, which reads
   // absent forever no matter how healthy the seeder is.
   ttcAlerts:        { key: 'seed-meta:transit:ttc-alerts',         maxStaleMin: 30, cutover: { mode: 'expiring-ack', fromKey: null, issue: 6623, status: 'EMPTY' } }, // 5min bundle member; 30 = 6× interval. Empty until first Railway tick is an expiring acknowledgement, not a crit.
+  // #7012 on-demand TPS Open Data. Retrospective batch; 14d absorbs a missed
+  // portal refresh without treating fetch time as freshness. GTA Update is
+  // intentionally absent: its writer is disabled pending the rights gate.
+  tpsMci:           { key: 'seed-meta:safety:tps-mci',             maxStaleMin: 20160, cutover: { mode: 'expiring-ack', fromKey: null, issue: 7035, status: 'EMPTY' } },
+  tpsCallsAttended: { key: 'seed-meta:safety:tps-calls-attended',  maxStaleMin: 20160, cutover: { mode: 'expiring-ack', fromKey: null, issue: 7036, status: 'EMPTY' } },
+  torontoTfs: {
+    key: 'seed-meta:safety:toronto-tfs',
+    maxStaleMin: 15, // TFS live CAD refreshes every ~5min; 15 = 3× interval
+    activationKey: 'seed-activated:safety:toronto-tfs',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 7037,
+      activationKey: 'seed-activated:safety:toronto-tfs',
+    },
+  },
+  torontoTps: {
+    key: 'seed-meta:safety:toronto-tps',
+    maxStaleMin: 45, // TPS public map 15–20min; 45 = 3× interval
+    activationKey: 'seed-activated:safety:toronto-tps',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 7038,
+      activationKey: 'seed-activated:safety:toronto-tps',
+    },
+  },
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
   globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 240 }, // 150min request pacing + hourly member gate yields ~180min publishes; 240min leaves one gate of scheduling jitter without raising the 10/day SAM budget.
@@ -869,6 +911,7 @@ const SEED_META = {
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // 15min bulk materializer; 45min = 3× cadence and expires before the 24h canonical key.
   telegramFeed:     { key: 'seed-meta:intelligence:telegram-feed:v1', maxStaleMin: 10 }, // 60s poll interval; 10min grace catches poll failures before they go stale in the panel
+  xFeed:            { key: 'seed-meta:intelligence:x-feed:v1', maxStaleMin: 45 }, // 5–15min ais-relay poll; 45min = 3× max cadence. Cutover complete (#6654): X_BEARER_TOKEN is on ais-relay and the producer serves the key, so EMPTY here is now a real fault, not a deploy window.
   digestNotifications: { key: 'seed-meta:digest:last-run',          maxStaleMin: 90 }, // Railway digest-notifications cron runs every 30min; 90 = 3x cadence and detects a dead cron before daily digests are missed.
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
   forecastsBootstrap: { key: 'seed-meta:forecast:predictions-bootstrap', maxStaleMin: 90 }, // Same cron. Monitored separately: the fast tier now hydrates from the dashboard list, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
@@ -1344,6 +1387,11 @@ const ON_DEMAND_KEYS = new Set([
   // Softening lifts once the durable activation marker exists.
   'bocValet',
   'statcanWds',
+  // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
+  // permanent marker after its first successful canonical publish; health is
+  // strict from that point onward.
+  'torontoTfs',
+  'torontoTps',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
@@ -1399,6 +1447,10 @@ const ON_DEMAND_KEYS = new Set([
   'intelHistoryIngestConflictAcled',
   'intelHistoryIngestMilitaryCrossStrait',
   'intelHistoryIngestEnergyIntelligence',
+  // #7012 TPS Open Data is on-demand. Absence before the first explicit fetch
+  // is pending, not CRIT. GTA Update is not registered: writer disabled.
+  'tpsMci',
+  'tpsCallsAttended',
 ]);
 
 // Legacy broad empty-data exemptions. classifyKey uses this set in both the
@@ -1420,6 +1472,8 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
+  torontoTfs: SEED_META.torontoTfs.activationKey,
+  torontoTps: SEED_META.torontoTps.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
@@ -1559,6 +1613,11 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
   ...EMPTY_DATA_OK_KEYS,
+  // Both Toronto CAD sources publish an explicit {records:[]} envelope on a
+  // quiet tick. Keep zero valid without softening a missing payload after each
+  // activation marker exists.
+  'torontoTfs',
+  'torontoTps',
   'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersWorldBank',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
@@ -2565,11 +2624,31 @@ function projectChinaCoverageStatus(raw, readError = false) {
     return { status: 'CHINA_UNAVAILABLE', chinaStatus: 'unavailable', reason: 'SUMMARY_INVALID' };
   }
 
-  const status = {
+  let status = {
     healthy: 'OK',
     degraded: 'CHINA_DEGRADED',
     unavailable: 'CHINA_UNAVAILABLE',
   }[candidate.status] ?? 'CHINA_UNAVAILABLE';
+  // Debounce DEGRADED only. The evaluator samples 16 sources once an hour, so a
+  // source that is degraded at the sampling instant and healthy moments later
+  // pins CHINA_DEGRADED for a full cycle — measured at ~50 minutes for a
+  // two-minute miss on 2026-08-25. Requiring a second consecutive observation
+  // costs one cycle of detection latency on a real outage, which is affordable
+  // here: this is a warn, and every source underneath carries its own probe with
+  // its own budget.
+  //
+  // UNAVAILABLE is never debounced — it is the more severe verdict, and holding
+  // it back would be the expensive direction to be wrong in.
+  //
+  // A summary with NO streak field (written before the producer shipped this)
+  // alarms exactly as it did before. Absent evidence must not read as evidence
+  // of health, or the rollout window would silence a genuine outage.
+  if (
+    status === 'CHINA_DEGRADED'
+    && candidate.degradedStreak === CHINA_DEGRADED_MIN_CONSECUTIVE - 1
+  ) {
+    status = 'OK';
+  }
   const problems = Array.isArray(candidate.entries)
     ? candidate.entries
       .filter((entry) => entry?.launchStatus === 'launched' && entry?.status !== 'healthy')
@@ -2580,6 +2659,11 @@ function projectChinaCoverageStatus(raw, readError = false) {
     chinaStatus: candidate.status,
     evaluatedAt: candidate.evaluatedAt ?? null,
     counts: candidate.counts ?? null,
+    // Published even while debounced: a held verdict must stay visible, or the
+    // debounce becomes indistinguishable from health.
+    ...(Number.isInteger(candidate.degradedStreak)
+      ? { degradedStreak: candidate.degradedStreak }
+      : {}),
     ...(problems.length > 0 ? { problems } : {}),
   };
 }
@@ -2796,7 +2880,14 @@ function healthResponseBody(snapshot, compact) {
   // no-op, which is what makes buildCompactVerdictSnapshot() below safe.
   const problems = snapshot.checks
     ? Object.fromEntries(Object.entries(snapshot.checks).filter(
-      ([name, check]) => name !== 'chinaDecisionSignals' && isProblemStatus(check.status),
+      ([name, check]) => name !== 'chinaDecisionSignals' && (
+        isProblemStatus(check.status)
+        || (
+          name === 'chinaCoverage'
+          && typeof check.chinaStatus === 'string'
+          && check.chinaStatus !== 'healthy'
+        )
+      ),
     ))
     : { ...(snapshot.problems ?? {}) };
   // Older compact snapshots may predate the operator-only China health

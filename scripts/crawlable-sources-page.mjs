@@ -122,6 +122,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['Bank of Canada', 'finance'],
   ['bothsidesofthetable.com', 'technology'],
   ['City of Toronto Open Data', 'infrastructure'],
+  ['Toronto Police Service Open Data', 'geopolitics'],
+  ['GTA Update', 'geopolitics'],
   ['contxto.com', 'technology'],
   ['corridorrisk.io', 'infrastructure'],
   ['CWFIS / CWFIF (NRCan)', 'environment'],
@@ -166,6 +168,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['www.sequoiacap.com', 'technology'],
   ['SWF Institute', 'finance'],
   ['Toronto Transit Commission (TTC) GTFS-RT', 'infrastructure'],
+  ['Toronto Fire Services', 'environment'],
+  ['Toronto Police Service', 'environment'],
   ['United Nations Population Division', 'finance'],
   ['USGS ScienceBase (Mineral Commodity Summaries)', 'energy'],
   ['VIA Rail Tracker (unofficial)', 'infrastructure'],
@@ -909,7 +913,7 @@ ${providerCards}
       .catalog-meta { padding: 15px 2px; display: flex; justify-content: space-between; gap: 20px; align-items: center; }
       .catalog-meta p { margin: 0; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; }
       .catalog-meta a { font-size: 12px; }
-      .catalog-country-note { max-width: 75ch; margin: 0 2px 15px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+      .catalog-country-note { margin: 0 2px 15px; color: var(--muted); font-size: 13px; line-height: 1.6; }
       .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
       .provider-card { min-width: 0; min-height: 180px; padding: 18px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(9,13,11,.48); }
       .provider-card:hover { background: var(--panel-2); }

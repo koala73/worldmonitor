@@ -9,16 +9,16 @@
 // This module reads once and memoizes so both consumers get identical
 // data from the same source of truth.
 //
-// Update path: when the panel's background RPC fetch completes, it calls
-// setCachedStorageFacilityRegistry() to refresh the memo. The map picks
-// up the new data on its next re-render cycle (triggered by state change
-// from any other source), keeping map ↔ panel aligned.
+// Ownership (#7046): `storageFacilities` is on-demand. Rolling-deploy
+// clients still drain a leftover slow-tier payload via getHydratedData();
+// new clients fetch through ensureHydrated() with one in-flight promise
+// and one bounded resolved value.
 //
 // Mirror of src/shared/pipeline-registry-store.ts — same rationale, same
 // test hooks. Kept as a separate module because the two registries use
 // different bootstrap keys and have no shared projection logic.
 
-import { getHydratedData } from '@/services/bootstrap';
+import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
 
 export interface RawStorageFacilityRegistry {
   facilities?: Record<string, unknown>;
@@ -34,6 +34,7 @@ interface CachedRegistry {
 
 let cache: CachedRegistry = { registry: undefined, source: 'none' };
 let drained = false;
+let inflight: Promise<CachedRegistry> | null = null;
 
 // Indirection so tests can inject a fake reader. The literal
 // getHydratedData('storageFacilities') call below satisfies
@@ -44,6 +45,13 @@ function defaultBootstrapReader(key: string): unknown {
   return getHydratedData(key);
 }
 let reader: BootstrapReader = defaultBootstrapReader;
+
+type OnDemandLoader = (key: string) => Promise<unknown | undefined>;
+function defaultOnDemandLoader(key: string): Promise<unknown | undefined> {
+  if (key === 'storageFacilities') return ensureHydrated('storageFacilities');
+  return ensureHydrated(key);
+}
+let onDemandLoader: OnDemandLoader = defaultOnDemandLoader;
 
 /**
  * Returns the cached storage registry. On first call, drains the
@@ -62,6 +70,34 @@ export function getCachedStorageFacilityRegistry(): CachedRegistry {
 }
 
 /**
+ * Rolling-deploy hydration first, then one coalesced on-demand fetch.
+ * Pass `{ refresh: true }` for later freshness ticks so the in-memory
+ * resolved value does not suppress a new CDN-shielded read.
+ */
+export function ensureStorageFacilityRegistryHydrated(
+  options: { refresh?: boolean } = {},
+): Promise<CachedRegistry> {
+  const existing = getCachedStorageFacilityRegistry();
+  if (!options.refresh && existing.registry) return Promise.resolve(existing);
+  if (inflight) return inflight;
+
+  inflight = (async () => {
+    try {
+      const registry = await onDemandLoader('storageFacilities') as RawStorageFacilityRegistry | undefined;
+      if (registry) {
+        cache = { registry, source: 'bootstrap' };
+        drained = true;
+      }
+      return cache;
+    } finally {
+      inflight = null;
+    }
+  })();
+
+  return inflight;
+}
+
+/**
  * Updates the cache from a fresh RPC response (the panel calls this after
  * its background listStorageFacilities() settles so the map picks up the
  * newer classifierVersion / fetchedAt on its next render).
@@ -75,10 +111,17 @@ export function setCachedStorageFacilityRegistry(registry: RawStorageFacilityReg
 export function __resetStorageFacilityRegistryStoreForTests(): void {
   cache = { registry: undefined, source: 'none' };
   drained = false;
+  inflight = null;
   reader = defaultBootstrapReader;
+  onDemandLoader = defaultOnDemandLoader;
 }
 
 /** Test-only: inject a fake bootstrap reader. */
 export function __setBootstrapReaderForTests(fn: (key: string) => unknown): void {
   reader = fn;
+}
+
+/** Test-only: inject the on-demand fetch used after a rolling-deploy miss. */
+export function __setOnDemandLoaderForTests(fn: OnDemandLoader): void {
+  onDemandLoader = fn;
 }

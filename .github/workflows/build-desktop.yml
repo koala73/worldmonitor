@@ -210,9 +210,13 @@ jobs:
       - name: Check Apple signing secrets
         if: contains(matrix.platform, 'macos')
         id: apple-signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         shell: bash
         run: |
-          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ] && [ -n "${{ secrets.KEYCHAIN_PASSWORD }}" ]; then
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_CERTIFICATE_PASSWORD" ] && [ -n "$KEYCHAIN_PASSWORD" ]; then
             echo "available=true" >> $GITHUB_OUTPUT
             echo "Apple signing secrets detected"
           else

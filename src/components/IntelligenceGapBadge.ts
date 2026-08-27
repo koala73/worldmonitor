@@ -7,6 +7,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { trackFindingClicked } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { bindActivationKeys } from '@/utils/activation';
 
 
 const LOW_COUNT_THRESHOLD = 3;
@@ -98,6 +99,7 @@ export class IntelligenceFindingsBadge {
     });
 
     // Event delegation for finding items, toggle, and "more" link
+    bindActivationKeys(this.dropdown, '.finding-item');
     this.dropdown.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
@@ -414,7 +416,7 @@ export class IntelligenceFindingsBadge {
       const insight = this.getInsight(finding);
 
       return `
-        <div class="finding-item ${priorityClass}" data-finding-id="${escapeHtml(finding.id)}">
+        <div class="finding-item ${priorityClass}" data-finding-id="${escapeHtml(finding.id)}" role="button" tabindex="0">
           <div class="finding-header">
             <span class="finding-type">${icon} ${escapeHtml(finding.title)}</span>
             <span class="finding-confidence ${priorityClass}">${t(`components.intelligenceFindings.priority.${finding.priority}`)}</span>

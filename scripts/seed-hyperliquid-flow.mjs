@@ -92,6 +92,15 @@ function parsePositiveOpenInterest(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
 }
 
+function parseNonNegativeNotional(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : Number.NaN;
+  }
+  if (typeof value !== 'string' || value.trim() === '') return Number.NaN;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : Number.NaN;
+}
+
 function trailingValidOiSamples(values) {
   if (!Array.isArray(values)) return [];
   let start = values.length;
@@ -128,7 +137,9 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   const currentOiValid = Number.isFinite(currentOi);
   const markPx = Number(ctx.markPx);
   const oraclePx = Number(ctx.oraclePx);
-  const dayNotional = Number(ctx.dayNtlVlm);
+  // `Number(null)` and `Number('')` both produce zero. Unlike a reported zero,
+  // those malformed upstream shapes must not extend the volume baseline.
+  const dayNotional = parseNonNegativeNotional(ctx.dayNtlVlm);
   const prevOi = prevAsset?.openInterest ?? null;
   const prevOiSamples = opts.suppressOiDelta
     ? []
@@ -180,7 +191,12 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   // component is rebuilding. Restart it so downstream charts do not join two
   // non-comparable regimes into one continuous sparkline.
   const sparkScore   = shiftAndAppend(opts.suppressOiDelta || !currentOiValid ? [] : prevAsset?.sparkScore, composite);
-  const sparkVol     = shiftAndAppend(prevAsset?.sparkVol,     Number.isFinite(dayNotional) ? dayNotional : 0);
+  // Never append a synthetic zero for an invalid poll (mirrors the OI rule
+  // above): a 0 among the 12 baseline samples deflates the average and
+  // fabricates phantom volume-spike scores. Keep the prior window instead.
+  const sparkVol     = Number.isFinite(dayNotional)
+    ? shiftAndAppend(prevAsset?.sparkVol, dayNotional)
+    : prevAsset?.sparkVol;
 
   // Warmup stays TRUE until both baselines are usable — cold-start OR insufficient
   // volume history OR a complete one-hour OI window. Clears only when the asset

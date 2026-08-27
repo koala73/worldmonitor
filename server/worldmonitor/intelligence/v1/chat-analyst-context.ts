@@ -1,4 +1,5 @@
 import { getCachedJson, readCachedJson } from '../../../_shared/redis';
+import { filterRevokedUrls, readRevokedUrlSet, type RevocationRead } from '../../../_shared/digest-revocations';
 // Issue #3724: all LLM-bound headline content goes through sanitizeForPrompt
 // (semantic + structural). The lighter sanitizeHeadline only strips structural
 // delimiters and was designed to preserve security-news semantics for display
@@ -901,14 +902,23 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
   if (keywords.length === 0) return '';
 
   let digest: unknown;
+  let revoked: RevocationRead;
   try {
-    digest = await getCachedJson(DIGEST_KEY_EN, true);
+    [digest, revoked] = await Promise.all([
+      getCachedJson(DIGEST_KEY_EN, true),
+      readRevokedUrlSet(),
+    ]);
   } catch {
     return '';
   }
   if (!digest) return '';
+  // #7084: the stored digest body is unfiltered by design, so this reader
+  // applies the operator suppression set itself — otherwise a revoked headline
+  // went straight into the analyst's prompt. Fail CLOSED when the set cannot
+  // be read: no grounding is better than grounding we could not check.
+  if (!revoked.readable) return '';
 
-  const items = flattenDigest(digest);
+  const items = filterRevokedUrls(flattenDigest(digest), revoked.urls).kept;
   if (items.length === 0) return '';
 
   const scored = items

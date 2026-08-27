@@ -1,0 +1,443 @@
+openapi: 3.1.0
+info:
+    title: SafetyService API
+    version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
+paths:
+    /api/safety/v1/get-toronto-safety:
+        get:
+            tags:
+                - SafetyService
+            summary: GetTorontoSafety
+            description: Returns one bounded Toronto Police Service dataset with source, semantics, and freshness metadata.
+            operationId: GetTorontoSafety
+            parameters:
+                - name: dataset
+                  in: query
+                  description: 'Dataset selector. Accepted values: reported_occurrence, annual_aggregate.'
+                  required: false
+                  example: "reported_occurrence"
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum rows to return. The service defaults to 50 and caps this value at 100.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: division
+                  in: query
+                  description: Optional case-insensitive police-division filter.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: neighbourhood
+                  in: query
+                  description: Optional case-insensitive neighbourhood filter.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: offence
+                  in: query
+                  description: Optional case-insensitive offence filter for tps_mci.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: year
+                  in: query
+                  description: Optional event-year filter for tps_calls_attended.
+                  required: false
+                  example: 1
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "aggregates":
+                                    - "divisionFinal": "example"
+                                      "divisionOriginal": "example"
+                                      "eventCount": 1
+                                      "eventYear": 1
+                                      "id": "example-id"
+                                "attribution": "example"
+                                "degraded": true
+                                "disclaimer": "example"
+                                "fetchedAt": 1717200000000
+                            schema:
+                                $ref: '#/components/schemas/GetTorontoSafetyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+    schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetTorontoSafetyRequest:
+            type: object
+            properties:
+                dataset:
+                    type: string
+                    description: 'Dataset selector. Accepted values: reported_occurrence, annual_aggregate.'
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum rows to return. The service defaults to 50 and caps this value at 100.
+                division:
+                    type: string
+                    description: Optional case-insensitive police-division filter.
+                neighbourhood:
+                    type: string
+                    description: Optional case-insensitive neighbourhood filter.
+                offence:
+                    type: string
+                    description: Optional case-insensitive offence filter for tps_mci.
+                year:
+                    type: integer
+                    format: int32
+                    description: Optional event-year filter for tps_calls_attended.
+        GetTorontoSafetyResponse:
+            type: object
+            properties:
+                semantic:
+                    type: string
+                source:
+                    type: string
+                sourceLabel:
+                    type: string
+                attribution:
+                    type: string
+                disclaimer:
+                    type: string
+                sourceUrl:
+                    type: string
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                sourceEditedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                newestContentAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                newestContentYear:
+                    type: integer
+                    format: int32
+                degraded:
+                    type: boolean
+                unavailable:
+                    type: boolean
+                matched:
+                    type: integer
+                    format: int32
+                truncated:
+                    type: boolean
+                occurrences:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TorontoReportedOccurrence'
+                aggregates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TorontoAnnualAggregate'
+        TorontoReportedOccurrence:
+            type: object
+            properties:
+                id:
+                    type: string
+                objectId:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                eventUniqueId:
+                    type: string
+                reportDate:
+                    type: string
+                occurrenceDate:
+                    type: string
+                division:
+                    type: string
+                locationType:
+                    type: string
+                premisesType:
+                    type: string
+                offence:
+                    type: string
+                csiCategory:
+                    type: string
+                neighbourhood:
+                    type: string
+                longitude:
+                    type: number
+                    format: double
+                latitude:
+                    type: number
+                    format: double
+                approximate:
+                    type: boolean
+        TorontoAnnualAggregate:
+            type: object
+            properties:
+                id:
+                    type: string
+                objectId:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                eventYear:
+                    type: integer
+                    format: int32
+                divisionOriginal:
+                    type: string
+                divisionFinal:
+                    type: string
+                neighbourhood:
+                    type: string
+                eventCount:
+                    type: number
+                    format: double
+                incidentPoint:
+                    type: boolean

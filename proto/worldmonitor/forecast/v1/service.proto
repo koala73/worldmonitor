@@ -27,16 +27,23 @@ service ForecastService {
     option (sebuf.http.config) = {path: "/get-simulation-package", method: HTTP_METHOD_GET};
   }
 
-  // GetSimulationOutcome returns the latest stored forecast simulation outcome; the response note is populated when a supplied runId does not match the returned outcome.
+  // GetSimulationOutcome returns the latest stored forecast simulation outcome.
+  // Outcomes auto-refresh on the deep-forecast cron cadence (~hourly): each
+  // seed-forecasts cycle writes a simulation package and enqueues a worker
+  // task (scripts/seed-forecasts.mjs enqueueSimulationTask). Callers usually
+  // poll this endpoint rather than TriggerSimulation. The response note is
+  // populated when a supplied runId does not match the returned outcome.
   rpc GetSimulationOutcome(GetSimulationOutcomeRequest) returns (GetSimulationOutcomeResponse) {
     option (sebuf.http.config) = {path: "/get-simulation-outcome", method: HTTP_METHOD_GET};
   }
 
   // TriggerSimulation enqueues a simulation task for the current
-  // SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. The runId
-  // is server-derived; callers cannot supply one. The Railway worker
-  // (scripts/process-simulation-tasks.mjs) polls the queue and writes
-  // outcomes; callers poll GetSimulationOutcome with the returned runId
+  // SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. Usually
+  // unnecessary — outcomes auto-run on each deep-forecast cron cycle (~hourly)
+  // via enqueueSimulationTask; use this only when you need a fresh run outside
+  // that cadence. The runId is server-derived; callers cannot supply one. The
+  // Railway worker (scripts/process-simulation-tasks.mjs) polls the queue and
+  // writes outcomes; callers poll GetSimulationOutcome with the returned runId
   // to retrieve the result. Mirrors run-scenario.ts pattern. See #3734.
   rpc TriggerSimulation(TriggerSimulationRequest) returns (TriggerSimulationResponse) {
     option (sebuf.http.config) = {path: "/trigger-simulation", method: HTTP_METHOD_POST};

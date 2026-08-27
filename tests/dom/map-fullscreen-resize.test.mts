@@ -62,6 +62,10 @@ describe('map fullscreen resize synchronization', () => {
   });
 
   it('keeps the map-height separator value synchronized', () => {
+    // Pin a stacked-layout viewport: from SPLIT_LAYOUT_MIN_WIDTH up the
+    // handle resizes #mapContainer instead of the section
+    // (tests/dom/map-split-layout.test.mts covers that mode).
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
     const section = document.createElement('section');
     section.id = 'mapSection';
     Object.defineProperty(section, 'offsetHeight', { configurable: true, value: 500 });
@@ -109,9 +113,11 @@ describe('map fullscreen resize synchronization', () => {
 
     manager.setupMapWidthResize();
 
+    // At a 1000px container the bounds tighten to the pixel floors:
+    // min = 220px map floor (22%), max = 1000-300-6 panels floor (69.4%).
     expect(handle.getAttribute('aria-controls')).toBe('mapSection');
-    expect(handle.getAttribute('aria-valuemin')).toBe('25');
-    expect(handle.getAttribute('aria-valuemax')).toBe('75');
+    expect(handle.getAttribute('aria-valuemin')).toBe('22');
+    expect(handle.getAttribute('aria-valuemax')).toBe('69');
     expect(handle.getAttribute('aria-valuenow')).toBe('60');
 
     handle.dispatchEvent(new KeyboardEvent('keydown', {
@@ -125,7 +131,7 @@ describe('map fullscreen resize synchronization', () => {
     handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, bubbles: true }));
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, bubbles: true }));
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    expect(main.style.getPropertyValue('--map-col-width')).toBe('75.0%');
-    expect(handle.getAttribute('aria-valuenow')).toBe('75');
+    expect(main.style.getPropertyValue('--map-col-width')).toBe('69.4%');
+    expect(handle.getAttribute('aria-valuenow')).toBe('69');
   });
 });

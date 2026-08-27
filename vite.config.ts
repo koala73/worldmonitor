@@ -125,7 +125,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
   GoodThingsDigest: 'panels-news', LatestBrief: 'panels-news',
   LiveNews: 'panels-news', News: 'panels-news',
-  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news',
+  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news', XIntel: 'panels-news',
   // Macro / prices / trade
   BigMac: 'panels-economy', ConsumerPrices: 'panels-economy',
   Economic: 'panels-economy', GlobalProcurement: 'panels-economy',
@@ -167,7 +167,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
   TechEvents: 'panels-risk',
   ThreatTimeline: 'panels-risk',
-  TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
+  TechHubs: 'panels-risk', TechReadiness: 'panels-risk', TorontoSafety: 'panels-risk',
   WorldClock: 'panels-risk',
 };
 
@@ -944,6 +944,7 @@ export default defineConfig(({ mode }) => {
         injectRegister: false,
 
         includeAssets: [
+          'offline.html',
           'favico/favicon.ico',
           'favico/apple-touch-icon.png',
           'favico/favicon-32x32.png',
@@ -1003,18 +1004,14 @@ export default defineConfig(({ mode }) => {
           // Web Push handler (Phase 6). importScripts runs in the SW
           // context; /push-handler.js is a static file copied from
           // public/ and attaches 'push' + 'notificationclick' listeners.
-          importScripts: ['/push-handler.js'],
+          importScripts: ['/push-handler.js', '/sw-navigation.js'],
 
+          // Navigations are handled by public/sw-navigation.js (network-first
+          // with an offline.html fallback), NOT by a runtime cache: a cached
+          // index.html survives cleanupOutdatedCaches while its hashed chunks
+          // are purged with the old precache, so an offline reload after any
+          // deploy used to 404 the bundle and blank the dashboard.
           runtimeCaching: [
-            {
-              urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'html-navigation',
-                networkTimeoutSeconds: 5,
-                cacheableResponse: { statuses: [200] },
-              },
-            },
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
                 sameOrigin && /^\/api\//.test(url.pathname),

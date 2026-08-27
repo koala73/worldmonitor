@@ -103,7 +103,7 @@ export class CurrentRouteTab {
     );
     return [
       '<table class="re-current__chokepoints">',
-      '  <thead><tr><th>#</th><th>Chokepoint</th><th>Exposure</th></tr></thead>',
+      '  <thead><tr><th scope="col">#</th><th scope="col">Chokepoint</th><th scope="col">Exposure</th></tr></thead>',
       `  <tbody>${rows.join('')}</tbody>`,
       '</table>',
     ].join('\n');

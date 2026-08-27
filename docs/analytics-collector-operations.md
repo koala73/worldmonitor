@@ -28,10 +28,36 @@ health signal: a healthy deployment can still return HTTP 500 from `POST
   `12/12` accepted writes and zero `P2002` failures. Attach the exact deployed
   image/digest and the bounded production log query to the issue.
 - During normal queue draining, browser writes are serialized through one
-  in-flight transport slot. `pagehide` deliberately dispatches queued writes
-  concurrently so keepalive delivery gets a chance to finish. The client does
-  not blindly retry append-only conversion events after an ambiguous 5xx;
-  identity snapshots may use their idempotent retry policy.
+  in-flight transport slot. `pagehide` with `persisted === false` (a real
+  navigation) dispatches queued writes concurrently so keepalive delivery gets
+  a chance to finish. `pagehide` with `persisted === true` is bfcache freeze,
+  not unload: keep the hold. A tab that is only hidden (`visibilitychange` →
+  `hidden`, including iOS/Safari backgrounding) does **not** flush: WebKit
+  freezes in-flight `fetch`, and treating that as unload produced the
+  WORLDMONITOR-ZF `timeout+raced` population (~27/day, 71% Apple). Hidden tabs
+  hold the serialized queue and pause the module-owned latch until the page is
+  visible again (`visibilitychange` or `pageshow`). The client does not blindly
+  retry append-only conversion events after an ambiguous 5xx; identity snapshots
+  may use their idempotent retry policy.
+
+### Raced-timeout retry / replay (#6968)
+
+A `raced` failure means the transport ignored our abort and the request may
+still commit. That is the same "committed, then we stopped listening" ambiguity
+that already forbids retrying a 500 or a gateway status:
+
+| Door | Append-only event (conversion) | Identity snapshot |
+|---|---|---|
+| In-page retry (`isRetryableCollectorFailure` / `isRetryableIdentityFailure`) | closed | open (idempotent overwrite) |
+| Durable checkout-marker replay (`isDurableMarkerResolved`) | closed (marker settles) | n/a |
+
+`sendBeacon` is not a recovery path for conversions: it has no receipt, so a
+successful beacon cannot clear a durable marker and a failed one cannot prove
+the write never landed. Hidden-tab **hold** is the recovery: those writes never
+become `raced`. Remaining `raced` events are parked wrappers on a visible tab
+and stay unreplayable. Each Sentry payload carries `visibilityAtSend`,
+`elapsedAtDeadlineMs`, `racedCount`, and `writeCount` so ZF is judged as a rate
+against that page's writes, not as a raw daily count.
 
 ## Patched runtime image
 
@@ -381,7 +407,7 @@ To read what the last tick actually did:
 
 ```
 railway deployment list --project "$RAILWAY_PROJECT_ID" --environment production \
-  --service umami-retention --limit 200 --json
+  --service umami-retention --limit 1000 --json
 ```
 
 Every push to `main` writes a `SKIPPED` refusal ("No changes to watched files")
@@ -390,6 +416,29 @@ record is almost never the tick. Take the newest record whose status is a
 *running* one, then read that deployment's logs. A healthy tick logs `BEGIN`,
 `DELETE <n>`, `COMMIT` per statement; a locked-out tick logs the skip message
 and exits 0.
+
+### `HISTORY_WINDOW_SATURATED` — the runner is invisible, not dead
+
+If the alarm reports this verdict, **check the tick logs before touching
+Postgres.** Refusals accrued at ~29.5/day through August, so a window of N
+records only reaches back N/29.5 days. On 2026-08-22 the active deployment was
+5.5 days old and healthy — 71 of 71 scheduled ticks fired, zero errors — but sat
+at index 206 behind 206 refusals, so a 200-record window could not see it and
+the alarm read as if retention had died.
+
+`--limit 1000` (the CLI maximum) buys ~34 days. When even that saturates, the
+deciding record is *older than the window*, not missing:
+
+```
+# authoritative pointer to the active deployment, immune to refusal depth
+railway logs --project "$RAILWAY_PROJECT_ID" --environment production \
+  --service umami-retention
+```
+
+A redeploy also clears it by minting a fresh record at index 0. The Railway
+GraphQL field `serviceInstance.latestDeployment` names the active deployment
+directly and would remove this depth limit permanently; the CLI exposes no
+equivalent (`railway status --json` returns only `{id, name}` per service).
 
 The runtime-image migration and the retention runner are separate gates. Do
 not start retention until the composite-index migration has succeeded and the

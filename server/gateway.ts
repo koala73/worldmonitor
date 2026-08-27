@@ -222,6 +222,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/infrastructure/v1/list-internet-ddos-attacks': 'slow',
   '/api/infrastructure/v1/list-internet-traffic-anomalies': 'slow',
   '/api/forecast/v1/get-forecast-scorecard': 'fast',
+  '/api/safety/v1/get-toronto-safety': 'slow',
 
   '/api/unrest/v1/list-unrest-events': 'slow',
   '/api/cyber/v1/list-cyber-threats': 'static',
@@ -335,6 +336,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/list-cross-source-signals': 'medium',
   '/api/intelligence/v1/list-oref-alerts': 'fast',
   '/api/intelligence/v1/list-telegram-feed': 'fast',
+  '/api/intelligence/v1/list-x-feed': 'fast',
   '/api/intelligence/v1/get-company-enrichment': 'slow',
   '/api/intelligence/v1/list-company-signals': 'slow',
   '/api/intelligence/v1/search-sec-filings': 'medium',

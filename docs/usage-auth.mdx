@@ -16,14 +16,17 @@ WorldMonitor has four authentication modes. Which one applies depends on how you
 
 ## `forceKey: true` — which endpoints ignore browser session cookies?
 
-Some endpoints explicitly reject anonymous browser session cookies and require a user API key, enterprise API key, or Pro Clerk bearer even from inside the dashboard:
+Some endpoints explicitly reject anonymous browser session cookies and require a user API key, enterprise API key, or Pro Clerk bearer even from inside the dashboard. This is not a static list: the gateway computes it — any **tier-gated (Pro/premium) route called without a signed-in session** rejects session cookies. The authoritative set is `PREMIUM_RPC_PATHS` in `src/shared/premium-paths.ts`. Representative examples:
 
-- `/api/v2/shipping/route-intelligence`
-- `/api/v2/shipping/webhooks`
-- `/api/widget-agent`
+- `/api/v2/shipping/route-intelligence` and `/api/v2/shipping/webhooks`
+- `/api/widget-agent`, `/api/chat-analyst`, `/api/mcp-proxy`
+- `/api/market/v1/analyze-stock`, `/api/market/v1/backtest-stock`
+- `/api/intelligence/v1/classify-event`, `/api/intelligence/v1/search-intel-history`
+- `/api/scenario/v1/run-scenario`, `/api/supply-chain/v1/get-route-impact`
+- `/api/aviation/v1/get-flight-status`, `/api/trade/v1/list-comtrade-flows`
 - Vendor / partner endpoints
 
-For these, you **must** send an API key; `X-WorldMonitor-Key` is the canonical header.
+For these, you **must** send an API key; `X-WorldMonitor-Key` is the canonical header. An anonymous `wms_` session cookie on one of these routes is refused with `Pro authentication required`.
 
 ## Browser session mode
 
@@ -55,7 +58,7 @@ User-issued keys are exactly `wm_` followed by 40 lowercase hex characters. Ente
 
 `X-WorldMonitor-Key` is the canonical header. API-key-authenticated endpoints also accept `X-Api-Key` as an alias for compatibility with generic API clients, including standalone edge functions that use `validateApiKey()` and gateway-backed routes. Do not send user API keys as bearer tokens or query-string parameters unless an endpoint explicitly documents that form.
 
-For `/api/bootstrap`, server-side callers should use `https://api.worldmonitor.app/api/bootstrap` with one of these API-key headers. There is no separate gateway host, token-exchange step, activation step, or IP allow-list requirement for standard server-to-server access. The endpoint's anonymous weather path (`?keys=weatherAlerts`) is public **only when no key header is sent** — once you attach `X-WorldMonitor-Key`/`X-Api-Key`, the request is validated even for weather, so a key without current API access returns `403` rather than falling back to anonymous data. That URL is served `no-store` precisely so this holds: it is uncached, so an invalid key always reaches the origin. If you want the CDN-cached weather read instead, use the explicitly public `?keys=weatherAlerts&public=1`, which returns the same shared payload to every caller and ignores credentials by design.
+For `/api/bootstrap`, server-side callers should use `https://api.worldmonitor.app/api/bootstrap` with one of these API-key headers. There is no separate gateway host, token-exchange step, activation step, or IP allow-list requirement for standard server-to-server access. The endpoint's anonymous weather path (`?keys=weatherAlerts`) is public **only when no key header is sent** — once you attach `X-WorldMonitor-Key`/`X-Api-Key`, the request is validated even for weather, so a key without current API access returns `403` rather than falling back to anonymous data. That URL is served `no-store` precisely so this holds: it is uncached, so an invalid key always reaches the origin. If you want the CDN-cached weather read instead, use the explicitly public `?keys=weatherAlerts&public=1`, which returns the same shared payload to every caller and ignores credentials by design. Note that anonymous calls still pass the edge **bot gate**: a generic script `User-Agent` (`curl/`, `python-requests`, …) without a `wm_…` key gets `403 Forbidden` before the handler runs — send a browser-like `User-Agent` or a key (see [Errors → The edge bot gate](/usage-errors#the-edge-bot-gate-403-errorforbidden)).
 
 ### Server-side validation
 

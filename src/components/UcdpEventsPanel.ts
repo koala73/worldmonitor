@@ -3,6 +3,7 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { t } from '@/services/i18n';
 import type { UcdpTabAggregate } from '@/services/conflict';
+import { bindActivationKeys } from '@/utils/activation';
 
 // The panel's tabs are the three UCDP violence types. The projection keys its
 // aggregates by the proto enum, so map between them in exactly one place.
@@ -49,6 +50,7 @@ export class UcdpEventsPanel extends Panel {
         if (Number.isFinite(lat) && Number.isFinite(lon)) this.onEventClick?.(lat, lon);
       }
     });
+    bindActivationKeys(this.content, '.ucdp-row');
   }
 
   public setEventClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -124,7 +126,7 @@ export class UcdpEventsPanel extends Panel {
           : '<span class="ucdp-deaths-zero">0</span>';
         const actors = `${escapeHtml(e.side_a)} vs ${escapeHtml(e.side_b)}`;
 
-        return `<tr class="ucdp-row" data-lat="${e.latitude}" data-lon="${e.longitude}">
+        return `<tr class="ucdp-row" data-lat="${e.latitude}" data-lon="${e.longitude}" tabindex="0">
           <td class="ucdp-country">${escapeHtml(e.country)}</td>
           <td class="ucdp-deaths">${deathsHtml}</td>
           <td class="ucdp-date">${e.date_start}</td>
@@ -136,10 +138,10 @@ export class UcdpEventsPanel extends Panel {
         <table class="ucdp-table">
           <thead>
             <tr>
-              <th>${t('components.ucdpEvents.country')}</th>
-              <th>${t('components.ucdpEvents.deaths')}</th>
-              <th>${t('components.ucdpEvents.date')}</th>
-              <th>${t('components.ucdpEvents.actors')}</th>
+              <th scope="col">${t('components.ucdpEvents.country')}</th>
+              <th scope="col">${t('components.ucdpEvents.deaths')}</th>
+              <th scope="col">${t('components.ucdpEvents.date')}</th>
+              <th scope="col">${t('components.ucdpEvents.actors')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

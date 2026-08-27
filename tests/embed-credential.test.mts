@@ -32,8 +32,8 @@ class FakeEmbedHost implements EmbedCredentialHost {
     return 1;
   }
 
-  emit(data: unknown, source: unknown = this.parent): void {
-    const event = { data, source } as MessageEvent;
+  emit(data: unknown, source: unknown = this.parent, origin = ''): void {
+    const event = { data, source, origin } as MessageEvent;
     for (const listener of [...this.listeners]) {
       listener(event);
     }
@@ -67,6 +67,28 @@ describe('waitForEmbeddingApiKey', () => {
 
     assert.equal(await pending, 'wm_0123456789abcdef0123456789abcdef01234567');
     assert.equal(host.listening, false);
+  });
+
+  it('pins the handshake and credential to the embedding parent origin', async () => {
+    const host = new FakeEmbedHost();
+    const parentOrigin = 'https://partner.example';
+    const pending = waitForEmbeddingApiKey(3_000, host, parentOrigin);
+
+    assert.deepEqual(host.parentMessages, [{
+      message: { source: EMBED_CREDENTIAL_SOURCE, type: EMBED_CREDENTIAL_READY_TYPE },
+      targetOrigin: parentOrigin,
+    }]);
+
+    const credential = {
+      source: EMBED_CREDENTIAL_SOURCE,
+      type: 'credential',
+      key: 'wm_0123456789abcdef0123456789abcdef01234567',
+    };
+    host.emit(credential, host.parent, 'https://attacker.example');
+    assert.equal(host.listening, true);
+
+    host.emit(credential, host.parent, parentOrigin);
+    assert.equal(await pending, credential.key);
   });
 
   it('ignores the placeholder, wrong source, and non-parent senders until timeout', async () => {

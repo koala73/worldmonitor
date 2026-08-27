@@ -34,6 +34,7 @@ import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
+import { utf8ByteLength } from './utils';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
@@ -96,6 +97,19 @@ function hasCredentials(req: Request): boolean {
   return (req.headers.get('X-WorldMonitor-Key') ?? '') !== '';
 }
 
+type JsonRpcRequest = {
+  jsonrpc?: string;
+  id?: unknown;
+  method?: string;
+  params?: unknown;
+};
+
+function validJsonRpcId(id: unknown): id is string | number | null | undefined {
+  if (id === null || id === undefined) return true;
+  if (typeof id === 'number') return Number.isFinite(id);
+  return typeof id === 'string' && utf8ByteLength(id) <= MAX_JSON_RPC_ID_BYTES;
+}
+
 // Spec-correct 401 for the fail-closed guards on data methods. These guards are
 // unreachable today (tools/call always runs the gated path, and a data-bearing
 // resources/read reaches its `!context` guard only AFTER the public-read branch
@@ -115,14 +129,30 @@ type StoredSseEvent = {
   data: string;
 };
 
+type StoredSseStream = {
+  events: StoredSseEvent[];
+  bytes: number;
+};
+
 const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
 // no-store forbids storage outright; no-cache is vacuous alongside it (RFC 9111
 // §5.2) so it is omitted. no-transform is load-bearing for SSE framing. This also
 // matches the sibling no-store work in api/mcp/rpc.ts (#4502).
 const MCP_CACHE_CONTROL = 'no-store, no-transform';
+// JSON-RPC IDs are client-controlled and get echoed in every success/error
+// envelope. Keep ordinary scalar IDs correlatable, but reject IDs that could
+// turn an error path (and its optional SSE replay) into an amplification sink.
+const MAX_JSON_RPC_ID_BYTES = 256;
+// Replay is a best-effort convenience for a stateless edge route. A large
+// response still reaches the current SSE client; it is not retained for a
+// later Last-Event-ID replay.
+const MAX_SSE_REPLAY_RESPONSE_BYTES = 128 * 1024;
+const MAX_SSE_REPLAY_SESSION_BYTES = 256 * 1024;
+const MAX_SSE_REPLAY_TOTAL_BYTES = 4 * 1024 * 1024;
 const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
-const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseEvent[]>>();
+const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseStream>>();
+let mcpSseReplayBytes = 0;
 
 function getMcpCorsHeaders(methods = 'POST, GET, HEAD, OPTIONS'): Record<string, string> {
   return {
@@ -178,27 +208,68 @@ function createSseStream(events: StoredSseEvent[]): ReadableStream<Uint8Array> {
   });
 }
 
-function sessionStreamsForWrite(sessionId: string): Map<string, StoredSseEvent[]> {
+function deleteSseSession(sessionId: string): void {
+  const streams = mcpSseStreamsBySession.get(sessionId);
+  if (!streams) return;
+  for (const stream of streams.values()) mcpSseReplayBytes -= stream.bytes;
+  mcpSseStreamsBySession.delete(sessionId);
+}
+
+function sessionReplayBytes(streams: Map<string, StoredSseStream>): number {
+  let bytes = 0;
+  for (const stream of streams.values()) bytes += stream.bytes;
+  return bytes;
+}
+
+function evictOldestSseStream(exceptSessionId?: string): boolean {
+  for (const [sessionId, streams] of mcpSseStreamsBySession) {
+    if (sessionId === exceptSessionId) continue;
+    const streamId = streams.keys().next().value;
+    if (!streamId) continue;
+    const stream = streams.get(streamId);
+    if (!stream) continue;
+    streams.delete(streamId);
+    mcpSseReplayBytes -= stream.bytes;
+    if (streams.size === 0) mcpSseStreamsBySession.delete(sessionId);
+    return true;
+  }
+  return false;
+}
+
+function sessionStreamsForWrite(sessionId: string): Map<string, StoredSseStream> {
   let streams = mcpSseStreamsBySession.get(sessionId);
   if (!streams) {
     streams = new Map();
     mcpSseStreamsBySession.set(sessionId, streams);
     if (mcpSseStreamsBySession.size > MAX_SSE_SESSIONS) {
       const oldestSessionId = mcpSseStreamsBySession.keys().next().value;
-      if (oldestSessionId) mcpSseStreamsBySession.delete(oldestSessionId);
+      if (oldestSessionId) deleteSseSession(oldestSessionId);
     }
   }
   return streams;
 }
 
-function storeSseStream(sessionId: string, streamId: string, events: StoredSseEvent[]) {
+function storeSseStream(sessionId: string, streamId: string, events: StoredSseEvent[]): boolean {
+  const bytes = events.reduce((total, event) => total + utf8ByteLength(formatSseEvent(event)), 0);
+  if (bytes > MAX_SSE_REPLAY_RESPONSE_BYTES) return false;
+
   const streams = sessionStreamsForWrite(sessionId);
-  streams.set(streamId, events);
-  while (streams.size > MAX_SSE_STREAMS_PER_SESSION) {
+  while (
+    streams.size >= MAX_SSE_STREAMS_PER_SESSION
+    || sessionReplayBytes(streams) + bytes > MAX_SSE_REPLAY_SESSION_BYTES
+  ) {
     const oldestStreamId = streams.keys().next().value;
     if (!oldestStreamId) break;
+    const oldest = streams.get(oldestStreamId);
     streams.delete(oldestStreamId);
+    if (oldest) mcpSseReplayBytes -= oldest.bytes;
   }
+  while (mcpSseReplayBytes + bytes > MAX_SSE_REPLAY_TOTAL_BYTES && evictOldestSseStream(sessionId)) {
+    // Evict least-recently-stored entries until this bounded replay fits.
+  }
+  streams.set(streamId, { events, bytes });
+  mcpSseReplayBytes += bytes;
+  return true;
 }
 
 function parseEventCursor(eventId: string): { streamId: string; sequence: number } | null {
@@ -212,9 +283,9 @@ function parseEventCursor(eventId: string): { streamId: string; sequence: number
 function replayEventsAfter(sessionId: string, lastEventId: string): StoredSseEvent[] | null {
   const cursor = parseEventCursor(lastEventId);
   if (!cursor) return null;
-  const events = mcpSseStreamsBySession.get(sessionId)?.get(cursor.streamId);
-  if (!events) return null;
-  return events.slice(cursor.sequence + 1);
+  const stream = mcpSseStreamsBySession.get(sessionId)?.get(cursor.streamId);
+  if (!stream) return null;
+  return stream.events.slice(cursor.sequence + 1);
 }
 
 function sseHeadersFrom(headers: Headers): Headers {
@@ -613,17 +684,27 @@ async function mcpHandlerInner(
   // (public discovery methods are servable anonymously). Malformed/missing-method
   // POSTs are a client error regardless of auth, so returning -32600 here (rather
   // than 401-then-32600) leaks nothing.
-  let body: { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
+  let body: JsonRpcRequest;
   try {
-    body = await req.json();
+    const parsed: unknown = await req.json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      usage.phase = 'malformed';
+      return rpcError(null, -32600, 'Invalid request: expected object', corsHeaders);
+    }
+    body = parsed as JsonRpcRequest;
   } catch {
     usage.phase = 'malformed';
     return rpcError(null, -32600, 'Invalid request: malformed JSON', corsHeaders);
   }
 
-  if (!body || typeof body.method !== 'string') {
+  if (!validJsonRpcId(body.id)) {
     usage.phase = 'malformed';
-    return rpcError(body?.id ?? null, -32600, 'Invalid request: missing method', corsHeaders);
+    return rpcError(null, -32600, 'Invalid request: invalid id', corsHeaders);
+  }
+
+  if (typeof body.method !== 'string') {
+    usage.phase = 'malformed';
+    return rpcError(body.id ?? null, -32600, 'Invalid request: missing method', corsHeaders);
   }
 
   const { id, method } = body;
@@ -959,7 +1040,10 @@ async function mcpHandlerInner(
       return maybeStreamJsonRpcResponse(req, rpcOk(id, {}, corsHeaders));
     }
     default:
-      return maybeStreamJsonRpcResponse(req, rpcError(id, -32601, `Method not found: ${method}`, corsHeaders));
+      // Cap the echoed method name — an arbitrarily long one would otherwise
+      // be reflected verbatim into the pre-auth error body (bandwidth
+      // amplification). Mirrors the a2a.ts cap (Greptile #4824).
+      return maybeStreamJsonRpcResponse(req, rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders));
   }
 }
 

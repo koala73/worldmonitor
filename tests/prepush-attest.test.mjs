@@ -490,3 +490,187 @@ describe('pre-push wiring: the hook must consume these decisions', () => {
     lacks(/find api\/ -name "\*\.js"/, 'working-tree globs rediscover ignored sidecar bundles');
   });
 });
+
+describe('base-guard fetches lazily and only to disprove a violation (#6764)', () => {
+  // The old hook fetched origin on EVERY push (2s warm, 72s cold) to protect
+  // a guard that almost never fires. base-guard keeps the zero-fetch shortcut
+  // for protected main, but refreshes mutable stacked bases before accepting a
+  // cached pass. A suspected violation (or missing ref) is fetched and
+  // recounted as well.
+  //
+  // Every case runs the real script with a stub `git` first on PATH that logs
+  // fetch invocations before delegating to the real binary, so "no fetch
+  // happened" is an executed fact, not a source grep.
+  const REAL_GIT = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const REAL_NODE = process.execPath;
+
+  function makeCloneWithOrigin({ aheadCommits = 1 } = {}) {
+    const root = mkdtempSync(join(tmpdir(), 'wm-base-guard-'));
+    fixtures.push(root);
+    const origin = join(root, 'origin.git');
+    const clone = join(root, 'clone');
+    execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', origin], { env: isolatedGitEnv(), encoding: 'utf8' });
+    execFileSync('git', ['clone', '--quiet', origin, clone], { env: isolatedGitEnv(), encoding: 'utf8' });
+    git(clone, ['config', 'user.email', 'base-guard@example.invalid']);
+    git(clone, ['config', 'user.name', 'Base Guard Fixture']);
+    write(clone, 'README.md', 'base\n');
+    git(clone, ['add', '-A']);
+    git(clone, ['commit', '--quiet', '-m', 'base']);
+    git(clone, ['push', '--quiet', 'origin', 'main']);
+    git(clone, ['checkout', '--quiet', '-b', 'feature']);
+    for (let i = 0; i < aheadCommits; i += 1) {
+      write(clone, 'work.txt', `work ${i}\n`);
+      git(clone, ['add', '-A']);
+      git(clone, ['commit', '--quiet', '-m', `work ${i}`]);
+    }
+    // A fetch-logging git shim, first on PATH for the script under test only.
+    const stubDir = join(root, 'stub-bin');
+    const fetchLog = join(root, 'fetch.log');
+    mkdirSync(stubDir, { recursive: true });
+    writeFileSync(
+      join(stubDir, 'git'),
+      `#!/bin/sh\nif [ "$1" = fetch ]; then echo fetch >> "${fetchLog}"; fi\nexec "${REAL_GIT}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    return { root, clone, stubDir, fetchLog };
+  }
+
+  function baseGuard({ clone, stubDir }, args, { path = `${stubDir}:${process.env.PATH}`, ...extraEnv } = {}) {
+    let status = 0;
+    let stdout = '';
+    try {
+      stdout = execFileSync('/bin/bash', [SCRIPT, 'base-guard', ...args], {
+        cwd: clone,
+        env: isolatedGitEnv({ PATH: path, ...extraEnv }),
+        encoding: 'utf8',
+      });
+    } catch (err) {
+      status = err.status;
+      stdout = err.stdout ?? '';
+    }
+    const [base, count] = stdout.trim().split('\t');
+    return { status, base, count: Number(count) };
+  }
+
+  function fetchCount(fixture) {
+    try {
+      return readFileSync(fixture.fetchLog, 'utf8').split('\n').filter(Boolean).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  function makeTimeoutlessPath({ root, fetchLog }) {
+    const stubDir = join(root, 'timeoutless-bin');
+    mkdirSync(stubDir, { recursive: true });
+    writeFileSync(
+      join(stubDir, 'git'),
+      `#!/bin/sh\n` +
+        `if [ "$1" = fetch ]; then echo fetch >> "${fetchLog}"; exec /bin/sleep 1000; fi\n` +
+        `exec "${REAL_GIT}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    writeFileSync(
+      join(stubDir, 'node'),
+      `#!/bin/sh\nexec "${REAL_NODE}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    return stubDir;
+  }
+
+  test('a cached ahead-count within the limit performs NO fetch', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 1 });
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 0);
+    assert.equal(result.base, 'main');
+    assert.equal(result.count, 1);
+    assert.equal(fetchCount(fixture), 0, 'the common path must pay no network');
+  });
+
+  test('a force-rewritten stacked base refreshes a cached pass before accepting it', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 25 });
+    const { clone } = fixture;
+    git(clone, ['push', '--quiet', 'origin', 'feature:stacked']);
+    const cachedBase = git(clone, ['rev-parse', 'feature~1']).trim();
+    git(clone, ['update-ref', 'refs/remotes/origin/stacked', cachedBase]);
+
+    const rewrittenBase = git(clone, ['rev-parse', 'feature~25']).trim();
+    git(clone, ['push', '--quiet', '--force', 'origin', `${rewrittenBase}:stacked`]);
+
+    const result = baseGuard(fixture, ['stacked', '20']);
+    assert.equal(result.status, 3, 'a mutable base must be checked against its live ref');
+    assert.equal(result.count, 25);
+    assert.ok(fetchCount(fixture) >= 1, 'stacked bases must refresh even when the cached count passes');
+  });
+
+  test('a genuine violation still fails, after a corrective fetch confirmed it', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 25 });
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 3, 'exit 3 = violation, distinct from pass and from usage error');
+    assert.equal(result.count, 25);
+    assert.ok(fetchCount(fixture) >= 1, 'a suspected violation must be re-checked against a fresh ref');
+  });
+
+  test('a stale-ref false positive passes after the corrective fetch (the case the old unconditional fetch existed for)', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 25 });
+    const { clone } = fixture;
+    // Land the 25 commits on origin/main (they ARE main now), then branch one
+    // commit past them — but rewind the local remote-tracking ref so the
+    // cached count reads 26 while the true count is 1.
+    git(clone, ['push', '--quiet', 'origin', 'feature:main']);
+    write(clone, 'tip.txt', 'tip\n');
+    git(clone, ['add', '-A']);
+    git(clone, ['commit', '--quiet', '-m', 'tip']);
+    const staleBase = git(clone, ['rev-list', '--max-parents=0', 'HEAD']).trim();
+    git(clone, ['update-ref', 'refs/remotes/origin/main', staleBase]);
+
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 0, 'must not false-positive against the stale ref');
+    assert.equal(result.count, 1);
+    assert.ok(fetchCount(fixture) >= 1);
+  });
+
+  test('a base with no local remote-tracking ref fetches and resolves', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 1 });
+    git(fixture.clone, ['update-ref', '-d', 'refs/remotes/origin/main']);
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 0);
+    assert.equal(result.count, 1);
+    assert.ok(fetchCount(fixture) >= 1);
+  });
+
+  test('fetches stay bounded when neither timeout nor gtimeout is on PATH', () => {
+    for (const [label, aheadCommits, removeRef] of [
+      ['cached violation', 25, false],
+      ['missing remote-tracking ref', 1, true],
+    ]) {
+      const fixture = makeCloneWithOrigin({ aheadCommits });
+      if (removeRef) git(fixture.clone, ['update-ref', '-d', 'refs/remotes/origin/main']);
+      const path = makeTimeoutlessPath(fixture);
+      const started = Date.now();
+      const result = baseGuard(fixture, ['main', '20'], {
+        path,
+        WM_PREPUSH_FETCH_TIMEOUT_MS: '200',
+      });
+
+      const elapsed = Date.now() - started;
+      assert.ok(elapsed < 3000, `${label} must return after the portable deadline`);
+      assert.ok(fetchCount(fixture) >= 1, `${label} must exercise the corrective fetch (result=${JSON.stringify(result)})`);
+      if (removeRef) {
+        assert.equal(result.status, 0);
+        assert.equal(result.base, 'main');
+      } else {
+        assert.equal(result.status, 3);
+        assert.equal(result.count, 25);
+      }
+    }
+  });
+
+  test('an unresolvable base falls back to origin/main, like the hook always did', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 1 });
+    const result = baseGuard(fixture, ['no-such-base', '20']);
+    assert.equal(result.status, 0);
+    assert.equal(result.base, 'main', 'the resolved base is reported so the hook can use it');
+    assert.equal(result.count, 1);
+  });
+});

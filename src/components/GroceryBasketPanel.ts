@@ -46,7 +46,7 @@ export class GroceryBasketPanel extends Panel {
     const itemIds = countries[0]?.items?.map(i => i.itemId) ?? [];
 
     const headerCells = countries.map(c =>
-      `<th class="gb-country-header" title="${escapeHtml(c.name)}">${escapeHtml(c.flag)}<br><span class="gb-country-name">${escapeHtml(c.name)}</span></th>`
+      `<th scope="col" class="gb-country-header" title="${escapeHtml(c.name)}">${escapeHtml(c.flag)}<br><span class="gb-country-name">${escapeHtml(c.name)}</span></th>`
     ).join('');
 
     const rows = itemIds.map(itemId => {
@@ -100,7 +100,7 @@ export class GroceryBasketPanel extends Panel {
         ${wowSummary}
         <div class="gb-scroll">
           <table class="gb-table">
-            <thead><tr><th class="gb-item-col">${t('panels.groceryItem')}</th>${headerCells}</tr></thead>
+            <thead><tr><th scope="col" class="gb-item-col">${t('panels.groceryItem')}</th>${headerCells}</tr></thead>
             <tbody>${rows}${totalRow}</tbody>
           </table>
         </div>

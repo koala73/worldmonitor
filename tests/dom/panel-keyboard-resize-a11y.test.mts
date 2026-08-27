@@ -20,6 +20,19 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+describe('Panel heading outline', () => {
+  it('exposes the panel title as a level-2 heading', () => {
+    const panel = new Panel({ id: 'heading-outline-probe', title: 'Probe' });
+    const title = panel.getElement().querySelector('.panel-title');
+
+    expect(title?.getAttribute('role')).toBe('heading');
+    expect(title?.getAttribute('aria-level')).toBe('2');
+    expect(title?.textContent).toBe('Probe');
+
+    panel.destroy();
+  });
+});
+
 describe('Panel keyboard resize accessibility', () => {
   it('exposes restored row and column spans as the initial separator values', () => {
     savePanelSpan('resize-a11y-probe', 3);

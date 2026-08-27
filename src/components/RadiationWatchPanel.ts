@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { RadiationObservation, RadiationWatchResult } from '@/services/radiation';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { bindActivationKeys } from '@/utils/activation';
 
 export class RadiationWatchPanel extends Panel {
   private observations: RadiationObservation[] = [];
@@ -34,6 +35,7 @@ export class RadiationWatchPanel extends Panel {
       const lon = Number(row.dataset.lon);
       if (Number.isFinite(lat) && Number.isFinite(lon)) this.onLocationClick?.(lat, lon);
     });
+    bindActivationKeys(this.content, '.radiation-row');
   }
 
   public setLocationClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -69,7 +71,7 @@ export class RadiationWatchPanel extends Panel {
         `<span class="radiation-badge radiation-freshness radiation-freshness-${obs.freshness}">${escapeHtml(obs.freshness)}</span>`,
       ].filter(Boolean).join('');
       return `
-        <tr class="radiation-row" data-lat="${obs.lat}" data-lon="${obs.lon}">
+        <tr class="radiation-row" data-lat="${obs.lat}" data-lon="${obs.lon}" tabindex="0">
           <td class="radiation-location">
             <div class="radiation-location-name">${escapeHtml(obs.location)}</div>
             <div class="radiation-location-meta">${escapeHtml(sourceLine)} · ${escapeHtml(t('components.radiationWatch.baseline', { value: baseline }))}</div>
@@ -122,11 +124,11 @@ export class RadiationWatchPanel extends Panel {
         <table class="radiation-table">
           <thead>
             <tr>
-              <th>${escapeHtml(t('components.radiationWatch.headers.station'))}</th>
-              <th>${escapeHtml(t('components.radiationWatch.headers.reading'))}</th>
-              <th>${escapeHtml(t('components.radiationWatch.headers.delta'))}</th>
-              <th>${escapeHtml(t('components.radiationWatch.headers.status'))}</th>
-              <th>${escapeHtml(t('components.radiationWatch.headers.observed'))}</th>
+              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.station'))}</th>
+              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.reading'))}</th>
+              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.delta'))}</th>
+              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.status'))}</th>
+              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.observed'))}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

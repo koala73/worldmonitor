@@ -279,6 +279,33 @@ export interface TelegramMessage {
   topic: string;
 }
 
+export interface ListXFeedRequest {
+  limit: number;
+  topic: string;
+  account: string;
+}
+
+export interface ListXFeedResponse {
+  enabled: boolean;
+  posts: XFeedItem[];
+  count: number;
+  error: string;
+}
+
+export interface XFeedItem {
+  id: string;
+  accountId: string;
+  accountName: string;
+  handle: string;
+  topic: string;
+  timestampMs: number;
+  permalink: string;
+  facts: string[];
+  hasMedia: boolean;
+  lang: string;
+  contentState: string;
+}
+
 export interface GetCompanyEnrichmentRequest {
   /** @deprecated */
   domain: string;
@@ -1380,6 +1407,33 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ListTelegramFeedResponse;
+  }
+
+  async listXFeed(req: ListXFeedRequest, options?: IntelligenceServiceCallOptions): Promise<ListXFeedResponse> {
+    let path = "/api/intelligence/v1/list-x-feed";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.topic != null && req.topic !== "") params.set("topic", String(req.topic));
+    if (req.account != null && req.account !== "") params.set("account", String(req.account));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListXFeedResponse;
   }
 
   async getCompanyEnrichment(req: GetCompanyEnrichmentRequest, options?: IntelligenceServiceCallOptions): Promise<GetCompanyEnrichmentResponse> {
