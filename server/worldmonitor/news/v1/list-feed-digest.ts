@@ -517,7 +517,9 @@ interface ParsedItem {
 type CredibilitySourceItem = Pick<ParsedItem, 'source' | 'originPublisher'>;
 
 function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
-  const rawName = item.originPublisher.trim() || item.source.trim();
+  const originPublisher = typeof item.originPublisher === 'string' ? item.originPublisher.trim() : '';
+  const source = typeof item.source === 'string' ? item.source.trim() : '';
+  const rawName = originPublisher || source;
   const family = publisherFamilyFor(rawName);
   const familyEntry = PUBLISHER_FAMILIES[family];
   const candidates = [
@@ -534,6 +536,31 @@ function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
     ?? candidates.find(hasReviewedPropagandaRisk)
     ?? candidates.find(hasSourceTier)
     ?? rawName;
+}
+
+// A story-track row is allowed to anchor a future cluster only after the
+// current mention carries a server-known trust signal. Unknown/legacy rows
+// fail closed; their firstSeen timestamp alone is never enough to seize a
+// canonical identity.
+const MAX_TRUSTED_ANCHOR_SOURCE_TIER = 2;
+
+function isAnchorEligible(item: Pick<ParsedItem, 'source' | 'originPublisher' | 'corroborationCount'>): boolean {
+  // `source` is the server-configured feed label. Do not use the RSS
+  // `<source>`/originPublisher field for this gate: that field is upstream
+  // content and therefore cannot elevate an otherwise unknown feed.
+  return getSourceTier(item.source) <= MAX_TRUSTED_ANCHOR_SOURCE_TIER
+    || (Number.isFinite(item.corroborationCount)
+      && item.corroborationCount >= MIN_CORROBORATING_PUBLISHERS);
+}
+
+function compareAnchorCandidates(a: ParsedItem, b: ParsedItem): number {
+  const aTrusted = getSourceTier(a.source) <= MAX_TRUSTED_ANCHOR_SOURCE_TIER;
+  const bTrusted = getSourceTier(b.source) <= MAX_TRUSTED_ANCHOR_SOURCE_TIER;
+  if (aTrusted !== bTrusted) return aTrusted ? -1 : 1;
+  if (a.publishedAt !== b.publishedAt) return a.publishedAt - b.publishedAt;
+  if (a.title < b.title) return -1;
+  if (a.title > b.title) return 1;
+  return 0;
 }
 
 function computeItemCredibilityScore(
@@ -1532,8 +1559,9 @@ function isCompleteRedisResult(result: unknown): result is { result: unknown } {
 /**
  * Read the alias and track state for one adoption pass.
  *
- * Each bounded chunk is one MULTI/EXEC call so the two reads for every hash
- * come from the same Redis snapshot. The reader has one absolute deadline
+ * Each bounded chunk is one MULTI/EXEC call so the alias and three-field track
+ * read for every hash come from the same Redis snapshot. The reader has one
+ * absolute deadline
  * shared by all chunks and only starts a chunk when the Redis helper's own
  * timeout still fits. A timeout, incomplete response, command error, or
  * deadline skip leaves every hash in that chunk marked incomplete; callers
@@ -1563,7 +1591,7 @@ async function readAdoptionState(
 
     const adoptionResults = await runRedisTransaction([
       ...chunk.map((h) => ['GET', STORY_ALIAS_KEY(h)]),
-      ...chunk.map((h) => ['HMGET', STORY_TRACK_KEY(h), 'firstSeen', 'lastSeen']),
+      ...chunk.map((h) => ['HMGET', STORY_TRACK_KEY(h), 'firstSeen', 'lastSeen', 'anchorEligible']),
     ]);
 
     // A response that crossed the deadline is not a usable snapshot. Do this
@@ -1595,23 +1623,36 @@ async function readAdoptionState(
     const aliases = adoptionResults.slice(0, chunk.length);
     const tracks = adoptionResults.slice(chunk.length);
     const validShapes = aliases.every(({ result }) => result === null || typeof result === 'string')
-      && tracks.every(({ result }) => Array.isArray(result) && result.length >= 2);
+      && tracks.every(({ result }) => Array.isArray(result) && result.length >= 3);
     if (!validShapes) {
       console.warn('[digest] story adoption chunk returned invalid Redis value shapes');
       break;
     }
 
     // Only a complete, error-free chunk is eligible for adoption. A normal
-    // HMGET miss is [null, null] and simply contributes no live track.
+    // HMGET miss is [null, null, null] and contributes no live track. The
+    // exact string '1' is required for eligibility; missing/legacy metadata
+    // never becomes trusted merely because firstSeen is old.
     for (let i = 0; i < chunk.length; i++) {
       const target = adoptionResults[i]!.result;
-      if (typeof target === 'string' && target.length > 0) {
+      const row = adoptionResults[chunk.length + i]!.result;
+      const anchorEligible = Array.isArray(row) && row[2] === '1';
+      // Self-aliases are useful only when their own track is eligible. A
+      // non-self alias may point at a canonical whose member dropped out of
+      // this batch, so preserve that continuity even when the member row is
+      // unavailable; the target was stamped when it was canonical.
+      if (
+        typeof target === 'string'
+        && target.length > 0
+        && (target !== chunk[i] || anchorEligible)
+      ) {
         aliasTargetByHash.set(chunk[i]!, target);
       }
     }
     for (let i = 0; i < chunk.length; i++) {
       const row = adoptionResults[chunk.length + i]!.result;
       if (!Array.isArray(row)) continue;
+      if (row[2] !== '1') continue;
       const firstSeen = parseRedisTimestamp(row[0]);
       const lastSeen = parseRedisTimestamp(row[1]);
       if (firstSeen === undefined || lastSeen === undefined) continue;
@@ -2030,6 +2071,9 @@ function buildStoryTrackHsetFields(
   return [
     'lastSeen', nowStr,
     'currentScore', score,
+    // Canonical adoption may use firstSeen only when this server-derived
+    // eligibility stamp is present. Legacy rows without it fail closed.
+    'anchorEligible', isAnchorEligible(item) ? '1' : '0',
     'title', item.title,
     'link', item.link,
     'severity', item.level,
@@ -2159,10 +2203,28 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       if (!writtenHashes.has(hash)) {
         writtenHashes.add(hash);
         const representative = representativeByHash.get(hash) ?? item;
-        const hsetFields = buildStoryTrackHsetFields(representative, nowStr, representative.importanceScore);
+        const hsetFieldsWithEligibility = buildStoryTrackHsetFields(
+          representative,
+          nowStr,
+          representative.importanceScore,
+        );
+        const anchorFieldAt = hsetFieldsWithEligibility.indexOf('anchorEligible');
+        const anchorEligible = anchorFieldAt >= 0
+          && hsetFieldsWithEligibility[anchorFieldAt + 1] === '1';
+        const hsetFields = anchorFieldAt >= 0
+          ? [
+            ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
+            ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
+          ]
+          : hsetFieldsWithEligibility;
         commands.push(
           ['HINCRBY', trackKey, 'mentionCount', '1'],
           ['HSET', trackKey, ...hsetFields],
+          // Eligibility is monotonic: once a trusted/corroborated mention
+          // has proved this anchor, a later low-trust mention must not erase
+          // that proof. New rows still receive an explicit '0' stamp.
+          ['HSETNX', trackKey, 'anchorEligible', '0'],
+          ...(anchorEligible ? [['HSET', trackKey, 'anchorEligible', '1']] : []),
           ['HSETNX', trackKey, 'firstSeen', nowStr],
           ['EXPIRE', trackKey, ttl],
           ['ZADD', accKey, nowStr, hash],
@@ -2519,9 +2581,26 @@ async function buildDigest(
     // A failed or skipped chunk degrades affected clusters to batch-derived
     // canonicals (pre-adoption behavior).
     const allMemberHashes = new Set<string>();
+    // If no eligible persisted track can be adopted, a current trusted or
+    // independently corroborated member may still provide the batch default.
+    // Prefer a trusted-tier member over a merely corroborated one, then use
+    // the same deterministic publication-time ordering as identity clustering.
+    const eligibleAnchorByCluster = new Map<string, ParsedItem>();
     for (const identity of identityByItem.values()) {
       for (const h of identity.memberTitleHashes ?? []) allMemberHashes.add(h);
     }
+    for (const [item, identity] of identityByItem) {
+      if (!isAnchorEligible(item)) continue;
+      const current = eligibleAnchorByCluster.get(identity.titleHash);
+      if (!current || compareAnchorCandidates(item, current) < 0) {
+        eligibleAnchorByCluster.set(identity.titleHash, item);
+      }
+    }
+    const eligibleDefaultHashByCluster = new Map<string, string>();
+    await Promise.all([...eligibleAnchorByCluster].map(async ([clusterHash, item]) => {
+      const normalized = normalizeTitle(item.title);
+      if (normalized) eligibleDefaultHashByCluster.set(clusterHash, await sha256Hex(normalized));
+    }));
     const aliasTargetByHash = new Map<string, string>();
     const trackFirstSeenByHash = new Map<string, number>();
     const memberHashes = [...allMemberHashes];
@@ -2545,11 +2624,12 @@ async function buildDigest(
       if (identity) {
         const clusterReadIncomplete = (identity.memberTitleHashes ?? [])
           .some((hash) => adoptionState.incompleteHashes.has(hash));
+        const batchDefaultHash = eligibleDefaultHashByCluster.get(identity.titleHash) ?? identity.titleHash;
         item.titleHash = clusterReadIncomplete
-          ? identity.titleHash
+          ? batchDefaultHash
           : adoptExistingCanonical(
             identity.memberTitleHashes,
-            identity.titleHash,
+            batchDefaultHash,
             aliasTargetByHash,
             trackFirstSeenByHash,
           );
@@ -2770,6 +2850,7 @@ export const __testing__ = {
   extractRawTagBody,
   extractFirstDateTag,
   buildStoryTrackHsetFields,
+  isAnchorEligible,
   computeImportanceScore,
   computeCredibilityScore,
   computeItemCredibilityScore,

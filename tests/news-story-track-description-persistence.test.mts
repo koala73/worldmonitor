@@ -19,6 +19,7 @@ import { shouldDropOpinionTrack } from '../scripts/lib/digest-opinion-track-filt
 
 const {
   buildStoryTrackHsetFields,
+  isAnchorEligible,
   computeEntityCorroborationSignals,
   parseRssXml,
   promoteDiplomacySeverity,
@@ -67,6 +68,18 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.ok(m.has('link'));
     assert.ok(m.has('severity'));
     assert.ok(m.has('lang'));
+  });
+
+  it('persists a fail-closed canonical-anchor eligibility stamp', () => {
+    const hostile = baseItem({ source: 'Farm A', corroborationCount: 1 });
+    const trusted = baseItem({ source: 'Reuters', corroborationCount: 1 });
+    const corroborated = baseItem({ source: 'Farm A', corroborationCount: 2 });
+
+    assert.equal(isAnchorEligible(hostile), false, 'unknown single-source feeds cannot pre-seed an anchor');
+    assert.equal(isAnchorEligible(trusted), true, 'curated tier-1/2 sources may anchor');
+    assert.equal(isAnchorEligible(corroborated), true, 'two independent publisher families may anchor');
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(hostile, '1745000000000', 42)).get('anchorEligible'), '0');
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(trusted, '1745000000000', 42)).get('anchorEligible'), '1');
   });
 
   it('writes isOpinion as "1" / "0" — stamps the non-event brief verdict on the row (F3)', () => {

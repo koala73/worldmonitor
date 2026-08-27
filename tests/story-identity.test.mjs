@@ -410,6 +410,13 @@ describe('list-feed-digest story-identity wiring (#4924 review)', () => {
   it('coverage-miss fallback is observable, not silent', () => {
     assert.match(digestSrc, /story-identity coverage miss/, 'fallback branch must log');
   });
+
+  it('canonical adoption requires persisted anchor eligibility', () => {
+    assert.match(digestSrc, /'anchorEligible', isAnchorEligible\(item\) \? '1' : '0'/);
+    assert.match(digestSrc, /'firstSeen', 'lastSeen', 'anchorEligible'/);
+    assert.match(digestSrc, /if \(row\[2\] !== '1'\) continue;/,
+      'legacy or explicitly ineligible tracks must not anchor on firstSeen alone');
+  });
 });
 
 describe('hot-bucket mega-story pre-union (#4924 external review)', () => {
@@ -512,6 +519,38 @@ describe('adopt-existing-track canonical (#4925 item 1)', () => {
       adoptExistingCanonical(clustered.memberTitleHashes, clustered.titleHash, aliasMap, trackFirstSeen),
       genuineHash,
       'the oldest live story:track row must win over both the backdated default and the alias vote',
+    );
+  });
+
+  it('REGRESSION: a hostile pre-seed cannot outrank a later trusted anchor', async () => {
+    const hostile = {
+      title: 'Iran threatens to close Strait of Hormuz',
+      source: 'Farm A',
+      publishedAt: 1_000,
+    };
+    const trusted = {
+      title: 'Iran warns it may close the Strait of Hormuz',
+      source: 'Reuters',
+      publishedAt: 2_000,
+    };
+    const batch = await assignStoryIdentity([hostile, trusted], normalizeBasic, sha256HexNode);
+    const clustered = batch.get(hostile);
+    const hostileHash = await sha256HexNode(normalizeBasic(hostile.title));
+    const trustedHash = await sha256HexNode(normalizeBasic(trusted.title));
+
+    assert.equal(clustered.titleHash, batch.get(trusted).titleHash, 'trusted and hostile wordings must cluster');
+    assert.ok(clustered.memberTitleHashes.includes(hostileHash));
+    assert.ok(clustered.memberTitleHashes.includes(trustedHash));
+
+    // The reader drops the hostile self-alias/track because its persisted
+    // anchorEligible stamp is not '1'. The later trusted member has a valid
+    // eligible track, so it wins even though the hostile batch default was
+    // backdated earlier.
+    const eligibleAliases = new Map([[trustedHash, trustedHash]]);
+    const eligibleTracks = new Map([[trustedHash, 2_000_000]]);
+    assert.equal(
+      adoptExistingCanonical(clustered.memberTitleHashes, hostileHash, eligibleAliases, eligibleTracks),
+      trustedHash,
     );
   });
 
@@ -638,7 +677,7 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
     assert.match(src, /STORY_ALIAS_KEY\(memberHash\), hash, 'EX', ttl/, 'alias rows persisted with story TTL');
     assert.match(
       src,
-      /adoptExistingCanonical\(\s*identity\.memberTitleHashes,\s*identity\.titleHash,\s*aliasTargetByHash,\s*trackFirstSeenByHash,\s*\)/,
+      /adoptExistingCanonical\(\s*identity\.memberTitleHashes,\s*batchDefaultHash,\s*aliasTargetByHash,\s*trackFirstSeenByHash,\s*\)/,
       'digest must adopt live canonicals from alias targets AND story:track first-seen stamps (#4925 item 1) before assigning hashes',
     );
     // #4925 item 1: a member hash's alias row and its track row must be read
@@ -646,7 +685,7 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
     // states observed at different moments.
     assert.match(
       src,
-      /runRedisTransaction\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen'\]\),\s*\]\)/,
+      /runRedisTransaction\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen', 'anchorEligible'\]\),\s*\]\)/,
       'alias and story:track reads for a hash must share one atomic transaction',
     );
     // ...and that call must stay bounded: two commands per hash means the hash

@@ -198,7 +198,10 @@ LLM 降级会直接通过。当升级被限制时，系统会记录关键词级�
 `firstSeen`、`lastSeen`、`mentionCount`、`currentScore`、`title`、`link`、
 `severity`、`lang`、`description`、`publishedAt`、
 `entityCorroborationCount`、`isOpinion`、`isFeelGood`、
-`isEphemeralLiveCoverage`，以及 `category`。
+`isEphemeralLiveCoverage`、`category`，以及 `anchorEligible`。
+
+仅当报道具有已整理的 1/2 级来源，或得到至少两个独立发布者家族的交叉印证时，
+`anchorEligible` 才为 `1`。规范化采用会忽略值为 `0` 或缺少旧版元数据的行。
 
 `sourceCount` 未存储于当前行的 story-track 哈希中。
 不同的信息流名称通过 `SADD` 写入 `story:sources:v1:{titleHash}`；

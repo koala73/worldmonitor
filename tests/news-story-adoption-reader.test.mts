@@ -48,7 +48,7 @@ describe('news digest adoption-state reader', () => {
       requestCommands = JSON.parse(String(init?.body));
       return redisResponse([
         { result: 'canonical-hash' },
-        { result: ['1000', '2000'] },
+        { result: ['1000', '2000', '1'] },
       ]);
     }) as typeof fetch;
 
@@ -57,7 +57,7 @@ describe('news digest adoption-state reader', () => {
     assert.equal(requestUrl, 'https://redis.test/multi-exec');
     assert.deepEqual(requestCommands, [
       ['GET', 'story:alias:v1:member-hash'],
-      ['HMGET', 'story:track:v1:member-hash', 'firstSeen', 'lastSeen'],
+      ['HMGET', 'story:track:v1:member-hash', 'firstSeen', 'lastSeen', 'anchorEligible'],
     ]);
     assert.equal(state.aliasTargetByHash.get('member-hash'), 'canonical-hash');
     assert.equal(state.trackFirstSeenByHash.get('member-hash'), 1000);
@@ -87,10 +87,10 @@ describe('news digest adoption-state reader', () => {
       { result: 'alias-2' },
       { result: 'alias-3' },
       { result: 'alias-4' },
-      { result: ['1000', null] },
-      { result: [null, '2000'] },
-      { result: ['', '2000'] },
-      { result: ['not-a-time', '2000'] },
+      { result: ['1000', null, '1'] },
+      { result: [null, '2000', '1'] },
+      { result: ['', '2000', '1'] },
+      { result: ['not-a-time', '2000', '1'] },
     ])) as typeof fetch;
 
     const state = await __testing__.readAdoptionState(
@@ -104,6 +104,34 @@ describe('news digest adoption-state reader', () => {
     assert.equal(state.incompleteHashes.size, 0);
   });
 
+  it('fails closed for legacy/ineligible tracks instead of trusting an old firstSeen', async () => {
+    enableRedis();
+    globalThis.fetch = (async () => redisResponse([
+      { result: 'hostile-member' },
+      { result: 'legacy-member' },
+      { result: 'trusted-member' },
+      { result: ['1000', '2000', '0'] },
+      { result: ['900', '2000', null] },
+      { result: ['3000', '4000', '1'] },
+    ])) as typeof fetch;
+
+    const state = await __testing__.readAdoptionState(
+      ['hostile-member', 'legacy-member', 'trusted-member'],
+      0,
+      Date.now() + 6_000,
+    );
+
+    // A self-alias is an anchor claim. Explicitly ineligible and missing
+    // legacy metadata must not make it eligible, even with a valid old
+    // firstSeen.
+    assert.equal(state.aliasTargetByHash.has('hostile-member'), false);
+    assert.equal(state.trackFirstSeenByHash.has('hostile-member'), false);
+    assert.equal(state.aliasTargetByHash.has('legacy-member'), false);
+    assert.equal(state.trackFirstSeenByHash.has('legacy-member'), false);
+    assert.equal(state.aliasTargetByHash.get('trusted-member'), 'trusted-member');
+    assert.equal(state.trackFirstSeenByHash.get('trusted-member'), 3000);
+  });
+
   it('chunks at 400 hashes and skips further work after the deadline', async () => {
     enableRedis();
     const calls: number[] = [];
@@ -112,7 +140,7 @@ describe('news digest adoption-state reader', () => {
       calls.push(commands.length);
       return redisResponse(commands.map((command) => {
         const [verb] = command as string[];
-        return { result: verb === 'HMGET' ? [null, null] : null };
+        return { result: verb === 'HMGET' ? [null, null, null] : null };
       }));
     }) as typeof fetch;
 
