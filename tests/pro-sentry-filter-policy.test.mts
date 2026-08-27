@@ -265,6 +265,131 @@ describe('marketingBeforeSend — injected-script recursion', () => {
   });
 });
 
+describe('marketing ignoreErrors — in-app-browser injected globals (2026-08-27 triage)', () => {
+  it("drops Twitter's in-app browser chrome script (WORLDMONITOR-10T, -10V)", () => {
+    // Verbatim production values. The Twitter iOS in-app browser draws its own
+    // toolbar over the page and its layout script (`init`,
+    // `updateFooterPositions`, `updateGapFiller`) reads these before the host
+    // defines them.
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: currentInset"), true);
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: CONFIG"), true);
+  });
+
+  // Positive control for the `\b` bound: the pattern must key on the whole
+  // identifier, not a prefix a first-party name could share.
+  it('keeps a longer identifier that merely starts with a suppressed name', () => {
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: CONFIGURATION"), false);
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: currentInsetTop"), false);
+  });
+
+  it("drops the Friendly app's media-player bridge (WORLDMONITOR-10Z)", () => {
+    assert.equal(
+      isIgnored(
+        'TypeError',
+        "undefined is not an object (evaluating 'window.__65829_Friendly.mediaPlayerBridge.resumePlayingInBackground')",
+      ),
+      true,
+    );
+    // The numeric infix rotates per install, so the pattern must match the
+    // shape, not the one instance observed.
+    assert.equal(
+      isIgnored('TypeError', "undefined is not an object (evaluating 'window.__41_Friendly.x')"),
+      true,
+    );
+  });
+
+  it('keeps a Friendly-like name that is not the GUID-suffixed global', () => {
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: FriendlyHelper"), false);
+  });
+
+  it("drops Apple's WKWebView find-on-page bridge (WORLDMONITOR-10W)", () => {
+    assert.equal(
+      isIgnored('ReferenceError', "Can't find variable: WKWebView_RemoveAllHighlights"),
+      true,
+    );
+    // Chrome/Android phrasing of the same missing global.
+    assert.equal(isIgnored('ReferenceError', 'WKWebView_SetHighlight is not defined'), true);
+  });
+
+  it('keeps the unprefixed WKWebView word so a real message still reports', () => {
+    assert.equal(isIgnored('Error', 'WKWebView failed to render our checkout frame'), false);
+  });
+});
+
+describe('marketingBeforeSend — Safari-masked injected script (WORLDMONITOR-110)', () => {
+  it('drops a readonly-property write whose only executable frames are masked', () => {
+    // Verbatim production stack: iOS 18.7 / Mobile Safari 26.6, four
+    // `webkit-masked-url://hidden/` frames plus the prerendered document.
+    assert.equal(
+      marketingBeforeSend(event('Attempting to change value of a readonly property.', [
+        'webkit-masked-url://hidden/',
+        'webkit-masked-url://hidden/',
+        '[native code]',
+        'https://www.worldmonitor.app/',
+      ])),
+      null,
+    );
+  });
+
+  // Positive control for the `!hasFirstParty` half: a strict-mode write to a
+  // frozen object inside our own bundle raises this exact message and must
+  // still page. Delete the gate and this goes red.
+  it('keeps the same message when a marketing-bundle frame is present', () => {
+    const kept = event('Attempting to change value of a readonly property.', [
+      'webkit-masked-url://hidden/',
+      '/pro/assets/index-a1b2c3.js',
+    ]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  // Positive control for the masked-frame half: absence of first-party frames
+  // alone must not suppress — the masked frame is what licenses the drop.
+  it('keeps the same message when no frame is masked', () => {
+    const kept = event('Attempting to change value of a readonly property.', [
+      'https://www.worldmonitor.app/',
+    ]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
+describe('marketingBeforeSend — unparseable module (WORLDMONITOR-TS)', () => {
+  const typedEvent = (type: string, value: string, filenames: string[] = []): PolicyEvent => ({
+    exception: {
+      values: [{
+        type,
+        value,
+        stacktrace: { frames: filenames.map((filename) => ({ filename })) },
+      }],
+    },
+  });
+
+  it("drops the zero-frame Clerk parse failure on a 2020 browser", () => {
+    // Verbatim production event: Chrome Mobile 80 / Android 10 (TECNO KE5k),
+    // `action: load-clerk`, no frames — the throw happens at parse time.
+    assert.equal(marketingBeforeSend(typedEvent('SyntaxError', "Unexpected token '('")), null);
+    assert.equal(marketingBeforeSend(typedEvent('SyntaxError', 'Invalid or unexpected token')), null);
+  });
+
+  // Positive control for the type gate: a first-party bug raises TypeError, not
+  // SyntaxError, and must survive even with an identical message and no frames.
+  it('keeps the same frameless message under a non-SyntaxError type', () => {
+    const kept = typedEvent('TypeError', "Unexpected token '('");
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  // Positive control for the empty-stack gate: an in-bundle `JSON.parse` on a
+  // malformed API body throws exactly this and carries the calling frame.
+  it('keeps a SyntaxError that carries a marketing-bundle frame', () => {
+    const kept = typedEvent('SyntaxError', "Unexpected token '<'", ['/pro/assets/index-a1b2c3.js']);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps a SyntaxError whose message is not a parse failure', () => {
+    const kept = typedEvent('SyntaxError', 'Invalid regular expression: missing /');
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
 describe('policy wiring', () => {
   // A perfect policy that nothing calls filters nothing. The values themselves
   // are exercised above; this only proves `Sentry.init` actually receives them.
