@@ -78,26 +78,70 @@ function directLlmQuotaError(
   });
 }
 
-function prependSseEvents(events: Array<Record<string, unknown>>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+function prependSseEvents(
+  events: Array<Record<string, unknown>>,
+  stream: ReadableStream<Uint8Array>,
+  rollbackUnservedQuota: () => Promise<void>,
+): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   const prefixes = events.map((e) => enc.encode(`data: ${JSON.stringify(e)}\n\n`));
   let innerReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let outerCancelled = false;
+  let answerCompleted = false;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      for (const p of prefixes) controller.enqueue(p);
-      innerReader = stream.getReader();
-      while (true) {
-        const { done, value } = await innerReader.read();
-        if (done) { controller.close(); return; }
-        controller.enqueue(value);
+      const decoder = new TextDecoder();
+      let buffered = '';
+      const observeCompletion = (value: Uint8Array) => {
+        buffered += decoder.decode(value, { stream: true });
+        const lines = buffered.split('\n');
+        buffered = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as { done?: unknown };
+            if (event.done === true) answerCompleted = true;
+          } catch {
+            // The inner stream owns malformed-event handling. This wrapper only
+            // needs to know whether a terminal answer was served.
+          }
+        }
+      };
+
+      try {
+        for (const p of prefixes) controller.enqueue(p);
+        innerReader = stream.getReader();
+        while (true) {
+          const { done, value } = await innerReader.read();
+          if (done) break;
+          observeCompletion(value);
+          controller.enqueue(value);
+        }
+        if (!answerCompleted) await rollbackUnservedQuota();
+        if (!outerCancelled) controller.close();
+      } catch (err) {
+        await rollbackUnservedQuota();
+        if (!outerCancelled) controller.error(err);
       }
     },
-    cancel() { innerReader?.cancel(); },
+    async cancel(reason) {
+      outerCancelled = true;
+      await Promise.allSettled([
+        innerReader?.cancel(reason),
+        answerCompleted ? Promise.resolve() : rollbackUnservedQuota(),
+      ]);
+    },
   });
 }
 
 export default async function handler(req: Request): Promise<Response> {
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
+  let rollbackQuota: (() => Promise<void>) | null = null;
+  const rollbackUnservedQuota = async () => {
+    const rollback = rollbackQuota;
+    rollbackQuota = null;
+    if (rollback) await rollback();
+  };
 
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -148,22 +192,6 @@ export default async function handler(req: Request): Promise<Response> {
       }
       return json({ error: 'Pro subscription required' }, 403, corsHeaders);
     }
-    if (!premiumIdentity.quotaExempt && premiumIdentity.directLlmDailyLimit !== null) {
-      const reservation = await reserveDirectLlmQuota({
-        userId: premiumIdentity.userId,
-        limit: premiumIdentity.directLlmDailyLimit,
-        pipeline: (cmds) => runRedisPipeline(cmds, true),
-      });
-      if (!reservation.ok) {
-        return directLlmQuotaError(
-          reservation.reason === 'cap-exceeded' ? 429 : 503,
-          reservation.retryAfterSec,
-          corsHeaders,
-          reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
-        );
-      }
-    }
-
     // Streaming LLM endpoint — the rate-limit IS the abuse defence (each
     // call hits a frontier model). This route doesn't go through gateway
     // checkEndpointRateLimit, so opt into fail-closed explicitly: a Redis
@@ -206,6 +234,28 @@ export default async function handler(req: Request): Promise<Response> {
       })
       .filter((m) => m.content.length > 0);
 
+    // Spend quota only after the request has passed every body-level gate.
+    // The fail-closed request rate limit above still protects malformed input,
+    // while invalid JSON and empty queries cannot consume a subscriber's daily
+    // LLM allowance. Hold the rollback until the SSE stream proves it served a
+    // complete answer; upstream failures and client aborts release the slot.
+    if (!premiumIdentity.quotaExempt && premiumIdentity.directLlmDailyLimit !== null) {
+      const reservation = await reserveDirectLlmQuota({
+        userId: premiumIdentity.userId,
+        limit: premiumIdentity.directLlmDailyLimit,
+        pipeline: (cmds) => runRedisPipeline(cmds, true),
+      });
+      if (!reservation.ok) {
+        return directLlmQuotaError(
+          reservation.reason === 'cap-exceeded' ? 429 : 503,
+          reservation.retryAfterSec,
+          corsHeaders,
+          reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
+        );
+      }
+      rollbackQuota = reservation.rollback;
+    }
+
     // Build retrieval query with current turn FIRST so its keywords fill the
     // extraction cap before prior-turn terms. This ensures pivot words like
     // "Germany" in "What about Germany?" are never crowded out by a long
@@ -240,6 +290,7 @@ export default async function handler(req: Request): Promise<Response> {
         ...buildActionEvents(query).map((a) => ({ action: a })),
       ],
       llmStream,
+      rollbackUnservedQuota,
     );
 
     return new Response(stream, {
@@ -252,6 +303,7 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
   } catch (err) {
+    await rollbackUnservedQuota();
     captureSilentError(err, { tags: { route: 'api/chat-analyst', step: 'pre-stream' } });
     return json({ error: 'service_unavailable' }, 503, corsHeaders);
   }
