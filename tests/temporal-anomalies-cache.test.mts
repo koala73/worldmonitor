@@ -731,6 +731,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
   });
 
   it('stamps newestItemAt null when a contributing payload is undatable', async () => {
+    const now = Date.now();
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': { topStories: [{ id: 'a' }] },
@@ -741,9 +742,35 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     assert.equal(meta.newestItemAt, null);
     assert.equal(meta.maxContentAgeMin, TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN);
     assert.equal(
-      classifyTemporalMeta(meta, Date.now()).status,
+      classifyTemporalMeta(meta, now).status,
       'STALE_CONTENT',
       'undatable contributing payloads fail closed, matching runSeed contentMeta null',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must not answer stale:false for the key health calls STALE_CONTENT',
+    );
+  });
+
+  it('a future-dated newestItemAt does not read green on health or MCP', () => {
+    const now = Date.now();
+    const meta = {
+      fetchedAt: now - 5 * 60_000,
+      recordCount: 2,
+      newestItemAt: now + 60 * 60_000,
+      maxContentAgeMin: TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
+    };
+
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'future-dated observations are suspicious data, not fresh data',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must not answer stale:false for the key health calls STALE_CONTENT',
     );
   });
 
