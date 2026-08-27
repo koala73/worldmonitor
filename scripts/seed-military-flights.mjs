@@ -5,7 +5,6 @@ import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory }
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { createHash } from 'node:crypto';
 
 loadEnvFile(import.meta.url);
 
@@ -603,17 +602,21 @@ const OPENSKY_FETCH_RETRY_DELAYS = [0, 1_500];
 // This seeder is a one-shot process on a */5 Railway cron, so the 429 cooldown
 // CANNOT live in a module variable the way the relay's does — the deadline has
 // to outlive the process. Redis is the only state that does (#6241).
-const OPENSKY_COOLDOWN_KEY = 'opensky:cooldown-until:v1';
+const {
+  OPENSKY_COOLDOWN_KEY,
+  OPENSKY_MAX_COOLDOWN_MS,
+  accountFingerprint: openSkyAccountFingerprint,
+  clampCooldownMs,
+  ttlSecondsForCooldown,
+  inspectCooldownRecord,
+  buildCooldownRecord,
+} = createRequire(import.meta.url)('./_opensky-account-cooldown.cjs');
 // OpenSky omits the retry-after header on some rejections; those repeat just as
 // reliably, so a header-less 429 still parks the tier. Sized against THIS
 // seeder's cadence, not the relay's sub-minute loop: the process is one-shot on
 // a */5 cron, so any deadline under 300s has already expired by the next tick
 // and suppresses exactly zero requests. Two ticks buys real headroom.
 const OPENSKY_429_FALLBACK_COOLDOWN_MS = 10 * 60_000;
-// Upper bound on ANY cooldown, applied on write AND on read. This guard is the
-// alarm, so a corrupt or hand-written deadline must not be able to switch a data
-// tier off permanently — anything past this window is treated as garbage.
-const OPENSKY_MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 let openskyToken = null;
 let openskyTokenExpiry = 0;
 let openskyTokenPromise = null;
@@ -688,17 +691,6 @@ async function fetchJsonDirect(url, { headers = {}, method = 'GET', body = null,
   return resp.json();
 }
 
-// The cooldown is a property of an ACCOUNT's quota, but the key is global. On a
-// credential rotation a healthy new account would otherwise inherit the old
-// one's lockout and lose coverage for its remaining window. A non-secret
-// fingerprint of the client id makes the record self-identifying; a mismatch
-// fails OPEN, same as every other unreadable record (#6241).
-function openSkyAccountFingerprint() {
-  const clientId = process.env.OPENSKY_CLIENT_ID;
-  if (!clientId) return null;
-  return createHash('sha256').update(clientId).digest('hex').slice(0, 12);
-}
-
 function getOptionalRedisCredentials() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -727,27 +719,15 @@ async function readOpenSkyCooldown() {
   if (!creds) return { remainingMs: 0 };
   try {
     const record = await redisGet(creds.url, creds.token, OPENSKY_COOLDOWN_KEY);
-    const until = Number(record?.until);
-    if (!Number.isFinite(until)) return { remainingMs: 0 };
-    // A record written by different credentials describes a quota this run does
-    // not share. Records with no fingerprint predate this field, so they are
-    // also treated as not-ours rather than obeyed blindly.
-    const account = openSkyAccountFingerprint();
-    if (!record?.account || record.account !== account) {
+    const inspected = inspectCooldownRecord(record, {
+      account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    });
+    if (inspected.ignoreReason === 'account-mismatch') {
       console.warn('  [OpenSky Quota] ignoring cooldown recorded for a different OpenSky account');
-      return { remainingMs: 0 };
+    } else if (inspected.ignoreReason === 'implausible-deadline') {
+      console.warn(`  [OpenSky Quota] ignoring implausible cooldown deadline ${inspected.until}`);
     }
-    const remainingMs = until - Date.now();
-    // Beyond the documented maximum the record cannot have come from this code
-    // path, so obey the clock rather than the value. Logged as a raw number:
-    // `new Date(n).toISOString()` throws RangeError past ±8.64e15, and a
-    // nanosecond-scale timestamp lands there — formatting the very value this
-    // branch exists to reject would turn the guard into the outage.
-    if (remainingMs > OPENSKY_MAX_COOLDOWN_MS) {
-      console.warn(`  [OpenSky Quota] ignoring implausible cooldown deadline ${until}`);
-      return { remainingMs: 0 };
-    }
-    return { remainingMs: Math.max(0, remainingMs) };
+    return { remainingMs: inspected.remainingMs };
   } catch (err) {
     console.warn(`  [OpenSky Quota] cooldown read failed, proceeding without it: ${err.message || err}`);
     return { remainingMs: 0 };
@@ -755,33 +735,29 @@ async function readOpenSkyCooldown() {
 }
 
 async function recordOpenSkyCooldown(retryAfterSeconds) {
-  const cooldownMs = Math.min(
-    OPENSKY_MAX_COOLDOWN_MS,
-    Math.max(OPENSKY_429_FALLBACK_COOLDOWN_MS, (Number(retryAfterSeconds) || 0) * 1000),
-  );
-  const until = Date.now() + cooldownMs;
+  const cooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_429_FALLBACK_COOLDOWN_MS);
+  const record = buildCooldownRecord({
+    cooldownMs,
+    retryAfterSeconds,
+    account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    recordedBy: 'seed-military-flights',
+  });
   console.warn(
     `  [OpenSky Quota] 429 quota exhausted — cooldown ${formatWait(cooldownMs)} ` +
-    `(until ${new Date(until).toISOString()}, retryAfter=${retryAfterSeconds ?? 'absent'})`,
+    `(until ${record.untilIso}, retryAfter=${retryAfterSeconds ?? 'absent'})`,
   );
   const creds = getOptionalRedisCredentials();
   if (!creds) return;
   try {
     // The TTL outlives the deadline so a live key always answers the read; the
     // successful-call path deletes it, and the TTL is only the backstop.
-    await redisSet(creds.url, creds.token, OPENSKY_COOLDOWN_KEY, {
-      until,
-      untilIso: new Date(until).toISOString(),
-      // Both values: the clamped one drove the deadline, the advertised one is
-      // what OpenSky actually said. Persisting only the clamp hides an
-      // implausible upstream header from whoever reads this key during an
-      // incident.
-      retryAfterSeconds: retryAfterSeconds ?? null,
-      cooldownMs,
-      account: openSkyAccountFingerprint(),
-      recordedAt: Date.now(),
-      recordedBy: 'seed-military-flights',
-    }, Math.ceil(cooldownMs / 1000) + 60);
+    await redisSet(
+      creds.url,
+      creds.token,
+      OPENSKY_COOLDOWN_KEY,
+      record,
+      ttlSecondsForCooldown(cooldownMs),
+    );
   } catch (err) {
     console.warn(`  [OpenSky Quota] failed to persist cooldown: ${err.message || err}`);
   }
@@ -2086,6 +2062,7 @@ export {
   // touches globalThis.fetch, so the rate-limit metadata this carries onto the
   // combined error cannot be observed by driving fetchOpenSkyAuthenticated (#6241).
   combineOpenSkyFetchErrors,
+  fetchOpenSkyGlobal,
   // Test seam: this parser must work on BOTH header containers the two transports
   // produce — a fetch `Headers` (direct) and a plain object (the proxy tunnel).
   // Only the direct shape is reachable by driving fetchAllStates (#6241).

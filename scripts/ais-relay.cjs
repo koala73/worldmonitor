@@ -26,6 +26,15 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
+  OPENSKY_COOLDOWN_KEY,
+  OPENSKY_MAX_COOLDOWN_MS,
+  accountFingerprint: openSkyAccountFingerprint,
+  clampCooldownMs,
+  ttlSecondsForCooldown,
+  inspectCooldownRecord,
+  buildCooldownRecord,
+} = require('./_opensky-account-cooldown.cjs');
+const {
   GROQ_DEFAULT_MODEL,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
@@ -9093,13 +9102,65 @@ const OPENSKY_AUTH_COOLDOWN_MS = 60000; // 1 min cooldown after auth failure
 // Global OpenSky rate limiter — serializes upstream requests and enforces 429 cooldown
 let openskyGlobal429Until = 0; // timestamp: block ALL upstream requests until this time
 const OPENSKY_429_COOLDOWN_MS = Number(process.env.OPENSKY_429_COOLDOWN_MS) || 90 * 1000; // 90s cooldown after any 429
-const OPENSKY_MAX_429_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const OPENSKY_MAX_429_COOLDOWN_MS = OPENSKY_MAX_COOLDOWN_MS;
 const OPENSKY_REQUEST_SPACING_MS = Number(process.env.OPENSKY_REQUEST_SPACING_MS) || 2000; // 2s minimum between consecutive upstream requests
 let openskyLastUpstreamTime = 0;
 let openskyUpstreamQueue = Promise.resolve(); // serial chain — only 1 upstream request at a time
 let openskyRateLimitRemaining = null;
 let openskyLastSuccessAt = 0;
 let openskyLast429At = 0;
+
+function mergeLocalOpenSkyCooldown(untilMs) {
+  if (!Number.isFinite(untilMs) || untilMs <= Date.now()) return;
+  openskyGlobal429Until = Math.max(openskyGlobal429Until, untilMs);
+}
+
+// Shared Redis record written by this relay and by seed-military-flights.
+// Fails OPEN on every error path: a Redis problem must never disable the
+// data tier, and the in-process cooldown still works when Redis is down (#6253).
+async function remainingSharedOpenSkyCooldownMs() {
+  try {
+    const record = await upstashGet(OPENSKY_COOLDOWN_KEY, (reason) => {
+      console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${reason}`);
+    });
+    const inspected = inspectCooldownRecord(record, {
+      account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    });
+    if (inspected.ignoreReason === 'account-mismatch') {
+      console.warn('[Relay] OpenSky shared cooldown ignored — recorded for a different account');
+    } else if (inspected.ignoreReason === 'implausible-deadline') {
+      console.warn(`[Relay] OpenSky shared cooldown ignored — implausible deadline ${inspected.until}`);
+    }
+    if (inspected.remainingMs > 0) {
+      mergeLocalOpenSkyCooldown(Date.now() + inspected.remainingMs);
+    }
+    return inspected.remainingMs;
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${err.message || err}`);
+    return 0;
+  }
+}
+
+async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Date.now()) {
+  const cooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_429_COOLDOWN_MS);
+  mergeLocalOpenSkyCooldown(completedAt + cooldownMs);
+  const record = buildCooldownRecord({
+    now: completedAt,
+    cooldownMs,
+    retryAfterSeconds,
+    account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    recordedBy: 'ais-relay',
+  });
+  try {
+    const ok = await upstashSet(OPENSKY_COOLDOWN_KEY, record, ttlSecondsForCooldown(cooldownMs));
+    if (!ok && UPSTASH_ENABLED) {
+      console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
+    }
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown persist failed: ${err.message || err}`);
+  }
+  return cooldownMs;
+}
 
 async function getOpenSkyToken() {
   const clientId = process.env.OPENSKY_CLIENT_ID;
@@ -9351,6 +9412,11 @@ function openskyQueuedFetch(url, token) {
     if (Date.now() < openskyGlobal429Until) {
       return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
     }
+    // Cross-process arming: a seeder 429 parked the shared Redis key while this
+    // process still had a zero in-process deadline (#6253). Fail-open on Redis.
+    if (await remainingSharedOpenSkyCooldownMs() > 0) {
+      return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
+    }
     openskyLastUpstreamTime = Date.now();
     incrementRelayMetric('openskyUpstreamFetches');
     const result = await _openskyRawFetch(url, token);
@@ -9362,14 +9428,7 @@ function openskyQueuedFetch(url, token) {
       openskyLastSuccessAt = completedAt;
     }
     if (result.status === 429) {
-      const providerCooldownMs = result.retryAfterSeconds == null
-        ? OPENSKY_429_COOLDOWN_MS
-        : result.retryAfterSeconds * 1000;
-      const cooldownMs = Math.min(
-        OPENSKY_MAX_429_COOLDOWN_MS,
-        Math.max(OPENSKY_429_COOLDOWN_MS, providerCooldownMs),
-      );
-      openskyGlobal429Until = Math.max(openskyGlobal429Until, completedAt + cooldownMs);
+      const cooldownMs = await persistSharedOpenSkyCooldown(result.retryAfterSeconds, completedAt);
       openskyLast429At = completedAt;
       console.warn(`[Relay] OpenSky 429 — global cooldown ${Math.ceil(cooldownMs / 1000)}s (all bbox queries blocked)`);
     }
@@ -9428,6 +9487,11 @@ async function handleOpenSkyRequest(req, res, PORT) {
     // 2b. Global 429 cooldown — blocks ALL bbox queries when OpenSky is rate-limiting.
     //     Without this, 5 unique bbox keys all fire simultaneously when neg cache expires,
     //     ALL get 429'd, and the cycle repeats forever with zero data flowing.
+    //     Also honor a seeder-written Redis deadline so this process does not
+    //     spend a doomed auth+data round-trip to rediscover the same lockout.
+    if (Date.now() >= openskyGlobal429Until) {
+      await remainingSharedOpenSkyCooldownMs();
+    }
     if (Date.now() < openskyGlobal429Until) {
       incrementRelayMetric('openskyNegativeHit');
       recordRelayOutcome('opensky', 'throttle');

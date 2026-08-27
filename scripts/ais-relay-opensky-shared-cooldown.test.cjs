@@ -1,0 +1,229 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const { once } = require('node:events');
+const http = require('node:http');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const test = require('node:test');
+const {
+  OPENSKY_COOLDOWN_KEY,
+  accountFingerprint,
+  buildCooldownRecord,
+} = require('./_opensky-account-cooldown.cjs');
+
+function get(port, requestPath) {
+  return new Promise((resolve, reject) => {
+    const request = http.get({ hostname: '127.0.0.1', port, path: requestPath }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => resolve({
+        status: response.statusCode,
+        headers: response.headers,
+        body: Buffer.concat(chunks).toString(),
+      }));
+    });
+    request.on('error', reject);
+  });
+}
+
+async function stop(child) {
+  if (child.exitCode != null) return;
+  child.kill('SIGTERM');
+  await Promise.race([
+    once(child, 'exit'),
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
+  if (child.exitCode == null) child.kill('SIGKILL');
+}
+
+function spawnRelay(extraEnv) {
+  const preload = path.join(__dirname, 'ais-relay-test-preload.cjs');
+  const relay = path.join(__dirname, 'ais-relay.cjs');
+  const child = spawn(process.execPath, [relay], {
+    cwd: path.join(__dirname, '..'),
+    env: {
+      ...process.env,
+      PORT: '0',
+      RELAY_TEST_MODE: 'true',
+      RELAY_SHARED_SECRET: '',
+      I_UNDERSTAND_THIS_DISABLES_AUTH: 'true',
+      RELAY_RATE_LIMIT_MAX: '1000',
+      RELAY_OPENSKY_RATE_LIMIT_MAX: '1000',
+      OPENSKY_429_COOLDOWN_MS: '60000',
+      OPENSKY_REQUEST_SPACING_MS: '1',
+      OPENSKY_CLIENT_ID: 'test-client',
+      OPENSKY_CLIENT_SECRET: 'test-secret',
+      NODE_OPTIONS: `--require=${preload}`,
+      ...extraEnv,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let output = '';
+  let port;
+  const ready = new Promise((resolve, reject) => {
+    const onData = (chunk) => {
+      output += chunk.toString();
+      const portMatch = output.match(/WebSocket relay on port (\d+)/);
+      if (portMatch) port = Number(portMatch[1]);
+      if (port && output.includes('Test mode enabled')) resolve();
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', (chunk) => { output += chunk.toString(); });
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      if (code !== null && code !== 0) reject(new Error(`relay exited ${code}: ${output}`));
+    });
+  });
+
+  return { child, output: () => output, ready: ready.then(() => ({ child, port })) };
+}
+
+async function createUpstashMock({ getResponses = {}, failGets = false } = {}) {
+  const commands = [];
+  const getQueues = new Map(Object.entries(getResponses).map(([key, responses]) => [
+    key,
+    Array.isArray(responses) ? [...responses] : [responses],
+  ]));
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      let command = null;
+      try { command = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* GET /get */ }
+      commands.push({ method: req.method, path: req.url, command });
+      res.setHeader('Content-Type', 'application/json');
+      if (failGets && req.method === 'GET') {
+        res.statusCode = 500;
+        res.end('redis down');
+        return;
+      }
+      if (req.method === 'GET' && req.url.startsWith('/get/')) {
+        const key = decodeURIComponent(req.url.slice('/get/'.length));
+        const queue = getQueues.get(key);
+        const next = queue?.length ? queue.shift() : { result: null };
+        res.end(JSON.stringify(next));
+        return;
+      }
+      res.end(JSON.stringify({ result: 'OK' }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return {
+    commands,
+    setsFor: (key) => commands.filter(
+      (entry) => Array.isArray(entry.command) && entry.command[0] === 'SET' && entry.command[1] === key,
+    ),
+    env: {
+      UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
+      UPSTASH_REDIS_REST_TOKEN: 'test-upstash-token',
+      UPSTASH_ALLOW_INSECURE_HTTP: 'true',
+    },
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
+test('a relay 429 persists the shared cooldown key the seeder reads (#6253)', async () => {
+  const redis = await createUpstashMock();
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '429',
+    RELAY_TEST_OPENSKY_RETRY_AFTER_SECONDS: '120',
+  });
+  try {
+    const { port } = await ready;
+    const first = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    assert.equal(first.status, 429);
+    const sets = redis.setsFor(OPENSKY_COOLDOWN_KEY);
+    assert.equal(sets.length, 1, 'relay must write the shared cooldown key on 429');
+    const record = JSON.parse(sets[0].command[2]);
+    assert.equal(record.recordedBy, 'ais-relay');
+    assert.equal(record.account, accountFingerprint('test-client'));
+    assert.equal(record.retryAfterSeconds, 120);
+    assert.ok(record.until > Date.now());
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
+test('a seeder-written shared cooldown makes the relay skip without an upstream fetch', async () => {
+  const record = buildCooldownRecord({
+    cooldownMs: 10 * 60_000,
+    retryAfterSeconds: 900,
+    account: accountFingerprint('test-client'),
+    recordedBy: 'seed-military-flights',
+  });
+  const redis = await createUpstashMock({
+    getResponses: {
+      [OPENSKY_COOLDOWN_KEY]: { result: JSON.stringify(record) },
+    },
+  });
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200',
+  });
+  try {
+    const { port } = await ready;
+    const response = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['x-cache'], 'RATE-LIMITED');
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 0, 'seeder 429 must stop the relay before OpenSky is billed');
+    assert.ok(metrics.opensky.global429CooldownRemainingMs > 0);
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
+test('a Redis read error fails open and the in-process 429 cooldown still works', async () => {
+  const redis = await createUpstashMock({ failGets: true });
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '429,200',
+    RELAY_TEST_OPENSKY_RETRY_AFTER_SECONDS: '90',
+  });
+  try {
+    const { port } = await ready;
+    const first = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    assert.equal(first.status, 429);
+    const during = await get(port, '/opensky/states/all?lamin=3&lomin=3&lamax=4&lomax=4');
+    assert.equal(during.status, 200);
+    assert.equal(during.headers['x-cache'], 'RATE-LIMITED');
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 1, 'in-process cooldown must still stop a second debit when Redis is down');
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
+test('an account-mismatched shared record fails open so the relay still fetches', async () => {
+  const record = buildCooldownRecord({
+    cooldownMs: 10 * 60_000,
+    account: accountFingerprint('other-account'),
+    recordedBy: 'seed-military-flights',
+  });
+  const redis = await createUpstashMock({
+    getResponses: {
+      [OPENSKY_COOLDOWN_KEY]: { result: JSON.stringify(record) },
+    },
+  });
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200',
+  });
+  try {
+    const { port } = await ready;
+    const response = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    assert.equal(response.status, 200);
+    assert.notEqual(response.headers['x-cache'], 'RATE-LIMITED');
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 1);
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
