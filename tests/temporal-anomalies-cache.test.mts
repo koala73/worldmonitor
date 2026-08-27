@@ -124,6 +124,14 @@ function canadaOnlyDegradedFires(now = Date.now()) {
   };
 }
 
+/** FIRMS rows present, but none carry a usable `detectedAt`. */
+function undatableFires(totalCount = 5) {
+  return {
+    fireDetections: [{ id: 'fire-1', source: 'firms' }],
+    pagination: { nextCursor: '', totalCount },
+  };
+}
+
 function seedMetaStamp(calls: { method: string; key: string; value?: unknown }[]) {
   return calls.find((call) => call.method === 'POST' && call.key === 'seed-meta:temporal:anomalies');
 }
@@ -563,6 +571,15 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     assert.equal(meta, null, 'undatable news items are STALE_CONTENT, not skipped');
   });
 
+  it('fails closed when FIRMS rows exist but none have a usable detectedAt', () => {
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW),
+      satellite_fires: undatableFires(),
+    }, NOW);
+
+    assert.equal(meta, null, 'undatable FIRMS rows are STALE_CONTENT, not skipped');
+  });
+
   it('ignores agency ignition dates when FIRMS rows are present', () => {
     const firmsAt = NOW - 20 * 60_000;
     const agencyAt = NOW - 10 * 24 * HOUR_MS;
@@ -817,6 +834,31 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
       true,
       'MCP must fail closed on the same incomplete coverage',
+    );
+  });
+
+  it('stamps newestItemAt null when FIRMS rows have no usable detectedAt', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now),
+      'wildfire:fires:v1': undatableFires(),
+    });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'rebuild must stamp seed-meta');
+    assert.equal(meta.newestItemAt, null);
+    assert.equal(meta.maxContentAgeMin, TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN);
+
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'undatable FIRMS rows fail closed on health even when news is live',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must not answer stale:false for undatable FIRMS',
     );
   });
 
