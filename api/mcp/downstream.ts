@@ -391,6 +391,36 @@ export class BothSourcesFailedError extends Error {
   }
 }
 
+/** Sentry silently truncates a tag value past this; truncate on a field boundary ourselves. */
+const MAX_VIOLATION_FIELDS_TAG_LEN = 200;
+
+/**
+ * Name the fields a proto/sebuf 400 rejected, as a searchable Sentry tag.
+ *
+ * `RpcValidationError` already hands its violations to the caller
+ * (`error.data.violations`), but the Sentry event carried only
+ * `<operation> HTTP 400` — so an issue like WORLDMONITOR-10R could not name its
+ * failing field from Sentry alone, and the country fix in #7170 could be
+ * neither confirmed nor refuted against it. Fields only: the descriptions are
+ * long, and `field` is the part that groups.
+ *
+ * Safe to expose by construction — `parseSafeRpcViolations` (billing-denial.ts)
+ * already bounds the list to 8 and admits a field only if it matches
+ * `^[A-Za-z_][A-Za-z0-9_.]{0,63}$`, so no untrusted text reaches this tag. The
+ * length bound is belt-and-braces for that 8 x 64 worst case.
+ */
+function violationFieldsTag(violations: readonly { field: string }[]): string {
+  const joined: string[] = [];
+  let len = 0;
+  for (const { field } of violations) {
+    const cost = field.length + (joined.length > 0 ? 1 : 0);
+    if (len + cost > MAX_VIOLATION_FIELDS_TAG_LEN) break;
+    joined.push(field);
+    len += cost;
+  }
+  return joined.join(',');
+}
+
 export function downstreamErrorTags(
   error: unknown,
 ): Record<string, string> {
@@ -408,6 +438,7 @@ export function downstreamErrorTags(
       downstream_status: String(error.status),
       downstream_error_code: 'rpc_validation',
       downstream_response_marker: 'json_error',
+      downstream_violation_fields: violationFieldsTag(error.violations),
     };
   }
   if (error instanceof ToolFetchError) {
