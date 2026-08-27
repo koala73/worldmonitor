@@ -1091,9 +1091,11 @@ export default defineConfig(({ mode }) => {
       format: 'es',
     },
     build: {
-      // Geospatial bundles (maplibre/deck) are expected to be large even when split.
-      // Raise warning threshold to reduce noisy false alarms in CI.
-      chunkSizeWarningLimit: 1200,
+      // Geospatial/3D bundles (maplibre/deck-stack/GlobeMap's globe.gl+three.js)
+      // are expected to be large even when split — they're monolithic vendor
+      // SDKs and already lazy-loaded only when the map/globe view opens, never
+      // on first paint. Raise warning threshold to reduce noisy false alarms in CI.
+      chunkSizeWarningLimit: 2000,
       // Vite 6 hoists every dynamic chunk's STATIC deps into the entry HTML's
       // modulepreload list to avoid latency on the first dynamic import. For the
       // map stack that defeats the whole point of dynamic-importing MapContainer:
@@ -1114,6 +1116,18 @@ export default defineConfig(({ mode }) => {
             warning.code === 'EVAL'
             && typeof warning.id === 'string'
             && warning.id.includes('/onnxruntime-web/dist/ort-web.min.js')
+          ) {
+            return;
+          }
+
+          // A generated RPC-client chunk (rpc-client-*, see manualChunks below)
+          // legitimately tree-shakes to nothing when its domain is gated behind a
+          // disabled build flag (e.g. cyber threats behind VITE_ENABLE_CYBER_LAYER) —
+          // the chunk name is still pinned so the eager-chunk guard can prove it
+          // stays out of the entry bundle. Empty here means the flag is off, not a bug.
+          if (
+            warning.code === 'EMPTY_BUNDLE'
+            && warning.names?.some(name => name.startsWith('rpc-client-'))
           ) {
             return;
           }
