@@ -158,7 +158,7 @@ export async function getAirportOpsSummary(
                     totalFlights: 0,
                     closureStatus: false,
                     notamFlags: [],
-                    severity: 'FLIGHT_DELAY_SEVERITY_NORMAL',
+                    severity: 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
                     topDelayReasons: [],
                     source: 'unknown',
                     updatedAt: now,
