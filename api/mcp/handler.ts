@@ -31,6 +31,12 @@ import {
   RESOURCE_TEMPLATE_LIST_RESPONSE,
 } from './resources/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
+import {
+  buildSkillResourceRead,
+  buildSkillsGetResponse,
+  buildSkillsListResponse,
+  isSkillResourceUri,
+} from './skill-extension/index';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
@@ -85,6 +91,8 @@ const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'prompts/get',
   'resources/list',
   'resources/templates/list',
+  'skills/list',
+  'skills/get',
   'logging/setLevel',
 ]);
 
@@ -729,7 +737,8 @@ async function mcpHandlerInner(
     : null;
   const isPublicResourceRead = typeof resourceReadUri === 'string' && isPublicResourceUri(resourceReadUri);
   const isAccountResourceRead = typeof resourceReadUri === 'string' && isAccountResourceUri(resourceReadUri);
-  const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead;
+  const skillResourceReadUri = isSkillResourceUri(resourceReadUri) ? resourceReadUri : null;
+  const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead || skillResourceReadUri !== null;
 
   // U7 (R7, R9): a `tools/call` naming a tool in the always-free subset is
   // promoted to the anonymous path per-request, the same shape
@@ -869,7 +878,10 @@ async function mcpHandlerInner(
           logging: {},
           prompts: { listChanged: false },
           resources: { subscribe: false, listChanged: false },
-          extensions: { 'io.modelcontextprotocol/ui': {} },
+          extensions: {
+            'io.modelcontextprotocol/ui': {},
+            'io.modelcontextprotocol/skills': {},
+          },
         },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: SERVER_INSTRUCTIONS,
@@ -936,6 +948,10 @@ async function mcpHandlerInner(
       if (!built.ok) return maybeStreamJsonRpcResponse(req, rpcError(id, built.code, built.message, corsHeaders));
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
+    case 'skills/list':
+      return maybeStreamJsonRpcResponse(req, buildSkillsListResponse(id, body.params, corsHeaders));
+    case 'skills/get':
+      return maybeStreamJsonRpcResponse(req, buildSkillsGetResponse(id, body.params, corsHeaders));
     // Resources split by data sensitivity. resources/list + the new
     // resources/templates/list are metadata-class — public catalog-enumeration
     // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
@@ -964,6 +980,9 @@ async function mcpHandlerInner(
     case 'resources/templates/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
+      if (skillResourceReadUri) {
+        return maybeStreamJsonRpcResponse(req, buildSkillResourceRead(id, skillResourceReadUri, corsHeaders));
+      }
       // MCP Apps `ui://` read: a static, data-free HTML app shell served on the
       // public path (no context, no quota, no dispatch). Resolved above into
       // `uiResourceReadUri`.
