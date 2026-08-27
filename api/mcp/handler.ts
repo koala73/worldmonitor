@@ -35,6 +35,7 @@ import {
   buildSkillResourceRead,
   buildSkillsGetResponse,
   buildSkillsListResponse,
+  isSkillUri,
   isSkillResourceUri,
 } from './skill-extension/index';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
@@ -737,8 +738,11 @@ async function mcpHandlerInner(
     : null;
   const isPublicResourceRead = typeof resourceReadUri === 'string' && isPublicResourceUri(resourceReadUri);
   const isAccountResourceRead = typeof resourceReadUri === 'string' && isAccountResourceUri(resourceReadUri);
+  const isSkillResourceRead = isSkillUri(resourceReadUri);
   const skillResourceReadUri = isSkillResourceUri(resourceReadUri) ? resourceReadUri : null;
-  const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead || skillResourceReadUri !== null;
+  const isAnonResourceRead = uiResourceReadUri !== null
+    || isPublicResourceRead
+    || isSkillResourceRead;
 
   // U7 (R7, R9): a `tools/call` naming a tool in the always-free subset is
   // promoted to the anonymous path per-request, the same shape
@@ -980,7 +984,15 @@ async function mcpHandlerInner(
     case 'resources/templates/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
-      if (skillResourceReadUri) {
+      if (isSkillResourceRead) {
+        if (!skillResourceReadUri) {
+          return maybeStreamJsonRpcResponse(req, rpcError(
+            id,
+            -32602,
+            `Unknown skill resource uri "${resourceReadUri}".`,
+            corsHeaders,
+          ));
+        }
         return maybeStreamJsonRpcResponse(req, buildSkillResourceRead(id, skillResourceReadUri, corsHeaders));
       }
       // MCP Apps `ui://` read: a static, data-free HTML app shell served on the

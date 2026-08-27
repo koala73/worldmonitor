@@ -5,6 +5,10 @@ const entriesByUri = new Map<string, (typeof SKILL_ENTRIES)[number]>(
   SKILL_ENTRIES.map((entry) => [entry.uri, entry]),
 );
 
+type SkillResource =
+  | { mimeType: string; text: string }
+  | { mimeType: string; blob: string };
+
 export function buildSkillsListResponse(
   id: unknown,
   params: unknown,
@@ -35,13 +39,20 @@ export function isSkillResourceUri(uri: unknown): uri is keyof typeof SKILL_RESO
   return typeof uri === 'string' && Object.prototype.hasOwnProperty.call(SKILL_RESOURCES, uri);
 }
 
+export function isSkillUri(uri: unknown): uri is string {
+  return typeof uri === 'string' && uri.startsWith('skill://');
+}
+
 export function buildSkillResourceRead(
   id: unknown,
   uri: keyof typeof SKILL_RESOURCES,
   corsHeaders: Record<string, string>,
 ): Response {
-  const resource = SKILL_RESOURCES[uri];
+  const resource = SKILL_RESOURCES[uri] as SkillResource;
+  const content = 'text' in resource
+    ? { text: resource.text }
+    : { blob: resource.blob };
   return rpcOk(id, {
-    contents: [{ uri, mimeType: resource.mimeType, text: resource.text }],
+    contents: [{ uri, mimeType: resource.mimeType, ...content }],
   }, corsHeaders);
 }

@@ -1330,6 +1330,9 @@
           "path": "api/mcp/downstream.ts"
         },
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {
@@ -3232,6 +3235,9 @@
       "attribution": "Credit earthquake.usgs.gov and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
         {
           "path": "scripts/seed-earthquakes.mjs"
         }
@@ -7004,6 +7010,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/_bet-templates-markets.mjs"
         },
         {
@@ -9918,6 +9927,9 @@
         },
         {
           "path": "api/fwdstart.js"
+        },
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "api/not-found.ts"
@@ -13929,6 +13941,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "server/worldmonitor/webcam/v1/get-webcam-image.ts"
         },
         {
@@ -13984,6 +13999,9 @@
         },
         {
           "path": "api/ask.ts"
+        },
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "api/not-found.ts"
