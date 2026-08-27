@@ -23,7 +23,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // Shared scanner/resolver (comment-stripping tokenizer + edge extraction) —
 // one home for the machinery this guard previously copied from the relay
@@ -97,6 +97,13 @@ describe('relativeToRepoRoot', () => {
   it('returns a forward-slash-separated path for a nested file under root', () => {
     const target = resolve(root, 'scripts', 'lib', 'digest-delivered-log.mjs');
     assert.equal(relativeToRepoRoot(root, target), 'scripts/lib/digest-delivered-log.mjs');
+  });
+
+  it('normalizes Windows paths deterministically on every host', () => {
+    assert.equal(
+      relativeToRepoRoot('C:\\repo', 'C:\\repo\\scripts\\file.mjs', win32),
+      'scripts/file.mjs',
+    );
   });
 
   it('returns null for a path outside root', () => {

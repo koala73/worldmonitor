@@ -22,6 +22,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node
 // mtime+size so a test that rewrites a fixture between walks still sees the
 // fresh content, while unchanged files pay stripComments/extractEdges once.
 const sourceCache = new Map();
+const nativePathSemantics = { relative, isAbsolute, sep };
 
 function cachedSourceEntry(path) {
   const stat = statSync(path);
@@ -258,10 +259,10 @@ export function resolveNodeRelative(fromFile, relImport, exts = NODE_SOURCE_EXTS
  * transitively-imported file is COPY'd" assertions passed vacuously,
  * regardless of actual Dockerfile coverage, on any Windows dev machine.
  */
-export function relativeToRepoRoot(root, absolutePath) {
-  const rel = relative(root, absolutePath);
-  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
-  return rel.split(sep).join('/');
+export function relativeToRepoRoot(root, absolutePath, pathSemantics = nativePathSemantics) {
+  const rel = pathSemantics.relative(root, absolutePath);
+  if (rel === '' || rel.startsWith('..') || pathSemantics.isAbsolute(rel)) return null;
+  return rel.split(pathSemantics.sep).join('/');
 }
 
 // tsx-style resolution: extension guessing (including TypeScript), directory
