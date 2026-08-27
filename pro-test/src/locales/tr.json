@@ -384,7 +384,11 @@
           "Özel destek",
           "Özel entegrasyonlar",
           "SLA garantisi",
-          "Şirket içi seçenek"
+          "Şirket içi seçenek",
+          "Veri İşleme Anlaşması (DPA)",
+          "Satın Alma Siparişi Faturalandırması",
+          "SAML SSO, SCIM",
+          "Özel Güvenlik ve Gizlilik Ayarları"
         ],
         "cta": "Satışla İletişime Geçin"
       },

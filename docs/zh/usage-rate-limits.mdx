@@ -27,13 +27,13 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 
 | 套餐 | 每分钟（突发） | 每日包含 | 超出每日额度之后 |
 |------|--------------------|----------------|----------------------------|
-| **API Starter** | **60** / 60 秒 | **1,000** / UTC 日 | 计量 —— 10,000 / 天硬停 |
-| **API Business** | **300** / 60 秒 | **10,000** / UTC 日 | 计量 —— 100,000 / 天硬停 |
+| **API Starter** | **60** / 60 秒 | **1,000** / UTC 日 | **429** —— 已售额度即硬性上限 |
+| **API Business** | **300** / 60 秒 | **10,000** / UTC 日 | **429** —— 已售额度即硬性上限 |
 | **Enterprise** | **1,000** / 60 秒 | 不限 | — |
 
 - **每分钟**是硬性突发限制 —— 超出会立即返回 429。
-- **每日包含**是你的套餐额度；在 **00:00 UTC** 重置。超出部分是**计量而非拒绝** —— 基于用量的超额计费正在推出。在此之前，一个安全上限（包含额度的 10 倍）会以 429 封顶失控用量。
-- 每分钟突发、每日额度和上限均为**按账户**（在一个账户的所有 `wm_…` 密钥间共享），因此签发更多密钥不会提高你的限制。（运维签发的 Enterprise 密钥是例外 —— 每个密钥独立限流。）
+- **每日包含**是你的套餐额度；在 **00:00 UTC** 重置。超出的请求会被 **429 拒绝** —— 已售套餐额度即为权威上限，没有超额余量。计量与执行读取同一计数器，因此设置页的通知与 429 完全一致。
+- 每分钟突发与每日额度均为**按账户**（在一个账户的所有 `wm_…` 密钥间共享），因此签发更多密钥不会提高你的限制。（运维签发的 Enterprise 密钥是例外 —— 每个密钥独立限流。）
 - 需要更高限制？**联系支持团队**提升你套餐的额度。
 
 ## 仪表盘 AI 配额
@@ -52,6 +52,16 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关键词/缓存回退；他们不会消耗付费的直接 AI 额度。这些限制与上文的 MCP 额度相互独立。
 
 未登录的调用会被直接拒绝，受 Pro 保护的 AI 路由也会在产生任何花费之前拒绝免费账户。除上述套餐额度之外，对于在请求时无法确认其付费权益的调用方（订阅已失效，或权益查询出现暂时性故障），另有一个**每天 50 次请求**的非套餐安全下限。它的作用是让故障优雅降级，而不是拒绝付费客户；它不属于任何套餐包含的额度，且永远不会大于最小的付费额度。
+
+## 股票回测提供方工作额度
+
+`GET /api/market/v1/backtest-stock` 当前不以 LLM 计费。缓存未命中时会按调用方指定的代码抓取 Yahoo Finance 历史行情，因此不得计入 `llm:direct-usage` 或 `dashboardAiCallsPerDay`。该额度独立于该路由的 **60 次 / 60 秒** 策略：
+
+| 范围 | 限制 | 窗口 |
+|------|------|------|
+| 每个已认证用户 | **200** 次未缓存 Yahoo 历史抓取 | UTC 日 |
+
+200 次上限相当于四次完整的 50 代码 Pro 自选列表灌入。缓存命中与无效代码不消耗该额度。超出时返回 **429**，并给出到下一个 **00:00 UTC** 的 `Retry-After`。若配额存储无法证明预留成功，该路由 **失败关闭** 并返回 **503**，不会放行 Yahoo 抓取。
 
 ## OAuth 端点
 
@@ -95,7 +105,7 @@ Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关
 
 这些端点大多使用默认公开 API 限制。缓存头因端点而异：
 
-- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；发布频率高于该缓存时长的键均声明了自有配置：`chinaDecisionSignals`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`canadaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`albertaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`manitobaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`marketCorrelationSeries`（浏览器 `max-age=60`、CDN `s-maxage=900`）和 `bcOpen511`（浏览器 `max-age=60`、CDN `s-maxage=1800`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
+- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；发布频率高于该缓存时长的键均声明了自有配置：`correlationCards`（浏览器 `max-age=60`、CDN `s-maxage=300`）、`chinaDecisionSignals`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`canadaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`albertaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`manitobaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`marketCorrelationSeries`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`bcOpen511`（浏览器 `max-age=60`、CDN `s-maxage=1800`）、`flightDelays`（浏览器 `max-age=60`、CDN `s-maxage=1800`）和 `forecasts`（浏览器 `max-age=300`、CDN `s-maxage=3600`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
 - `GET /api/health` — `private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`。
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`。
 

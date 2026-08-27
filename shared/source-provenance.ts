@@ -1,6 +1,7 @@
 // Canonical source provenance registry shared by the browser UI and MCP tools.
 // Keep this module runtime-neutral so it remains safe in both runtimes.
 import { CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS } from './source-provenance-declarations';
+import { X_ACCOUNT_SOURCE_PROPAGANDA_RISK, X_ACCOUNT_SOURCE_TYPES } from './x-account-trust';
 import {
   TELEGRAM_SOURCE_PROPAGANDA_RISK,
   TELEGRAM_SOURCE_TYPES,
@@ -186,8 +187,10 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Alwihda Info': 'mainstream', 'Radio Ndeke Luka': 'mainstream',
 
   // Telegram channels (#6600). Additive keys keyed by channel display label.
-  // #6654 Track A should append X-account labels the same way — do not rename this spread.
   ...TELEGRAM_SOURCE_TYPES,
+
+  // Curated X news-account overlay (#6654). Additive to Telegram.
+  ...X_ACCOUNT_SOURCE_TYPES,
 };
 
 export function getSourceType(sourceName: string): SourceType {
@@ -461,8 +464,10 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'The Times of Central Asia': { risk: 'medium', note: 'Independent English-language Central Asia news outlet' },
 
   // Telegram channels (#6600). Additive keys keyed by channel display label.
-  // #6654 Track A should append X-account labels the same way — do not rename this spread.
   ...TELEGRAM_SOURCE_PROPAGANDA_RISK,
+
+  // Curated X news-account overlay (#6654). Additive to Telegram.
+  ...X_ACCOUNT_SOURCE_PROPAGANDA_RISK,
 };
 
 export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {

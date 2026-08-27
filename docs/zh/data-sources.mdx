@@ -185,11 +185,12 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 
 - 覆盖政治、区域、金融、科技、能源、智库与危机监测的分级全球新闻网络——完整的按变体清单[见下文](#服务端源聚合)
 - Telegram OSINT 源，包含官方、独立与交战方来源
+- X 上的精选公开新闻账号监测（官方 API 用户时间线；正文为 R4）
 - 直播电视新闻流和来自地缘政治热点的 22 路网络摄像头监视网格
 - Happy 变体的正面新闻策展网络（Good News Network、Positive.News、Reasons to be Cheerful 等）
 - 每个源都带有来源分级、宣传风险评级和国家关联元数据
 
-深入阅读：[新闻源面板](/zh/panels/news-feeds) · [新闻摘要与简报方法论](/zh/methodology/news-digest-and-briefing) · [Telegram 情报面板](/zh/panels/telegram-intel)
+深入阅读：[新闻源面板](/zh/panels/news-feeds) · [新闻摘要与简报方法论](/zh/methodology/news-digest-and-briefing) · [Telegram 情报面板](/zh/panels/telegram-intel) · [X 新闻账号面板](/zh/panels/x-intel)
 
 ### 服务端源聚合
 
@@ -313,6 +314,16 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
 **架构**：运行在 Railway 中继上的 GramJS MTProto 客户端以 60 秒为周期顺序轮询所有频道。每个频道有 15 秒超时（GramJS 的 `getEntity`/`getMessages` 在 FLOOD_WAIT 或 MTProto 卡顿时可能无限挂起），整个周期有 3 分钟的硬超时。卡死轮询保护器会在 3.5 分钟后强制清除互斥锁，而来自 Telegram API 的 FLOOD_WAIT 错误会提前停止整个周期，而不是传播到剩余的每个频道。
 
 消息按 ID 去重，过滤掉纯媒体帖子（无文字的图片），截断为 800 字符，并存入一个滚动 200 条的缓冲区。中继以 60 秒启动延迟连接，以防止 Railway 容器重启期间出现 `AUTH_KEY_DUPLICATED` 错误（旧容器必须在新容器认证之前完全断开）。主题分类（突发、冲突、警报、osint、政治、中东）和基于频道的过滤在查询时通过 `/telegram/feed` 中继端点完成。
+
+消息正文为 R4。第一方面板（`GET /api/telegram-feed`）需要仪表盘会话凭证，且不可被公开缓存。
+
+### X 新闻账号
+
+产品管理的 X 公开新闻账号监测。`data/x-accounts.json` 中的注册表不可由用户配置。Railway ais-relay 轮询器使用官方 X API（`GET /2/users/:id/tweets` 与 `since_id`），节奏为 5–15 分钟，并对 429 进行退避。禁止抓取。
+
+正文为 R4。第一方面板（`GET /api/x-feed`）可显示 API 新鲜帖文。告警、MCP（`list_x_feed`）与 embed 合作方仅获得派生事实和永久链接。已删除帖文会在 24 小时内被墓碑化并清除。默认存储为 `metadata_only`。
+
+这是精选的公开新闻账号监测，不是通用关注列表。
 
 ### 实时网络摄像头监视网格
 

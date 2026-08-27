@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 525;
-export const GENERATED_REQUEST_METHOD_COUNT = 158;
+export const GENERATED_REQUEST_METHOD_COUNT = 160;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -79,6 +79,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getTariffTrends": "worldmonitor.trade.v1.GetTariffTrendsRequest",
   "getTemporalBaseline": "worldmonitor.infrastructure.v1.GetTemporalBaselineRequest",
   "getTheaterPosture": "worldmonitor.military.v1.GetTheaterPostureRequest",
+  "getTorontoSafety": "worldmonitor.safety.v1.GetTorontoSafetyRequest",
   "getTradeBarriers": "worldmonitor.trade.v1.GetTradeBarriersRequest",
   "getTradeFlows": "worldmonitor.trade.v1.GetTradeFlowsRequest",
   "getTradeRestrictions": "worldmonitor.trade.v1.GetTradeRestrictionsRequest",
@@ -143,6 +144,7 @@ export const GENERATED_REQUEST_TYPES = {
   "listUnrestEvents": "worldmonitor.unrest.v1.ListUnrestEventsRequest",
   "listWebcams": "worldmonitor.webcam.v1.ListWebcamsRequest",
   "listWorldBankIndicators": "worldmonitor.economic.v1.ListWorldBankIndicatorsRequest",
+  "listXFeed": "worldmonitor.intelligence.v1.ListXFeedRequest",
   "lookupSanctionEntity": "worldmonitor.sanctions.v1.LookupSanctionEntityRequest",
   "recordBaselineSnapshot": "worldmonitor.infrastructure.v1.RecordBaselineSnapshotRequest",
   "registerInterest": "worldmonitor.leads.v1.RegisterInterestRequest",
@@ -988,6 +990,9 @@ export const GENERATED_MESSAGE_RULES = {
   "worldmonitor.intelligence.v1.ListTelegramFeedRequest": {
     "fields": {}
   },
+  "worldmonitor.intelligence.v1.ListXFeedRequest": {
+    "fields": {}
+  },
   "worldmonitor.intelligence.v1.SearchGdeltDocumentsRequest": {
     "fields": {
       "query": {
@@ -1199,7 +1204,7 @@ export const GENERATED_MESSAGE_RULES = {
       "icao24": {
         "kind": "string",
         "required": true,
-        "stringMinLen": 1
+        "stringPattern": "^[0-9a-fA-F]{6}$"
       }
     }
   },
@@ -1294,6 +1299,9 @@ export const GENERATED_MESSAGE_RULES = {
     "fields": {}
   },
   "worldmonitor.resilience.v1.GetResilienceScoreRequest": {
+    "fields": {}
+  },
+  "worldmonitor.safety.v1.GetTorontoSafetyRequest": {
     "fields": {}
   },
   "worldmonitor.sanctions.v1.ListSanctionsPressureRequest": {

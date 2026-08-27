@@ -64,6 +64,7 @@ test('serve=all: public-tier GET is served from KV, not origin, with the payload
     assert.equal(res.headers.get('X-Origin'), null, 'must not reach origin');
     assert.equal(res.headers.get('Content-Type'), 'application/json');
     assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Timing-Allow-Origin'), '*', 'KV-served public bootstrap exposes transfer timing');
     assert.deepEqual(JSON.parse(await res.text()), payloadFor('fast'), 'body is the envelope payload');
     await Promise.all(waits);
   } finally { restore(); }
@@ -135,6 +136,7 @@ test('non-servable requests never serve from KV (predicate + method gating)', as
     ]) {
       const res = await worker.fetch(req(url, method), env, makeCtx().ctx);
       assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, `${method} ${url} (${why})`);
+      assert.equal(res.headers.get('Timing-Allow-Origin'), null, `${method} ${url} (${why}) does not gain KV TAO`);
     }
   } finally { restore(); }
 });

@@ -576,9 +576,12 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
   let fromSeed = false;
 
   try {
-    const notamMeta = await getCachedJson('seed-meta:aviation:notam', true) as { fetchedAt?: number } | null;
+    // Two independent Redis reads — fetch them concurrently.
+    const [notamMeta, seedNotam] = await Promise.all([
+      getCachedJson('seed-meta:aviation:notam', true) as Promise<{ fetchedAt?: number } | null>,
+      getCachedJson(NOTAM_CACHE_KEY, true) as Promise<LoadedNotamResult | null>,
+    ]);
     const notamAge = notamMeta?.fetchedAt ? t0 - notamMeta.fetchedAt : Infinity;
-    const seedNotam = await getCachedJson(NOTAM_CACHE_KEY, true) as LoadedNotamResult | null;
     if (seedNotam && (notamAge < SEED_FRESHNESS_MS || !process.env.SEED_FALLBACK_NOTAM)) {
       notamResult = seedNotam;
       fromSeed = true;

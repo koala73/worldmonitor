@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 
 import {
   assembleBootstrapTierPayload,
+  buildBootstrapPayloadByteLedger,
   publishBootstrapTier,
   runPublisherLoop,
 } from '../scripts/publish-bootstrap-tiers.mjs';
@@ -28,10 +29,34 @@ function raw(value) {
 }
 
 describe('bootstrap tier payload assembly', () => {
+  it('measures the exact public payload and ordered key entries in UTF-8 bytes', () => {
+    const payload = {
+      data: {
+        first: { label: 'é' },
+        second: ['🌍'],
+      },
+      missing: ['missingValue'],
+    };
+
+    const ledger = buildBootstrapPayloadByteLedger(payload);
+
+    assert.equal(ledger.totalBytes, Buffer.byteLength(JSON.stringify(payload), 'utf8'));
+    assert.deepEqual(ledger.keys.map(({ key }) => key), ['first', 'second']);
+    assert.deepEqual(
+      ledger.keys.map(({ key, bytes, valueBytes }) => ({ key, bytes, valueBytes })),
+      Object.entries(payload.data).map(([key, value]) => ({
+        key,
+        bytes: Buffer.byteLength(`${JSON.stringify(key)}:${JSON.stringify(value)}`, 'utf8'),
+        valueBytes: Buffer.byteLength(JSON.stringify(value), 'utf8'),
+      })),
+    );
+  });
+
   it('preserves ordered names, envelope stripping, missing values, and public transforms', async () => {
     const registry = {
       forecasts: 'forecast:key',
       wildfires: 'wildfire:key',
+      xFeed: 'x-feed:key',
       missingValue: 'missing:key',
       malformedValue: 'malformed:key',
       negativeValue: 'negative:key',
@@ -45,6 +70,11 @@ describe('bootstrap tier payload assembly', () => {
       return pipelineResponse([
         raw({ _seed: { fetchedAt: 1 }, data: { value: 1, enrichmentMeta: { secret: true } } }),
         raw({ fireDetections: detections }),
+        raw({
+          count: 2,
+          items: [{ id: '1', text: 'R4_POST_BODY_MUST_NOT_BE_PUBLISHED', permalink: 'https://x.com/a/status/1' }],
+          pollState: { cursorByAccountId: { '1': '9' } },
+        }),
         { result: null },
         { result: '{not json' },
         raw('__WM_NEG__'),
@@ -53,10 +83,22 @@ describe('bootstrap tier payload assembly', () => {
 
     const payload = await assembleBootstrapTierPayload(registry, { env: TEST_ENV, fetchFn });
 
-    assert.deepEqual(Object.keys(payload.data), ['forecasts', 'wildfires']);
+    assert.deepEqual(Object.keys(payload.data), ['forecasts', 'wildfires', 'xFeed']);
     assert.deepEqual(payload.data.forecasts, { value: 1 });
     assert.equal(payload.data.wildfires.fireDetections.length, 500);
+    // R4 (#6654): seed-internal cursor state AND the post body are stripped;
+    // the permalink survives. xFeed is not a registered bootstrap key, so this
+    // exercises the regression guard that keeps bodies out if it is re-added.
+    assert.deepEqual(payload.data.xFeed, {
+      count: 2,
+      items: [{ id: '1', permalink: 'https://x.com/a/status/1' }],
+    });
+    assert.doesNotMatch(JSON.stringify(payload), /R4_POST_BODY_MUST_NOT_BE_PUBLISHED/);
     assert.deepEqual(payload.missing, ['missingValue', 'malformedValue', 'negativeValue']);
+
+    const ledger = buildBootstrapPayloadByteLedger(payload);
+    assert.deepEqual(ledger.keys.map(({ key }) => key), ['forecasts', 'wildfires', 'xFeed']);
+    assert.equal(ledger.keys.some(({ key }) => payload.missing.includes(key)), false);
   });
 
   for (const [name, fetchFn] of [
@@ -93,6 +135,29 @@ describe('publishBootstrapTier', () => {
       tier: 'fast',
       payload: { data: { example: { answer: 42 } }, missing: [] },
     });
+    assert.equal(
+      result.payloadBytes,
+      Buffer.byteLength(JSON.stringify({ data: { example: { answer: 42 } }, missing: [] }), 'utf8'),
+    );
+    assert.deepEqual(result.largestKeys, [{ key: 'example', bytes: 23 }]);
+  });
+
+  it('returns only the five largest key-size fields without payload values', async () => {
+    const registry = Object.fromEntries(
+      ['a', 'b', 'c', 'd', 'e', 'f'].map((key) => [key, `${key}:redis`]),
+    );
+    const values = ['x', 'xx', 'xxx', 'xxxx', 'xxxxx', 'xxxxxx'];
+    const result = await publishBootstrapTier('fast', {
+      env: TEST_ENV,
+      resolveRegistry: () => ({ fast: registry }),
+      fetchFn: async () => pipelineResponse(values.map(raw)),
+      resolveStorage: () => ({ mode: 's3' }),
+      putObject: async () => ({ bytes: 100 }),
+    });
+
+    assert.equal(result.largestKeys.length, 5);
+    assert.deepEqual(result.largestKeys.map(({ key }) => key), ['f', 'e', 'd', 'c', 'b']);
+    assert.equal(JSON.stringify(result.largestKeys).includes('xxxxxx'), false);
   });
 
   it('performs no PUT when Redis assembly fails', async () => {

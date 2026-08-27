@@ -207,6 +207,10 @@ export class Panel {
     const title = document.createElement('span');
     title.className = 'panel-title';
     title.textContent = options.title;
+    // Panels are the dashboard's sections, but a real <h2> would drag along
+    // element styles; role/aria-level gives the outline with zero visual change.
+    title.setAttribute('role', 'heading');
+    title.setAttribute('aria-level', '2');
     headerLeft.appendChild(title);
 
     this.severityDotEl = document.createElement('span');
@@ -1523,6 +1527,15 @@ export class Panel {
     this.severityDotEl.className = 'panel-severity-dot';
     if (level !== 'none') {
       this.severityDotEl.classList.add(`severity-${level}`);
+      // Severity was color+animation only (and aria-hidden), i.e. absent from
+      // the accessibility tree entirely; expose it as a named image.
+      this.severityDotEl.removeAttribute('aria-hidden');
+      this.severityDotEl.setAttribute('role', 'img');
+      this.severityDotEl.setAttribute('aria-label', `${level} severity`);
+    } else {
+      this.severityDotEl.setAttribute('aria-hidden', 'true');
+      this.severityDotEl.removeAttribute('role');
+      this.severityDotEl.removeAttribute('aria-label');
     }
   }
 

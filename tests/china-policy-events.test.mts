@@ -187,36 +187,58 @@ describe('China official policy adapters (#5576)', () => {
     // gate — the larger input allocates proportionally more string, so
     // collection cost rides along with the measurement and best-of-N does not
     // remove it (GC is allocation-driven, not scheduler-driven). At 4x the
-    // bands are ~4x versus ~16x, so an 8x gate sits far from both.
-    const timeAtSize = (repeat: number): number => {
+    // bands are ~4x versus ~16x.
+    //
+    // `test:data` runs this file at concurrency 16. A discarded warmup plus a
+    // 12x gate still fail quadratic (~16x) and ReDoS, but tolerate the ~10x
+    // linear+GC ratios that 16-way CI has produced.
+    // Inputs are built once per size, outside every timed call: allocating
+    // them is linear bookkeeping, not parser work, and re-allocating on each
+    // attempt would add GC noise on top of the measurement — the exact
+    // allocation-driven noise this guard is designed to filter out.
+    const buildFixtures = (repeat: number) => {
       const openers = '<div class="content">'.repeat(repeat);
       const closers = '</div>'.repeat(repeat);
-      const nested = `<body>${openers}正文内容足够长且必须保留${closers}</body>`;
-      const unbalanced = `${'<div>'.repeat(repeat)}${'</span>'.repeat(repeat)}`;
-      const script = '<script '.repeat(repeat);
-      const anchors = '<a >'.repeat(repeat);
-
-      // Inputs are built once, outside the timed region: allocating them is
-      // linear bookkeeping, not parser work, and including it would flatter a
-      // superlinear parser at large sizes.
-      let best = Number.POSITIVE_INFINITY;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const startedAt = performance.now();
-        __testing__.stripHtml(script);
-        parseAgencyListing('CAC', anchors);
-        parsePolicyDocumentHtml(nested);
-        parsePolicyDocumentHtml(unbalanced);
-        best = Math.min(best, performance.now() - startedAt);
-      }
-      return best;
+      return {
+        nested: `<body>${openers}正文内容足够长且必须保留${closers}</body>`,
+        unbalanced: `${'<div>'.repeat(repeat)}${'</span>'.repeat(repeat)}`,
+        script: '<script '.repeat(repeat),
+        anchors: '<a >'.repeat(repeat),
+      };
     };
 
-    const base = timeAtSize(4_000);
-    const quadrupled = timeAtSize(16_000);
+    const timeOnce = (fixtures: ReturnType<typeof buildFixtures>): number => {
+      const { nested, unbalanced, script, anchors } = fixtures;
+      const startedAt = performance.now();
+      __testing__.stripHtml(script);
+      parseAgencyListing('CAC', anchors);
+      parsePolicyDocumentHtml(nested);
+      parsePolicyDocumentHtml(unbalanced);
+      return performance.now() - startedAt;
+    };
+
+    const baseFixtures = buildFixtures(4_000);
+    const quadrupledFixtures = buildFixtures(16_000);
+
+    // Discarded warmup, one per size.
+    timeOnce(baseFixtures);
+    timeOnce(quadrupledFixtures);
+
+    // Interleaved, not sequential: timing all of base then all of quadrupled
+    // concentrates any transient runner stall into whichever series happens
+    // to be running, which can push the ratio over the gate on a loaded box
+    // even though neither size is actually slow. Alternating means a stall
+    // lands on both series' running minimum instead of just one (#6985).
+    let base = Number.POSITIVE_INFINITY;
+    let quadrupled = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      base = Math.min(base, timeOnce(baseFixtures));
+      quadrupled = Math.min(quadrupled, timeOnce(quadrupledFixtures));
+    }
     const ratio = quadrupled / base;
 
     assert.ok(
-      quadrupled <= base * 8 + 2,
+      quadrupled <= base * 12 + 2,
       `quadrupling the input scaled cost ${ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x (${base.toFixed(1)}ms → ${quadrupled.toFixed(1)}ms)`,
     );
   });

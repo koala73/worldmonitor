@@ -1,12 +1,15 @@
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import {
-  buildBootstrapR2RumSample,
-  selectBootstrapR2RumTier,
-  type BootstrapR2RumOutcome,
-  type BootstrapR2RumTier,
-} from '@/bootstrap/bootstrap-r2-rum';
-import { reportBootstrapR2Rum } from '@/bootstrap/debugbear-rum';
+  buildBootstrapTransferRumSample,
+  readBootstrapEncodedBodySize,
+  selectBootstrapTransferRumTier,
+  utf8TextBytes,
+  type BootstrapTransferRumOutcome,
+  type BootstrapTransferRumSample,
+  type BootstrapTransferRumTier,
+} from '@/bootstrap/bootstrap-transfer-rum';
+import { isDebugBearRumActive, reportBootstrapTransferRum } from '@/bootstrap/debugbear-rum';
 import { getWebVitalsFormFactor } from '@/bootstrap/web-vitals-utils';
 import { bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
 
@@ -42,6 +45,11 @@ const EMPTY_TIER_STATE: BootstrapTierHydrationState = { source: 'none', updatedA
  * cascade where aborted tier fetches left panels in empty-state. Desktop gets
  * longer budgets for different network and dependency-loading constraints.
  * Do not move these without RUM / Sentry evidence.
+ *
+ * `web.fast` is ALSO hardcoded, deliberately un-imported, as
+ * WEB_FAST_TIER_DEADLINE_MS in e2e/bootstrap-hydration-request-budget.spec.ts,
+ * whose abort fixture delays the tier past it. That copy is a tripwire: change
+ * this number and that spec must be re-examined, not silently followed.
  */
 export const BOOTSTRAP_TIER_TIMEOUT_MS = {
   web: { fast: 1_200, slow: 3_000 },
@@ -58,28 +66,56 @@ let lastHydrationState: BootstrapHydrationState = {
 let bootstrapGeneration = 0;
 let activeSlowCtrl: AbortController | null = null;
 let slowTierSettled: Promise<void> | null = null;
-let bootstrapR2RumTier: BootstrapR2RumTier | null = null;
+let bootstrapTransferRumTier: BootstrapTransferRumTier | null = null;
+let bootstrapTransferRumReported = false;
+let bootstrapTransferRumReporter = reportBootstrapTransferRum;
+let bootstrapTransferRumEnabled = isDebugBearRumActive;
+let encodedBodySizeResolver = readBootstrapEncodedBodySize;
 
-function selectedBootstrapR2RumTier(): BootstrapR2RumTier {
-  bootstrapR2RumTier ??= selectBootstrapR2RumTier();
-  return bootstrapR2RumTier;
+function selectedBootstrapTransferRumTier(): BootstrapTransferRumTier {
+  bootstrapTransferRumTier ??= selectBootstrapTransferRumTier();
+  return bootstrapTransferRumTier;
 }
 
-function maybeReportBootstrapR2Rum(
-  tier: BootstrapR2RumTier,
-  outcome: BootstrapR2RumOutcome,
+function maybeReportBootstrapTransferRum(
+  tier: BootstrapTransferRumTier,
+  outcome: BootstrapTransferRumOutcome,
   startedAt: number,
-  response: Response,
+  decodedBytes = -1,
+  encodedBytes = -1,
+  shouldCommit: CommitGuard,
 ): void {
-  if (selectedBootstrapR2RumTier() !== tier) return;
-  const result = buildBootstrapR2RumSample(
+  if (
+    !shouldCommit()
+    || bootstrapTransferRumReported
+    || !bootstrapTransferRumEnabled()
+    || selectedBootstrapTransferRumTier() !== tier
+  ) return;
+  const result = buildBootstrapTransferRumSample({
     tier,
     outcome,
-    Math.max(0, performance.now() - startedAt),
-    response.headers,
-    getWebVitalsFormFactor(),
-  );
-  if (result.accepted) reportBootstrapR2Rum(result.sample);
+    durationMs: Math.max(0, performance.now() - startedAt),
+    decodedBytes,
+    encodedBytes,
+    deviceClass: getWebVitalsFormFactor(),
+  });
+  if (!result.accepted) return;
+  bootstrapTransferRumReported = true;
+  try {
+    bootstrapTransferRumReporter(result.sample);
+  } catch {
+    // Telemetry must never affect bootstrap hydration or recovery.
+  }
+}
+
+function shouldMeasureBootstrapTransferRum(
+  tier: BootstrapTransferRumTier,
+  shouldCommit: CommitGuard,
+): boolean {
+  return shouldCommit()
+    && !bootstrapTransferRumReported
+    && bootstrapTransferRumEnabled()
+    && selectedBootstrapTransferRumTier() === tier;
 }
 
 export function getHydratedData(key: string): unknown | undefined {
@@ -222,44 +258,111 @@ function combineHydrationSources(states: BootstrapTierHydrationState[]): Bootstr
   return 'mixed';
 }
 
+interface BootstrapTierPayload {
+  data: Record<string, unknown>;
+  missing: string[];
+}
+
+function validateBootstrapTierPayload(payload: unknown): BootstrapTierPayload | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const data = (payload as { data?: unknown }).data;
+  const missing = (payload as { missing?: unknown }).missing;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  if (!Array.isArray(missing) || !missing.every((key) => typeof key === 'string')) return null;
+  return { data: data as Record<string, unknown>, missing };
+}
+
+function parseBootstrapTierPayload(text: string): BootstrapTierPayload | null {
+  try {
+    return validateBootstrapTierPayload(JSON.parse(text) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function isAbortFailure(error: unknown, signal: AbortSignal): boolean {
+  return signal.aborted
+    || (error != null
+      && typeof error === 'object'
+      && 'name' in error
+      && error.name === 'AbortError');
+}
+
 async function fetchTier(
   tier: 'fast' | 'slow',
   signal: AbortSignal,
   shouldCommit: CommitGuard = () => true,
 ): Promise<BootstrapTierHydrationState> {
+  const requestStartedAt = performance.now();
+  const requestUrl = toApiUrl(`/api/bootstrap?tier=${tier}&public=1`);
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const cached = await readCachedTier(tier, true); // age gate skipped: any snapshot beats blank offline
     if (cached) {
       populateCache(cached.data, shouldCommit);
+      maybeReportBootstrapTransferRum(
+        tier,
+        'cached-fallback',
+        requestStartedAt,
+        -1,
+        -1,
+        shouldCommit,
+      );
       return { source: 'cached', updatedAt: cached.updatedAt };
     }
+    maybeReportBootstrapTransferRum(
+      tier,
+      'network-error',
+      requestStartedAt,
+      -1,
+      -1,
+      shouldCommit,
+    );
     return { ...EMPTY_TIER_STATE };
   }
 
   let liveData: Record<string, unknown> = {};
   let missingKeys: string[] = [];
-  const requestStartedAt = performance.now();
-  let rumResponse: Response | null = null;
+  let completedResponse = false;
+  let failedOutcome: Exclude<BootstrapTransferRumOutcome, 'complete' | 'cached-fallback'> | null = null;
 
   try {
     // public=1 gives the shared seed bundle a cache key distinct from the legacy
     // credentialed tier URL. credentials:'omit' also avoids sending cookies to
     // a route whose contract is explicitly public (see #5249).
-    const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}&public=1`), { signal, credentials: 'omit' });
-    rumResponse = resp;
-    if (resp.ok) {
-      const payload = (await resp.json()) as {
-        data?: Record<string, unknown>;
-        missing?: string[];
-      };
-      liveData = payload.data ?? {};
-      missingKeys = Array.isArray(payload.missing) ? payload.missing : [];
-      maybeReportBootstrapR2Rum(tier, 'success', requestStartedAt, resp);
+    const resp = await fetch(requestUrl, { signal, credentials: 'omit' });
+    if (!resp.ok) {
+      failedOutcome = 'http-error';
+    } else {
+      try {
+        const readTransferBody = shouldMeasureBootstrapTransferRum(tier, shouldCommit);
+        const responseText = readTransferBody ? await resp.text() : null;
+        const measureTransfer = responseText !== null
+          && shouldMeasureBootstrapTransferRum(tier, shouldCommit);
+        const decodedBytes = measureTransfer && responseText !== null ? utf8TextBytes(responseText) : -1;
+        const payload = responseText === null
+          ? validateBootstrapTierPayload(await resp.json() as unknown)
+          : parseBootstrapTierPayload(responseText);
+        if (!payload) {
+          failedOutcome = 'parse-error';
+        } else {
+          completedResponse = true;
+          liveData = payload.data;
+          missingKeys = payload.missing;
+          maybeReportBootstrapTransferRum(
+            tier,
+            'complete',
+            requestStartedAt,
+            decodedBytes,
+            measureTransfer ? encodedBodySizeResolver(requestUrl, decodedBytes) : -1,
+            shouldCommit,
+          );
+        }
+      } catch (error) {
+        failedOutcome = isAbortFailure(error, signal) ? 'abort' : 'network-error';
+      }
     }
-  } catch {
-    if (signal.aborted && rumResponse) {
-      maybeReportBootstrapR2Rum(tier, 'abort', requestStartedAt, rumResponse);
-    }
+  } catch (error) {
+    failedOutcome = isAbortFailure(error, signal) ? 'abort' : 'network-error';
     // Fall through to cached tier.
   }
 
@@ -267,7 +370,27 @@ async function fetchTier(
     const cached = await readCachedTier(tier);
     if (cached) {
       populateCache(cached.data, shouldCommit);
+      if (!completedResponse) {
+        maybeReportBootstrapTransferRum(
+          tier,
+          'cached-fallback',
+          requestStartedAt,
+          -1,
+          -1,
+          shouldCommit,
+        );
+      }
       return { source: 'cached', updatedAt: cached.updatedAt };
+    }
+    if (!completedResponse) {
+      maybeReportBootstrapTransferRum(
+        tier,
+        failedOutcome ?? 'network-error',
+        requestStartedAt,
+        -1,
+        -1,
+        shouldCommit,
+      );
     }
     return { ...EMPTY_TIER_STATE };
   }
@@ -467,7 +590,11 @@ export const __testing__ = {
   resetBootstrapForTests(): void {
     cancelBootstrapSlowTier();
     hydrationCache.clear();
-    bootstrapR2RumTier = null;
+    bootstrapTransferRumTier = null;
+    bootstrapTransferRumReported = false;
+    bootstrapTransferRumReporter = reportBootstrapTransferRum;
+    bootstrapTransferRumEnabled = isDebugBearRumActive;
+    encodedBodySizeResolver = readBootstrapEncodedBodySize;
     lastHydrationState = {
       source: 'none',
       tiers: {
@@ -478,5 +605,21 @@ export const __testing__ = {
   },
   getBootstrapGeneration(): number {
     return bootstrapGeneration;
+  },
+  setBootstrapTransferRumTierForTests(tier: BootstrapTransferRumTier): void {
+    bootstrapTransferRumTier = tier;
+  },
+  setBootstrapTransferRumReporterForTests(
+    reporter: (sample: BootstrapTransferRumSample) => void,
+  ): void {
+    bootstrapTransferRumReporter = reporter;
+  },
+  setBootstrapTransferRumEnabledForTests(enabled: boolean): void {
+    bootstrapTransferRumEnabled = () => enabled;
+  },
+  setEncodedBodySizeResolverForTests(
+    resolver: (resourceUrl: string, decodedBytes: number) => number,
+  ): void {
+    encodedBodySizeResolver = resolver;
   },
 };

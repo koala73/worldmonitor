@@ -2016,6 +2016,15 @@ body.panel-resize-active iframe {
   outline-offset: -2px;
 }
 
+/* Disclosure cards/rows and sortable headers made keyboard-operable (#7023). */
+.trade-restriction-header:focus-visible,
+.chain-node:focus-visible,
+.watchlist-row:focus-visible,
+.watchlist-th-sortable:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
 .panel-header-error {
   background: rgba(255, 50, 50, 0.15);
   border-bottom-color: rgba(255, 80, 80, 0.5);
@@ -12265,11 +12274,13 @@ a.prediction-link:hover {
   margin-left: 6px;
 }
 
-.trade-tariff-gap-positive {
+/* Named by direction vs baseline, not numeric sign: 'positive' colored orange
+   while .change-positive is green read as an inverted convention (#7023). */
+.trade-tariff-gap-above {
   color: var(--orange, #ffab40);
 }
 
-.trade-tariff-gap-negative {
+.trade-tariff-gap-below {
   color: var(--green, #69f0ae);
 }
 
@@ -13682,6 +13693,30 @@ a.prediction-link:hover {
  * "shown/total" for layers the globe's marker budget is trimming (#5368).
  * Muted and right-aligned: it reports a limit, it is not a call to action.
  */
+/* #7112: the marker-budget disclosure for maps with no layer-toggle rail —
+   `chrome: false` embeds. The per-layer `shown/total` badge needs a toggle row to
+   sit on; this states the same fact for the whole overlay when no row exists.
+   Informational only: pointer-events stay on so the title tooltip works, but it
+   is not a control and must not read as one. */
+.map-truncation-summary {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  z-index: 60;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+  /* Theme tokens, not hardcoded colours: an embed inherits the host page's
+     theme and a fixed white would vanish on the light one. */
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  cursor: help;
+  pointer-events: auto;
+}
+
 .layer-truncation-count {
   margin-left: auto;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
@@ -16811,7 +16846,7 @@ a.prediction-link:hover {
 }
 
 .signal-sources-label {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -16819,7 +16854,7 @@ a.prediction-link:hover {
 }
 
 .signal-source-chip {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   padding: 2px 6px;
   background: rgba(0, 170, 255, 0.15);
   color: var(--accent);
@@ -16840,7 +16875,7 @@ a.prediction-link:hover {
 }
 
 .signal-articles-header {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -23160,6 +23195,7 @@ body.has-breaking-alert .panels-grid {
   z-index: 10;
   transition: background 0.15s ease;
   flex-shrink: 0;
+  touch-action: none;
 }
 
 .map-width-resize-handle::after {
@@ -23187,13 +23223,46 @@ body.map-width-resizing {
   user-select: none;
 }
 
-@media (min-width: 1600px) {
+/* The map-side toggle only means something in the split layout. */
+.map-side-btn {
+  display: none;
+}
+
+/* In a narrow map column the absolutely-centered clock overlaps the header
+   actions; the width-resize handler toggles this class. */
+.map-section.map-col-narrow .header-clock {
+  display: none;
+}
+
+/* 900px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
+   threshold for web and desktop since #6417 (the Tauri window minimum width
+   keeps the desktop app above it, so this block covers both). The map track
+   pins both pixel floors: 220px = MAP_COL_MIN_PX and 306px = PANELS_COL_MIN_PX
+   + MAP_COL_DIVIDER_PX. tests/responsive-zone-listener.test.mjs pins the
+   alignment. */
+@media (min-width: 900px) {
   .main-content {
     display: grid;
-    grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
+    grid-template-columns: min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px)) 6px 1fr;
     grid-template-rows: 1fr auto;
     gap: 4px 0;
     overflow: hidden;
+  }
+
+  .main-content.map-right:not(.map-hidden) {
+    grid-template-columns: 1fr 6px min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px));
+  }
+
+  .main-content.map-right .map-section {
+    grid-column: 3;
+  }
+
+  .main-content.map-right .panels-grid {
+    grid-column: 1;
+  }
+
+  .map-side-btn {
+    display: inline-flex;
   }
 
   .map-width-resize-handle {
@@ -23275,76 +23344,6 @@ body.map-width-resizing {
     align-content: start;
     overflow-y: auto;
   }
-}
-
-/* Desktop app grid layout (active at any width >= 900px via JS class) */
-.main-content.desktop-grid {
-  display: grid;
-  grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
-  grid-template-rows: 1fr auto;
-  gap: 4px 0;
-  overflow: hidden;
-}
-
-.main-content.desktop-grid .map-width-resize-handle {
-  display: flex;
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.main-content.desktop-grid.map-hidden {
-  grid-template-columns: 1fr;
-}
-
-.main-content.desktop-grid.map-hidden .panels-grid {
-  grid-column: 1;
-}
-
-.main-content.desktop-grid.map-hidden .map-width-resize-handle {
-  display: none;
-}
-
-.main-content.desktop-grid .map-section {
-  grid-column: 1;
-  grid-row: 1;
-  height: 100% !important;
-  min-height: 0;
-  max-height: none;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border-bottom: none;
-}
-
-.main-content.desktop-grid .panels-grid {
-  grid-column: 3;
-  grid-row: 1;
-  min-height: 0;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
-  align-content: start;
-  overflow-y: auto;
-}
-
-.main-content.desktop-grid .map-resize-handle {
-  position: relative;
-  bottom: auto;
-  left: auto;
-  right: auto;
-  height: 12px;
-  background: var(--border-subtle);
-  margin: 0;
-  cursor: ns-resize;
-  display: flex;
-}
-
-.main-content.desktop-grid .map-resize-handle:hover {
-  background: var(--accent);
-}
-
-.main-content.desktop-grid .map-bottom-grid:empty {
-  border-top: none;
-  padding: 0;
 }
 
 /* ==========================================================================
@@ -23504,6 +23503,109 @@ body.map-width-resizing {
 }
 
 .telegram-follow-btn:hover {
+  background: var(--accent-dim);
+  color: var(--bg);
+}
+
+/* ==========================================================================
+   X News Accounts Panel (#6654)
+   ========================================================================== */
+
+.x-intel-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.x-intel-degraded {
+  margin: 6px 8px;
+  padding: 6px 8px;
+  border: 1px solid rgb(245 158 11 / 35%);
+  border-radius: 4px;
+  color: var(--color-warning, #f59e0b);
+  background: rgb(245 158 11 / 8%);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.x-intel-item {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--surface);
+  transition: background 0.15s ease, border-left-color 0.15s ease;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.x-intel-item.is-live {
+  background: rgba(0, 255, 127, 0.02);
+  border-left-color: var(--green);
+}
+
+.x-intel-item:hover {
+  background: var(--overlay-light);
+}
+
+.x-intel-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.x-intel-account-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.x-intel-account {
+  font-weight: 600;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.x-intel-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.x-intel-topic {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.x-intel-time {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.x-intel-text {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.x-intel-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.x-intel-follow-btn {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.x-intel-follow-btn:hover {
   background: var(--accent-dim);
   color: var(--bg);
 }
@@ -27871,4 +27973,44 @@ body.map-width-resizing {
   display: block;
   color: var(--text-dim, #9a9589);
   font-size: 12px;
+}
+
+/* Windows High Contrast / forced-colors (#7023): backgrounds are stripped by
+   the UA, which erased the color-only severity dots and flattened status
+   badges. Borders survive forced colors; the dot additionally opts out of
+   adjustment so its severity hue (now also exposed via aria-label) remains. */
+@media (forced-colors: active) {
+  .panel-severity-dot {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+
+  .panel-data-badge,
+  .pizzint-location-status,
+  .panel-count {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* Keyboard-activatable drill-in rows (#7023): visible focus for the
+   role="button" cards and tabindex'd table rows wired via bindActivationKeys. */
+.geo-hub-item:focus-visible,
+.tech-hub-item:focus-visible,
+.te-card:focus-visible,
+.fdi-row:focus-visible,
+.risk-item-clickable:focus-visible,
+.risk-alert-clickable:focus-visible,
+.posture-theater:focus-visible,
+.finding-item:focus-visible,
+.cii-name:focus-visible,
+.climate-row:focus-visible,
+.ucdp-row:focus-visible,
+.disp-row:focus-visible,
+.radiation-row:focus-visible,
+.fs-row:focus-visible,
+.pp-row:focus-visible,
+.sf-row:focus-visible,
+.ed-row:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }

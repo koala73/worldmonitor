@@ -384,7 +384,11 @@
           "Supporto dedicato",
           "Integrazioni personalizzate",
           "Garanzia SLA",
-          "Opzione on-premise"
+          "Opzione on-premise",
+          "Accordo di trattamento dei dati (DPA)",
+          "Fatturazione tramite ordine d'acquisto",
+          "SAML SSO, SCIM",
+          "Impostazioni personalizzate di sicurezza e privacy"
         ],
         "cta": "Contatta il Team Vendite"
       },

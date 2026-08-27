@@ -21,7 +21,7 @@ description: "World Monitor 跨域请求保护机制的完整技术说明，以�
 | 模式 | 匹配 |
 | --- | --- |
 | `(*.)?worldmonitor.app` | 生产环境 + 子域名（`tech.`、`finance.` 等） |
-| `worldmonitor-*-elie-*.vercel.app` | Vercel 预览部署 |
+| `worldmonitor-*-eliewm.vercel.app` | Vercel 预览部署（字面 `-eliewm` 后缀） |
 | `localhost:*` / `127.0.0.1:*` | 仅在 `NODE_ENV !== "production"` 时用于本地开发 |
 | `tauri.localhost:*` / `*.tauri.localhost:*` | 桌面应用（Tauri v2） |
 | `tauri://localhost` / `asset://localhost` | 桌面应用（Tauri v2 资源协议） |

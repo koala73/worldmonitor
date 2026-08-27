@@ -323,6 +323,17 @@ export class MiniElement extends MiniNode {
     if (doc) doc.activeElement = this;
   }
 
+  click(): void {
+    const event = new Event('click', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'target', { configurable: true, value: this });
+    let node: MiniNode | null = this;
+    while (node) {
+      EventTarget.prototype.dispatchEvent.call(node, event);
+      Object.defineProperty(event, 'target', { configurable: true, value: this });
+      node = node.parentNode;
+    }
+  }
+
   get nextElementSibling(): MiniElement | null {
     if (!this.parentNode) return null;
     const siblings = this.parentNode.childNodes.filter((child): child is MiniElement => child instanceof MiniElement);

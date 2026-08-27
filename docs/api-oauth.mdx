@@ -52,13 +52,15 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 - `https://claude.com/api/mcp/auth_callback`
 - `http://localhost:<port>` / `http://127.0.0.1:<port>` — any port
 
+At most **3** `redirect_uris` per registration; more returns `400 invalid_request`.
+
 **Rate limit**: 5 registrations / 60 s / IP.
 
 **Client TTL**: 90 days sliding (every successful token exchange refreshes).
 
 ### `GET /api/oauth/authorize`
 
-Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-in, then issues an authorization code bound to the caller's PRO entitlement.
+Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-in, then issues an authorization code bound to the caller's entitlement. The Pro sign-in leg of the consent flow is served by the sibling `GET /oauth/authorize-pro` (HTML; not called directly by clients). It admits Pro subscribers and confirmed free accounts; a provider-confirmed lapse is reclassified onto the free-account path, so authorization continues with a restricted, allowance-metered token. Retryable verification failures return `503`, while genuinely insufficient states such as an expired or disabled paid row without a confirmed lapse render the Pro-required page.
 
 **Required query params**:
 
@@ -103,6 +105,14 @@ refresh_token=<from previous exchange>
 client_id=<from DCR>
 ```
 
+**Grant type: `client_credentials`** (operator-issued enterprise keys only):
+```
+grant_type=client_credentials
+client_secret=<enterprise API key>
+```
+
+Validates the `client_secret` against the deployment's operator key allowlist and returns a bearer token with `scope: "mcp"` and the standard 3600 s TTL. Not available for dashboard `wm_…` keys — those are sent directly as `X-WorldMonitor-Key` instead.
+
 **Rate limit**: 10 token requests / minute. The limiter is keyed by `client_secret` hash for `client_credentials`, by `client_id` when present (`authorization_code` and `refresh_token`), and falls back to caller IP only when neither identifier is available.
 
 **Token TTLs**:
@@ -120,7 +130,7 @@ Pass the access token on every MCP request:
 Authorization: Bearer 6f13d8fa-89b6-4a02-a527-7f6f61a2df55
 ```
 
-Tokens are bound to the user's account and re-check entitlement on every call — a downgrade revokes access on the next request.
+Tokens are bound to the user's account and re-check entitlement on every call. A provider-confirmed lapse removes paid capability but keeps the OAuth identity on the restricted, allowance-metered `free-account` path; an expired or disabled paid entitlement without that confirmed lapse, or another genuinely insufficient non-free state, is denied on the next request.
 
 ## Error responses
 

@@ -6,7 +6,9 @@ import assert from 'node:assert/strict';
 export function rawManifestActiveEntries(manifest) {
   assert.ok(Array.isArray(manifest?.entries), 'the attribution manifest must contain an entries array');
   return manifest.entries.filter(
-    (entry) => entry?.observed === true && (entry.status === 'reviewed' || entry.status === 'terms-review'),
+    (entry) => entry?.observed === true
+      && entry.catalogActive !== false
+      && (entry.status === 'reviewed' || entry.status === 'terms-review'),
   );
 }
 

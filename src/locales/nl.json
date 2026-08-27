@@ -67,6 +67,7 @@
     "securityAdvisories": "Veiligheidsadviezen",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Inlichtingen",
+    "xIntel": "X News Accounts",
     "giving": "Mondiale donaties",
     "supplyChain": "Toeleveringsketen",
     "gulfEconomies": "Golfeconomieën",
@@ -1113,6 +1114,21 @@
       "live": "LIVE",
       "viewSource": "Bron bekijken",
       "filterGeopolitics": "Geopolitiek",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -2665,7 +2681,11 @@
       "heading": "RUBRIEK",
       "hexCode": "HEX-CODE",
       "squawk": "SQUAWK",
-      "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "STIJGSNELHEID",
+      "manufacturer": "FABRIKANT",
+      "owner": "EIGENAAR",
+      "builtYear": "BOUWJAAR"
     },
     "militaryVessel": {
       "aisDark": "AIS DONKER",
@@ -2710,7 +2730,8 @@
       "moreVessels": "+{{count}} meer schepen",
       "vesselsCount": "{{count}} VAARTUIGEN",
       "vessels": "VAARTUIGEN",
-      "trackedVessels": "BIJGEVOERDE VAARTUIGEN"
+      "trackedVessels": "BIJGEVOERDE VAARTUIGEN",
+      "showLess": "Minder weergeven"
     },
     "naturalEvent": {
       "closed": "GESLOTEN",
@@ -3322,7 +3343,9 @@
     "fontFamily": "Lettertype",
     "fontFamilyDesc": "Monospace voor een technische uitstraling, systeemstandaard voor gemakkelijker lezen.",
     "fontMono": "Monospace",
-    "fontSystem": "Systeemstandaard"
+    "fontSystem": "Systeemstandaard",
+    "panelFontScale": "Tekstgrootte",
+    "followGlobalFontScale": "Algemene instelling gebruiken"
   },
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",
@@ -3413,7 +3436,9 @@
       "orefSirens1": "Waarschuwingen voor Israëlische raketaanvallen in realtime",
       "orefSirens2": "Sirènezone-mapping met dreiging classificatie",
       "telegramIntel1": "Gecureerde Telegram OSINT-kanalen",
-      "telegramIntel2": "Updates over conflicten en geopolitieke situaties vrijwel in realtime"
+      "telegramIntel2": "Updates over conflicten en geopolitieke situaties vrijwel in realtime",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

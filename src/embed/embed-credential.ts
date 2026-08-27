@@ -36,6 +36,7 @@ function readEmbeddingApiKey(data: unknown): string | null {
 export function waitForEmbeddingApiKey(
   timeoutMs = EMBED_CREDENTIAL_WAIT_MS,
   host: EmbedCredentialHost = window,
+  parentOrigin = readEmbeddingParentOrigin(),
 ): Promise<string | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -47,6 +48,7 @@ export function waitForEmbeddingApiKey(
     };
     const onMessage = (event: MessageEvent): void => {
       if (event.source !== host.parent) return;
+      if (parentOrigin && event.origin !== parentOrigin) return;
       const key = readEmbeddingApiKey(event.data);
       if (key) finish(key);
     };
@@ -54,11 +56,22 @@ export function waitForEmbeddingApiKey(
     try {
       host.parent.postMessage(
         { source: EMBED_CREDENTIAL_SOURCE, type: EMBED_CREDENTIAL_READY_TYPE },
-        '*',
+        parentOrigin || '*',
       );
     } catch {
       // Tests and sandboxed frames may lack a parent postMessage target.
     }
     host.setTimeout(() => finish(null), timeoutMs);
   });
+}
+
+function readEmbeddingParentOrigin(): string {
+  // For an iframe, the referrer identifies the embedding document. If policy
+  // strips it, retain the existing source-only check so legitimate embeds do
+  // not fail closed without a usable origin signal.
+  try {
+    return new URL(document.referrer).origin;
+  } catch {
+    return '';
+  }
 }

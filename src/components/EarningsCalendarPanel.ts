@@ -1,5 +1,6 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
+import { localYmd } from '@/utils/local-date';
 import { t, getLocale } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
@@ -144,8 +145,9 @@ export class EarningsCalendarPanel extends Panel {
       const today = new Date();
       const future = new Date();
       future.setDate(future.getDate() + 14);
-      const fromDate = today.toISOString().slice(0, 10);
-      const toDate = future.toISOString().slice(0, 10);
+      // Local-time day keys (see localYmd) — UTC slicing skewed the window.
+      const fromDate = localYmd(today);
+      const toDate = localYmd(future);
       const resp = await client.listEarningsCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.earnings?.length) {

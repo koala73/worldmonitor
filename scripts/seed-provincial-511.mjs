@@ -6,9 +6,11 @@
 // Seeds Ontario 511 (events/alerts/roadconditions), Alberta 511 events and
 // alerts, and Manitoba 511 events and alerts. One process ticks all three
 // jurisdictions, so they clear on the same tick. Manitoba requires
-// MANITOBA_511_KEY via loadEnvFile; an unset key skips that jurisdiction,
-// preserves last-good without rewriting freshness, and lets fetchedAt age into
-// an actionable health failure. Do not add Canada loops to ais-relay.cjs.
+// MANITOBA_511_KEY and Alberta requires ALBERTA_511_KEY via loadEnvFile (Alberta
+// began enforcing keys 2026-08-19, answering an unkeyed GET with HTTP 400
+// "Invalid Key"); an unset key skips that jurisdiction, preserves last-good
+// without rewriting freshness, and lets fetchedAt age into an actionable health
+// failure. Do not add Canada loops to ais-relay.cjs.
 // Each fetch goes through acquire511Slot(hostname) inside the adapter
 // (511on.ca, 511.alberta.ca, and www.manitoba511.ca are separate 10/60 buckets).
 
@@ -48,6 +50,11 @@ function readManitoba511Key() {
   return typeof raw === 'string' && raw.trim() ? raw.trim() : '';
 }
 
+function readAlberta511Key() {
+  const raw = process.env.ALBERTA_511_KEY;
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : '';
+}
+
 async function fetchOntario511() {
   const envelope = await fetchVendor511(ONTARIO_511, {
     userAgent: CHROME_UA,
@@ -66,9 +73,27 @@ async function fetchOntario511() {
 }
 
 async function fetchAlberta511() {
+  // 511.alberta.ca began enforcing api keys around 2026-08-19: an unkeyed GET
+  // now answers `HTTP 400 {"Message":"Invalid Key"}` on both resources. It reads
+  // like a malformed request rather than an auth failure, which is why the
+  // seeder kept "succeeding" — Ontario and Manitoba published while Alberta
+  // silently preserved last-good for 88 hours.
+  //
+  // Same contract as Manitoba: an unset key is NOT an outage. The jurisdiction
+  // is simply not configured, so it preserves last-good and stays quiet. A key
+  // that is present and REJECTED is a different thing and still fails loudly
+  // through the ordinary fetch path.
+  const key = readAlberta511Key();
+  if (!key) {
+    const err = new Error('Alberta 511: not configured (ALBERTA_511_KEY missing); keeping last-good');
+    err.notConfigured = true;
+    err.nonRetryable = true;
+    throw err;
+  }
   const envelope = await fetchVendor511(ALBERTA_511, {
     userAgent: CHROME_UA,
     staggerMs: STAGGER_MS,
+    key,
   });
   if (!isCompleteVendor511(envelope, ALBERTA_511)) {
     const failed = envelope.failedResources?.join(', ') || 'incomplete';
@@ -144,6 +169,7 @@ async function fetchProvincial511Tick() {
     _ontarioFailed: !ontario,
     _albertaFailed: !alberta,
     _manitobaFailed: !manitoba,
+    _albertaNotConfigured: Boolean(albertaErr?.notConfigured),
     _manitobaNotConfigured: Boolean(manitobaErr?.notConfigured),
   };
 }
@@ -167,6 +193,11 @@ async function preserveAlberta() {
 }
 
 async function publishAlbertaFromTick(data) {
+  if (data?._albertaNotConfigured) {
+    console.warn('  Alberta 511: not configured; preserving last-good while freshness metadata ages');
+    await preserveAlberta();
+    return;
+  }
   if (!data || data._albertaFailed) {
     console.warn('  Alberta 511: preserving last-good (fetch failed this tick)');
     await preserveAlberta();

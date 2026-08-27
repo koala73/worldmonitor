@@ -384,7 +384,11 @@
           "Support dédié",
           "Intégrations personnalisées",
           "Garantie de contrat de service",
-          "Option sur site"
+          "Option sur site",
+          "Accord de traitement des données (DPA)",
+          "Facturation par bon de commande",
+          "SAML SSO, SCIM",
+          "Paramètres de sécurité et confidentialité personnalisés"
         ],
         "cta": "Contacter les ventes"
       },

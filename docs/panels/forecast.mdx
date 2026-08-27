@@ -43,8 +43,8 @@ Panel id is `forecast`; canonical component is `src/components/ForecastPanel.ts`
 Primary RPC: `GET /api/forecast/v1/get-forecasts`. The panel also consumes adjacent RPCs for the richer deep-simulation surface:
 
 - `GET /api/forecast/v1/get-simulation-package` — the most recent simulation inputs bundle.
-- `GET /api/forecast/v1/get-simulation-outcome` — the most recent simulation result.
-- `POST /api/forecast/v1/trigger-simulation` — starts a fresh simulation run outside the cached cron output.
+- `GET /api/forecast/v1/get-simulation-outcome` — the most recent simulation result. Outcomes auto-refresh on the deep-forecast cron cadence (~hourly); each cycle enqueues a worker task after writing the simulation package.
+- `POST /api/forecast/v1/trigger-simulation` — starts a fresh simulation run outside the cached cron output. Usually unnecessary — outcomes already auto-run each cron cycle.
 
 The forecasting pipeline runs as a Railway cron that pulls recent conflict, intelligence, markets, and supply-chain signals, runs them through the forecasting model, and writes the aggregated result at `forecast:predictions:v2` in Redis. Macro-region classification comes from `shared/forecast-macro-regions.js`.
 

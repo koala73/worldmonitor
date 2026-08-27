@@ -2,7 +2,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+
+import { isMainModule } from './lib/main-module.mjs';
 
 const VITE_ENV_NAME = /^VITE_[A-Za-z0-9_]+$/;
 const SECRET_NAME = /(?:api_?key|access_?token|secret|token|password|private_?key|credential)/i;
@@ -76,8 +77,7 @@ export function runViteEnvSecretGuard(rootDir = process.cwd(), options = {}) {
   }
 }
 
-const isDirectRun = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
-if (isDirectRun) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   try {
     runViteEnvSecretGuard(process.cwd(), { failOnLocal: process.argv.includes('--strict-local') });
   } catch (error) {

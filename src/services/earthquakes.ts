@@ -1,6 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { Earthquake as ProtoEarthquake, ListEarthquakesResponse } from '@/generated/client/worldmonitor/seismology/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { SeismologyServiceClient } from '@/services/generated-rpc-clients';
 
@@ -18,7 +18,10 @@ const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
   const hydrated = getHydratedData('earthquakes') as ListEarthquakesResponse | undefined;
-  if (hydrated?.earthquakes?.length) return hydrated.earthquakes as Earthquake[];
+  if (hydrated?.earthquakes?.length) {
+    breaker.recordSuccess(hydrated);
+    return hydrated.earthquakes as Earthquake[];
+  }
 
   const response = await breaker.execute(async () => {
     return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });

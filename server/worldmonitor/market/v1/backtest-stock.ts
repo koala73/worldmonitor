@@ -1,14 +1,25 @@
-import type {
-  AnalyzeStockResponse,
-  BacktestStockResponse,
-  BacktestStockEvaluation,
-  MarketServiceHandler,
+import {
+  ApiError,
+  type AnalyzeStockResponse,
+  type BacktestStockEvaluation,
+  type BacktestStockResponse,
+  type MarketServiceHandler,
+  type ServerContext,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { attachApiErrorHttpResponseMetadata } from '../../../error-mapper';
+import { cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
+import {
+  BACKTEST_STOCK_DAILY_PROVIDER_QUOTA_LIMIT,
+  BACKTEST_STOCK_PROVIDER_QUOTA_EXCEEDED_MESSAGE,
+  BACKTEST_STOCK_PROVIDER_QUOTA_UNAVAILABLE_MESSAGE,
+  backtestStockQuotaUserId,
+  reserveBacktestStockProviderQuota,
+  type BacktestStockQuotaReservation,
+} from '../../../_shared/backtest-stock-quota';
 import {
   buildAnalysisResponse,
   buildTechnicalSnapshot,
-  fetchYahooHistory,
+  fetchYahooHistoryOutcome,
   getFallbackOverlay,
   signalDirection,
   type Candle,
@@ -28,6 +39,82 @@ const MAX_EVALUATIONS = 8;
 const MIN_ANALYSIS_BARS = 60;
 export const STOCK_BACKTEST_ENGINE_VERSION = 'v3-technical-only';
 export const STOCK_BACKTEST_RATING_BASIS = 'technical_only';
+
+export function stockBacktestCacheKey(symbol: string, evalWindowDays: number): string {
+  return `market:backtest:v3:${symbol}:${evalWindowDays}`;
+}
+
+function unavailableBacktest(
+  symbol: string,
+  name: string,
+  evalWindowDays: number,
+  summary: string,
+): BacktestStockResponse {
+  return {
+    available: false,
+    symbol,
+    name,
+    display: symbol,
+    currency: 'USD',
+    evalWindowDays,
+    evaluationsRun: 0,
+    actionableEvaluations: 0,
+    winRate: 0,
+    directionAccuracy: 0,
+    avgSimulatedReturnPct: 0,
+    cumulativeSimulatedReturnPct: 0,
+    latestSignal: '',
+    latestSignalScore: 0,
+    summary,
+    generatedAt: new Date().toISOString(),
+    evaluations: [],
+    engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
+    ratingBasis: STOCK_BACKTEST_RATING_BASIS,
+  };
+}
+
+function throwProviderQuotaFailure(
+  reservation: Extract<BacktestStockQuotaReservation, { ok: false }>,
+): never {
+  if (reservation.reason === 'cap-exceeded') {
+    const err = new ApiError(429, BACKTEST_STOCK_PROVIDER_QUOTA_EXCEEDED_MESSAGE, '');
+    (err as ApiError & { retryAfter: number }).retryAfter = reservation.retryAfterSec;
+    throw attachApiErrorHttpResponseMetadata(err, {
+      envelope: 'error',
+      rateLimit: {
+        limit: BACKTEST_STOCK_DAILY_PROVIDER_QUOTA_LIMIT,
+        remaining: 0,
+        resetMs: Date.now() + (reservation.retryAfterSec * 1000),
+        windowSec: 86_400,
+      },
+    });
+  }
+  const err = new ApiError(503, BACKTEST_STOCK_PROVIDER_QUOTA_UNAVAILABLE_MESSAGE, '');
+  (err as ApiError & { retryAfter: number; exposeMessage: boolean }).retryAfter = reservation.retryAfterSec;
+  (err as ApiError & { exposeMessage: boolean }).exposeMessage = true;
+  throw attachApiErrorHttpResponseMetadata(err, { envelope: 'error' });
+}
+
+function isProviderQuotaFailure(error: unknown): boolean {
+  return error instanceof ApiError
+    && (
+      error.message === BACKTEST_STOCK_PROVIDER_QUOTA_EXCEEDED_MESSAGE
+      || error.message === BACKTEST_STOCK_PROVIDER_QUOTA_UNAVAILABLE_MESSAGE
+    );
+}
+
+async function reserveProviderWork(request: Request | undefined): Promise<{ rollback: () => Promise<void> } | null> {
+  const userId = backtestStockQuotaUserId(request);
+  // Operator enterprise keys have no user id; the 60/min fail-closed route
+  // policy remains the bound. Identified callers must prove a reservation.
+  if (!userId) return null;
+  const reservation = await reserveBacktestStockProviderQuota({
+    userId,
+    pipeline: (cmds) => runRedisPipeline(cmds, true),
+  });
+  if (!reservation.ok) throwProviderQuotaFailure(reservation);
+  return reservation;
+}
 
 function round(value: number, digits = 2): number {
   return Number.isFinite(value) ? Number(value.toFixed(digits)) : 0;
@@ -165,123 +252,120 @@ async function _ensureHistoricalAnalysisLedger(
 }
 
 export const backtestStock: MarketServiceHandler['backtestStock'] = async (
-  _ctx,
+  ctx: ServerContext,
   req,
 ): Promise<BacktestStockResponse> => {
   const symbol = sanitizeSymbol(req.symbol || '');
   if (!symbol) {
-    return {
-      available: false,
-      symbol: '',
-      name: req.name || '',
-      display: '',
-      currency: 'USD',
-      evalWindowDays: req.evalWindowDays || DEFAULT_WINDOW_DAYS,
-      evaluationsRun: 0,
-      actionableEvaluations: 0,
-      winRate: 0,
-      directionAccuracy: 0,
-      avgSimulatedReturnPct: 0,
-      cumulativeSimulatedReturnPct: 0,
-      latestSignal: '',
-      latestSignalScore: 0,
-      summary: 'No symbol provided.',
-      generatedAt: new Date().toISOString(),
-      evaluations: [],
-      engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
-      ratingBasis: STOCK_BACKTEST_RATING_BASIS,
-    };
+    return unavailableBacktest('', req.name || '', req.evalWindowDays || DEFAULT_WINDOW_DAYS, 'No symbol provided.');
   }
 
   const evalWindowDays = Math.max(3, Math.min(30, req.evalWindowDays || DEFAULT_WINDOW_DAYS));
-  const cacheKey = `market:backtest:v3:${symbol}:${evalWindowDays}`;
+  const cacheKey = stockBacktestCacheKey(symbol, evalWindowDays);
 
-  try {
-    const cached = await cachedFetchJson<BacktestStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
-      const history = await fetchYahooHistory(symbol);
-      if (!history || history.candles.length < MIN_REQUIRED_BARS) return null;
+  let definitiveInvalidSymbol = false;
+  const computeBacktest = async (): Promise<BacktestStockResponse | null> => {
+    const historyOutcome = await fetchYahooHistoryOutcome(symbol);
+    if (historyOutcome.status === 'invalid-symbol') {
+      definitiveInvalidSymbol = true;
+      return null;
+    }
+    if (historyOutcome.status !== 'success') return null;
+    const history = historyOutcome.history;
+    if (history.candles.length < MIN_REQUIRED_BARS) return null;
 
-      const analyses = await ensureHistoricalAnalysisLedger(
-        symbol,
-        req.name || symbol,
-        history.currency || 'USD',
-        history.candles,
-      );
-      if (analyses.length === 0) return null;
+    const analyses = await ensureHistoricalAnalysisLedger(
+      symbol,
+      req.name || symbol,
+      history.currency || 'USD',
+      history.candles,
+    );
+    if (analyses.length === 0) return null;
 
-      const candleIndexByTimestamp = new Map<number, number>();
-      history.candles.forEach((candle, index) => {
-        candleIndexByTimestamp.set(candle.timestamp, index);
-      });
-
-      const evaluations = analyses
-        .map((analysis) => {
-          const candleIndex = candleIndexByTimestamp.get(analysis.analysisAt);
-          if (candleIndex == null) return null;
-          const forwardBars = history.candles.slice(candleIndex + 1, candleIndex + 1 + evalWindowDays);
-          if (forwardBars.length < evalWindowDays) return null;
-          return simulateEvaluation(analysis, forwardBars);
-        })
-        .filter((evaluation): evaluation is BacktestStockEvaluation => !!evaluation)
-        .sort(compareByAnalysisAtDesc);
-
-      if (evaluations.length === 0) return null;
-
-      const actionableEvaluations = evaluations.length;
-      const profitable = evaluations.filter((evaluation) => evaluation.simulatedReturnPct > 0);
-      const winRate = (profitable.length / actionableEvaluations) * 100;
-      const directionAccuracy = (evaluations.filter((evaluation) => evaluation.directionCorrect).length / actionableEvaluations) * 100;
-      const avgSimulatedReturnPct = evaluations.reduce((sum, evaluation) => sum + evaluation.simulatedReturnPct, 0) / actionableEvaluations;
-      const cumulativeSimulatedReturnPct = evaluations.reduce((sum, evaluation) => sum + evaluation.simulatedReturnPct, 0);
-      const latest = evaluations[0]!;
-      const response: BacktestStockResponse = {
-        available: true,
-        symbol,
-        name: req.name || symbol,
-        display: symbol,
-        currency: history.currency || 'USD',
-        evalWindowDays,
-        evaluationsRun: analyses.length,
-        actionableEvaluations,
-        winRate: round(winRate),
-        directionAccuracy: round(directionAccuracy),
-        avgSimulatedReturnPct: round(avgSimulatedReturnPct),
-        cumulativeSimulatedReturnPct: round(cumulativeSimulatedReturnPct),
-        latestSignal: latest.signal,
-        latestSignalScore: round(latest.signalScore),
-        summary: `Validated ${actionableEvaluations} technical-only signal records over ${evalWindowDays} trading days with ${round(winRate)}% win rate and ${round(avgSimulatedReturnPct)}% average simulated return. Point-in-time fundamentals are not included.`,
-        generatedAt: new Date().toISOString(),
-        evaluations: evaluations.slice(0, MAX_EVALUATIONS),
-        engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
-        ratingBasis: STOCK_BACKTEST_RATING_BASIS,
-      };
-      await storeStockBacktestSnapshot(response);
-      return response;
+    const candleIndexByTimestamp = new Map<number, number>();
+    history.candles.forEach((candle, index) => {
+      candleIndexByTimestamp.set(candle.timestamp, index);
     });
-    if (cached) return cached;
+
+    const evaluations = analyses
+      .map((analysis) => {
+        const candleIndex = candleIndexByTimestamp.get(analysis.analysisAt);
+        if (candleIndex == null) return null;
+        const forwardBars = history.candles.slice(candleIndex + 1, candleIndex + 1 + evalWindowDays);
+        if (forwardBars.length < evalWindowDays) return null;
+        return simulateEvaluation(analysis, forwardBars);
+      })
+      .filter((evaluation): evaluation is BacktestStockEvaluation => !!evaluation)
+      .sort(compareByAnalysisAtDesc);
+
+    if (evaluations.length === 0) return null;
+
+    const actionableEvaluations = evaluations.length;
+    const profitable = evaluations.filter((evaluation) => evaluation.simulatedReturnPct > 0);
+    const winRate = (profitable.length / actionableEvaluations) * 100;
+    const directionAccuracy = (evaluations.filter((evaluation) => evaluation.directionCorrect).length / actionableEvaluations) * 100;
+    const avgSimulatedReturnPct = evaluations.reduce((sum, evaluation) => sum + evaluation.simulatedReturnPct, 0) / actionableEvaluations;
+    const cumulativeSimulatedReturnPct = evaluations.reduce((sum, evaluation) => sum + evaluation.simulatedReturnPct, 0);
+    const latest = evaluations[0]!;
+    const response: BacktestStockResponse = {
+      available: true,
+      symbol,
+      name: req.name || symbol,
+      display: symbol,
+      currency: history.currency || 'USD',
+      evalWindowDays,
+      evaluationsRun: analyses.length,
+      actionableEvaluations,
+      winRate: round(winRate),
+      directionAccuracy: round(directionAccuracy),
+      avgSimulatedReturnPct: round(avgSimulatedReturnPct),
+      cumulativeSimulatedReturnPct: round(cumulativeSimulatedReturnPct),
+      latestSignal: latest.signal,
+      latestSignalScore: round(latest.signalScore),
+      summary: `Validated ${actionableEvaluations} technical-only signal records over ${evalWindowDays} trading days with ${round(winRate)}% win rate and ${round(avgSimulatedReturnPct)}% average simulated return. Point-in-time fundamentals are not included.`,
+      generatedAt: new Date().toISOString(),
+      evaluations: evaluations.slice(0, MAX_EVALUATIONS),
+      engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
+      ratingBasis: STOCK_BACKTEST_RATING_BASIS,
+    };
+    await storeStockBacktestSnapshot(response);
+    return response;
+  };
+
+  const quotaHold: { reservation: { rollback: () => Promise<void> } | null } = { reservation: null };
+  try {
+    const result = await cachedFetchJsonWithMeta<BacktestStockResponse>(
+      cacheKey,
+      CACHE_TTL_SECONDS,
+      async () => {
+        // Reserve only once this isolate is the fetch leader. Cache hits and
+        // in-flight followers never enter the fetcher, so they cannot 429 a
+        // same-symbol stampede near the daily cap.
+        quotaHold.reservation = await reserveProviderWork(ctx.request);
+        return computeBacktest();
+      },
+      120,
+      {
+        usage: {
+          provider: 'yahoo-finance',
+          operation: 'backtest-history',
+          host: 'query1.finance.yahoo.com',
+        },
+        cacheFetcherErrors: false,
+        isCallerLocalError: isProviderQuotaFailure,
+      },
+    );
+    if (quotaHold.reservation && (definitiveInvalidSymbol || result.source !== 'fresh' || !result.leader)) {
+      await quotaHold.reservation.rollback();
+    }
+    if (result.data) return result.data;
   } catch (err) {
+    if (quotaHold.reservation) {
+      await quotaHold.reservation.rollback();
+    }
+    if (err instanceof ApiError) throw err;
     console.warn(`[backtestStock] ${symbol} failed:`, (err as Error).message);
   }
 
-  return {
-    available: false,
-    symbol,
-    name: req.name || symbol,
-    display: symbol,
-    currency: 'USD',
-    evalWindowDays,
-    evaluationsRun: 0,
-    actionableEvaluations: 0,
-    winRate: 0,
-    directionAccuracy: 0,
-    avgSimulatedReturnPct: 0,
-    cumulativeSimulatedReturnPct: 0,
-    latestSignal: '',
-    latestSignalScore: 0,
-    summary: 'Backtest unavailable for this symbol.',
-    generatedAt: new Date().toISOString(),
-    evaluations: [],
-    engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
-    ratingBasis: STOCK_BACKTEST_RATING_BASIS,
-  };
+  return unavailableBacktest(symbol, req.name || symbol, evalWindowDays, 'Backtest unavailable for this symbol.');
 };

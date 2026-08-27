@@ -367,6 +367,7 @@
     "securityAdvisories": "Предупреждения безопасности",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Разведка Telegram",
+    "xIntel": "X News Accounts",
     "startups": "Стартапы и венчурный капитал",
     "vcblogs": "Аналитика и эссе венчурных фондов",
     "regionalStartups": "Мировые новости стартапов",
@@ -1766,6 +1767,21 @@
       "filterGeopolitics": "Геополитика",
       "filterCyber": "Кибер"
     },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
     "investments": {
       "infoTooltip": "База данных прямых иностранных инвестиций Саудовской Аравии и ОАЭ в мировую критическую инфраструктуру. Нажмите на строку для перехода к инвестиции на карте.",
       "searchPlaceholder": "Search assets, countries, entities…",
@@ -3024,7 +3040,11 @@
       "heading": "КУРС",
       "hexCode": "HEX-КОД",
       "squawk": "СКВОК",
-      "attribution": "Источник: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Источник: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "СКОРОСТЬ НАБОРА ВЫСОТЫ",
+      "manufacturer": "ПРОИЗВОДИТЕЛЬ",
+      "owner": "ВЛАДЕЛЕЦ",
+      "builtYear": "ГОД ВЫПУСКА"
     },
     "militaryVessel": {
       "aisDark": "AIS ВЫКЛЮЧЕН",
@@ -3069,7 +3089,8 @@
       "moreVessels": "+{{count}} ещё кораблей",
       "vesselsCount": "{{count}} КОРАБЛЕЙ",
       "vessels": "КОРАБЛИ",
-      "trackedVessels": "ОТСЛЕЖИВАЕМЫЕ КОРАБЛИ"
+      "trackedVessels": "ОТСЛЕЖИВАЕМЫЕ КОРАБЛИ",
+      "showLess": "Показать меньше"
     },
     "naturalEvent": {
       "closed": "ЗАВЕРШЕНО",
@@ -3358,7 +3379,9 @@
     "fontFamily": "Шрифт",
     "fontFamilyDesc": "Моноширинный для технического вида, системный по умолчанию для удобства чтения.",
     "fontMono": "Моноширинный",
-    "fontSystem": "Системный шрифт"
+    "fontSystem": "Системный шрифт",
+    "panelFontScale": "Размер текста",
+    "followGlobalFontScale": "Использовать глобальный размер"
   },
   "contextMenu": {
     "openCountryBrief": "Открыть обзор страны",
@@ -3449,7 +3472,9 @@
       "orefSirens1": "Оповещения об израильских ракетах и снарядах в реальном времени",
       "orefSirens2": "Зонирование сирен с классификацией угроз",
       "telegramIntel1": "Избранные каналы Telegram OSINT",
-      "telegramIntel2": "Обновления по конфликтам и геополитике в режиме реального времени"
+      "telegramIntel2": "Обновления по конфликтам и геополитике в режиме реального времени",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

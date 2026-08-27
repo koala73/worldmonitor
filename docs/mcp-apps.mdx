@@ -7,6 +7,10 @@ WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps
 
 This page is the source-of-truth guide for the interactive surface. Use it with the [MCP Server overview](/mcp-overview) for auth, quota, transport, and general JSON-RPC behavior.
 
+<Note>
+MCP Apps render WorldMonitor UI inside an MCP host after a hosted tool call. [WebMCP](/webmcp) instead lets a browser agent operate the existing WorldMonitor website in its current tab. WebMCP is not an MCP App and does not replace the hosted MCP server behind these resources.
+</Note>
+
 ## Contract
 
 | Field | Value |
@@ -103,7 +107,6 @@ The docs-stat gate derives the app inventory from `api/mcp/ui/registry.ts` and t
 - `docs/mcp-apps.mdx`, `docs/mcp-overview.mdx`, or `public/mcp-server.md` omits a linked tool or `ui://` URI.
 - `public/.well-known/mcp/server-card.json.metadata.mcpApps` drifts from the code-derived app list, spec version, or MIME type.
 - `docs/docs.json` drops this page from navigation.
-- The documented MCP tool count drifts from the server-card tool inventory.
 
 ## Source Files
 

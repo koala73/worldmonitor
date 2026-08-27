@@ -20,7 +20,7 @@
   <div class="c">
     <h1 id="t-title">You're Offline</h1>
     <p id="t-msg">World Monitor requires an internet connection for real-time intelligence data.</p>
-    <button id="t-retry" onclick="location.reload()">Retry</button>
+    <button id="t-retry">Retry</button>
   </div>
   <script>
     // Self-contained translations — the SW serves this page with no JS bundle,
@@ -33,6 +33,9 @@
     // scripts/sync-offline-translations.mjs from src/locales/<lng>.json shell.offline*
     // — re-run that script after editing the EN strings or adding a locale.
     (function(){
+      document.getElementById('t-retry').addEventListener('click', function () {
+        location.reload();
+      });
       var T = {
         en: { title: "You're Offline", msg: "World Monitor requires an internet connection for real-time intelligence data.", retry: "Retry" },
         ar: { title: "أنت غير متصل", msg: "يتطلب World Monitor اتصالاً بالإنترنت للحصول على بيانات الاستخبارات في الوقت الفعلي.", retry: "إعادة محاولة" },

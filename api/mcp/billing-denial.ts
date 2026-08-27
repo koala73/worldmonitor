@@ -68,7 +68,7 @@ export type RpcValidationViolation = {
 // (larger or hostile bodies still truncate and never leak raw content); the
 // surviving projection stays capped independently by MAX_VALIDATION_VIOLATIONS
 // and the per-field length limits below.
-const MAX_VALIDATION_BODY_BYTES = 16384;
+export const MAX_VALIDATION_BODY_BYTES = 16384;
 const MAX_VALIDATION_VIOLATIONS = 8;
 const MAX_VIOLATION_FIELD_LEN = 64;
 const MAX_VIOLATION_DESCRIPTION_LEN = 200;
@@ -126,26 +126,17 @@ function sanitizeViolationDescription(value: unknown): string | null {
 }
 
 /**
- * Extract proto/sebuf `ValidationError.violations` from a sibling 400 body.
- * Only `{field, description}` pairs survive, each length-bounded and
- * character-restricted. Malformed JSON, HTML, oversized leftovers, unknown
- * keys, and credential-like text are dropped — never copied into the error.
+ * Project an already-parsed sibling 400 body down to its safe proto/sebuf
+ * `ValidationError.violations`. Only `{field, description}` pairs survive,
+ * each length-bounded and character-restricted. Unknown keys, non-string
+ * values, and credential-like text are dropped — never copied into the error.
+ *
+ * Kept separate from the reading helper so every caller that has already
+ * consumed the body (a sibling classifier can only read it once) projects it
+ * through this exact function rather than reimplementing the sanitizing —
+ * that divergence is what let the observed-downstream path drop violations.
  */
-export async function extractSafeRpcViolations(
-  response: ToolFetchResponse,
-): Promise<readonly RpcValidationViolation[]> {
-  const type = (response.headers?.get('Content-Type') ?? '').toLowerCase();
-  if (type.includes('html')) return [];
-
-  const detail = await readBoundedResponseText(response, MAX_VALIDATION_BODY_BYTES);
-  if (!detail) return [];
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(detail);
-  } catch {
-    return [];
-  }
+export function parseSafeRpcViolations(parsed: unknown): readonly RpcValidationViolation[] {
   if (!parsed || typeof parsed !== 'object' || !('violations' in parsed)) return [];
   const raw = (parsed as { violations: unknown }).violations;
   if (!Array.isArray(raw)) return [];
@@ -161,6 +152,27 @@ export async function extractSafeRpcViolations(
     violations.push({ field, description });
   }
   return violations;
+}
+
+/**
+ * Extract proto/sebuf `ValidationError.violations` from a sibling 400 body.
+ * Malformed JSON, HTML, and oversized leftovers are dropped; whatever parses
+ * is projected through {@link parseSafeRpcViolations}.
+ */
+export async function extractSafeRpcViolations(
+  response: ToolFetchResponse,
+): Promise<readonly RpcValidationViolation[]> {
+  const type = (response.headers?.get('Content-Type') ?? '').toLowerCase();
+  if (type.includes('html')) return [];
+
+  const detail = await readBoundedResponseText(response, MAX_VALIDATION_BODY_BYTES);
+  if (!detail) return [];
+
+  try {
+    return parseSafeRpcViolations(JSON.parse(detail));
+  } catch {
+    return [];
+  }
 }
 
 /**

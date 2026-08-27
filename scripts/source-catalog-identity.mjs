@@ -466,6 +466,7 @@ export function buildLogicalProviders(declarations, geography = new Map()) {
 
 export function isCatalogProviderEntry(entry) {
   if (!entry || entry.observed !== true) return false;
+  if (entry.catalogActive === false) return false;
   if (entry.status !== 'reviewed' && entry.status !== 'terms-review') return false;
   return !isSyndicationTransportEntry(entry);
 }

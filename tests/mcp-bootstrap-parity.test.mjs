@@ -71,6 +71,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'seeded and health-monitored only: #6615 ingests unofficial VIA Rail Tracker JSON as an optional standalone source with no dashboard, proto, panel, or MCP consumer. The feed is undocumented and has no SLA; exposing it would advertise a slice that is best-effort last-good positions only.'],
   ['transit:ttc:alerts:v1',
     'seeded and health-monitored only: #6623 rediscovers TTC GTFS-RT service alerts as a standalone ingest until a transit panel exists. Do not advertise an MCP slice before that product surface exists.'],
+  ['safety:toronto-tfs:v1',
+    'seeded and health-monitored only: #6682 ingests official Toronto Fire live CAD as a standalone source until a Toronto safety panel exists. Do not advertise an MCP slice before that product surface exists.'],
+  ['safety:toronto-tps:v1',
+    'seeded and health-monitored only: #6682 ingests official TPS Calls for Service as a standalone source until a Toronto safety panel exists. Do not advertise an MCP slice before that product surface exists.'],
   ['economic:fred:batch:v1',
     'operational: producer batch envelope written by seed-fred-rates for health and rollout validation; the individual FRED series are the queryable data surfaces, so the batch envelope is intentionally not exposed through MCP.'],
 

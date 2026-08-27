@@ -528,7 +528,20 @@ describe('news digest methodology parity', () => {
   it('documents news digest cache TTLs from the implementation', () => {
     const healthyTtl = extractNumericConst(digestSrc, 'CACHE_TTL_HEALTHY_S');
     const emptyTtl = extractNumericConst(digestSrc, 'CACHE_TTL_EMPTY_S');
-    const digestTtl = digestSrc.match(/cachedFetchJson<ListFeedDigestResponse>\(\s*digestCacheKey,\s*([0-9_]+)/s);
+    // Matches either cachedFetchJson wrapper — #7084 switched the digest to
+    // cachedFetchJsonWithMeta to learn whether the fetcher actually ran, and
+    // pinning the exact wrapper name made this guard fail on a rename with the
+    // TTL unchanged (the match went null, so the parsed TTL became NaN).
+    const digestTtl = digestSrc.match(
+      /cachedFetchJson(?:WithMeta)?<ListFeedDigestResponse>\(\s*digestCacheKey,\s*([0-9_]+)/s,
+    );
+    // Fail on the LOOKUP before failing on the value: without this, a match
+    // that goes null parses to NaN and the failure reads as "the TTL changed"
+    // when the truth is "this guard can no longer find the TTL".
+    assert.ok(
+      digestTtl,
+      'could not locate the digest cachedFetchJson call to read its TTL; update this guard alongside the call',
+    );
 
     assert.equal(
       healthyTtl,
@@ -841,14 +854,31 @@ describe('news digest methodology parity', () => {
   });
 
   it('documents reserved feed fading phase and digest read-path fading behavior', () => {
+    // #7081 recorded a no-go for the score-ratio fading rule, so the feed digest
+    // no longer has a fading branch at all. The previous form of this guard
+    // pinned that branch's existence; it now pins its ABSENCE, which is the
+    // contract the methodology page describes.
     assert.ok(
-      digestSrc.includes('branch is intentionally') &&
-        digestSrc.includes("return 'STORY_PHASE_FADING'"),
-      'feed digest fading branch must remain explicitly guarded/inactive unless docs are updated',
+      !digestSrc.includes("return 'STORY_PHASE_FADING'"),
+      'the feed digest must not emit STORY_PHASE_FADING — see the #7081 no-go',
+    );
+    const derivePhaseBody = digestSrc.slice(
+      digestSrc.indexOf('function derivePhase('),
+      digestSrc.indexOf('\n}', digestSrc.indexOf('function derivePhase(')),
+    );
+    assert.ok(
+      derivePhaseBody.length > 0
+        && !derivePhaseBody.includes('currentScore')
+        && !derivePhaseBody.includes('peakScore'),
+      'derivePhase must not consume a score — reintroducing one reopens the #7081 no-go',
     );
     assertDocMatches(
-      /`fading`[\s\S]*Reserved for score-history support[\s\S]*zero placeholders[\s\S]*inert/,
+      /`fading`[\s\S]*Reserved\. The feed API does not emit this phase\./,
       'reserved feed fading phase',
+    );
+    assertDocMatches(
+      /The feed API does not emit `fading`[\s\S]*wire enum keeps the value/,
+      'feed fading no-go contract',
     );
     assertDocMatches(
       /notification cron[\s\S]*more than 24 hours of silence[\s\S]*`fading`/,

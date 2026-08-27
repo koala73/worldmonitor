@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Check, ShieldCheck, ArrowRight, Zap, Loader2 } from 'lucide-react';
 import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../services/checkout';
+import { createTimeoutSignal } from '../services/timeout-signal';
 import { CheckoutConsent } from './CheckoutConsent';
 import { t, tArray } from '../i18n';
 
@@ -34,7 +35,7 @@ function usePricingData(): Tier[] {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(CATALOG_API, { signal: AbortSignal.timeout(5000) })
+    fetch(CATALOG_API, { signal: createTimeoutSignal(5000) })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (!cancelled && data?.tiers?.length) {

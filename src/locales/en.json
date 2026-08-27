@@ -438,6 +438,7 @@
     "securityAdvisories": "Security Advisories",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Intel",
+    "xIntel": "X News Accounts",
     "startups": "Startups & VC",
     "vcblogs": "VC Insights & Essays",
     "regionalStartups": "Global Startup News",
@@ -1904,6 +1905,21 @@
       "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
     "investments": {
       "infoTooltip": "Database of Saudi Arabia and UAE foreign direct investments in global critical infrastructure. Click a row to fly to the investment on the map.",
       "searchPlaceholder": "Search assets, countries, entities…",
@@ -3057,6 +3073,10 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT",
       "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
@@ -3092,6 +3112,7 @@
       "activity": "ACTIVITY",
       "primary": "PRIMARY",
       "trackedAircraft": "TRACKED AIRCRAFT",
+      "showLess": "Show less",
       "vesselActivity": {
         "exercise": "Naval Exercise",
         "deployment": "Naval Deployment",
@@ -3404,6 +3425,8 @@
   },
   "preferences": {
     "display": "Display",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global",
     "intelligence": "Intelligence",
     "media": "Media",
     "panels": "Panels",
@@ -3435,7 +3458,9 @@
       "orefSirens1": "Real-time Israel missile & rocket alerts",
       "orefSirens2": "Siren zone mapping with threat classification",
       "telegramIntel1": "Curated Telegram OSINT channels",
-      "telegramIntel2": "Near-real-time conflict & geopolitical updates"
+      "telegramIntel2": "Near-real-time conflict & geopolitical updates",
+      "xIntel1": "Curated X news accounts",
+      "xIntel2": "API-fresh posts and permalinks"
     }
   },
   "contextMenu": {

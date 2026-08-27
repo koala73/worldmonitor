@@ -43,7 +43,49 @@ export const COUNT_SOURCE_KEYS: Record<string, string> = {
 };
 
 export const TEMPORAL_ANOMALIES_KEY = 'temporal:anomalies:v1';
+
+/**
+ * Redis key lifetime. Deliberately LONGER than the rebuild threshold below so an
+ * expired-but-usable snapshot survives as the stale fallback: when the snapshot is
+ * due for rebuild, whichever request loses the lock race still returns this cached
+ * body rather than an empty result.
+ */
 export const TEMPORAL_ANOMALIES_TTL = 3600;
+
+/**
+ * How old a snapshot may get before the next request rebuilds it.
+ *
+ * This also sets the cadence of `seed-meta:temporal:anomalies`, because the stamp is
+ * written ONLY on a successful rebuild — it means "the data was rebuilt recently",
+ * not "somebody requested this recently". Health consumers watch that key at
+ * maxStaleMin: 45, so this must stay comfortably below 45 minutes or the monitor
+ * false-alarms on a single missed cycle. At 20 minutes the alarm has ~2.25x margin
+ * and never sits on the refresh period.
+ *
+ * Changing this without moving those consumers' maxStaleMin is a monitoring change,
+ * not just a caching one. See tests/temporal-anomalies-cache.test.mts.
+ *
+ * KNOWN LIMIT — this is a rebuild clock, not a content clock. A "successful rebuild"
+ * only means the reads from COUNT_SOURCE_KEYS resolved; it does not check whether
+ * those upstream sources actually advanced. If news:insights:v1 or wildfire:fires:v1
+ * freezes, this route keeps stamping fresh every cycle and the monitor stays green.
+ * Moving the stamp off request traffic closed the larger hole (traffic alone used to
+ * keep it green), but detecting a frozen UPSTREAM needs a content clock — compare the
+ * sources' own timestamps, not merely the success of reading them.
+ */
+export const TEMPORAL_ANOMALIES_REBUILD_AFTER_MS = 20 * 60 * 1000;
+
+/**
+ * How often a rebuild folds a new sample into the `baseline:v2:*` running mean.
+ *
+ * Independent of the rebuild cadence on purpose. These were coupled only by
+ * accident — a rebuild used to sample every time it ran — so changing the cache
+ * interval silently changed the sample rate of a slow-moving signal, shrinking the
+ * variance estimate and shifting every z-score. 60 minutes preserves the sampling
+ * rate the baselines were accumulated at; change it only as a deliberate
+ * statistical decision, never to tune caching.
+ */
+export const BASELINE_SAMPLE_INTERVAL_MS = 60 * 60 * 1000;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
 

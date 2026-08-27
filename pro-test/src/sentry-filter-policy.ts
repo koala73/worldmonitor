@@ -81,6 +81,20 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // rejection always belongs to an extension injected into the page
   // (WORLDMONITOR-ZX).
   /runtime\.sendMessage\(\)/,
+  // The no-listener half of the same extension messaging API: Chrome emits
+  // this exact sentence when a `runtime`/`tabs` sendMessage reaches a context
+  // with no `onMessage` receiver (a content script not yet injected, or a
+  // service worker that has shut down). A different sentence from the entry
+  // above, so that pattern does not cover it. `pro-test/src` holds no
+  // chrome.runtime/tabs.sendMessage call site — the only textual occurrences
+  // are the suppressor patterns in this very file, which is what the grep
+  // verification covers and what the policy-wiring suite locks in — so the
+  // rejection always belongs to
+  // an extension injected into the page. Already suppressed on the dashboard
+  // in `src/bootstrap/sentry-init.ts`; the two surfaces run separate Sentry
+  // clients, so the marketing copy was the gap that let WORLDMONITOR-10N
+  // through as an unhandled rejection with zero frames.
+  /Could not establish connection\. Receiving end does not exist/,
   // Zalo's in-app browser (Vietnam's dominant messaging app) injects a JS
   // bridge that references `zaloJSV2` before the host app defines it. Same
   // class as the `WeixinJSBridge` entry in the dashboard array: a named
@@ -88,6 +102,18 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // all, so this can never come from our own bundle, minified or not
   // (WORLDMONITOR-102).
   /\bzaloJSV2\b/,
+  // iOS in-app WebView native bridge. The host app injects `sendDataToNative` /
+  // `sendPageHideMessage` into the document and they dereference
+  // `window.webkit.messageHandlers`, which only exists when a WKWebView host
+  // registered a script-message handler — so it is undefined in the plain
+  // browsers those in-app views also run. Neither identifier appears anywhere
+  // in either bundle, and this array's sibling `WKWebView API client did not
+  // respond to this postMessage` entry covers the same injected bridge from
+  // the other direction. Already suppressed on the dashboard since
+  // WORLDMONITOR-KJ (`src/bootstrap/sentry-init.ts`); the two surfaces run
+  // separate Sentry clients, so the marketing copy was the gap that let
+  // WORLDMONITOR-108 through.
+  /webkit\.messageHandlers/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */

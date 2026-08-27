@@ -76,6 +76,12 @@ async function loadWingbits(capture: (request: { icao24s: string[] }) => unknown
     }`,
     'military RPC client',
   );
+  patched = replaceRequired(
+    patched,
+    "import { premiumFetch } from '@/services/premium-fetch';",
+    'const premiumFetch = () => Promise.resolve(new Response());',
+    'premium fetch',
+  );
 
   const transformed = transformSync(patched, {
     loader: 'ts',

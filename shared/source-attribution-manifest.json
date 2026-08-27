@@ -1416,6 +1416,12 @@
       "references": [
         {
           "path": "scripts/lib/company-monitoring-x-provider.mjs"
+        },
+        {
+          "path": "scripts/lib/x-news-accounts.cjs"
+        },
+        {
+          "path": "scripts/verify-x-accounts.mjs"
         }
       ]
     },
@@ -2766,6 +2772,20 @@
       "references": [
         {
           "path": "server/_shared/sec-edgar.ts"
+        }
+      ]
+    },
+    {
+      "host": "data.tps.ca",
+      "provider": "Toronto Police Service Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.",
+      "attribution": "Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
         }
       ]
     },
@@ -4609,6 +4629,21 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "gtaupdate.com",
+      "provider": "GTA Update",
+      "kind": "structured",
+      "observed": true,
+      "license": "Reuse permission held by WorldMonitor, as confirmed by the repository owner on 2026-08-21. The private grant is not stored in this public repository. Production activation remains separately blocked on official TPS/TFS upstream provenance and the safety, cadence, capacity, and product acceptance gates in issue #7012.",
+      "attribution": "GTA Update (unofficial third-party TPS/TFS dispatch mirror; not official, not verified, entertainment-only per publisher). Used with permission. Production disabled pending upstream provenance and product activation. https://gtaupdate.com/about.php",
+      "status": "reviewed",
+      "catalogActive": false,
+      "references": [
+        {
+          "path": "scripts/lib/gta-update.mjs"
         }
       ]
     },
@@ -8019,6 +8054,23 @@
       ]
     },
     {
+      "host": "services.arcgis.com",
+      "provider": "Toronto Police Service",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence – Ontario as published on the TPS Calls for Service Experience item a22f5295933e48a5b0a4c90cd3c4cae1 (licenseInfo), plus TPS Public Safety Data Portal terms on that item: no identification of individuals, no TPS marks. Layer C4S_Public_NoGO is the privacy-filtered public Calls-for-Service map (refresh ~20 min). Not Major Crime Indicators / YTD.",
+      "attribution": "Toronto Police Service, Calls for Service. Contains information licensed under the Open Government Licence – Ontario.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/toronto-official-cad.mjs"
+        },
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
       "host": "services6.arcgis.com",
       "provider": "B.C. Evacuation Orders and Alerts",
       "kind": "structured",
@@ -9914,6 +9966,9 @@
         },
         {
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"
+        },
+        {
+          "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
           "path": "scripts/mcp-live-smoke.mjs"
@@ -13624,6 +13679,34 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.toronto.ca",
+      "provider": "Toronto Fire Services",
+      "kind": "structured",
+      "observed": true,
+      "license": "Direct permission: World Monitor's owner confirmed on 2026-08-21 that World Monitor holds redistribution and public-display rights for the Toronto Fire Services live CAD XML. This does not claim that the feed is licensed under the City of Toronto Open Government Licence: no data-bound CKAN package was found for toronto-fire-active-incidents or livecad.xml. City of Toronto copyright and the source-specific permission still apply. Not the historical fire-incidents CKAN datasets.",
+      "attribution": "Toronto Fire Services, Active Incidents (CAD). https://www.toronto.ca/community-people/public-safety-alerts/alerts-notifications/toronto-fire-active-incidents/",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/toronto-official-cad.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.tps.ca",
+      "provider": "Toronto Police Service Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.",
+      "attribution": "Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
         }
       ]
     },

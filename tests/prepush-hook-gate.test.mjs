@@ -99,13 +99,22 @@ function makeFixture({
   const env = hookEnv(bin);
   const git = (args) => execFileSync('git', args, { cwd: root, env, encoding: 'utf8' });
 
-  for (const dir of ['.husky', 'scripts', 'tests', 'node_modules']) {
+  for (const dir of ['.husky', 'scripts', 'scripts/lib', 'tests', 'node_modules']) {
     mkdirSync(join(root, dir), { recursive: true });
   }
+  // Simulate a COMPLETED install, not merely a present directory. npm writes
+  // .package-lock.json only when an install finishes, and the gate keys on that
+  // marker — an empty node_modules/ is the half-installed state it must catch.
+  // node_modules/ is gitignored above so this stays invisible to `dirty`.
+  writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}\n');
   copyFileSync(HOOK, join(root, '.husky', 'pre-push'));
   for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh']) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(root, 'scripts', script));
   }
+  copyFileSync(
+    join(REPO_ROOT, 'scripts', 'lib', 'main-module.mjs'),
+    join(root, 'scripts', 'lib', 'main-module.mjs'),
+  );
   // Fault injection: make one attest mode fail while its siblings still work,
   // so the hook's handling of a broken enumeration can be executed rather than
   // reasoned about.
@@ -119,7 +128,7 @@ function makeFixture({
   }
   writeFileSync(join(root, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(root, 'README.md'), 'base\n');
-  writeFileSync(join(root, '.gitignore'), 'public/pro/\n');
+  writeFileSync(join(root, '.gitignore'), 'public/pro/\nnode_modules/\n');
   // RUN_ALL fires the CJS syntax check, which iterates `scripts/*.cjs`.
   if (scriptsCjs) writeFileSync(join(root, 'scripts', 'noop.cjs'), 'module.exports = {};\n');
 
@@ -132,6 +141,7 @@ function makeFixture({
   // invisible to `dirty`).
   if (proTestNodeModules) {
     mkdirSync(join(root, 'pro-test', 'node_modules'), { recursive: true });
+    writeFileSync(join(root, 'pro-test', 'node_modules', '.package-lock.json'), '{}\n');
   }
   for (const [path, contents] of Object.entries({
     'src/config/products.generated.ts': 'export const PRODUCTS = [];\n',
@@ -226,7 +236,7 @@ function pushWithPoisonedSharedHooksPath() {
   git(main, ['config', 'user.name', 'Prepush Hook Fixture']);
   git(main, ['remote', 'add', 'origin', remote]);
 
-  for (const dir of ['.husky', 'scripts', 'node_modules']) {
+  for (const dir of ['.husky', 'scripts', 'scripts/lib', 'node_modules']) {
     mkdirSync(join(main, dir), { recursive: true });
   }
   copyFileSync(HOOK, join(main, '.husky', 'pre-push'));
@@ -239,6 +249,10 @@ function pushWithPoisonedSharedHooksPath() {
   ]) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(main, 'scripts', script));
   }
+  copyFileSync(
+    join(REPO_ROOT, 'scripts', 'lib', 'main-module.mjs'),
+    join(main, 'scripts', 'lib', 'main-module.mjs'),
+  );
   writeFileSync(join(main, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(main, 'README.md'), 'base\n');
   git(main, ['add', '-A']);
@@ -246,6 +260,7 @@ function pushWithPoisonedSharedHooksPath() {
   git(main, ['push', '--quiet', '--set-upstream', 'origin', 'main']);
   git(main, ['worktree', 'add', '--quiet', '-b', 'feature', worktree]);
   mkdirSync(join(worktree, 'node_modules'), { recursive: true });
+  writeFileSync(join(worktree, 'node_modules', '.package-lock.json'), '{}\n');
   writeFileSync(join(worktree, 'README.md'), 'feature\n');
   git(worktree, ['add', 'README.md']);
   git(worktree, ['commit', '--quiet', '-m', 'feature']);

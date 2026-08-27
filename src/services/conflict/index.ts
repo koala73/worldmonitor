@@ -1,7 +1,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { AcledConflictEvent as ProtoAcledEvent, UcdpViolenceEvent as ProtoUcdpEvent, ListAcledEventsResponse, ListUcdpEventsResponse, IranEvent, ListIranEventsResponse } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
 import { ConflictServiceClient } from '@/services/generated-rpc-clients';
@@ -258,7 +258,13 @@ export function getIranEventSize(severity: string): number {
 
 export async function fetchIranEvents(): Promise<IranEvent[]> {
   const hydrated = getHydratedData('iranEvents') as ListIranEventsResponse | undefined;
-  if (hydrated?.events?.length) return hydrated.events;
+  if (hydrated?.events?.length) {
+    // Warm the breaker under the same key a later recurring call reads
+    // (#7048); a bare return drained the consume-once slot and forced a
+    // refetch of the cache-busted URL.
+    iranBreaker.recordSuccess(hydrated);
+    return hydrated.events;
+  }
 
   const resp = await iranBreaker.execute(async () => {
     const cacheBust = Math.floor(Date.now() / 120_000);

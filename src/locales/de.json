@@ -384,6 +384,7 @@
     "securityAdvisories": "Sicherheitshinweise",
     "orefSirens": "Israel-Sirenen",
     "telegramIntel": "Telegram-Nachrichten",
+    "xIntel": "X News Accounts",
     "gulfEconomies": "Golf-Ökonomien",
     "gulfIndices": "Golf-Indizes",
     "gulfCurrencies": "Golf-Währungen",
@@ -1569,6 +1570,21 @@
       "live": "LIVE",
       "viewSource": "Quelle anzeigen",
       "filterGeopolitics": "Geopolitik",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -2980,7 +2996,11 @@
       "heading": "KURS",
       "hexCode": "HEX-CODE",
       "squawk": "SQUAWK",
-      "attribution": "Quelle: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Quelle: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "STEIGGESCHWINDIGKEIT",
+      "manufacturer": "HERSTELLER",
+      "owner": "EIGENTÜMER",
+      "builtYear": "BAUJAHR"
     },
     "militaryVessel": {
       "aisDark": "AIS DUNKEL",
@@ -3025,7 +3045,8 @@
       "moreVessels": "+{{count}} weitere Schiffe",
       "vesselsCount": "{{count}} SCHIFFE",
       "vessels": "SCHIFFE",
-      "trackedVessels": "VERFOLGTE SCHIFFE"
+      "trackedVessels": "VERFOLGTE SCHIFFE",
+      "showLess": "Weniger anzeigen"
     },
     "naturalEvent": {
       "closed": "GESCHLOSSEN",
@@ -3322,7 +3343,9 @@
     "fontFamily": "Schriftfamilie",
     "fontFamilyDesc": "Monospace für technisches Aussehen, Systemstandard für leichtere Lesbarkeit.",
     "fontMono": "Monospace",
-    "fontSystem": "Systemstandard"
+    "fontSystem": "Systemstandard",
+    "panelFontScale": "Textgröße",
+    "followGlobalFontScale": "Global verwenden"
   },
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
@@ -3413,7 +3436,9 @@
       "orefSirens1": "Echtzeitwarnungen bei Raketen- und Lenkflugkörperangriffen auf Israel",
       "orefSirens2": "Sirenenzonenkartierung mit Bedrohungsklassifizierung",
       "telegramIntel1": "Kuratierte Telegram OSINT-Kanäle",
-      "telegramIntel2": "Konflikts- und geopolitische Updates in Echtzeit"
+      "telegramIntel2": "Konflikts- und geopolitische Updates in Echtzeit",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

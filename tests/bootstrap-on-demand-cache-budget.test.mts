@@ -85,6 +85,24 @@ function cdnMaxAgeSeconds(key: string): number {
   return Number(match[1]);
 }
 
+function cacheDirectiveSeconds(header: string, directive: string): number {
+  const match = new RegExp(`(?:^|,\\s*)${directive}=(\\d+)(?:,|$)`).exec(header);
+  assert.ok(match, `cache header must declare ${directive} (got: ${header})`);
+  return Number(match[1]);
+}
+
+/**
+ * Conservative upper bound for how long a cache can serve one response.
+ * RFC stale windows overlap rather than add, but summing both allowances makes
+ * this guard safe across intermediary implementations and policy changes.
+ */
+function completeCacheServingWindowSeconds(header: string, shared: boolean): number {
+  const freshDirective = shared ? 's-maxage' : 'max-age';
+  return cacheDirectiveSeconds(header, freshDirective)
+    + cacheDirectiveSeconds(header, 'stale-while-revalidate')
+    + cacheDirectiveSeconds(header, 'stale-if-error');
+}
+
 test('SEED_META budgets are actually readable, or this whole suite is vacuous', () => {
   // Without this, a rename in api/health.js would turn every budget into null
   // and the guard below would pass by having nothing to check.
@@ -126,4 +144,23 @@ test('no on-demand key is cached at the edge past its freshness budget', () => {
 
   assert.ok(checked >= 4, `expected several probed on-demand keys, checked ${checked}`);
   assert.deepEqual(violations, []);
+});
+
+test('FAST-demoted key cache windows stay within their individual freshness budgets', () => {
+  for (const key of ['forecasts', 'correlationCards']) {
+    assert.equal(bootstrapTierKeyNames('fast').includes(key), false, `${key} must not ride FAST`);
+    assert.equal(bootstrapTierKeyNames('slow').includes(key), false, `${key} must not ride SLOW`);
+    assert.equal(bootstrapTierKeyNames('on-demand').includes(key), true, `${key} must be on-demand`);
+    assert.notEqual(healthMaxStaleMin(key), null, `${key} must have a health freshness budget`);
+    const headers = __testing__.successCacheHeaders(null, 'public-on-demand', {}, key);
+    const budgetSec = healthMaxStaleMin(key)! * 60;
+    assert.ok(
+      completeCacheServingWindowSeconds(headers['Cache-Control'], false) <= budgetSec,
+      `${key} browser cache exceeds its health budget`,
+    );
+    assert.ok(
+      completeCacheServingWindowSeconds(headers['CDN-Cache-Control'], true) <= budgetSec,
+      `${key} CDN cache exceeds its health budget`,
+    );
+  }
 });

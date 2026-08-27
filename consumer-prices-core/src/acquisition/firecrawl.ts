@@ -100,6 +100,9 @@ export class FirecrawlProvider implements AcquisitionProvider {
         includeDomains: opts.includeDomains,
         scrapeOptions: { formats: ['markdown'] },
       }),
+      // Same bound as fetch/extract: a wedged provider connection must not
+      // eat the whole run budget for one retailer.
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!resp.ok) throw new Error(`Firecrawl search failed: HTTP ${resp.status}`);

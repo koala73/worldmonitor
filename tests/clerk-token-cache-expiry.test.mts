@@ -22,6 +22,14 @@
  *
  * The truth table below is the bound; `honours a near-expiry token from Clerk's
  * stale-while-revalidate path` is the case that was live in production.
+ *
+ * The same leftover also fed WORLDMONITOR-QK: a token still inside `exp` at
+ * the edge and dead by the time Convex verified it. That set the per-write
+ * failure rate behind the May–July 2026 13.6x `convex_auth_drift` ramp on
+ * POST /api/user-prefs — but not the ramp itself, which was that constant
+ * rate times a cloud-prefs write path that kept growing. See
+ * docs/solutions/integration-issues/convex-auth-drift-ramp-was-stacked-clerk-token-cache.md.
+ * `stops reusing a token before it expires` is the QK-prevention case.
  */
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -101,6 +109,8 @@ describe('shouldReuseCachedClerkToken', () => {
   it('stops reusing a token before it expires, to absorb clock skew and flight time', () => {
     // 8s of life left is inside the safety margin: the server's bounded clock
     // tolerance is not a substitute for refreshing a near-expiry cached token.
+    // This is also the WORLDMONITOR-QK feeder — the token would still pass
+    // the edge and lose the Convex round trip.
     assert.equal(
       shouldReuseCachedClerkToken({
         token: tokenExpiringAt(NOW + 8_000),

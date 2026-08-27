@@ -438,6 +438,7 @@
     "securityAdvisories": "Biztonsági tanácsok",
     "orefSirens": "Izraeli szirénák",
     "telegramIntel": "Telegram Intelligence",
+    "xIntel": "X News Accounts",
     "startups": "Startupok & VC",
     "vcblogs": "VC Insights & Essays",
     "regionalStartups": "Globális Startup hírek",
@@ -1901,6 +1902,21 @@
       "filterGeopolitics": "Geopolitika",
       "filterCyber": "Kiberbiztonsági"
     },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
     "investments": {
       "infoTooltip": "Szaúd-Arábia és az Egyesült Arab Emírségek külföldi közvetlen beruházásainak adatbázisa a globális kritikus infrastruktúrában. Kattintson egy sorra a beruházás térképen való megtekintéséhez.",
       "searchPlaceholder": "Eszközök, országok, entitások keresése…",
@@ -3057,7 +3073,11 @@
       "heading": "IRÁNY",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "EMELKEDÉSI SEBESSÉG",
+      "manufacturer": "GYÁRTÓ",
+      "owner": "TULAJDONOS",
+      "builtYear": "ÉPÍTÉSI ÉV"
     },
     "militaryVessel": {
       "aisDark": "AIS SÖTÉT",
@@ -3102,7 +3122,8 @@
       "moreVessels": "+{{count}} további hajó",
       "vesselsCount": "{{count}} HAJÓ",
       "vessels": "HAJÓK",
-      "trackedVessels": "KÖVETETT HAJÓK"
+      "trackedVessels": "KÖVETETT HAJÓK",
+      "showLess": "Kevesebb megjelenítése"
     },
     "naturalEvent": {
       "closed": "LEZÁRVA",
@@ -3396,7 +3417,9 @@
     "fontFamily": "Betűtípus család",
     "fontFamilyDesc": "Monospace a technikai megjelenéshez, rendszer alapértelmezés az olvashatóság kedvéért.",
     "fontMono": "Monospace",
-    "fontSystem": "Rendszer alapértelmezés"
+    "fontSystem": "Rendszer alapértelmezés",
+    "panelFontScale": "Szövegméret",
+    "followGlobalFontScale": "Globális beállítás használata"
   },
   "premium": {
     "pro": "PRO",
@@ -3409,7 +3432,9 @@
       "orefSirens1": "Valós idejű izraeli rakéta- és légicsapás-riasztások",
       "orefSirens2": "Szirénazóna térképezése veszélyforrás besorolással",
       "telegramIntel1": "Válogatott Telegram OSINT csatornák",
-      "telegramIntel2": "Közeli valós idejű konfliktus- és geopolitikai frissítések"
+      "telegramIntel2": "Közeli valós idejű konfliktus- és geopolitikai frissítések",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "contextMenu": {

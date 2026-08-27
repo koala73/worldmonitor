@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
+  
   readFileSync,
   symlinkSync,
   writeFileSync,
@@ -22,6 +22,7 @@ import {
   parsePrNumber,
   readCachedSnapshot,
 } from '../scripts/agent-pr-snapshot.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const oid = character => character.repeat(40);
 
@@ -127,7 +128,7 @@ describe('agent PR snapshot', () => {
   });
 
   it('reports a base fetch timeout distinctly after using the network budget', () => {
-    const cacheDir = mkdtempSync(join(tmpdir(), 'wm-agent-pr-timeout-'));
+    const cacheDir = createTempDir('wm-agent-pr-timeout-');
     const headOid = oid('a');
     const baseOid = oid('b');
     let fetchOptions;
@@ -158,7 +159,7 @@ describe('agent PR snapshot', () => {
   });
 
   it('keeps the snapshot when the PR head remote cannot be read', () => {
-    const cacheDir = mkdtempSync(join(tmpdir(), 'wm-agent-pr-remote-'));
+    const cacheDir = createTempDir('wm-agent-pr-remote-');
     const headOid = oid('a');
     const runner = (file, args) => {
       const command = args.join(' ');
@@ -294,7 +295,7 @@ describe('agent PR snapshot', () => {
   });
 
   it('writes a head-OID cache and serves it without another GitHub query', () => {
-    const cacheDir = mkdtempSync(join(tmpdir(), 'wm-agent-pr-cache-'));
+    const cacheDir = createTempDir('wm-agent-pr-cache-');
     const headOid = oid('a');
     const baseOid = oid('b');
     const pullRequestBaseOid = oid('c');
@@ -449,7 +450,7 @@ describe('agent PR snapshot', () => {
   });
 
   it('rejects a symlinked cache root', () => {
-    const parent = mkdtempSync(join(tmpdir(), 'wm-agent-pr-symlink-'));
+    const parent = createTempDir('wm-agent-pr-symlink-');
     const target = join(parent, 'target');
     const cacheDir = join(parent, 'cache');
     mkdirSync(target, { mode: 0o700 });

@@ -18,6 +18,7 @@ import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
 import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
 import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
+import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
 import { Logo } from './components/Logo';
@@ -223,7 +224,7 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
         }
         const resp = await fetch(`${API_BASE}/me/entitlement`, {
           headers: { Authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(8_000),
+          signal: createTimeoutSignal(8_000),
         });
         if (!resp.ok) {
           if (!cancelled) setState({ isPro: false, isChecked: true });
@@ -233,7 +234,11 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
         if (!cancelled) setState({ isPro: data.isPro === true, isChecked: true });
       } catch (err) {
         console.error('[auth] Failed to check pro entitlement:', err);
-        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        // WORLDMONITOR-10F: 8s createTimeoutSignal / page teardown aborts are
+        // expected (Safari: AbortError "Fetch is aborted"). Do not page Sentry.
+        if (!isTimeoutOrAbortError(err)) {
+          Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        }
         if (!cancelled) setState({ isPro: false, isChecked: true });
       }
     })();

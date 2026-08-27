@@ -173,6 +173,50 @@ describe('docs-mcp normalizeToolCallResponseBody', () => {
 });
 
 describe('docs-mcp handler', () => {
+  it('rejects a UTF-8 request body whose encoded size exceeds 256 KiB', async () => {
+    let upstreamCalled = false;
+    globalThis.fetch = async () => {
+      upstreamCalled = true;
+      return new Response('{}');
+    };
+    // Each e-acute is one JavaScript UTF-16 code unit but two UTF-8 bytes.
+    // Including the JSON quotes, this stays well below the cap by .length
+    // while exceeding it on the wire.
+    const body = `"${'é'.repeat(131_072)}"`;
+    assert.ok(body.length < 262_144);
+    assert.ok(new TextEncoder().encode(body).byteLength > 262_144);
+
+    const res = await handler(post(body));
+
+    assert.equal(res.status, 413);
+    assert.equal(upstreamCalled, false, 'oversized bodies must not reach the upstream');
+    const payload = await res.json();
+    assert.equal(payload.error.code, -32600);
+  });
+
+  it('counts a leading UTF-8 BOM against the raw 256 KiB request limit', async () => {
+    let upstreamCalled = false;
+    globalThis.fetch = async () => {
+      upstreamCalled = true;
+      return new Response('{}');
+    };
+    const rpc = '{"jsonrpc":"2.0","id":1,"method":"ping"}';
+    const decodedBody = `${rpc}${' '.repeat(262_144 - rpc.length)}`;
+    const encodedBody = new TextEncoder().encode(decodedBody);
+    assert.equal(encodedBody.byteLength, 262_144);
+
+    const wireBody = new Uint8Array(encodedBody.byteLength + 3);
+    wireBody.set([0xef, 0xbb, 0xbf]);
+    wireBody.set(encodedBody, 3);
+
+    const res = await handler(post(wireBody));
+
+    assert.equal(res.status, 413);
+    assert.equal(upstreamCalled, false, 'BOM-prefixed oversized bodies must not reach the upstream');
+    const payload = await res.json();
+    assert.equal(payload.error.code, -32600);
+  });
+
   it('answers malformed JSON locally with a structured -32700 error and CORS headers', async () => {
     let upstreamCalled = false;
     globalThis.fetch = async () => {
