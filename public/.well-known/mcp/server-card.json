@@ -173,6 +173,13 @@
       }
     },
     {
+      "name": "get_imd_cyclone_marine",
+      "description": "Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. Not merged into weather:alerts:v1. Live fetch stays disabled until redistribution rights and an API key are accepted. Read coverageState on every call: disabled is rights/key gated, degraded is a partial product failure, unavailable is a total fetch failure, and ok is live. Empty lists with disabled, degraded, or unavailable coverage are not an India all-clear.",
+      "_meta": {
+        "worldmonitor/access": "free-account"
+      }
+    },
+    {
       "name": "get_infrastructure_status",
       "description": "Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.",
       "_meta": {
