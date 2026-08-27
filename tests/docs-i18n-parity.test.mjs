@@ -207,4 +207,21 @@ describe('docs i18n parity', () => {
     assert.match(errors, /`upgrade-required`[^\n]*免费账户[^\n]*订阅工具[^\n]*非免费权益不足/);
     assert.doesNotMatch(errors, /`-32002`[^\n]*例如订阅已失效/);
   });
+
+  it('documents ChatGPT custom-app setup without presenting WebMCP as prompt-discoverable', () => {
+    const overview = readFileSync(join(DOCS_DIR, 'mcp-overview.mdx'), 'utf8');
+    const webMcp = readFileSync(join(DOCS_DIR, 'webmcp.mdx'), 'utf8');
+    const zhOverview = readZhDoc('mcp-overview');
+    const zhWebMcp = readZhDoc('webmcp');
+
+    for (const content of [overview, zhOverview]) {
+      assert.match(content, /### ChatGPT/);
+      assert.match(content, /Settings → Apps & Connectors → Advanced settings/);
+      assert.match(content, /Developer mode/);
+      assert.match(content, /Create app/);
+      assert.match(content, /https:\/\/worldmonitor\.app\/mcp/);
+    }
+    assert.match(webMcp, /ChatGPT does not discover WebMCP tools merely because a prompt names a website/);
+    assert.match(zhWebMcp, /普通 ChatGPT 对话中提到网站[^\n]*不会让 ChatGPT 发现 WebMCP 工具/);
+  });
 });

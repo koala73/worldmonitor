@@ -185,6 +185,21 @@ Add via **Settings → Connectors → Add custom connector**:
 - Name: `WorldMonitor`
 - URL: `https://worldmonitor.app/mcp`
 
+### ChatGPT
+
+WebMCP and a ChatGPT custom app are different integrations. Typing “use WebMCP from worldmonitor.app” into a normal conversation does not attach either one: ChatGPT is not running as the browser agent in the WorldMonitor tab, and the conversation has not been granted access to the hosted MCP server.
+
+Connect the hosted server from ChatGPT on the web:
+
+1. Open **Settings → Apps & Connectors → Advanced settings** and enable **Developer mode**. Workspace availability and the ability to add apps can depend on the ChatGPT plan and administrator policy.
+2. Choose **Create app**, name it `WorldMonitor`, and set the MCP server URL to `https://worldmonitor.app/mcp`.
+3. Complete the WorldMonitor sign-in and consent flow when ChatGPT requests authorization.
+4. Start a new conversation, open its app/tool picker, and enable the `WorldMonitor` app before asking for live WorldMonitor data. Existing conversations do not automatically acquire a newly connected app.
+
+Configure the app on ChatGPT web even if you intend to use it later from a mobile client. If **Developer mode**, **Create app**, or the connected app is absent, that ChatGPT account or workspace has not exposed the required custom-app capability; changing WorldMonitor's in-page WebMCP registration cannot make it appear.
+
+For WorldMonitor's tab-bound browser controls instead, open the site in a supported Chrome build and follow the [WebMCP setup](/webmcp#availability).
+
 ### Cursor
 
 `~/.cursor/mcp.json`:

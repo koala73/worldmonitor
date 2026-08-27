@@ -9,6 +9,8 @@ WebMCP 让浏览器智能体发现并调用当前标签页中 WorldMonitor 页�
 WebMCP 是一项实验性的拟议 Web 标准，目前通过 Chrome 149 Origin Trial 提供。API 和浏览器行为仍可能改变。WorldMonitor 只支持在可见、有人参与的浏览器标签页中使用它。
 
 **WebMCP 不会取代 [WorldMonitor 托管 MCP 服务器](/zh/mcp-overview)。** 持久、远程、后台或无头智能体，以及直接读取 WorldMonitor 数据的场景，请使用托管服务器。
+
+**仅在普通 ChatGPT 对话中提到网站，并不会让 ChatGPT 发现 WebMCP 工具。** 普通 ChatGPT 对话（包括 iOS 或 Android 应用中的对话）并不是拥有 `document.modelContext` 的 Chrome 标签页。要从 ChatGPT 使用 WorldMonitor，请先在 ChatGPT 开发者模式中将 `https://worldmonitor.app/mcp` 添加为自定义应用，然后在新对话中启用该应用。请参阅 [ChatGPT 设置](/zh/mcp-overview#chatgpt)。
 </Warning>
 
 ## 选择正确的接口

@@ -9,6 +9,8 @@ WebMCP lets a browser agent discover and invoke tools exposed by the WorldMonito
 WebMCP is an experimental proposed web standard available through a Chrome 149 origin trial. Its API and browser behavior can change. WorldMonitor supports it only in a visible, human-in-the-loop browser tab.
 
 **WebMCP does not replace the [hosted WorldMonitor MCP server](/mcp-overview).** Use the hosted server for persistent, remote, background, or headless agents and for direct access to WorldMonitor data.
+
+**ChatGPT does not discover WebMCP tools merely because a prompt names a website.** A normal ChatGPT conversation, including one in the iOS or Android app, is not the Chrome tab that owns `document.modelContext`. To use WorldMonitor from ChatGPT, first add `https://worldmonitor.app/mcp` as a custom app in ChatGPT's developer mode, then enable that app in a new conversation. See [ChatGPT setup](/mcp-overview#chatgpt).
 </Warning>
 
 ## Choose the right surface
