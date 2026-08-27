@@ -210,36 +210,52 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
-  it('still denies a tool that declares cancellation is required', async () => {
-    // The set ships empty, so exercise the mechanism against a real tool name
-    // rather than a clone of the gate — otherwise the fail-closed path is
-    // untested code the moment the policy relaxed.
+  it('denies the persistence-capable tools when the host omits the target signal', async () => {
+    // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
+    // stream); open_search_result reaches the same write through a layer
+    // command. An uncancellable invocation of either outlives the session, so
+    // both stay fail-closed while the browser cannot deliver a signal.
+    assert.deepEqual(
+      [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
+      ['open_search_result', 'set_map_layers'],
+      'the gated set is the persistence-capable tools',
+    );
     let mutationCalls = 0;
+    let openCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
-    CANCELLATION_REQUIRED_WEBMCP_TOOLS.add('set_map_view');
-    try {
-      registerWebMcpTools(createBindings({
-        applyDashboardAction: async () => {
-          mutationCalls += 1;
-          return { ok: true, status: 'applied', actionType: 'set_view', message: 'Applied.', targets: [] };
-        },
-      }), harness.runtime);
-      await settlePromises();
+    registerWebMcpTools(createBindings({
+      applyDashboardAction: async () => {
+        mutationCalls += 1;
+        return { ok: true, status: 'applied', actionType: 'set_layers', message: 'Applied.', targets: [] };
+      },
+      openSearchResult: async () => {
+        openCalls += 1;
+        return { ok: true, status: 'opened' };
+      },
+    }), harness.runtime);
+    await settlePromises();
 
-      assert.deepEqual(
-        await executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
-        {
-          ok: false,
-          status: 'denied',
-          reason: 'target_cancellation_unsupported',
-          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-        },
-      );
-      assert.equal(mutationCalls, 0, 'a required-cancellation tool must not enter its binding');
-    } finally {
-      CANCELLATION_REQUIRED_WEBMCP_TOOLS.delete('set_map_view');
-    }
+    const denial = {
+      ok: false,
+      status: 'denied',
+      reason: 'target_cancellation_unsupported',
+      message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+    };
+    assert.deepEqual(
+      await executeRegistered(provider, 'set_map_layers', JSON.stringify({ layers: { conflicts: true } })),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'open_search_result',
+        JSON.stringify({ resultKey: `sr_${'a'.repeat(32)}` }),
+      ),
+      denial,
+    );
+    assert.equal(mutationCalls, 0, 'a gated tool must not reach its binding');
+    assert.equal(openCalls, 0, 'a gated tool must not reach its binding');
   });
 
   it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {

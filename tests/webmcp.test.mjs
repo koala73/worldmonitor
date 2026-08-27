@@ -278,7 +278,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(open.inputSchema.properties.resultKey.pattern, '^sr_[a-f0-9]{32}$');
   });
 
-  it('runs every dashboard-changing tool when target cancellation is unavailable', async () => {
+  it('runs view-state tools and gates persistence-capable ones without target cancellation', async () => {
     let mutationCalls = 0;
     const events = [];
     const tools = buildProductionWebMcpTools(createBindings({
@@ -317,29 +317,37 @@ describe('webmcp.ts: current API contract', () => {
       0,
     );
 
+    // set_map_layers and open_search_result persist STORAGE_KEYS.mapLayers, so
+    // they stay fail-closed; the rest only move visible view state and run.
+    const gated = ['set_map_layers', 'open_search_result'];
+    const denial = {
+      ok: false,
+      status: 'denied',
+      reason: 'target_cancellation_unsupported',
+      message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+    };
     for (const [name, input] of Object.entries(validInputs)) {
       const tool = tools.find((candidate) => candidate.name === name);
       const result = await tool.execute(input);
-      assert.notDeepEqual(
-        result,
-        {
-          ok: false,
-          status: 'denied',
-          reason: 'target_cancellation_unsupported',
-          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-        },
-        `${name} must run rather than fail closed on a browser with no target signal`,
-      );
+      if (gated.includes(name)) {
+        assert.deepEqual(result, denial, `${name} persists state and must fail closed`);
+      } else {
+        assert.notDeepEqual(
+          result,
+          denial,
+          `${name} only moves visible view state and must run`,
+        );
+      }
     }
     assert.equal(
       mutationCalls,
-      Object.keys(validInputs).length,
-      'every dashboard-changing binding runs exactly once without a target signal',
+      Object.keys(validInputs).length - gated.length,
+      'every ungated dashboard-changing binding runs exactly once without a target signal',
     );
     assert.deepEqual(
-      events.filter(({ data }) => data.reason === 'unavailable'),
-      [],
-      'no invocation may report the compatibility denial any more',
+      events.filter(({ data }) => data.reason === 'unavailable').map(({ data }) => data.tool).sort(),
+      [...gated].sort(),
+      'only the persistence-capable tools may report the compatibility denial',
     );
 
     // A signal-LIKE object still is not an AbortSignal, so this invocation has
@@ -356,7 +364,7 @@ describe('webmcp.ts: current API contract', () => {
     );
     assert.equal(
       mutationCalls,
-      Object.keys(validInputs).length,
+      Object.keys(validInputs).length - gated.length,
       'a malformed input must not reach a mutating binding',
     );
   });

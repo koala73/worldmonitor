@@ -63,7 +63,9 @@ On the origin-trial build, call `getTools()` **after** the page has registered i
 
 Chrome 149–151 exposes `registerTool()` but invokes the registered callback with the input alone, not the documented `execute(input, { signal })` shape. On those builds cancellation is inert in both directions: `executeTool()` ignores the `signal` in its options argument, so aborting neither rejects the caller's promise nor stops work already running in the page.
 
-WorldMonitor still runs its dashboard-changing tools there. Each one only moves visible dashboard view state on the person's own screen — no navigation, no writes, no external side effects — so the worst case of an uncancellable invocation is a visible change the person can undo. Refusing to run them instead would disable every dashboard-changing tool on every browser released so far, leaving only the read-only pair, in exchange for preventing a map move. A tool that could ever do something a person cannot simply look at and undo stays gated and rejects as unavailable until the browser supplies the target-side signal.
+WorldMonitor still runs the dashboard-changing tools whose only effect is visible view state on the person's own screen — no navigation, no writes, no external side effects — because the worst case of an uncancellable invocation there is a visible change the person can undo. `openCountryBrief`, `openSearch`, `open_dashboard_panel`, and `set_map_view` work normally.
+
+`set_map_layers` and `open_search_result` stay gated and reject as unavailable, because both persist the map-layer selection to browser storage (and enabling the AIS layer opens a network stream). An uncancellable invocation of either would outlive the session rather than sit on screen waiting to be undone, and moving the map back does not restore the stored value. They become available on a browser that supplies the target-side signal.
 
 <Note>
 Browsers without the current API, including the Tauri desktop webview when it does not expose WebMCP, safely do nothing. WorldMonitor does not install a browser polyfill and does not fall back to an older draft API.
@@ -86,7 +88,7 @@ The static `https://www.worldmonitor.app/` welcome page registers two imperative
 
 Every dashboard variant registers the same eight imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
 
-All eight run on a browser that omits the target-side invocation signal. Because such a browser cannot cancel them, an invocation you abort still completes and its visible dashboard change still lands — see [Availability](#availability). Tools whose effect a person could not simply undo are gated instead and reject as unavailable; none of the eight are gated today.
+On a browser that omits the target-side invocation signal, the view-state tools still run: because such a browser cannot cancel them, an invocation you abort still completes and its visible dashboard change still lands. `set_map_layers` and `open_search_result` reject as unavailable there instead, because they persist the layer selection beyond the session. See [Availability](#availability).
 
 | Tool | Input schema | Visible result |
 |---|---|---|

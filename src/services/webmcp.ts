@@ -208,21 +208,26 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 // `{ signal }` to `executeTool()`. So a cancelled invocation rejects on the
 // agent side while page work keeps running: a phantom completion.
 //
-// That is only worth refusing to run when the work is not trivially visible
-// and reversible. Every dashboard-changing tool shipped today just moves
-// visible view state on the person's own dashboard — no navigation, no
-// writes, no external side effects — and the person can undo any of it by
-// hand. Blocking the whole set cost 6 of 8 tools on every browser that
-// currently exists, in exchange for preventing "the map moved after the
-// agent thought it cancelled".
+// That is only worth refusing to run when the effect is not something the
+// person can simply look at and undo. Most dashboard-changing tools only move
+// visible view state on their own dashboard — no navigation, no writes, no
+// external side effects — so blocking those bought nothing and cost most of
+// the inventory on every browser released so far.
 //
-// Keep the mechanism, not the blanket policy: add a tool here the moment it
-// can do something a person cannot simply look at and undo (navigation,
-// persistence, spending, sending, deleting).
-// Exported so the fail-closed path stays covered while the set is empty: the
-// runtime test adds a real tool name to it rather than cloning the gate, so
-// the mechanism cannot rot into dead code.
-export const CANCELLATION_REQUIRED_WEBMCP_TOOLS = new Set<WebMcpSpaToolName>([]);
+// A tool belongs here the moment it can do something that outlives a glance:
+// navigation, persistence, spending, sending, deleting. These two qualify on
+// persistence, so an uncancellable invocation would outlive the session
+// instead of sitting on screen waiting to be undone:
+//   - set_map_layers reaches applyMapLayerChange(), which writes
+//     STORAGE_KEYS.mapLayers to local storage and, for `ais`, opens a network
+//     stream through initAisStream().
+//   - open_search_result can execute a layer command, and the search
+//     selection dispatcher writes STORAGE_KEYS.mapLayers on those paths.
+// Putting the map back by hand does not restore either stored value.
+export const CANCELLATION_REQUIRED_WEBMCP_TOOLS = new Set<WebMcpSpaToolName>([
+  WEBMCP_SPA_TOOL.setMapLayers,
+  WEBMCP_SPA_TOOL.openSearchResult,
+]);
 const MAX_SEARCH_QUERY_CHARS = 160;
 const MAX_SEARCH_RESULTS = 10;
 const DEFAULT_SEARCH_RESULTS = 8;
