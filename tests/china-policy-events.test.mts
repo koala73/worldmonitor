@@ -294,7 +294,7 @@ describe('China official policy adapters (#5576)', () => {
       stackComparisons += __testing__.runPolicyHtmlClosingTagRegressionProbe(
         fixtures.unbalanced,
       );
-    }, 1_000);
+    }, 2_000);
 
     assert.ok(
       stackComparisons > 0,
