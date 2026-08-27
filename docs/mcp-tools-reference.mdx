@@ -1690,7 +1690,7 @@ curl -s https://worldmonitor.app/mcp \
 
 Reverse-chronological read of the stored history for one scope. Pure index read — no embedding and no ranking — so ordering is by `occurredAt` alone and every record's `score` is `0`.
 
-At least one of `domain` or `country` is required. Those are the two indexed scopes on the store; an unscoped read has no index to serve it and is rejected rather than run as a table scan. The rule is enforced inside the tool body, not by the input schema (`required` is empty), so schema-validating clients will not pre-catch it — the server rejects the call with a JSON-RPC `-32603` internal error whose message names the missing argument. Supplying both narrows to their intersection.
+At least one of `domain` or `country` is required. Those are the two indexed scopes on the store; an unscoped read has no index to serve it and is rejected rather than run as a table scan. The rule is enforced inside the tool body, not by the input schema (`required` is empty), so schema-validating clients will not pre-catch it — the server rejects the call with a JSON-RPC `-32602` Invalid params error and `error.data.violations` naming both fields. Supplying both narrows to their intersection.
 
 **Parameters:**
 
