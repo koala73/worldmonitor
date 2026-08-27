@@ -11,7 +11,7 @@ message GetConsumerPriceBasketSeriesRequest {
   string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
   // basket_slug selects the basket (e.g. "essentials-ae").
   string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
-  // range is one of "7d", "30d", "90d", "180d".
+  // range is one of "7d", "30d", "90d". Unsupported values use "30d".
   string range = 3 [(sebuf.http.query) = { name: "range" }];
 }
 

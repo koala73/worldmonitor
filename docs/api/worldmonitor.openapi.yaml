@@ -5367,7 +5367,7 @@ paths:
                     type: string
                 - name: range
                   in: query
-                  description: range is one of "7d", "30d", "90d", "180d".
+                  description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
                   required: false
                   example: "7d"
                   schema:
@@ -5502,7 +5502,7 @@ paths:
                     type: string
                 - name: range
                   in: query
-                  description: range is one of "7d", "30d", "90d", "180d".
+                  description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
                   required: false
                   example: "7d"
                   schema:
@@ -37634,7 +37634,7 @@ components:
                     description: basket_slug selects the basket (e.g. "essentials-ae").
                 range:
                     type: string
-                    description: range is one of "7d", "30d", "90d", "180d".
+                    description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
             description: GetConsumerPriceBasketSeriesRequest parameters for time series data.
         worldmonitor_consumer_prices_v1_GetConsumerPriceBasketSeriesResponse:
             type: object
@@ -37689,7 +37689,7 @@ components:
                     description: basket_slug selects the basket scope.
                 range:
                     type: string
-                    description: range is one of "7d", "30d", "90d", "180d".
+                    description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
             description: ListConsumerPriceCategoriesRequest parameters for category listing.
         worldmonitor_consumer_prices_v1_ListConsumerPriceCategoriesResponse:
             type: object
