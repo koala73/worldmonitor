@@ -19,12 +19,34 @@ import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-
 // only guarantees the paid call. 900s breaks that resonance for any poller
 // faster than 15min, and departure boards do not move meaningfully inside it.
 const CACHE_TTL = 900;
-// Always fetch a full page upstream and cache it once per airport+direction,
-// then slice to the caller's requested limit in memory. Threading req.limit
-// into the cache key (and the upstream query) meant limit 30 vs 31 vs 50 were
-// separate PAID AviationStack calls for identical data — a cache-key explosion
-// that multiplied spend. The page covers any limit ≤ 100.
+// Always fetch a full page upstream and cache it once per airport+leg, then
+// slice to the caller's requested limit in memory. Threading req.limit into the
+// cache key (and the upstream query) meant limit 30 vs 31 vs 50 were separate
+// PAID AviationStack calls for identical data — a cache-key explosion that
+// multiplied spend. The page covers any limit ≤ 100.
 const UPSTREAM_PAGE = 100;
+
+// A leg is one upstream query. AviationStack ANDs dep_iata with arr_iata — set
+// together they describe a ROUTE (A→B), not a both-directions board — so an
+// arrivals-inclusive request is two calls merged here, never one call carrying
+// both params.
+type Leg = 'departure' | 'arrival';
+
+const LEG_PARAM: Record<Leg, 'dep_iata' | 'arr_iata'> = {
+    departure: 'dep_iata',
+    arrival: 'arr_iata',
+};
+
+// BOTH and UNSPECIFIED are both arrivals-inclusive per list_airport_flights
+// .proto: BOTH is "Both departures and arrivals" and UNSPECIFIED is documented
+// as defaulting to both. UNSPECIFIED is the *default* path, not an edge — the
+// generated HTTP decoder passes an absent `direction` query param through as
+// UNSPECIFIED, so it never reaches a `|| BOTH` fallback in the handler.
+function legsFor(direction: string): Leg[] {
+    if (direction === 'FLIGHT_DIRECTION_DEPARTURE') return ['departure'];
+    if (direction === 'FLIGHT_DIRECTION_ARRIVAL') return ['arrival'];
+    return ['departure', 'arrival'];
+}
 
 interface AVSFlight {
     flight?: { iata?: string; icao?: string; codeshared?: { flight_iata?: string; airline_iata?: string }[] };
@@ -102,8 +124,126 @@ function normalizeFlights(flights: AVSFlight[], now: number): FlightInstance[] {
 }
 
 
+interface LegResult {
+    flights: FlightInstance[];
+    // 'aviationstack' when this leg served real data; otherwise the reason it
+    // did not (see the response-source table on listAirportFlights).
+    source: string;
+}
+
+/**
+ * Fetch (or read from cache) one leg of an airport board.
+ *
+ * The cache key is keyed on the LEG, not on the caller's requested direction.
+ * A both-directions request therefore warms exactly the two keys that a
+ * departures-only and an arrivals-only request read, instead of stashing a
+ * third byte-identical copy of the departures payload under its own key. That
+ * mattered: `direction` used to sit in the key while three of its four values
+ * (DEPARTURE, BOTH, UNSPECIFIED) all issued the same dep_iata query, so two of
+ * every three warm keys were duplicate departure payloads bought at
+ * AviationStack's metered expense.
+ */
+async function fetchLeg(airport: string, leg: Leg, now: number): Promise<LegResult> {
+    // Cache key is limit-independent (see UPSTREAM_PAGE) — one upstream call
+    // serves every limit for this airport+leg.
+    const cacheKey = `aviation:flights:${airport}:${leg}:v3:${aviationStackBudgetCycle()}`;
+    // Stays 'unavailable' when the fetcher never runs — a negative-cache hit
+    // returns null without telling us which failure originally cached it.
+    let unavailableSource = 'unavailable';
+
+    const result = await cachedFetchJson<{ flights: FlightInstance[]; source: 'aviationstack' }>(
+        cacheKey, CACHE_TTL, async () => {
+            const relayBase = getRelayBaseUrl();
+            if (!relayBase) {
+                unavailableSource = 'none';
+                return null;
+            }
+
+            // Monthly quota guard: negative-cache the unavailable state
+            // instead of positive-caching an empty flight board. Reserved per
+            // leg on the miss path, so a both-directions request that hits
+            // cache on one leg only spends for the other.
+            if (!(await reserveAviationStackCalls(1, 'request'))) {
+                unavailableSource = 'budget';
+                return null;
+            }
+
+            const params = new URLSearchParams({
+                [LEG_PARAM[leg]]: airport,
+                limit: String(UPSTREAM_PAGE),
+            });
+            const url = `${relayBase}/aviationstack?${params}`;
+
+            try {
+                const resp = await fetch(url, {
+                    headers: getRelayHeaders(),
+                    signal: AbortSignal.timeout(15_000),
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const json = await resp.json() as { data?: AVSFlight[]; error?: { message?: string } };
+                if (json.error) throw new Error(json.error.message);
+                const flights = normalizeFlights(json.data ?? [], now);
+                return { flights, source: 'aviationstack' };
+            } catch (err) {
+                console.warn(`[Aviation] Flights relay fetch failed for ${airport} ${leg}s: ${err instanceof Error ? err.message : err}`);
+                unavailableSource = 'error';
+                return null;
+            }
+        }
+    );
+
+    if (!result) return { flights: [], source: unavailableSource };
+    return { flights: result.flights, source: result.source };
+}
+
+/**
+ * When this flight touches `airport`, in epoch ms.
+ *
+ * Ordering a mixed board on scheduledDeparture alone buries the arrivals: a
+ * long-haul landing at 14:00 left its origin at 06:00, so it sorts hours ahead
+ * of the departures it shares a board with. Arrivals are ordered by when they
+ * land here, departures by when they leave here.
+ */
+function boardTime(f: FlightInstance, airport: string): number {
+    if (f.destination?.iata === airport) return f.scheduledArrival || f.scheduledDeparture || 0;
+    return f.scheduledDeparture || f.scheduledArrival || 0;
+}
+
+/**
+ * Merge the legs into one board, ordered by airport-local event time.
+ *
+ * The ordering is load-bearing, not cosmetic. Concatenating 100 departures and
+ * 100 arrivals and slicing to the caller's limit (30 by default) hands back 30
+ * departures and no arrivals — the merge would be invisible to every caller
+ * that does not ask for more than a page.
+ */
+function mergeLegs(legResults: LegResult[], airport: string): FlightInstance[] {
+    const seen = new Set<string>();
+    const merged: FlightInstance[] = [];
+
+    for (const { flights } of legResults) {
+        for (const f of flights) {
+            // Only dedupe rows carrying a flight number; without one the key
+            // degenerates and would collapse distinct unidentified rows.
+            if (f.flightNumber) {
+                const key = `${f.flightNumber}|${f.scheduledDeparture}|${f.origin?.iata ?? ''}|${f.destination?.iata ?? ''}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+            }
+            merged.push(f);
+        }
+    }
+
+    // Untimed rows sink rather than lead — a missing schedule is not midnight.
+    return merged.sort((a, b) =>
+        (boardTime(a, airport) || Number.MAX_SAFE_INTEGER) - (boardTime(b, airport) || Number.MAX_SAFE_INTEGER));
+}
+
 // Response-level source values (ListAirportFlightsResponse.source):
 //   'aviationstack' — live data from AviationStack via relay
+//   'partial'       — an arrivals-inclusive request where one leg served and the
+//                     other did not; the served leg's flights are returned
+//                     (no-store, so the half-board is not edge-cached)
 //   'none'          — relay not configured; flights = [] (no-store, negative cached)
 //   'error'         — relay fetch failed; flights = [] (no-store, negative cached)
 //   'invalid'       — malformed airport code; rejected before any paid call
@@ -116,7 +256,6 @@ export async function listAirportFlights(
     await requireLiveAviationAccess(ctx.request);
 
     const airport = req.airport?.toUpperCase() || 'IST';
-    const direction = req.direction || 'FLIGHT_DIRECTION_BOTH';
     const limit = Math.min(req.limit || 30, 100);
     const now = Date.now();
 
@@ -126,67 +265,33 @@ export async function listAirportFlights(
         return { flights: [], totalAvailable: 0, source: 'invalid', updatedAt: now };
     }
 
-    // Cache key is limit-independent (see UPSTREAM_PAGE) — one upstream call
-    // serves every limit for this airport+direction.
-    const cacheKey = `aviation:flights:${airport}:${direction}:v2:${aviationStackBudgetCycle()}`;
-    let unavailableSource = 'unavailable';
+    const legs = legsFor(req.direction);
 
     try {
-        const result = await cachedFetchJson<{ flights: FlightInstance[]; source: 'aviationstack' }>(
-            cacheKey, CACHE_TTL, async () => {
-                const relayBase = getRelayBaseUrl();
-                if (!relayBase) {
-                    unavailableSource = 'none';
-                    return null;
-                }
+        const legResults = await Promise.all(legs.map(leg => fetchLeg(airport, leg, now)));
+        const served = legResults.filter(r => r.source === 'aviationstack');
 
-                // Monthly quota guard: negative-cache the unavailable state
-                // instead of positive-caching an empty flight board.
-                if (!(await reserveAviationStackCalls(1, 'request'))) {
-                    unavailableSource = 'budget';
-                    return null;
-                }
-
-                const paramKey = direction === 'FLIGHT_DIRECTION_ARRIVAL' ? 'arr_iata' : 'dep_iata';
-                const params = new URLSearchParams({
-                    [paramKey]: airport,
-                    limit: String(UPSTREAM_PAGE),
-                });
-                const url = `${relayBase}/aviationstack?${params}`;
-
-                try {
-                    const resp = await fetch(url, {
-                        headers: getRelayHeaders(),
-                        signal: AbortSignal.timeout(15_000),
-                    });
-                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                    const json = await resp.json() as { data?: AVSFlight[]; error?: { message?: string } };
-                    if (json.error) throw new Error(json.error.message);
-                    const flights = normalizeFlights(json.data ?? [], now);
-                    return { flights, source: 'aviationstack' };
-                } catch (err) {
-                    console.warn(`[Aviation] Flights relay fetch failed for ${airport}: ${err instanceof Error ? err.message : err}`);
-                    unavailableSource = 'error';
-                    return null;
-                }
-            }
-        );
-
-        if (!result) {
+        if (served.length === 0) {
             markNoCacheResponse(ctx.request);
             return {
                 flights: [],
                 totalAvailable: 0,
-                source: unavailableSource,
+                source: legResults[0]?.source ?? 'unavailable',
                 updatedAt: now,
             };
         }
 
-        const flights = result.flights;
+        // A half-served board is reported as such rather than passed off as a
+        // complete one — silently returning departures-only is exactly the
+        // failure this endpoint just stopped shipping by default.
+        const partial = served.length < legResults.length;
+        if (partial) markNoCacheResponse(ctx.request);
+
+        const flights = mergeLegs(served, airport);
         return {
             flights: flights.slice(0, limit),
             totalAvailable: flights.length,
-            source: result.source,
+            source: partial ? 'partial' : 'aviationstack',
             updatedAt: now,
         };
     } catch (err) {

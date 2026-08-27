@@ -71,6 +71,9 @@ export class AirlineIntelPanel extends Panel {
     private airports: string[];
     private opsData: AirportOpsSummary[] = [];
     private flightsData: FlightInstance[] = [];
+    // The airport the flights board was loaded for. The board mixes departures
+    // and arrivals, and a row's direction is only readable relative to this.
+    private flightsAirport = '';
     private carriersData: CarrierOps[] = [];
     private trackingData: PositionSample[] = [];
     private trackingFlightData: FlightInstance[] = [];
@@ -316,9 +319,12 @@ export class AirlineIntelPanel extends Panel {
                 case 'ops':
                     this.opsData = await fetchAirportOpsSummary(this.airports);
                     break;
-                case 'flights':
-                    this.flightsData = await fetchAirportFlights(this.airports[0] ?? 'IST', 'both', 30);
+                case 'flights': {
+                    const boardAirport = this.airports[0] ?? 'IST';
+                    this.flightsData = await fetchAirportFlights(boardAirport, 'both', 30);
+                    this.flightsAirport = boardAirport;
                     break;
+                }
                 case 'airlines':
                     this.carriersData = await fetchCarrierOps(this.airports);
                     break;
@@ -412,11 +418,16 @@ export class AirlineIntelPanel extends Panel {
         }
         const rows = this.flightsData.map(f => {
             const color = STATUS_BADGE[f.status] ?? '#6b7280';
+            // The board is ordered server-side by when each flight touches THIS
+            // airport, so show that same time — an arrival's departure time is
+            // from somewhere else and would read as out of order here.
+            const arriving = !!this.flightsAirport && f.destination.iata === this.flightsAirport;
+            const when = arriving ? (f.scheduledArrival ?? f.scheduledDeparture) : f.scheduledDeparture;
             return `
         <div class="flight-row">
           <div class="flight-num">${escapeHtml(f.flightNumber)}</div>
           <div class="flight-route">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}</div>
-          <div class="flight-time">${fmtTime(f.scheduledDeparture)}</div>
+          <div class="flight-time">${fmtTime(when)}</div>
           <div class="flight-delay" style="color:${f.delayMinutes > 0 ? '#f97316' : '#aaa'}">${f.delayMinutes > 0 ? `+${f.delayMinutes}m` : ''}</div>
           <div class="flight-status" style="color:${color}">${f.status}</div>
         </div>`;
