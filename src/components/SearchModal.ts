@@ -121,6 +121,7 @@ export class SearchModal {
   private focusTrap: FocusTrap | null = null;
   private input: HTMLInputElement | null = null;
   private resultsList: HTMLElement | null = null;
+  private resultsStatus: HTMLElement | null = null;
   private resultsObserver: MutationObserver | null = null;
   private chipsContainer: HTMLElement | null = null;
   private scopeContainer: HTMLElement | null = null;
@@ -507,6 +508,7 @@ export class SearchModal {
           ${this.renderScopeMarkup()}
           <div class="search-sheet-chips"></div>
           <div class="search-results"></div>
+          <div class="search-results-status wm-visually-hidden"></div>
         </div>
       `, "legacy direct innerHTML migration"));
 
@@ -552,6 +554,7 @@ export class SearchModal {
           </div>
           ${this.renderScopeMarkup()}
           <div class="search-results"></div>
+          <div class="search-results-status wm-visually-hidden"></div>
           <div class="search-footer">
             <span class="search-footer-ready"><i></i> READY FOR TASKING</span>
             <span><kbd>\u2191\u2193</kbd> ${t('modals.search.navigate')}</span>
@@ -570,6 +573,7 @@ export class SearchModal {
 
     this.input = this.overlay.querySelector('.search-input');
     this.resultsList = this.overlay.querySelector('.search-results');
+    this.resultsStatus = this.overlay.querySelector('.search-results-status');
     this.scopeContainer = this.overlay.querySelector('.search-scope-rail');
 
     // Combobox/listbox contract: results are options, arrow-key selection is
@@ -586,6 +590,13 @@ export class SearchModal {
       this.resultsObserver?.disconnect();
       this.resultsObserver = new MutationObserver(() => this.decorateResultOptions());
       this.resultsObserver.observe(this.resultsList, { childList: true, subtree: true });
+    }
+    // Combobox search results are async to the typing ear: without a polite
+    // status region, a screen-reader user never hears how many results (or
+    // "no results") the last keystroke produced (#7023).
+    if (this.resultsStatus) {
+      this.resultsStatus.setAttribute('role', 'status');
+      this.resultsStatus.setAttribute('aria-live', 'polite');
     }
 
     this.input?.addEventListener('input', () => {
@@ -952,6 +963,7 @@ export class SearchModal {
             </div>`, "legacy direct innerHTML migration"));
         } else {
           this.renderFlightSearchTrigger(this.currentFlightCallsign);
+          this.announceResultCount(1);
         }
         return;
       }
@@ -961,6 +973,7 @@ export class SearchModal {
           <div>${t('modals.search.noResults')}</div>
         </div>
       `, "legacy direct innerHTML migration"));
+      this.announceResultCount(0);
       return;
     }
 
@@ -1038,6 +1051,23 @@ export class SearchModal {
         this.selectResult(index);
       });
     });
+    this.announceResultCount(this.totalResultCount);
+  }
+
+  /**
+   * Announce the outcome of the last keystroke to assistive tech (#7023):
+   * how many results the current query produced, or that there are none.
+   * Polite (not assertive) so it follows, rather than interrupts, the
+   * keystroke echo. Render paths that never reach the count (idle deck,
+   * command list) leave the last announcement standing, which is correct —
+   * those views are not search outcomes.
+   */
+  private announceResultCount(count: number): void {
+    if (!this.resultsStatus) return;
+    const query = this.lastSearchedQuery ?? '';
+    this.resultsStatus.textContent = count === 0
+      ? `${t('modals.search.noResults')}${query ? `: ${query}` : ''}`
+      : t('modals.search.resultAnnouncement', { count, query });
   }
 
   private renderFlightSearchTrigger(callsign: string): void {

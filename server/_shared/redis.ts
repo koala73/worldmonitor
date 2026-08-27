@@ -809,69 +809,16 @@ export async function cachedFetchJson<T extends object>(
   negativeTtlSeconds = 120,
   opts?: CachedFetchOpts,
 ): Promise<T | null> {
-  const cached = await readCachedJson(key);
-  if (cached.status === 'hit') {
-    if (cached.value === NEG_SENTINEL) return null;
-    return cached.value as T;
-  }
-  const localPositive = readLocalPositiveFallback(key);
-  if (localPositive !== undefined) return localPositive as T;
-  const hadCacheReadError = cached.status === 'error';
-  if (cached.status === 'error') {
-    logCacheReadError(key, cached.error);
-    if (hasLocalNegativeCooldown(key)) return null;
-  }
-  // Unavailable backoff (cacheFetcherErrors: false path): rethrow without
-  // hitting upstream again until the short isolate-local window expires.
-  if (hasLocalUnavailableBackoff(key)) {
-    throw new Error(`cachedFetchJson unavailable backoff active for "${key}"`);
-  }
-
-  const existing = inflight.get(key);
-  if (existing) return existing as Promise<T | null>;
-
-  const timeoutMs = opts?.timeoutMs ?? fetcherTimeoutDefaultMs;
-  const promise = withFetcherTimeout(fetcher(), key, timeoutMs, 'cachedFetchJson')
-    .then(async (result) => {
-      if (result != null) {
-        const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
-        if (noStoreReason) {
-          armLocalNegativeCooldown(key, negativeTtlSeconds);
-          await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
-        } else {
-          const wrote = await setCachedJson(key, result, ttlSeconds);
-          // Remote Redis write/read failures should not force every caller back
-          // upstream while the isolate is still warm. Sidecar/local mode skips
-          // this bridge because hasRemoteRedisConfig() is false there.
-          if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
-            armLocalPositiveFallback(key, result, ttlSeconds);
-          }
-        }
-      } else {
-        armLocalNegativeCooldown(key, negativeTtlSeconds);
-        await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
-      }
-      return result;
-    })
-    .catch(async (err: unknown) => {
-      if (opts?.cacheFetcherErrors !== false) {
-        const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
-        armLocalNegativeCooldown(key, errorTtlSeconds);
-        await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
-        console.warn(`[redis] cachedFetchJson fetcher failed for "${key}":`, errMsg(err));
-      } else {
-        // No Redis NEG_SENTINEL — keep definitive-invalid distinct — but still
-        // rate-limit retries with a short local-only unavailable backoff.
-        armLocalUnavailableBackoff(key, FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS);
-      }
-      throw err;
-    })
-    .finally(() => {
-      inflight.delete(key);
-    });
-
-  inflight.set(key, promise);
-  return promise;
+  // Rebuild the public option shape so structurally assignable objects cannot
+  // leak cachedFetchJsonWithMeta-only fields into the shared implementation.
+  const coreOpts = opts === undefined
+    ? undefined
+    : {
+        timeoutMs: opts.timeoutMs,
+        cacheFetcherErrors: opts.cacheFetcherErrors,
+      };
+  const result = await cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, coreOpts, 'cachedFetchJson');
+  return result.data;
 }
 
 /**
@@ -940,6 +887,25 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   negativeTtlSeconds = 120,
   opts?: CachedFetchWithMetaOpts,
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' | 'skipped'; leader: boolean }> {
+  return cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, opts, 'cachedFetchJsonWithMeta');
+}
+
+// Shared implementation behind cachedFetchJson / cachedFetchJsonWithMeta.
+// cachedFetchJson is the WithMeta behavior with every WithMeta-only opt left
+// at its default (no inflightKey override, no shouldFetch gate, no
+// per-fetch usage telemetry, cacheFailures/isCallerLocalError unset) and
+// { data, source, leader } narrowed down to plain `data`. `callerName`
+// keeps the timeout/backoff/log messages attributed to whichever public
+// entry point the caller actually used, matching withFetcherTimeout's
+// existing per-caller message convention.
+async function cachedFetchJsonCore<T extends object>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T | null>,
+  negativeTtlSeconds: number,
+  opts: CachedFetchWithMetaOpts | undefined,
+  callerName: 'cachedFetchJson' | 'cachedFetchJsonWithMeta',
+): Promise<{ data: T | null; source: 'cache' | 'fresh' | 'skipped'; leader: boolean }> {
   const cached = await readCachedJson(key);
   if (cached.status === 'hit') {
     if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache', leader: false };
@@ -953,7 +919,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
     if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache', leader: false };
   }
   if (hasLocalUnavailableBackoff(key)) {
-    throw new Error(`cachedFetchJsonWithMeta unavailable backoff active for "${key}"`);
+    throw new Error(`${callerName} unavailable backoff active for "${key}"`);
   }
 
   const inflightKey = opts?.inflightKey ?? key;
@@ -982,7 +948,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   let cacheStatus: 'miss' | 'neg-sentinel' = 'miss';
 
   const timeoutMs = opts?.timeoutMs ?? fetcherTimeoutDefaultMs;
-  const promise = withFetcherTimeout(fetcher(), key, timeoutMs, 'cachedFetchJsonWithMeta')
+  const promise = withFetcherTimeout(fetcher(), key, timeoutMs, callerName)
     .then(async (result) => {
       // Only count an upstream call as a 200 when it actually returned data.
       // A null result triggers the neg-sentinel branch below — these are
@@ -1030,7 +996,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
         const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
         armLocalNegativeCooldown(key, errorTtlSeconds);
         await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
-        console.warn(`[redis] cachedFetchJsonWithMeta fetcher failed for "${key}":`, errMsg(err));
+        console.warn(`[redis] ${callerName} fetcher failed for "${key}":`, errMsg(err));
       } else {
         armLocalUnavailableBackoff(key, FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS);
       }

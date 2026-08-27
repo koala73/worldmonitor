@@ -528,6 +528,7 @@
       "recent": "Tìm kiếm Gần đây",
       "empty": "Tìm dữ liệu hoặc chạy lệnh",
       "noResults": "Không có kết quả",
+      "resultAnnouncement_other": "{{count}} kết quả cho {{query}}",
       "commands": "Lệnh",
       "results": "Kết quả",
       "seeAllCommands": "Xem tất cả lệnh",
