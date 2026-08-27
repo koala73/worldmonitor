@@ -28,6 +28,10 @@ const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.co
 const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
 const webMcpE2eSource = readFileSync(resolve(__dirname, '../e2e/webmcp.spec.ts'), 'utf-8');
+const webMcpCancellationE2eSource = readFileSync(
+  resolve(__dirname, '../e2e/helpers/webmcp-cancellation.ts'),
+  'utf-8',
+);
 const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
@@ -1874,10 +1878,10 @@ describe('security header guardrails', () => {
     assert.match(webMcpE2eSource, /document\.modelContext/);
     assert.match(webMcpE2eSource, /\.getTools\(\)/);
     assert.match(webMcpE2eSource, /provider\.executeTool/);
-    assert.match(webMcpE2eSource, /new AbortController\(\)/);
-    assert.match(webMcpE2eSource, /page\.on\('pageerror'/);
-    assert.match(webMcpE2eSource, /window\.addEventListener\('unhandledrejection'/);
-    assert.match(webMcpE2eSource, /lateLeakWindowMs/);
+    assert.match(webMcpCancellationE2eSource, /new AbortController\(\)/);
+    assert.match(webMcpCancellationE2eSource, /page\.on\('pageerror'/);
+    assert.match(webMcpCancellationE2eSource, /window\.addEventListener\('unhandledrejection'/);
+    assert.match(webMcpCancellationE2eSource, /lateLeakWindowMs/);
     assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
     assert.match(webMcpE2eSource, /testInfo\.outputPath\(name\)/);
     assert.match(webMcpE2eSource, /writeFile\(path/);
