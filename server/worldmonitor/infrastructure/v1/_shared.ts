@@ -196,9 +196,14 @@ function firesContentClock(
  * frozen news feed, and vice versa. See CONCEPTS.md "Content-Age Contract" and
  * docs/solutions/design-patterns/multi-source-freshness-clock-must-reduce-with-min.md.
  *
- * Returns null when no contributing source is datable, or when a contributing
- * source has items that cannot be dated. The writer stamps `newestItemAt: null`
- * in that case, which classifyKey reads as STALE_CONTENT.
+ * Returns null when no contributing source is datable, when a contributing
+ * source has items that cannot be dated, or when a configured COUNT_SOURCE_KEYS
+ * source was not read this cycle. A present source may still skip (empty FIRMS
+ * window / agency-only). An *absent* configured source must not: the remaining
+ * live clock would otherwise stamp fresh content for partial coverage, and no
+ * temporal-anomalies consumer sets minRecordCount. The writer stamps
+ * `newestItemAt: null` in the fail-closed case, which classifyKey reads as
+ * STALE_CONTENT.
  */
 export function temporalAnomaliesContentMeta(
   sources: { news?: unknown; satellite_fires?: unknown },
@@ -207,10 +212,11 @@ export function temporalAnomaliesContentMeta(
   const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
   const clocks: TemporalAnomaliesContentAge[] = [];
   for (const clock of [
-    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : undefined,
+    // Missing configured source → null (fail closed), not undefined (skip).
+    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : null,
     sources.satellite_fires !== undefined
       ? firesContentClock(sources.satellite_fires, skewLimit)
-      : undefined,
+      : null,
   ]) {
     if (clock === undefined) continue;
     if (clock === null) return null;

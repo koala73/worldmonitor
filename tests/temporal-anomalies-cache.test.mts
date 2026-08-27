@@ -567,6 +567,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const firmsAt = NOW - 20 * 60_000;
     const agencyAt = NOW - 10 * 24 * HOUR_MS;
     const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, 8 * 60_000),
       satellite_fires: {
         fireDetections: [
           { id: 'cwfis-1', source: 'cwfis', detectedAt: agencyAt },
@@ -618,10 +619,25 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
           { id: 'real', pubDate: new Date(real).toISOString() },
         ],
       },
+      // Present empty FIRMS window still skips; this isolates the news skew rule.
+      satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
     }, NOW);
 
     assert.ok(meta);
     assert.equal(meta.newestItemAt, real);
+  });
+
+  it('fails closed when a configured COUNT_SOURCE_KEYS read is missing', () => {
+    assert.equal(
+      temporalAnomaliesContentMeta({ news: liveNews(NOW, 8 * 60_000) }, NOW),
+      null,
+      'live news plus absent wildfire must not stamp a news-only content clock',
+    );
+    assert.equal(
+      temporalAnomaliesContentMeta({ satellite_fires: liveFires(NOW, 10 * 60_000) }, NOW),
+      null,
+      'live fires plus absent news must not stamp a fires-only content clock',
+    );
   });
 });
 
@@ -735,6 +751,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': { topStories: [{ id: 'a' }] },
+      'wildfire:fires:v1': liveFires(),
     });
 
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -771,6 +788,35 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
       true,
       'MCP must not answer stale:false for the key health calls STALE_CONTENT',
+    );
+  });
+
+  it('fails closed on health and MCP when one configured source is absent', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now, 20 * 60_000),
+      // wildfire:fires:v1 deliberately absent
+    });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'precondition: rebuild stamped seed-meta');
+    assert.equal(meta.recordCount, 1, 'achieved coverage stays 1');
+    assert.equal(
+      meta.newestItemAt,
+      null,
+      'the remaining live source must not stamp a fresh content clock',
+    );
+
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'health must fail closed on incomplete configured-source coverage',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must fail closed on the same incomplete coverage',
     );
   });
 
