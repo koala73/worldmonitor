@@ -181,7 +181,23 @@ describe("api/chat-analyst direct LLM quota lifecycle", () => {
     expect(quotaCounter).toBe(0);
   });
 
-  test("a client abort before the terminal answer rolls quota back", async () => {
+  test("a client abort before answer content rolls quota back", async () => {
+    let cancelCalled = false;
+    callLlmReasoningStream.mockReturnValue(new ReadableStream<Uint8Array>({
+      start() {},
+      cancel() {
+        cancelCalled = true;
+      },
+    }));
+
+    const response = await handler(analystRequest(JSON.stringify({ query: "What changed?" })));
+    await response.body?.cancel("client disconnected");
+
+    expect(cancelCalled).toBe(true);
+    expect(quotaCounter).toBe(0);
+  });
+
+  test("a client abort after answer content keeps the quota charge", async () => {
     let cancelCalled = false;
     callLlmReasoningStream.mockReturnValue(new ReadableStream<Uint8Array>({
       start(controller) {
@@ -196,6 +212,15 @@ describe("api/chat-analyst direct LLM quota lifecycle", () => {
     await response.body?.cancel("client disconnected");
 
     expect(cancelCalled).toBe(true);
-    expect(quotaCounter).toBe(0);
+    expect(quotaCounter).toBe(1);
+  });
+
+  test("an incomplete stream after answer content keeps the quota charge", async () => {
+    callLlmReasoningStream.mockReturnValue(llmEvents([{ delta: "Partial answer" }]));
+
+    const response = await handler(analystRequest(JSON.stringify({ query: "What changed?" })));
+    await response.text();
+
+    expect(quotaCounter).toBe(1);
   });
 });

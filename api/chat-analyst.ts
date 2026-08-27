@@ -87,26 +87,31 @@ function prependSseEvents(
   const prefixes = events.map((e) => enc.encode(`data: ${JSON.stringify(e)}\n\n`));
   let innerReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let outerCancelled = false;
-  let answerCompleted = false;
+  let answerProduced = false;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const decoder = new TextDecoder();
       let buffered = '';
-      const observeCompletion = (value: Uint8Array) => {
+      const observeAnswer = (value: Uint8Array) => {
         buffered += decoder.decode(value, { stream: true });
         const lines = buffered.split('\n');
         buffered = lines.pop() ?? '';
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           try {
-            const event = JSON.parse(line.slice(6)) as { done?: unknown };
-            if (event.done === true) answerCompleted = true;
+            const event = JSON.parse(line.slice(6)) as { delta?: unknown; done?: unknown };
+            if ((typeof event.delta === 'string' && event.delta.length > 0) || event.done === true) {
+              answerProduced = true;
+            }
           } catch {
             // The inner stream owns malformed-event handling. This wrapper only
-            // needs to know whether a terminal answer was served.
+            // needs to know whether answer content was served.
           }
         }
       };
+      const rollbackIfUnserved = () => (
+        answerProduced ? Promise.resolve() : rollbackUnservedQuota()
+      );
 
       try {
         for (const p of prefixes) controller.enqueue(p);
@@ -114,13 +119,13 @@ function prependSseEvents(
         while (true) {
           const { done, value } = await innerReader.read();
           if (done) break;
-          observeCompletion(value);
+          observeAnswer(value);
           controller.enqueue(value);
         }
-        if (!answerCompleted) await rollbackUnservedQuota();
+        await rollbackIfUnserved();
         if (!outerCancelled) controller.close();
       } catch (err) {
-        await rollbackUnservedQuota();
+        await rollbackIfUnserved();
         if (!outerCancelled) controller.error(err);
       }
     },
@@ -128,7 +133,7 @@ function prependSseEvents(
       outerCancelled = true;
       await Promise.allSettled([
         innerReader?.cancel(reason),
-        answerCompleted ? Promise.resolve() : rollbackUnservedQuota(),
+        answerProduced ? Promise.resolve() : rollbackUnservedQuota(),
       ]);
     },
   });
@@ -237,8 +242,9 @@ export default async function handler(req: Request): Promise<Response> {
     // Spend quota only after the request has passed every body-level gate.
     // The fail-closed request rate limit above still protects malformed input,
     // while invalid JSON and empty queries cannot consume a subscriber's daily
-    // LLM allowance. Hold the rollback until the SSE stream proves it served a
-    // complete answer; upstream failures and client aborts release the slot.
+    // LLM allowance. Hold the rollback until the SSE stream serves answer
+    // content; failures and client aborts before the first delta release the
+    // slot, while a delivered partial answer remains charged.
     if (!premiumIdentity.quotaExempt && premiumIdentity.directLlmDailyLimit !== null) {
       const reservation = await reserveDirectLlmQuota({
         userId: premiumIdentity.userId,
