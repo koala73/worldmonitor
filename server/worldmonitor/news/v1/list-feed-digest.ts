@@ -104,6 +104,7 @@ import {
   MIN_CORROBORATING_PUBLISHERS,
   PUBLISHER_FAMILIES,
   publisherFamilyFor,
+  publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
@@ -122,7 +123,8 @@ const RESPONSE_GUARD_BAND_MS = 3_000;
 const RESPONSE_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
-const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
+const MAX_REDIS_PIPELINE_COMMANDS = 1000;
+const STORY_BATCH_SIZE = 80; // bounds per-story work; command chunks enforce the hard cap
 // #4925 item 1: canonical adoption reads two commands per member hash
 // (alias GET + track HMGET), so the hash budget is half the command budget.
 const ADOPTION_BATCH_SIZE = 400;
@@ -462,11 +464,12 @@ interface ParsedItem {
   // Originating publisher from the RSS <source> element ('' when absent).
   // Google News feeds — which back 154 of the 366 server digest labels —
   // stamp it per item, naming the outlet that actually wrote the story.
-  // Corroboration counting prefers this over `source`: a Reuters wire
-  // arriving through the "Oil & Gas" keyword feed and through "Reuters
-  // Energy" is ONE publisher, not two (#6430). Internal to the digest
-  // build; `source` stays what the UI credits, links, and tiers.
+  // Corroboration counting may prefer this over `source` only when the parser
+  // marks the feed as an explicitly configured trusted aggregator (#6430).
+  // Internal to the digest build; `source` stays what the UI credits, links,
+  // and tiers.
   originPublisher: string;
+  originPublisherTrusted: boolean;
   title: string;
   link: string;
   publishedAt: number;
@@ -514,10 +517,15 @@ interface ParsedItem {
   tickers?: string[];
 }
 
-type CredibilitySourceItem = Pick<ParsedItem, 'source' | 'originPublisher'>;
+type CredibilitySourceItem = Pick<ParsedItem, 'source' | 'originPublisher'> & {
+  originPublisherTrusted?: boolean;
+};
 
 function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
-  const originPublisher = typeof item.originPublisher === 'string' ? item.originPublisher.trim() : '';
+  const originPublisher = item.originPublisherTrusted === true
+    && typeof item.originPublisher === 'string'
+    ? item.originPublisher.trim()
+    : '';
   const source = typeof item.source === 'string' ? item.source.trim() : '';
   const rawName = originPublisher || source;
   const family = publisherFamilyFor(rawName);
@@ -952,6 +960,22 @@ const DATE_TAG_PRIORITY = {
 // Future-dated guard: items > 1h ahead of now are clock-skew or malformed.
 const FUTURE_DATE_TOLERANCE_MS = 60 * 60 * 1000;
 
+// RSS <source> is upstream-provided text. Only these server-configured
+// aggregator endpoints are allowed to vouch for it as publisher provenance;
+// ordinary feeds remain anchored to their configured `feed.name` label.
+const TRUSTED_ORIGIN_AGGREGATOR_HOSTS = new Set(['news.google.com']);
+
+function isTrustedOriginAggregator(feedUrl: string): boolean {
+  try {
+    const parsed = new URL(feedUrl);
+    return TRUSTED_ORIGIN_AGGREGATOR_HOSTS.has(parsed.hostname)
+      || (parsed.hostname === 'moxie.foxbusiness.com'
+        && parsed.pathname.startsWith('/google-publisher/'));
+  } catch {
+    return false;
+  }
+}
+
 function extractFirstDateTag(block: string, isAtom: boolean): string {
   const tags = isAtom ? DATE_TAG_PRIORITY.atom : DATE_TAG_PRIORITY.rss;
   for (const tag of tags) {
@@ -1031,6 +1055,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     items.push({
       source: feed.name,
       originPublisher,
+      originPublisherTrusted: !isAtom && isTrustedOriginAggregator(feed.url),
       title,
       link,
       publishedAt,
@@ -1413,10 +1438,10 @@ function computeEntityCorroborationSignals(
       // signal that feeds importanceScore and the diplomacy severity
       // promotion. The tier is a property of the LABEL, so a family joins
       // tier12Sources when any of its labels is tier 1-2.
-      // #6430: the originating publisher (RSS <source>) outranks the feed
-      // label — a wire syndicated through a keyword feed corroborates as
-      // the wire, not as the query it arrived through.
-      const family = publisherFamilyFor(item.originPublisher || item.source);
+      // #6430: a trusted aggregator's originating publisher (RSS <source>)
+      // outranks the feed label — a wire syndicated through a keyword feed
+      // corroborates as the wire, not as the query it arrived through.
+      const family = publisherFamilyForItem(item);
       if (family) {
         bucket.sources.add(family);
         if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(family);
@@ -1543,6 +1568,38 @@ function parseRedisTimestamp(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function chunkRedisCommands(
+  commands: Array<Array<string | number>>,
+  maxCommands: number = MAX_REDIS_PIPELINE_COMMANDS,
+): Array<Array<Array<string | number>>> {
+  if (!Number.isInteger(maxCommands) || maxCommands < 1) {
+    throw new RangeError('maxCommands must be a positive integer');
+  }
+  const chunks: Array<Array<Array<string | number>>> = [];
+  for (let offset = 0; offset < commands.length; offset += maxCommands) {
+    chunks.push(commands.slice(offset, offset + maxCommands));
+  }
+  return chunks;
+}
+
+/**
+ * Return firstSeen only for a track that is safe to use as a canonical anchor.
+ * Missing/legacy metadata, malformed timestamps, stale rows, and explicit
+ * ineligibility all fail closed.
+ */
+function parseFreshEligibleTrackFirstSeen(
+  row: unknown,
+  freshnessCutoff: number,
+): number | undefined {
+  if (!Array.isArray(row) || row.length < 3 || row[2] !== '1') return undefined;
+  const firstSeen = parseRedisTimestamp(row[0]);
+  const lastSeen = parseRedisTimestamp(row[1]);
+  if (firstSeen === undefined || lastSeen === undefined || lastSeen < freshnessCutoff) {
+    return undefined;
+  }
+  return firstSeen;
+}
+
 interface AdoptionState {
   aliasTargetByHash: Map<string, string>;
   trackFirstSeenByHash: Map<string, number>;
@@ -1559,13 +1616,15 @@ function isCompleteRedisResult(result: unknown): result is { result: unknown } {
 /**
  * Read the alias and track state for one adoption pass.
  *
- * Each bounded chunk is one MULTI/EXEC call so the alias and three-field track
- * read for every hash come from the same Redis snapshot. The reader has one
- * absolute deadline
- * shared by all chunks and only starts a chunk when the Redis helper's own
- * timeout still fits. A timeout, incomplete response, command error, or
- * deadline skip leaves every hash in that chunk marked incomplete; callers
- * must use their batch-derived canonical for any affected cluster.
+ * Each bounded chunk starts with one MULTI/EXEC call so the alias and
+ * three-field member-track read for every hash come from the same Redis
+ * snapshot. Distinct non-self alias targets are then read in a second bounded
+ * MULTI/EXEC call, because their keys are not known until the aliases return.
+ * The reader has one absolute deadline shared by all chunks and only starts a
+ * call when the Redis helper's own timeout still fits. A timeout, incomplete
+ * response, command error, or deadline skip leaves the affected source hashes
+ * marked incomplete; callers must use their batch-derived canonical for any
+ * affected cluster.
  */
 async function readAdoptionState(
   memberHashes: string[],
@@ -1633,38 +1692,118 @@ async function readAdoptionState(
     // HMGET miss is [null, null, null] and contributes no live track. The
     // exact string '1' is required for eligibility; missing/legacy metadata
     // never becomes trusted merely because firstSeen is old.
+    const trackRowByHash = new Map<string, unknown[]>();
+    for (let i = 0; i < chunk.length; i++) {
+      const row = adoptionResults[chunk.length + i]!.result;
+      trackRowByHash.set(chunk[i]!, row as unknown[]);
+    }
+
+    const nonSelfAliasByHash = new Map<string, string>();
     for (let i = 0; i < chunk.length; i++) {
       const target = adoptionResults[i]!.result;
-      const row = adoptionResults[chunk.length + i]!.result;
-      const anchorEligible = Array.isArray(row) && row[2] === '1';
-      // Self-aliases are useful only when their own track is eligible. A
-      // non-self alias may point at a canonical whose member dropped out of
-      // this batch, so preserve that continuity even when the member row is
-      // unavailable; the target was stamped when it was canonical.
+      const row = trackRowByHash.get(chunk[i]!)!;
+      // Self-aliases retain their existing behavior: they are useful only when
+      // their own track is fresh and explicitly eligible. Non-self aliases are
+      // held until the target's own track has been read and validated below.
+      // This matters when the canonical member dropped out of the batch — its
+      // persisted track is the only evidence that the alias is trustworthy.
       if (
         typeof target === 'string'
         && target.length > 0
-        && (target !== chunk[i] || anchorEligible)
       ) {
-        aliasTargetByHash.set(chunk[i]!, target);
+        if (
+          target === chunk[i]
+          && parseFreshEligibleTrackFirstSeen(row, freshnessCutoff) !== undefined
+        ) {
+          aliasTargetByHash.set(chunk[i]!, target);
+        } else if (target !== chunk[i]) {
+          nonSelfAliasByHash.set(chunk[i]!, target);
+        }
       }
     }
-    for (let i = 0; i < chunk.length; i++) {
-      const row = adoptionResults[chunk.length + i]!.result;
-      if (!Array.isArray(row)) continue;
-      if (row[2] !== '1') continue;
-      const firstSeen = parseRedisTimestamp(row[0]);
-      const lastSeen = parseRedisTimestamp(row[1]);
-      if (firstSeen === undefined || lastSeen === undefined) continue;
-      // A track the digest has not seen inside its own freshness floor is
-      // not a live story identity — adopting it would anchor on a row that
-      // is ageing out, and the story would re-fork on a later cycle. Same
-      // cutoff the items themselves are held to, so there is no second
-      // freshness knob to tune.
-      if (lastSeen < freshnessCutoff) continue;
-      trackFirstSeenByHash.set(chunk[i]!, firstSeen);
+
+    const targetHashes = [...new Set(nonSelfAliasByHash.values())]
+      .filter((target) => !trackRowByHash.has(target));
+    const unreadableTargetHashes = new Set<string>();
+    if (targetHashes.length > 0) {
+      const targetRemainingMs = deadlineAt - Date.now();
+      if (targetRemainingMs < REDIS_PIPELINE_TIMEOUT_MS) {
+        console.warn(
+          `[digest] story adoption target deadline reached; skipped ${targetHashes.length} track read(s)`,
+        );
+        for (const target of targetHashes) unreadableTargetHashes.add(target);
+      } else {
+        const targetResults = await runRedisTransaction(
+          targetHashes.map((target) => [
+            'HMGET', STORY_TRACK_KEY(target), 'firstSeen', 'lastSeen', 'anchorEligible',
+          ]),
+        );
+
+        // A response that crossed the deadline is not a usable target
+        // snapshot. Treat every target as unreadable so no alias can influence
+        // adoption from a half-read result.
+        if (Date.now() > deadlineAt) {
+          console.warn(
+            `[digest] story adoption target chunk crossed deadline; skipped ${targetHashes.length} track read(s)`,
+          );
+          for (const target of targetHashes) unreadableTargetHashes.add(target);
+        } else {
+          const targetComplete = Array.isArray(targetResults)
+            && targetResults.length === targetHashes.length
+            && targetResults.every(isCompleteRedisResult);
+          if (!targetComplete) {
+            console.warn(
+              `[digest] story adoption target read incomplete; expected ${targetHashes.length} Redis result(s), got ${Array.isArray(targetResults) ? targetResults.length : 'non-array'}`,
+            );
+            for (const target of targetHashes) unreadableTargetHashes.add(target);
+          } else {
+            for (let i = 0; i < targetHashes.length; i++) {
+              const row = targetResults[i]!.result;
+              if (!Array.isArray(row) || row.length < 3) {
+                unreadableTargetHashes.add(targetHashes[i]!);
+                continue;
+              }
+              trackRowByHash.set(targetHashes[i]!, row);
+            }
+          }
+        }
+      }
     }
-    for (const hash of chunk) incompleteHashes.delete(hash);
+
+    // A target row is trusted only when it carries its own fresh, eligible
+    // anchor metadata. A readable but stale/ineligible/legacy row rejects the
+    // alias; an unreadable row marks the source incomplete so its whole
+    // cluster falls back to the batch-derived canonical.
+    for (const [memberHash, target] of nonSelfAliasByHash) {
+      if (unreadableTargetHashes.has(target)) {
+        continue;
+      }
+      if (parseFreshEligibleTrackFirstSeen(trackRowByHash.get(target), freshnessCutoff) !== undefined) {
+        aliasTargetByHash.set(memberHash, target);
+      }
+    }
+
+    for (let i = 0; i < chunk.length; i++) {
+      const firstSeen = parseFreshEligibleTrackFirstSeen(
+        trackRowByHash.get(chunk[i]!),
+        freshnessCutoff,
+      );
+      if (firstSeen !== undefined) trackFirstSeenByHash.set(chunk[i]!, firstSeen);
+    }
+
+    const affectedByUnreadableTarget = new Set<string>();
+    for (const [memberHash, target] of nonSelfAliasByHash) {
+      if (unreadableTargetHashes.has(target)) affectedByUnreadableTarget.add(memberHash);
+    }
+    for (const hash of chunk) {
+      if (!affectedByUnreadableTarget.has(hash)) incompleteHashes.delete(hash);
+    }
+    if (unreadableTargetHashes.size > 0) {
+      // A transport/incomplete/deadline failure is a Redis-health signal, not
+      // a per-key miss. Stop here so later chunks cannot extend the cold-path
+      // work while adoption is already unconfirmed.
+      break;
+    }
   }
 
   return { aliasTargetByHash, trackFirstSeenByHash, incompleteHashes };
@@ -2220,11 +2359,13 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
         commands.push(
           ['HINCRBY', trackKey, 'mentionCount', '1'],
           ['HSET', trackKey, ...hsetFields],
-          // Eligibility is monotonic: once a trusted/corroborated mention
-          // has proved this anchor, a later low-trust mention must not erase
-          // that proof. New rows still receive an explicit '0' stamp.
-          ['HSETNX', trackKey, 'anchorEligible', '0'],
-          ...(anchorEligible ? [['HSET', trackKey, 'anchorEligible', '1']] : []),
+          // Eligibility is monotonic: an eligible mention upgrades the stamp,
+          // while an ineligible mention can initialize it to 0 without
+          // erasing a prior 1. Exactly one command handles the field, keeping
+          // every Redis request inside the hard command budget.
+          anchorEligible
+            ? ['HSET', trackKey, 'anchorEligible', '1']
+            : ['HSETNX', trackKey, 'anchorEligible', '0'],
           ['HSETNX', trackKey, 'firstSeen', nowStr],
           ['EXPIRE', trackKey, ttl],
           ['ZADD', accKey, nowStr, hash],
@@ -2290,13 +2431,18 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
     // Archive keys are deliberately raw: the Railway resolver and backfill
     // operate outside a Vercel deployment prefix and must read this same
     // durable evidence namespace.
-    const [trackingResults, evidenceResults] = await Promise.all([
-      runRedisPipeline(commands),
-      evidenceEligible
-        ? runRedisPipeline(evidenceBatchCommands, true)
-        : Promise.resolve([]),
-    ]);
-    if (!redisPipelineConfirmed(trackingResults, commands.length)) trackingWritesConfirmed = false;
+    // Upstash accepts at most 1,000 commands per pipeline. Alias rows are
+    // data-dependent, so STORY_BATCH_SIZE alone cannot prove that bound. Send
+    // command chunks sequentially to preserve the per-story write order while
+    // allowing a large alias cluster to span multiple requests.
+    const evidencePromise = evidenceEligible
+      ? runRedisPipeline(evidenceBatchCommands, true)
+      : Promise.resolve([]);
+    for (const trackingChunk of chunkRedisCommands(commands)) {
+      const trackingResults = await runRedisPipeline(trackingChunk);
+      if (!redisPipelineConfirmed(trackingResults, trackingChunk.length)) trackingWritesConfirmed = false;
+    }
+    const evidenceResults = await evidencePromise;
     if (evidenceEligible) {
       if (!redisPipelineConfirmed(evidenceResults, evidenceBatchCommands.length)) {
         evidenceWritesConfirmed = false;
@@ -2808,7 +2954,7 @@ async function buildDigest(
       entries: allEntries,
       attemptOutcomes: attempts.attemptOutcomes,
       itemsServed: allSliced.length,
-      publisherSources: allSliced.map((item) => publisherFamilyFor(item.originPublisher || item.source)),
+      publisherSources: allSliced.map((item) => publisherFamilyForItem(item)),
       deadlineAborted: deadlineController.signal.aborted,
       drops: { ...ledgerDrops },
       buildStartMs: buildStart,
@@ -2845,6 +2991,7 @@ export const __testing__ = {
   shouldStartDigestAttempt,
   buildDigestFeedBatches,
   parseRssXml,
+  isTrustedOriginAggregator,
   decodeXmlEntities,
   extractDescription,
   extractRawTagBody,
@@ -2861,6 +3008,7 @@ export const __testing__ = {
   derivePhase,
   readStoryTracks,
   readAdoptionState,
+  chunkRedisCommands,
   resolveMaxAgeMs,
   capLlmUpgrade,
   parseClassifyCacheHit,
@@ -2876,6 +3024,7 @@ export const __testing__ = {
   redisPipelineConfirmed,
   shouldPruneAccumulator,
   writeStoryTracking,
+  MAX_REDIS_PIPELINE_COMMANDS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

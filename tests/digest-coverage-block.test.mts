@@ -148,7 +148,7 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
   });
 
   it('normalizes served items to publisher families before counting them', () => {
-    assert.match(digestSource, /publisherFamilyFor\(item\.originPublisher \|\| item\.source\)/);
+    assert.match(digestSource, /publisherFamilyForItem\(item\)/);
   });
 
   it('returns the coverage block on the digest response', () => {

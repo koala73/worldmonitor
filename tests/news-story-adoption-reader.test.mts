@@ -41,23 +41,36 @@ function redisResponse(payload: unknown, status = 200): Response {
 describe('news digest adoption-state reader', () => {
   it('uses one atomic transaction for alias and track reads', async () => {
     enableRedis();
-    let requestUrl = '';
-    let requestCommands: unknown;
-    globalThis.fetch = (async (input, init) => {
-      requestUrl = String(input);
-      requestCommands = JSON.parse(String(init?.body));
-      return redisResponse([
+    const requests: Array<{ url: string; commands: unknown }> = [];
+    const responses: unknown[] = [
+      [
         { result: 'canonical-hash' },
         { result: ['1000', '2000', '1'] },
-      ]);
+      ],
+      [
+        { result: ['900', '2000', '1'] },
+      ],
+    ];
+    globalThis.fetch = (async (input, init) => {
+      requests.push({
+        url: String(input),
+        commands: JSON.parse(String(init?.body)),
+      });
+      return redisResponse(responses.shift());
     }) as typeof fetch;
 
     const state = await __testing__.readAdoptionState(['member-hash'], 0, Date.now() + 6_000);
 
-    assert.equal(requestUrl, 'https://redis.test/multi-exec');
-    assert.deepEqual(requestCommands, [
+    assert.deepEqual(requests.map(({ url }) => url), [
+      'https://redis.test/multi-exec',
+      'https://redis.test/multi-exec',
+    ]);
+    assert.deepEqual(requests[0]?.commands, [
       ['GET', 'story:alias:v1:member-hash'],
       ['HMGET', 'story:track:v1:member-hash', 'firstSeen', 'lastSeen', 'anchorEligible'],
+    ]);
+    assert.deepEqual(requests[1]?.commands, [
+      ['HMGET', 'story:track:v1:canonical-hash', 'firstSeen', 'lastSeen', 'anchorEligible'],
     ]);
     assert.equal(state.aliasTargetByHash.get('member-hash'), 'canonical-hash');
     assert.equal(state.trackFirstSeenByHash.get('member-hash'), 1000);
@@ -82,16 +95,25 @@ describe('news digest adoption-state reader', () => {
 
   it('rejects null, empty, and malformed timestamps before numeric conversion', async () => {
     enableRedis();
-    globalThis.fetch = (async () => redisResponse([
-      { result: 'alias-1' },
-      { result: 'alias-2' },
-      { result: 'alias-3' },
-      { result: 'alias-4' },
-      { result: ['1000', null, '1'] },
-      { result: [null, '2000', '1'] },
-      { result: ['', '2000', '1'] },
-      { result: ['not-a-time', '2000', '1'] },
-    ])) as typeof fetch;
+    const responses: unknown[] = [
+      [
+        { result: 'alias-1' },
+        { result: 'alias-2' },
+        { result: 'alias-3' },
+        { result: 'alias-4' },
+        { result: ['1000', null, '1'] },
+        { result: [null, '2000', '1'] },
+        { result: ['', '2000', '1'] },
+        { result: ['not-a-time', '2000', '1'] },
+      ],
+      [
+        { result: ['500', '2000', '1'] },
+        { result: ['501', '2000', '1'] },
+        { result: ['502', '2000', '1'] },
+        { result: ['503', '2000', '1'] },
+      ],
+    ];
+    globalThis.fetch = (async () => redisResponse(responses.shift())) as typeof fetch;
 
     const state = await __testing__.readAdoptionState(
       ['h1', 'h2', 'h3', 'h4'],
@@ -102,6 +124,68 @@ describe('news digest adoption-state reader', () => {
     assert.equal(state.aliasTargetByHash.size, 4);
     assert.equal(state.trackFirstSeenByHash.size, 0);
     assert.equal(state.incompleteHashes.size, 0);
+  });
+
+  it('rejects an ineligible alias target while the trusted canonical survives', async () => {
+    enableRedis();
+    const now = Date.now();
+    const responses: unknown[] = [
+      [
+        { result: 'b-plus-reuters' },
+        { result: 'trusted-canonical' },
+        { result: ['1000', String(now), '0'] },
+        { result: ['2000', String(now), '1'] },
+      ],
+      [
+        // A hostile A+B alias cannot make an ineligible B+Reuters track a
+        // canonical target. The target is readable, but must fail closed.
+        { result: ['3000', String(now), '0'] },
+      ],
+    ];
+    globalThis.fetch = (async () => redisResponse(responses.shift())) as typeof fetch;
+
+    const state = await __testing__.readAdoptionState(
+      ['a-plus-b', 'trusted-canonical'],
+      now - 1_000,
+      Date.now() + 6_000,
+    );
+
+    assert.equal(state.aliasTargetByHash.has('a-plus-b'), false);
+    assert.equal(state.trackFirstSeenByHash.get('trusted-canonical'), 2000);
+    assert.equal(state.incompleteHashes.size, 0);
+
+    // The rejected alias cannot out-vote the independently trusted member.
+    const { adoptExistingCanonical } = await import('../server/worldmonitor/news/v1/dedup.mjs');
+    assert.equal(
+      adoptExistingCanonical(
+        ['a-plus-b', 'trusted-canonical'],
+        'trusted-canonical',
+        state.aliasTargetByHash,
+        state.trackFirstSeenByHash,
+      ),
+      'trusted-canonical',
+    );
+  });
+
+  it('marks source members incomplete when alias target reads are unavailable', async () => {
+    enableRedis();
+    const responses: unknown[] = [
+      [
+        { result: 'missing-target' },
+        { result: ['1000', '2000', '0'] },
+      ],
+      [],
+    ];
+    globalThis.fetch = (async () => redisResponse(responses.shift())) as typeof fetch;
+
+    const state = await __testing__.readAdoptionState(
+      ['member-hash'],
+      0,
+      Date.now() + 6_000,
+    );
+
+    assert.equal(state.aliasTargetByHash.size, 0);
+    assert.deepEqual([...state.incompleteHashes], ['member-hash']);
   });
 
   it('fails closed for legacy/ineligible tracks instead of trusting an old firstSeen', async () => {
@@ -130,6 +214,24 @@ describe('news digest adoption-state reader', () => {
     assert.equal(state.trackFirstSeenByHash.has('legacy-member'), false);
     assert.equal(state.aliasTargetByHash.get('trusted-member'), 'trusted-member');
     assert.equal(state.trackFirstSeenByHash.get('trusted-member'), 3000);
+  });
+
+  it('rejects stale self-aliases even when their eligibility stamp is still 1', async () => {
+    enableRedis();
+    globalThis.fetch = (async () => redisResponse([
+      { result: 'stale-member' },
+      { result: ['1000', '500', '1'] },
+    ])) as typeof fetch;
+
+    const state = await __testing__.readAdoptionState(
+      ['stale-member'],
+      1_000,
+      Date.now() + 6_000,
+    );
+
+    assert.equal(state.aliasTargetByHash.has('stale-member'), false);
+    assert.equal(state.trackFirstSeenByHash.has('stale-member'), false);
+    assert.equal(state.incompleteHashes.size, 0);
   });
 
   it('chunks at 400 hashes and skips further work after the deadline', async () => {

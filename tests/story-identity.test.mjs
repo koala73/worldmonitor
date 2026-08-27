@@ -414,8 +414,12 @@ describe('list-feed-digest story-identity wiring (#4924 review)', () => {
   it('canonical adoption requires persisted anchor eligibility', () => {
     assert.match(digestSrc, /'anchorEligible', isAnchorEligible\(item\) \? '1' : '0'/);
     assert.match(digestSrc, /'firstSeen', 'lastSeen', 'anchorEligible'/);
-    assert.match(digestSrc, /if \(row\[2\] !== '1'\) continue;/,
+    assert.match(digestSrc, /parseFreshEligibleTrackFirstSeen\(/,
       'legacy or explicitly ineligible tracks must not anchor on firstSeen alone');
+    assert.match(digestSrc, /MAX_REDIS_PIPELINE_COMMANDS = 1000/,
+      'tracking writes must declare the hard Redis command limit');
+    assert.match(digestSrc, /chunkRedisCommands\(commands\)/,
+      'tracking writes must split data-dependent alias commands before dispatch');
   });
 });
 
@@ -552,6 +556,41 @@ describe('adopt-existing-track canonical (#4925 item 1)', () => {
       adoptExistingCanonical(clustered.memberTitleHashes, hostileHash, eligibleAliases, eligibleTracks),
       trustedHash,
     );
+  });
+
+  it('REGRESSION: an ineligible hostile A+B alias cannot bypass a later Reuters anchor', async () => {
+    const hostileA = { title: 'Iran threatens to close Strait of Hormuz', source: 'Farm A', publishedAt: 1_000 };
+    const hostileB = { title: 'Iran warns it may close the Strait of Hormuz', source: 'Farm A', publishedAt: 1_100 };
+    const trusted = { title: 'Iran warns it could close the Strait of Hormuz, Reuters reports', source: 'Reuters', publishedAt: 2_000 };
+
+    // Cycle 1: the hostile feed pre-seeds an A+B canonical and persists B's
+    // alias to that canonical. Its target track is explicitly ineligible.
+    const cycle1 = await assignStoryIdentity([hostileA, hostileB], normalizeBasic, sha256HexNode);
+    const hostileCanonical = cycle1.get(hostileA).titleHash;
+    const hostileBHash = await sha256HexNode(normalizeBasic(hostileB.title));
+
+    // Cycle 2: B + Reuters cluster. The hostile alias target is absent from
+    // the eligible alias map because its target track failed the anchor gate;
+    // Reuters remains the batch-derived/default canonical.
+    const cycle2 = await assignStoryIdentity([hostileB, trusted], normalizeBasic, sha256HexNode);
+    const clustered = cycle2.get(hostileB);
+    const trustedHash = await sha256HexNode(normalizeBasic(trusted.title));
+    assert.equal(clustered.titleHash, cycle2.get(trusted).titleHash, 'B and Reuters must cluster');
+    assert.ok(clustered.memberTitleHashes.includes(hostileBHash));
+    assert.ok(clustered.memberTitleHashes.includes(trustedHash));
+
+    const aliasesAfterTargetValidation = new Map([[trustedHash, trustedHash]]);
+    assert.equal(
+      adoptExistingCanonical(
+        clustered.memberTitleHashes,
+        trustedHash,
+        aliasesAfterTargetValidation,
+        new Map(),
+      ),
+      trustedHash,
+      'a hostile alias whose target track is not anchor-eligible must be ignored',
+    );
+    assert.notEqual(hostileCanonical, trustedHash, 'the hostile pre-seed must not remain the default');
   });
 
   it('precedence: oldest live track, then most-common alias, then the batch default', () => {
@@ -703,7 +742,7 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
     );
     assert.match(
       src,
-      /if \(lastSeen < freshnessCutoff\) continue;/,
+      /lastSeen < freshnessCutoff/,
       'a track outside the digest freshness floor must not be adopted — it is ageing out and the story would re-fork',
     );
   });

@@ -17,7 +17,7 @@ import {
 // #6428: corroboration counts PUBLISHERS. `item.source` is a feed label, and
 // one newsroom ships many ("Reuters World", "Reuters US", …), so counting
 // labels let a wire corroborate itself.
-import { countPublisherFamilies } from '../../../../shared/publisher-families.js';
+import { publisherFamilyForItem } from '../../../../shared/publisher-families.js';
 
 /** @param {string[]} headlines */
 export function deduplicateHeadlines(headlines) {
@@ -64,7 +64,7 @@ export function deduplicateHeadlines(headlines) {
  * hashing all such items accumulated one phantom story:track row with
  * pooled corroboration.
  *
- * @template {{ title: string; source: string; originPublisher?: string; publishedAt?: number }} T
+ * @template {{ title: string; source: string; originPublisher?: string; originPublisherTrusted?: boolean; publishedAt?: number }} T
  * @param {T[]} items
  * @param {(title: string) => string} normalizeTitle title normalizer
  *   (strips source suffixes etc. — stays caller-owned so hash identity is
@@ -94,13 +94,13 @@ export async function assignStoryIdentity(items, normalizeTitle, sha256Hex) {
       }
     }
 
-    // #6430: the originating publisher (RSS <source>, carried as
-    // originPublisher) outranks the feed label — one wire under several
-    // feeds' labels is one publisher. Absent (direct feeds, Atom), the
-    // feed label remains the best available signal.
+    // #6430: a trusted aggregator's originating publisher (RSS <source>,
+    // carried as originPublisher) may outrank the feed label — one wire under
+    // several feeds' labels is one publisher. Ordinary feeds use their
+    // server-configured label because RSS <source> is forgeable upstream text.
     const corroborationCount = Math.max(
       1,
-      countPublisherFamilies(indices.map((i) => items[i].originPublisher || items[i].source)),
+      new Set(indices.map((i) => publisherFamilyForItem(items[i]))).size,
     );
 
     if (canonical === null) {
