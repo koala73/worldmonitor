@@ -440,6 +440,49 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(ctx.mapLayers.weather, true);
   });
 
+  it('does not apply a stale set_view after newer map interaction during readiness', async () => {
+    let resolveRendererReady!: () => void;
+    const rendererReady = new Promise<void>((resolve) => {
+      resolveRendererReady = resolve;
+    });
+    let resolveRendererWaitStarted!: () => void;
+    const rendererWaitStarted = new Promise<void>((resolve) => {
+      resolveRendererWaitStarted = resolve;
+    });
+    let authorityToken = 4;
+    let setViewCalls = 0;
+    const ctx = makeContext();
+    ctx.map!.setView = (() => {
+      setViewCalls += 1;
+      return 5;
+    }) as typeof ctx.map.setView;
+
+    const pending = runDashboardActionBinding(
+      ctx,
+      { type: 'set_view', view: 'eu', zoom: 4 },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => {
+          resolveRendererWaitStarted();
+          return rendererReady;
+        },
+        getMapAuthorityToken: () => authorityToken,
+        applierOptions,
+        syncUrlStateNow: () => {},
+      },
+    );
+
+    await rendererWaitStarted;
+    authorityToken += 1;
+    resolveRendererReady();
+
+    const result = await pending;
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'viewport_superseded');
+    assert.equal(setViewCalls, 0);
+  });
+
   it('withholds set_view success until the visible viewport has settled', async () => {
     let center = { lat: 29.5, lon: 47.5 };
     let resolveSetViewStarted!: () => void;

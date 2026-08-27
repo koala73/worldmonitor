@@ -6,6 +6,7 @@ import { throwIfWebMcpAborted, type DashboardActionResult } from '@/services/web
 export interface DashboardActionBindingOptions {
   waitForUiReady: () => Promise<void>;
   waitForMapReady: () => Promise<void>;
+  getMapAuthorityToken?: () => number;
   signal?: AbortSignal;
   applierOptions: AgentBusApplierOptions;
   syncUrlStateNow: () => void;
@@ -21,6 +22,7 @@ export async function runDashboardActionBinding(
   action: unknown,
   options: DashboardActionBindingOptions,
 ): Promise<DashboardActionResult> {
+  const mapAuthorityToken = options.getMapAuthorityToken?.();
   throwIfWebMcpAborted(options.signal);
   await options.waitForUiReady();
   throwIfWebMcpAborted(options.signal);
@@ -39,6 +41,20 @@ export async function runDashboardActionBinding(
   ) {
     await options.waitForMapReady();
     throwIfWebMcpAborted(options.signal);
+    if (
+      parsed.action.type === 'set_view'
+      && mapAuthorityToken !== undefined
+      && options.getMapAuthorityToken?.() !== mapAuthorityToken
+    ) {
+      return {
+        ok: false,
+        status: 'denied',
+        actionType: 'set_view',
+        reason: 'viewport_superseded',
+        message: 'Map movement was superseded by a newer viewport action.',
+        targets: [],
+      };
+    }
   }
 
   const result = await applyWebMcpDashboardAction(

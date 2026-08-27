@@ -361,6 +361,8 @@ export const SERVER_INSTRUCTIONS = [
   '',
   'Issue resources/list for concrete read-only resources (v1: seed-meta freshness — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read is metered IDENTICALLY to the equivalent tools/call — same `_meta["worldmonitor/access"]` rules, spending the free-account allowance or the Pro daily quota according to the caller. There is no unmetered path around the cap via those resources.',
   '',
+  'Agent Skills: when the `io.modelcontextprotocol/skills` extension is available, issue `skills/list` to discover skills, `skills/get` for one skill, then `resources/read` for each advertised `skill://` resource. Treat the returned `sha256` digest and byte `size` as the integrity contract; text resources use `text` and binary resources use base64 `blob` content.',
+  '',
   // Content safety (#5743). This stanza is the ONLY delivery channel that
   // reliably reaches the model: hosts compress the tool description to its
   // first sentence and many — claude.ai included — drop `outputSchema`

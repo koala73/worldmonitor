@@ -621,6 +621,55 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(partial.newestItemAt, Date.parse('2026-08-04T00:00:00.000Z'));
       assert.equal(chinaStockConnectContentMeta({}), null);
     });
+
+    it('anchors on the answering exchanges when one exchange takes both series down', () => {
+      // The series-level fallback above assumes ONE series lost its date. An
+      // exchange going dark is different: combineByTradeDate nulls the combined
+      // date the instant either exchange is missing, so a single failed exchange
+      // empties northbound AND margin together and leaves that fallback nothing
+      // to land on. Observed 2026-08-26 — SSE published that day's session while
+      // SZSE sat behind a rejected proxy credential, and health read
+      // STALE_CONTENT "no dated item" with nothing actually frozen.
+      const exchangeDown = chinaStockConnectContentMeta({
+        northbound: { tradeDate: null },
+        margin: { tradeDate: null },
+        sources: [
+          { id: 'sse-northbound', transportStatus: 'ok', tradeDate: '2026-08-26' },
+          { id: 'sse-margin', transportStatus: 'ok', tradeDate: '2026-08-25' },
+          { id: 'szse-northbound', transportStatus: 'error', tradeDate: null },
+          { id: 'szse-margin', transportStatus: 'error', tradeDate: null },
+        ],
+      });
+      // Oldest of the answering sources — the freeze guard is unchanged.
+      assert.equal(exchangeDown.newestItemAt, Date.parse('2026-08-25T00:00:00.000Z'));
+
+      // A source that stops advancing still drags the token back, even while a
+      // sibling is current: partial coverage must not become a freeze blindspot.
+      const frozenSurvivor = chinaStockConnectContentMeta({
+        northbound: { tradeDate: null },
+        margin: { tradeDate: null },
+        sources: [
+          { id: 'sse-northbound', transportStatus: 'ok', tradeDate: '2026-08-26' },
+          { id: 'sse-margin', transportStatus: 'ok', tradeDate: '2026-06-01' },
+          { id: 'szse-northbound', transportStatus: 'error', tradeDate: null },
+        ],
+      });
+      assert.equal(frozenSurvivor.newestItemAt, Date.parse('2026-06-01T00:00:00.000Z'));
+
+      // A failed source must never date the token — otherwise a total outage
+      // that retained a stale tradeDate would publish as fresh content.
+      assert.equal(
+        chinaStockConnectContentMeta({
+          northbound: { tradeDate: null },
+          margin: { tradeDate: null },
+          sources: [
+            { id: 'sse-northbound', transportStatus: 'error', tradeDate: '2026-08-26' },
+            { id: 'szse-northbound', transportStatus: 'error', tradeDate: '2026-08-26' },
+          ],
+        }),
+        null,
+      );
+    });
   });
 
   describe('request discipline', () => {

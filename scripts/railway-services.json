@@ -730,6 +730,7 @@
       "scripts/shared/china-corporate-disclosure-policy.js",
       "scripts/shared/crypto.json",
       "scripts/shared/defi-tokens.json",
+      "scripts/shared/etf-flow-provider.mjs",
       "scripts/shared/etfs.json",
       "scripts/shared/gulf.json",
       "scripts/shared/other-tokens.json",

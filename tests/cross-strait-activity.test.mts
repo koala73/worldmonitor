@@ -1761,6 +1761,17 @@ describe('quantified cross-Strait activity (#5575)', () => {
     // control tunnel is transport telemetry, not a Japan MOD request.
     assert.equal(japan?.requestCount, 2);
     assert.equal(japan?.lastSuccessAt, null);
+    // A failing source must still date its own attempt. The per-source Redis key
+    // publishes this object alone, so without lastAttemptAt an errored record is
+    // identical whether the seeder ran seconds ago or died days ago — the exact
+    // ambiguity that made the 2026-08-26 japan-mod proxy outage unreadable from
+    // stored state (it took Railway logs to establish the seeder was still live).
+    assert.equal(
+      japan?.lastAttemptAt,
+      snapshot.generatedAt,
+      'a failing run must stamp lastAttemptAt with this run time',
+    );
+    assert.notEqual(japan?.lastAttemptAt, japan?.lastSuccessAt);
   });
 
   it('uses the configured proxy tunnel for the Japan MOD control probe', async () => {
