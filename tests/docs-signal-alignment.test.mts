@@ -295,4 +295,8 @@ test('public algorithms docs describe flow_drop the way the detector actually wo
     readRepo('docs/algorithms.mdx'),
     /\| `flow_drop`\s+\| Headlines carry both a pipeline keyword and a flow-disruption keyword/,
   );
+  assert.match(
+    readRepo('docs/zh/algorithms.mdx'),
+    /\| `flow_drop`\s+\| 标题同时包含管道关键词和流量中断关键词/,
+  );
 });

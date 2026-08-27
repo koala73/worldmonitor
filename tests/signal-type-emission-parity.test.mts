@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -72,73 +72,84 @@ function parseSignalTypeUnion(relPath: string): string[] {
 const declaredTypes = parseSignalTypeUnion(UNION_SOURCES[0]);
 
 // ---------------------------------------------------------------------------
-// Emit-site scan
+// Verified runtime producers
 // ---------------------------------------------------------------------------
 //
-// Roots are `src/` and `shared/` because those are the only places that
-// reference `CorrelationSignalCore`. `tests/`, `e2e/` and `scripts/` are
-// deliberately excluded: a fixture must never be able to satisfy "this type is
-// emitted", and both directories already contain `type: 'keyword_spike'` and
-// `type: 'velocity_spike'` literals that would mask a deleted detector.
+// A literal alone does not prove a signal is live: unused helpers, stale code
+// and unrelated unions can all contain `type: '...'`. Each entry below names a
+// real producer and a runtime path that consumes it instead.
+interface RuntimeProducer {
+  types: readonly string[];
+  emitterFile: string;
+  emitterSymbol: RegExp;
+  runtimePath: ReadonlyArray<{ file: string; evidence: RegExp }>;
+}
 
-const EMIT_SCAN_ROOTS = ['src', 'shared'] as const;
-const EMIT_SCAN_EXTENSIONS = ['.ts', '.mts', '.js', '.mjs'];
-const EMIT_SCAN_SKIP_DIRS = new Set(['node_modules', 'dist', 'generated', 'locales']);
+const RUNTIME_PRODUCERS: readonly RuntimeProducer[] = [
+  {
+    types: [
+      'prediction_leads_news',
+      'silent_divergence',
+      'velocity_spike',
+      'convergence',
+      'triangulation',
+      'flow_drop',
+      'flow_price_divergence',
+      'explained_market_move',
+    ],
+    emitterFile: 'src/services/analysis-core.ts',
+    emitterSymbol: /export function analyzeCorrelationsCore\(/,
+    runtimePath: [{ file: 'src/services/correlation.ts', evidence: /analyzeCorrelationsCore\(/ }],
+  },
+  {
+    types: ['keyword_spike'],
+    emitterFile: 'src/services/trending-keywords.ts',
+    emitterSymbol: /function checkForSpikes\(/,
+    runtimePath: [
+      { file: 'src/app/data-loader.ts', evidence: /ingestHeadlines\(headlines\)/ },
+      { file: 'src/app/data-loader.ts', evidence: /drainTrendingSignals\(\)/ },
+    ],
+  },
+  {
+    types: ['geo_convergence'],
+    emitterFile: 'shared/analysis-geo-convergence.ts',
+    emitterSymbol: /export function geoConvergenceToSignal\(/,
+    runtimePath: [
+      { file: 'src/services/geo-convergence.ts', evidence: /return toSignal\(alert,/ },
+      { file: 'src/app/data-loader.ts', evidence: /geoAlerts\.map\(geoConvergenceToSignal\)/ },
+    ],
+  },
+  {
+    types: ['military_surge'],
+    emitterFile: 'shared/analysis-military-surge.ts',
+    emitterSymbol: /export function surgeAlertToSignal\(/,
+    runtimePath: [
+      { file: 'src/services/military-surge.ts', evidence: /return surgeAlertToSignalCore\(surge\)/ },
+      { file: 'src/app/data-loader.ts', evidence: /surgeAlerts\.map\(surgeAlertToSignal\)/ },
+    ],
+  },
+];
 
-// Files whose `type:` fields belong to a DIFFERENT union that happens to share a
-// member name with the correlation `SignalType`. A name-based scan would count
-// these as emits and mask the deletion of the real detector.
-const FOREIGN_TYPE_FIELD_FILES: Record<string, string> = {
-  'src/services/cross-module-integration.ts':
-    "`type: 'convergence'` is UnifiedAlert.type (the AlertType union declared in " +
-    'the same file), not a correlation signal. The real convergence detector is ' +
-    'in src/services/analysis-core.ts.',
-};
-
-// `shared/analysis-focal-points.ts` and `src/services/signal-aggregator.ts` also
-// export unions named `SignalType`, but they share zero member names with the
-// correlation union (military_flight, protest, internet_outage, ...), so they
-// need no exclusion. Noted here because that is the first place a future reader
-// will look.
-
-// Requires the field name `type:`, a quoted literal, and a terminator. The
-// terminator is what keeps an interface field declaration such as
-// `type: 'geo_convergence';` in shared/analysis-geo-convergence.ts from counting
-// as an emit — without it, deleting the detector while leaving the interface
-// would stay green.
 const emitPattern = (type: string): RegExp =>
   new RegExp(String.raw`\btype:\s*(['"])${type}\1\s*(?:,|\}|\))`);
 
-function walkSourceFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (EMIT_SCAN_SKIP_DIRS.has(entry)) continue;
-      walkSourceFiles(full, out);
-    } else if (EMIT_SCAN_EXTENSIONS.some((ext) => entry.endsWith(ext)) && !entry.endsWith('.d.ts')) {
-      out.push(full);
+function collectEmitSites(): Map<string, string[]> {
+  const sites = new Map<string, string[]>();
+  for (const producer of RUNTIME_PRODUCERS) {
+    const emitter = readRepo(producer.emitterFile);
+    assert.match(emitter, producer.emitterSymbol, `${producer.emitterFile} must keep its named producer`);
+    for (const path of producer.runtimePath) {
+      assert.match(readRepo(path.file), path.evidence, `${path.file} must consume ${producer.emitterFile}`);
+    }
+    for (const type of producer.types) {
+      assert.match(emitter, emitPattern(type), `${producer.emitterFile} must construct '${type}'`);
+      sites.set(type, [...(sites.get(type) ?? []), producer.emitterFile]);
     }
   }
-  return out;
+  return sites;
 }
 
-const scannedFiles = EMIT_SCAN_ROOTS.flatMap((root) => walkSourceFiles(join(repoRoot, root)));
-
-// One read per file, reused by both the emit scan and the dead-symbol check.
-const sourceByRelPath = new Map<string, string>();
-for (const absPath of scannedFiles) {
-  const relPath = relative(repoRoot, absPath).split('\\').join('/');
-  sourceByRelPath.set(relPath, readFileSync(absPath, 'utf8'));
-}
-
-const emitSites = new Map<string, string[]>();
-for (const [relPath, source] of sourceByRelPath) {
-  if (relPath in FOREIGN_TYPE_FIELD_FILES) continue;
-  for (const type of declaredTypes) {
-    if (!emitPattern(type).test(source)) continue;
-    emitSites.set(type, [...(emitSites.get(type) ?? []), relPath]);
-  }
-}
+const emitSites = collectEmitSites();
 
 // ---------------------------------------------------------------------------
 // Allowlist — declared types with no emitter, each with a recorded disposition
@@ -242,15 +253,18 @@ function readDocSection(surface: (typeof DOC_SURFACES)[number]): string {
 describe('SignalType declarations, emitters and public docs (#6422)', () => {
   it('finds emitters for most declared types — sanity check for the scan itself', () => {
     assert.ok(
-      scannedFiles.length > 100,
-      `Emit scan walked only ${scannedFiles.length} files under ${EMIT_SCAN_ROOTS.join(', ')}`,
-    );
-    assert.ok(
       emitSites.size >= 10,
-      `Emit scan found only ${emitSites.size} emitting types ` +
-        `(${[...emitSites.keys()].join(', ')}) across ${scannedFiles.length} files. ` +
-        'The walk or the emit pattern is broken, and every assertion below would pass ' +
-        'vacuously.',
+      `Runtime producer contract found only ${emitSites.size} emitting types ` +
+        `(${[...emitSites.keys()].join(', ')}).`,
+    );
+  });
+
+  it('does not count an unused type literal as a runtime emitter', () => {
+    const deadCodeLiteral = "const unused = { type: 'news_leads_markets' };";
+    assert.match(deadCodeLiteral, emitPattern('news_leads_markets'));
+    assert.ok(
+      !emitSites.has('news_leads_markets'),
+      'An unused type literal must not satisfy the runtime producer contract',
     );
   });
 
@@ -273,8 +287,7 @@ describe('SignalType declarations, emitters and public docs (#6422)', () => {
         entry,
         [
           `SignalType '${type}' is declared in ${UNION_SOURCES.join(' and ')}, but no file`,
-          `under ${EMIT_SCAN_ROOTS.join('/ or ')}/ constructs a signal with it`,
-          `(${scannedFiles.length} files scanned for /${emitPattern(type).source}/).`,
+          'in the verified runtime producer contract constructs a signal with it.',
           '',
           'A declared type with no emitter is a promise the product cannot keep: it is',
           'published in the docs/algorithms.mdx signal table, carries display copy and',
@@ -319,10 +332,10 @@ describe('SignalType declarations, emitters and public docs (#6422)', () => {
       if (!entry.deadSymbol) continue;
       const { file, symbol } = entry.deadSymbol;
       const callPattern = new RegExp(String.raw`\b${symbol}\s*\(`);
-      const callers = [...sourceByRelPath]
-        .filter(([relPath]) => relPath !== file)
-        .filter(([, source]) => callPattern.test(source))
-        .map(([relPath]) => relPath);
+      const callers = RUNTIME_PRODUCERS
+        .flatMap((producer) => [producer.emitterFile, ...producer.runtimePath.map((path) => path.file)])
+        .filter((relPath) => relPath !== file)
+        .filter((relPath) => callPattern.test(readRepo(relPath)));
       assert.deepEqual(
         callers,
         [],

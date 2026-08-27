@@ -324,7 +324,7 @@ All real-time data sources feed into a central signal aggregator that builds a u
 
 ### Cross-Stream Correlation Engine
 
-Beyond aggregating signals by geography, the system detects meaningful correlations *across* data streams — identifying patterns that no single source would reveal. The correlation engine emits 11 signal types. The `SignalType` union declares 14; the three remaining rows are reserved names with no detector behind them, marked **Not emitted**:
+Beyond aggregating signals by geography, the system detects meaningful correlations *across* data streams — identifying patterns that no single source would reveal. The correlation engine emits 11 signal types. The `SignalType` union declares 14; two remaining rows are reserved names with no detector, and `hotspot_escalation` has an unwired decision function. They are marked **Not emitted**:
 
 | Signal Type               | Detection Logic                                                                 | Why It Matters                                           |
 | ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
