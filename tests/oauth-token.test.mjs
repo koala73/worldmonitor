@@ -29,7 +29,7 @@ import {
   rawRedisFinalizeRefreshAttempt,
   rawRedisProtectFailedRefreshAttempt,
   rawRedisRestoreRefreshAttempt,
-} from '../api/oauth/refresh-recovery.ts';
+} from '../api/oauth/_refresh-recovery.ts';
 import {
   resolveBearerToContext,
   resolveApiKeyFromBearer,

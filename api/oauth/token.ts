@@ -56,14 +56,14 @@ import {
   refreshFamilyPointerKey,
   refreshFamilyRevocationKey,
   restoreRefreshAttempt,
-} from './refresh-recovery';
+} from './_refresh-recovery';
 import type {
   PipelineCommand,
   PipelineResult,
   RefreshConsumeResult,
   RefreshRecoveryDeps,
   RefreshRestoreFailureContext,
-} from './refresh-recovery';
+} from './_refresh-recovery';
 
 export const config = { runtime: 'edge' };
 
