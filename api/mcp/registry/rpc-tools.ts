@@ -1080,11 +1080,14 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string' },
+        // GetCountryIntelBriefResponse is spread verbatim below, so these
+        // mirror the proto's camelCase wire names. `framework` is an input
+        // only and `provider` does not exist on this response — neither is
+        // declared here.
+        countryCode: { type: 'string', description: 'ISO 3166-1 alpha-2 code, echoed back uppercased.' },
+        countryName: { type: 'string', description: 'Resolved country name, or the ISO code when no name is known.' },
         brief: { type: 'string', description: 'LLM-synthesized country intelligence brief.' },
-        framework: { type: 'string' },
         generatedAt: { type: ['string', 'number', 'null'] },
-        provider: { type: 'string' },
         model: { type: 'string' },
         digestCoverage: {
           type: 'object',
@@ -1272,7 +1275,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_risk',
     _outputBudgetBytes: 262144,
-    description: 'Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?"',
+    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true every upstream read failed and the zeroed fields mean UNKNOWN, not calm.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1280,22 +1283,56 @@ export const RPC_TOOLS: ToolDef[] = [
       },
       required: ['country_code'],
     },
+    // Mirrors GetCountryRiskResponse verbatim — `_execute` returns the
+    // gateway's `res.json()` unchanged, and the gateway `JSON.stringify`s the
+    // proto-generated struct with no case conversion. Keep this in step with
+    // proto/worldmonitor/intelligence/v1/get_country_risk.proto; the
+    // OpenAPI-parity guard in tests/mcp-output-schema-coverage.test.mjs fails
+    // the build if a property here stops existing on the wire.
     outputSchema: {
       type: 'object',
+      required: ['countryCode', 'countryName', 'advisoryLevel', 'sanctionsActive', 'sanctionsCount', 'fetchedAt', 'upstreamUnavailable'],
       properties: {
-        country_code: { type: 'string' },
-        cii: { type: ['number', 'null'], description: 'Composite Instability Index 0-100.' },
-        components: {
-          type: 'object',
+        countryCode: { type: 'string', description: 'ISO 3166-1 alpha-2 code, echoed back uppercased.' },
+        countryName: { type: 'string', description: 'Resolved country name, or the ISO code when no name is known.' },
+        cii: {
+          type: ['object', 'null'],
+          description: 'Composite Instability Index score. Absent when the country is not tracked, and always absent when upstreamUnavailable is true.',
           properties: {
-            unrest: { type: ['number', 'null'] },
-            conflict: { type: ['number', 'null'] },
-            security: { type: ['number', 'null'] },
-            news: { type: ['number', 'null'] },
+            region: { type: 'string', description: 'ISO 3166-1 alpha-2 code this score was computed for.' },
+            combinedScore: { type: 'number', description: 'The headline CII, 0-100. This is the number to read as "the CII score" — the top-level `cii` is an object, not a number.' },
+            staticBaseline: { type: 'number', description: 'Structural baseline 0-100, before live signals.' },
+            dynamicScore: { type: 'number', description: 'Approximate 24-hour movement delta, -100 to 100. Positive is rising, negative falling, 0 stable or no valid prior snapshot.' },
+            trend: {
+              type: 'string',
+              enum: ['TREND_DIRECTION_UNSPECIFIED', 'TREND_DIRECTION_RISING', 'TREND_DIRECTION_STABLE', 'TREND_DIRECTION_FALLING'],
+              description: 'Direction of travel for combinedScore.',
+            },
+            components: {
+              type: 'object',
+              description: 'The four contributions rolled into combinedScore, each 0-100. These field names are historical and do NOT describe their contents — read each description before attributing a score to a driver.',
+              properties: {
+                ciiContribution: { type: 'number', description: 'DOMESTIC UNREST contribution: protests, riots, fatalities, severity, and outages.' },
+                geoConvergence: { type: 'number', description: 'ARMED CONFLICT contribution: ACLED events, fatalities, violence against civilians, strikes, and OREF alerts.' },
+                militaryActivity: { type: 'number', description: 'SECURITY AND MOBILITY contribution: military flights, military vessels, aviation disruption, and GPS interference.' },
+                newsActivity: { type: 'number', description: 'INFORMATION ENVIRONMENT contribution: news urgency and threat-summary signals.' },
+              },
+            },
+            computedAt: { type: 'number', description: 'CII computation time, Unix epoch milliseconds.' },
+            methodologyVersion: { type: 'string', description: 'CII formula version, bumped whenever score or movement semantics change.' },
+            eventMultiplier: { type: 'number', description: 'Editorial per-country multiplier applied to live signals before they roll into combinedScore. Bounds [0, 10].' },
+            advisoryLevel: { type: 'string', description: 'Advisory level the score itself consumed. Empty when no advisory input applied. Distinct from the top-level advisoryLevel.' },
+            advisoryProvenance: { type: 'string', description: 'Where cii.advisoryLevel came from — "live" for the advisory cache, otherwise a fallback marker.' },
           },
         },
-        travelAdvisory: { type: ['object', 'string', 'null'] },
-        sanctionsExposure: { type: ['object', 'array', 'null'] },
+        advisoryLevel: { type: 'string', description: 'Government travel-advisory level, e.g. "do-not-travel", "reconsider", "caution". Empty when none.' },
+        sanctionsActive: { type: 'boolean', description: 'True when this country has active OFAC designations.' },
+        sanctionsCount: { type: 'number', description: 'Count of sanctioned entities associated with this country.' },
+        fetchedAt: { type: 'number', description: 'Freshness stamp taken from cii.computedAt, Unix epoch milliseconds. 0 means unknown, including "no CII score for this country".' },
+        upstreamUnavailable: {
+          type: 'boolean',
+          description: 'True when every upstream read failed. The zeroed risk fields then mean UNKNOWN, not "low risk" — never report a country as calm on such a response.',
+        },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

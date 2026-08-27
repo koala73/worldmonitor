@@ -78,7 +78,9 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   .components { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .comp { }
   .comp-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-  .comp-name { text-transform: capitalize; color: var(--fg); font-weight: 550; }
+  .comp-name { color: var(--fg); font-weight: 550; }
+  .degraded { margin: 0 0 14px; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+    color: var(--severe); background: var(--card); border: 1px solid var(--severe); }
   .comp-bar { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 4px; }
   .comp-bar > span { display: block; height: 100%; width: 0%; }
   .meta { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
@@ -98,6 +100,12 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
       <div class="country" id="country">—</div>
       <div class="badge" id="badge">Composite Instability Index</div>
     </div>
+    <!-- upstreamUnavailable: every upstream read failed, so the zeroed risk
+         fields mean UNKNOWN. Without this banner an outage renders exactly
+         like a calm, low-risk country. -->
+    <div class="degraded" id="degraded" style="display:none">
+      Upstream risk data is unavailable — the fields below are unknown, not low.
+    </div>
     <div class="cii-row">
       <div class="cii-score" id="cii">—</div>
       <div class="cii-of">/ 100</div>
@@ -108,6 +116,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     <div class="meta">
       <div class="k">Travel advisory</div><div class="v" id="advisory">—</div>
       <div class="k">Sanctions exposure</div><div class="v" id="sanctions">—</div>
+      <div class="k">Trend</div><div class="v" id="trend">—</div>
     </div>
     <div class="foot" id="foot"></div>
   </div>
@@ -143,34 +152,55 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (el) el.textContent = text == null ? "—" : String(text);
   }
 
-  function describeAdvisory(a) {
-    if (a == null) return "—";
-    if (typeof a === "string") return a;
-    if (typeof a === "object" && a.level != null) {
-      var lvl = num(a.level);
-      return lvl == null ? "—" : "Level " + lvl;
-    }
-    return "—";
+  // GetCountryRiskResponse.advisory_level is a plain string ("do-not-travel",
+  // "reconsider", "caution", …), empty when no advisory applies.
+  function describeAdvisory(level) {
+    if (typeof level !== "string" || level === "") return "None";
+    return level.replace(/[-_]+/g, " ");
   }
-  function describeSanctions(s) {
-    if (s == null) return "None";
-    if (Array.isArray(s)) return s.length === 0 ? "None" : String(s.length) + " listed";
-    if (typeof s === "object") {
-      var keys = Object.keys(s);
-      return keys.length === 0 ? "None" : String(keys.length) + " field(s)";
-    }
-    if (typeof s === "number") return String(s);
-    return String(s);
+  // Sanctions arrive as two scalars, not a collection: sanctions_active plus
+  // sanctions_count. count alone is enough to render, but active is the
+  // authoritative flag, so an active designation with an unknown count still
+  // reads as active rather than as "None".
+  function describeSanctions(active, count) {
+    var n = num(count);
+    if (active === true) return n != null && n > 0 ? String(n) + " OFAC-listed" : "Active";
+    if (active === false) return "None";
+    return n != null && n > 0 ? String(n) + " OFAC-listed" : "—";
   }
+  var TREND_LABELS = {
+    TREND_DIRECTION_RISING: "Rising",
+    TREND_DIRECTION_STABLE: "Stable",
+    TREND_DIRECTION_FALLING: "Falling"
+  };
+  function describeTrend(trend) {
+    if (typeof trend !== "string") return "—";
+    return TREND_LABELS[trend] || "—";
+  }
+  // The four CiiComponents wire names are historical and do not describe what
+  // they measure (cii_contribution is unrest, geo_convergence is armed
+  // conflict, military_activity is security/mobility). Label them by meaning —
+  // see proto/worldmonitor/intelligence/v1/intelligence.proto.
+  var COMPONENTS = [
+    { key: "ciiContribution", label: "Domestic unrest" },
+    { key: "geoConvergence", label: "Armed conflict" },
+    { key: "militaryActivity", label: "Security & mobility" },
+    { key: "newsActivity", label: "Information environment" }
+  ];
 
   function render(data) {
     if (!data || typeof data !== "object") return;
     document.getElementById("empty").style.display = "none";
     document.getElementById("card").style.display = "block";
 
-    setText("country", data.country_code || data.country || "—");
+    var degraded = data.upstreamUnavailable === true;
+    document.getElementById("degraded").style.display = degraded ? "block" : "none";
 
-    var cii = num(data.cii);
+    setText("country", data.countryName || data.countryCode || "—");
+
+    // cii is a CiiScore object; combinedScore is the headline 0-100 number.
+    var score = (data.cii && typeof data.cii === "object") ? data.cii : {};
+    var cii = degraded ? null : num(score.combinedScore);
     setText("cii", cii == null ? "—" : String(Math.round(cii)));
     var lv = levelFor(cii);
     var levelEl = document.getElementById("level");
@@ -183,13 +213,12 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
       bar.style.background = color || "var(--accent)";
     }
 
-    var comps = (data.components && typeof data.components === "object") ? data.components : {};
-    var order = ["unrest", "conflict", "security", "news"];
+    var comps = (score.components && typeof score.components === "object") ? score.components : {};
     var host = document.getElementById("components");
     host.textContent = "";
     var any = false;
-    order.forEach(function (key) {
-      var val = num(comps[key]);
+    COMPONENTS.forEach(function (spec) {
+      var val = degraded ? null : num(comps[spec.key]);
       if (val == null) return;
       any = true;
       var wrap = document.createElement("div");
@@ -198,7 +227,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
       top.className = "comp-top";
       var name = document.createElement("span");
       name.className = "comp-name";
-      name.textContent = key;
+      name.textContent = spec.label;
       var v = document.createElement("span");
       v.textContent = String(Math.round(val));
       top.appendChild(name); top.appendChild(v);
@@ -216,18 +245,25 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (!any) {
       var none = document.createElement("div");
       none.className = "empty";
-      none.textContent = "No component breakdown available.";
+      none.textContent = degraded
+        ? "Component breakdown unavailable — upstream data could not be read."
+        : "No component breakdown available.";
       host.appendChild(none);
     }
 
-    setText("advisory", describeAdvisory(data.travelAdvisory));
-    setText("sanctions", describeSanctions(data.sanctionsExposure));
+    setText("advisory", degraded ? "—" : describeAdvisory(data.advisoryLevel));
+    setText("sanctions", degraded ? "—" : describeSanctions(data.sanctionsActive, data.sanctionsCount));
+    setText("trend", degraded ? "—" : describeTrend(score.trend));
 
+    // fetched_at is Unix epoch milliseconds, 0 when the CII computation time
+    // is unknown (which includes "no CII score for this country").
     var foot = document.getElementById("foot");
-    if (data.cached_at) {
-      foot.textContent = "Snapshot: " + String(data.cached_at) + (data.stale ? " (stale)" : "");
+    var fetchedAt = num(data.fetchedAt);
+    if (fetchedAt != null && fetchedAt > 0) {
+      var when = new Date(fetchedAt);
+      foot.textContent = "Snapshot: " + (isNaN(when.getTime()) ? String(fetchedAt) : when.toISOString());
     } else {
-      foot.textContent = "";
+      foot.textContent = degraded ? "Upstream unavailable — no snapshot time." : "";
     }
     reportSize();
   }

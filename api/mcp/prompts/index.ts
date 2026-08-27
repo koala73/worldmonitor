@@ -55,13 +55,13 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
       {
         tool: 'get_country_risk',
         args: { country_code: '${iso2}' },
-        jmespath: '{cii: cii, components: components, travelAdvisory: travelAdvisory, sanctionsExposure: sanctionsExposure}',
-        purpose: 'Quantitative Composite Instability Index (CII) + component breakdown + travel advisory + OFAC sanctions exposure.',
+        jmespath: '{cii: cii.combinedScore, trend: cii.trend, components: cii.components, advisoryLevel: advisoryLevel, sanctionsActive: sanctionsActive, sanctionsCount: sanctionsCount, upstreamUnavailable: upstreamUnavailable}',
+        purpose: 'Quantitative Composite Instability Index (CII) + component breakdown + travel advisory + OFAC sanctions exposure. upstreamUnavailable is projected so an all-upstreams-down response is not read as a calm country.',
       },
       {
         tool: 'get_country_brief',
         args: { country_code: '${iso2}' },
-        jmespath: '{country_code: country_code, brief: brief}',
+        jmespath: '{countryCode: countryCode, brief: brief}',
         purpose: 'LLM-synthesised geopolitical + economic narrative grounded on the latest headlines.',
       },
       {

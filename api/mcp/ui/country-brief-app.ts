@@ -98,7 +98,8 @@ const RENDER = `
     }
     q("src-sec").style.display = srcHost.childNodes.length ? "block" : "none";
 
-    var prov = [data.provider, data.model].filter(Boolean).map(collapseWs).filter(Boolean).join(" · ");
+    // GetCountryIntelBriefResponse carries model but no provider.
+    var prov = [data.model].filter(Boolean).map(collapseWs).filter(Boolean).join(" · ");
     var gen = data.generatedAt != null ? "Generated " + collapseWs(data.generatedAt) : "";
     q("foot").textContent = [prov, gen].filter(Boolean).join(" · ");
 `;

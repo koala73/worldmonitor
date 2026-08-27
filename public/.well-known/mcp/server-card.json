@@ -300,7 +300,7 @@
     },
     {
       "name": "get_country_risk",
-      "description": "Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer \"how risky is X right now?\"",
+      "description": "Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer \"how risky is X right now?\" Check upstreamUnavailable first: when it is true every upstream read failed and the zeroed fields mean UNKNOWN, not calm.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
