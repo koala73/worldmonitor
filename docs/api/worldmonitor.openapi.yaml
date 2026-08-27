@@ -1062,7 +1062,9 @@ paths:
                     type: string
                 - name: adults
                   in: query
-                  description: Number of adult passengers (1-9).
+                  description: |-
+                    Number of adult passengers (1-9).
+                     Accepted but currently ignored; quotes are per-person and the count does not filter.
                   required: false
                   example: 1
                   schema:
@@ -5367,7 +5369,7 @@ paths:
                     type: string
                 - name: range
                   in: query
-                  description: range is one of "7d", "30d", "90d", "180d".
+                  description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
                   required: false
                   example: "7d"
                   schema:
@@ -5502,7 +5504,7 @@ paths:
                     type: string
                 - name: range
                   in: query
-                  description: range is one of "7d", "30d", "90d", "180d".
+                  description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
                   required: false
                   example: "7d"
                   schema:
@@ -35696,7 +35698,9 @@ components:
                     maximum: 9
                     minimum: 1
                     format: int32
-                    description: Number of adult passengers (1-9).
+                    description: |-
+                        Number of adult passengers (1-9).
+                         Accepted but currently ignored; quotes are per-person and the count does not filter.
                 cabin:
                     type: string
                     enum:
@@ -37634,7 +37638,7 @@ components:
                     description: basket_slug selects the basket (e.g. "essentials-ae").
                 range:
                     type: string
-                    description: range is one of "7d", "30d", "90d", "180d".
+                    description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
             description: GetConsumerPriceBasketSeriesRequest parameters for time series data.
         worldmonitor_consumer_prices_v1_GetConsumerPriceBasketSeriesResponse:
             type: object
@@ -37654,7 +37658,7 @@ components:
                     description: currency_code is the ISO 4217 currency code.
                 range:
                     type: string
-                    description: range echoes the requested range.
+                    description: range is the effective normalized range used for the returned snapshot.
                 essentialsSeries:
                     type: array
                     items:
@@ -37689,7 +37693,7 @@ components:
                     description: basket_slug selects the basket scope.
                 range:
                     type: string
-                    description: range is one of "7d", "30d", "90d", "180d".
+                    description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
             description: ListConsumerPriceCategoriesRequest parameters for category listing.
         worldmonitor_consumer_prices_v1_ListConsumerPriceCategoriesResponse:
             type: object
@@ -37703,7 +37707,7 @@ components:
                     description: as_of is the Unix millisecond timestamp of the snapshot.
                 range:
                     type: string
-                    description: range echoes the requested range.
+                    description: range is the effective normalized range used for the returned snapshot.
                 categories:
                     type: array
                     items:

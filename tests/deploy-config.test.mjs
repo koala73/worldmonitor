@@ -2488,7 +2488,14 @@ describe('embeddable map route guardrails', () => {
       `${source} must not match the global security-header rule`,
     );
     assert.equal(getHeaderValueForSource(source, 'X-Frame-Options'), null);
-    assert.match(getHeaderValueForSource(source, 'Content-Security-Policy') ?? '', /default-src 'none'/);
+    const csp = getHeaderValueForSource(source, 'Content-Security-Policy') ?? '';
+    assert.match(csp, /default-src 'none'/);
+    assert.match(csp, /(?:^|;\s*)sandbox allow-scripts(?:;|$)/, 'sandbox response must retain script execution in an opaque origin');
+    assert.equal(
+      getHeaderValueForSource(source, 'Cache-Control'),
+      'public, max-age=0, must-revalidate',
+      'unversioned sandbox policy documents must revalidate on every request',
+    );
   });
 
   for (const source of ['/embed', '/embed.html']) {

@@ -129,6 +129,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // WKScriptMessageHandler ourselves; this is browser-native and unactionable
       // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
       /WKWebView API client did not respond to this postMessage/,
+      // Apple's native WKWebView find-on-page bridge: the host app evaluates
+      // `WKWebView_RemoveAllHighlights()` in the page when the user dismisses
+      // the in-app find bar, and it is undefined in web content the host never
+      // instrumented. `WKWebView_` is Apple's native-bridge prefix and appears
+      // nowhere in src/, api/, public/ or index.html, so it can never come from
+      // our bundle, minified or not — same class as the two `WKWebView` entries
+      // around it. The existing `^(?:LIDNotify…|removeHighlight|…) is not
+      // defined$` entry covers other host-injected names but is anchored to the
+      // Chrome phrasing and an exact alternation, so it missed the Safari
+      // `Can't find variable:` wording (WORLDMONITOR-10W — Mobile Safari 26.6 /
+      // iOS 18.7, single frame on the /dashboard document).
+      /\bWKWebView_[A-Za-z]\w*/,
       /Unexpected end of(?: JSON)? input/,
       /window\.android\.\w+ is not a function/,
       /Attempted to assign to readonly property/,

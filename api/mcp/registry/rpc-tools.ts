@@ -10,7 +10,7 @@ import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { argStr } from '../filters';
 import { buildAuthHeaders } from '../auth';
-import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
+import { assertToolFetchOk, BillingDenialError, RpcValidationError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import {
   assertMcpToolFetchOk,
@@ -474,6 +474,44 @@ function addStringParam(query: URLSearchParams, name: string, value: unknown): v
 // POST call sites below, `|| undefined` keeps a blank/non-string filter
 // omitted — the pattern makes the field optional, and sending "" would turn
 // "search every country" into an explicit empty filter.
+//
+// `normalizeCountry` only trims and uppercases, so #7170 fixed "ua" but not
+// "Ukraine" or "USA" — those still fail the handler's pattern and still buy the
+// 400 round-trip. `assertIntelHistoryCountry` below closes that half.
+
+/** The `^([A-Z]{2})?$` shape the intel-history request messages enforce. */
+const INTEL_HISTORY_COUNTRY_PATTERN = /^[A-Z]{2}$/;
+
+/**
+ * Reject an unusable `country` filter locally, with the SAME contract the
+ * handler's 400 would have produced.
+ *
+ * `RpcValidationError` (not a bare `Error`) is load-bearing on both ends:
+ * `dispatchToolsCall`'s catch has no branch for a plain Error, so one would be
+ * flattened into the generic `-32603 "Internal error: data fetch failed"` —
+ * strictly worse than not checking at all, since the un-guarded path at least
+ * relays the handler's own `-32602 Invalid params` with `error.data.violations`.
+ * It also keeps the `<label> HTTP 400` message shape dispatch's client-4xx
+ * severity downgrade matches on, so a caller-input rejection reports at
+ * `warning` rather than `error`.
+ *
+ * Why it matters: an agent reads -32603 as transient and retries.
+ * WORLDMONITOR-10R recorded 13 `search_intel_history` calls from one IP inside
+ * 40 seconds (2026-08-27T01:43:19Z → 01:43:58Z) against a deterministic
+ * validation failure.
+ *
+ * The sibling scope guard in `get_intel_timeline` (unscoped read) gets the same
+ * treatment in #7182 — deliberately left alone here so the two changes do not
+ * collide on one block.
+ */
+function assertIntelHistoryCountry(label: string, country: string): void {
+  if (country && !INTEL_HISTORY_COUNTRY_PATTERN.test(country)) {
+    throw new RpcValidationError(label, [{
+      field: 'country',
+      description: 'must be an ISO 3166-1 alpha-2 country code, e.g. "UA" for Ukraine or "US" for the United States — not a country name or a three-letter code.',
+    }]);
+  }
+}
 
 function procurementPageSize(value: unknown): number {
   return Number.isInteger(value) && (value as number) > 0
@@ -2304,7 +2342,9 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
       const url = `${base}/api/intelligence/v1/search-intel-history`;
-      const body = JSON.stringify({ query: params.query, domain: params.domain, country: normalizeCountry(params.country) || undefined, from: params.from, to: params.to, limit: Math.min(Number(params.limit ?? MCP_HISTORY_SEARCH_MAX_LIMIT), MCP_HISTORY_SEARCH_MAX_LIMIT) });
+      const country = normalizeCountry(params.country);
+      assertIntelHistoryCountry('search-intel-history', country);
+      const body = JSON.stringify({ query: params.query, domain: params.domain, country: country || undefined, from: params.from, to: params.to, limit: Math.min(Number(params.limit ?? MCP_HISTORY_SEARCH_MAX_LIMIT), MCP_HISTORY_SEARCH_MAX_LIMIT) });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
       // Budget covers one embeddings round-trip (4 s) plus the store read (5 s).
       const response = await fetch(url, {
@@ -2355,6 +2395,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // saves the round-trip; the handler stays the enforcing authority.
       const domain = typeof params.domain === 'string' ? params.domain.trim() : '';
       const country = normalizeCountry(params.country);
+      assertIntelHistoryCountry('get-intel-timeline', country);
       if (!domain && !country) {
         throw new Error('get_intel_timeline requires at least one of domain ("conflict", "military", or "energy") or country (ISO 3166-1 alpha-2) — those are the two indexed scopes on the history store.');
       }
@@ -2413,7 +2454,9 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
       const url = `${base}/api/intelligence/v1/get-similar-events`;
-      const body = JSON.stringify({ situation: params.situation, domain: params.domain, country: normalizeCountry(params.country) || undefined, limit: Math.min(Number(params.limit ?? MCP_HISTORY_PRECEDENT_MAX_LIMIT), MCP_HISTORY_PRECEDENT_MAX_LIMIT) });
+      const country = normalizeCountry(params.country);
+      assertIntelHistoryCountry('get-similar-events', country);
+      const body = JSON.stringify({ situation: params.situation, domain: params.domain, country: country || undefined, limit: Math.min(Number(params.limit ?? MCP_HISTORY_PRECEDENT_MAX_LIMIT), MCP_HISTORY_PRECEDENT_MAX_LIMIT) });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
       // Budget covers one embeddings round-trip (4 s) plus the store read (5 s).
       const response = await fetch(url, {

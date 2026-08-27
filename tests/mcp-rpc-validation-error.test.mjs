@@ -248,6 +248,13 @@ describe('downstreamErrorTags for RpcValidationError', () => {
       downstream_status: '400',
       downstream_error_code: 'rpc_validation',
       downstream_response_marker: 'json_error',
+      // Field NAMES only. Added in the 2026-08-27 triage: WORLDMONITOR-10R
+      // carried just `<operation> HTTP 400`, so the failing field was
+      // unrecoverable from Sentry and the #7170 country fix could be neither
+      // confirmed nor refuted against it. Names are already constrained to
+      // `^[A-Za-z_][A-Za-z0-9_.]{0,63}$` by parseSafeRpcViolations, so this
+      // does not weaken the no-violation-text invariant asserted below.
+      downstream_violation_fields: 'countryCode',
     });
     assert.ok(!JSON.stringify(tags).includes('countryCode is required'));
   });
