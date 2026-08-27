@@ -208,6 +208,28 @@ test('GET response from origin has CORS headers stamped by the Worker', async ()
   }
 });
 
+test('GET response preserves origin cache variance when the Worker adds Origin variance', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<html></html>', {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      Vary: 'User-Agent',
+    },
+  });
+  try {
+    const req = makeRequest('GET', 'https://api.worldmonitor.app/api/story', {
+      Origin: KNOWN_GOOD,
+      'User-Agent': 'Twitterbot/1.0',
+    });
+    const resp = await worker.fetch(req);
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get('vary'), 'User-Agent, Origin');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test('GET response preserves function-specific exposed headers (bootstrap U3a regression)', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ ok: true }), {

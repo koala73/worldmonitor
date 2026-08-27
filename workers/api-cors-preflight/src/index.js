@@ -136,9 +136,11 @@ async function passThroughToOrigin(request, url, corsHeaders) {
     const response = await fetch(request);
     const newHeaders = new Headers(response.headers);
     const originExposedHeaders = newHeaders.get('Access-Control-Expose-Headers');
+    const originVary = newHeaders.get('Vary');
     for (const [k, v] of Object.entries(corsHeaders)) {
       newHeaders.set(k, v);
     }
+    newHeaders.set('Vary', mergeHeaderNames(originVary, corsHeaders.Vary));
     // Bootstrap temporarily exposes U3a timing and cache-classifier headers.
     // Preserve only that route's function-owned additions while retaining
     // the Worker's canonical baseline. Replacing this header outright made
