@@ -296,7 +296,7 @@ if (UPSTASH_ENABLED) {
   console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY}${UPSTASH_REDIS_REST_URL.startsWith('http://') ? ', insecure-http opt-in' : ''})`);
 }
 
-function upstashGet(key, onFailure) {
+function upstashGet(key, onFailure, timeoutMs = 5000) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(null);
     let settled = false;
@@ -311,11 +311,12 @@ function upstashGet(key, onFailure) {
       if (onFailure) onFailure(reason);
       resolve(null);
     };
+    const requestTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
     const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
     const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
-      timeout: 5000,
+      timeout: requestTimeoutMs,
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
@@ -9116,14 +9117,44 @@ function mergeLocalOpenSkyCooldown(untilMs) {
   openskyGlobal429Until = Math.max(openskyGlobal429Until, untilMs);
 }
 
+// Aviation bbox callers abort this relay hop after 6s
+// (track-aircraft BBOX_RELAY_TIMEOUT_MS). The default Upstash GET waits 5s,
+// and the queued fetch used to repeat that read — a slow Redis consumed the
+// fail-open path before OpenSky could answer. Bound the GET and reuse the
+// result for the same request's second check (#6253).
+const OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS = 1_000;
+const OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS = 5_000;
+let sharedOpenSkyCooldownReadPromise = null;
+let sharedOpenSkyCooldownReadResult = 0;
+let sharedOpenSkyCooldownReadExpiresAt = 0;
+
 // Shared Redis record written by this relay and by seed-military-flights.
 // Fails OPEN on every error path: a Redis problem must never disable the
 // data tier, and the in-process cooldown still works when Redis is down (#6253).
 async function remainingSharedOpenSkyCooldownMs() {
+  if (sharedOpenSkyCooldownReadPromise) return sharedOpenSkyCooldownReadPromise;
+  if (Date.now() < sharedOpenSkyCooldownReadExpiresAt) return sharedOpenSkyCooldownReadResult;
+
+  const pending = readSharedOpenSkyCooldownMs().then((remainingMs) => {
+    sharedOpenSkyCooldownReadResult = remainingMs;
+    sharedOpenSkyCooldownReadExpiresAt = Date.now() + OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS;
+    return remainingMs;
+  });
+  sharedOpenSkyCooldownReadPromise = pending;
+  try {
+    return await pending;
+  } finally {
+    if (sharedOpenSkyCooldownReadPromise === pending) {
+      sharedOpenSkyCooldownReadPromise = null;
+    }
+  }
+}
+
+async function readSharedOpenSkyCooldownMs() {
   try {
     const record = await upstashGet(OPENSKY_COOLDOWN_KEY, (reason) => {
       console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${reason}`);
-    });
+    }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
     const inspected = inspectCooldownRecord(record, {
       account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
     });

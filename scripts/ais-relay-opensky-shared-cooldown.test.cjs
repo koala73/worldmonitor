@@ -82,8 +82,9 @@ function spawnRelay(extraEnv) {
   return { child, output: () => output, ready: ready.then(() => ({ child, port })) };
 }
 
-async function createUpstashMock({ getResponses = {}, failGets = false } = {}) {
+async function createUpstashMock({ getResponses = {}, failGets = false, getDelayMs = 0 } = {}) {
   const commands = [];
+  const pendingTimers = new Set();
   const getQueues = new Map(Object.entries(getResponses).map(([key, responses]) => [
     key,
     Array.isArray(responses) ? [...responses] : [responses],
@@ -95,25 +96,43 @@ async function createUpstashMock({ getResponses = {}, failGets = false } = {}) {
       let command = null;
       try { command = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* GET /get */ }
       commands.push({ method: req.method, path: req.url, command });
-      res.setHeader('Content-Type', 'application/json');
-      if (failGets && req.method === 'GET') {
-        res.statusCode = 500;
-        res.end('redis down');
+      const respond = () => {
+        if (res.writableEnded) return;
+        res.setHeader('Content-Type', 'application/json');
+        if (failGets && req.method === 'GET') {
+          res.statusCode = 500;
+          res.end('redis down');
+          return;
+        }
+        if (req.method === 'GET' && req.url.startsWith('/get/')) {
+          const key = decodeURIComponent(req.url.slice('/get/'.length));
+          const queue = getQueues.get(key);
+          const next = queue?.length ? queue.shift() : { result: null };
+          res.end(JSON.stringify(next));
+          return;
+        }
+        res.end(JSON.stringify({ result: 'OK' }));
+      };
+      if (getDelayMs > 0 && req.method === 'GET') {
+        const timer = setTimeout(() => {
+          pendingTimers.delete(timer);
+          respond();
+        }, getDelayMs);
+        pendingTimers.add(timer);
+        res.on('close', () => {
+          if (pendingTimers.delete(timer)) clearTimeout(timer);
+        });
         return;
       }
-      if (req.method === 'GET' && req.url.startsWith('/get/')) {
-        const key = decodeURIComponent(req.url.slice('/get/'.length));
-        const queue = getQueues.get(key);
-        const next = queue?.length ? queue.shift() : { result: null };
-        res.end(JSON.stringify(next));
-        return;
-      }
-      res.end(JSON.stringify({ result: 'OK' }));
+      respond();
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   return {
     commands,
+    getsFor: (key) => commands.filter(
+      (entry) => entry.method === 'GET' && entry.path === `/get/${encodeURIComponent(key)}`,
+    ),
     setsFor: (key) => commands.filter(
       (entry) => Array.isArray(entry.command) && entry.command[0] === 'SET' && entry.command[1] === key,
     ),
@@ -122,7 +141,11 @@ async function createUpstashMock({ getResponses = {}, failGets = false } = {}) {
       UPSTASH_REDIS_REST_TOKEN: 'test-upstash-token',
       UPSTASH_ALLOW_INSECURE_HTTP: 'true',
     },
-    close: () => new Promise((resolve) => server.close(resolve)),
+    close: () => {
+      for (const timer of pendingTimers) clearTimeout(timer);
+      pendingTimers.clear();
+      return new Promise((resolve) => server.close(resolve));
+    },
   };
 }
 
@@ -233,6 +256,32 @@ test('a Redis read error fails open and the in-process 429 cooldown still works'
     assert.equal(during.headers['x-cache'], 'RATE-LIMITED');
     const metrics = JSON.parse((await get(port, '/metrics')).body);
     assert.equal(metrics.opensky.upstreamFetches, 1, 'in-process cooldown must still stop a second debit when Redis is down');
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
+test('a delayed Redis cooldown read fails open inside the 6s caller budget and is not repeated', async () => {
+  const redis = await createUpstashMock({ getDelayMs: 4_000 });
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200',
+  });
+  try {
+    const { port } = await ready;
+    const started = Date.now();
+    const response = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    const elapsedMs = Date.now() - started;
+    assert.equal(response.status, 200);
+    assert.notEqual(response.headers['x-cache'], 'RATE-LIMITED');
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 1, 'slow Redis must fail open so OpenSky still answers');
+    assert.equal(redis.getsFor(OPENSKY_COOLDOWN_KEY).length, 1, 'handler and queued fetch must share one Redis GET');
+    assert.ok(
+      elapsedMs < 3_000,
+      `slow Redis must leave the 6s aviation hop enough time for OpenSky, took ${elapsedMs}ms`,
+    );
   } finally {
     await stop(child);
     await redis.close();
