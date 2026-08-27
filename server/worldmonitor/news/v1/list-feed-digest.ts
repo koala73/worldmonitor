@@ -1702,9 +1702,9 @@ async function readAdoptionState(
     for (let i = 0; i < chunk.length; i++) {
       const target = adoptionResults[i]!.result;
       const row = trackRowByHash.get(chunk[i]!)!;
-      // Self-aliases retain their existing behavior: they are useful only when
-      // their own track is fresh and explicitly eligible. Non-self aliases are
-      // held until the target's own track has been read and validated below.
+      // Self-aliases are useful only when their own track is fresh and
+      // explicitly eligible. Non-self aliases are held until the target's own
+      // track has been read and validated below.
       // This matters when the canonical member dropped out of the batch — its
       // persisted track is the only evidence that the alias is trustworthy.
       if (
@@ -2423,10 +2423,11 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       );
     }
 
-    // The two pipelines touch disjoint keyspaces and neither reads the other's
-    // result, so they run concurrently: this path is inside the digest's own
-    // OVERALL_DEADLINE_MS budget and serialising them doubled its Redis
-    // round-trips per batch.
+    // Tracking and evidence touch disjoint keyspaces and neither reads the
+    // other's result, so evidence stays in flight while tracking chunks are
+    // sent in order. This path is inside the digest's own OVERALL_DEADLINE_MS
+    // budget; serialising the two keyspaces would double the Redis round-trips
+    // per batch.
     //
     // Archive keys are deliberately raw: the Railway resolver and backfill
     // operate outside a Vercel deployment prefix and must read this same
