@@ -84,7 +84,13 @@ function makeRedis() {
       ops.push({ kind: 'getdel', key });
       const v = store.get(key);
       store.delete(key);
-      return v ?? null;
+      if (v === undefined) return null;
+      // Mirror production rawRedisGetDel: pipeline writes JSON strings and
+      // the handler receives their parsed value on the next redemption.
+      if (typeof v === 'string') {
+        try { return JSON.parse(v); } catch { return null; }
+      }
+      return v;
     },
     redisGet: async (key) => {
       ops.push({ kind: 'get', key });
@@ -97,6 +103,10 @@ function makeRedis() {
         try { return JSON.parse(v); } catch { return null; }
       }
       return v;
+    },
+    redisDelete: async (key) => {
+      ops.push({ kind: 'delete', key });
+      store.delete(key);
     },
     redisPipeline: async (commands) => {
       const results = [];
@@ -139,11 +149,14 @@ function deterministicUuid() {
 
 function makeDeps(overrides = {}) {
   const redis = overrides.redis ?? makeRedis();
+  const restoreFailures = [];
   return {
     redis, // for assertions (not part of TokenHandlerDeps)
+    restoreFailures,
     deps: {
       redisGetDel: redis.redisGetDel,
       redisGet: redis.redisGet,
+      redisDelete: redis.redisDelete,
       redisPipeline: redis.redisPipeline,
       // F3 (U7+U8 review pass): validateProMcpToken now returns the
       // ProMcpValidateUnion. Tests passing `null` are normalised here to
@@ -151,6 +164,7 @@ function makeDeps(overrides = {}) {
       // tests passing the new shape pass through unchanged.
       validateProMcpToken: overrides.validateProMcpToken ?? (async () => ({ ok: 'valid', userId: USER_ID })),
       randomUuid: overrides.randomUuid ?? deterministicUuid,
+      captureRestoreFailure: overrides.captureRestoreFailure ?? ((context) => restoreFailures.push(context)),
     },
   };
 }
@@ -714,6 +728,72 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assertSetEx(redis.ops, 'oauth:famptr:rt-live', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
   });
 
+  it('revocation-state read failure clears the pointer when the consumed token cannot be restored', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    redis.redisPipeline = async (commands) => {
+      if (commands.some((cmd) => cmd[1] === 'oauth:refresh:rt-read-fail')) return null;
+      return originalPipeline(commands);
+    };
+    const { deps, restoreFailures } = makeDeps({ redis });
+    const FAMILY = 'fam_read_restore_fail';
+    redis.store.set('oauth:refresh:rt-read-fail', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-read-fail', JSON.stringify(FAMILY));
+    const originalRedisGet = deps.redisGet;
+    deps.redisGet = async (key) => {
+      if (key === `oauth:famrev:${FAMILY}`) throw new Error('redis down');
+      return originalRedisGet(key);
+    };
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-read-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    assert.equal(redis.store.has('oauth:famptr:rt-read-fail'), false);
+    assert.deepEqual(restoreFailures, [
+      { stage: 'read-family-revocation', familyPointerRemoved: true },
+    ]);
+  });
+
+  it('family-pointer backfill failure clears the stale pointer when token restore also fails', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const { deps, restoreFailures } = makeDeps({ redis });
+    const FAMILY = 'fam_backfill_restore_fail';
+    redis.store.set('oauth:refresh:rt-backfill-fail', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-backfill-fail', JSON.stringify(FAMILY));
+    deps.redisPipeline = async (commands) => {
+      for (const cmd of commands) redis.ops.push({ kind: 'pipeline', cmd });
+      return null;
+    };
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-backfill-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    assert.equal(redis.store.has('oauth:famptr:rt-backfill-fail'), false);
+    assert.deepEqual(restoreFailures, [
+      { stage: 'persist-family-pointer', familyPointerRemoved: true },
+    ]);
+  });
+
   it('transient Pro validation restores the refresh token and its family pointer together', async () => {
     await ensureFixtures();
     const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
@@ -735,6 +815,122 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(resp.status, 503);
     assert.ok(redis.store.has('oauth:refresh:rt-transient'));
     assertSetEx(redis.ops, 'oauth:famptr:rt-transient', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+  });
+
+  it('a failed transient restore removes the stale pointer so retry cannot revoke sibling sessions', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    redis.redisPipeline = async (commands) => {
+      const isFailedRestore = commands.some((cmd) => cmd[1] === 'oauth:refresh:rt-blip');
+      if (isFailedRestore) return null;
+      return originalPipeline(commands);
+    };
+    const { deps, restoreFailures } = makeDeps({
+      redis,
+      validateProMcpToken: async (mcpTokenId) => (
+        mcpTokenId === 'mcp-blip'
+          ? { ok: 'transient' }
+          : { ok: 'valid', userId: USER_ID }
+      ),
+    });
+    const FAMILY = 'fam_restore_blip';
+    redis.store.set('oauth:refresh:rt-blip', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: 'mcp-blip',
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-blip', JSON.stringify(FAMILY));
+    redis.store.set('oauth:refresh:rt-sibling', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: 'mcp-sibling',
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-sibling', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-blip', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(first.status, 503);
+    assert.equal(redis.store.has('oauth:refresh:rt-blip'), false, 'failed restore leaves the token consumed');
+    assert.equal(redis.store.has('oauth:famptr:rt-blip'), false, 'failed restore removes its stale reuse pointer');
+    assert.deepEqual(restoreFailures, [
+      { stage: 'convex-transient', familyPointerRemoved: true },
+    ]);
+
+    const retry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-blip', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(retry.status, 400);
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'retry must not revoke the family');
+
+    const sibling = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-sibling', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(sibling.status, 200, 'a sibling session in the family must still validate');
+  });
+
+  it('a partial restore that writes the token but not its pointer removes the stale pointer and remains retryable', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    redis.redisPipeline = async (commands) => {
+      const isPartialRestore = commands.length === 2 && commands[0]?.[1] === 'oauth:refresh:rt-partial';
+      if (!isPartialRestore) return originalPipeline(commands);
+
+      for (const cmd of commands) redis.ops.push({ kind: 'pipeline', cmd });
+      redis.store.set(commands[0][1], commands[0][2]);
+      return [{ result: 'OK' }, { error: 'pointer write failed' }];
+    };
+    let validationCalls = 0;
+    const { deps, restoreFailures } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        validationCalls += 1;
+        return validationCalls === 1
+          ? { ok: 'transient' }
+          : { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_partial_restore';
+    redis.store.set('oauth:refresh:rt-partial', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-partial', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-partial', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(first.status, 503);
+    assert.ok(redis.store.has('oauth:refresh:rt-partial'), 'partial pipeline restored the token record');
+    assert.equal(redis.store.has('oauth:famptr:rt-partial'), false, 'cleanup removes the stale pointer');
+    assert.deepEqual(restoreFailures, [
+      { stage: 'convex-transient', familyPointerRemoved: true },
+    ]);
+
+    const retry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-partial', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(retry.status, 200, 'the restored token remains usable after cleanup');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
   });
 
   it('a genuine expired/unknown refresh token (no family pointer) does NOT revoke anything', async () => {

@@ -42,6 +42,8 @@ import { jsonResponse } from '../_json-response.js';
 import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
 
 export const config = { runtime: 'edge' };
 
@@ -143,6 +145,20 @@ async function rawRedisGet(key: string): Promise<unknown | null> {
   } catch {
     return null;
   }
+}
+
+/** Delete one raw OAuth key outside a pipeline. Throws when deletion is not confirmed. */
+async function rawRedisDelete(key: string): Promise<void> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('Redis not configured');
+  const resp = await fetch(`${url}/del/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'worldmonitor-edge/1.0' },
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = (await resp.json()) as { result?: number };
+  if (typeof data?.result !== 'number') throw new Error('Redis DEL returned an invalid response');
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +320,42 @@ async function restoreConsumedRefreshToken(
   return pipelineOk(await deps.redisPipeline(commands));
 }
 
+type RefreshRestoreStage = 'persist-family-pointer' | 'read-family-revocation' | 'convex-transient';
+
+async function restoreOrRemoveFamilyPointer(
+  deps: TokenHandlerDeps,
+  refreshToken: string,
+  refreshData: RefreshDataPro | RefreshDataLegacy,
+  stage: RefreshRestoreStage,
+): Promise<void> {
+  let restored = false;
+  try {
+    restored = await restoreConsumedRefreshToken(deps, refreshToken, refreshData);
+  } catch {
+    // The cleanup and capture below handle thrown transport failures too.
+  }
+  if (restored) return;
+
+  // A failed/partial restore must not leave a reuse pointer for a token that
+  // may still be absent. Otherwise the client's retry looks like an attack and
+  // revokes every sibling in the family. Use a separate Redis request because
+  // the restore pipeline itself is the operation known to be unreliable.
+  let familyPointerRemoved = false;
+  if (refreshData.family_id) {
+    try {
+      await deps.redisDelete(refreshFamilyPointerKey(refreshToken));
+      familyPointerRemoved = true;
+    } catch {
+      // Telemetry below includes cleanup failure without changing the retryable response.
+    }
+  }
+  try {
+    deps.captureRestoreFailure({ stage, familyPointerRemoved });
+  } catch {
+    // Observability must not turn the intended retryable response into a 500.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Inner handler — exported for unit tests with injected deps.
 // ---------------------------------------------------------------------------
@@ -313,6 +365,8 @@ export interface TokenHandlerDeps {
   redisGetDel: (key: string) => Promise<unknown | null>;
   /** Non-consuming parsed read of raw `oauth:*` keys. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
+  /** Single-key delete, deliberately independent of a failed restore pipeline. */
+  redisDelete: (key: string) => Promise<void>;
   /** Pipeline writer used by the three storeXxx writers + the sliding TTL EXPIRE. */
   redisPipeline: (commands: PipelineCommand[]) => Promise<PipelineResult[] | null>;
   /**
@@ -325,6 +379,8 @@ export interface TokenHandlerDeps {
   validateProMcpToken: typeof validateProMcpToken;
   /** Random UUID — injectable so tests can assert specific ids in the response payload. */
   randomUuid: () => string;
+  /** Stable, non-secret Sentry capture for a failed consumed-token restore. */
+  captureRestoreFailure: (context: { stage: RefreshRestoreStage; familyPointerRemoved: boolean }) => void;
 }
 
 interface CodeDataPro {
@@ -567,7 +623,7 @@ async function handleRefreshToken(
   if (refreshData.family_id) {
     const pointerStored = await persistRefreshFamilyPointer(deps, refreshToken, refreshData.family_id);
     if (!pointerStored) {
-      await restoreConsumedRefreshToken(deps, refreshToken, refreshData).catch(() => false);
+      await restoreOrRemoveFamilyPointer(deps, refreshToken, refreshData, 'persist-family-pointer');
       return jsonResp(
         { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
         503,
@@ -586,7 +642,7 @@ async function handleRefreshToken(
     try {
       familyRevoked = (await deps.redisGet(refreshFamilyRevocationKey(refreshData.family_id))) != null;
     } catch {
-      await restoreConsumedRefreshToken(deps, refreshToken, refreshData).catch(() => false);
+      await restoreOrRemoveFamilyPointer(deps, refreshToken, refreshData, 'read-family-revocation');
       return jsonResp(
         { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
         503,
@@ -620,17 +676,15 @@ async function handleRefreshToken(
     const validation: ProMcpValidateUnion = await deps.validateProMcpToken(refreshData.mcpTokenId);
 
     if (validation.ok === 'transient') {
-      // Best-effort restore: the user's refresh token was just consumed
-      // by GETDEL but Convex hasn't ruled it revoked. Put it back so the
+      // Restore the user's refresh token after GETDEL because Convex has not
+      // ruled it revoked. Put it back so the
       // next attempt can succeed once the blip clears. Restore the family
       // pointer in the same operation so a restored near-expiry token cannot
       // outlive its replay-detection pointer.
-      try {
-        await restoreConsumedRefreshToken(deps, refreshToken, refreshData);
-      } catch {
-        // Best-effort. If restore fails the user re-authorizes — same
-        // outcome as before this fix; we've not made anything worse.
-      }
+      // If restoration fails, remove the old family pointer. The user must
+      // re-authorize this session, but its retry must not be misclassified as
+      // reuse and revoke every sibling session in the family (GHSA-f6gj).
+      await restoreOrRemoveFamilyPointer(deps, refreshToken, refreshData, 'convex-transient');
       return jsonResp(
         { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
         503,
@@ -806,12 +860,27 @@ export async function tokenHandler(req: Request, deps: TokenHandlerDeps): Promis
 // Default handler — wires production deps. The Vercel edge entry point.
 // ---------------------------------------------------------------------------
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (promise: Promise<unknown>) => void },
+): Promise<Response> {
   return tokenHandler(req, {
     redisGetDel: rawRedisGetDel,
     redisGet: rawRedisGet,
+    redisDelete: rawRedisDelete,
     redisPipeline: rawRedisPipeline,
     validateProMcpToken,
     randomUuid: () => crypto.randomUUID(),
+    captureRestoreFailure: (context) => {
+      void captureSilentError(new Error('OAuth refresh token restore failed'), {
+        tags: {
+          route: 'api/oauth/token',
+          step: 'refresh-restore',
+          stage: context.stage,
+          family_pointer_removed: String(context.familyPointerRemoved),
+        },
+        ctx,
+      });
+    },
   });
 }
