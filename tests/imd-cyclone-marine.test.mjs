@@ -8,6 +8,7 @@ import {
   IMD_API_REFERENCE_URL,
   IMD_CANONICAL_KEY,
   IMD_HOST,
+  IMD_MAX_CONTENT_AGE_MIN,
   IMD_PRODUCTS,
   IMD_RIGHTS_DECISION,
   assembleImdSnapshot,
@@ -183,6 +184,101 @@ test('a failed product carries last-good for that product only', () => {
   const meta = imdAfterPublish(snapshot);
   assert.equal(meta.freshnessMetaPatch.sourceState, 'degraded');
   assert.equal(meta.freshnessMetaPatch.errorCode, 'IMD_PRODUCT_PARTIAL');
+});
+
+test('stamps successful wind and cone geometry and omits it after an aged failed fetch', () => {
+  const previous = assembleImdSnapshot({
+    now: CYCLONE_NOW,
+    productResults: {
+      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
+      cycloneWind: { status: 'ok', records: parseCycloneWindPayload(fixture('imd-cyclone-wind.json')) },
+      cycloneCou: { status: 'ok', records: parseCycloneCouPayload(fixture('imd-cyclone-cou.json')) },
+      portWarning: { status: 'ok', records: [] },
+      seaBulletin: { status: 'ok', records: [] },
+      coastalBulletin: { status: 'ok', records: [] },
+    },
+  });
+  assert.ok(previous.windRadii.length > 0);
+  assert.ok(previous.cones.length > 0);
+  assert.ok(previous.windRadii.every((row) => row.updatedAt === CYCLONE_NOW));
+  assert.ok(previous.cones.every((row) => row.updatedAt === CYCLONE_NOW));
+
+  const freshFailed = assembleImdSnapshot({
+    now: CYCLONE_NOW + 60 * 60 * 1000,
+    previous,
+    productResults: {
+      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
+      cycloneWind: { status: 'failed', reason: 'HTTP 500', records: [] },
+      cycloneCou: { status: 'failed', reason: 'HTTP 500', records: [] },
+      portWarning: { status: 'ok', records: [] },
+      seaBulletin: { status: 'ok', records: [] },
+      coastalBulletin: { status: 'ok', records: [] },
+    },
+  });
+  assert.equal(freshFailed.products.cycloneWind.carried, true);
+  assert.equal(freshFailed.products.cycloneCou.carried, true);
+  assert.equal(freshFailed.windRadii.length, previous.windRadii.length);
+  assert.equal(freshFailed.cones.length, previous.cones.length);
+
+  const agedNow = CYCLONE_NOW + (IMD_MAX_CONTENT_AGE_MIN * 60 * 1000) + 1;
+  const currentTrack = parseCycloneTrackPayload(fixture('imd-cyclone-track.json')).map((row) => ({
+    ...row,
+    at: agedNow,
+  }));
+  const agedFailed = assembleImdSnapshot({
+    now: agedNow,
+    previous,
+    productResults: {
+      cycloneTrack: { status: 'ok', records: currentTrack },
+      cycloneWind: { status: 'failed', reason: 'HTTP 500', records: [] },
+      cycloneCou: { status: 'failed', reason: 'HTTP 500', records: [] },
+      portWarning: { status: 'ok', records: [] },
+      seaBulletin: { status: 'ok', records: [] },
+      coastalBulletin: { status: 'ok', records: [] },
+    },
+  });
+  assert.equal(agedFailed.windRadii.length, 0);
+  assert.equal(agedFailed.cones.length, 0);
+  assert.equal(agedFailed.products.cycloneWind.carried, false);
+  assert.equal(agedFailed.products.cycloneCou.carried, false);
+  const events = cycloneEventsFromSnapshot(agedFailed);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].windRadii.length, 0);
+  assert.deepEqual(events[0].conePolygon, []);
+});
+
+test('omits unstamped previous wind or cone geometry when the product fetch fails', () => {
+  const previous = assembleImdSnapshot({
+    now: CYCLONE_NOW,
+    productResults: {
+      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
+      cycloneWind: { status: 'ok', records: [] },
+      cycloneCou: { status: 'ok', records: [] },
+      portWarning: { status: 'ok', records: [] },
+      seaBulletin: { status: 'ok', records: [] },
+      coastalBulletin: { status: 'ok', records: [] },
+    },
+  });
+  const snapshot = assembleImdSnapshot({
+    now: CYCLONE_NOW,
+    previous: {
+      ...previous,
+      windRadii: parseCycloneWindPayload(fixture('imd-cyclone-wind.json')),
+      cones: parseCycloneCouPayload(fixture('imd-cyclone-cou.json')),
+    },
+    productResults: {
+      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
+      cycloneWind: { status: 'failed', reason: 'HTTP 500', records: [] },
+      cycloneCou: { status: 'failed', reason: 'HTTP 500', records: [] },
+      portWarning: { status: 'ok', records: [] },
+      seaBulletin: { status: 'ok', records: [] },
+      coastalBulletin: { status: 'ok', records: [] },
+    },
+  });
+  assert.equal(snapshot.windRadii.length, 0);
+  assert.equal(snapshot.cones.length, 0);
+  assert.equal(snapshot.products.cycloneWind.carried, false);
+  assert.equal(snapshot.products.cycloneCou.carried, false);
 });
 
 test('keeps live fetch disabled without rights and key, and that is not all-clear', () => {

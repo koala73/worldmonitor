@@ -493,14 +493,32 @@ export function parseImdProductPayload(productId, payload) {
   }
 }
 
+function recordStamp(record) {
+  const stamp = record?.updatedAt ?? record?.issuedAt ?? record?.at ?? record?.validFrom;
+  return Number.isFinite(stamp) ? stamp : null;
+}
+
+function isImdGeometryProduct(product) {
+  return product === 'cycloneWind' || product === 'cycloneCou';
+}
+
+export function stampImdGeometryRecords(records, nowMs) {
+  return (records || []).map((record) => {
+    if (!isImdGeometryProduct(record?.product)) return record;
+    if (recordStamp(record) != null) return record;
+    return { ...record, updatedAt: nowMs };
+  });
+}
+
 export function dropExpiredRecords(records, nowMs = Date.now()) {
   const horizon = nowMs - IMD_MAX_CONTENT_AGE_MIN * 60 * 1000;
   return (records || []).filter((record) => {
     if (record?.expiresAt != null && Number.isFinite(record.expiresAt) && record.expiresAt <= nowMs) {
       return false;
     }
-    const stamp = record?.updatedAt ?? record?.issuedAt ?? record?.at ?? record?.validFrom;
-    if (stamp != null && Number.isFinite(stamp) && stamp < horizon) return false;
+    const stamp = recordStamp(record);
+    if (isImdGeometryProduct(record?.product) && stamp == null) return false;
+    if (stamp != null && stamp < horizon) return false;
     return true;
   });
 }
@@ -510,8 +528,8 @@ export function dedupeRecords(records) {
   for (const record of records || []) {
     if (!record?.id) continue;
     const existing = byId.get(record.id);
-    const stamp = record.updatedAt ?? record.issuedAt ?? record.at ?? 0;
-    const existingStamp = existing?.updatedAt ?? existing?.issuedAt ?? existing?.at ?? 0;
+    const stamp = recordStamp(record) ?? 0;
+    const existingStamp = recordStamp(existing) ?? 0;
     if (!existing || stamp >= existingStamp) byId.set(record.id, record);
   }
   return [...byId.values()];
@@ -621,7 +639,7 @@ export function assembleImdSnapshot({
       continue;
     }
     if (result.status === 'ok') {
-      const records = dedupeRecords(dropExpiredRecords(result.records || [], now));
+      const records = dedupeRecords(dropExpiredRecords(stampImdGeometryRecords(result.records || [], now), now));
       collected.push(...records);
       products[id] = productHealth({
         status: 'ok',
