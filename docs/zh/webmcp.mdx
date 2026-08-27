@@ -61,7 +61,7 @@ Boolean(document.modelContext?.registerTool)
 在 Origin Trial 构建上，请在页面完成工具注册**之后**再调用 `getTools()`，不要更早。若某次 `getTools()` 以空清单 resolve（即在注册完成前发起），该页面之后的每一次 `getTools()` 都会永远处于 pending。`executeTool()` 不受影响，在卡死前取得的工具描述符仍可继续使用。这是浏览器侧行为：在 Chrome 151.0.7922.174 上针对已加入 Origin Trial 的页面可稳定复现，而同一页面改用 `chrome://flags/#enable-webmcp-testing` 启用时不会出现。在页面加载时接入的代理应等待文档加载完成后再发起首次发现调用，且不应轮询 `getTools()`。
 </Warning>
 
-Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只传入 input，并非文档所述的 `execute(input, { signal })` 形式。在这些版本中，取消在两个方向上都是无效的：`executeTool()` 会忽略其可选参数中的 `signal`，因此 abort 既不会拒绝调用方的 Promise，也不会中止页面中已在运行的工作。
+Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只传入 input，并非文档所述的 `execute(input, { signal })` 形式。中止你传给 `executeTool()` 的 signal 会以 `AbortError` 拒绝**你自己的** Promise，但浏览器无法把该中止告知页面，因此页面中已在运行的工作会继续执行，其效果依然会生效。也就是说，你已取消的操作仍可能执行完毕。
 
 即便如此，WorldMonitor 仍会在这些版本上执行那些只改变可见视图状态的工具——不做导航、不写入数据、无外部副作用——因为此时一次无法取消的调用，最坏结果也只是一处用户可以自行撤销的可见变化。`openCountryBrief`、`openSearch`、`open_dashboard_panel` 与 `set_map_view` 均可正常使用。
 
@@ -182,7 +182,7 @@ try {
 }
 ```
 
-该协作式目标侧取消证明要求浏览器把调用信号传给已注册回调。若浏览器仍使用单参数回调（迄今发布的所有 Chrome 皆是如此），上面的代码片段永远不会进入 `AbortError` 分支：abort 会被忽略，调用方的 Promise 将以工具的正常结果 resolve，页面内的工作也会照常完成。在这些版本上，应将取消视为不可用，而非尽力而为。
+该协作式目标侧取消证明要求浏览器把调用信号传给已注册回调。若浏览器仍使用单参数回调（迄今发布的所有 Chrome 皆是如此），上面的 `AbortError` 分支仍会执行，但它只能证明**你这次调用**被放弃了：页面永远不会得知该中止，其工作会继续执行、可见效果依然生效。你究竟观察到 `AbortError` 还是工具的正常结果，取决于页面回调是否恰好先完成。在这些版本上，应将取消视为仅在调用方一侧生效。
 
 取消会停止尚未到达同步 UI 提交点的工作。如果视口转换在信号到达前已经发出，WorldMonitor 不会回滚该转换；此时会跳过后续 URL 同步和成功遥测，避免取消流程覆盖用户之后的操作。
 

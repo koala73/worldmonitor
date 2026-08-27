@@ -99,9 +99,11 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
       }
     };
 
-    // Chrome's origin-trial build wedges every later getTools() call once one
-    // has read an empty inventory, so the probe must not poll for discovery.
-    // It waits for the page's own registration mark and then reads once.
+    // On Chrome's origin-trial build, touching document.modelContext before
+    // the page finishes registering wedges the registration itself: the tools
+    // never appear and every later getTools() hangs. So the probe waits on the
+    // page's own registration mark — which touches nothing — and only then
+    // reads the provider, once.
     const registrationSettled = (): boolean => (
       target.__wmLcpDebug?.getSnapshot?.().marks
         .some((mark) => mark.name === 'wm:webmcp:registered') ?? false
@@ -151,9 +153,18 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
       };
 
       const awaitRegistration = (): void => {
-        const provider = document.modelContext as ExecutableModelContext | undefined;
-        if (provider && typeof provider.executeTool === 'function' && registrationSettled()) {
-          void readInventoryOnce(provider).catch(reject);
+        // Do NOT read document.modelContext before the mark. On the
+        // origin-trial build, a single read taken before the page finishes
+        // registering wedges the registration itself — the tools never appear
+        // and every later getTools() hangs. The mark comes from the page's own
+        // instrumentation and touches nothing.
+        if (registrationSettled()) {
+          const provider = document.modelContext as ExecutableModelContext | undefined;
+          if (provider && typeof provider.executeTool === 'function') {
+            void readInventoryOnce(provider).catch(reject);
+            return;
+          }
+          reject(new Error('WebMCP provider is unusable after registration settled.'));
           return;
         }
         if (performance.now() >= deadline) {
@@ -202,8 +213,10 @@ async function installColdStartCancellationProbe(
         return value;
       }
     };
-    // Same single-read rule as the cold-start context probe: poll the page's
-    // registration mark, never getTools(), or the origin-trial build wedges.
+    // Same rule as the cold-start context probe: poll the page's registration
+    // mark and touch nothing on document.modelContext until it fires. A single
+    // provider read taken before registration completes wedges registration on
+    // the origin-trial build.
     const registrationSettled = (): boolean => (
       target.__wmLcpDebug?.getSnapshot?.().marks
         .some((mark) => mark.name === 'wm:webmcp:registered') ?? false
@@ -213,8 +226,12 @@ async function installColdStartCancellationProbe(
     const discoverAndInvoke = async (): Promise<void> => {
       if (invocationStarted) return;
       try {
+        if (!registrationSettled()) {
+          if (performance.now() < deadline) setTimeout(() => { void discoverAndInvoke(); }, 5);
+          return;
+        }
         const provider = document.modelContext as ExecutableModelContext | undefined;
-        if (provider && typeof provider.executeTool === 'function' && registrationSettled()) {
+        if (provider && typeof provider.executeTool === 'function') {
           invocationStarted = true;
           const tool = (await Promise.race([
             provider.getTools(),
@@ -487,7 +504,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
   });
 
-  test('leaves browser cancellation inert without leaking an unhandled result', async ({ page }, testInfo) => {
+  test('completes page work after a caller-side cancel without leaking an unhandled result', async ({ page }, testInfo) => {
     const pageErrors: Array<{ name: string; message: string }> = [];
     page.on('pageerror', (error) => {
       pageErrors.push({ name: error.name, message: error.message.slice(0, 500) });
@@ -626,17 +643,17 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
 
     expect(cancellation.invokedBeforeUiReady).toBe(true);
-    // Chrome through 151 ignores executeTool()'s options bag outright — its
-    // own `executeTool.length` is 2 — so aborting the caller's signal neither
-    // rejects the caller's promise nor stops page work. Assert that inertness
-    // rather than a cancellation that does not happen; the leak checks below
-    // are the part that still protects us.
+    // Chrome rejects the CALLER on abort but cannot tell the page, so which
+    // terminal the caller sees is a race: `AbortError` when the abort lands
+    // while the callback is still parked, the tool's own result when the
+    // callback finished first. Both are real and both have been observed
+    // (production and local respectively), so do not pin one — pinning it
+    // makes this test flaky on timing rather than on behaviour.
     //
-    // When a browser starts honouring the signal, these flip to
-    // rejected/AbortError and the failure is the prompt to re-tighten
-    // CANCELLATION_REQUIRED_WEBMCP_TOOLS, not a value to update blindly.
-    expect(cancellation.rejected).toBe(false);
-    expect(cancellation.name).toBe('');
+    // The invariant that actually matters is asserted below: the page work
+    // completes either way. That is the phantom completion this policy accepts.
+    expect(['AbortError', ''],
+      'caller terminal is timing-dependent; both are valid').toContain(cancellation.name);
     if (!productionSmoke) {
       expect(
         afterMap,

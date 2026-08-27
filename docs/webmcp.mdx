@@ -61,7 +61,7 @@ The local flag replaces origin-trial enrollment for development. WorldMonitor st
 On the origin-trial build, call `getTools()` **after** the page has registered its tools, not before. A `getTools()` call that resolves with an empty inventory — that is, one made before registration completes — leaves every later `getTools()` call on that page pending forever. `executeTool()` is unaffected, and a tool descriptor obtained before the wedge stays usable. This is a browser-side behavior, reproducible on Chrome 151.0.7922.174 against an origin-trial-enrolled page and absent when the same page is enabled through `chrome://flags/#enable-webmcp-testing`. An agent attaching at page load should wait for the document to finish loading before its first discovery call, and should not poll `getTools()`.
 </Warning>
 
-Chrome 149–151 exposes `registerTool()` but invokes the registered callback with the input alone, not the documented `execute(input, { signal })` shape. On those builds cancellation is inert in both directions: `executeTool()` ignores the `signal` in its options argument, so aborting neither rejects the caller's promise nor stops work already running in the page.
+Chrome 149–151 exposes `registerTool()` but invokes the registered callback with the input alone, not the documented `execute(input, { signal })` shape. Aborting the signal you pass to `executeTool()` rejects *your* promise with an `AbortError`, but the browser cannot tell the page, so work already running there continues and its effect still lands. An operation you cancelled can therefore still complete.
 
 WorldMonitor still runs the dashboard-changing tools whose only effect is visible view state on the person's own screen — no navigation, no writes, no external side effects — because the worst case of an uncancellable invocation there is a visible change the person can undo. `openCountryBrief`, `openSearch`, `open_dashboard_panel`, and `set_map_view` work normally.
 
@@ -182,7 +182,7 @@ try {
 }
 ```
 
-This cooperative target-side cancellation proof requires the browser to pass the invocation signal to the registered callback. On a one-argument callback implementation — every Chrome released so far — the snippet above never reaches its `AbortError` branch: the abort is ignored, the caller's promise resolves with the tool's normal result, and the work completes inside the page. Treat cancellation as unavailable rather than best-effort on those builds.
+This cooperative target-side cancellation proof requires the browser to pass the invocation signal to the registered callback. On a one-argument callback implementation — every Chrome released so far — your `AbortError` branch still runs, but it proves only that *your* call was abandoned. The page never learns of the abort, so its work continues and its visible effect still lands. Whether you observe the `AbortError` or the tool's normal result depends on whether the page callback happened to finish first. Treat cancellation as caller-side only on those builds.
 
 Cancellation stops work that has not reached its synchronous UI commit point. It does not roll back a viewport transition that was already issued before the signal arrived; in that case WorldMonitor suppresses later URL synchronization and success telemetry so cancellation cannot overwrite newer human input.
 

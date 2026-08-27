@@ -208,11 +208,14 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 // `{ signal }` to `executeTool()`. So a cancelled invocation rejects on the
 // agent side while page work keeps running: a phantom completion.
 //
-// That is only worth refusing to run when the effect is not something the
+// The phantom completion is real, not theoretical: aborting rejects the
+// caller with an AbortError while the page callback runs on to completion.
+//
+// It is still only worth refusing to run when the effect is not something the
 // person can simply look at and undo. Most dashboard-changing tools only move
 // visible view state on their own dashboard — no navigation, no writes, no
-// external side effects — so blocking those bought nothing and cost most of
-// the inventory on every browser released so far.
+// external side effects — so blocking those cost most of the inventory on
+// every browser released so far to prevent a visible, reversible change.
 //
 // A tool belongs here the moment it can do something that outlives a glance:
 // navigation, persistence, spending, sending, deleting. These two qualify on
