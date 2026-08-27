@@ -5001,15 +5001,10 @@
       "host": "insideclimatenews.org",
       "provider": "insideclimatenews.org",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit insideclimatenews.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-climate-news.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "insightcrime.org",
