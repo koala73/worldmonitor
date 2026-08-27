@@ -23,12 +23,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // Shared scanner/resolver (comment-stripping tokenizer + edge extraction) —
 // one home for the machinery this guard previously copied from the relay
 // test; see tests/_lib/import-graph-walk.mjs (#5231 review follow-up).
-import { collectRelativeImports, parseDockerfileCopy, resolveNodeRelative } from './_lib/import-graph-walk.mjs';
+import { collectRelativeImports, parseDockerfileCopy, relativeToRepoRoot, resolveNodeRelative } from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -78,6 +78,50 @@ function isCovered(coverage, relPath) {
 // Extension candidates for this image: the digest cron's graph spans .ts
 // modules under server/_shared/, unlike the relay's .mjs/.cjs-only graph.
 const DIGEST_RESOLVE_EXTS = ['.mjs', '.cjs', '.js', '.ts'];
+
+// relativeToRepoRoot backs the BFS containment check both this guard and
+// dockerfile-relay-imports.test.mjs run below. It replaced an inline
+// `resolved.startsWith(root + '/')` check that hardcoded a forward slash --
+// path.resolve() returns backslash-separated paths on Windows, so that
+// check never matched there, and the BFS below silently terminated after
+// the entrypoint with zero files ever flagged as missing, regardless of
+// actual Dockerfile coverage. Unit-tested here directly since neither
+// guard's Dockerfile-driven walk would fail loudly if this regressed back
+// to a platform-specific check -- it would just go quiet again.
+describe('relativeToRepoRoot', () => {
+  it('returns a forward-slash-separated path for a file under root', () => {
+    const target = resolve(root, 'scripts', 'seed-digest-notifications.mjs');
+    assert.equal(relativeToRepoRoot(root, target), 'scripts/seed-digest-notifications.mjs');
+  });
+
+  it('returns a forward-slash-separated path for a nested file under root', () => {
+    const target = resolve(root, 'scripts', 'lib', 'digest-delivered-log.mjs');
+    assert.equal(relativeToRepoRoot(root, target), 'scripts/lib/digest-delivered-log.mjs');
+  });
+
+  it('normalizes Windows paths deterministically on every host', () => {
+    assert.equal(
+      relativeToRepoRoot('C:\\repo', 'C:\\repo\\scripts\\file.mjs', win32),
+      'scripts/file.mjs',
+    );
+  });
+
+  it('returns null for a path outside root', () => {
+    const outside = resolve(root, '..', 'some-sibling-dir', 'file.mjs');
+    assert.equal(relativeToRepoRoot(root, outside), null);
+  });
+
+  it('returns null for root itself', () => {
+    assert.equal(relativeToRepoRoot(root, root), null);
+  });
+
+  it('never returns a path containing a backslash, regardless of host path.sep', () => {
+    const target = resolve(root, 'server', '_shared', 'brief-render.js');
+    const result = relativeToRepoRoot(root, target);
+    assert.ok(result, 'expected a non-null result for a file under root');
+    assert.ok(!result.includes('\\'), `result should be forward-slash-only, got ${JSON.stringify(result)}`);
+  });
+});
 
 describe('Dockerfile.digest-notifications — transitive-import closure', () => {
   const dockerfile = resolve(root, 'Dockerfile.digest-notifications');
@@ -150,9 +194,7 @@ describe('Dockerfile.digest-notifications — transitive-import closure', () => 
       for (const rel of collectRelativeImports(file)) {
         const resolved = resolveNodeRelative(file, rel, DIGEST_RESOLVE_EXTS);
         if (!resolved) continue;
-        const relToRoot = resolved.startsWith(root + '/')
-          ? resolved.slice(root.length + 1)
-          : null;
+        const relToRoot = relativeToRepoRoot(root, resolved);
         if (!relToRoot) continue;
         const tracked = TRACKED_PREFIXES.some((p) => relToRoot.startsWith(p));
         if (!tracked) continue;

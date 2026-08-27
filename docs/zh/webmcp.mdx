@@ -9,6 +9,8 @@ WebMCP 让浏览器智能体发现并调用当前标签页中 WorldMonitor 页�
 WebMCP 是一项实验性的拟议 Web 标准，目前通过 Chrome 149 Origin Trial 提供。API 和浏览器行为仍可能改变。WorldMonitor 只支持在可见、有人参与的浏览器标签页中使用它。
 
 **WebMCP 不会取代 [WorldMonitor 托管 MCP 服务器](/zh/mcp-overview)。** 持久、远程、后台或无头智能体，以及直接读取 WorldMonitor 数据的场景，请使用托管服务器。
+
+**如需使用 ChatGPT 测试，请在打开 WorldMonitor 页面的同一个 ChatGPT Atlas 标签页中使用 Agent mode。** WebMCP 是浏览器智能体集成；在 chatgpt.com 的普通对话或 ChatGPT iOS/Android 应用中要求访问某个 URL，并不会激活 WebMCP。这些客户端并不拥有页面的 `document.modelContext`，因此会报告没有可调用的 WebMCP 能力。请参阅 [OpenAI WebMCP 指南](https://learn.chatgpt.com/docs/webmcp)。
 </Warning>
 
 ## 选择正确的接口
@@ -57,11 +59,26 @@ Boolean(document.modelContext?.registerTool)
 
 本地开发由该 flag 代替 Origin Trial 注册。WorldMonitor 仍会发送 API 所需的源隔离与权限策略响应头。
 
+### ChatGPT Atlas
+
+请遵循 OpenAI 的 [WebMCP 测试流程](https://learn.chatgpt.com/docs/webmcp)，而不是托管 MCP 的自定义应用流程：
+
+1. 在 ChatGPT Atlas 中打开 `https://www.worldmonitor.app/`。测试仪表板工具清单时请打开 `/dashboard`。
+2. 在**同一个标签页**中启动 **Agent mode**，让智能体共享已注册工具的文档。
+3. 要求 Atlas 使用页面上的 WorldMonitor 工具。首页暴露 `launchWorldMonitor` 和 `getWorldMonitorMcpEndpoint`；`/dashboard` 暴露下文列出的仪表板工具。
+4. 如果 Atlas 看不到工具，请在 Agent mode/WebMCP 可用后重新加载页面，并在该页面的 DevTools 中验证 `Boolean(document.modelContext?.registerTool)`。
+
+用户截图中的 ChatGPT 移动应用流程并不是 WebMCP 测试：它启动的是未附加 WorldMonitor 文档的独立对话。将 `https://worldmonitor.app/mcp` 注册为 ChatGPT 自定义应用测试的是另一套托管 MCP 传输，而不是这些标签页绑定工具。
+
 <Warning>
-在 Origin Trial 构建上，请在页面完成工具注册**之后**再调用 `getTools()`，不要更早。若某次 `getTools()` 以空清单 resolve（即在注册完成前发起），该页面之后的每一次 `getTools()` 都会永远处于 pending。`executeTool()` 不受影响，在卡死前取得的工具描述符仍可继续使用。这是浏览器侧行为：在 Chrome 151.0.7922.174 上针对已加入 Origin Trial 的页面可稳定复现，而同一页面改用 `chrome://flags/#enable-webmcp-testing` 启用时不会出现。在页面加载时接入的代理应等待文档加载完成后再发起首次发现调用，且不应轮询 `getTools()`。
+在 Origin Trial 构建上，在页面完成工具注册**之前**，请完全不要触碰 `document.modelContext`。此前的任何一次访问——哪怕只是读取该属性，而不限于调用 `getTools()`——都会卡死页面自身的注册流程：工具永远不会出现，之后的每一次 `getTools()` 都会永远处于 pending。某次 `getTools()` 以空清单 resolve 只是该问题的表象，而非成因。`executeTool()` 不受影响，在卡死前取得的工具描述符仍可继续使用。这是浏览器侧行为：在 Chrome 151.0.7922.174 上针对已加入 Origin Trial 的页面可稳定复现，而同一页面改用 `chrome://flags/#enable-webmcp-testing` 启用时不会出现。在页面加载时接入的代理应等待文档加载完成后再发起首次访问，且不应轮询。
 </Warning>
 
-Chrome 149–151 可能已经暴露 `registerTool()`，也会取消调用方的 `executeTool()` Promise，却不会把调用级 `AbortSignal` 传给页面中已注册的回调。在这些版本中，WorldMonitor 仍允许使用只读仪表板工具，但会修改仪表板的工具会在进入应用绑定前安全拒绝。完整的修改能力要求浏览器回调采用当前的 `execute(input, { signal })` 形式。该安全边界可防止看似已取消的操作稍后继续修改 UI。
+Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只传入 input，并非文档所述的 `execute(input, { signal })` 形式。中止你传给 `executeTool()` 的 signal 会以 `AbortError` 拒绝**你自己的** Promise，但浏览器无法把该中止告知页面，因此页面中已在运行的工作会继续执行，其效果依然会生效。也就是说，你已取消的操作仍可能执行完毕。
+
+在这些版本上，WorldMonitor 仍会执行只读工具和可逆的仪表板视图变更。`openSearch`、`open_dashboard_panel` 与 `set_map_view` 均可正常使用。`set_map_view` 会通过 `history.replaceState` 写入地址栏，生成的分享 URL 与页面复制链接控件生成的相同，并会在刷新时被仪表板还原；这次写入在地址栏中可见，并会被下一次人工移动地图覆盖。
+
+`openCountryBrief`、`set_map_layers` 与 `open_search_result` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。后两个工具会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。这些影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时，这些工具才可用。
 
 <Note>
 如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
@@ -84,7 +101,7 @@ Chrome 149–151 可能已经暴露 `registerTool()`，也会取消调用方的 
 
 六个仪表板变体都注册相同的八个命令式工具。登录和权益变化不会改变注册集合；每次调用都会重新检查实时状态。
 
-注册成功并不表示较旧浏览器能够安全执行修改。如果浏览器没有提供目标侧调用信号，会修改可见 UI 的工具会以不可用状态拒绝，且不会修改仪表板；只读仪表板工具仍可使用。
+在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 会返回不可用。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，后两个工具则会把图层选择持久化并影响本次会话之外的状态。参见[可用性](#availability)。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|
@@ -178,9 +195,9 @@ try {
 }
 ```
 
-该协作式目标侧取消证明要求浏览器把调用信号传给已注册回调。若浏览器仍使用单参数回调，会修改仪表板的工具会在执行前拒绝；只读调用的调用方取消后，页面内部工作仍可能完成。
+该协作式目标侧取消证明要求浏览器把调用信号传给已注册回调。若浏览器仍使用单参数回调（迄今发布的所有 Chrome 皆是如此），上面的 `AbortError` 分支仍会执行，但它只能证明**你这次调用**被放弃了：页面永远不会得知该中止，其工作会继续执行、可见效果依然生效。你究竟观察到 `AbortError` 还是工具的正常结果，取决于页面回调是否恰好先完成。在这些版本上，应将取消视为仅在调用方一侧生效。
 
-取消会停止尚未到达同步 UI 提交点的工作。如果视口转换在信号到达前已经发出，WorldMonitor 不会回滚该转换；此时会跳过后续 URL 同步和成功遥测，避免取消流程覆盖用户之后的操作。
+取消会停止尚未到达同步 UI 提交点的工作。如果视口转换在信号到达前已经发出，WorldMonitor 不会回滚该转换。在会把目标侧 `AbortSignal` 传给已注册回调的浏览器上，WorldMonitor 会在后续 URL 同步和成功遥测之前再次检查该信号，因此在这类浏览器上取消不会覆盖用户之后的操作。但迄今发布的所有 Chrome（至 151）都不传递该信号，因此这一抑制机制在真实用户身上并不会生效；在这些版本上，应按上一节所述，将取消视为仅在调用方一侧生效。
 
 如需可视化流程，请安装 Chrome 官方 [Model Context Tool Inspector](https://chromewebstore.google.com/detail/model-context-tool-inspec/gbpdfapgefenggkahomfgkhfehlcenpd)。用它确认发现、描述、schema、有效与无效参数、输出、错误、取消以及相应可见 UI 变化。[Chrome DevTools 149](https://developer.chrome.com/blog/new-in-devtools-149) 也提供实验性 WebMCP Application 面板检查器；它是另一个实验，需要同时启用 `chrome://flags/#enable-webmcp-testing` 和 `chrome://flags/#devtools-webmcp-support`。
 
@@ -219,7 +236,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-该套件断言线上构建 SHA、`Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、协作式取消或被测浏览器明确的修改安全拒绝边界、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
+该套件断言线上构建 SHA、`Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、被测浏览器上的调用方侧取消与“幽灵完成”不变式——即便调用方自己的调用看到 `AbortError`，页面工作仍会完成、其可见效果仍会生效——针对 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 的取消能力门禁、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
 
 还要确认 `/embed` 与 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档和嵌入页面没有获得顶层清单。部署控制平面的 SHA 检查、响应头、清单、UI 行为和终态结果应视为独立断言；仅有部署成功或注册日志不等于验收通过。
 
@@ -249,3 +266,4 @@ WorldMonitor 清单、UI、权限或权益问题请通过 [GitHub Issues](https:
 - [评估指南](https://developer.chrome.com/docs/ai/webmcp/evals)
 - [Chrome 149 Origin Trial 公告](https://developer.chrome.com/blog/ai-webmcp-origin-trial)
 - [Chrome DevTools 149 WebMCP 检查器](https://developer.chrome.com/blog/new-in-devtools-149)
+- [OpenAI：ChatGPT Atlas 中的 WebMCP](https://learn.chatgpt.com/docs/webmcp)

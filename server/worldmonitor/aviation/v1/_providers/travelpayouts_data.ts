@@ -198,7 +198,6 @@ export async function searchPricesTravelpayouts(opts: {
     destination: string;
     departureDate: string;
     returnDate: string;
-    adults: number;
     cabin: string;
     nonstopOnly: boolean;
     maxResults: number;
@@ -206,7 +205,7 @@ export async function searchPricesTravelpayouts(opts: {
     market: string;
     token: string;
 }): Promise<TravelpayoutsResult> {
-    const { origin, destination, departureDate, returnDate, adults: _adults, cabin, nonstopOnly, maxResults, currency, market, token } = opts;
+    const { origin, destination, departureDate, returnDate, cabin, nonstopOnly, maxResults, currency, market, token } = opts;
     const now = Date.now();
     const tripClass = CABIN_CLASS_MAP[cabin] ?? 0;
     const currency_ = currency || 'usd';

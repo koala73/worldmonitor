@@ -65,8 +65,30 @@ export function chinaStockConnectContentMeta(snapshot) {
   // to be able to raise the alarm on its own.
   const dates = [snapshot?.northbound?.tradeDate, snapshot?.margin?.tradeDate]
     .filter((value) => typeof value === 'string' && value !== '');
-  if (dates.length === 0) return tokensToContentMeta([]);
-  return tokensToContentMeta([dates.reduce((a, b) => (a < b ? a : b))]);
+  if (dates.length > 0) {
+    return tokensToContentMeta([dates.reduce((a, b) => (a < b ? a : b))]);
+  }
+  // Both headline dates gone means an EXCHANGE went dark, not a series: the
+  // combined date is null the instant either exchange is missing
+  // (combineByTradeDate -> EXCHANGE_UNAVAILABLE), and one exchange failing takes
+  // BOTH series down together, so the series-level fallback above has nothing
+  // left to land on. Fall through to the exchanges that DID answer.
+  //
+  // Without this, 2026-08-26 published sse-northbound at that day's session
+  // (turnover Y119.8bn) while SZSE sat behind a rejected proxy credential, and
+  // health read STALE_CONTENT "no dated item; scored stale" — pointing at a
+  // frozen upstream when nothing was frozen. The partial is already reported,
+  // by status: degraded and by the per-source EXCHANGE_UNAVAILABLE reason;
+  // content-age answers a different question, whether the data still advances.
+  //
+  // Still the OLDEST, so the freeze guard is unchanged: a source that stops
+  // advancing drags the token back however fresh its siblings are.
+  const sourceDates = (Array.isArray(snapshot?.sources) ? snapshot.sources : [])
+    .filter((source) => source?.transportStatus === 'ok')
+    .map((source) => source?.tradeDate)
+    .filter((value) => typeof value === 'string' && value !== '');
+  if (sourceDates.length === 0) return tokensToContentMeta([]);
+  return tokensToContentMeta([sourceDates.reduce((a, b) => (a < b ? a : b))]);
 }
 
 export async function buildChinaStockConnectSeedSnapshot({

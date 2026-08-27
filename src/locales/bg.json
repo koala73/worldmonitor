@@ -530,6 +530,8 @@
       "recent": "Скорошни търсения",
       "empty": "Търсене на данни или изпълнение на команди",
       "noResults": "Няма резултати",
+      "resultAnnouncement_one": "{{count}} резултат за {{query}}",
+      "resultAnnouncement_other": "{{count}} резултата за {{query}}",
       "commands": "Команди",
       "results": "Резултати",
       "seeAllCommands": "Виж всички команди",

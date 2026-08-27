@@ -148,10 +148,16 @@ describe('MCP intel-history tools normalize country before the RPC', () => {
   // get_intel_timeline's scope guard rejects an unscoped read before the
   // fetch. A country that is blank after trimming is not a scope, so the
   // guard must still fire rather than sending an empty filter downstream.
+  // WORLDMONITOR-10Y: this must be RpcValidationError (-32602), not a plain
+  // Error that dispatch flattens to -32603 + Sentry error.
   it('get_intel_timeline still rejects a blank country as unscoped', async () => {
     await assert.rejects(
       () => sentCountry('get_intel_timeline', { country: '   ' }),
-      /requires at least one of domain/,
+      (err: unknown) => {
+        assert.equal(err instanceof Error && err.name, 'RpcValidationError');
+        assert.match(err instanceof Error ? err.message : '', /get-intel-timeline HTTP 400/);
+        return true;
+      },
     );
   });
 });

@@ -413,6 +413,62 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(Reflect.get(manager, 'pendingBriefRequest')).toBeNull();
   });
 
+  it('does not let an explicit no-signal agent replace a visible human brief', async () => {
+    let visible = false;
+    let activeCode = '';
+    let destroyedAfterHumanPresentation = false;
+    let loadingCalls = 0;
+    let agentPresentedCalls = 0;
+    const shownCodes: string[] = [];
+    const requestedCodes: string[] = [];
+    const page = {
+      getCode: () => activeCode,
+      hide: () => { visible = false; activeCode = ''; },
+      isVisible: () => visible,
+      show: (_country: string, code: string) => {
+        shownCodes.push(code);
+        visible = true;
+        activeCode = code;
+        if (code === 'FR') destroyedAfterHumanPresentation = true;
+      },
+      showLoading: () => {
+        loadingCalls += 1;
+        visible = true;
+        activeCode = '__loading__';
+      },
+    };
+    const ctx = {
+      countryBriefPage: page,
+      get isDestroyed() { return destroyedAfterHumanPresentation; },
+      map: { setRenderPaused: () => {} },
+    } as unknown as AppContext;
+    const manager = new CountryIntelManager(ctx);
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+    Reflect.set(manager, 'getCountrySignals', async (code: string) => {
+      requestedCodes.push(code);
+      return {};
+    });
+
+    await manager.openCountryBriefByCode('FR', 'France', {
+      owner: 'human',
+      trackAnalytics: false,
+    });
+    destroyedAfterHumanPresentation = false;
+
+    await manager.openCountryBriefByCode('US', 'United States', {
+      onPresented: () => { agentPresentedCalls += 1; },
+      owner: 'agent',
+      trackAnalytics: false,
+    });
+
+    expect(loadingCalls).toBe(1);
+    expect(shownCodes).toEqual(['FR']);
+    expect(requestedCodes).toEqual(['FR']);
+    expect(agentPresentedCalls).toBe(0);
+    expect(visible).toBe(true);
+    expect(activeCode).toBe('FR');
+  });
+
   it('invalidates a held coordinate lookup before teardown can be mutated', async () => {
     let destroyed = false;
     let visible = false;

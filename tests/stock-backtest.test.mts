@@ -390,6 +390,97 @@ describe('backtestStock provider-work quota', () => {
     assert.equal(redisFetch.redis.get(backtestStockProviderQuotaKey('user_pro')), undefined);
   });
 
+  // `name` is a caller-supplied display label, and the cache key is only
+  // symbol + window — deliberately, so two callers watching the same ticker
+  // share one Yahoo fetch. That sharing must not extend to the label: whoever
+  // populated the entry first would otherwise have their spelling echoed back
+  // at every later caller. Custom watchlist entries make differing labels for
+  // one symbol reachable in production (src/services/stock-backtest.ts:24-27
+  // sends each target's own name).
+  it('echoes the requesting caller name on an entry cached by another caller', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const redisFetch = createRedisAwareBacktestFetch(mockChartPayload());
+    globalThis.fetch = redisFetch.fetch;
+    const cachedByFirstCaller = {
+      available: true,
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      display: 'AAPL',
+      currency: 'USD',
+      evalWindowDays: 10,
+      evaluationsRun: 1,
+      actionableEvaluations: 1,
+      winRate: 50,
+      directionAccuracy: 50,
+      avgSimulatedReturnPct: 1,
+      cumulativeSimulatedReturnPct: 1,
+      latestSignal: 'buy',
+      latestSignalScore: 1,
+      summary: 'cached',
+      generatedAt: '2026-08-20T00:00:00.000Z',
+      evaluations: [],
+      engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
+      ratingBasis: STOCK_BACKTEST_RATING_BASIS,
+    };
+    redisFetch.redis.set(stockBacktestCacheKey('AAPL', 10), JSON.stringify(cachedByFirstCaller));
+
+    const response = await backtestStock(makeBacktestCtx('user_pro'), {
+      symbol: 'AAPL',
+      name: 'Apple Computer',
+      evalWindowDays: 10,
+    });
+
+    // Served from the shared entry — no second Yahoo fetch...
+    assert.equal(response.summary, 'cached');
+    assert.equal(redisFetch.yahooCallCount(), 0);
+    // ...but labelled with THIS caller's name.
+    assert.equal(response.name, 'Apple Computer');
+    // The shared entry itself stays canonical; the re-stamp is per-response.
+    assert.equal(
+      JSON.parse(redisFetch.redis.get(stockBacktestCacheKey('AAPL', 10)) || '{}').name,
+      'Apple Inc.',
+    );
+  });
+
+  it('falls back to the symbol when a cache-hit caller sends no name', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const redisFetch = createRedisAwareBacktestFetch(mockChartPayload());
+    globalThis.fetch = redisFetch.fetch;
+    redisFetch.redis.set(stockBacktestCacheKey('AAPL', 10), JSON.stringify({
+      available: true,
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      display: 'AAPL',
+      currency: 'USD',
+      evalWindowDays: 10,
+      evaluationsRun: 1,
+      actionableEvaluations: 1,
+      winRate: 50,
+      directionAccuracy: 50,
+      avgSimulatedReturnPct: 1,
+      cumulativeSimulatedReturnPct: 1,
+      latestSignal: 'buy',
+      latestSignalScore: 1,
+      summary: 'cached',
+      generatedAt: '2026-08-20T00:00:00.000Z',
+      evaluations: [],
+      engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
+      ratingBasis: STOCK_BACKTEST_RATING_BASIS,
+    }));
+
+    const response = await backtestStock(makeBacktestCtx('user_pro'), {
+      symbol: 'AAPL',
+      evalWindowDays: 10,
+    } as never);
+
+    // Same rule the fresh-compute and unavailable paths already apply
+    // (`req.name || symbol`), so a caller's echo does not depend on whether
+    // someone else happened to warm the cache first.
+    assert.equal(response.name, 'AAPL');
+  });
+
   it('returns a deterministic 429 with reset guidance when the daily budget is exceeded', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';

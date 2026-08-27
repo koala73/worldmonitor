@@ -11,7 +11,7 @@ message GetConsumerPriceBasketSeriesRequest {
   string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
   // basket_slug selects the basket (e.g. "essentials-ae").
   string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
-  // range is one of "7d", "30d", "90d", "180d".
+  // range is one of "7d", "30d", "90d". Unsupported values use "30d".
   string range = 3 [(sebuf.http.query) = { name: "range" }];
 }
 
@@ -25,7 +25,7 @@ message GetConsumerPriceBasketSeriesResponse {
   int64 as_of = 3;
   // currency_code is the ISO 4217 currency code.
   string currency_code = 4;
-  // range echoes the requested range.
+  // range is the effective normalized range used for the returned snapshot.
   string range = 5;
   // essentials_series is the fixed basket index series.
   repeated BasketPoint essentials_series = 6;

@@ -213,6 +213,8 @@
       "recent": "Recente zoekopdrachten",
       "empty": "Zoek gegevens of voer opdrachten uit",
       "noResults": "No results found",
+      "resultAnnouncement_one": "{{count}} resultaat voor {{query}}",
+      "resultAnnouncement_other": "{{count}} resultaten voor {{query}}",
       "navigate": "navigeren",
       "select": "selecteren",
       "close": "dichtbij",

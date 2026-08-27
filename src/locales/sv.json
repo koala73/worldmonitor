@@ -213,6 +213,8 @@
       "recent": "Senaste sökningar",
       "empty": "Sök data eller kör kommandon",
       "noResults": "No results found",
+      "resultAnnouncement_one": "{{count}} resultat för {{query}}",
+      "resultAnnouncement_other": "{{count}} resultat för {{query}}",
       "navigate": "navigera",
       "select": "välja",
       "close": "nära",

@@ -1058,7 +1058,9 @@ paths:
                     type: string
                 - name: adults
                   in: query
-                  description: Number of adult passengers (1-9).
+                  description: |-
+                    Number of adult passengers (1-9).
+                     Accepted but currently ignored; quotes are per-person and the count does not filter.
                   required: false
                   example: 1
                   schema:
@@ -2571,7 +2573,9 @@ components:
                     maximum: 9
                     minimum: 1
                     format: int32
-                    description: Number of adult passengers (1-9).
+                    description: |-
+                        Number of adult passengers (1-9).
+                         Accepted but currently ignored; quotes are per-person and the count does not filter.
                 cabin:
                     type: string
                     enum:

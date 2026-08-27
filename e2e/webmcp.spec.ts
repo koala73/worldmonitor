@@ -1,6 +1,8 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
+import { runWebMcpCancellationScenario } from './helpers/webmcp-cancellation';
+
 const requireWebMcp = process.env.WM_REQUIRE_WEBMCP === '1';
 const productionSmoke = process.env.WM_WEBMCP_PRODUCTION === '1';
 const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
@@ -53,14 +55,6 @@ type ToolStartMark = {
   startTime: number;
 };
 
-type CancellationTerminal = {
-  errorMessage: string;
-  invokedBeforeUiReady: boolean;
-  name: string;
-  output?: unknown;
-  rejected: boolean;
-};
-
 async function attachJsonEvidence(
   testInfo: TestInfo,
   name: string,
@@ -99,13 +93,22 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
       }
     };
 
-    // Chrome's origin-trial build wedges every later getTools() call once one
-    // has read an empty inventory, so the probe must not poll for discovery.
-    // It waits for the page's own registration mark and then reads once.
-    const registrationSettled = (): boolean => (
-      target.__wmLcpDebug?.getSnapshot?.().marks
-        .some((mark) => mark.name === 'wm:webmcp:registered') ?? false
-    );
+    // On Chrome's origin-trial build, touching document.modelContext before
+    // the page finishes registering wedges the registration itself: the tools
+    // never appear and every later getTools() hangs. So the probe waits on the
+    // page's own registration mark — which touches nothing — and only then
+    // reads the provider, once.
+    //
+    // The page emits a separate mark for the zero-tool pass. Registration is
+    // over in that case too, so treat it as settled rather than spinning to the
+    // deadline and reporting a generic timeout for a definite outcome.
+    const registrationSettled = (): boolean => {
+      const marks = target.__wmLcpDebug?.getSnapshot?.().marks ?? [];
+      return marks.some((mark) => (
+        mark.name === 'wm:webmcp:registered'
+        || mark.name === 'wm:webmcp:registration-empty'
+      ));
+    };
     const withTimeout = async <T>(work: Promise<T>, ms: number, label: string): Promise<T> => (
       await Promise.race([
         work,
@@ -119,8 +122,10 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
       const deadline = performance.now() + 60_000;
 
       // Runs exactly once, after registration settled. Every exit path either
-      // resolves or throws — nothing here may retry, because a second
-      // getTools() is precisely what the origin-trial build cannot serve.
+      // resolves or throws, so no retry can ever race back ahead of the mark:
+      // ANY read of document.modelContext taken before the page's registration
+      // mark wedges registration itself, whatever that read returns. A
+      // getTools() that resolves empty is one symptom of that, not the cause.
       const readInventoryOnce = async (provider: ExecutableModelContext): Promise<void> => {
         const tools = await withTimeout(provider.getTools(), 15_000, 'getTools()');
         const tool = tools.find((candidate) => candidate.name === 'get_dashboard_context');
@@ -151,9 +156,18 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
       };
 
       const awaitRegistration = (): void => {
-        const provider = document.modelContext as ExecutableModelContext | undefined;
-        if (provider && typeof provider.executeTool === 'function' && registrationSettled()) {
-          void readInventoryOnce(provider).catch(reject);
+        // Do NOT read document.modelContext before the mark. On the
+        // origin-trial build, a single read taken before the page finishes
+        // registering wedges the registration itself — the tools never appear
+        // and every later getTools() hangs. The mark comes from the page's own
+        // instrumentation and touches nothing.
+        if (registrationSettled()) {
+          const provider = document.modelContext as ExecutableModelContext | undefined;
+          if (provider && typeof provider.executeTool === 'function') {
+            void readInventoryOnce(provider).catch(reject);
+            return;
+          }
+          reject(new Error('WebMCP provider is unusable after registration settled.'));
           return;
         }
         if (performance.now() >= deadline) {
@@ -168,122 +182,6 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
     void probe.catch(() => undefined);
     target.__wmWebMcpColdStartContext = probe;
   });
-}
-
-async function installColdStartCancellationProbe(
-  page: Page,
-  toolName: string,
-  input: string,
-): Promise<void> {
-  await page.addInitScript(({ inputJson, name }) => {
-    type ExecutableModelContext = WebMCP.ModelContext & {
-      executeTool(
-        tool: WebMCP.RegisteredTool,
-        input: string,
-        options?: { signal?: AbortSignal },
-      ): Promise<unknown>;
-    };
-    type ProbeWindow = Window & {
-      __wmLcpDebug?: { getSnapshot?: () => { marks: ToolStartMark[] } };
-      __wmWebMcpCancellationController?: AbortController;
-      __wmWebMcpCancellationTerminal?: Promise<CancellationTerminal>;
-    };
-
-    const target = window as ProbeWindow;
-    const isUiReady = (): boolean => (
-      target.__wmLcpDebug?.getSnapshot?.().marks
-        .some((mark) => mark.name === 'wm:boot:webmcp-ui-ready') ?? false
-    );
-    const parseOutput = (value: unknown): unknown => {
-      if (typeof value !== 'string') return value;
-      try {
-        return JSON.parse(value);
-      } catch {
-        return value;
-      }
-    };
-    // Same single-read rule as the cold-start context probe: poll the page's
-    // registration mark, never getTools(), or the origin-trial build wedges.
-    const registrationSettled = (): boolean => (
-      target.__wmLcpDebug?.getSnapshot?.().marks
-        .some((mark) => mark.name === 'wm:webmcp:registered') ?? false
-    );
-    const deadline = performance.now() + 60_000;
-    let invocationStarted = false;
-    const discoverAndInvoke = async (): Promise<void> => {
-      if (invocationStarted) return;
-      try {
-        const provider = document.modelContext as ExecutableModelContext | undefined;
-        if (provider && typeof provider.executeTool === 'function' && registrationSettled()) {
-          invocationStarted = true;
-          const tool = (await Promise.race([
-            provider.getTools(),
-            new Promise<never>((_, rejectRead) => {
-              setTimeout(() => rejectRead(new Error('getTools() did not settle within 15000ms.')), 15_000);
-            }),
-          ])).find((candidate) => candidate.name === name);
-          if (tool) {
-            const controller = new AbortController();
-            target.__wmWebMcpCancellationController = controller;
-            const invokedBeforeUiReady = !isUiReady();
-            const terminal = provider.executeTool(tool, inputJson, { signal: controller.signal }).then(
-              (output) => ({
-                errorMessage: '',
-                invokedBeforeUiReady,
-                name: '',
-                output: parseOutput(output),
-                rejected: false,
-              }),
-              (error: unknown) => ({
-                errorMessage: error && typeof error === 'object' && 'message' in error
-                  ? String(error.message).slice(0, 500)
-                  : String(error).slice(0, 500),
-                invokedBeforeUiReady,
-                name: error && typeof error === 'object' && 'name' in error
-                  ? String(error.name)
-                  : 'unknown',
-                rejected: true,
-              }),
-            );
-            target.__wmWebMcpCancellationTerminal = terminal;
-            return;
-          }
-        }
-      } catch {
-        // Discovery is committed once registration settled, so a failure here
-        // is terminal: leaving the terminal promise unset makes the test's own
-        // tool-start poll report it rather than spinning to its timeout.
-        return;
-      }
-      if (invocationStarted || performance.now() >= deadline) return;
-      setTimeout(() => { void discoverAndInvoke(); }, 5);
-    };
-    void discoverAndInvoke();
-  }, { inputJson: input, name: toolName });
-}
-
-async function readToolStartMark(page: Page, toolName: string): Promise<ToolStartMark | null> {
-  return page.evaluate((name) => {
-    const marks = (window as Window & {
-      __wmLcpDebug?: { getSnapshot?: () => { marks: ToolStartMark[] } };
-    }).__wmLcpDebug?.getSnapshot?.().marks ?? [];
-    return marks.filter((mark) => (
-      mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === name
-    )).at(-1) ?? null;
-  }, toolName);
-}
-
-async function waitForUiReadyMark(page: Page): Promise<void> {
-  await expect.poll(async () => page.evaluate(() => {
-    const debug = (window as unknown as {
-      __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string }> } };
-    }).__wmLcpDebug;
-    return debug?.getSnapshot?.().marks
-      .some((mark) => mark.name === 'wm:boot:webmcp-ui-ready') ?? false;
-  }), {
-    message: 'WebMCP calls wait for the exact Phase-4 UI readiness mark',
-    timeout: 60_000,
-  }).toBe(true);
 }
 
 test.describe('top-level WebMCP dashboard contract', () => {
@@ -402,26 +300,17 @@ test.describe('top-level WebMCP dashboard contract', () => {
         mounted: expect.any(Array),
       },
     });
-    if (coldStart.targetCancellationSupported) {
-      expect(panelProbe).toMatchObject({
-        ok: true,
-        output: {
-          ok: false,
-          status: 'denied',
-          reason: 'panel_not_live',
-        },
-      });
-    } else {
-      expect(panelProbe).toEqual({
-        ok: true,
-        output: {
-          ok: false,
-          status: 'denied',
-          reason: 'target_cancellation_unsupported',
-          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-        },
-      });
-    }
+    // Dashboard-changing tools now run whether or not the browser delivers a
+    // target-side signal, so the outcome is the real application one on every
+    // build — no compatibility branch.
+    expect(panelProbe).toMatchObject({
+      ok: true,
+      output: {
+        ok: false,
+        status: 'denied',
+        reason: 'panel_not_live',
+      },
+    });
 
     let visibleMutation: (MutationExecutionProbe & { visible: boolean }) | null = null;
     if (!productionSmoke) {
@@ -456,25 +345,13 @@ test.describe('top-level WebMCP dashboard contract', () => {
           };
         }
       });
-      if (coldStart.targetCancellationSupported) {
-        expect(mutation).toEqual({ ok: true, output: 'Opened search palette.' });
-        await expect(page.locator('.search-overlay .search-modal')).toBeVisible();
-        visibleMutation = { ...mutation, visible: true };
-        await page.keyboard.press('Escape');
-        await expect(page.locator('.search-overlay')).toHaveCount(0);
-      } else {
-        expect(mutation).toEqual({
-          ok: true,
-          output: {
-            ok: false,
-            status: 'denied',
-            reason: 'target_cancellation_unsupported',
-            message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-          },
-        });
-        await expect(page.locator('.search-overlay')).toHaveCount(0);
-        visibleMutation = { ...mutation, visible: false };
-      }
+      // The palette opens on every build now, not only on one that delivers a
+      // target-side signal.
+      expect(mutation).toEqual({ ok: true, output: 'Opened search palette.' });
+      await expect(page.locator('.search-overlay .search-modal')).toBeVisible();
+      visibleMutation = { ...mutation, visible: true };
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.search-overlay')).toHaveCount(0);
     }
 
     await attachJsonEvidence(testInfo, 'webmcp-smoke.json', {
@@ -508,161 +385,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
   });
 
-  test('cancels a pending browser execution without leaking an unhandled result', async ({ page }, testInfo) => {
-    const pageErrors: Array<{ name: string; message: string }> = [];
-    page.on('pageerror', (error) => {
-      pageErrors.push({ name: error.name, message: error.message.slice(0, 500) });
+  // Production collection is intentionally restricted to this spec. Keep a
+  // read-only wrapper here while the focused local scenario lives in
+  // webmcp-cancellation.spec.ts.
+  if (productionSmoke) {
+    test('completes page work after a caller-side cancel without leaking an unhandled result', async ({ page }, testInfo) => {
+      await runWebMcpCancellationScenario(page, testInfo, { deployedSha, productionSmoke });
     });
-    const cancelTool = productionSmoke ? 'get_dashboard_context' : 'set_map_view';
-    const cancelInput = productionSmoke ? '{}' : JSON.stringify({ view: 'eu', zoom: 4 });
-    await installReadinessRecorder(page);
-    await installColdStartCancellationProbe(page, cancelTool, cancelInput);
-    await page.addInitScript(() => {
-      const rejectionLog: Array<{ name: string; message: string }> = [];
-      Object.defineProperty(window, '__wmWebMcpUnhandledRejections', {
-        configurable: true,
-        value: rejectionLog,
-      });
-      window.addEventListener('unhandledrejection', (event) => {
-        if (rejectionLog.length >= 20) return;
-        const reason = event.reason;
-        let name = typeof reason;
-        let message = String(reason);
-        try {
-          if (reason && (typeof reason === 'object' || typeof reason === 'function')) {
-            if ('name' in reason) name = String(reason.name);
-            if ('message' in reason) message = String(reason.message);
-          }
-        } catch {
-          name = 'unreadable';
-          message = 'Unhandled rejection reason could not be inspected.';
-        }
-        rejectionLog.push({ name: name.slice(0, 100), message: message.slice(0, 500) });
-      });
-    });
-
-    await page.goto(
-      '/dashboard?lat=0&lon=0&zoom=2&view=global&timeRange=24h&layers=none',
-      { waitUntil: 'domcontentloaded' },
-    );
-    await expect.poll(
-      async () => Boolean(await readToolStartMark(page, cancelTool)),
-      {
-        message: `${cancelTool} callback must enter before the caller aborts`,
-        timeout: 60_000,
-      },
-    ).toBe(true);
-    const toolStart = await readToolStartMark(page, cancelTool);
-    expect(toolStart).not.toBeNull();
-    const targetCancellationSupported = Boolean(
-      toolStart?.detail?.targetCancellationSupported,
-    );
-    const abortCancellation = async (): Promise<void> => page.evaluate(() => {
-      const controller = (window as Window & {
-        __wmWebMcpCancellationController?: AbortController;
-      }).__wmWebMcpCancellationController;
-      if (!controller) throw new Error('Cold-start cancellation controller is unavailable.');
-      controller.abort();
-    });
-    const readCancellation = async (): Promise<CancellationTerminal> => page.evaluate(async () => {
-      const terminal = (window as Window & {
-        __wmWebMcpCancellationTerminal?: Promise<CancellationTerminal>;
-      }).__wmWebMcpCancellationTerminal;
-      if (!terminal) throw new Error('Cold-start cancellation terminal is unavailable.');
-      return terminal;
-    });
-    let cancellation: CancellationTerminal;
-    if (!targetCancellationSupported && !productionSmoke) {
-      // The compatibility gate rejects synchronously at callback entry. Read
-      // that terminal first so a later caller abort cannot win the host race.
-      cancellation = await readCancellation();
-      await abortCancellation();
-    } else {
-      await abortCancellation();
-      cancellation = await readCancellation();
-    }
-
-    await waitForUiReadyMark(page);
-    let afterMap: { view: string | null; zoom: number | null } | null = null;
-    await expect(page.locator('#panelsGrid')).toBeVisible({ timeout: 30_000 });
-    // Cancellation can settle the caller before work queued by the provider or
-    // dashboard binding runs. Keep the page alive long enough to catch that
-    // late rejection/error or mutation channel instead of ending the smoke
-    // immediately. The authoritative map sample must happen after this window.
-    const lateLeakWindowMs = 1_500;
-    await page.waitForTimeout(lateLeakWindowMs);
-    if (!productionSmoke) {
-      await expect.poll(async () => {
-        afterMap = await page.evaluate(async () => {
-          type ExecutableModelContext = WebMCP.ModelContext & {
-            executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
-          };
-          const provider = document.modelContext as ExecutableModelContext;
-          const contextTool = (await provider.getTools())
-            .find((tool) => tool.name === 'get_dashboard_context');
-          if (!contextTool) throw new Error('get_dashboard_context was not discovered.');
-          const raw = await provider.executeTool(contextTool, '{}');
-          const context = (typeof raw === 'string' ? JSON.parse(raw) : raw) as {
-            map?: { view?: string; zoom?: number };
-          };
-          return {
-            view: context.map?.view ?? null,
-            zoom: context.map?.zoom ?? null,
-          };
-        });
-        return afterMap;
-      }, { timeout: 30_000 }).toEqual({ view: 'global', zoom: 2 });
-    }
-    const unhandledRejections = await page.evaluate(() => (
-      (window as Window & {
-        __wmWebMcpUnhandledRejections?: Array<{ name: string; message: string }>;
-      }).__wmWebMcpUnhandledRejections ?? []
-    ));
-
-    await attachJsonEvidence(testInfo, 'webmcp-cancellation.json', {
-      target: page.url(),
-      deployedSha,
-      tool: cancelTool,
-      callback: {
-        invokedBeforeUiReady: cancellation.invokedBeforeUiReady,
-        targetCancellationSupported,
-        startTime: toolStart?.startTime ?? null,
-      },
-      terminal: { ...cancellation, afterMap },
-      visibleDashboard: true,
-      lateLeakWindowMs,
-      pageErrors,
-      unhandledRejections,
-    });
-
-    expect(cancellation.invokedBeforeUiReady).toBe(true);
-    if (!targetCancellationSupported && !productionSmoke) {
-      expect(cancellation).toMatchObject({
-        rejected: false,
-        output: {
-          ok: false,
-          status: 'denied',
-          reason: 'target_cancellation_unsupported',
-          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-        },
-      });
-    } else {
-      expect(cancellation.rejected).toBe(true);
-      expect(cancellation.name).toBe('AbortError');
-    }
-    if (!productionSmoke) {
-      expect(afterMap, 'cancelled or refused set_map_view must leave the deep-linked map intact')
-        .toEqual({ view: 'global', zoom: 2 });
-    }
-    expect(
-      pageErrors,
-      'cancelled execution must not leak an unexpected pageerror',
-    ).toEqual([]);
-    expect(
-      unhandledRejections,
-      'cancelled execution must not leak an unhandledrejection after the caller settles',
-    ).toEqual([]);
-  });
+  }
 
   test('records every production origin and cross-origin embed denial', async ({ browser }, testInfo) => {
     test.skip(!productionSmoke, 'The bounded deployed-origin matrix runs only in production mode.');
