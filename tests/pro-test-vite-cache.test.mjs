@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -10,6 +10,7 @@ import {
   hashLockfile,
   resolveProTestViteCacheDir,
 } from '../scripts/pro-test-vite-cache.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 describe('pro-test vite cacheDir (#6766)', () => {
   it('honours WM_PRO_TEST_VITE_CACHE over git and lockfile', () => {
@@ -65,7 +66,7 @@ describe('pro-test vite cacheDir (#6766)', () => {
   });
 
   it('falls back to the per-package vite cache when git is unavailable', () => {
-    const root = mkdtempSync(join(tmpdir(), 'wm-pro-test-vite-'));
+    const root = createTempDir('wm-pro-test-vite-');
     const resolved = resolveProTestViteCacheDir({
       env: {},
       proTestRoot: root,
@@ -76,7 +77,7 @@ describe('pro-test vite cacheDir (#6766)', () => {
   });
 
   it('reads package-lock.json from the pro-test root when contents are not injected', () => {
-    const root = mkdtempSync(join(tmpdir(), 'wm-pro-test-lock-'));
+    const root = createTempDir('wm-pro-test-lock-');
     const lockfile = '{"fromDisk":true}\n';
     writeFileSync(join(root, 'package-lock.json'), lockfile);
     const resolved = resolveProTestViteCacheDir({
@@ -91,7 +92,7 @@ describe('pro-test vite cacheDir (#6766)', () => {
   });
 
   it('does not point cacheDir at node_modules or a symlink of it', () => {
-    const root = mkdtempSync(join(tmpdir(), 'wm-pro-test-nosym-'));
+    const root = createTempDir('wm-pro-test-nosym-');
     mkdirSync(join(root, 'node_modules'));
     const resolved = resolveProTestViteCacheDir({
       env: {},

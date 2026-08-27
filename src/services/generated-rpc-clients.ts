@@ -30,8 +30,10 @@ import type { TradeServiceClient as TradeServiceClientInstance } from '@/generat
 import type { UnrestServiceClient as UnrestServiceClientInstance } from '@/generated/client/worldmonitor/unrest/v1/service_client';
 import type { WebcamServiceClient as WebcamServiceClientInstance } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { WildfireServiceClient as WildfireServiceClientInstance } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
+import type { MarketServiceClient as MarketServiceClientCtor } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-type RpcClientOptions = { fetch?: typeof fetch; defaultHeaders?: Record<string, string> };
+/** Derived from generated service client constructors so protoc-gen option drift fails typecheck. */
+type RpcClientOptions = NonNullable<ConstructorParameters<typeof MarketServiceClientCtor>[1]>;
 type RpcClientConstructor<T extends object> = new (baseURL: string, options?: RpcClientOptions) => T;
 type RpcClientConstructorLoader<T extends object> = () => Promise<RpcClientConstructor<T>>;
 

@@ -43,8 +43,13 @@ message AircraftDetails {
 message GetAircraftDetailsRequest {
   // ICAO 24-bit hex address (lowercase).
   string icao24 = 1 [
+    // Declared here rather than only in the handler so the generated validator
+    // rejects a malformed address locally and the published OpenAPI carries the
+    // pattern — mirrors GetDefenseIndustrialBaseRequest.country_code. Kept
+    // case-insensitive because the handler lowercases; [0-9a-f] would reject
+    // uppercase input callers send today.
     (buf.validate.field).required = true,
-    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.pattern = "^[0-9a-fA-F]{6}$",
     (sebuf.http.query) = {name: "icao24"}
   ];
 }

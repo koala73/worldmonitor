@@ -67,6 +67,10 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // stayed hidden until PR #3797 fixed the unlock-wipe so users could
   // actually type and click Send.
   '/api/chat-analyst',
+  // Single-aircraft Wingbits enrichment is a caller-controlled paid-provider
+  // lookup. Keep the batch sibling outside this registry because the map uses
+  // that route as its existing anonymous, rate-limited enrichment path.
+  '/api/military/v1/get-aircraft-details',
   // The three AviationStack-METERED routes. Each cache miss buys a paid
   // upstream call and get-carrier-ops buys one PER AIRPORT, so anonymous access
   // was a standing invitation: one scripted client took ~1,000 calls/day, ~43%

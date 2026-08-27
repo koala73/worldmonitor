@@ -243,6 +243,93 @@ function isTokenBoundedMatch(text, anchor, index) {
   return true;
 }
 
+function skipWhitespace(text, index) {
+  while (index < text.length && /\s/.test(text[index])) index += 1;
+  return index;
+}
+
+function readAssignedObjectShape(text, from, wrappers) {
+  let index = skipWhitespace(text, from);
+  if (text[index] !== '=') return null;
+
+  index = skipWhitespace(text, index + 1);
+  let parenthesisDepth = 0;
+  while (index < text.length) {
+    if (text[index] === '(') {
+      parenthesisDepth += 1;
+      index = skipWhitespace(text, index + 1);
+      continue;
+    }
+
+    const identifier = text.slice(index).match(/^[A-Za-z_$][\w$.]*/)?.[0];
+    if (identifier && wrappers.has(identifier)) {
+      index = skipWhitespace(text, index + identifier.length);
+      if (text[index] !== '(') return null;
+      parenthesisDepth += 1;
+      index = skipWhitespace(text, index + 1);
+      continue;
+    }
+
+    if (text[index] === '{') return { index, parenthesisDepth };
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Return the body of the object literal assigned to a code-level declaration.
+ *
+ * The right-hand side may contain grouping parentheses and explicitly allowed
+ * call wrappers. Wrapper calls must have a call opener and every opened
+ * parenthesis must close immediately after the object. Returns null for a
+ * missing, commented, string-contained, unknown, or malformed declaration.
+ *
+ * @param {string} source
+ * @param {string} declaration
+ * @param {Set<string>} wrappers
+ * @returns {string | null}
+ */
+export function extractAssignedObjectBlock(source, declaration, wrappers) {
+  const text = stripJsComments(source);
+  let shape = null;
+  let invalid = false;
+
+  walkCode(text, 0, (_character, index) => {
+    if (!text.startsWith(declaration, index) || !isTokenBoundedMatch(text, declaration, index)) return true;
+    shape = readAssignedObjectShape(text, index + declaration.length, wrappers);
+    if (!shape) invalid = true;
+    return false;
+  });
+
+  if (invalid || !shape) return null;
+
+  let bodyEnd = -1;
+  let braceDepth = 0;
+  walkCode(text, shape.index, (character, index) => {
+    if (character === '{') {
+      braceDepth += 1;
+    } else if (character === '}') {
+      braceDepth -= 1;
+      if (braceDepth === 0) {
+        bodyEnd = index;
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (bodyEnd === -1) return null;
+
+  let afterBody = skipWhitespace(text, bodyEnd + 1);
+  for (let depth = 0; depth < shape.parenthesisDepth; depth += 1) {
+    if (text[afterBody] !== ')') return null;
+    afterBody = skipWhitespace(text, afterBody + 1);
+  }
+
+  return text.slice(shape.index + 1, bodyEnd);
+}
+
 /**
  * Return the text between the balanced `open`/`close` delimiters that follow
  * the first code-level occurrence of `anchor`.

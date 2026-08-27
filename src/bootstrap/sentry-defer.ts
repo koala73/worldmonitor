@@ -53,7 +53,6 @@ type SentryLoader = () => Promise<SentryNs>;
 
 let sentryNs: SentryNs | null = null;
 let initPromise: Promise<void> | null = null;
-let scheduled = false;
 let queueInstalled = false;
 // Set when the deferred `await import('@sentry/browser')` rejects (network
 // error, ad blocker, CDN outage). Subsequent `enqueueSentryCall` calls
@@ -324,8 +323,6 @@ async function loadAndInit(): Promise<void> {
 export function scheduleSentryInit(): Promise<void> {
   if (initPromise) return initPromise;
   if (typeof window === 'undefined') return Promise.resolve();
-  if (scheduled) return Promise.resolve();
-  scheduled = true;
 
   initPromise = new Promise<void>((resolve) => {
     const start = (): void => {
@@ -374,7 +371,6 @@ export function _setSentryLoaderForTests(loader: SentryLoader): void {
 export function _resetSentryDeferStateForTests(): void {
   sentryNs = null;
   initPromise = null;
-  scheduled = false;
   queueInstalled = false;
   loadFailed = false;
   pendingCalls.length = 0;

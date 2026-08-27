@@ -483,7 +483,7 @@ import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
-const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
+const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.

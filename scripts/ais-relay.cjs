@@ -34,6 +34,7 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
+const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -1317,6 +1318,7 @@ const xState = {
   lastError: null,
   rateLimitedUntil: 0,
   rateLimitAttempt: 0,
+  backoffCause: null,
   // True when a Redis read failed, so last-good state is present but unreadable.
   // Blocks polling/publishing until a clean read (see the cycle's hydrate()).
   hydrationFailed: false,
@@ -2363,8 +2365,25 @@ function _parseYahooChartJson(body) {
     const price = meta.regularMarketPrice;
     const prevClose = meta.chartPreviousClose || meta.previousClose || price;
     const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    // Round to 7 significant digits like the cron seeders' roundSparkline
+    // (_seed-utils.mjs). Raw float64 noise made these FAST-tier keys ~2x the
+    // rounded size, and whichever writer wins the relay/cron race decides
+    // what every visitor downloads on cold load.
+    //
+    // The guard below MIRRORS toSignificantDigits in _seed-utils.mjs exactly:
+    // non-numbers, non-finite values and 0 pass through untouched so a malformed
+    // upstream degrades identically on both writers. Without it a string close
+    // ("N/A") becomes NaN and serialises to null, denting the curve on the relay
+    // path only. CJS cannot import the ESM helper, so the copy is deliberate and
+    // tests/ais-relay-sparkline-precision.test.mjs pins the two in lockstep.
     const closes = result.indicators?.quote?.[0]?.close;
-    const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
+    const sparkline = Array.isArray(closes)
+      ? closes.filter((v) => v != null).map((v) => (
+        typeof v === 'number' && Number.isFinite(v) && v !== 0
+          ? Number(v.toPrecision(7))
+          : v
+      ))
+      : [];
     return { price, change, sparkline };
   } catch { return null; }
 }
@@ -4065,36 +4084,25 @@ async function seedClassifyForVariant(variant, seenTitles) {
     return { total: 0, classified: 0, skipped: 0 };
   }
 
-  // Map of title → item metadata; recency gate: skip articles older than 6h
+  // #7084: stale RSS titles already had their alert pass when served fresh.
+  // Exclude only those digest-derived candidates; fresh X candidates remain
+  // eligible because they are an independent input to the combined pass.
+  if (isStaleDigestReplay(digest)) {
+    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
+  }
+
+  // Map of title → item metadata; recency gate: skip articles older than 6h.
+  // The pure helper keeps the stale-RSS plus fresh-X behavior executable in
+  // tests without importing this boot-on-require relay.
   const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
-  const now6h = Date.now() - RECENCY_GATE_MS;
-  const allTitles = new Map();
-  if (digest?.categories) {
-    for (const bucket of Object.values(digest.categories)) {
-      for (const item of bucket?.items ?? []) {
-        if (!item?.title) continue;
-        if (item.publishedAt && item.publishedAt < now6h) continue; // stale item
-        if (!allTitles.has(item.title)) {
-          allTitles.set(item.title, {
-            source: item.source ?? variant,
-            publishedAt: item.publishedAt ?? Date.now(),
-            corroborationCount: item.corroborationCount ?? 1,
-            link: item.link ?? '',
-          });
-        }
-      }
-    }
-  }
-  for (const candidate of xNewsAccounts.collectXAlertCandidates(xState.items, RELAY_SOURCE_TIERS, Date.now(), RECENCY_GATE_MS)) {
-    if (!allTitles.has(candidate.title)) {
-      allTitles.set(candidate.title, {
-        source: candidate.source,
-        publishedAt: candidate.publishedAt,
-        corroborationCount: candidate.corroborationCount,
-        link: candidate.link,
-      });
-    }
-  }
+  const classifyNow = Date.now();
+  const xCandidates = xNewsAccounts.collectXAlertCandidates(
+    xState.items,
+    RELAY_SOURCE_TIERS,
+    classifyNow,
+    RECENCY_GATE_MS,
+  );
+  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
 
   const titleArr = [...allTitles.keys()];
@@ -8681,10 +8689,17 @@ async function seedTransitSummaries() {
   // coverage shortfall surfaces via the `pwCovered/N` log + recordCount only.
   const CANONICAL_IDS = Object.keys(CHOKEPOINT_THREAT_LEVELS);
   let pwCovered = 0;
+  // WHICH ids are missing, not just how many. A bare `11/13` cannot be acted on
+  // after the fact: portwatch dropped exactly two chokepoints for ~4.5h on
+  // 2026-08-25 and by the time anyone read the alarm the upstream had recovered,
+  // so the shortfall was unattributable — the count was identical every cycle
+  // and named nothing.
+  const pwMissing = [];
 
   for (const cpId of CANONICAL_IDS) {
     const cpData = pw[cpId];
     if (cpData) pwCovered++;
+    else pwMissing.push(cpId);
     const threatLevel = CHOKEPOINT_THREAT_LEVELS[cpId] || 'normal';
     const history = cpData?.history ?? [];
     const anomaly = detectTrafficAnomaly(history, threatLevel);
@@ -8745,7 +8760,7 @@ async function seedTransitSummaries() {
   }
 
   if (pwCovered < CANONICAL_IDS.length) {
-    console.warn(`[TransitSummary] portwatch coverage shortfall: ${pwCovered}/${CANONICAL_IDS.length} — missing chokepoints will publish zero-state until next upstream success`);
+    console.warn(`[TransitSummary] portwatch coverage shortfall: ${pwCovered}/${CANONICAL_IDS.length} (missing: ${pwMissing.join(', ')}) — missing chokepoints will publish zero-state until next upstream success`);
   }
 
   const ok = await envelopeWrite(TRANSIT_SUMMARY_REDIS_KEY, { summaries, fetchedAt: now }, TRANSIT_SUMMARY_TTL, { recordCount: pwCovered, sourceVersion: 'transit-summaries' });
@@ -10709,6 +10724,7 @@ const server = http.createServer(async (req, res) => {
         pollInFlight: xPollGuard.isInFlight(),
         pollInFlightSince: xPollGuard.startedAt() ? new Date(xPollGuard.startedAt()).toISOString() : null,
         rateLimitedUntil: xState.rateLimitedUntil ? new Date(xState.rateLimitedUntil).toISOString() : null,
+        backoffCause: xState.backoffCause || null,
       },
       oref: {
         enabled: SIREN_ALERTS_ENABLED,

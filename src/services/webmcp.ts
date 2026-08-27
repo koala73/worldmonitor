@@ -27,6 +27,7 @@
 // awaits) so the probe finds the tools before it gives up.
 
 import { trackPrivacyRestricted, type UmamiEvent } from './analytics';
+import { markLcpDebug } from '../utils/lcp-debug';
 import {
   WEBMCP_SPA_TOOL,
   WEBMCP_SPA_TOOL_NAMES,
@@ -42,21 +43,38 @@ import {
 } from '../../shared/agent-bus-contract';
 
 export interface WebMcpAppBindings {
-  openCountryBriefByCode(code: string, country: string): Promise<void>;
+  openCountryBriefByCode(
+    code: string,
+    country: string,
+    options?: WebMcpExecutionOptions,
+  ): boolean | Promise<boolean>;
   resolveCountryName(code: string): string;
   // Returns a Promise because implementations may await a readiness signal
   // (e.g. waiting for the search modal to exist during startup) before
   // dispatching. Tool executes must `await` it so rejections surface to
   // withInvocationLogging's catch path.
-  openSearch(): void | Promise<void>;
-  getDashboardContext(): DashboardContextSnapshot | Promise<DashboardContextSnapshot>;
-  applyDashboardAction(action: unknown): DashboardActionResult | Promise<DashboardActionResult>;
+  openSearch(options?: WebMcpExecutionOptions): boolean | Promise<boolean>;
+  getDashboardContext(
+    options?: WebMcpExecutionOptions,
+  ): DashboardContextSnapshot | Promise<DashboardContextSnapshot>;
+  applyDashboardAction(
+    action: unknown,
+    options?: WebMcpExecutionOptions,
+  ): DashboardActionResult | Promise<DashboardActionResult>;
   searchDashboard(
     query: string,
     scope: DashboardSearchScope,
     limit: number,
+    options?: WebMcpExecutionOptions,
   ): DashboardSearchResponse | Promise<DashboardSearchResponse>;
-  openSearchResult(resultKey: string): DashboardSearchOpenResult | Promise<DashboardSearchOpenResult>;
+  openSearchResult(
+    resultKey: string,
+    options?: WebMcpExecutionOptions,
+  ): DashboardSearchOpenResult | Promise<DashboardSearchOpenResult>;
+}
+
+export interface WebMcpExecutionOptions {
+  signal?: AbortSignal;
 }
 
 export type DashboardSearchScope = 'all' | 'signals' | 'map' | 'panels' | 'actions';
@@ -151,9 +169,16 @@ type RegistrationFailureReason =
   | 'invalid-tool'
   | 'unknown';
 
-type DashboardWebMcpTool = WebMCP.ModelContextTool & {
+interface WebMcpToolExecutionContext {
+  signal?: AbortSignal;
+}
+
+type DashboardWebMcpTool = Omit<WebMCP.ModelContextTool, 'execute'> & {
   name: WebMcpSpaToolName;
-  execute: WebMCP.ToolExecuteCallback<Record<string, unknown>>;
+  execute: (
+    input: Record<string, unknown>,
+    context?: WebMcpToolExecutionContext,
+  ) => Promise<unknown> | unknown;
 };
 
 interface WebMcpRegistrationRuntime {
@@ -173,6 +198,10 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
   'search_state_changed',
   'result_no_longer_available',
   'result_no_longer_executable',
+]);
+const READ_ONLY_WEBMCP_TOOLS = new Set<WebMcpSpaToolName>([
+  WEBMCP_SPA_TOOL.getDashboardContext,
+  WEBMCP_SPA_TOOL.searchDashboard,
 ]);
 const MAX_SEARCH_QUERY_CHARS = 160;
 const MAX_SEARCH_RESULTS = 10;
@@ -221,6 +250,17 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   search_dashboard: 'World Monitor could not search the dashboard.',
   open_search_result: 'World Monitor could not open that search result.',
 };
+const UNSUPPORTED_MUTATION_MESSAGE =
+  'This browser cannot safely execute dashboard-changing WebMCP tools.';
+
+function unsupportedMutationResult(): Record<string, unknown> {
+  return {
+    ok: false,
+    status: 'denied',
+    reason: 'target_cancellation_unsupported',
+    message: UNSUPPORTED_MUTATION_MESSAGE,
+  };
+}
 
 class SafeWebMcpError extends Error {
   public constructor(
@@ -254,6 +294,69 @@ function errorName(error: unknown): string {
   }
 }
 
+export function isWebMcpAbortError(error: unknown): boolean {
+  return errorName(error) === 'AbortError';
+}
+
+function isAbortSignal(value: unknown): value is AbortSignal {
+  if (!value || typeof value !== 'object') return false;
+  try {
+    const signal = value as Partial<AbortSignal>;
+    return typeof signal.aborted === 'boolean'
+      && typeof signal.addEventListener === 'function'
+      && typeof signal.removeEventListener === 'function'
+      && typeof signal.throwIfAborted === 'function';
+  } catch {
+    return false;
+  }
+}
+
+export function throwIfWebMcpAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  signal.throwIfAborted();
+  throw new DOMException('Tool execution was aborted.', 'AbortError');
+}
+
+export async function raceWebMcpAbort<T>(
+  source: PromiseLike<T> | T,
+  signal?: AbortSignal,
+): Promise<T> {
+  throwIfWebMcpAborted(signal);
+  if (!signal) return await source;
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = (): void => signal.removeEventListener('abort', handleAbort);
+    const finish = (callback: (value: T) => void, value: T): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback(value);
+    };
+    const fail = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const handleAbort = (): void => {
+      try {
+        throwIfWebMcpAborted(signal);
+      } catch (error) {
+        fail(error);
+      }
+    };
+
+    signal.addEventListener('abort', handleAbort, { once: true });
+    Promise.resolve(source).then(
+      (value) => finish(resolve, value),
+      fail,
+    );
+    // Close the race between the entry check and listener installation.
+    if (signal.aborted) handleAbort();
+  });
+}
+
 function withInvocationLogging(
   name: WebMcpSpaToolName,
   fn: (
@@ -265,10 +368,31 @@ function withInvocationLogging(
     args: Record<string, unknown>,
     result: unknown,
   ) => Record<string, unknown>,
-): WebMCP.ToolExecuteCallback<Record<string, unknown>> {
-  return async (args, extra?: { signal?: AbortSignal }) => {
+): DashboardWebMcpTool['execute'] {
+  return async (args, extra?: WebMcpToolExecutionContext) => {
+    const signal = isAbortSignal(extra?.signal) ? extra.signal : undefined;
+    markLcpDebug('wm:webmcp:tool-start', {
+      tool: name,
+      targetCancellationSupported: Boolean(signal),
+    });
     try {
-      const result = await fn(args, extra);
+      let result: unknown;
+      if (!READ_ONLY_WEBMCP_TOOLS.has(name) && !signal) {
+        // Chrome releases that implement the original one-argument callback
+        // can abort executeTool() without cancelling work already running in
+        // this page. Never enter a mutation-capable binding unless the host
+        // supplies the target-side signal introduced by the cancellable
+        // callback API. Return a structured denial because some hosts erase
+        // the name and message of errors raised by the page callback.
+        result = unsupportedMutationResult();
+      } else {
+        throwIfWebMcpAborted(signal);
+        result = await fn(args, signal ? { signal } : undefined);
+        // Browser cancellation rejects executeTool independently of this
+        // callback. Re-check here so late work cannot publish success telemetry
+        // after the host has already cancelled the invocation.
+        throwIfWebMcpAborted(signal);
+      }
       enforceOutputBudget(result);
       const invocation = classifyInvocationResult(result);
       reportWebMcpEvent(trackEvent, 'webmcp-tool-invoked', {
@@ -278,14 +402,17 @@ function withInvocationLogging(
       });
       return result;
     } catch (error) {
-      const reason = classifyInvocationError(error);
+      const reason = signal?.aborted
+        ? 'cancelled'
+        : classifyInvocationError(error);
       reportWebMcpEvent(trackEvent, 'webmcp-tool-invoked', {
         tool: name,
         outcome: 'failure',
         reason,
       });
+      if (signal?.aborted) throwIfWebMcpAborted(signal);
       if (error instanceof SafeWebMcpError) throw error;
-      if (errorName(error) === 'AbortError') throw error;
+      if (isWebMcpAbortError(error)) throw error;
       if (error instanceof DashboardBindingError) {
         throw new SafeWebMcpError(
           `Dashboard unavailable: ${boundedText(error.message, 160)} Reason: ${error.reason}.`,
@@ -357,7 +484,7 @@ function classifyInvocationResult(result: unknown): {
 function classifyInvocationError(error: unknown): WebMcpInvocationReason {
   if (error instanceof SafeWebMcpError) return error.analyticsReason;
   if (error instanceof DashboardBindingError) return 'unavailable';
-  if (errorName(error) === 'AbortError') return 'cancelled';
+  if (isWebMcpAbortError(error)) return 'cancelled';
   return 'internal';
 }
 
@@ -519,12 +646,13 @@ function hasOnlyOwnKeys(
 async function applyDashboardAction(
   action: unknown,
   app: WebMcpAppBindings,
+  options?: WebMcpExecutionOptions,
 ): Promise<Record<string, unknown>> {
   // Denied and invalid actions are expected, structured control outcomes—not
   // transport failures. Preserve the narrow applier result so agents can branch
   // on stable reasons and per-target statuses. Runtime/binding faults still
   // reject through withInvocationLogging's safe error boundary.
-  return boundDashboardActionResult(await app.applyDashboardAction(action));
+  return boundDashboardActionResult(await app.applyDashboardAction(action, options));
 }
 
 export function buildWebMcpTools(
@@ -550,7 +678,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openCountryBrief, async (args) => {
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openCountryBrief, async (args, extra) => {
         const iso2 = typeof args.iso2 === 'string' ? args.iso2.toUpperCase() : '';
         if (!ISO2.test(iso2)) {
           throw new SafeWebMcpError(
@@ -559,7 +687,13 @@ export function buildWebMcpTools(
           );
         }
         const name = boundedText(app.resolveCountryName(iso2), 160) || iso2;
-        await app.openCountryBriefByCode(iso2, name);
+        const opened = await app.openCountryBriefByCode(iso2, name, extra);
+        if (opened !== true) {
+          throw new SafeWebMcpError(
+            'The requested country brief did not become visible.',
+            'unavailable',
+          );
+        }
         return `Opened intelligence brief for ${name} (${iso2}).`;
       }, trackEvent),
     },
@@ -574,8 +708,14 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearch, async () => {
-        await app.openSearch();
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearch, async (_args, extra) => {
+        const opened = await app.openSearch(extra);
+        if (opened !== true) {
+          throw new SafeWebMcpError(
+            'The search palette did not become visible.',
+            'unavailable',
+          );
+        }
         return 'Opened search palette.';
       }, trackEvent),
     },
@@ -590,8 +730,8 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getDashboardContext, async () => (
-        boundDashboardContext(await app.getDashboardContext())
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getDashboardContext, async (_args, extra) => (
+        boundDashboardContext(await app.getDashboardContext(extra))
       ), trackEvent),
     },
     {
@@ -614,11 +754,11 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openDashboardPanel, async (args) => (
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openDashboardPanel, async (args, extra) => (
         applyDashboardAction({
           type: 'open_panel',
           panelId: args.panelId,
-        }, app)
+        }, app, extra)
       ), trackEvent),
     },
     {
@@ -673,14 +813,14 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapView, async (args) => (
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapView, async (args, extra) => (
         applyDashboardAction({
           type: 'set_view',
           view: args.view,
           lat: args.lat,
           lon: args.lon,
           zoom: args.zoom,
-        }, app)
+        }, app, extra)
       ), trackEvent),
     },
     {
@@ -709,11 +849,11 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapLayers, async (args) => (
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapLayers, async (args, extra) => (
         applyDashboardAction({
           type: 'set_layers',
           layers: args.layers,
-        }, app)
+        }, app, extra)
       ), trackEvent),
     },
     {
@@ -748,7 +888,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.searchDashboard, async (args) => {
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.searchDashboard, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['query', 'scope', 'limit'])) {
           throw new SafeWebMcpError(
             'search_dashboard accepts only query, scope, and limit.',
@@ -786,6 +926,7 @@ export function buildWebMcpTools(
           query,
           scope as DashboardSearchScope,
           Number(limit),
+          extra,
         ));
       }, trackEvent, (args, value) => {
         const result = value as DashboardSearchResponse;
@@ -816,7 +957,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearchResult, async (args) => {
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearchResult, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['resultKey'])) {
           return boundSearchOpenResult({
             ok: false,
@@ -832,7 +973,7 @@ export function buildWebMcpTools(
             reason: 'malformed_arguments',
           });
         }
-        return boundSearchOpenResult(await app.openSearchResult(resultKey));
+        return boundSearchOpenResult(await app.openSearchResult(resultKey, extra));
       }, trackEvent),
     },
   ];
@@ -911,6 +1052,12 @@ function startRegistration(
   void Promise.all(registrations).then((accepted) => {
     if (controller.signal.aborted) return;
     const toolCount = accepted.filter(Boolean).length;
+    // Emitted for EVERY settled registration pass, including the zero-tool
+    // one. A discovery probe that polls getTools() before this point observes
+    // an empty inventory, and on the Chrome origin-trial path that empty read
+    // wedges every later getTools() call for the lifetime of the page. Waiting
+    // on this mark is how a probe reaches the inventory in one call instead.
+    markLcpDebug('wm:webmcp:registered', { toolCount });
     if (toolCount === 0) return;
     reportWebMcpEvent(trackEvent, 'webmcp-registered', {
       toolCount,

@@ -175,7 +175,10 @@ export function searchVectors(
 
         for (const query of queryEmbeddings) {
           const score = cosineFn(query, stored);
-          if (score < minScore) continue;
+          // NaN passes every < comparison, so a dimension-mismatched
+          // embedding (legacy stored vectors vs current model dim) would
+          // sail through the minScore filter as a match.
+          if (!Number.isFinite(score) || score < minScore) continue;
           const existing = best.get(record.id);
           if (!existing || score > existing.score) {
             best.set(record.id, {

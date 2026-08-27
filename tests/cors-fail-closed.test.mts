@@ -31,6 +31,23 @@ function stripComments(source: string): string {
     .replace(/\/\/.*$/gm, '');
 }
 
+const corsRequest = () =>
+  new Request('https://api.worldmonitor.app/api/notification-channels', {
+    headers: { Origin: 'https://worldmonitor.app' },
+  });
+
+const exposedHeaders = (headers: Record<string, string>) =>
+  headers['Access-Control-Expose-Headers']
+    .split(',')
+    .map((name) => name.trim());
+
+const CORS_SURFACES: Array<[string, () => Record<string, string>]> = [
+  ['server/cors.ts getCorsHeaders', () => getCorsHeaders(corsRequest())],
+  ['api/_cors.js getCorsHeaders', () => getCorsHeadersJs(corsRequest())],
+  ['api/_cors.js getPublicCorsHeaders', () => getPublicCorsHeadersJs()],
+  ['workers/api-cors-preflight buildCorsHeaders', () => buildCorsHeadersWorker('https://worldmonitor.app')],
+];
+
 describe('cors helper', () => {
   it('returns headers for a well-formed request', () => {
     const req = new Request('https://worldmonitor.app/x', {
@@ -132,31 +149,14 @@ describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () 
  * Asserted against the header each surface actually produces, not against the
  * source constant: a list is only exposed if it reaches the response.
  *
- * Full parity across the triplet is deliberately NOT asserted — the Worker list
- * has pre-existing drift (it predates the IETF RateLimit fields) and widening
- * this test to full parity would fail on that unrelated gap.
+ * The IETF RateLimit fields have their own parity assertion below because all
+ * four browser-facing CORS surfaces must expose the same standard fields.
  */
 describe('X-Billing-Verification is readable cross-origin (#5622)', () => {
-  const req = () =>
-    new Request('https://api.worldmonitor.app/api/notification-channels', {
-      headers: { Origin: 'https://worldmonitor.app' },
-    });
-  const exposes = (headers: Record<string, string>) =>
-    headers['Access-Control-Expose-Headers']
-      .split(',')
-      .map((name) => name.trim());
-
-  const SURFACES: Array<[string, () => Record<string, string>]> = [
-    ['server/cors.ts getCorsHeaders', () => getCorsHeaders(req())],
-    ['api/_cors.js getCorsHeaders', () => getCorsHeadersJs(req())],
-    ['api/_cors.js getPublicCorsHeaders', () => getPublicCorsHeadersJs()],
-    ['workers/api-cors-preflight buildCorsHeaders', () => buildCorsHeadersWorker('https://worldmonitor.app')],
-  ];
-
-  for (const [label, build] of SURFACES) {
+  for (const [label, build] of CORS_SURFACES) {
     it(`${label} exposes X-Billing-Verification`, () => {
       assert.ok(
-        exposes(build()).includes('X-Billing-Verification'),
+        exposedHeaders(build()).includes('X-Billing-Verification'),
         `${label} must expose X-Billing-Verification so clients can tell a retryable `
         + 'verification blip from a terminal lapse without reading the body',
       );
@@ -165,7 +165,25 @@ describe('X-Billing-Verification is readable cross-origin (#5622)', () => {
     it(`${label} still exposes Retry-After alongside it`, () => {
       // The two travel together on a retryable denial; exposing one without the
       // other leaves the client knowing it should retry but not when.
-      assert.ok(exposes(build()).includes('Retry-After'), `${label} must expose Retry-After`);
+      assert.ok(exposedHeaders(build()).includes('Retry-After'), `${label} must expose Retry-After`);
+    });
+  }
+});
+
+describe('IETF RateLimit headers are readable across every CORS surface', () => {
+  const IETF_RATE_LIMIT_HEADERS = [
+    'RateLimit',
+    'RateLimit-Policy',
+    'RateLimit-Limit',
+    'RateLimit-Remaining',
+    'RateLimit-Reset',
+  ];
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} exposes every IETF RateLimit field`, () => {
+      const exposed = new Set(exposedHeaders(build()));
+      for (const name of IETF_RATE_LIMIT_HEADERS) {
+        assert.ok(exposed.has(name), `${label} must expose ${name}`);
+      }
     });
   }
 });

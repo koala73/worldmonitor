@@ -2,8 +2,9 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { CargoType } from '@/config/bypass-corridors';
 import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetMineralProductionResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
+import { createHydrationHandoff } from '@/services/hydration-handoff';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import {
@@ -79,6 +80,21 @@ const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerRespo
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
+const isCacheableChokepointStatus = (value: GetChokepointStatusResponse): boolean =>
+  value.chokepoints.length > 0 && !value.upstreamUnavailable;
+
+// A hydrated response is returned immediately for first paint, then refreshed
+// once in the background. The breaker coalesces the normal cached case; this
+// service-owned promise also coalesces degraded hydration, which is deliberately
+// not admitted to the breaker cache.
+const chokepointHydrationRefreshes = new WeakMap<
+  GetChokepointStatusResponse,
+  Promise<GetChokepointStatusResponse>
+>();
+let activeChokepointHydrationHandoff: {
+  response: GetChokepointStatusResponse;
+  refresh: Promise<GetChokepointStatusResponse>;
+} | null = null;
 const emptyMineralProduction: GetMineralProductionResponse = {
   commodities: [],
   countries: [],
@@ -103,7 +119,10 @@ export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorCo
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
   const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
-  if (hydrated?.indices?.length) return hydrated;
+  if (hydrated?.indices?.length) {
+    shippingBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await shippingBreaker.execute(async () => {
@@ -114,17 +133,64 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
   }
 }
 
+function loadLiveChokepointStatus(forceRefresh = false): Promise<GetChokepointStatusResponse> {
+  return chokepointBreaker.execute(async () => {
+    return client.getChokepointStatus({});
+  }, emptyChokepoints, {
+    shouldCache: isCacheableChokepointStatus,
+    forceRefresh,
+  });
+}
+
+function startChokepointHydrationRefresh(
+  response: GetChokepointStatusResponse,
+): Promise<GetChokepointStatusResponse> {
+  if (activeChokepointHydrationHandoff) return activeChokepointHydrationHandoff.refresh;
+
+  const refresh = loadLiveChokepointStatus(true);
+  const handoff = { response, refresh };
+  activeChokepointHydrationHandoff = handoff;
+  const clearActiveRefresh = (): void => {
+    if (activeChokepointHydrationHandoff === handoff) {
+      activeChokepointHydrationHandoff = null;
+    }
+  };
+  void refresh.then(clearActiveRefresh, clearActiveRefresh);
+  return refresh;
+}
+
 export async function fetchChokepointStatus(): Promise<GetChokepointStatusResponse> {
+  if (activeChokepointHydrationHandoff) {
+    return activeChokepointHydrationHandoff.response;
+  }
+
   const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
-  if (hydrated?.chokepoints?.length) return hydrated;
+  if (hydrated?.chokepoints?.length) {
+    if (isCacheableChokepointStatus(hydrated)) {
+      chokepointBreaker.recordSuccess(hydrated);
+    }
+    chokepointHydrationRefreshes.set(hydrated, startChokepointHydrationRefresh(hydrated));
+    return hydrated;
+  }
 
   try {
-    return await chokepointBreaker.execute(async () => {
-      return client.getChokepointStatus({});
-    }, emptyChokepoints);
+    return await loadLiveChokepointStatus();
   } catch {
     return emptyChokepoints;
   }
+}
+
+/**
+ * Let any caller holding the active bootstrap response join its single live
+ * refresh. Responses from normal live loads return `null`, so callers do not
+ * issue a second RPC after their normal load.
+ */
+export function refreshChokepointStatusAfterHydration(
+  response: GetChokepointStatusResponse,
+): Promise<GetChokepointStatusResponse | null> {
+  const refresh = chokepointHydrationRefreshes.get(response);
+  if (!refresh) return Promise.resolve(null);
+  return refresh;
 }
 
 /**
@@ -145,7 +211,10 @@ export async function fetchChokepointHistory(
 
 export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsResponse> {
   const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
-  if (hydrated?.minerals?.length) return hydrated;
+  if (hydrated?.minerals?.length) {
+    mineralsBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await mineralsBreaker.execute(async () => {
@@ -177,15 +246,23 @@ export async function fetchMineralProduction(): Promise<GetMineralProductionResp
 
 const emptyShippingStress: GetShippingStressResponse = { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0, upstreamUnavailable: false };
 
-export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
-  const hydrated = getHydratedData('shippingStress') as GetShippingStressResponse | undefined;
-  if (hydrated?.carriers?.length) return hydrated;
+// No breaker or TTL cache owns this loader's results, so the accepted
+// bootstrap value is preserved in a service-owned bounded handoff (#7048);
+// before this, every recurring call after the consume-once read refetched
+// the RPC.
+const shippingStressHandoff = createHydrationHandoff<GetShippingStressResponse>(
+  'shippingStress',
+  (value) => {
+    const payload = value as GetShippingStressResponse;
+    return payload?.carriers?.length ? payload : null;
+  },
+);
 
-  try {
-    return await client.getShippingStress({});
-  } catch {
-    return emptyShippingStress;
-  }
+export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
+  return shippingStressHandoff.getOrLoad(
+    () => client.getShippingStress({}),
+    emptyShippingStress,
+  );
 }
 
 const emptyChokepointIndex: GetCountryChokepointIndexResponse = {

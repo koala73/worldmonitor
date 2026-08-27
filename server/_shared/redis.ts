@@ -567,6 +567,19 @@ export async function getCachedJsonBatch(keys: string[], raw = false): Promise<M
   return result;
 }
 
+/**
+ * Is there a Redis to talk to at all?
+ *
+ * Callers that must distinguish "no store exists here" from "the store failed"
+ * need this, because every command helper below collapses both into an empty
+ * result. Reading it through this function rather than process.env directly
+ * keeps it stubbable alongside the command helpers in tests.
+ */
+export function isRedisConfigured(): boolean {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return true;
+  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+}
+
 export type RedisPipelineCommand = Array<string | number>;
 export type RedisCommandResult = { result?: unknown; error?: string };
 

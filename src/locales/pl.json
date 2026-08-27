@@ -3032,7 +3032,11 @@
       "heading": "NAGŁÓWEK",
       "hexCode": "KOD szesnastkowy",
       "squawk": "SKRZEK",
-      "attribution": "Źródło: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Źródło: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "SZYBKOŚĆ WZNOSZENIA",
+      "manufacturer": "PRODUCENT",
+      "owner": "OPERATOR",
+      "builtYear": "ROK BUDOWY"
     },
     "militaryVessel": {
       "aisDark": "JEST CIEMNO",
@@ -3077,7 +3081,8 @@
       "moreVessels": "+{{count}} więcej statków",
       "vesselsCount": "{{count}} STATKI",
       "vessels": "STATKI",
-      "trackedVessels": "STATKI GĄSOWE"
+      "trackedVessels": "STATKI GĄSOWE",
+      "showLess": "Pokaż mniej"
     },
     "naturalEvent": {
       "closed": "ZAMKNIĘTE",
@@ -3374,7 +3379,9 @@
     "fontFamily": "Rodzina czcionki",
     "fontFamilyDesc": "Monospace dla wyglądu technicznego, domyślna czcionka systemowa dla łatwiejszego czytania.",
     "fontMono": "Monospace",
-    "fontSystem": "Domyślna czcionka systemowa"
+    "fontSystem": "Domyślna czcionka systemowa",
+    "panelFontScale": "Rozmiar tekstu",
+    "followGlobalFontScale": "Użyj ustawienia globalnego"
   },
   "contextMenu": {
     "openCountryBrief": "Otwórz przegląd kraju",

@@ -22,7 +22,7 @@ vi.mock('../snapshots/worldmonitor.js', () => ({
   buildRetailerSpreadSnapshot: vi.fn(),
 }));
 
-const { publishAll } = await import('./publish.js');
+const { publishAll, runPublishCli } = await import('./publish.js');
 
 const coverage = {
   marketCode: 'ae',
@@ -78,7 +78,7 @@ describe('consumer-price coverage publication', () => {
 
   it('keeps the last-good coverage key untouched when coverage rebuild fails, then recovers on the next run', async () => {
     mockBuildCoverageSnapshot.mockRejectedValueOnce(new Error('coverage query unavailable'));
-    await publishAll();
+    await expect(publishAll()).rejects.toThrow('1 snapshot publication failed');
 
     let writes = commands();
     expect(writes.some((command) => command[0] === 'DEL' && command[1] === 'consumer-prices:coverage:ae')).toBe(false);
@@ -89,5 +89,24 @@ describe('consumer-price coverage publication', () => {
     await publishAll();
     writes = commands();
     expect(writes.some((command) => command[0] === 'SET' && command[1] === 'consumer-prices:coverage:ae')).toBe(true);
+  });
+
+  it('fails the CLI after a caught snapshot write error without printing its success marker', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('redis unavailable'));
+    const previousExitCode = process.exitCode;
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    process.exitCode = undefined;
+
+    try {
+      await expect(runPublishCli()).rejects.toThrow('1 snapshot publication failed');
+      expect(process.exitCode).toBe(1);
+      expect(log.mock.calls.some(([message]) => String(message).includes('=== Done'))).toBe(false);
+      expect(error).toHaveBeenCalled();
+    } finally {
+      process.exitCode = previousExitCode;
+      log.mockRestore();
+      error.mockRestore();
+    }
   });
 });

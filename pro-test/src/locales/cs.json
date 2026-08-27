@@ -384,7 +384,11 @@
           "Vyhrazená podpora",
           "Vlastní integrace",
           "Záruka SLA",
-          "Možnost on-premise"
+          "Možnost on-premise",
+          "Dohoda o zpracování údajů (DPA)",
+          "Fakturace na základě nákupního příkazu",
+          "SAML SSO, SCIM",
+          "Vlastní nastavení bezpečnosti a ochrany soukromí"
         ],
         "cta": "Kontaktujte prodej"
       },

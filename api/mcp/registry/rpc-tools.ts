@@ -19,6 +19,7 @@ import {
 } from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
+import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import {
   collectInsightSources,
   insightsSnapshotRejection,
@@ -55,6 +56,14 @@ type DigestItemForBrief = {
     sourceCount?: number;
     phase?: string;
   };
+};
+
+type McpDigestCoverage = {
+  state?: string;
+  servedStale?: boolean;
+  staleAgeSeconds?: number;
+  staleReason?: string;
+  attemptedAt?: string;
 };
 
 // Corroboration for the country brief cannot ride on `sources`: that array is
@@ -101,6 +110,39 @@ function includesCountryTerm(text: string, term: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Describe a stale age for the LLM grounding note.
+ *
+ * Never floors an unknown age at a reassuring number: `Math.max(1, ...)` on a
+ * missing staleAgeSeconds rendered content of ARBITRARY age as "approximately
+ * 1 minutes ago", which is the exact misreading the note exists to prevent.
+ * Absent or zero means we genuinely do not know — say so.
+ */
+function describeStaleAge(staleAgeSeconds: number | undefined): string {
+  if (typeof staleAgeSeconds !== 'number' || !Number.isFinite(staleAgeSeconds) || staleAgeSeconds <= 0) {
+    return 'an earlier build of unknown age';
+  }
+  const minutes = Math.round(staleAgeSeconds / 60);
+  if (minutes < 1) return 'less than a minute ago';
+  if (minutes === 1) return 'about 1 minute ago';
+  if (minutes < 90) return `about ${minutes} minutes ago`;
+  const hours = Math.round(staleAgeSeconds / 3600);
+  return hours === 1 ? 'about 1 hour ago' : `about ${hours} hours ago`;
+}
+
+function projectMcpDigestCoverage(value: unknown): McpDigestCoverage | undefined {
+  if (!isRecord(value)) return undefined;
+  const coverage: McpDigestCoverage = {};
+  if (typeof value.state === 'string') coverage.state = value.state.slice(0, 40);
+  if (typeof value.servedStale === 'boolean') coverage.servedStale = value.servedStale;
+  if (typeof value.staleAgeSeconds === 'number' && Number.isFinite(value.staleAgeSeconds)) {
+    coverage.staleAgeSeconds = Math.max(0, value.staleAgeSeconds);
+  }
+  if (typeof value.staleReason === 'string') coverage.staleReason = value.staleReason.slice(0, 240);
+  if (typeof value.attemptedAt === 'string') coverage.attemptedAt = value.attemptedAt.slice(0, 80);
+  return Object.keys(coverage).length > 0 ? coverage : undefined;
 }
 
 function collectMcpBriefSources(
@@ -424,6 +466,14 @@ type ProcurementRouteResponse = {
 function addStringParam(query: URLSearchParams, name: string, value: unknown): void {
   if (typeof value === 'string' && value.trim()) query.set(name, value.trim());
 }
+
+// Intel-history `country` filters are normalized through the canonical
+// `normalizeCountry` (server/_shared/intel-history-client.ts): the generated
+// validator enabled by GHSA-cmj5-cfhr-w964 requires `^([A-Z]{2})?$`, and an
+// LLM sending "ua" earned a 400 round-trip (WORLDMONITOR-10R / -10Q). At the
+// POST call sites below, `|| undefined` keeps a blank/non-string filter
+// omitted — the pattern makes the field optional, and sending "" would turn
+// "search every country" into an explicit empty filter.
 
 function procurementPageSize(value: unknown): number {
   return Number.isInteger(value) && (value as number) > 0
@@ -1017,12 +1067,13 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_brief',
     _outputBudgetBytes: 65536,
-    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is.',
+    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "US", "DE", "CN", "IR"' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
+        allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
       },
       required: ['country_code'],
     },
@@ -1035,6 +1086,17 @@ export const RPC_TOOLS: ToolDef[] = [
         generatedAt: { type: ['string', 'number', 'null'] },
         provider: { type: 'string' },
         model: { type: 'string' },
+        digestCoverage: {
+          type: 'object',
+          description: 'Freshness metadata for the news digest used to ground this brief. Omitted when the digest fetch failed and the brief was generated without digest grounding.',
+          properties: {
+            state: { type: 'string', description: 'Digest coverage state reported by the news service.' },
+            servedStale: { type: 'boolean', description: 'True when the grounding headlines came from a retained accepted snapshot.' },
+            staleAgeSeconds: { type: 'integer', minimum: 0, description: 'Age of the retained snapshot in seconds when stale content was served. Bounded by the six-hour durable-snapshot TTL.' },
+            staleReason: { type: 'string', description: 'Reason the live digest attempt could not replace the retained snapshot.' },
+            attemptedAt: { type: 'string', description: 'Timestamp of the digest refresh attempt associated with this coverage result.' },
+          },
+        },
         sources: {
           type: 'array',
           description: 'Original feed articles used as grounding inputs for this brief.',
@@ -1063,7 +1125,7 @@ export const RPC_TOOLS: ToolDef[] = [
               storyPhase: {
                 type: 'string',
                 enum: ['STORY_PHASE_UNSPECIFIED', 'STORY_PHASE_BREAKING', 'STORY_PHASE_DEVELOPING', 'STORY_PHASE_SUSTAINED', 'STORY_PHASE_FADING'],
-                description: 'Lifecycle phase from the digest story tracker. STORY_PHASE_FADING is reserved and is not currently emitted by derivePhase.',
+                description: 'Lifecycle phase from the digest story tracker. STORY_PHASE_FADING is reserved and is not currently emitted by this surface: a fading story stops appearing in the digest, so the phase cannot be observed where it is derived (#7081). Do not read the absence of STORY_PHASE_FADING as evidence that a story is still active.',
               },
             },
           },
@@ -1084,6 +1146,7 @@ export const RPC_TOOLS: ToolDef[] = [
       let contextSnapshot = '';
       let sources: McpBriefSource[] = [];
       let groundingStories: McpBriefGroundingStory[] = [];
+      let digestCoverage: McpDigestCoverage | undefined;
       try {
         const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
         const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
@@ -1092,8 +1155,12 @@ export const RPC_TOOLS: ToolDef[] = [
           signal: AbortSignal.timeout(2_000),
         });
         if (digestRes.ok) {
-          type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
+          type DigestPayload = {
+            categories?: Record<string, { items?: DigestItemForBrief[] }>;
+            coverage?: unknown;
+          };
           const digest = await digestRes.json() as DigestPayload;
+          digestCoverage = projectMcpDigestCoverage(digest.coverage);
           const allItems = Object.values(digest.categories ?? {})
             .flatMap(cat => cat.items ?? [])
             .filter(item => typeof item.title === 'string' && item.title.length > 0);
@@ -1111,10 +1178,41 @@ export const RPC_TOOLS: ToolDef[] = [
           groundingStories = collectBriefGroundingStories(groundingItems, 6);
           const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
           const headlineLines = groundingItems.map(item => item.title ?? '').filter(Boolean);
-          const contextLines = [...sourceLines, 'Headlines:', ...headlineLines].join('\n');
+          // #7084: the digest can legitimately be a stale replay (a live
+          // rebuild failed and accepted older content is served). Grounding
+          // an LLM on hours-old headlines silently presented as current
+          // produces briefs that describe the past as the present — tell the
+          // model what it is looking at so its output can qualify itself.
+          const staleLines = digestCoverage?.servedStale === true || digestCoverage?.state === 'stale'
+            ? [
+                `NOTE: the headlines below are a retained snapshot from ${describeStaleAge(digestCoverage.staleAgeSeconds)} ` +
+                  `(the live news rebuild failed). Treat them as recent context, not as this moment's news, ` +
+                  `and say so if the brief depends on very recent developments.`,
+              ]
+            : [];
+          const contextLines = [...staleLines, ...sourceLines, 'Headlines:', ...headlineLines].join('\n');
           if (contextLines.trim()) contextSnapshot = contextLines.slice(0, 4000);
         }
       } catch { /* proceed without context — better than failing */ }
+
+      const digestServedStale = digestCoverage?.servedStale === true || digestCoverage?.state === 'stale';
+      if (digestServedStale && params.allow_stale !== true) {
+        // #7084: DROP the stale grounding, do not fail the call. Three lines
+        // above, a digest fetch that times out or 500s is swallowed and the
+        // brief is generated ungrounded — so throwing here made the milder
+        // degradation fatal and the worse one tolerated, and an operator could
+        // restore the tool by breaking the digest harder. The caller still
+        // learns exactly what happened from the digestCoverage block below,
+        // which is the freshness policy hook SKILL.md already tells agents to
+        // use. allow_stale=true keeps its meaning: use the retained snapshot.
+        contextSnapshot = '';
+        sources = [];
+        groundingStories = [];
+        console.warn(
+          `[mcp:get_country_brief] dropped stale digest grounding (${digestCoverage?.staleReason || 'unknown'}, ` +
+            `${digestCoverage?.staleAgeSeconds ?? 0}s) — pass allow_stale=true to ground on it`,
+        );
+      }
 
       const briefUrl = `${base}/api/intelligence/v1/get-country-intel-brief`;
       // Keep grounding context out of the signed URL; the gateway's POST-to-GET
@@ -1155,7 +1253,12 @@ export const RPC_TOOLS: ToolDef[] = [
       const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
       // groundingStories stays [] when the 2 s digest fetch failed above, which
       // is the honest signal: the brief was written without that grounding.
-      return { ...result, sources: resultSources.length > 0 ? resultSources : sources, groundingStories };
+      return {
+        ...result,
+        sources: resultSources.length > 0 ? resultSources : sources,
+        groundingStories,
+        ...(digestCoverage ? { digestCoverage } : {}),
+      };
     },
     // METHOD DRIFT: _execute POSTs above but OpenAPI declares only GET on this
     // path (verified against docs/api/IntelligenceService.openapi.json). The
@@ -2201,7 +2304,7 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
       const url = `${base}/api/intelligence/v1/search-intel-history`;
-      const body = JSON.stringify({ query: params.query, domain: params.domain, country: params.country, from: params.from, to: params.to, limit: Math.min(Number(params.limit ?? MCP_HISTORY_SEARCH_MAX_LIMIT), MCP_HISTORY_SEARCH_MAX_LIMIT) });
+      const body = JSON.stringify({ query: params.query, domain: params.domain, country: normalizeCountry(params.country) || undefined, from: params.from, to: params.to, limit: Math.min(Number(params.limit ?? MCP_HISTORY_SEARCH_MAX_LIMIT), MCP_HISTORY_SEARCH_MAX_LIMIT) });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
       // Budget covers one embeddings round-trip (4 s) plus the store read (5 s).
       const response = await fetch(url, {
@@ -2251,7 +2354,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // here turns an opaque downstream failure into an actionable message and
       // saves the round-trip; the handler stays the enforcing authority.
       const domain = typeof params.domain === 'string' ? params.domain.trim() : '';
-      const country = typeof params.country === 'string' ? params.country.trim() : '';
+      const country = normalizeCountry(params.country);
       if (!domain && !country) {
         throw new Error('get_intel_timeline requires at least one of domain ("conflict", "military", or "energy") or country (ISO 3166-1 alpha-2) — those are the two indexed scopes on the history store.');
       }
@@ -2310,7 +2413,7 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
       const url = `${base}/api/intelligence/v1/get-similar-events`;
-      const body = JSON.stringify({ situation: params.situation, domain: params.domain, country: params.country, limit: Math.min(Number(params.limit ?? MCP_HISTORY_PRECEDENT_MAX_LIMIT), MCP_HISTORY_PRECEDENT_MAX_LIMIT) });
+      const body = JSON.stringify({ situation: params.situation, domain: params.domain, country: normalizeCountry(params.country) || undefined, limit: Math.min(Number(params.limit ?? MCP_HISTORY_PRECEDENT_MAX_LIMIT), MCP_HISTORY_PRECEDENT_MAX_LIMIT) });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
       // Budget covers one embeddings round-trip (4 s) plus the store read (5 s).
       const response = await fetch(url, {

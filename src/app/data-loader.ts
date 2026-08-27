@@ -134,6 +134,7 @@ import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo, loadFromStorage, saveToStorage } from '@/utils';
+import { addLocalDays, localYmd } from '@/utils/local-date';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
@@ -219,7 +220,7 @@ import {
 // dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
-import { ResearchServiceClient } from '@/services/generated-rpc-clients';
+import { EconomicServiceClient, MarketServiceClient, ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 // The proto-level -> label map lives in shared/news-clustering-core.js so the
 // client digest loader and the server-side MCP tools cannot drift (#5697).
@@ -270,6 +271,11 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     // the rollout carry items without the field.
     ...(p.tickers && p.tickers.length ? { tickers: p.tickers } : {}),
   };
+}
+
+interface SelectedNewsDigest {
+  digest: ListFeedDigestResponse;
+  servedStale: boolean;
 }
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
@@ -445,6 +451,12 @@ export class DataLoaderManager implements AppModule {
   private xIntelHasLiveData = false;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
+  // Notification freshness belongs to the exact news generation committed to
+  // ctx.allNews. Fetches carry their own selection state until that commit, so
+  // a late stale or obsolete-language response cannot re-mute newer fresh data.
+  private newsLoadGeneration = 0;
+  private committedNewsGeneration = 0;
+  private committedNewsServedStale = false;
   private readonly digestRequestTimeoutMs = 8000;
   private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
@@ -622,7 +634,7 @@ export class DataLoaderManager implements AppModule {
     markLcpDebug('wm:data:country-geometry-replay-ready', { replayed: cache.gpsJamming?.length ? 1 : 0 });
   }
 
-  private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
+  private async tryFetchDigest(): Promise<SelectedNewsDigest | null> {
     const now = Date.now();
     // Capture request and persistence scope together. Sampling the language again
     // after the response would let an old-language request populate the new
@@ -632,7 +644,9 @@ export class DataLoaderManager implements AppModule {
 
     if (this.digestBreaker.state === 'open') {
       if (now < this.digestBreaker.cooldownUntil) {
-        return this.getRetainedDigest(requestKey) ?? await this.loadPersistedDigest(requestKey);
+        const fallback = this.getRetainedDigest(requestKey) ?? await this.loadPersistedDigest(requestKey);
+        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+        return fallback ? { digest: fallback, servedStale: true } : null;
       }
       this.digestBreaker.state = 'half-open';
     }
@@ -655,7 +669,23 @@ export class DataLoaderManager implements AppModule {
       if (catCount === 0) throw new Error('digest returned 0 categories');
       markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
-      this.persistDigest(requestKey, data);
+      // #7084: do NOT reset the client's own six-hour clock with content the
+      // server already told us is stale. persistDigest stamps a write clock and
+      // loadPersistedDigest expires on that clock, so re-persisting a body that
+      // is already up to six hours old would buy it another six — roughly
+      // doubling the staleness ceiling the server contract promises. The body
+      // is still fine to render now; it just must not become the client's fresh
+      // last-good. The in-memory retained digest below is deliberately still
+      // updated: it carries no clock, does not survive a reload, and so cannot
+      // extend any window.
+      if (data.coverage?.servedStale === true) {
+        console.info(
+          `[News] Digest served stale (${data.coverage.staleReason || 'unknown'}, ` +
+            `${data.coverage.staleAgeSeconds ?? 0}s) — rendering without re-persisting`,
+        );
+      } else {
+        this.persistDigest(requestKey, data);
+      }
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
 
       const currentKey = this.digestCacheKey();
@@ -663,10 +693,13 @@ export class DataLoaderManager implements AppModule {
         // The response is valid for the scope it requested and may refresh that
         // scope's persistent cache, but it must not become live data or an
         // in-memory fallback for the language now active.
-        return this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+        const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+        return fallback ? { digest: fallback, servedStale: true } : null;
       }
       this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
-      return data;
+      this.reportDigestCoverage(data);
+      return { digest: data, servedStale: data.coverage?.servedStale === true };
     } catch (e) {
       markLcpDebug('wm:data:feed-digest-error');
       console.warn('[News] Digest fetch failed, using fallback:', e);
@@ -676,7 +709,9 @@ export class DataLoaderManager implements AppModule {
         this.digestBreaker.cooldownUntil = now + this.digestBreakerCooldownMs;
       }
       const currentKey = this.digestCacheKey();
-      return this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+      return fallback ? { digest: fallback, servedStale: true } : null;
     }
   }
 
@@ -721,6 +756,50 @@ export class DataLoaderManager implements AppModule {
 
   private getRetainedDigest(key = this.digestCacheKey()): ListFeedDigestResponse | null {
     return getScopedDigest(this.lastGoodDigest, key);
+  }
+
+  /**
+   * #7085: surface the digest's coverage block on the status panel. Runtime
+   * guards throughout — persisted last-good digests from before the coverage
+   * rollout carry no coverage field at all.
+   */
+  private reportDigestCoverage(
+    digest: ListFeedDigestResponse | null,
+    stateOverride?: 'stale' | 'unavailable',
+  ): void {
+    const cov = digest?.coverage;
+    if (!cov || typeof cov.state !== 'string') {
+      const categoryEntries = digest ? Object.entries(digest.categories) : [];
+      const items = categoryEntries.flatMap(([, bucket]) => bucket.items);
+      this.ctx.statusPanel?.updateDigestCoverage({
+        state: stateOverride ?? 'unknown',
+        itemsServed: items.length,
+        publisherCount: new Set(items.map(item => item.source).filter(Boolean)).size,
+        feedsCompleted: 0,
+        feedsTotal: 0,
+        categoriesCompleted: categoryEntries.filter(([, bucket]) => bucket.items.length > 0).length,
+        categoriesTotal: categoryEntries.length,
+        missingCategories: categoryEntries
+          .filter(([, bucket]) => bucket.items.length === 0)
+          .map(([category]) => category),
+      });
+      return;
+    }
+    const state = stateOverride ?? (cov.state === 'complete' || cov.state === 'partial' || cov.state === 'stale' || cov.state === 'unavailable'
+      ? cov.state
+      : 'unknown');
+    this.ctx.statusPanel?.updateDigestCoverage({
+      state,
+      itemsServed: Number(cov.itemsServed) || 0,
+      publisherCount: Number(cov.publisherCount) || 0,
+      feedsCompleted: Number(cov.feedCompleted) || 0,
+      feedsTotal: Number(cov.feedTotal) || 0,
+      categoriesCompleted: Number(cov.categoryCompleted) || 0,
+      categoriesTotal: Number(cov.categoryTotal) || 0,
+      missingCategories: Object.entries(cov.categoryStates ?? {})
+        .filter(([, v]) => v === 'missing')
+        .map(([k]) => k),
+    });
   }
 
   private async loadPersistedDigest(key = this.digestCacheKey()): Promise<ListFeedDigestResponse | null> {
@@ -851,6 +930,13 @@ export class DataLoaderManager implements AppModule {
   }
 
   private async runLoadAllData(forceAll: boolean): Promise<void> {
+    // Opt-in only (no-op unless __wmLcpDebug is installed), so this costs one
+    // property read on the ordinary path. It is the only direct witness that a
+    // fan-out actually RAN: e2e/bootstrap-hydration-request-budget.spec.ts's
+    // zero-refetch assertions all presuppose a second pass, and a request
+    // counter cannot distinguish that second pass from a service retry (#7045
+    // U5 review).
+    markLcpDebug('wm:data:load-all-start', { forceAll });
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
@@ -1391,15 +1477,20 @@ export class DataLoaderManager implements AppModule {
   private async loadNewsCategory(
     category: string,
     feeds: typeof FEEDS.politics,
-    digest?: ListFeedDigestResponse | null,
+    digestSelection: SelectedNewsDigest | null,
     isCustom = false,
     options: NewsCategoryLoadOptions = { allowDigestPendingFallback: false, recordBaselineSample: true },
+    generation = this.newsLoadGeneration,
+    recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
     try {
+      const digest = digestSelection?.digest;
+      const digestServedStale = digestSelection?.servedStale ?? true;
       const panel = this.ctx.newsPanels[category];
 
       const enabledFeeds = (feeds ?? []).filter(f => !this.ctx.disabledSources.has(f.name));
       if (enabledFeeds.length === 0) {
+        recordSelectedFreshness(false);
         delete this.ctx.newsByCategory[category];
         this.clearNewsSourceCoverage(category);
         if (panel) {
@@ -1430,6 +1521,7 @@ export class DataLoaderManager implements AppModule {
 
       // Digest branch: server already aggregated feeds — map proto items to client types
       if (digest?.categories && category in digest.categories) {
+        recordSelectedFreshness(digestServedStale);
         // The digest carries every enabled source for the category, so there is
         // no partial coverage to disclose — clear any badge a prior custom-path
         // load left behind.
@@ -1455,7 +1547,15 @@ export class DataLoaderManager implements AppModule {
         // that classifyEvent writes to. Re-firing classifyEvent from every client wastes
         // edge requests even when they're Redis cache hits.
 
-        checkBatchForBreakingAlerts(items);
+        // #7084: a stale digest replay re-delivers items that already had
+        // their alert opportunity when they were served fresh. The 15-minute
+        // recency gate inside the checker bounds the exposure, but a replay
+        // younger than that would re-fire banners for old events — gate on
+        // the exact selected body's effective freshness, including browser
+        // retained/persisted fallbacks whose stored coverage may say fresh.
+        if (this.isCurrentNewsLoad(generation) && !digestServedStale) {
+          checkBatchForBreakingAlerts(items);
+        }
         this.flashMapForNews(items);
         this.renderNewsForCategory(category, items);
 
@@ -1547,6 +1647,7 @@ export class DataLoaderManager implements AppModule {
       };
 
       if (!isCustom && staleItems.length > 0) {
+        recordSelectedFreshness(true);
         console.warn(`[News] Digest missing for "${category}", serving stale headlines (${staleItems.length})`);
         this.renderNewsForCategory(category, staleItems);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -1563,6 +1664,7 @@ export class DataLoaderManager implements AppModule {
       // customized panel permanently empty rather than degraded. Their blast
       // radius is bounded by the feed cap below instead.
       if (!isCustom && !this.isPerFeedFallbackEnabled() && !options.allowDigestPendingFallback) {
+        recordSelectedFreshness(false);
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -1587,6 +1689,7 @@ export class DataLoaderManager implements AppModule {
       // unreachable on every load and every refresh (#5873). It rotates
       // instead: same request budget, advanced by the cap each cycle, so every
       // source is reached within ceil(N / cap) cycles.
+      recordSelectedFreshness(false);
       const rotationCycle = isCustom ? this.newsRotationCycle(category) : 0;
       const fallbackFeeds = isCustom
         ? selectRotatingFeedWindow(reachableFeeds, this.perFeedFallbackCategoryFeedLimit, rotationCycle)
@@ -1614,7 +1717,7 @@ export class DataLoaderManager implements AppModule {
           // Feeding them the merged set would re-flash and re-alert on every
           // rotation cycle for headlines the user has already seen.
           this.flashMapForNews(partialItems);
-          checkBatchForBreakingAlerts(partialItems);
+          if (this.isCurrentNewsLoad(generation)) checkBatchForBreakingAlerts(partialItems);
         },
       });
 
@@ -1685,10 +1788,12 @@ export class DataLoaderManager implements AppModule {
       // takes to cover a ten-source panel. Keep them: the next cycle merges
       // onto them, and the status panel already reports the error.
       if (!isCustom) {
+        recordSelectedFreshness(false);
         delete this.ctx.newsByCategory[category];
         return [];
       }
 
+      recordSelectedFreshness(true);
       this.setNewsRefreshDegraded(category, true);
       const enabledNames = new Set(
         (feeds ?? [])
@@ -1700,14 +1805,19 @@ export class DataLoaderManager implements AppModule {
   }
 
   private async loadIntelNews(
-    digest: ListFeedDigestResponse | null,
+    digestSelection: SelectedNewsDigest | null,
     allowDigestPendingFallback: boolean,
     options: NewsIntelLoadOptions = { recordBaselineSample: true },
+    generation = this.newsLoadGeneration,
+    recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
+    const digest = digestSelection?.digest;
+    const digestServedStale = digestSelection?.servedStale ?? true;
     const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
     const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
     const intelPanel = this.ctx.newsPanels['intel'];
     if (enabledIntelSources.length === 0) {
+      recordSelectedFreshness(false);
       delete this.ctx.newsByCategory['intel'];
       if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
@@ -1715,11 +1825,16 @@ export class DataLoaderManager implements AppModule {
     }
 
     if (digest?.categories && 'intel' in digest.categories) {
+      recordSelectedFreshness(digestServedStale);
       // Digest branch for intel
       const intel = (digest.categories['intel']?.items ?? [])
         .map(protoItemToNewsItem)
         .filter(i => enabledIntelNames.has(i.source));
-      checkBatchForBreakingAlerts(intel);
+      // #7084: same effective-freshness and request-generation gate as the
+      // category digest branch above.
+      if (this.isCurrentNewsLoad(generation) && !digestServedStale) {
+        checkBatchForBreakingAlerts(intel);
+      }
       this.renderNewsForCategory('intel', intel);
       if (intelPanel && options.recordBaselineSample) {
         try {
@@ -1735,6 +1850,7 @@ export class DataLoaderManager implements AppModule {
 
     const staleIntel = this.getStaleNewsItems('intel').filter(i => enabledIntelNames.has(i.source));
     if (staleIntel.length > 0) {
+      recordSelectedFreshness(true);
       console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
       this.renderNewsForCategory('intel', staleIntel);
       if (intelPanel && options.recordBaselineSample) {
@@ -1749,12 +1865,14 @@ export class DataLoaderManager implements AppModule {
     }
 
     if (!this.isPerFeedFallbackEnabled() && !allowDigestPendingFallback) {
+      recordSelectedFreshness(false);
       console.warn('[News] Intel digest missing, limited per-feed fallback disabled');
       delete this.ctx.newsByCategory['intel'];
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
       return [];
     }
 
+    recordSelectedFreshness(false);
     const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.perFeedFallbackIntelFeedLimit);
     if (allowDigestPendingFallback) {
       console.warn(`[News] Intel digest still pending, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
@@ -1767,12 +1885,13 @@ export class DataLoaderManager implements AppModule {
       const { fetchCategoryFeeds } = await getRssModule();
       intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize });
     } catch (e) {
+      recordSelectedFreshness(false);
       delete this.ctx.newsByCategory['intel'];
       console.error('[App] Intel feed failed:', e);
       return [];
     }
 
-    checkBatchForBreakingAlerts(intel);
+    if (this.isCurrentNewsLoad(generation)) checkBatchForBreakingAlerts(intel);
     this.renderNewsForCategory('intel', intel);
     if (intelPanel && options.recordBaselineSample) {
       try {
@@ -1836,7 +1955,28 @@ export class DataLoaderManager implements AppModule {
     this.loadedNewsSignature = null;
   }
 
+  private beginNewsLoad(): number {
+    this.newsLoadGeneration += 1;
+    return this.newsLoadGeneration;
+  }
+
+  private isCurrentNewsLoad(generation: number): boolean {
+    return generation === this.newsLoadGeneration;
+  }
+
+  private commitNewsFreshness(generation: number, servedStale: boolean): boolean {
+    if (!this.isCurrentNewsLoad(generation)) return false;
+    this.committedNewsGeneration = generation;
+    this.committedNewsServedStale = servedStale;
+    return true;
+  }
+
+  private canNotifyForCommittedNews(generation: number, servedStale: boolean): boolean {
+    return generation === this.committedNewsGeneration && !servedStale;
+  }
+
   async loadNews(): Promise<void> {
+    const generation = this.beginNewsLoad();
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
       this.ctx.happyAllItems = [];
@@ -1850,6 +1990,9 @@ export class DataLoaderManager implements AppModule {
     });
     const fallbackKey = this.digestCacheKey();
     const fallbackDigest = this.getRetainedDigest(fallbackKey) ?? await this.loadPersistedDigest(fallbackKey);
+    const fallbackSelection = fallbackDigest
+      ? { digest: fallbackDigest, servedStale: true }
+      : null;
 
     const categories = this.resolveEnabledNewsCategories();
     // Snapshot beside the categories: `ctx.disabledSources` is mutated IN PLACE by
@@ -1859,18 +2002,38 @@ export class DataLoaderManager implements AppModule {
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
+    const categoryServedStale = new Map<string, boolean>();
+    let intelServedStale = false;
     const newsPass = await runNewsLoadPass(
       {
         categories,
         categoryConcurrency,
         digestPromise,
-        fallbackDigest,
+        fallbackDigest: fallbackSelection,
         digestGraceMs: this.digestFirstPaintGraceMs,
         allowPendingPerFeedFallback: this.isPerFeedFallbackEnabled(),
-        hasDigestCategory: (digest, key) => Boolean(digest.categories && key in digest.categories),
-        loadCategory: ({ key, feeds, isCustom }, digest, options) => this.loadNewsCategory(key, feeds, digest, isCustom, options),
+        hasDigestCategory: (selection, key) => Boolean(selection.digest.categories && key in selection.digest.categories),
+        loadCategory: ({ key, feeds, isCustom }, selection, options) => (
+          this.loadNewsCategory(
+            key,
+            feeds,
+            selection,
+            isCustom,
+            options,
+            generation,
+            servedStale => categoryServedStale.set(key, servedStale),
+          )
+        ),
         loadIntel: SITE_VARIANT === 'full'
-          ? (digest, allowDigestPendingFallback, options) => this.loadIntelNews(digest, allowDigestPendingFallback, options)
+          ? (selection, allowDigestPendingFallback, options) => (
+            this.loadIntelNews(
+              selection,
+              allowDigestPendingFallback,
+              options,
+              generation,
+              servedStale => { intelServedStale = servedStale; },
+            )
+          )
           : undefined,
         onCategoryError: (key, reason) => {
           console.error(`[App] News category ${key ?? 'unknown'} failed:`, reason);
@@ -1881,6 +2044,11 @@ export class DataLoaderManager implements AppModule {
       },
     );
     const { categoryItemsByKey, intelItems } = newsPass;
+
+    // An older load can finish after a newer request because digest and
+    // per-feed fallbacks have independent latency. It must not replace the
+    // newer request's data or the notification freshness paired with it.
+    if (!this.isCurrentNewsLoad(generation)) return;
 
     const collectedNews: NewsItem[] = [];
     for (const { key } of categories) {
@@ -1901,6 +2069,8 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.ctx.allNews = collectedNews;
+    const committedServedStale = [...categoryServedStale.values()].some(Boolean) || intelServedStale;
+    this.commitNewsFreshness(generation, committedServedStale);
     // Record what this run covered — but only when it actually landed something for
     // the gate to protect. A run counts as landed when the digest COVERED at least
     // one preset category (authoritative even where that bucket came back empty),
@@ -1924,7 +2094,7 @@ export class DataLoaderManager implements AppModule {
     // doesn't force a re-fetch of news that already arrived. The disabled-source set
     // is the one snapshotted at load start, so a source toggled mid-load compares
     // unequal on the next trigger instead of being swallowed.
-    const digestCategories = newsPass.finalDigest?.categories ?? {};
+    const digestCategories = newsPass.finalDigest?.digest.categories ?? {};
     const digestCovered = categories.some(({ key, isCustom }) => !isCustom && key in digestCategories);
     const anyItemsCollected = collectedNews.length > 0;
     const noCategoriesToLoad = categories.length === 0;
@@ -1938,9 +2108,11 @@ export class DataLoaderManager implements AppModule {
     this.updateMonitorResults();
 
     try {
-      this.ctx.latestClusters = mlWorker.isAvailable
+      const clusters = mlWorker.isAvailable
         ? await clusterNewsHybrid(this.ctx.allNews)
         : await analysisWorker.clusterNews(this.ctx.allNews);
+      if (!this.isCurrentNewsLoad(generation)) return;
+      this.ctx.latestClusters = clusters;
       // Only now is an empty cluster set a real answer. Set inside the try, after
       // the assignment, so a pass that threw leaves late-mounting hub panels on
       // their loading skeleton instead of asserting "no active hubs".
@@ -2609,8 +2781,6 @@ export class DataLoaderManager implements AppModule {
           sentiment: cats.sentiment ? { score: Number(cats.sentiment.score ?? 0) } : undefined,
         };
       }
-      const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
-      const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const resp = await client.getFearGreedIndex({});
       if (resp.unavailable || resp.compositeScore <= 0) return undefined;
@@ -2633,8 +2803,6 @@ export class DataLoaderManager implements AppModule {
 
   private async _collectYieldCurveContext(): Promise<YieldCurveContext | undefined> {
     try {
-      const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
-      const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const resp = await client.getFredSeriesBatch({ seriesIds: ['DGS2', 'DGS10', 'DGS30'], limit: 1 });
       const lastVal = (id: string): number => {
@@ -2681,20 +2849,18 @@ export class DataLoaderManager implements AppModule {
    * undefined — the brief simply omits the earnings block. */
   private async _collectEarningsContext(): Promise<import('@/services/daily-market-brief').EarningsBriefContext | undefined> {
     try {
-      const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
-      const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const today = new Date();
-      const past = new Date(today.getTime() - 7 * 86400_000);
-      const future = new Date(today.getTime() + 14 * 86400_000);
+      const past = addLocalDays(today, -7);
+      const future = addLocalDays(today, 14);
       const resp = await client.listEarningsCalendar({
-        fromDate: past.toISOString().slice(0, 10),
-        toDate: future.toISOString().slice(0, 10),
+        fromDate: localYmd(past),
+        toDate: localYmd(future),
       });
       const earnings = resp.earnings ?? [];
       if (resp.unavailable || earnings.length === 0) return undefined;
       const { buildEarningsBriefContext } = await import('@/services/daily-market-brief');
-      return buildEarningsBriefContext(earnings, today.toISOString().slice(0, 10));
+      return buildEarningsBriefContext(earnings, localYmd(today));
     } catch {
       return undefined;
     }
@@ -4129,7 +4295,6 @@ export class DataLoaderManager implements AppModule {
         return;
       }
 
-      const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
       const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const resp = await client.getEconomicStress({});
       if (!resp.unavailable && Number.isFinite(resp.compositeScore)) {
@@ -4166,6 +4331,11 @@ export class DataLoaderManager implements AppModule {
   }
 
   async runCorrelationAnalysis(): Promise<void> {
+    // Pair the analysis with the exact news generation it reads. If another
+    // load commits while correlation work is awaiting a worker, the resulting
+    // signal must not notify over a different body.
+    const newsGeneration = this.committedNewsGeneration;
+    const newsServedStale = this.committedNewsServedStale;
     try {
       if (this.ctx.latestClusters.length === 0 && this.ctx.allNews.length > 0) {
         this.ctx.latestClusters = mlWorker.isAvailable
@@ -4200,7 +4370,20 @@ export class DataLoaderManager implements AppModule {
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(allSignals, 'Correlation');
+        // #7084: correlation signals cluster over `ctx.allNews`, and during a
+        // stale digest replay those items are up to six hours old — a browser
+        // notification raised from them interrupts the user for old events
+        // presented as breaking. Signals are still computed and recorded
+        // above; only the interruptive notification is muted. The generation
+        // equality check also rejects a result computed for news that was
+        // replaced while the worker was running. (Military-surge notifications
+        // elsewhere derive from non-news data and are not gated.)
+        if (
+          this.shouldShowIntelligenceNotifications()
+          && this.canNotifyForCommittedNews(newsGeneration, newsServedStale)
+        ) {
+          this.showSignalNotification(allSignals, 'Correlation');
+        }
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);
@@ -4211,7 +4394,9 @@ export class DataLoaderManager implements AppModule {
     try {
       const fireResult = await fetchAllFires(1);
       if (fireResult.skipped) {
-        this.ctx.panels['satellite-fires']?.showConfigError(t('panels.satelliteFires.noData'));
+        // en.json carries panels.satelliteFires as a flat title string, so the
+        // nested .noData lookup could never resolve — it rendered the raw key.
+        this.ctx.panels['satellite-fires']?.showConfigError(t('common.noData'));
         this.ctx.statusPanel?.updateApi('FIRMS', { status: 'error' });
         return;
       }

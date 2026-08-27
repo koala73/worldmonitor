@@ -3073,6 +3073,10 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT",
       "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
@@ -3108,6 +3112,7 @@
       "activity": "ACTIVITY",
       "primary": "PRIMARY",
       "trackedAircraft": "TRACKED AIRCRAFT",
+      "showLess": "Show less",
       "vesselActivity": {
         "exercise": "Naval Exercise",
         "deployment": "Naval Deployment",
@@ -3420,6 +3425,8 @@
   },
   "preferences": {
     "display": "Display",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global",
     "intelligence": "Intelligence",
     "media": "Media",
     "panels": "Panels",

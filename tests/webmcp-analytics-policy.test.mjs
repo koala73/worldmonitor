@@ -6,7 +6,7 @@ import { FakeWebMcpModelContext } from './helpers/fake-webmcp-model-context.mjs'
 import { resetAnalyticsForTesting } from '../src/services/analytics.ts';
 import {
   DashboardBindingError,
-  buildWebMcpTools,
+  buildWebMcpTools as buildProductionWebMcpTools,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 
@@ -24,11 +24,20 @@ const settlePromises = async () => {
   await new Promise((resolve) => setImmediate(resolve));
 };
 
+function buildWebMcpTools(app, track) {
+  return buildProductionWebMcpTools(app, track).map((tool) => ({
+    ...tool,
+    execute(input, context = { signal: new AbortController().signal }) {
+      return tool.execute(input, context);
+    },
+  }));
+}
+
 function createBindings(overrides = {}) {
   return {
-    openCountryBriefByCode: async () => {},
+    openCountryBriefByCode: async () => true,
     resolveCountryName: (code) => `Country ${code}`,
-    openSearch: async () => {},
+    openSearch: async () => true,
     getDashboardContext: async () => ({
       variant: 'full',
       map: {
@@ -103,6 +112,7 @@ describe('WebMCP analytics privacy policy', () => {
 
     resetAnalyticsForTesting();
     const provider = new FakeWebMcpModelContext({
+      supportsTargetExecutionSignal: true,
       registrationFailure: new Map([
         ['set_map_view', new DOMException('PRIVATE_HOST_FAILURE', 'AbortError')],
       ]),

@@ -1012,8 +1012,8 @@ curl -s https://worldmonitor.app/mcp \
 | `limit` | number | 将异常列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** 无（仅 MCP；底层 REST 基线端点为写穿式，已从对等性检查中排除）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**（生产者每小时刷新，并由 infra seeder 保持热度）。
+- **类型：** 仅缓存读取 — 从 Redis 引导缓存亚秒级返回。MCP 调用不会调用生产者，也不会触发重建。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**。只有底层生产者路由/RPC（`GET /api/infrastructure/v1/list-temporal-anomalies`）收到流量时，才会在快照超过 20 分钟后按需重建。`cached_at` 记录该次重建的时间，而不是 MCP 调用时间，因此仅在生产者路由重建快照时推进。如果该路由没有流量，这个请求驱动的时间戳可能超过新鲜度预算。
 
 <CodeGroup>
 
@@ -1357,7 +1357,7 @@ curl -s https://worldmonitor.app/mcp \
 | `country` | string | 二选一 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。未设置 `domain` 时必填 |
 | `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
 | `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
-| `limit` | integer | 否 | 最大事件数。省略时路由返回 50 条，上限为 200 |
+| `limit` | integer | 否 | 最大事件数。省略时返回 40 条，上限为 40 —— schema 声明 `maximum: 40`，更大的值会被钳制 |
 
 - **API 端点：** `GET /api/intelligence/v1/get-intel-timeline`
 - **类型：** 实时 RPC — 一次存储读取，无嵌入。Edge 运行时超时：**8.0s**。

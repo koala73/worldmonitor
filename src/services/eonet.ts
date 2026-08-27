@@ -2,7 +2,7 @@ import type { NaturalEvent, NaturalEventCategory } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { NATURAL_EVENT_CATEGORIES } from '@/types';
 import type { ListNaturalEventsResponse } from '@/generated/client/worldmonitor/natural/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { NaturalServiceClient } from '@/services/generated-rpc-clients';
 
@@ -77,7 +77,12 @@ function toNaturalEvent(e: ListNaturalEventsResponse['events'][number]): Natural
 
 export async function fetchNaturalEvents(_days = 30): Promise<NaturalEvent[]> {
   const hydrated = getHydratedData('naturalEvents') as ListNaturalEventsResponse | undefined;
-  const response = (hydrated?.events?.length ? hydrated : null) ?? await breaker.execute(async () => {
+  if (hydrated?.events?.length) {
+    breaker.recordSuccess(hydrated);
+    return hydrated.events.map(toNaturalEvent);
+  }
+
+  const response = await breaker.execute(async () => {
     return client.listNaturalEvents({ days: 30 });
   }, emptyFallback, { shouldCache: (r) => r.events.length > 0 });
 

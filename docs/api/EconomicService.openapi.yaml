@@ -2081,14 +2081,14 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive lower date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive upper date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
@@ -5144,10 +5144,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive lower date bound in YYYY-MM-DD format.
                 toDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive upper date bound in YYYY-MM-DD format.
         GetEconomicCalendarResponse:
             type: object
             properties:

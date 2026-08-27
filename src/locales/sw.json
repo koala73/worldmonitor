@@ -142,9 +142,6 @@
     "china": {
       "title": "Picha ya Nchi ya China",
       "description": "Taarifa za sasa za uchumi mkuu, masoko, biashara, nishati na upatikanaji wa uendeshaji kutoka mikataba ya data ya umma iliyopo.",
-      "macroPolicy": "Macro & Policy",
-      "marketCredit": "Market & Credit",
-      "tradeSupply": "Trade & Supply Chain",
       "energy": "Nishati",
       "availability": "Hatari na Anga",
       "observed": "Kufikia:",
@@ -156,8 +153,6 @@
       "gasDemand": "Mahitaji ya gesi",
       "energyMix": "Mchanganyiko wa umeme",
       "coal": "Makaa ya mawe",
-      "aviationAvailability": "Aviation availability",
-      "hazardAvailability": "Hazard availability",
       "noMajorDisruptions": "Hakuna usumbufu mkubwa ulioripotiwa",
       "activeDisruptions_one": "{{count}} usumbufu unaoendelea",
       "activeDisruptions_other": "{{count}} usumbufu unaoendelea",
@@ -169,11 +164,6 @@
       "ccfiSource": "Soko la Kubadilishana la Usafirishaji la Shanghai",
       "comtradeSource": "Mtoa taarifa wa UN Comtrade 156",
       "sourceUnavailable": "Chanzo hakipatikani",
-      "macroUnavailable": "Macro and policy data are currently unavailable.",
-      "marketUnavailable": "Market and credit data are currently unavailable.",
-      "tradeUnavailable": "Trade and supply-chain data are currently unavailable.",
-      "energyUnavailable": "Energy data are currently unavailable.",
-      "availabilityUnavailable": "Hazard and aviation availability data are currently unavailable.",
       "status": {
         "loading": "Inapakia",
         "available": "Inapatikana",
@@ -3083,7 +3073,11 @@
       "heading": "KICHWA",
       "hexCode": "MSIMBO WA HEX",
       "squawk": "SQUAWK",
-      "attribution": "Chanzo: Mtandao wa OpenSky"
+      "attribution": "Chanzo: Mtandao wa OpenSky",
+      "climbRate": "KASI YA KUPAA",
+      "manufacturer": "MTENGENEZAJI",
+      "owner": "MMILIKI",
+      "builtYear": "MWAKA WA UJENZI"
     },
     "militaryVessel": {
       "aisDark": "AIS GIZA",
@@ -3128,7 +3122,8 @@
       "moreVessels": "+{{count}} vyombo zaidi",
       "vesselsCount": "{{count}} VYOMBO",
       "vessels": "VYOMBO",
-      "trackedVessels": "VYOMBO VILIVYOFUATILIWA"
+      "trackedVessels": "VYOMBO VILIVYOFUATILIWA",
+      "showLess": "Onyesha kidogo"
     },
     "naturalEvent": {
       "closed": "IMEFUNGWA",
@@ -3422,7 +3417,9 @@
     "fontFamily": "Familia ya Fonti",
     "fontFamilyDesc": "Nafasi moja kwa mwonekano wa kiufundi, chaguomsingi ya mfumo kwa usomaji rahisi.",
     "fontMono": "Nafasi moja",
-    "fontSystem": "Chaguomsingi ya Mfumo"
+    "fontSystem": "Chaguomsingi ya Mfumo",
+    "panelFontScale": "Ukubwa wa maandishi",
+    "followGlobalFontScale": "Tumia kiwango cha ulimwengu"
   },
   "premium": {
     "pro": "PRO",

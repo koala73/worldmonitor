@@ -1004,7 +1004,11 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
 
 test.describe('dashboard container scroll hydration (#5876)', () => {
   for (const viewport of [
-    { label: 'desktop', width: 1280, height: 720, scrollOwner: 'main-content' },
+    // From SPLIT_LAYOUT_MIN_WIDTH (900, src/app/split-layout.ts — #6417) the
+    // split layout makes .panels-grid the scroll owner; below it the stacked
+    // layout scrolls .main-content.
+    { label: 'desktop', width: 1280, height: 720, scrollOwner: 'panels-grid' },
+    { label: 'narrow-desktop', width: 850, height: 720, scrollOwner: 'main-content' },
     { label: 'mobile', width: 390, height: 844, scrollOwner: 'main-content' },
     { label: 'ultra-wide', width: 1720, height: 720, scrollOwner: 'panels-grid' },
   ]) {

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  mkdtempSync,
+  
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -16,8 +16,9 @@ import {
   findPushedSecretDumps,
   runLocalSecretDumpCheck,
 } from '../scripts/check-local-secret-dumps.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
-const makeTempRepo = () => mkdtempSync(join(tmpdir(), 'wm-env-dump-check-'));
+const makeTempRepo = () => createTempDir('wm-env-dump-check-');
 const guardScriptPath = fileURLToPath(
   new URL('../scripts/check-local-secret-dumps.mjs', import.meta.url),
 );

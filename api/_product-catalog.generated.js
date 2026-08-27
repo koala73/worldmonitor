@@ -161,7 +161,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": false,
       "selfServe": false,
       "dashboardAiCallsPerDay": null,
-      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option"
+      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings"
     }
   ]
 };
@@ -347,7 +347,11 @@ export const TIER_CONFIG = {
       "Dedicated support",
       "Custom integrations",
       "SLA guarantee",
-      "On-premise option"
+      "On-premise option",
+      "Data processing agreement (DPA)",
+      "Purchase-order billing",
+      "SAML SSO, SCIM",
+      "Custom security and privacy settings"
     ],
     "planLimits": {
       "apiRequestsPerDay": null,

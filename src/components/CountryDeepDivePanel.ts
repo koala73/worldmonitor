@@ -1122,7 +1122,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
 
     if (data.jodiGasAvailable) {
-      const totalBcm = Math.round(data.gasTotalDemandTj / 36000);
+      // seed-jodi-gas publishes ONE month of TOTDEMO (dataMonth = YYYY-MM), so
+      // TJ/36000 is bcm for that single month. Label it BCM/mo — annualizing
+      // x12 would fabricate a season-free yearly figure from one data point.
+      const totalBcmMonth = Math.round(data.gasTotalDemandTj / 36000);
       const lngShare = data.gasLngShare;
       const pipeShare = Math.max(0, 100 - lngShare);
       const lngColor = lngShare > 80 ? '#ef4444' : lngShare >= 40 ? '#f59e0b' : '#22c55e';
@@ -1132,7 +1135,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const row = this.el('div', '');
       row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:calc(12px * var(--wm-panel-effective-scale, 1))';
 
-      const gasLabel = this.el('span', '', `Gas demand: ${totalBcm} BCM/yr`);
+      const gasMonth = data.jodiGasDataMonth ? ` (${data.jodiGasDataMonth})` : '';
+      const gasLabel = this.el('span', '', `Gas demand${gasMonth}: ${totalBcmMonth} BCM/mo`);
       const lngBadge = this.el('span', '');
       lngBadge.style.cssText = `background:${lngColor};color:#fff;padding:1px 5px;border-radius:3px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))`;
       lngBadge.textContent = `LNG ${lngShare.toFixed(0)}%`;
@@ -1316,7 +1320,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // Late-import so non-energy variants can tree-shake these modules at
     // build time if the Atlas panels aren't bundled. Static imports are
     // safe here because all four stores are pure client caches.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     import('@/shared/pipeline-registry-store').then(({ getCachedPipelineRegistries }) => {
       const { gas, oil } = getCachedPipelineRegistries() as {
         gas: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;

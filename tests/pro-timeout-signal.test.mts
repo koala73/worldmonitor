@@ -18,7 +18,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createTimeoutSignal } from '../pro-test/src/services/timeout-signal.ts';
+import { createTimeoutSignal, isTimeoutOrAbortError } from '../pro-test/src/services/timeout-signal.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -99,6 +99,40 @@ describe('createTimeoutSignal', () => {
     } finally {
       AbortSignal.timeout = original;
     }
+  });
+});
+
+describe('isTimeoutOrAbortError (WORLDMONITOR-10F)', () => {
+  it('matches Safari AbortError "Fetch is aborted" and native TimeoutError', () => {
+    // Production event aee57f9d965b4b2b888bde214054d8d1: Mobile Safari
+    // AbortError + DOMException.code 20. Synthetic values only.
+    assert.equal(
+      isTimeoutOrAbortError(Object.assign(new Error('Fetch is aborted'), { name: 'AbortError' })),
+      true,
+    );
+    assert.equal(
+      isTimeoutOrAbortError(Object.assign(new Error('signal timed out'), { name: 'TimeoutError' })),
+      true,
+    );
+  });
+
+  it('preserves first-party failures for Sentry', () => {
+    assert.equal(isTimeoutOrAbortError(new TypeError('Failed to fetch')), false);
+    assert.equal(isTimeoutOrAbortError(new Error('network down')), false);
+    assert.equal(isTimeoutOrAbortError(null), false);
+    assert.equal(isTimeoutOrAbortError('AbortError'), false);
+  });
+});
+
+describe('ProEntitlementProvider skips Sentry on abort/timeout (WORLDMONITOR-10F)', () => {
+  it('gates check-entitlement captureException behind isTimeoutOrAbortError', () => {
+    const appSrc = readFileSync(resolve(root, 'pro-test/src/App.tsx'), 'utf-8');
+    // Capture site must still exist for real failures, but abort/timeout skip first.
+    assert.match(
+      appSrc,
+      /if\s*\(\s*!isTimeoutOrAbortError\(\s*err\s*\)\s*\)\s*\{\s*Sentry\.captureException\(\s*err\s*,\s*\{\s*tags:\s*\{\s*surface:\s*'pro-marketing'\s*,\s*action:\s*'check-entitlement'/,
+    );
+    assert.match(appSrc, /signal:\s*createTimeoutSignal\(\s*8_000\s*\)/);
   });
 });
 

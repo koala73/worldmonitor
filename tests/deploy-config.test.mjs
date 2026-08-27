@@ -42,7 +42,7 @@ const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
-const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
+const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOSTS = [
@@ -803,9 +803,17 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /navigateFallbackDenylist:\s*\[/);
   });
 
-  it('uses network-only runtime caching for navigation requests', () => {
-    assert.match(viteConfigSource, /request\.mode === 'navigate'/);
-    assert.match(viteConfigSource, /handler:\s*'NetworkOnly'/);
+  it('delegates navigation requests to the SW script with an offline fallback', () => {
+    // Navigations are handled by public/sw-navigation.js: network-first with
+    // NO cache write (a cached index.html outlives its hashed chunks across
+    // deploys -> blank offline reloads), falling back to the precached
+    // offline.html when the network is unreachable.
+    assert.match(viteConfigSource, /importScripts:\s*\[[^\]]*'\/sw-navigation\.js'/);
+    assert.doesNotMatch(viteConfigSource, /html-navigation/);
+    const navScript = readFileSync(resolve(__dirname, '../public/sw-navigation.js'), 'utf-8');
+    assert.match(navScript, /request\.mode !== 'navigate'/);
+    assert.match(navScript, /OFFLINE_URL = '\/offline\.html'/);
+    assert.match(navScript, /caches\.match\(OFFLINE_URL/);
   });
 
   it('contains variant-specific metadata fields used by html replacement and manifest', () => {
@@ -1871,6 +1879,15 @@ describe('security header guardrails', () => {
     assert.match(webMcpE2eSource, /window\.addEventListener\('unhandledrejection'/);
     assert.match(webMcpE2eSource, /lateLeakWindowMs/);
     assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
+    assert.match(webMcpE2eSource, /testInfo\.outputPath\(name\)/);
+    assert.match(webMcpE2eSource, /writeFile\(path/);
+    assert.match(webMcpE2eSource, /testInfo\.attach\(name, \{ path/);
+    assert.match(webMcpE2eSource, /webmcp-production-matrix\.json/);
+    assert.match(webMcpE2eSource, /build-hash\.txt/);
+    assert.match(webMcpE2eSource, /expect\(servedSha,[\s\S]*?\.toBe\(expectedDeployedSha\)/);
+    assert.match(webMcpE2eSource, /https:\/\/tech\.worldmonitor\.app\/embed/);
+    assert.match(webMcpE2eSource, /redirectHeaders\['origin-trial'\]/);
+    assert.match(playwrightConfigSource, /preserveOutput:\s*'always'/);
     assert.match(embedE2eSource, /WEBMCP_MIN_CHROME_MAJOR = 149/);
     assert.match(embedE2eSource, /WM_REQUIRE_WEBMCP requires Chrome/);
   });
@@ -1919,36 +1936,41 @@ describe('security header guardrails', () => {
     }
   });
 
-  it('enrolls only eligible production pages with exact-origin WebMCP trial tokens', () => {
+  it('enrolls only eligible production documents with exact-origin WebMCP trial tokens', () => {
     const rules = vercelConfig.headers.filter((entry) =>
       entry.headers?.some((header) => header.key.toLowerCase() === 'origin-trial')
     );
-    assert.equal(rules.length, WEBMCP_PRODUCTION_HOSTS.length * 3);
+    assert.equal(rules.length, 3 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
 
     for (const host of WEBMCP_PRODUCTION_HOSTS) {
       const hostPattern = '^' + host.replaceAll('.', '\\.') + '$';
       const hostRules = rules.filter((rule) =>
         rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
       );
+      const expectedSources = host === 'www.worldmonitor.app'
+        ? ['/', '/dashboard', '/dashboard.html']
+        : ['/dashboard', '/dashboard.html'];
       assert.deepEqual(
         hostRules.map((rule) => rule.source).sort(),
-        ['/', '/dashboard', '/dashboard.html'],
-        host + ' must enroll the homepage, canonical dashboard, and direct dashboard document',
+        expectedSources,
+        host + ' must enroll only documents that directly return WebMCP HTML',
       );
-      const rootRule = hostRules.find((rule) => rule.source === '/');
-      assert.ok(rootRule, host + ' must define a homepage origin-trial rule');
-      assert.deepEqual(
-        rootRule.missing,
-        [{ type: 'query', key: 'mode', value: 'agent' }],
-        host + ' must exclude the /?mode=agent JSON representation from enrollment',
-      );
-      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host }), true);
-      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'reader' } }), true);
-      assert.equal(
-        headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'agent' } }),
-        false,
-        host + ' must not attach an Origin-Trial token to /?mode=agent',
-      );
+      if (host === 'www.worldmonitor.app') {
+        const rootRule = hostRules.find((rule) => rule.source === '/');
+        assert.ok(rootRule, host + ' must define a homepage origin-trial rule');
+        assert.deepEqual(
+          rootRule.missing,
+          [{ type: 'query', key: 'mode', value: 'agent' }],
+          host + ' must exclude the /?mode=agent JSON representation from enrollment',
+        );
+        assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host }), true);
+        assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'reader' } }), true);
+        assert.equal(
+          headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'agent' } }),
+          false,
+          host + ' must not attach an Origin-Trial token to /?mode=agent',
+        );
+      }
       assert.equal(
         hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard', host })),
         true,
@@ -2020,6 +2042,38 @@ describe('security header guardrails', () => {
       getHeaderValue('Permissions-Policy'),
       'Self-hosted docker users must have the same Permissions-Policy as Vercel.'
     );
+  });
+
+  it('every shipped CSP directive name is a real CSP directive', () => {
+    // A detect-secrets pragma once leaked into the header value itself
+    // (`object-src 'none'; x-allowlist // pragma: allowlist secret;
+    // form-action ...`), which Chrome reported on every production page load
+    // as "Unrecognized Content-Security-Policy directive 'x-allowlist'". JSON
+    // has no comment syntax, so any such annotation ships to browsers.
+    const KNOWN_CSP_DIRECTIVES = new Set([
+      'base-uri', 'block-all-mixed-content', 'child-src', 'connect-src',
+      'default-src', 'font-src', 'form-action', 'frame-ancestors', 'frame-src',
+      'img-src', 'manifest-src', 'media-src', 'object-src', 'prefetch-src',
+      'report-to', 'report-uri', 'require-trusted-types-for', 'sandbox',
+      'script-src', 'script-src-attr', 'script-src-elem', 'style-src',
+      'style-src-attr', 'style-src-elem', 'trusted-types',
+      'upgrade-insecure-requests', 'worker-src',
+    ]);
+    const surfaces = [
+      ['vercel', getHeaderValue('Content-Security-Policy')],
+      ['docker/nginx', getNginxHeaderValue('Content-Security-Policy')],
+    ];
+    for (const [label, csp] of surfaces) {
+      assert.ok(csp, `${label} must define a Content-Security-Policy`);
+      for (const segment of csp.split(';')) {
+        const name = segment.trim().split(/\s+/)[0];
+        if (!name) continue;
+        assert.ok(
+          KNOWN_CSP_DIRECTIVES.has(name),
+          `${label} CSP ships unrecognized directive "${name}" — browsers ignore it and log an error on every page load`,
+        );
+      }
+    }
   });
 
   it('CSP connect-src does not allow unencrypted WebSocket (ws:)', () => {
@@ -2417,10 +2471,24 @@ describe('embeddable map route guardrails', () => {
     assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
   });
 
-  it('keeps the global security header anti-framing rule off the embed entry', () => {
-    assert.equal(GLOBAL_SECURITY_HEADER_SOURCE, '/((?!docs|embed|embed\\.html).*)');
+  it('keeps the global security header anti-framing rule off the embed entries', () => {
+    // Both /embed (partner iframe) and /wm-widget-sandbox.html (agent widget
+    // sandbox) need cross-origin framing + their own dedicated CSP; the
+    // global SAMEORIGIN/dashboard-CSP rule must skip both.
+    assert.equal(GLOBAL_SECURITY_HEADER_SOURCE, '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)');
     const globalXfo = getHeaderValueForSource(GLOBAL_SECURITY_HEADER_SOURCE, 'X-Frame-Options');
     assert.equal(globalXfo, 'SAMEORIGIN');
+  });
+
+  it('/wm-widget-sandbox.html keeps its dedicated headers instead of inheriting app XFO/CSP', () => {
+    const source = '/wm-widget-sandbox.html';
+    assert.equal(
+      sourceToRegExp(GLOBAL_SECURITY_HEADER_SOURCE).test(source),
+      false,
+      `${source} must not match the global security-header rule`,
+    );
+    assert.equal(getHeaderValueForSource(source, 'X-Frame-Options'), null);
+    assert.match(getHeaderValueForSource(source, 'Content-Security-Policy') ?? '', /default-src 'none'/);
   });
 
   for (const source of ['/embed', '/embed.html']) {
