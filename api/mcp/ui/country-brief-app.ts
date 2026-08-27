@@ -54,16 +54,11 @@ const RENDER = `
     var name = collapseWs(data.countryName) || countryName(data.countryCode || data.country_code);
     setText("title", name ? name + " Brief" : "Country Brief");
 
-    var fw = collapseWs(data.framework);
-    if (fw) {
-      var lens = q("lens");
-      lens.textContent = "";
-      lens.appendChild(el("span", null, "Lens: "));
-      lens.appendChild(el("b", null, fw));
-      lens.style.display = "block";
-    } else {
-      q("lens").style.display = "none";
-    }
+    // GetCountryIntelBriefResponse has no framework field — it is an INPUT
+    // only, so this lens pill could never appear. The shared shell drops
+    // ui/notifications/tool-input (shell.ts), which is where the argument
+    // would have to come from; wiring that is a fleet-wide bridge change.
+    q("lens").style.display = "none";
 
     var brief = typeof data.brief === "string" ? data.brief
       : (typeof data.summary === "string" ? data.summary : "");
@@ -100,7 +95,13 @@ const RENDER = `
 
     // GetCountryIntelBriefResponse carries model but no provider.
     var prov = [data.model].filter(Boolean).map(collapseWs).filter(Boolean).join(" · ");
-    var gen = data.generatedAt != null ? "Generated " + collapseWs(data.generatedAt) : "";
+    // generated_at is int64 epoch milliseconds (INT64_ENCODING_NUMBER), so
+    // printing it raw read "Generated 1756296000000".
+    var genMs = Number(data.generatedAt);
+    var genAt = isFinite(genMs) && genMs > 0 ? new Date(genMs) : null;
+    var gen = genAt && !isNaN(genAt.getTime())
+      ? "Generated " + genAt.toISOString()
+      : (data.generatedAt != null ? "Generated " + collapseWs(data.generatedAt) : "");
     q("foot").textContent = [prov, gen].filter(Boolean).join(" · ");
 `;
 

@@ -104,7 +104,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
       <div class="country" id="country">—</div>
       <div class="badge" id="badge">Composite Instability Index</div>
     </div>
-    <!-- upstreamUnavailable: every upstream read failed, so the zeroed risk
+    <!-- upstreamUnavailable: a required upstream read failed, so the zeroed risk
          fields mean UNKNOWN. Without this banner an outage renders exactly
          like a calm, low-risk country. -->
     <div class="degraded" id="degraded" style="display:none">
@@ -145,9 +145,16 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (score >= 25) return { label: "Moderate", varName: "--moderate" };
     return { label: "Low", varName: "--low" };
   }
+  // Only real numbers and numeric strings become numbers. A bare Number()
+  // coerces null, "", and [] to 0, which would render a MISSING score as a
+  // reassuring 0 — the same "absent read as calm" failure as the outage path.
   function num(v) {
-    var n = typeof v === "number" ? v : Number(v);
-    return isFinite(n) ? n : null;
+    if (typeof v === "number") return isFinite(v) ? v : null;
+    if (typeof v === "string" && v.trim() !== "") {
+      var n = Number(v);
+      return isFinite(n) ? n : null;
+    }
+    return null;
   }
   function clampPct(n) { return Math.max(0, Math.min(100, n)); }
 
@@ -177,10 +184,16 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   // authoritative flag, so an active designation with an unknown count still
   // reads as active rather than as "None".
   function describeSanctions(active, count) {
+    // Count first, so a positive one is never discarded. The producer keeps
+    // the two coupled today (sanctionsActive = sanctionsCount > 0), but the
+    // schema declares them independently and nothing enforces that, and
+    // "designations exist but we printed None" is the precise failure this
+    // shell was fixed to stop making.
     var n = num(count);
-    if (active === true) return n != null && n > 0 ? String(n) + " OFAC-listed" : "Active";
+    if (n != null && n > 0) return String(n) + " OFAC-listed";
+    if (active === true) return "Active";
     if (active === false) return "None";
-    return n != null && n > 0 ? String(n) + " OFAC-listed" : "—";
+    return "—";
   }
   var TREND_LABELS = {
     TREND_DIRECTION_RISING: "Rising",

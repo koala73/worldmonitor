@@ -109,7 +109,7 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
     "sanctionsActive": { "type": "boolean" },
     "sanctionsCount":  { "type": "number" },
     "fetchedAt":       { "type": "number", "description": "Unix epoch ms; 0 means unknown." },
-    "upstreamUnavailable": { "type": "boolean", "description": "True when every upstream read failed. The zeroed risk fields then mean UNKNOWN, not low." }
+    "upstreamUnavailable": { "type": "boolean", "description": "True when ANY required upstream read failed; the whole response is withheld, so the zeroed risk fields mean UNKNOWN, not low." }
   }
 }
 ```
@@ -147,8 +147,9 @@ type CountryRisk = {
   sanctionsActive: boolean;
   sanctionsCount: number;
   fetchedAt: number;
-  // Check this BEFORE reading any score: true means every upstream read
-  // failed, so the zeroed fields are unknown, not calm.
+  // Check this BEFORE reading any score: true means a required upstream
+  // read failed and the response was withheld — the zeroed fields are
+  // unknown, not calm.
   upstreamUnavailable: boolean;
 };
 

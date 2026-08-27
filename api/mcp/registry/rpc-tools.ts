@@ -1275,7 +1275,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_risk',
     _outputBudgetBytes: 262144,
-    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true every upstream read failed and the zeroed fields mean UNKNOWN, not calm.',
+    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1331,7 +1331,7 @@ export const RPC_TOOLS: ToolDef[] = [
         fetchedAt: { type: 'number', description: 'Freshness stamp taken from cii.computedAt, Unix epoch milliseconds. 0 means unknown, including "no CII score for this country".' },
         upstreamUnavailable: {
           type: 'boolean',
-          description: 'True when every upstream read failed. The zeroed risk fields then mean UNKNOWN, not "low risk" — never report a country as calm on such a response.',
+          description: 'True when ANY required upstream read failed. The handler fails closed on the first missing key, so the whole response is withheld: cii is absent and every risk field is zeroed. Those zeros mean UNKNOWN, not "low risk" — never report a country as calm on such a response.',
         },
       },
     },
