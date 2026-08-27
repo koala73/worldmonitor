@@ -655,7 +655,7 @@ export async function writeFreshnessMetadata(
   }
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
-  const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
+  const metaTtl = resolveSeedMetaTtl(undefined, ttlSeconds);
   // Retry transient Redis failures: this SET runs bare on runSeed's
   // validate-skip path, where an unretried Upstash abort escaped to the
   // seeder's top-level catch as `FATAL: The operation was aborted due to
@@ -1025,6 +1025,34 @@ export function extraKeyPayloadBytes(key, data, envelopeMeta) {
   return Buffer.byteLength(serializeExtraKeyValue(key, data, envelopeMeta), 'utf8');
 }
 
+/**
+ * Floor for every seed-meta TTL. A meta key must survive its data key's
+ * disappearance so health can report STALE_SEED (present-but-stale) rather than
+ * losing the heartbeat at the same moment as the payload — see the "seed-meta
+ * outlives its data key" note in api/health.js's absence branch.
+ */
+export const SEED_META_MIN_TTL_SECONDS = 86400 * 7;
+
+/**
+ * The meta TTL for a data key written with `dataTtlSeconds`.
+ *
+ * The floor alone is not enough once a data key outlives 7 days: health reads
+ * freshness from seed-meta and falls through to plain OK when the meta is gone
+ * but the data key still has bytes, so a meta that expires FIRST makes the
+ * STALE_SEED alarm unreachable for the remainder of the data key's life. The
+ * clamp is the same one `writeFreshnessMetadata` has always applied to the
+ * canonical key; extra keys need it for the same reason.
+ *
+ * An explicit `metaTtlSeconds` still wins, so the parameter keeps meaning what
+ * it says. The three seeders that already pass one (seed-jodi-gas,
+ * seed-natural-events, seed-defense-industrial-suppliers) pass their own data
+ * TTL — the value this would have computed — so they are byte-identical either
+ * way; the override exists for a future caller that needs a different one.
+ */
+export function resolveSeedMetaTtl(metaTtlSeconds, dataTtlSeconds) {
+  return metaTtlSeconds ?? Math.max(SEED_META_MIN_TTL_SECONDS, dataTtlSeconds || 0);
+}
+
 export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
   const { url, token } = getRedisCredentials();
   const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
@@ -1040,7 +1068,9 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
       if (value !== undefined) meta[key] = value;
     }
   }
-  const metaTtl = metaTtlSeconds ?? 86400 * 7;
+  // No data TTL is in scope here — callers that know one resolve it through
+  // `resolveSeedMetaTtl` before calling. Bare floor otherwise.
+  const metaTtl = resolveSeedMetaTtl(metaTtlSeconds);
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
@@ -1060,7 +1090,10 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
   await writeExtraKey(key, data, ttl);
-  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds, coverage);
+  // The data TTL is right here, so the meta never has to be the shorter of the
+  // two. seed-economy's four EIA weekly keys (21d data, 14d health budget) rode
+  // the bare 7d default and went silent-OK for the 14 days in between.
+  return writeSeedMeta(key, recordCount, metaKeyOverride, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage);
 }
 
 // Detailed counterpart to extendExistingTtl. Results stay aligned to the input
@@ -2575,7 +2608,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             ek.key,
             ekEnvelope?.recordCount ?? 0,
             ek.metaKey,
-            ek.metaTtlSeconds,
+            // Same data TTL the writeExtraKey above just used, so a long-lived
+            // extra key can't outlive the meta that reports on it.
+            resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
             ek.coverage,
             metaExtra,
           );
