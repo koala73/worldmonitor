@@ -185,6 +185,10 @@ async function fetchLeg(airport: string, leg: Leg, now: number): Promise<LegResu
                 const flights = normalizeFlights(json.data ?? [], now);
                 return { flights, source: 'aviationstack' };
             } catch (err) {
+                // sentry-coverage-ok: a metered third-party relay blip is an
+                // expected state, not a defect — the leg negative-caches and the
+                // response reports it as 'error' (or 'partial' when the sibling
+                // leg served). Matches get-flight-status and track-aircraft.
                 console.warn(`[Aviation] Flights relay fetch failed for ${airport} ${leg}s: ${err instanceof Error ? err.message : err}`);
                 unavailableSource = 'error';
                 return null;
