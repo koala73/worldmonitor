@@ -15,6 +15,11 @@ const { createHash } = require('node:crypto');
 
 const OPENSKY_COOLDOWN_KEY = 'opensky:cooldown-until:v1';
 const OPENSKY_MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// Header-less 429s still park the shared key. The seeder is a one-shot */5
+// cron, so any deadline under 300s expires before the next tick and
+// suppresses exactly zero seeder requests. Two ticks (10 min) is the persist
+// fallback both writers use; the relay may keep a shorter in-process cooldown.
+const OPENSKY_SHARED_FALLBACK_COOLDOWN_MS = 10 * 60_000;
 
 function accountFingerprint(clientId) {
   if (!clientId) return null;
@@ -81,6 +86,7 @@ function buildCooldownRecord({
 module.exports = {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   accountFingerprint,
   clampCooldownMs,
   ttlSecondsForCooldown,

@@ -605,6 +605,7 @@ const OPENSKY_FETCH_RETRY_DELAYS = [0, 1_500];
 const {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   accountFingerprint: openSkyAccountFingerprint,
   clampCooldownMs,
   ttlSecondsForCooldown,
@@ -616,7 +617,7 @@ const {
 // seeder's cadence, not the relay's sub-minute loop: the process is one-shot on
 // a */5 cron, so any deadline under 300s has already expired by the next tick
 // and suppresses exactly zero requests. Two ticks buys real headroom.
-const OPENSKY_429_FALLBACK_COOLDOWN_MS = 10 * 60_000;
+const OPENSKY_429_FALLBACK_COOLDOWN_MS = OPENSKY_SHARED_FALLBACK_COOLDOWN_MS;
 let openskyToken = null;
 let openskyTokenExpiry = 0;
 let openskyTokenPromise = null;

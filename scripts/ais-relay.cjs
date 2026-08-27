@@ -28,6 +28,7 @@ const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = r
 const {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   accountFingerprint: openSkyAccountFingerprint,
   clampCooldownMs,
   ttlSecondsForCooldown,
@@ -9142,24 +9143,28 @@ async function remainingSharedOpenSkyCooldownMs() {
 }
 
 async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Date.now()) {
-  const cooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_429_COOLDOWN_MS);
-  mergeLocalOpenSkyCooldown(completedAt + cooldownMs);
+  const localCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_429_COOLDOWN_MS);
+  mergeLocalOpenSkyCooldown(completedAt + localCooldownMs);
+  // The in-process limiter can stay short (90s). The shared record must
+  // outlive the seeder's */5 tick, so header-less 429s use the 10-minute
+  // persist fallback instead of the relay's local default (#6253).
+  const persistCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS);
   const record = buildCooldownRecord({
     now: completedAt,
-    cooldownMs,
+    cooldownMs: persistCooldownMs,
     retryAfterSeconds,
     account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
     recordedBy: 'ais-relay',
   });
   try {
-    const ok = await upstashSet(OPENSKY_COOLDOWN_KEY, record, ttlSecondsForCooldown(cooldownMs));
+    const ok = await upstashSet(OPENSKY_COOLDOWN_KEY, record, ttlSecondsForCooldown(persistCooldownMs));
     if (!ok && UPSTASH_ENABLED) {
       console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
     }
   } catch (err) {
     console.warn(`[Relay] OpenSky shared cooldown persist failed: ${err.message || err}`);
   }
-  return cooldownMs;
+  return localCooldownMs;
 }
 
 async function getOpenSkyToken() {

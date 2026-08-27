@@ -5,6 +5,7 @@ import { test } from 'node:test';
 const {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   accountFingerprint,
   clampCooldownMs,
   ttlSecondsForCooldown,
@@ -26,6 +27,13 @@ test('clamp uses the caller fallback and caps at 24h', () => {
   assert.equal(clampCooldownMs(900, 90_000), 900_000);
   assert.equal(clampCooldownMs(999_999, 90_000), OPENSKY_MAX_COOLDOWN_MS);
   assert.equal(ttlSecondsForCooldown(90_000), 150);
+});
+
+test('shared persist fallback spans the seeder */5 cadence', () => {
+  assert.ok(OPENSKY_SHARED_FALLBACK_COOLDOWN_MS >= 300_000);
+  assert.equal(OPENSKY_SHARED_FALLBACK_COOLDOWN_MS, 10 * 60_000);
+  assert.equal(clampCooldownMs(null, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS), 10 * 60_000);
+  assert.equal(clampCooldownMs(120, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS), 10 * 60_000);
 });
 
 test('inspectCooldownRecord fails open on corrupt, mismatched, and implausible records', () => {
