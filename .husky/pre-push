@@ -345,8 +345,15 @@ if [ -L node_modules ]; then
   echo "ERROR: node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
   exit 1
 fi
-if [ ! -d node_modules ]; then
-  echo "node_modules missing, running npm ci..."
+# Test the install MARKER, not the directory. `-d` is satisfied by an empty
+# node_modules/ — which a half-finished install, an interrupted npm ci, or a
+# `mkdir node_modules` leaves behind — so the gate would skip the install and
+# then die later on a missing binary (`sh: tsc: command not found`), pointing
+# at the wrong thing. npm writes .package-lock.json only on a completed install,
+# which is exactly the check shouldInstallDependencies() in
+# scripts/bootstrap-worktree.mjs already uses. Keep the two in agreement.
+if [ ! -f node_modules/.package-lock.json ]; then
+  echo "node_modules missing or incomplete, running npm ci..."
   npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
 fi
 
@@ -629,7 +636,8 @@ if [ -n "$PRO_BUILT_OUTPUT_TEST" ]; then
     echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
     exit 1
   fi
-  if [ ! -d pro-test/node_modules ]; then
+  # Marker, not directory — see the root node_modules check above.
+  if [ ! -f pro-test/node_modules/.package-lock.json ]; then
     (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
   fi
   (cd pro-test && npm run build >/dev/null) || {
@@ -743,7 +751,8 @@ if [ "$RUN_ALL" = true ] || path_matches '^pro-test/|^convex/config/productCatal
     echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
     exit 1
   fi
-  if [ ! -d pro-test/node_modules ]; then
+  # Marker, not directory — see the root node_modules check above.
+  if [ ! -f pro-test/node_modules/.package-lock.json ]; then
     echo "  Installing pro-test deps..."
     (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
   fi

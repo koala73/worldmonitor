@@ -62,7 +62,7 @@ for (const tool of TOOL_REGISTRY) {
 // Always recursively deep-clones property schemas AND the injected
 // SUMMARY_SCHEMA / JMESPATH_SCHEMA consts via `structuredClone`. Without
 // this, mutating any returned property (including nested `enum` / `items.enum`
-// arrays, e.g. `get_market_data.asset_classes.items.enum`) would corrupt
+// arrays, e.g. `get_market_data.asset_class.items.enum`) would corrupt
 // the registry or the module-level schema consts. Codex Round 2 explicitly
 // flagged shallow `{ ...prop }` as insufficient for these shapes.
 //

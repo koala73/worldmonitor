@@ -22,13 +22,22 @@ const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'),
   'utf-8',
 );
+const candidateGateSrc = readFileSync(
+  resolve(__dirname, '..', 'scripts', 'lib', 'digest-stale-gate.cjs'),
+  'utf-8',
+);
 
 describe('ais-relay importanceScore publish path', () => {
   it('carries corroborationCount into allTitles', () => {
     assert.match(
       relaySrc,
-      /allTitles\.set\([^)]*[\s\S]*?corroborationCount:\s*item\.corroborationCount/,
-      'allTitles.set must capture item.corroborationCount from the digest response',
+      /buildClassifyCandidateMap\(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS\)/,
+      'the relay must build allTitles through the executable candidate helper',
+    );
+    assert.match(
+      candidateGateSrc,
+      /candidates\.set\(item\.title,[\s\S]*?corroborationCount:\s*item\.corroborationCount/,
+      'the candidate helper must capture item.corroborationCount from the digest response',
     );
   });
 

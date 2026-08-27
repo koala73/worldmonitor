@@ -18,15 +18,27 @@ import {
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
 } from '../src/config/panels.ts';
-import { buildWebMcpTools } from '../src/services/webmcp.ts';
+import { buildWebMcpTools as buildProductionWebMcpTools } from '../src/services/webmcp.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+function buildWebMcpTools(
+  app: Parameters<typeof buildProductionWebMcpTools>[0],
+  track: Parameters<typeof buildProductionWebMcpTools>[1],
+) {
+  return buildProductionWebMcpTools(app, track).map((tool) => ({
+    ...tool,
+    execute(input: Record<string, unknown>) {
+      return tool.execute(input, { signal: new AbortController().signal });
+    },
+  }));
+}
+
 function createBindings(overrides: Record<string, unknown> = {}) {
   return {
-    openCountryBriefByCode: async () => {},
+    openCountryBriefByCode: async () => true,
     resolveCountryName: (code: string) => `Country ${code}`,
-    openSearch: async () => {},
+    openSearch: async () => true,
     getDashboardContext: async () => ({
       variant: 'full',
       map: {
@@ -265,6 +277,7 @@ describe('WebMCP imperative schema and budget contract', () => {
       resolveCountryName: () => `HOSTILE_${'x'.repeat(5_000)}`,
       openCountryBriefByCode: async (code: string, country: string) => {
         calls.push({ code, country });
+        return true;
       },
     }), () => {}).find(({ name }) => name === 'openCountryBrief')!;
 

@@ -145,6 +145,7 @@ export class SearchModal {
   private recentSearches: string[] = [];
   private onSelect?: (result: SearchResult) => void;
   private onCommand?: (command: Command) => void;
+  private onHumanInteraction?: () => void;
   private onQueryChange?: (rawInput: string) => void;
   private onFlightSearch?: (callsign: string) => void;
   private currentFlightCallsign: string | null = null;
@@ -278,6 +279,10 @@ export class SearchModal {
     this.onCommand = callback;
   }
 
+  public setOnHumanInteraction(callback: () => void): void {
+    this.onHumanInteraction = callback;
+  }
+
   public setOnQueryChange(callback: (rawInput: string) => void): void {
     this.onQueryChange = callback;
   }
@@ -389,6 +394,11 @@ export class SearchModal {
   }
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
+    this.onHumanInteraction?.();
+    this.closeInternal(origin);
+  }
+
+  private closeInternal(origin: OverlayCloseOrigin): void {
     // Drop any pending debounced search so it can't fire against a torn-down modal.
     this.debouncedSearch.cancel();
     this.focusTrap?.deactivate();
@@ -433,7 +443,7 @@ export class SearchModal {
 
   /** Close the palette before an agent reveals a selected dashboard target. */
   public closeForProgrammaticSelection(): void {
-    if (this.overlay) this.close();
+    if (this.overlay) this.closeInternal('control');
   }
 
   /**
@@ -472,6 +482,13 @@ export class SearchModal {
     this.overlay.setAttribute('aria-modal', 'true');
     this.overlay.setAttribute('aria-label', 'World Monitor intelligence command deck');
     this.overlay.dataset.searchScope = this.activeScope;
+    // Claim human authority in capture phase, before a click can close the
+    // palette or start a new selection. Keyboard-generated clicks have no
+    // pointerdown, while pointer gestures may not produce a click, so retain
+    // both event types; cancellation is intentionally idempotent.
+    const notifyHumanInteraction = (): void => this.onHumanInteraction?.();
+    this.overlay.addEventListener('pointerdown', notifyHumanInteraction, { capture: true });
+    this.overlay.addEventListener('click', notifyHumanInteraction, { capture: true });
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';
@@ -571,7 +588,10 @@ export class SearchModal {
       this.resultsObserver.observe(this.resultsList, { childList: true, subtree: true });
     }
 
-    this.input?.addEventListener('input', () => this.debouncedSearch());
+    this.input?.addEventListener('input', () => {
+      this.onHumanInteraction?.();
+      this.debouncedSearch();
+    });
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -907,8 +927,8 @@ export class SearchModal {
         const id = (el as HTMLElement).dataset.command;
         const command = getAllCommands().find(c => c.id === id);
         if (command) {
-          this.onCommand?.(command);
           this.close();
+          this.onCommand?.(command);
         }
       });
     });
@@ -1100,6 +1120,7 @@ export class SearchModal {
   }
 
   private handleKeydown(e: KeyboardEvent): void {
+    this.onHumanInteraction?.();
     // The keystroke search is debounced (180ms). Flush it before Arrow/Enter so
     // selection runs against results for the CURRENT query, not stale ones from
     // before the debounce fired (#4537 follow-up — review #4556).

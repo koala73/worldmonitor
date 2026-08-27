@@ -342,6 +342,10 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // (sanctions lookup / resilience ranking); conservative because a single
   // request already amplifies into many upstream calls. (#4676)
   '/api/conflict/v1/get-humanitarian-summary-batch': { limit: 30, window: '60 s' },
+  // Single aircraft-details is a caller-controlled Wingbits lookup. Keep it
+  // aligned with the batch sibling so cache misses cannot become an unlimited
+  // paid-provider probe under anonymous or rotating callers.
+  '/api/military/v1/get-aircraft-details': { limit: 30, window: '60 s' },
   '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
@@ -581,6 +585,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/military/v1/get-aircraft-details-batch': {
     reason: 'Batch enrichment fans out to the external Wingbits provider on cache miss.',
+  },
+  '/api/military/v1/get-aircraft-details': {
+    reason: 'Single aircraft enrichment proxies the external Wingbits provider on cache miss.',
   },
   '/api/batch/v1/execute': {
     reason: 'Generic batch fan-out multiplies one request into up to 20 gateway sub-requests.',

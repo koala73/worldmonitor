@@ -101,7 +101,11 @@
           "Dedicated support",
           "Custom integrations",
           "SLA guarantee",
-          "On-premise option"
+          "On-premise option",
+          "توافقنامه پردازش داده (DPA)",
+          "صورتحساب بر اساس سفارش خرید",
+          "SAML SSO، SCIM",
+          "تنظیمات امنیتی و حریم‌خصوصی سفارشی"
         ],
         "cta": "Contact Sales"
       }

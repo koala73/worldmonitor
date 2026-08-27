@@ -43,12 +43,46 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | 传输方式（`streamableHttp`）、端点、OAuth 资源、作用域、流式、能力标志 |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 授权服务器元数据（PKCE、DCR、令牌端点） |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | `https://worldmonitor.app/mcp` 的资源元数据 |
+| [`/.well-known/mcp/docs-server-card.json`](https://worldmonitor.app/.well-known/mcp/docs-server-card.json) | MCP | `/docs/mcp` 处**文档** MCP 服务器的服务器卡片（见下文）——与上面的数据服务器卡片相互独立 |
+| [`/.well-known/agent-card.json`](https://worldmonitor.app/.well-known/agent-card.json) | [A2A](https://a2a-protocol.org) | `/a2a` JSON-RPC 接待智能体的 Agent Card（见下文）——传输方式、协议版本、技能，无需认证 |
+| [`/.well-known/http-message-signatures-directory`](https://worldmonitor.app/.well-known/http-message-signatures-directory) | [RFC 9421](https://datatracker.ietf.org/doc/html/rfc9421) / Web Bot Auth | Ed25519 公钥目录（`application/http-message-signatures-directory+json`），供第三方验证源自 WorldMonitor 的签名自动化请求。密钥携带滚动 24 小时 `nbf`/`exp` 窗口；缓存 `public, max-age=3600` |
 | [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | （自定义） | 预打包智能体技能索引（`fetch-country-brief`、`fetch-resilience-score`……）——每个技能都是一份自包含的配方 |
 | [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM 友好的 markdown 简报——概述、能力、链接 |
 | [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | （扩展） | 长格式变体，覆盖所有数据层、面板和数据源 |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | （自定义） | 按密钥的种子状态、新鲜度、记录计数——智能体可据此门控抓取 |
 
 头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。
+
+## 智能体前门
+
+除静态发现文档外，还有若干专为智能体准备的实时端点。它们均为匿名且不消耗配额；各自拥有独立的每 IP 限流。
+
+### `GET|POST /ask` —— 自然语言路由（NLWeb）
+
+[NLWeb](https://github.com/microsoft/NLWeb) 风格的前门：发送一个问题，返回能回答它的 MCP 工具。接受 `query`（最长 2048 字符），可通过 JSON body、表单 body 或 `?query=` 传入；可选 `mode`（默认 `"list"`）、`query_id` 和 `streaming`（也可由 `Accept: text/event-stream` 触发）。
+
+```bash
+curl -s https://worldmonitor.app/ask -H 'Content-Type: application/json' \
+  -d '{"query": "台湾附近是否有异常军事空中活动？"}'
+```
+
+返回 `{ _meta, query_id, query, results[] }`，每个 result 携带指向匹配 MCP 工具的 `{url, name, site, score, description, schema_object}`。流式模式发出 `start` → `result` → `complete` SSE 帧。不带 query 的探测返回 `200` 与使用指引而非错误；无匹配时返回单个指向 `llms.txt` 的结果，`score: 0`。限流：每 IP 每分钟 60 次（`429` + `Retry-After`）。响应为 `no-store`。
+
+### `POST /a2a` —— A2A JSON-RPC 接待智能体
+
+一个 [A2A 协议](https://a2a-protocol.org)智能体（卡片位于 `/.well-known/agent-card.json`，协议 `0.3.0`，传输 JSONRPC，无需认证）。支持带文本 part 的 `message/send`（最长 2048 字符）；回复一条智能体消息，包含一个文本 part 和一个数据 part `{suggestedTools, howToCall, freshness?}` —— 当消息询问陈旧度或种子健康时附带 freshness 信封。流式、推送通知与任务历史均声明为不支持并返回 `-32004`；限流以 JSON-RPC `-32029` + `Retry-After` 呈现（每 IP 每分钟 60 次）。
+
+### `GET /agent/auth` —— 认证质询
+
+始终返回 `401`，携带 `WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="…"` 头和一个 JSON body，链接 RFC 9728 资源元数据、RFC 8414 授权服务器元数据以及 `/auth.md` 技能。它存在的原因是：扫描器向 `GET /mcp` 探测 OAuth 质询时无法在那里得到（该动词保留给 SSE 握手）——请改为探测此 URL 来引导 OAuth 流程。
+
+### `/docs/mcp` —— 文档 MCP 服务器
+
+面向文档本身的第二个独立 MCP 服务器（卡片位于 `/.well-known/mcp/docs-server-card.json`，协议 `2025-06-18`，streamable HTTP，无需认证）。它提供 `search_world_monitor`（文档知识库搜索，返回摘录与链接）和 `query_docs_filesystem_world_monitor`（对虚拟化的文档 + OpenAPI 文件系统进行只读 `rg`/`ls`/`tree`/`cat`/`head`）。POST body 上限 256 KiB（超出为 `413`）；限流每 IP 每分钟 60 次，以 JSON-RPC `-32029` 呈现。它是对上游文档提供方的一致性修复门面：`tools/call` 中携带 `-32601`/`-32602` 的 `isError` 结果会被提升为真正的顶层 JSON-RPC 错误。
+
+### Markdown 孪生页 —— `<任意页面>.md`
+
+站点上的每个页面都有一个智能体可读的 markdown 孪生页：在路径后追加 `.md`（`/pricing.md`、`/countries/tw.md`，首页为 `/home.md`）。精选孪生页为静态文件，缓存 `public, max-age=3600` 且带 `Access-Control-Allow-Origin: *`；其余由孪生服务按需渲染（HTML 转为以标题为主的 markdown，JSON 转为围栏代码块，输出上限 80 KB），并携带 `Link: <sibling>; rel="canonical"` 头。`.md` 孪生页的 `GET`/`HEAD` 绕过 API 机器人门禁，因此普通 `curl` 无需浏览器 User-Agent 即可访问。
 
 ## 智能体演练
 

@@ -36,13 +36,17 @@ describe("news digest story tracking Redis key prefix parity", () => {
       assert.equal(String(input), "https://redis.example/pipeline");
       pipelineBodies.push(JSON.parse(String(init?.body ?? "[]")));
       return new Response(JSON.stringify([
-        { result: ["1000", "2000", "4", "2", "7", "9"] },
+        { result: ["1000", "2000", "4", "2"] },
       ]), { status: 200 });
     }) as typeof fetch;
 
     const tracks = await __testing__.readStoryTracks([hash]);
 
     assert.equal(tracks.get(hash)?.mentionCount, 4);
+    // currentScore and peakScore are deliberately absent from this read: #7081
+    // recorded a no-go for the score-based fading phase, so the digest read path
+    // no longer consumes either. peakScore in particular was never a hash field
+    // at all — the peak lives in the story:peak:v1 ZSet.
     assert.deepEqual(pipelineBodies, [[
       [
         "HMGET",
@@ -51,8 +55,6 @@ describe("news digest story tracking Redis key prefix parity", () => {
         "lastSeen",
         "mentionCount",
         "sourceCount",
-        "currentScore",
-        "peakScore",
       ],
     ]]);
   });

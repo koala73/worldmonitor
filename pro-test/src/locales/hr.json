@@ -384,7 +384,11 @@
           "Namjenska podrška",
           "Prilagođene integracije",
           "SLA jamstvo",
-          "On-premise opcija"
+          "On-premise opcija",
+          "Ugovor o obradi podataka (DPA)",
+          "Naplata prema narudžbi",
+          "SAML SSO, SCIM",
+          "Prilagođene sigurnosne i privatnosne postavke"
         ],
         "cta": "Kontaktirajte prodaju"
       },

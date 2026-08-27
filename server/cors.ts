@@ -56,6 +56,15 @@ const EXPOSED_HEADERS = [
   'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
+  // IETF draft-ietf-httpapi-ratelimit-headers fields — emitted by the
+  // per-account API-key limiter; docs/usage-rate-limits.mdx tells browser
+  // clients to self-throttle on these, so they must be readable cross-origin
+  // (parity with api/_cors.js).
+  'RateLimit',
+  'RateLimit-Policy',
+  'RateLimit-Limit',
+  'RateLimit-Remaining',
+  'RateLimit-Reset',
   'X-WorldMonitor-Bbox',
   'X-WorldMonitor-Bbox-Missing',
   'X-WorldMonitor-Bbox-Invalid',

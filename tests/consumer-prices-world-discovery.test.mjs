@@ -81,7 +81,11 @@ describe('Consumer Prices World tab — CMD+K discoverability', () => {
 
   it('the selection dispatcher parses the @<tab> suffix and dispatches the open-tab event', () => {
     assert.match(searchSelectionDispatcherSrc, /action\.split\('@'\)/, 'panel handler no longer splits on @');
-    assert.match(searchSelectionDispatcherSrc, /dispatchPanelTab\(/, 'panel handler no longer deep-links to a tab');
+    assert.match(
+      searchSelectionDispatcherSrc,
+      /dispatchPanelTabAfterPresentation\(/,
+      'panel handler no longer deep-links to a tab after presentation',
+    );
     assert.match(
       searchSelectionDispatcherSrc,
       /wm-consumer-prices-open-tab/,

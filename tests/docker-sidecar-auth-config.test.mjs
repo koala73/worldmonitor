@@ -1,9 +1,10 @@
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import { createTempDir, removeTempDir } from './helpers/temp-dir.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -12,7 +13,7 @@ function readProjectFile(path) {
 }
 
 function runRealIpRenderer(value) {
-  const tempDir = mkdtempSync(join(tmpdir(), 'worldmonitor-realip-'));
+  const tempDir = createTempDir('worldmonitor-realip-');
   const outputPath = resolve(tempDir, 'nginx-realip.conf');
   const env = { ...process.env };
 
@@ -31,7 +32,7 @@ function runRealIpRenderer(value) {
   return {
     ...result,
     outputPath,
-    cleanup: () => rmSync(tempDir, { force: true, recursive: true }),
+    cleanup: () => removeTempDir(tempDir),
   };
 }
 

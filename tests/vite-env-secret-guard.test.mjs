@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -8,8 +8,9 @@ import {
   findViteSecretEnvVars,
   runViteEnvSecretGuard,
 } from '../scripts/check-vite-env-secrets.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
-const makeTempRepo = () => mkdtempSync(join(tmpdir(), 'wm-vite-env-guard-'));
+const makeTempRepo = () => createTempDir('wm-vite-env-guard-');
 
 describe('VITE secret environment guard (#5213)', () => {
   it('identifies secret-looking client-prefixed variables without flagging public browser configuration', () => {

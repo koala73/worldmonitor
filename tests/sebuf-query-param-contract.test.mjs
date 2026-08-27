@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import { collectQueryParamContractViolations } from '../scripts/lib/sebuf-query-param-contract.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -35,7 +36,7 @@ const OPENAPI_NOOP_PARAMS = [
 ];
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'wm-sebuf-query-'));
+  const root = createTempDir('wm-sebuf-query-');
   mkdirSync(join(root, 'proto/worldmonitor/demo/v1'), { recursive: true });
   mkdirSync(join(root, 'server/worldmonitor/demo/v1'), { recursive: true });
   return root;

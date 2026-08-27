@@ -1204,7 +1204,7 @@ export const GENERATED_MESSAGE_RULES = {
       "icao24": {
         "kind": "string",
         "required": true,
-        "stringMinLen": 1
+        "stringPattern": "^[0-9a-fA-F]{6}$"
       }
     }
   },

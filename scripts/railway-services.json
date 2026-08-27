@@ -25,6 +25,7 @@
       "scripts/ais-relay.cjs",
       "scripts/docs-stats.mjs",
       "scripts/generate-inventory-facts.mjs",
+      "scripts/lib/digest-stale-gate.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/poll-generation-guard.cjs",
@@ -238,6 +239,8 @@
       "shared/publisher-families.d.ts",
       "shared/publisher-families.js",
       "shared/stocks.json",
+      "shared/story-phase.d.ts",
+      "shared/story-phase.js",
       "shared/ticker-extract.d.ts",
       "shared/ticker-extract.js",
       "shared/url-classifier.js"
@@ -373,7 +376,8 @@
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
-      "MANITOBA_511_KEY"
+      "MANITOBA_511_KEY",
+      "ALBERTA_511_KEY"
     ],
     "watchPatterns": [
       "scripts/_511-rate-limit.mjs",
@@ -1242,6 +1246,7 @@
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-bets-keys.mjs",
       "scripts/_forecast-dashboard.mjs",
+      "scripts/_forecast-evidence-archive.mjs",
       "scripts/_forecast-funnel.mjs",
       "scripts/_forecast-market-settlements.mjs",
       "scripts/_forecast-resolution-eval.mjs",
@@ -1250,7 +1255,6 @@
       "scripts/_fred-series.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
-      "scripts/lib/llm-model-policy.cjs",
       "scripts/_prediction-classify.mjs",
       "scripts/_prediction-scoring.mjs",
       "scripts/_proxy-utils.cjs",
@@ -1264,6 +1268,7 @@
       "scripts/data/country-codes.json",
       "scripts/data/entity-graph.json",
       "scripts/data/prediction-tags.json",
+      "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/story-track-batch-reader.mjs",
       "scripts/nixpacks.toml",

@@ -91,7 +91,7 @@ describe('classifyFeedAttempt (#7083)', () => {
     );
   });
 
-  it('distinguishes direct timeout, deadline abort, relay failure, and direct-only failure', () => {
+  it('distinguishes direct timeout, deadline abort, relay failure, and other fetch failure', () => {
     const zero = { parsedTotal: 0, keptItems: 0, droppedUndated: 0 };
     assert.equal(
       attempts.classifyFeedAttempt(true, { source: 'direct', failure: 'per-feed-timeout', negativeCache: false }, zero),

@@ -400,11 +400,20 @@ export async function fetchFlightStatus(flightNumber: string, date?: string, ori
   }, [], { cacheKey: `${flightNumber}:${date ?? ''}:${origin ?? ''}` });
 }
 
-export async function fetchAircraftPositions(opts: { icao24?: string; callsign?: string; swLat?: number; swLon?: number; neLat?: number; neLon?: number }): Promise<PositionSample[]> {
+export async function fetchAircraftPositions(
+  opts: { icao24?: string; callsign?: string; swLat?: number; swLon?: number; neLat?: number; neLon?: number },
+  signal?: AbortSignal,
+): Promise<PositionSample[]> {
   return breakerTrack.execute(async () => {
-    const r = await client.trackAircraft({ icao24: opts.icao24 ?? '', callsign: opts.callsign ?? '', swLat: opts.swLat ?? 0, swLon: opts.swLon ?? 0, neLat: opts.neLat ?? 0, neLon: opts.neLon ?? 0 });
+    const r = await client.trackAircraft(
+      { icao24: opts.icao24 ?? '', callsign: opts.callsign ?? '', swLat: opts.swLat ?? 0, swLon: opts.swLon ?? 0, neLat: opts.neLat ?? 0, neLon: opts.neLon ?? 0 },
+      { signal },
+    );
     return r.positions.map(toDisplayPosition);
-  }, [], { cacheKey: `${opts.icao24 ?? ''}:${opts.callsign ?? ''}:${opts.swLat ?? 0}:${opts.swLon ?? 0}:${opts.neLat ?? 0}:${opts.neLon ?? 0}` });
+  }, [], {
+    cacheKey: `${opts.icao24 ?? ''}:${opts.callsign ?? ''}:${opts.swLat ?? 0}:${opts.swLon ?? 0}:${opts.neLat ?? 0}:${opts.neLon ?? 0}`,
+    ignoreError: () => signal?.aborted === true,
+  });
 }
 
 export async function fetchFlightPrices(opts: { origin: string; destination: string; departureDate: string; returnDate?: string; adults?: number; cabin?: CabinClass; nonstopOnly?: boolean; maxResults?: number; currency?: string; market?: string }): Promise<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; provider: string; degraded: boolean; error: string }> {

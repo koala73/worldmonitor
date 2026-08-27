@@ -152,6 +152,10 @@ const HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS = 60;
 // Edge runtime mirror of scripts/china-coverage-manifest.mjs. Edge functions
 // cannot import scripts/; tests enforce key and status-projection parity.
 const CHINA_COVERAGE_SUMMARY_KEY = 'health:china-coverage:v1';
+// Consecutive non-healthy evaluations required before CHINA_DEGRADED is
+// reported. See projectChinaCoverageStatus for why the debounce lives here and
+// not in the summary's own `status` field.
+const CHINA_DEGRADED_MIN_CONSECUTIVE = 2;
 const HEALTH_VERDICT_SNAPSHOT_TTL_MS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS * 1_000;
 const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-lock`;
 // The sweep can consume its full 8s timeout, followed by a 4s failure-log read
@@ -786,7 +790,7 @@ const SEED_META = {
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
-  temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // request-driven producer kept warm by seed-infra; data TTL is 60min so health reaches STALE_SEED before EMPTY
+  temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // rebuild-stamped ONLY (TEMPORAL_ANOMALIES_REBUILD_AFTER_MS=20min in infrastructure/v1/_shared.ts) — only producer-route traffic can rebuild and refresh this request-driven stamp, so a traffic lull can age it past 45min; 45min leaves ~2.25x margin. Data TTL is 60min so health reaches STALE_SEED before EMPTY
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   canadaRoads:      {
     key: 'seed-meta:infra:ontario-511',
@@ -2620,11 +2624,31 @@ function projectChinaCoverageStatus(raw, readError = false) {
     return { status: 'CHINA_UNAVAILABLE', chinaStatus: 'unavailable', reason: 'SUMMARY_INVALID' };
   }
 
-  const status = {
+  let status = {
     healthy: 'OK',
     degraded: 'CHINA_DEGRADED',
     unavailable: 'CHINA_UNAVAILABLE',
   }[candidate.status] ?? 'CHINA_UNAVAILABLE';
+  // Debounce DEGRADED only. The evaluator samples 16 sources once an hour, so a
+  // source that is degraded at the sampling instant and healthy moments later
+  // pins CHINA_DEGRADED for a full cycle — measured at ~50 minutes for a
+  // two-minute miss on 2026-08-25. Requiring a second consecutive observation
+  // costs one cycle of detection latency on a real outage, which is affordable
+  // here: this is a warn, and every source underneath carries its own probe with
+  // its own budget.
+  //
+  // UNAVAILABLE is never debounced — it is the more severe verdict, and holding
+  // it back would be the expensive direction to be wrong in.
+  //
+  // A summary with NO streak field (written before the producer shipped this)
+  // alarms exactly as it did before. Absent evidence must not read as evidence
+  // of health, or the rollout window would silence a genuine outage.
+  if (
+    status === 'CHINA_DEGRADED'
+    && candidate.degradedStreak === CHINA_DEGRADED_MIN_CONSECUTIVE - 1
+  ) {
+    status = 'OK';
+  }
   const problems = Array.isArray(candidate.entries)
     ? candidate.entries
       .filter((entry) => entry?.launchStatus === 'launched' && entry?.status !== 'healthy')
@@ -2635,6 +2659,11 @@ function projectChinaCoverageStatus(raw, readError = false) {
     chinaStatus: candidate.status,
     evaluatedAt: candidate.evaluatedAt ?? null,
     counts: candidate.counts ?? null,
+    // Published even while debounced: a held verdict must stay visible, or the
+    // debounce becomes indistinguishable from health.
+    ...(Number.isInteger(candidate.degradedStreak)
+      ? { degradedStreak: candidate.degradedStreak }
+      : {}),
     ...(problems.length > 0 ? { problems } : {}),
   };
 }
@@ -2851,7 +2880,14 @@ function healthResponseBody(snapshot, compact) {
   // no-op, which is what makes buildCompactVerdictSnapshot() below safe.
   const problems = snapshot.checks
     ? Object.fromEntries(Object.entries(snapshot.checks).filter(
-      ([name, check]) => name !== 'chinaDecisionSignals' && isProblemStatus(check.status),
+      ([name, check]) => name !== 'chinaDecisionSignals' && (
+        isProblemStatus(check.status)
+        || (
+          name === 'chinaCoverage'
+          && typeof check.chinaStatus === 'string'
+          && check.chinaStatus !== 'healthy'
+        )
+      ),
     ))
     : { ...(snapshot.problems ?? {}) };
   // Older compact snapshots may predate the operator-only China health

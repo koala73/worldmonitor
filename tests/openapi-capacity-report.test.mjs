@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -20,6 +20,7 @@ import {
   sectionBreakdown,
   unreferencedComponentSchemas,
 } from '../scripts/openapi-capacity-report.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 // The <= 950,000-byte guard in tests/openapi-json-dedup.test.mjs only speaks the
 // moment it breaks. #4852, the food-stocks operation and the
@@ -439,7 +440,7 @@ describe('CLI', () => {
     });
 
   it('writes the report to --out, stdout and the job summary, and exits 0', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wm-openapi-capacity-'));
+    const dir = createTempDir('wm-openapi-capacity-');
     const outPath = join(dir, 'capacity.json');
     const summaryPath = join(dir, 'summary.md');
 

@@ -107,6 +107,13 @@ services:
       dockerfile: Dockerfile.redis-rest
     image: worldmonitor-redis-rest:latest
     container_name: worldmonitor-redis-rest
+    # The proxy buffers each accepted request body in full (SRH_MAX_BODY_BYTES,
+    # 16MB default), so concurrent large publishes multiply. Measured: 64
+    # concurrent 16MB POSTs reached ~933MB RSS. Buffers are off-heap, so a Node
+    # heap flag would not contain them — bound it at the container, the same way
+    # the redis service is bounded by --maxmemory. 512m leaves ~7x headroom over
+    # one max-size publish (16MB body + concat + UTF-16 string ≈ 64MB transient).
+    mem_limit: 512m
     ports:
       - "127.0.0.1:8079:80"
     environment:

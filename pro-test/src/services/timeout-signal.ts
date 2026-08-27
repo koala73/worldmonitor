@@ -49,3 +49,16 @@ export function createTimeoutSignal(ms: number): AbortSignal {
   }, ms);
   return controller.signal;
 }
+
+/**
+ * True for deadline/cancel outcomes from `createTimeoutSignal` / fetch abort.
+ *
+ * WORLDMONITOR-10F: Mobile Safari reports `AbortSignal.timeout` as
+ * `AbortError: Fetch is aborted` (DOMException code 20), not `TimeoutError`.
+ * Callers that `captureException` on every catch must skip these — they are
+ * expected operational outcomes, not product failures.
+ */
+export function isTimeoutOrAbortError(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null)?.name;
+  return name === 'TimeoutError' || name === 'AbortError';
+}

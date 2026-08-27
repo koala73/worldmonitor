@@ -101,7 +101,11 @@
           "Dedicated support",
           "Custom integrations",
           "SLA guarantee",
-          "On-premise option"
+          "On-premise option",
+          "Угода про обробку даних (DPA)",
+          "Виставлення рахунків за замовленням",
+          "SAML SSO, SCIM",
+          "Користувацькі параметри безпеки та приватності"
         ],
         "cta": "Contact Sales"
       }

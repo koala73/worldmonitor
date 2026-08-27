@@ -302,3 +302,107 @@ export function interleaveByCategory<T extends { category: string }>(
   }
   return ordered;
 }
+/**
+ * #7085 coverage block. Structural mirror of the proto DigestCoverage
+ * message — kept free of generated-type imports so plain .mjs tests can
+ * import this module directly.
+ */
+export interface DigestCoverageBlock {
+  /** complete | partial | stale | unavailable */
+  state: 'complete' | 'partial' | 'stale' | 'unavailable';
+  /** ISO 8601 time of the latest build attempt (attempt identity). */
+  attemptedAt: string;
+  itemsServed: number;
+  publisherCount: number;
+  feedTotal: number;
+  feedCompleted: number;
+  categoryTotal: number;
+  categoryCompleted: number;
+  /** Per-category state: ok (a feed completed) | missing (none did). */
+  categoryStates: Record<string, string>;
+  droppedFeedCap: number;
+  droppedUndated: number;
+  droppedFreshness: number;
+  droppedCategoryCap: number;
+  /** #7084: true exactly when accepted older content is replayed. */
+  servedStale: boolean;
+  /** Age of the served content since acceptance, seconds (0 when fresh). */
+  staleAgeSeconds: number;
+  /** Closed stale reason: empty-rebuild | build-error ('' when fresh). */
+  staleReason: string;
+}
+
+export interface DigestCoverageInput {
+  entries: readonly FeedAttemptBatchEntry[];
+  /** Fine-grained attempt outcome per stable attempt ID. */
+  attemptOutcomes: ReadonlyMap<string, FeedAttemptOutcome>;
+  itemsServed: number;
+  /** Normalized publisher family of every served item. */
+  publisherSources: readonly string[];
+  /** True when the global deadline aborted the build. */
+  deadlineAborted: boolean;
+  drops: {
+    perFeedCap: number;
+    undated: number;
+    freshnessFloor: number;
+    perCategoryCap: number;
+  };
+  buildStartMs: number;
+}
+
+const COVERAGE_COMPLETED_OUTCOMES = new Set<FeedAttemptOutcome>([
+  'completed',
+  'empty',
+  'all-undated',
+  'partial-undated',
+]);
+
+/** Classify one build into the closed coverage vocabulary. Pure. */
+export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageBlock {
+  const configuredCategories = [...new Set(input.entries.map((e) => e.category))];
+  const completedByCategory = new Map<string, number>();
+  let feedCompleted = 0;
+  for (const entry of input.entries) {
+    const outcome = input.attemptOutcomes.get(entry.attemptId);
+    if (outcome !== undefined && COVERAGE_COMPLETED_OUTCOMES.has(outcome)) {
+      feedCompleted += 1;
+      completedByCategory.set(entry.category, (completedByCategory.get(entry.category) ?? 0) + 1);
+    }
+  }
+  const categoryStates: Record<string, string> = {};
+  for (const category of configuredCategories) {
+    categoryStates[category] = (completedByCategory.get(category) ?? 0) > 0 ? 'ok' : 'missing';
+  }
+  const categoryCompleted = configuredCategories.filter((c) => categoryStates[c] === 'ok').length;
+  // This classifier describes a BUILD. The 'stale' state belongs to a replay,
+  // which has no build to describe — it is stamped by markFallbackCoverageStale on
+  // the serving path (#7084). Keeping a servingStale branch here would give
+  // the stale fields two independent implementations that nothing asserts
+  // agree with each other.
+  const state: DigestCoverageBlock['state'] =
+    input.itemsServed === 0
+      ? 'unavailable'
+      : input.deadlineAborted || categoryCompleted < configuredCategories.length
+        ? 'partial'
+        : 'complete';
+  return {
+    state,
+    attemptedAt: new Date(input.buildStartMs).toISOString(),
+    itemsServed: input.itemsServed,
+    publisherCount: new Set(input.publisherSources).size,
+    feedTotal: input.entries.length,
+    feedCompleted,
+    categoryTotal: configuredCategories.length,
+    categoryCompleted,
+    categoryStates,
+    droppedFeedCap: input.drops.perFeedCap,
+    droppedUndated: input.drops.undated,
+    droppedFreshness: input.drops.freshnessFloor,
+    droppedCategoryCap: input.drops.perCategoryCap,
+    // A freshly built body is never a replay. markFallbackCoverageStale overwrites
+    // these three when (and only when) the body is actually being replayed.
+    servedStale: false,
+    staleAgeSeconds: 0,
+    staleReason: '',
+  };
+}

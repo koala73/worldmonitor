@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -10,6 +10,7 @@ import {
   auditInventoryCountContracts,
   validateInventoryContractRegistry,
 } from '../scripts/check-inventory-count-contracts.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -72,7 +73,7 @@ function fixtureContract({ action = 'replace', classifications = ['parity'] } = 
 }
 
 function auditFixture(source, contractOptions) {
-  const rootDir = mkdtempSync(join(tmpdir(), 'wm-inventory-count-contract-'));
+  const rootDir = createTempDir('wm-inventory-count-contract-');
   writeFileSync(join(rootDir, 'fixture.test.mjs'), source);
   return auditInventoryCountContracts({ rootDir, contracts: fixtureContract(contractOptions) });
 }
@@ -325,7 +326,7 @@ describe('extensible inventory count contract audit', () => {
   });
 
   it('fails closed when a registered surface is missing', () => {
-    const rootDir = mkdtempSync(join(tmpdir(), 'wm-inventory-count-contract-missing-'));
+    const rootDir = createTempDir('wm-inventory-count-contract-missing-');
     const result = auditInventoryCountContracts({ rootDir, contracts: fixtureContract() });
     assert.ok(codes(result).includes('missing-surface'));
   });
