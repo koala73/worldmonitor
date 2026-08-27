@@ -402,26 +402,17 @@ test.describe('top-level WebMCP dashboard contract', () => {
         mounted: expect.any(Array),
       },
     });
-    if (coldStart.targetCancellationSupported) {
-      expect(panelProbe).toMatchObject({
-        ok: true,
-        output: {
-          ok: false,
-          status: 'denied',
-          reason: 'panel_not_live',
-        },
-      });
-    } else {
-      expect(panelProbe).toEqual({
-        ok: true,
-        output: {
-          ok: false,
-          status: 'denied',
-          reason: 'target_cancellation_unsupported',
-          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-        },
-      });
-    }
+    // Dashboard-changing tools now run whether or not the browser delivers a
+    // target-side signal, so the outcome is the real application one on every
+    // build — no compatibility branch.
+    expect(panelProbe).toMatchObject({
+      ok: true,
+      output: {
+        ok: false,
+        status: 'denied',
+        reason: 'panel_not_live',
+      },
+    });
 
     let visibleMutation: (MutationExecutionProbe & { visible: boolean }) | null = null;
     if (!productionSmoke) {
@@ -456,25 +447,13 @@ test.describe('top-level WebMCP dashboard contract', () => {
           };
         }
       });
-      if (coldStart.targetCancellationSupported) {
-        expect(mutation).toEqual({ ok: true, output: 'Opened search palette.' });
-        await expect(page.locator('.search-overlay .search-modal')).toBeVisible();
-        visibleMutation = { ...mutation, visible: true };
-        await page.keyboard.press('Escape');
-        await expect(page.locator('.search-overlay')).toHaveCount(0);
-      } else {
-        expect(mutation).toEqual({
-          ok: true,
-          output: {
-            ok: false,
-            status: 'denied',
-            reason: 'target_cancellation_unsupported',
-            message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-          },
-        });
-        await expect(page.locator('.search-overlay')).toHaveCount(0);
-        visibleMutation = { ...mutation, visible: false };
-      }
+      // The palette opens on every build now, not only on one that delivers a
+      // target-side signal.
+      expect(mutation).toEqual({ ok: true, output: 'Opened search palette.' });
+      await expect(page.locator('.search-overlay .search-modal')).toBeVisible();
+      visibleMutation = { ...mutation, visible: true };
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.search-overlay')).toHaveCount(0);
     }
 
     await attachJsonEvidence(testInfo, 'webmcp-smoke.json', {
@@ -508,7 +487,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
   });
 
-  test('cancels a pending browser execution without leaking an unhandled result', async ({ page }, testInfo) => {
+  test('leaves browser cancellation inert without leaking an unhandled result', async ({ page }, testInfo) => {
     const pageErrors: Array<{ name: string; message: string }> = [];
     page.on('pageerror', (error) => {
       pageErrors.push({ name: error.name, message: error.message.slice(0, 500) });
@@ -592,6 +571,17 @@ test.describe('top-level WebMCP dashboard contract', () => {
     const lateLeakWindowMs = 1_500;
     await page.waitForTimeout(lateLeakWindowMs);
     if (!productionSmoke) {
+      // THE ACCEPTED TRADE-OFF, asserted so it stays deliberate.
+      //
+      // Chrome through 151 cannot forward cancellation into the page, so the
+      // cancelled set_map_view finishes anyway and the map really does land on
+      // eu/4 — a phantom completion. We take that over refusing to run 6 of 8
+      // tools, because the effect is visible on the person's own screen and
+      // they can move the map back by hand.
+      //
+      // If a browser starts delivering the target-side signal, the cancelled
+      // work stops and this flips back to global/2. That failure is the signal
+      // to re-tighten the policy, not a value to paper over.
       await expect.poll(async () => {
         afterMap = await page.evaluate(async () => {
           type ExecutableModelContext = WebMCP.ModelContext & {
@@ -611,7 +601,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           };
         });
         return afterMap;
-      }, { timeout: 30_000 }).toEqual({ view: 'global', zoom: 2 });
+      }, { timeout: 30_000 }).toEqual({ view: 'eu', zoom: 4 });
     }
     const unhandledRejections = await page.evaluate(() => (
       (window as Window & {
@@ -636,23 +626,22 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
 
     expect(cancellation.invokedBeforeUiReady).toBe(true);
-    if (!targetCancellationSupported && !productionSmoke) {
-      expect(cancellation).toMatchObject({
-        rejected: false,
-        output: {
-          ok: false,
-          status: 'denied',
-          reason: 'target_cancellation_unsupported',
-          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-        },
-      });
-    } else {
-      expect(cancellation.rejected).toBe(true);
-      expect(cancellation.name).toBe('AbortError');
-    }
+    // Chrome through 151 ignores executeTool()'s options bag outright — its
+    // own `executeTool.length` is 2 — so aborting the caller's signal neither
+    // rejects the caller's promise nor stops page work. Assert that inertness
+    // rather than a cancellation that does not happen; the leak checks below
+    // are the part that still protects us.
+    //
+    // When a browser starts honouring the signal, these flip to
+    // rejected/AbortError and the failure is the prompt to re-tighten
+    // CANCELLATION_REQUIRED_WEBMCP_TOOLS, not a value to update blindly.
+    expect(cancellation.rejected).toBe(false);
+    expect(cancellation.name).toBe('');
     if (!productionSmoke) {
-      expect(afterMap, 'cancelled or refused set_map_view must leave the deep-linked map intact')
-        .toEqual({ view: 'global', zoom: 2 });
+      expect(
+        afterMap,
+        'an uncancellable set_map_view completes: the accepted phantom completion',
+      ).toEqual({ view: 'eu', zoom: 4 });
     }
     expect(
       pageErrors,

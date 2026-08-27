@@ -199,10 +199,30 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
   'result_no_longer_available',
   'result_no_longer_executable',
 ]);
-const READ_ONLY_WEBMCP_TOOLS = new Set<WebMcpSpaToolName>([
-  WEBMCP_SPA_TOOL.getDashboardContext,
-  WEBMCP_SPA_TOOL.searchDashboard,
-]);
+// Tools that must NOT run unless the browser hands the page a target-side
+// AbortSignal.
+//
+// Chrome documents the callback as `execute(input, { signal })`, but shipped
+// builds through 151 invoke it with the input alone — verified in a minimal
+// page with no application code, and true even when the caller passes
+// `{ signal }` to `executeTool()`. So a cancelled invocation rejects on the
+// agent side while page work keeps running: a phantom completion.
+//
+// That is only worth refusing to run when the work is not trivially visible
+// and reversible. Every dashboard-changing tool shipped today just moves
+// visible view state on the person's own dashboard — no navigation, no
+// writes, no external side effects — and the person can undo any of it by
+// hand. Blocking the whole set cost 6 of 8 tools on every browser that
+// currently exists, in exchange for preventing "the map moved after the
+// agent thought it cancelled".
+//
+// Keep the mechanism, not the blanket policy: add a tool here the moment it
+// can do something a person cannot simply look at and undo (navigation,
+// persistence, spending, sending, deleting).
+// Exported so the fail-closed path stays covered while the set is empty: the
+// runtime test adds a real tool name to it rather than cloning the gate, so
+// the mechanism cannot rot into dead code.
+export const CANCELLATION_REQUIRED_WEBMCP_TOOLS = new Set<WebMcpSpaToolName>([]);
 const MAX_SEARCH_QUERY_CHARS = 160;
 const MAX_SEARCH_RESULTS = 10;
 const DEFAULT_SEARCH_RESULTS = 8;
@@ -377,13 +397,11 @@ function withInvocationLogging(
     });
     try {
       let result: unknown;
-      if (!READ_ONLY_WEBMCP_TOOLS.has(name) && !signal) {
-        // Chrome releases that implement the original one-argument callback
-        // can abort executeTool() without cancelling work already running in
-        // this page. Never enter a mutation-capable binding unless the host
-        // supplies the target-side signal introduced by the cancellable
-        // callback API. Return a structured denial because some hosts erase
-        // the name and message of errors raised by the page callback.
+      if (CANCELLATION_REQUIRED_WEBMCP_TOOLS.has(name) && !signal) {
+        // This tool declared that a phantom completion would be unsafe, and
+        // the host cannot deliver the target-side signal. Return a structured
+        // denial because some hosts erase the name and message of errors
+        // raised by the page callback.
         result = unsupportedMutationResult();
       } else {
         throwIfWebMcpAborted(signal);

@@ -5,6 +5,7 @@ import {
   WEBMCP_SPA_TOOL_NAMES,
 } from '../src/config/webmcp.ts';
 import {
+  CANCELLATION_REQUIRED_WEBMCP_TOOLS,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 import { waitForWebMcpUiReady } from '../src/app/webmcp-dashboard.ts';
@@ -209,7 +210,39 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
-  it('returns a branchable denial when the host omits the target execution signal', async () => {
+  it('still denies a tool that declares cancellation is required', async () => {
+    // The set ships empty, so exercise the mechanism against a real tool name
+    // rather than a clone of the gate — otherwise the fail-closed path is
+    // untested code the moment the policy relaxed.
+    let mutationCalls = 0;
+    const provider = new FakeWebMcpModelContext();
+    const harness = trackedRuntime(provider);
+    CANCELLATION_REQUIRED_WEBMCP_TOOLS.add('set_map_view');
+    try {
+      registerWebMcpTools(createBindings({
+        applyDashboardAction: async () => {
+          mutationCalls += 1;
+          return { ok: true, status: 'applied', actionType: 'set_view', message: 'Applied.', targets: [] };
+        },
+      }), harness.runtime);
+      await settlePromises();
+
+      assert.deepEqual(
+        await executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
+        {
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+        },
+      );
+      assert.equal(mutationCalls, 0, 'a required-cancellation tool must not enter its binding');
+    } finally {
+      CANCELLATION_REQUIRED_WEBMCP_TOOLS.delete('set_map_view');
+    }
+  });
+
+  it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {
     let mutationCalls = 0;
     let contextCalls = 0;
     const provider = new FakeWebMcpModelContext();
@@ -236,20 +269,26 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(context.variant, 'full');
     assert.equal(contextCalls, 1);
 
+    // Chrome through 151 passes no target-side signal. These tools only move
+    // visible, reversible dashboard view state, so they run anyway rather than
+    // costing 6 of 8 tools on every browser that exists.
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
       {
-        ok: false,
-        status: 'denied',
-        reason: 'target_cancellation_unsupported',
-        message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+        ok: true,
+        status: 'applied',
+        actionType: 'set_view',
+        message: 'Applied dashboard action.',
+        targets: [],
+        targetCount: 0,
+        targetsTruncated: false,
       },
     );
-    assert.equal(mutationCalls, 0);
+    assert.equal(mutationCalls, 1, 'the binding must actually run without a target signal');
     assert.equal(provider.executionCalls.at(-1).targetSignal, undefined);
     assert.deepEqual(harness.events.at(-1), {
       event: 'webmcp-tool-invoked',
-      data: { tool: 'set_map_view', outcome: 'denied', reason: 'unavailable' },
+      data: { tool: 'set_map_view', outcome: 'success', reason: 'completed' },
     });
   });
 

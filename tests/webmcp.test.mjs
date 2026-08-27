@@ -278,7 +278,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(open.inputSchema.properties.resultKey.pattern, '^sr_[a-f0-9]{32}$');
   });
 
-  it('returns a branchable denial without entering mutating callbacks when target cancellation is unavailable', async () => {
+  it('runs every dashboard-changing tool when target cancellation is unavailable', async () => {
     let mutationCalls = 0;
     const events = [];
     const tools = buildProductionWebMcpTools(createBindings({
@@ -319,40 +319,45 @@ describe('webmcp.ts: current API contract', () => {
 
     for (const [name, input] of Object.entries(validInputs)) {
       const tool = tools.find((candidate) => candidate.name === name);
-      assert.deepEqual(
-        await tool.execute(input),
+      const result = await tool.execute(input);
+      assert.notDeepEqual(
+        result,
         {
           ok: false,
           status: 'denied',
           reason: 'target_cancellation_unsupported',
           message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
         },
-        name,
+        `${name} must run rather than fail closed on a browser with no target signal`,
       );
     }
+    assert.equal(
+      mutationCalls,
+      Object.keys(validInputs).length,
+      'every dashboard-changing binding runs exactly once without a target signal',
+    );
     assert.deepEqual(
-      await tools.find(({ name }) => name === 'openCountryBrief').execute(
+      events.filter(({ data }) => data.reason === 'unavailable'),
+      [],
+      'no invocation may report the compatibility denial any more',
+    );
+
+    // A signal-LIKE object still is not an AbortSignal, so this invocation has
+    // no target cancellation either. It must be refused on its malformed
+    // input — by validation, which the compatibility gate used to pre-empt.
+    await assert.rejects(
+      () => tools.find(({ name }) => name === 'openCountryBrief').execute(
         { iso2: 'not-valid' },
         { signal: { aborted: false } },
       ),
-      {
-        ok: false,
-        status: 'denied',
-        reason: 'target_cancellation_unsupported',
-        message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
-      },
-      'a malformed input and signal-like object must not bypass the compatibility gate',
+      (error) => error.analyticsReason === 'validation'
+        && /ISO 3166-1 alpha-2/.test(error.message),
+      'the refusal must come from input validation, not the compatibility gate',
     );
-    assert.equal(mutationCalls, 0);
-    assert.deepEqual(
-      events.filter(({ data }) => data.outcome === 'denied').map(({ data }) => [
-        data.tool,
-        data.reason,
-      ]),
-      [
-        ...Object.keys(validInputs).map((name) => [name, 'unavailable']),
-        ['openCountryBrief', 'unavailable'],
-      ],
+    assert.equal(
+      mutationCalls,
+      Object.keys(validInputs).length,
+      'a malformed input must not reach a mutating binding',
     );
   });
 

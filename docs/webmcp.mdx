@@ -61,7 +61,9 @@ The local flag replaces origin-trial enrollment for development. WorldMonitor st
 On the origin-trial build, call `getTools()` **after** the page has registered its tools, not before. A `getTools()` call that resolves with an empty inventory — that is, one made before registration completes — leaves every later `getTools()` call on that page pending forever. `executeTool()` is unaffected, and a tool descriptor obtained before the wedge stays usable. This is a browser-side behavior, reproducible on Chrome 151.0.7922.174 against an origin-trial-enrolled page and absent when the same page is enabled through `chrome://flags/#enable-webmcp-testing`. An agent attaching at page load should wait for the document to finish loading before its first discovery call, and should not poll `getTools()`.
 </Warning>
 
-Chrome 149–151 can expose `registerTool()` and cancel the caller's `executeTool()` promise without passing an invocation `AbortSignal` into the registered page callback. WorldMonitor keeps the read-only dashboard tools available on those builds, but dashboard-changing tools fail closed before entering an application binding. Full dashboard-changing support requires a browser whose callback uses the current `execute(input, { signal })` shape. This safety boundary prevents an apparently cancelled operation from changing the UI later.
+Chrome 149–151 exposes `registerTool()` but invokes the registered callback with the input alone, not the documented `execute(input, { signal })` shape. On those builds cancellation is inert in both directions: `executeTool()` ignores the `signal` in its options argument, so aborting neither rejects the caller's promise nor stops work already running in the page.
+
+WorldMonitor still runs its dashboard-changing tools there. Each one only moves visible dashboard view state on the person's own screen — no navigation, no writes, no external side effects — so the worst case of an uncancellable invocation is a visible change the person can undo. Refusing to run them instead would disable every dashboard-changing tool on every browser released so far, leaving only the read-only pair, in exchange for preventing a map move. A tool that could ever do something a person cannot simply look at and undo stays gated and rejects as unavailable until the browser supplies the target-side signal.
 
 <Note>
 Browsers without the current API, including the Tauri desktop webview when it does not expose WebMCP, safely do nothing. WorldMonitor does not install a browser polyfill and does not fall back to an older draft API.
@@ -84,7 +86,7 @@ The static `https://www.worldmonitor.app/` welcome page registers two imperative
 
 Every dashboard variant registers the same eight imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
 
-Registration does not imply that an older browser can safely execute mutations. If the browser omits the target-side invocation signal, dashboard-changing tools reject as unavailable without changing the dashboard; read-only dashboard tools remain available.
+All eight run on a browser that omits the target-side invocation signal. Because such a browser cannot cancel them, an invocation you abort still completes and its visible dashboard change still lands — see [Availability](#availability). Tools whose effect a person could not simply undo are gated instead and reject as unavailable; none of the eight are gated today.
 
 | Tool | Input schema | Visible result |
 |---|---|---|
@@ -178,7 +180,7 @@ try {
 }
 ```
 
-This cooperative target-side cancellation proof requires the browser to pass the invocation signal to the registered callback. On an older one-argument callback implementation, dashboard-changing tools reject before doing work; a read-only call may still finish inside the page after its caller has cancelled.
+This cooperative target-side cancellation proof requires the browser to pass the invocation signal to the registered callback. On a one-argument callback implementation — every Chrome released so far — the snippet above never reaches its `AbortError` branch: the abort is ignored, the caller's promise resolves with the tool's normal result, and the work completes inside the page. Treat cancellation as unavailable rather than best-effort on those builds.
 
 Cancellation stops work that has not reached its synchronous UI commit point. It does not roll back a viewport transition that was already issued before the signal arrived; in that case WorldMonitor suppresses later URL synchronization and success telemetry so cancellation cannot overwrite newer human input.
 
