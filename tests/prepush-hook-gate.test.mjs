@@ -91,6 +91,7 @@ function makeFixture({
   branchFiles = {},
   scriptsCjs = true,
   failAttestMode = null,
+  baseGuardResponse = null,
   proTestNodeModules = true,
 } = {}) {
   const id = fixtureCount++;
@@ -117,12 +118,23 @@ function makeFixture({
   );
   // Fault injection: make one attest mode fail while its siblings still work,
   // so the hook's handling of a broken enumeration can be executed rather than
-  // reasoned about.
-  if (failAttestMode) {
+  // reasoned about. The base-guard response injection exercises the hook
+  // boundary separately: helper status and output are both untrusted inputs.
+  if (failAttestMode || baseGuardResponse) {
+    const injectedBaseGuard = baseGuardResponse
+      ? `if [ "$1" = base-guard ]; then\n` +
+        (baseGuardResponse.stdout
+          ? `  printf '%b\\n' ${JSON.stringify(baseGuardResponse.stdout)}\n`
+          : '') +
+        `  exit ${baseGuardResponse.status};\nfi\n`
+      : '';
     writeFileSync(
       join(root, 'scripts', 'prepush-attest.sh'),
       `#!/usr/bin/env bash\n` +
-        `if [ "$1" = ${JSON.stringify(failAttestMode)} ]; then exit 1; fi\n` +
+        injectedBaseGuard +
+        (failAttestMode
+          ? `if [ "$1" = ${JSON.stringify(failAttestMode)} ]; then exit 1; fi\n`
+          : '') +
         `exec bash ${JSON.stringify(join(REPO_ROOT, 'scripts', 'prepush-attest.sh'))} "$@"\n`,
     );
   }
@@ -168,6 +180,7 @@ function makeFixture({
     git(['add', '-A']);
     git(['commit', '--quiet', '-m', 'branch work']);
   }
+  if (baseGuardResponse) git(['switch', '--quiet', '-c', 'feature']);
 
   const run = (extraEnv = {}) => {
     let status = 0;
@@ -550,6 +563,45 @@ describe('a broken enumeration blocks the push, it does not empty the list', () 
       assert.equal(fixture.cached(), null);
     });
   }
+});
+
+describe('a broken base guard blocks the push, it does not default to zero', () => {
+  const cases = [
+    ['status 1', { status: 1, stdout: '' }],
+    ['status 2', { status: 2, stdout: '' }],
+    ['empty output', { status: 0, stdout: '' }],
+    ['missing tab field', { status: 0, stdout: 'main' }],
+    ['multiple records', { status: 0, stdout: 'main\t0\nmain\t0' }],
+    ['non-numeric count', { status: 0, stdout: 'main\tnot-a-count' }],
+  ];
+
+  for (const [label, baseGuardResponse] of cases) {
+    test(`${label} refuses the push and does not cache`, () => {
+      const fixture = makeFixture({
+        branchFiles: { 'tests/base-guard.test.mjs': 'x\n' },
+        baseGuardResponse,
+      });
+
+      const { status, stdout, invocations } = fixture.run();
+      assert.equal(status, 1, stdout);
+      assert.match(stdout, /branch-contamination guard/);
+      assert.deepEqual(tsxRuns(invocations), []);
+      assert.equal(fixture.cached(), null, 'a failed guard must not mint an attestation');
+    });
+  }
+
+  test('status 3 with a valid record preserves the contamination verdict', () => {
+    const fixture = makeFixture({
+      branchFiles: { 'tests/base-guard.test.mjs': 'x\n' },
+      baseGuardResponse: { status: 3, stdout: 'main\t21' },
+    });
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /21 commits ahead of origin\/main/);
+    assert.deepEqual(tsxRuns(invocations), []);
+    assert.equal(fixture.cached(), null);
+  });
 });
 
 function npmRuns(invocations) {

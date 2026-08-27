@@ -528,6 +528,7 @@
       "recent": "최근 검색",
       "empty": "데이터를 검색하거나 명령어를 실행하세요",
       "noResults": "결과 없음",
+      "resultAnnouncement_other": "'{{query}}' 검색 결과 {{count}}개",
       "commands": "명령어",
       "results": "결과",
       "seeAllCommands": "모든 명령 보기",

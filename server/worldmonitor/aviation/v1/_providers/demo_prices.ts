@@ -56,7 +56,6 @@ export function generateDemoPrices(
     origin: string,
     destination: string,
     departureDate: string,
-    adults: number,
     cabin: string,
     nonstopOnly: boolean,
     maxResults: number,
@@ -77,7 +76,7 @@ export function generateDemoPrices(
     for (let i = 0; i < count; i++) {
         const carrier = DEMO_CARRIERS[i % DEMO_CARRIERS.length]!;
         const jitter = 0.85 + Math.random() * 0.3;
-        const price = Math.round(baseFare * cabinMul * advMul * jitter * adults);
+        const price = Math.round(baseFare * cabinMul * advMul * jitter);
         const stops = nonstopOnly ? 0 : (i === 0 ? 0 : i <= 2 ? 1 : 2);
         const extra = stops * (45 + Math.floor(Math.random() * 60));
 

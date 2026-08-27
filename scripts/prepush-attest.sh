@@ -30,6 +30,7 @@
 #   bash scripts/prepush-attest.sh dirty                     # NUL list of offenders
 #   bash scripts/prepush-attest.sh cache-read   <file> <tree> <diff-resolved>
 #   bash scripts/prepush-attest.sh cache-write  <file> <tree> <diff-resolved> <attestable>
+#   bash scripts/prepush-attest.sh base-guard   <base-ref> [limit]  # "<base>\t<count>" on stdout
 #
 # Exit codes are three-valued on purpose. A gate that answers "no" and a gate
 # that could not run must never collapse into the same status as "yes":
@@ -41,9 +42,9 @@
 
 mode="${1:-}"
 case "$mode" in
-  changed | changed-live | drift | dirty | cache-read | cache-write) ;;
+  changed | changed-live | drift | dirty | cache-read | cache-write | base-guard) ;;
   *)
-    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write> [args]" >&2
+    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write|base-guard> [args]" >&2
     exit 2
     ;;
 esac
@@ -149,6 +150,108 @@ case "$mode" in
       found=1
     done
     [ "$found" -eq 0 ] || exit 3
+    ;;
+
+  base-guard)
+    # Branch-contamination ahead-count with a LAZY fetch (#6764). The hook
+    # used to `git fetch` unconditionally before counting — 2s warm, 72s cold,
+    # on every push — to protect a guard that almost never fires. Fetching can
+    # only move origin/<base> FORWARD, so `rev-list --count origin/<base>..HEAD`
+    # can only stay equal or SHRINK after a fetch. That premise is safe for the
+    # protected main branch, but stacked bases and WM_BASE_REF may be
+    # force-rewritten. Those mutable bases must be refreshed before accepting a
+    # cached pass. Therefore:
+    #
+    #   cached count <= limit  ->  skip the network only for protected main;
+    #                              fetch mutable bases and recount.
+    #   cached count >  limit  ->  possibly a stale-ref false positive; fetch
+    #                              to DISPROVE the violation, then recount.
+    #   origin/<base> missing  ->  must fetch (first push of a stacked branch).
+    #
+    # Prints "<resolved-base>\t<count>". Exit 0 = within limit, 3 = violation
+    # confirmed against a freshly fetched ref. A failed fetch (offline) is not
+    # fatal: fall through to whatever is cached, as the hook always has.
+    base="${2:-}"
+    limit="${3:-20}"
+    [ -n "$base" ] || usage_error "<base-ref> [limit]"
+
+    fetch_base() {
+      # Bounded and tag-free: an unbounded fetch inside a hook is how a push
+      # hangs past its caller's budget.
+      # Node 24 is a repository requirement and is available on every supported
+      # developer machine. Keep the deadline in one portable implementation so
+      # macOS hosts do not silently fall back to an unbounded fetch.
+      if command -v node >/dev/null 2>&1; then
+        WM_PREPUSH_FETCH_BASE="$1" node - <<'NODE'
+const { spawnSync } = require('node:child_process');
+
+const configured = Number(process.env.WM_PREPUSH_FETCH_TIMEOUT_MS);
+const timeout = Number.isFinite(configured) && configured > 0 ? configured : 120_000;
+const result = spawnSync(
+  'git',
+  ['fetch', '--no-tags', 'origin', process.env.WM_PREPUSH_FETCH_BASE, '--quiet'],
+  { stdio: 'ignore', timeout, killSignal: 'SIGTERM' },
+);
+process.exit(result.error ? 1 : (result.status ?? 1));
+NODE
+      elif command -v timeout >/dev/null 2>&1; then
+        timeout 120 git fetch --no-tags origin "$1" --quiet 2>/dev/null
+      elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout 120 git fetch --no-tags origin "$1" --quiet 2>/dev/null
+      else
+        # There is no safe way to invoke a fetch without a deadline. The
+        # caller intentionally treats this as a failed corrective fetch and
+        # evaluates whatever remote-tracking ref is already available.
+        return 1
+      fi
+    }
+
+    count_ahead() {
+      git rev-list --count "origin/$1..HEAD" 2>/dev/null || echo 0
+    }
+
+    need_fetch=false
+    count=0
+    cache_safe=false
+    had_cached_ref=false
+    if [ "$base" = main ] && [ -z "${WM_BASE_REF:-}" ]; then
+      cache_safe=true
+    fi
+    if ! git rev-parse --verify -q "origin/$base" >/dev/null; then
+      need_fetch=true
+    else
+      had_cached_ref=true
+      count=$(count_ahead "$base")
+      # A non-main PR base or explicit WM_BASE_REF can be rebased or
+      # force-pushed, so its cached relationship is not a sound pass even when
+      # the cached count is within the limit. The default protected main branch
+      # is the only relationship eligible for the lazy cached-pass shortcut.
+      if [ "$cache_safe" != true ] || [ "$count" -gt "$limit" ]; then
+        need_fetch=true
+      fi
+    fi
+
+    if [ "$need_fetch" = true ]; then
+      fetch_status=0
+      fetch_base "$base" || fetch_status=$?
+      # A mutable base with a cached ref cannot safely fall back to that stale
+      # value after a failed refresh: the whole reason to fetch was to rule out
+      # a force-rewrite. Preserve the historical fallback for an entirely
+      # unresolvable base, where there is no cached relationship to trust.
+      if [ "$cache_safe" != true ] && [ "$had_cached_ref" = true ] && [ "$fetch_status" -ne 0 ]; then
+        echo "base-guard: could not refresh mutable 'origin/$base'" >&2
+        exit 1
+      fi
+      if ! git rev-parse --verify -q "origin/$base" >/dev/null; then
+        echo "base-guard: 'origin/$base' not resolvable, falling back to origin/main" >&2
+        base="main"
+        fetch_base "$base"
+      fi
+      count=$(count_ahead "$base")
+    fi
+
+    printf '%s\t%s\n' "$base" "$count"
+    [ "$count" -le "$limit" ] || exit 3
     ;;
 
   cache-read)

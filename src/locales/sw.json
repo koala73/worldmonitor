@@ -599,6 +599,8 @@
       "recent": "Utafutaji wa Hivi Karibuni",
       "empty": "Tafuta data au endesha amri",
       "noResults": "Hakuna matokeo",
+      "resultAnnouncement_one": "{{count}} tokeo la {{query}}",
+      "resultAnnouncement_other": "{{count}} matokeo ya {{query}}",
       "commands": "Amri",
       "results": "Matokeo",
       "addPanel": "Ongeza",

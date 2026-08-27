@@ -237,6 +237,65 @@ describe('MCP RPC ValidationError preservation', () => {
   });
 });
 
+describe('get_intel_timeline local scope guard (WORLDMONITOR-10Y)', () => {
+  // The tool body rejects an unscoped call before fetch. That throw must be
+  // RpcValidationError so dispatch returns -32602 with violations and
+  // classifies telemetry/Sentry as client_4xx / warning — not -32603 + error.
+  it('omitting domain and country returns -32602 with both field violations', async () => {
+    let fetched = false;
+    const res = await callTool('get_intel_timeline', {}, async () => {
+      fetched = true;
+      return new Response('{}', { status: 200 });
+    });
+    assert.equal(fetched, false, 'scope guard must not call the sibling');
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+    assert.equal(body.error?.message, 'Invalid params');
+    assert.deepEqual(body.error?.data?.violations, [
+      {
+        field: 'domain',
+        description: 'Required unless country is set. One of conflict, military, or energy.',
+      },
+      {
+        field: 'country',
+        description: 'Required unless domain is set. ISO 3166-1 alpha-2, uppercase (e.g. UA).',
+      },
+    ]);
+    assert.equal(body.result, undefined);
+  });
+
+  it('blank country alone is still unscoped and returns -32602', async () => {
+    let fetched = false;
+    const res = await callTool('get_intel_timeline', { country: '   ' }, async () => {
+      fetched = true;
+      return new Response('{}', { status: 200 });
+    });
+    assert.equal(fetched, false);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+    assert.equal(body.error?.data?.violations?.length, 2);
+  });
+
+  it('telemetry classifies the local scope guard as client_4xx', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    const captured = [];
+    const originalLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      await callTool('get_intel_timeline', {}, async () => {
+        throw new Error('sibling must not be fetched');
+      });
+    } finally {
+      console.log = originalLog;
+    }
+    const event = captured.find((line) => line && line.tag === 'mcp.toolcall');
+    assert.equal(event?.ok, false);
+    assert.equal(event?.error_kind, 'client_4xx');
+    assert.equal(event?.tool, 'get_intel_timeline');
+  });
+});
+
 describe('downstreamErrorTags for RpcValidationError', () => {
   it('emits bounded validation tags without the violation text', () => {
     const err = new RpcValidationError('get-food-stocks', [
@@ -248,6 +307,13 @@ describe('downstreamErrorTags for RpcValidationError', () => {
       downstream_status: '400',
       downstream_error_code: 'rpc_validation',
       downstream_response_marker: 'json_error',
+      // Field NAMES only. Added in the 2026-08-27 triage: WORLDMONITOR-10R
+      // carried just `<operation> HTTP 400`, so the failing field was
+      // unrecoverable from Sentry and the #7170 country fix could be neither
+      // confirmed nor refuted against it. Names are already constrained to
+      // `^[A-Za-z_][A-Za-z0-9_.]{0,63}$` by parseSafeRpcViolations, so this
+      // does not weaken the no-violation-text invariant asserted below.
+      downstream_violation_fields: 'countryCode',
     });
     assert.ok(!JSON.stringify(tags).includes('countryCode is required'));
   });

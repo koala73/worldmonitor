@@ -207,4 +207,19 @@ describe('docs i18n parity', () => {
     assert.match(errors, /`upgrade-required`[^\n]*免费账户[^\n]*订阅工具[^\n]*非免费权益不足/);
     assert.doesNotMatch(errors, /`-32002`[^\n]*例如订阅已失效/);
   });
+
+  it('documents the ChatGPT Atlas WebMCP test flow without presenting mobile chat as a browser agent', () => {
+    const webMcp = readFileSync(join(DOCS_DIR, 'webmcp.mdx'), 'utf8');
+    const zhWebMcp = readZhDoc('webmcp');
+
+    for (const content of [webMcp, zhWebMcp]) {
+      assert.match(content, /### ChatGPT Atlas/);
+      assert.match(content, /https:\/\/learn\.chatgpt\.com\/docs\/webmcp/);
+      assert.match(content, /Agent mode/);
+      assert.match(content, /document\.modelContext/);
+      assert.doesNotMatch(content, /Settings → Apps & Connectors → Advanced settings/);
+    }
+    assert.match(webMcp, /ChatGPT mobile app screenshot flow is not a WebMCP test/);
+    assert.match(zhWebMcp, /ChatGPT 移动应用流程并不是 WebMCP 测试/);
+  });
 });

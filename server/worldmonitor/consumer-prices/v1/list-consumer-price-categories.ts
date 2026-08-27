@@ -7,7 +7,7 @@ import { getCachedJson } from '../../../_shared/redis';
 
 const DEFAULT_MARKET = 'ae';
 const DEFAULT_RANGE = '30d';
-const VALID_RANGES = new Set(['7d', '30d', '90d', '180d']);
+const VALID_RANGES = new Set(['7d', '30d', '90d']);
 
 export async function listConsumerPriceCategories(
   _ctx: unknown,
