@@ -1608,7 +1608,7 @@ export class App {
   private openCountryBriefWithAcknowledgement(
     code: string,
     country: string,
-    options: { trackAnalytics: boolean; signal?: AbortSignal },
+    options: { trackAnalytics: boolean; signal?: AbortSignal; owner?: 'agent' | 'human' },
   ): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       let acknowledged = false;
@@ -1655,6 +1655,7 @@ export class App {
       void this.countryIntel.openCountryBriefByCode(code, country, {
         trackAnalytics: options.trackAnalytics,
         signal: options.signal,
+        owner: options.owner,
         onPresented: () => {
           const page = this.state.countryBriefPage;
           finish(page?.isVisible() === true && page.getCode() === code);
@@ -1677,6 +1678,11 @@ export class App {
     return this.openCountryBriefWithAcknowledgement(code, country, {
       trackAnalytics: false,
       signal: execution?.signal,
+      // No shipping browser hands WebMCP tools a target-side AbortSignal, so
+      // ownership must be stated rather than inferred from execution.signal —
+      // otherwise this agent open claims 'human' and skips the arbitration
+      // that keeps it from evicting an in-flight human request.
+      owner: 'agent',
     });
   }
 

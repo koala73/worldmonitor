@@ -199,38 +199,51 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
   'result_no_longer_available',
   'result_no_longer_executable',
 ]);
-// Tools that must NOT run unless the browser hands the page a target-side
-// AbortSignal.
+// Cancellation policy per tool. Chrome documents the callback as
+// `execute(input, { signal })`, but shipped builds through 151 invoke it with
+// the input alone — true even when the caller passes `{ signal }` to
+// `executeTool()`. A cancelled invocation rejects on the agent side while the
+// page work runs on: a phantom completion.
 //
-// Chrome documents the callback as `execute(input, { signal })`, but shipped
-// builds through 151 invoke it with the input alone — verified in a minimal
-// page with no application code, and true even when the caller passes
-// `{ signal }` to `executeTool()`. So a cancelled invocation rejects on the
-// agent side while page work keeps running: a phantom completion.
+// Gate a tool only when that phantom completion SILENTLY PERSISTS outside any
+// metering or consent system — a write nothing counts and nobody sees. Effects
+// that are already metered, or visible and human-overwritable, stay ungated.
+//   - 'silently-persistent' (gated): set_map_layers writes
+//     STORAGE_KEYS.mapLayers to local storage (and for `ais` opens a network
+//     stream); open_search_result reaches the same writes through the search
+//     selection dispatcher. Putting the map back by hand restores neither.
+//   - 'metered' (deliberately NOT gated): openCountryBrief's LLM spend is
+//     metered per user by the entitlement layer — premiumFetch sends the
+//     user's own credentials and the gateway counts the call against their
+//     daily tier allowance. An aborted openCountryBrief still consumes one
+//     brief generation from that allowance: a charge the user's own quota
+//     records, not a silent write.
+//   - 'view-state': set_map_view also writes share-URL state via
+//     history.replaceState — visible in the address bar and overwritten by the
+//     next human map move.
+//   - 'read-only': nothing to undo.
 //
-// The phantom completion is real, not theoretical: aborting rejects the
-// caller with an AbortError while the page callback runs on to completion.
-//
-// It is still only worth refusing to run when the effect is not something the
-// person can simply look at and undo. Most dashboard-changing tools only move
-// visible view state on their own dashboard — no navigation, no writes, no
-// external side effects — so blocking those cost most of the inventory on
-// every browser released so far to prevent a visible, reversible change.
-//
-// A tool belongs here the moment it can do something that outlives a glance:
-// navigation, persistence, spending, sending, deleting. These two qualify on
-// persistence, so an uncancellable invocation would outlive the session
-// instead of sitting on screen waiting to be undone:
-//   - set_map_layers reaches applyMapLayerChange(), which writes
-//     STORAGE_KEYS.mapLayers to local storage and, for `ais`, opens a network
-//     stream through initAisStream().
-//   - open_search_result can execute a layer command, and the search
-//     selection dispatcher writes STORAGE_KEYS.mapLayers on those paths.
-// Putting the map back by hand does not restore either stored value.
-export const CANCELLATION_REQUIRED_WEBMCP_TOOLS = new Set<WebMcpSpaToolName>([
-  WEBMCP_SPA_TOOL.setMapLayers,
-  WEBMCP_SPA_TOOL.openSearchResult,
-]);
+// Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
+// a TypeScript error. That is the forcing function: nothing ships unclassified.
+export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
+  Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'metered' | 'silently-persistent'>
+> = Object.freeze({
+  [WEBMCP_SPA_TOOL.getDashboardContext]: 'read-only',
+  [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
+  [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
+  [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
+  [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
+  [WEBMCP_SPA_TOOL.openCountryBrief]: 'metered',
+  [WEBMCP_SPA_TOOL.setMapLayers]: 'silently-persistent',
+  [WEBMCP_SPA_TOOL.openSearchResult]: 'silently-persistent',
+});
+
+/** Tools the page refuses to run without a target-side AbortSignal. */
+export const CANCELLATION_REQUIRED_WEBMCP_TOOLS: ReadonlySet<WebMcpSpaToolName> = new Set(
+  Object.entries(WEBMCP_TOOL_CANCELLATION_POLICY)
+    .filter(([, policy]) => policy === 'silently-persistent')
+    .map(([name]) => name as WebMcpSpaToolName),
+);
 const MAX_SEARCH_QUERY_CHARS = 160;
 const MAX_SEARCH_RESULTS = 10;
 const DEFAULT_SEARCH_RESULTS = 8;
@@ -279,7 +292,9 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   open_search_result: 'World Monitor could not open that search result.',
 };
 const UNSUPPORTED_MUTATION_MESSAGE =
-  'This browser cannot safely execute dashboard-changing WebMCP tools.';
+  'This browser cannot cancel work already running in the page, so World Monitor '
+  + 'will not run tools that persist state beyond this session. Read-only and '
+  + 'view-state dashboard tools still work.';
 
 function unsupportedMutationResult(): Record<string, unknown> {
   return {
@@ -1078,13 +1093,19 @@ function startRegistration(
   void Promise.all(registrations).then((accepted) => {
     if (controller.signal.aborted) return;
     const toolCount = accepted.filter(Boolean).length;
-    // Emitted for EVERY settled registration pass, including the zero-tool
-    // one. A discovery probe that polls getTools() before this point observes
-    // an empty inventory, and on the Chrome origin-trial path that empty read
-    // wedges every later getTools() call for the lifetime of the page. Waiting
-    // on this mark is how a probe reaches the inventory in one call instead.
+    // EVERY settled registration pass emits a mark, so a probe waiting on one
+    // never hangs: a probe that polls getTools() before this point observes an
+    // empty inventory, and on the Chrome origin-trial path that empty read
+    // wedges every later getTools() call for the lifetime of the page.
+    // The zero-tool pass gets its OWN mark, though — 'wm:webmcp:registered'
+    // means "the inventory is there to read", and firing it with nothing
+    // registered would authorize the probe to read the empty inventory this
+    // mark exists to keep it away from.
+    if (toolCount === 0) {
+      markLcpDebug('wm:webmcp:registration-empty', { toolCount: 0 });
+      return;
+    }
     markLcpDebug('wm:webmcp:registered', { toolCount });
-    if (toolCount === 0) return;
     reportWebMcpEvent(trackEvent, 'webmcp-registered', {
       toolCount,
       pageSurface: 'dashboard',

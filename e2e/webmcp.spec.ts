@@ -104,10 +104,17 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
     // never appear and every later getTools() hangs. So the probe waits on the
     // page's own registration mark — which touches nothing — and only then
     // reads the provider, once.
-    const registrationSettled = (): boolean => (
-      target.__wmLcpDebug?.getSnapshot?.().marks
-        .some((mark) => mark.name === 'wm:webmcp:registered') ?? false
-    );
+    //
+    // The page emits a separate mark for the zero-tool pass. Registration is
+    // over in that case too, so treat it as settled rather than spinning to the
+    // deadline and reporting a generic timeout for a definite outcome.
+    const registrationSettled = (): boolean => {
+      const marks = target.__wmLcpDebug?.getSnapshot?.().marks ?? [];
+      return marks.some((mark) => (
+        mark.name === 'wm:webmcp:registered'
+        || mark.name === 'wm:webmcp:registration-empty'
+      ));
+    };
     const withTimeout = async <T>(work: Promise<T>, ms: number, label: string): Promise<T> => (
       await Promise.race([
         work,
@@ -121,8 +128,10 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
       const deadline = performance.now() + 60_000;
 
       // Runs exactly once, after registration settled. Every exit path either
-      // resolves or throws — nothing here may retry, because a second
-      // getTools() is precisely what the origin-trial build cannot serve.
+      // resolves or throws, so no retry can ever race back ahead of the mark:
+      // ANY read of document.modelContext taken before the page's registration
+      // mark wedges registration itself, whatever that read returns. A
+      // getTools() that resolves empty is one symptom of that, not the cause.
       const readInventoryOnce = async (provider: ExecutableModelContext): Promise<void> => {
         const tools = await withTimeout(provider.getTools(), 15_000, 'getTools()');
         const tool = tools.find((candidate) => candidate.name === 'get_dashboard_context');
@@ -197,6 +206,7 @@ async function installColdStartCancellationProbe(
     type ProbeWindow = Window & {
       __wmLcpDebug?: { getSnapshot?: () => { marks: ToolStartMark[] } };
       __wmWebMcpCancellationController?: AbortController;
+      __wmWebMcpCancellationProbeFailure?: string;
       __wmWebMcpCancellationTerminal?: Promise<CancellationTerminal>;
     };
 
@@ -214,66 +224,104 @@ async function installColdStartCancellationProbe(
       }
     };
     // Same rule as the cold-start context probe: poll the page's registration
-    // mark and touch nothing on document.modelContext until it fires. A single
-    // provider read taken before registration completes wedges registration on
-    // the origin-trial build.
-    const registrationSettled = (): boolean => (
-      target.__wmLcpDebug?.getSnapshot?.().marks
-        .some((mark) => mark.name === 'wm:webmcp:registered') ?? false
+    // mark and touch nothing on document.modelContext until it fires. ANY read
+    // of document.modelContext taken before the page finishes registering
+    // wedges registration itself on the origin-trial build, whatever that read
+    // returns — an empty getTools() is one symptom of the wedge, not its cause.
+    //
+    // The zero-tool pass gets its own mark. Registration is over in that case
+    // too, so count it as settled and let the missing-tool path below name the
+    // failure instead of burning the deadline on a generic timeout.
+    const registrationSettled = (): boolean => {
+      const marks = target.__wmLcpDebug?.getSnapshot?.().marks ?? [];
+      return marks.some((mark) => (
+        mark.name === 'wm:webmcp:registered'
+        || mark.name === 'wm:webmcp:registration-empty'
+      ));
+    };
+    const withTimeout = async <T>(work: Promise<T>, ms: number, label: string): Promise<T> => (
+      await Promise.race([
+        work,
+        new Promise<never>((_, rejectWork) => {
+          setTimeout(() => rejectWork(new Error(`${label} did not settle within ${ms}ms.`)), ms);
+        }),
+      ])
     );
+    // Every abandoning path names itself. Leaving the terminal unset makes the
+    // test report the generic 'terminal is unavailable', which describes the
+    // symptom and hides the cause.
+    const abandon = (reason: string): void => {
+      if (target.__wmWebMcpCancellationProbeFailure) return;
+      target.__wmWebMcpCancellationProbeFailure = reason;
+      const failure: Promise<CancellationTerminal> = Promise.reject(new Error(reason));
+      // Keep the rejection observed until Playwright awaits the retained promise.
+      void failure.catch(() => undefined);
+      target.__wmWebMcpCancellationTerminal = failure;
+    };
     const deadline = performance.now() + 60_000;
     let invocationStarted = false;
     const discoverAndInvoke = async (): Promise<void> => {
       if (invocationStarted) return;
       try {
         if (!registrationSettled()) {
-          if (performance.now() < deadline) setTimeout(() => { void discoverAndInvoke(); }, 5);
+          if (performance.now() < deadline) {
+            setTimeout(() => { void discoverAndInvoke(); }, 5);
+            return;
+          }
+          abandon('WebMCP registration did not settle within 60000ms.');
           return;
         }
         const provider = document.modelContext as ExecutableModelContext | undefined;
-        if (provider && typeof provider.executeTool === 'function') {
-          invocationStarted = true;
-          const tool = (await Promise.race([
-            provider.getTools(),
-            new Promise<never>((_, rejectRead) => {
-              setTimeout(() => rejectRead(new Error('getTools() did not settle within 15000ms.')), 15_000);
-            }),
-          ])).find((candidate) => candidate.name === name);
-          if (tool) {
-            const controller = new AbortController();
-            target.__wmWebMcpCancellationController = controller;
-            const invokedBeforeUiReady = !isUiReady();
-            const terminal = provider.executeTool(tool, inputJson, { signal: controller.signal }).then(
-              (output) => ({
-                errorMessage: '',
-                invokedBeforeUiReady,
-                name: '',
-                output: parseOutput(output),
-                rejected: false,
-              }),
-              (error: unknown) => ({
-                errorMessage: error && typeof error === 'object' && 'message' in error
-                  ? String(error.message).slice(0, 500)
-                  : String(error).slice(0, 500),
-                invokedBeforeUiReady,
-                name: error && typeof error === 'object' && 'name' in error
-                  ? String(error.name)
-                  : 'unknown',
-                rejected: true,
-              }),
-            );
-            target.__wmWebMcpCancellationTerminal = terminal;
-            return;
-          }
+        if (!provider || typeof provider.executeTool !== 'function') {
+          abandon('WebMCP provider is unusable after registration settled.');
+          return;
         }
-      } catch {
+        invocationStarted = true;
+        const tool = (await withTimeout(provider.getTools(), 15_000, 'getTools()'))
+          .find((candidate) => candidate.name === name);
+        if (!tool) {
+          abandon(`${name} was not registered after registration settled.`);
+          return;
+        }
+        const controller = new AbortController();
+        target.__wmWebMcpCancellationController = controller;
+        const invokedBeforeUiReady = !isUiReady();
+        // Bound the invocation too, not only discovery: an unbounded await on a
+        // wedged binding would consume the whole Playwright timeout and report
+        // nothing about where it hung.
+        const terminal = withTimeout(
+          provider.executeTool(tool, inputJson, { signal: controller.signal }),
+          30_000,
+          'executeTool()',
+        ).then(
+          (output) => ({
+            errorMessage: '',
+            invokedBeforeUiReady,
+            name: '',
+            output: parseOutput(output),
+            rejected: false,
+          }),
+          (error: unknown) => ({
+            errorMessage: error && typeof error === 'object' && 'message' in error
+              ? String(error.message).slice(0, 500)
+              : String(error).slice(0, 500),
+            invokedBeforeUiReady,
+            name: error && typeof error === 'object' && 'name' in error
+              ? String(error.name)
+              : 'unknown',
+            rejected: true,
+          }),
+        );
+        target.__wmWebMcpCancellationTerminal = terminal;
+      } catch (error) {
         // Discovery is committed once registration settled, so a failure here
-        // is terminal: leaving the terminal promise unset makes the test's own
-        // tool-start poll report it rather than spinning to its timeout.
-        return;
+        // is terminal.
+        abandon(
+          error && typeof error === 'object' && 'message' in error
+            ? String(error.message).slice(0, 500)
+            : String(error).slice(0, 500),
+        );
       }
-      if (invocationStarted || performance.now() >= deadline) return;
-      setTimeout(() => { void discoverAndInvoke(); }, 5);
     };
     void discoverAndInvoke();
   }, { inputJson: input, name: toolName });
@@ -541,13 +589,23 @@ test.describe('top-level WebMCP dashboard contract', () => {
       '/dashboard?lat=0&lon=0&zoom=2&view=global&timeRange=24h&layers=none',
       { waitUntil: 'domcontentloaded' },
     );
+    // Report the probe's own abandon reason instead of a bare "never entered":
+    // a wedged getTools() and an unregistered tool are different failures and
+    // the boolean form of this poll erased both.
     await expect.poll(
-      async () => Boolean(await readToolStartMark(page, cancelTool)),
+      async () => {
+        const failure = await page.evaluate(() => (
+          (window as Window & { __wmWebMcpCancellationProbeFailure?: string })
+            .__wmWebMcpCancellationProbeFailure ?? null
+        ));
+        if (failure) return failure;
+        return await readToolStartMark(page, cancelTool) ? 'entered' : 'pending';
+      },
       {
         message: `${cancelTool} callback must enter before the caller aborts`,
         timeout: 60_000,
       },
-    ).toBe(true);
+    ).toBe('entered');
     const toolStart = await readToolStartMark(page, cancelTool);
     expect(toolStart).not.toBeNull();
     const targetCancellationSupported = Boolean(
@@ -567,16 +625,15 @@ test.describe('top-level WebMCP dashboard contract', () => {
       if (!terminal) throw new Error('Cold-start cancellation terminal is unavailable.');
       return terminal;
     });
-    let cancellation: CancellationTerminal;
-    if (!targetCancellationSupported && !productionSmoke) {
-      // The compatibility gate rejects synchronously at callback entry. Read
-      // that terminal first so a later caller abort cannot win the host race.
-      cancellation = await readCancellation();
-      await abortCancellation();
-    } else {
-      await abortCancellation();
-      cancellation = await readCancellation();
-    }
+    // Abort FIRST, always. Reading the terminal before aborting waits for the
+    // invocation to complete, which is not a cancellation at all — every
+    // assertion downstream would then be satisfied by an ordinary un-aborted
+    // run. There is no build where reading first is correct: set_map_view now
+    // runs on every build and parks awaiting UI readiness, so the abort has a
+    // live invocation to race on the local path exactly as it does in
+    // production.
+    await abortCancellation();
+    const cancellation = await readCancellation();
 
     await waitForUiReadyMark(page);
     let afterMap: { view: string | null; zoom: number | null } | null = null;
@@ -646,14 +703,46 @@ test.describe('top-level WebMCP dashboard contract', () => {
     // Chrome rejects the CALLER on abort but cannot tell the page, so which
     // terminal the caller sees is a race: `AbortError` when the abort lands
     // while the callback is still parked, the tool's own result when the
-    // callback finished first. Both are real and both have been observed
-    // (production and local respectively), so do not pin one — pinning it
+    // callback finished first. Both are real, so do not pin one — pinning it
     // makes this test flaky on timing rather than on behaviour.
     //
-    // The invariant that actually matters is asserted below: the page work
-    // completes either way. That is the phantom completion this policy accepts.
-    expect(['AbortError', ''],
-      'caller terminal is timing-dependent; both are valid').toContain(cancellation.name);
+    // Accepting either NAME on its own is too weak: a re-introduced
+    // compatibility denial resolves with name '' and would slip through. Pin
+    // the joint invariant instead — each terminal must be internally
+    // consistent, and a resolved terminal must carry the tool's real applied
+    // output, never a denial.
+    if (cancellation.rejected) {
+      expect(
+        cancellation.name,
+        `a rejected caller terminal must be the abort, not a page-side failure (${cancellation.errorMessage})`,
+      ).toBe('AbortError');
+    } else {
+      expect(
+        cancellation.name,
+        'a resolved caller terminal carries no error name',
+      ).toBe('');
+      expect(
+        cancellation.output,
+        'a resolved caller terminal must carry the tool output',
+      ).toBeTruthy();
+      if (productionSmoke) {
+        // get_dashboard_context resolved: the real snapshot, not a denial.
+        expect(
+          cancellation.output,
+          'the resolved terminal must be the context snapshot, not a denial',
+        ).toMatchObject({ map: expect.any(Object), variant: expect.any(String) });
+      } else {
+        // set_map_view resolved: the APPLIED action result. A compatibility
+        // denial ({ ok: false, status: 'denied' }) fails here by construction,
+        // which is the whole point — it means the tool never ran.
+        expect(
+          cancellation.output,
+          'the resolved terminal must be the applied result, not a denial',
+        ).toMatchObject({ ok: true, status: 'applied', actionType: 'set_view' });
+      }
+    }
+    // The invariant that actually matters, asserted either way below: the page
+    // work completes. That is the phantom completion this policy accepts.
     if (!productionSmoke) {
       expect(
         afterMap,

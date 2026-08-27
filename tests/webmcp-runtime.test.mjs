@@ -6,6 +6,7 @@ import {
 } from '../src/config/webmcp.ts';
 import {
   CANCELLATION_REQUIRED_WEBMCP_TOOLS,
+  WEBMCP_TOOL_CANCELLATION_POLICY,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 import { waitForWebMcpUiReady } from '../src/app/webmcp-dashboard.ts';
@@ -140,10 +141,12 @@ describe('WebMCP registry behavioral contract', () => {
   });
 
   it('marks registration settlement so a probe can read the inventory in one call', async () => {
-    // Chrome's WebMCP origin-trial build wedges every later getTools() call
-    // once one has read a pre-registration (empty) inventory, so a discovery
-    // probe must not poll getTools(). This mark is the page-side signal that
-    // says "read now, once" — see e2e/webmcp.spec.ts.
+    // On Chrome's WebMCP origin-trial build, ANY access to
+    // document.modelContext before the page finishes registering wedges the
+    // registration itself — a bare property read is enough, and an empty
+    // getTools() is a symptom rather than the cause. So a discovery probe must
+    // touch nothing until this mark, which the page emits from its own
+    // instrumentation, says "read now, once" — see e2e/webmcp.spec.ts.
     const previousWindow = Object.hasOwn(globalThis, 'window') ? globalThis.window : undefined;
     const hadWindow = Object.hasOwn(globalThis, 'window');
     const marks = [];
@@ -210,6 +213,25 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
+  it('classifies every SPA tool in the cancellation policy record', () => {
+    // The gate is derived from this record, so an unclassified tool would fall
+    // out of the gate silently. TypeScript catches a missing key only while the
+    // record keeps its Record<WebMcpSpaToolName, ...> annotation; this asserts
+    // the same exhaustiveness at runtime, from the shipped tool inventory, so
+    // growing WEBMCP_SPA_TOOL_NAMES past the policy fails loudly here.
+    assert.deepEqual(
+      Object.keys(WEBMCP_TOOL_CANCELLATION_POLICY).sort(),
+      [...WEBMCP_SPA_TOOL_NAMES].sort(),
+      'every SPA tool needs an explicit cancellation policy',
+    );
+    assert.deepEqual(
+      Object.values(WEBMCP_TOOL_CANCELLATION_POLICY)
+        .filter((policy) => !['read-only', 'view-state', 'metered', 'silently-persistent'].includes(policy)),
+      [],
+      'policy values are limited to the four documented classifications',
+    );
+  });
+
   it('denies the persistence-capable tools when the host omits the target signal', async () => {
     // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
     // stream); open_search_result reaches the same write through a layer
@@ -240,7 +262,9 @@ describe('WebMCP registry behavioral contract', () => {
       ok: false,
       status: 'denied',
       reason: 'target_cancellation_unsupported',
-      message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+      message: 'This browser cannot cancel work already running in the page, so World Monitor '
+        + 'will not run tools that persist state beyond this session. Read-only and '
+        + 'view-state dashboard tools still work.',
     };
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_layers', JSON.stringify({ layers: { conflicts: true } })),

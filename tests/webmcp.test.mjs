@@ -284,11 +284,12 @@ describe('webmcp.ts: current API contract', () => {
     const tools = buildProductionWebMcpTools(createBindings({
       openCountryBriefByCode: async () => { mutationCalls += 1; return true; },
       openSearch: async () => { mutationCalls += 1; return true; },
-      applyDashboardAction: async () => {
+      applyDashboardAction: async (action) => {
         mutationCalls += 1;
         return {
           ok: true,
           status: 'applied',
+          actionType: action.type,
           message: 'Applied.',
           targets: [],
         };
@@ -317,27 +318,55 @@ describe('webmcp.ts: current API contract', () => {
       0,
     );
 
-    // set_map_layers and open_search_result persist STORAGE_KEYS.mapLayers, so
-    // they stay fail-closed; the rest only move visible view state and run.
+    // set_map_layers and open_search_result silently persist
+    // STORAGE_KEYS.mapLayers, so they stay fail-closed; the rest only move
+    // visible view state, or bill a metered call, and run.
+    //
+    // Every tool is pinned to its EXACT return, gated and ungated alike.
+    // `notDeepEqual(result, denial)` excluded exactly one literal object, so a
+    // swallowed error, a differently shaped failure, a wrong country name, or a
+    // dropped actionType all passed it. createBindings() is deterministic, so
+    // there is nothing environment-dependent left to hedge against.
     const gated = ['set_map_layers', 'open_search_result'];
     const denial = {
       ok: false,
       status: 'denied',
       reason: 'target_cancellation_unsupported',
-      message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+      message: 'This browser cannot cancel work already running in the page, so World Monitor '
+        + 'will not run tools that persist state beyond this session. Read-only and '
+        + 'view-state dashboard tools still work.',
     };
+    const appliedAction = (actionType) => ({
+      ok: true,
+      status: 'applied',
+      actionType,
+      message: 'Applied.',
+      targets: [],
+      targetCount: 0,
+      targetsTruncated: false,
+    });
+    const expected = {
+      openCountryBrief: 'Opened intelligence brief for Country DE (DE).',
+      openSearch: 'Opened search palette.',
+      open_dashboard_panel: appliedAction('open_panel'),
+      set_map_view: appliedAction('set_view'),
+      set_map_layers: denial,
+      open_search_result: denial,
+    };
+    assert.deepEqual(
+      Object.keys(expected).sort(),
+      Object.keys(validInputs).sort(),
+      'every exercised tool must have a pinned expected value',
+    );
     for (const [name, input] of Object.entries(validInputs)) {
       const tool = tools.find((candidate) => candidate.name === name);
-      const result = await tool.execute(input);
-      if (gated.includes(name)) {
-        assert.deepEqual(result, denial, `${name} persists state and must fail closed`);
-      } else {
-        assert.notDeepEqual(
-          result,
-          denial,
-          `${name} only moves visible view state and must run`,
-        );
-      }
+      assert.deepEqual(
+        await tool.execute(input),
+        expected[name],
+        gated.includes(name)
+          ? `${name} silently persists state and must fail closed`
+          : `${name} must run and return exactly its documented result`,
+      );
     }
     assert.equal(
       mutationCalls,

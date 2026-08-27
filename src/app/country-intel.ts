@@ -106,6 +106,14 @@ type CountryBriefOpenOptions = {
   onPresented?: () => void;
   /** Cancels an agent-owned open before it presents visible UI. */
   signal?: AbortSignal;
+  /**
+   * Who initiated this open, for request arbitration only. An agent open never
+   * evicts a pending human one (see claimBriefRequest). Callers that omit it
+   * fall back to the AbortSignal heuristic, which no longer holds on its own:
+   * no shipping browser supplies a target-side signal to WebMCP tools, so an
+   * agent path without a signal must state its ownership explicitly.
+   */
+  owner?: 'agent' | 'human';
 };
 
 export class CountryIntelManager implements AppModule {
@@ -334,7 +342,7 @@ export class CountryIntelManager implements AppModule {
     opts?: CountryBriefOpenOptions,
   ): Promise<void> {
     throwIfWebMcpAborted(opts?.signal);
-    const requestOwner = opts?.signal ? 'agent' : 'human';
+    const requestOwner = opts?.owner ?? (opts?.signal ? 'agent' : 'human');
     const request = this.claimBriefRequest(requestOwner);
     if (!request) return;
     await this.openCountryBriefByCodeForRequest(code, country, opts, request);
