@@ -1525,6 +1525,13 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-imd-cyclone-marine.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "lifecycle": "planned",
+    "service": "seed-imd-cyclone-marine",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
     "entry": "scripts/process-simulation-tasks.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "simulation-worker",

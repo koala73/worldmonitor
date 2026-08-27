@@ -565,6 +565,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 - Western Pacific tropical-cyclone observations (Hong Kong Observatory, Japan Meteorological Agency)
 - Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
 - Weather alerts and severe conditions (NWS + ECCC polygons, WMO SWIC official CAP points)
+- IMD RSMC New Delhi cyclone tracks, forecast wind radii, cone of uncertainty, and port / sea-area / coastal bulletins (`weather:imd-cyclone-marine:v1`, on-demand). Live fetch stays disabled until API-key and redistribution rights are confirmed; a disabled snapshot is not an all-clear.
 - Radiation monitoring — see the [Radiation Watch panel](/panels/radiation-watch)
 
 **Key providers**
@@ -581,6 +582,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 | US National Weather Service | Official US weather alerts (polygon tier) | [api.weather.gov](https://api.weather.gov/alerts/active) |
 | Environment and Climate Change Canada | Official Canadian weather alerts (polygon tier) | [api.weather.gc.ca](https://api.weather.gc.ca) |
 | WMO Severe Weather Information Centre | Official CAP from WMO members, merged into `weather:alerts:v1` (point tier) | [severeweather.wmo.int](https://severeweather.wmo.int/json/wmo_all.json) |
+| India Meteorological Department | Cyclone track / wind / cone plus port, sea-area, and coastal products. Key-gated API; fishermen warning listed but undocumented and kept disabled. Not merged into `weather:alerts:v1`. | [api.imd.gov.in](https://api.imd.gov.in/public/api_reference.html) |
 
 Deep dives: [Natural disasters](/natural-disasters) · [Disease alert methodology](/methodology/disease-alert-level) · [Thermal escalation panel](/panels/thermal-escalation)
 

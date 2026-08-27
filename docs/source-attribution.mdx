@@ -1,13 +1,4 @@
----
-title: "Source Attribution"
-description: "Machine-generated inventory of every source host World Monitor uses — provider identity, observed surface, and source references."
----
 
-This page is the provenance companion to [Data Sources](/data-sources). That page explains **what** World Monitor covers and **which** providers power each domain. This page lists every source host observed in the source tree, its surface type, and where it is referenced.
-
-A host is the observed transport. The public [source catalog](https://worldmonitor.app/sources) groups related hosts under the logical publisher and separately records country of origin versus countries covered. Syndication transports such as FeedBurner and Google News stay in this host ledger; they are not catalog publishers.
-
-The inventory is **generated, not hand-written**: `scripts/source-attribution.mjs` scans source declarations in `scripts/`, `server/`, `api/`, and `src/`, and joins them against the committed manifest (`shared/source-attribution-manifest.json`). A host that appears in code but not in the manifest fails CI, so this disclosure cannot silently drift from the configured source inventory.
 
 ## Observed Source Inventory
 
@@ -323,6 +314,9 @@ This generated inventory covers **752 active source hosts** representing **745 a
 | in.usembassy.gov (in.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
 | inc42.com (inc42.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | index.hu (index.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| India Meteorological Department (api.imd.gov.in) | structured — scripts/lib/imd-cyclone-marine.mjs, scripts/source-attribution.mjs, src/app/data-loader.ts |
+| India Meteorological Department (mausam.imd.gov.in) | structured — scripts/lib/imd-cyclone-marine.mjs |
+| India Meteorological Department (rsmcnewdelhi.imd.gov.in) | structured — scripts/lib/imd-cyclone-marine.mjs |
 | indianexpress.com (indianexpress.com) | feed — src/config/feeds.ts |
 | indiatodaylive.akamaized.net (indiatodaylive.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
 | insideclimatenews.org (insideclimatenews.org) | Excluded / candidate — No current fetch observed |

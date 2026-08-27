@@ -3251,6 +3251,40 @@ export class DeckGLMap {
       }));
     }
 
+    const windRadiiData: { polygon: number[][]; thresholdKt: number; stormName: string; _event: NaturalEvent }[] = [];
+    for (const e of cyclones) {
+      for (const band of e.windRadii || []) {
+        if (band.geometryKind && band.geometryKind !== 'forecast-wind-radii') continue;
+        for (const polygon of band.polygons || []) {
+          const ring = polygon[0];
+          if (ring?.length) {
+            windRadiiData.push({
+              polygon: ring,
+              thresholdKt: band.thresholdKt || 0,
+              stormName: e.stormName || e.title,
+              _event: e,
+            });
+          }
+        }
+      }
+    }
+    if (windRadiiData.length > 0) {
+      layers.push(new PolygonLayer({
+        id: 'storm-imd-wind-radii-layer',
+        data: windRadiiData,
+        getPolygon: (d: { polygon: number[][] }) => d.polygon,
+        getFillColor: (d: { thresholdKt: number }) => {
+          if (d.thresholdKt >= 64) return [180, 0, 0, 40] as [number, number, number, number];
+          if (d.thresholdKt >= 50) return [220, 80, 0, 36] as [number, number, number, number];
+          if (d.thresholdKt >= 34) return [220, 160, 0, 32] as [number, number, number, number];
+          return [200, 200, 0, 28] as [number, number, number, number];
+        },
+        getLineColor: [255, 180, 0, 120],
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }));
+    }
+
     // Past track segments (per-segment wind coloring)
     const pastSegments: { path: [number, number][]; windKt: number; stormName: string; _event: NaturalEvent }[] = [];
     for (const e of cyclones) {
@@ -4896,7 +4930,9 @@ export class DeckGLMap {
       case 'storm-past-track-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Past Track (${obj.windKt} kt)</div>` };
       case 'storm-cone-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast Cone</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast cone of uncertainty<br/><small>Not an observed storm footprint</small></div>` };
+      case 'storm-imd-wind-radii-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || 'IMD cyclone')}</strong><br/>Forecast wind radii ${text(String(obj.thresholdKt || ''))} kt<br/><small>India Meteorological Department · not an observed footprint</small></div>` };
       case 'ais-density-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.layers.shipTraffic')}</strong><br/>${t('popups.intensity')}: ${text(obj.intensity)}</div>` };
       case 'waterways-layer':
@@ -4985,7 +5021,11 @@ export class DeckGLMap {
       case 'weather-layer': {
         const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
         const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${area}</div>` };
+        const issuedBy = typeof obj.issuedBy === 'string' && obj.issuedBy ? `<br/>${text(obj.issuedBy)}` : '';
+        const marine = [obj.wind, obj.seaState, obj.visibility].filter((value) => typeof value === 'string' && value).join(' · ');
+        const marineLine = marine ? `<br/><small>${text(marine)}</small>` : '';
+        const sourceLine = obj.sourceUrl ? `<br/><small>${text(String(obj.sourceUrl))}</small>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${issuedBy}${area}${marineLine}${sourceLine}</div>` };
       }
       case 'canada-roads-layer':
       case 'canada-roads-paths-layer': {
@@ -5332,6 +5372,7 @@ export class DeckGLMap {
       'storm-forecast-track-layer': 'natEvent',
       'storm-past-track-layer': 'natEvent',
       'storm-cone-layer': 'natEvent',
+      'storm-imd-wind-radii-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
       'stock-exchanges-layer': 'stockExchange',
