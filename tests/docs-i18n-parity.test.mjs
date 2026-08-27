@@ -208,20 +208,18 @@ describe('docs i18n parity', () => {
     assert.doesNotMatch(errors, /`-32002`[^\n]*例如订阅已失效/);
   });
 
-  it('documents ChatGPT custom-app setup without presenting WebMCP as prompt-discoverable', () => {
-    const overview = readFileSync(join(DOCS_DIR, 'mcp-overview.mdx'), 'utf8');
+  it('documents the ChatGPT Atlas WebMCP test flow without presenting mobile chat as a browser agent', () => {
     const webMcp = readFileSync(join(DOCS_DIR, 'webmcp.mdx'), 'utf8');
-    const zhOverview = readZhDoc('mcp-overview');
     const zhWebMcp = readZhDoc('webmcp');
 
-    for (const content of [overview, zhOverview]) {
-      assert.match(content, /### ChatGPT/);
-      assert.match(content, /Settings → Apps & Connectors → Advanced settings/);
-      assert.match(content, /Developer mode/);
-      assert.match(content, /Create app/);
-      assert.match(content, /https:\/\/worldmonitor\.app\/mcp/);
+    for (const content of [webMcp, zhWebMcp]) {
+      assert.match(content, /### ChatGPT Atlas/);
+      assert.match(content, /https:\/\/learn\.chatgpt\.com\/docs\/webmcp/);
+      assert.match(content, /Agent mode/);
+      assert.match(content, /document\.modelContext/);
+      assert.doesNotMatch(content, /Settings → Apps & Connectors → Advanced settings/);
     }
-    assert.match(webMcp, /ChatGPT does not discover WebMCP tools merely because a prompt names a website/);
-    assert.match(zhWebMcp, /普通 ChatGPT 对话中提到网站[^\n]*不会让 ChatGPT 发现 WebMCP 工具/);
+    assert.match(webMcp, /ChatGPT mobile app screenshot flow is not a WebMCP test/);
+    assert.match(zhWebMcp, /ChatGPT 移动应用流程并不是 WebMCP 测试/);
   });
 });

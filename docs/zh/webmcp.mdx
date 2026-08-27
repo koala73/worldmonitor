@@ -10,7 +10,7 @@ WebMCP 是一项实验性的拟议 Web 标准，目前通过 Chrome 149 Origin T
 
 **WebMCP 不会取代 [WorldMonitor 托管 MCP 服务器](/zh/mcp-overview)。** 持久、远程、后台或无头智能体，以及直接读取 WorldMonitor 数据的场景，请使用托管服务器。
 
-**仅在普通 ChatGPT 对话中提到网站，并不会让 ChatGPT 发现 WebMCP 工具。** 普通 ChatGPT 对话（包括 iOS 或 Android 应用中的对话）并不是拥有 `document.modelContext` 的 Chrome 标签页。要从 ChatGPT 使用 WorldMonitor，请先在 ChatGPT 开发者模式中将 `https://worldmonitor.app/mcp` 添加为自定义应用，然后在新对话中启用该应用。请参阅 [ChatGPT 设置](/zh/mcp-overview#chatgpt)。
+**如需使用 ChatGPT 测试，请在打开 WorldMonitor 页面的同一个 ChatGPT Atlas 标签页中使用 Agent mode。** WebMCP 是浏览器智能体集成；在 chatgpt.com 的普通对话或 ChatGPT iOS/Android 应用中要求访问某个 URL，并不会激活 WebMCP。这些客户端并不拥有页面的 `document.modelContext`，因此会报告没有可调用的 WebMCP 能力。请参阅 [OpenAI WebMCP 指南](https://learn.chatgpt.com/docs/webmcp)。
 </Warning>
 
 ## 选择正确的接口
@@ -58,6 +58,17 @@ Boolean(document.modelContext?.registerTool)
 ```
 
 本地开发由该 flag 代替 Origin Trial 注册。WorldMonitor 仍会发送 API 所需的源隔离与权限策略响应头。
+
+### ChatGPT Atlas
+
+请遵循 OpenAI 的 [WebMCP 测试流程](https://learn.chatgpt.com/docs/webmcp)，而不是托管 MCP 的自定义应用流程：
+
+1. 在 ChatGPT Atlas 中打开 `https://www.worldmonitor.app/`。测试仪表板工具清单时请打开 `/dashboard`。
+2. 在**同一个标签页**中启动 **Agent mode**，让智能体共享已注册工具的文档。
+3. 要求 Atlas 使用页面上的 WorldMonitor 工具。首页暴露 `launchWorldMonitor` 和 `getWorldMonitorMcpEndpoint`；`/dashboard` 暴露下文列出的仪表板工具。
+4. 如果 Atlas 看不到工具，请在 Agent mode/WebMCP 可用后重新加载页面，并在该页面的 DevTools 中验证 `Boolean(document.modelContext?.registerTool)`。
+
+用户截图中的 ChatGPT 移动应用流程并不是 WebMCP 测试：它启动的是未附加 WorldMonitor 文档的独立对话。将 `https://worldmonitor.app/mcp` 注册为 ChatGPT 自定义应用测试的是另一套托管 MCP 传输，而不是这些标签页绑定工具。
 
 <Warning>
 在 Origin Trial 构建上，请在页面完成工具注册**之后**再调用 `getTools()`，不要更早。若某次 `getTools()` 以空清单 resolve（即在注册完成前发起），该页面之后的每一次 `getTools()` 都会永远处于 pending。`executeTool()` 不受影响，在卡死前取得的工具描述符仍可继续使用。这是浏览器侧行为：在 Chrome 151.0.7922.174 上针对已加入 Origin Trial 的页面可稳定复现，而同一页面改用 `chrome://flags/#enable-webmcp-testing` 启用时不会出现。在页面加载时接入的代理应等待文档加载完成后再发起首次发现调用，且不应轮询 `getTools()`。
@@ -251,3 +262,4 @@ WorldMonitor 清单、UI、权限或权益问题请通过 [GitHub Issues](https:
 - [评估指南](https://developer.chrome.com/docs/ai/webmcp/evals)
 - [Chrome 149 Origin Trial 公告](https://developer.chrome.com/blog/ai-webmcp-origin-trial)
 - [Chrome DevTools 149 WebMCP 检查器](https://developer.chrome.com/blog/new-in-devtools-149)
+- [OpenAI：ChatGPT Atlas 中的 WebMCP](https://learn.chatgpt.com/docs/webmcp)

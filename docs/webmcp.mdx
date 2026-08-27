@@ -10,7 +10,7 @@ WebMCP is an experimental proposed web standard available through a Chrome 149 o
 
 **WebMCP does not replace the [hosted WorldMonitor MCP server](/mcp-overview).** Use the hosted server for persistent, remote, background, or headless agents and for direct access to WorldMonitor data.
 
-**ChatGPT does not discover WebMCP tools merely because a prompt names a website.** A normal ChatGPT conversation, including one in the iOS or Android app, is not the Chrome tab that owns `document.modelContext`. To use WorldMonitor from ChatGPT, first add `https://worldmonitor.app/mcp` as a custom app in ChatGPT's developer mode, then enable that app in a new conversation. See [ChatGPT setup](/mcp-overview#chatgpt).
+**To test with ChatGPT, use ChatGPT Atlas Agent mode while the WorldMonitor page is open in that Atlas tab.** WebMCP is a browser-agent integration; it is not activated by asking a normal chat on chatgpt.com or in the ChatGPT iOS/Android app to visit a URL. Those clients do not own the page's `document.modelContext`, which is why they report that no callable WebMCP capability is exposed. See [OpenAI's WebMCP guide](https://learn.chatgpt.com/docs/webmcp).
 </Warning>
 
 ## Choose the right surface
@@ -58,6 +58,17 @@ Boolean(document.modelContext?.registerTool)
 ```
 
 The local flag replaces origin-trial enrollment for development. WorldMonitor still sends the origin-isolation and permissions-policy headers needed by the API.
+
+### ChatGPT Atlas
+
+Follow OpenAI's [WebMCP testing flow](https://learn.chatgpt.com/docs/webmcp), not the hosted-MCP custom-app flow:
+
+1. Open `https://www.worldmonitor.app/` in ChatGPT Atlas. Use `/dashboard` when testing the dashboard tool inventory.
+2. Start **Agent mode in that same tab** so the agent shares the document that registered the tools.
+3. Ask Atlas to use the page's WorldMonitor tools. The homepage exposes `launchWorldMonitor` and `getWorldMonitorMcpEndpoint`; `/dashboard` exposes the dashboard inventory below.
+4. If Atlas sees no tools, reload the page after Agent mode/WebMCP is available and verify the exact page in DevTools with `Boolean(document.modelContext?.registerTool)`.
+
+The ChatGPT mobile app screenshot flow is not a WebMCP test: it starts a standalone conversation with no WorldMonitor document attached. Registering `https://worldmonitor.app/mcp` as a ChatGPT custom app tests the separate hosted MCP transport, not these tab-bound tools.
 
 <Warning>
 On the origin-trial build, call `getTools()` **after** the page has registered its tools, not before. A `getTools()` call that resolves with an empty inventory — that is, one made before registration completes — leaves every later `getTools()` call on that page pending forever. `executeTool()` is unaffected, and a tool descriptor obtained before the wedge stays usable. This is a browser-side behavior, reproducible on Chrome 151.0.7922.174 against an origin-trial-enrolled page and absent when the same page is enabled through `chrome://flags/#enable-webmcp-testing`. An agent attaching at page load should wait for the document to finish loading before its first discovery call, and should not poll `getTools()`.
@@ -251,3 +262,4 @@ Report WorldMonitor inventory, UI, permission, or entitlement problems through [
 - [Evaluation guidance](https://developer.chrome.com/docs/ai/webmcp/evals)
 - [Chrome 149 origin-trial announcement](https://developer.chrome.com/blog/ai-webmcp-origin-trial)
 - [Chrome DevTools 149 WebMCP inspector](https://developer.chrome.com/blog/new-in-devtools-149)
+- [OpenAI: WebMCP in ChatGPT Atlas](https://learn.chatgpt.com/docs/webmcp)

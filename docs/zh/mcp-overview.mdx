@@ -185,21 +185,6 @@ Claude Desktop 会在首次连接时自动处理 OAuth 流程。
 - 名称：`WorldMonitor`
 - URL：`https://worldmonitor.app/mcp`
 
-### ChatGPT
-
-WebMCP 与 ChatGPT 自定义应用是两种不同的集成。在普通对话中输入“使用 worldmonitor.app 的 WebMCP”不会自动连接任何一种集成：ChatGPT 并不是 WorldMonitor 标签页内的浏览器智能体，该对话也尚未获得托管 MCP 服务器的访问权限。
-
-请在 ChatGPT 网页版中连接托管服务器：
-
-1. 打开 **Settings → Apps & Connectors → Advanced settings**，然后启用 **Developer mode**。工作区是否提供该功能以及能否添加应用，可能取决于 ChatGPT 套餐和管理员策略。
-2. 选择 **Create app**，将名称设为 `WorldMonitor`，并将 MCP 服务器 URL 设为 `https://worldmonitor.app/mcp`。
-3. ChatGPT 请求授权时，完成 WorldMonitor 登录和同意流程。
-4. 新建对话，打开应用/工具选择器，并在请求实时 WorldMonitor 数据前启用 `WorldMonitor` 应用。现有对话不会自动获得新连接的应用。
-
-即使之后计划从移动客户端使用，也应先在 ChatGPT 网页版中配置该应用。如果看不到 **Developer mode**、**Create app** 或已连接的应用，则该 ChatGPT 账户或工作区尚未开放所需的自定义应用功能；更改 WorldMonitor 的页面内 WebMCP 注册无法使其出现。
-
-如果需要 WorldMonitor 的标签页内浏览器控制，请改为在受支持的 Chrome 版本中打开网站，并按照 [WebMCP 设置](/zh/webmcp#可用性) 操作。
-
 ### Cursor
 
 `~/.cursor/mcp.json`：
