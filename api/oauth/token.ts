@@ -147,12 +147,16 @@ async function rawRedisGet(key: string): Promise<unknown | null> {
   }
 }
 
-/** Atomically delete one raw OAuth key only while it still has the expected value. */
-export async function rawRedisCompareAndDelete(key: string, expectedValue: string): Promise<boolean> {
+/** Delete one raw OAuth key only when its value matches and a guard key is absent. */
+export async function rawRedisCompareAndDeleteIfAbsent(
+  key: string,
+  expectedValue: string,
+  absentKey: string,
+): Promise<boolean> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Redis not configured');
-  const script = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+  const script = "if redis.call('EXISTS', KEYS[2]) == 0 and redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
   const resp = await fetch(`${url}/`, {
     method: 'POST',
     headers: {
@@ -160,7 +164,7 @@ export async function rawRedisCompareAndDelete(key: string, expectedValue: strin
       'Content-Type': 'application/json',
       'User-Agent': 'worldmonitor-edge/1.0',
     },
-    body: JSON.stringify(['EVAL', script, '1', key, expectedValue]),
+    body: JSON.stringify(['EVAL', script, '2', key, absentKey, expectedValue]),
     signal: AbortSignal.timeout(3_000),
   });
   if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
@@ -383,7 +387,13 @@ async function restoreOrRemoveFamilyPointer(
   if (refreshData.family_id) {
     for (const expectedValue of new Set([pointerValue, priorPointerValue])) {
       try {
-        if (await deps.redisCompareAndDelete(refreshFamilyPointerKey(refreshToken), expectedValue)) {
+        if (
+          await deps.redisCompareAndDeleteIfAbsent(
+            refreshFamilyPointerKey(refreshToken),
+            expectedValue,
+            `oauth:refresh:${refreshToken}`,
+          )
+        ) {
           familyPointerRemoved = true;
           break;
         }
@@ -408,8 +418,8 @@ export interface TokenHandlerDeps {
   redisGetDel: (key: string) => Promise<unknown | null>;
   /** Non-consuming parsed read of raw `oauth:*` keys. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
-  /** Atomic compare-and-delete, deliberately independent of a failed restore pipeline. */
-  redisCompareAndDelete: (key: string, expectedValue: string) => Promise<boolean>;
+  /** Atomic guarded cleanup, deliberately independent of a failed restore pipeline. */
+  redisCompareAndDeleteIfAbsent: (key: string, expectedValue: string, absentKey: string) => Promise<boolean>;
   /** Pipeline writer used by the three storeXxx writers + the sliding TTL EXPIRE. */
   redisPipeline: (commands: PipelineCommand[]) => Promise<PipelineResult[] | null>;
   /**
@@ -946,7 +956,7 @@ export default async function handler(
   return tokenHandler(req, {
     redisGetDel: rawRedisGetDel,
     redisGet: rawRedisGet,
-    redisCompareAndDelete: rawRedisCompareAndDelete,
+    redisCompareAndDeleteIfAbsent: rawRedisCompareAndDeleteIfAbsent,
     redisPipeline: rawRedisPipeline,
     validateProMcpToken,
     randomUuid: () => crypto.randomUUID(),

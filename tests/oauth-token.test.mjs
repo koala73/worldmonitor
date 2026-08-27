@@ -22,7 +22,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import crypto from 'node:crypto';
 
-import { rawRedisCompareAndDelete, tokenHandler } from '../api/oauth/token.ts';
+import { rawRedisCompareAndDeleteIfAbsent, tokenHandler } from '../api/oauth/token.ts';
 import {
   resolveBearerToContext,
   resolveApiKeyFromBearer,
@@ -104,8 +104,9 @@ function makeRedis() {
       }
       return v;
     },
-    redisCompareAndDelete: async (key, expectedValue) => {
-      ops.push({ kind: 'compare-delete', key, expectedValue });
+    redisCompareAndDeleteIfAbsent: async (key, expectedValue, absentKey) => {
+      ops.push({ kind: 'compare-delete', key, expectedValue, absentKey });
+      if (store.has(absentKey)) return false;
       if (store.get(key) !== expectedValue) return false;
       store.delete(key);
       return true;
@@ -181,7 +182,7 @@ function makeDeps(overrides = {}) {
     deps: {
       redisGetDel: redis.redisGetDel,
       redisGet: redis.redisGet,
-      redisCompareAndDelete: redis.redisCompareAndDelete,
+      redisCompareAndDeleteIfAbsent: redis.redisCompareAndDeleteIfAbsent,
       redisPipeline: redis.redisPipeline,
       // F3 (U7+U8 review pass): validateProMcpToken now returns the
       // ProMcpValidateUnion. Tests passing `null` are normalised here to
@@ -221,7 +222,14 @@ describe('OAuth Redis compare-and-delete production contract', () => {
     };
 
     try {
-      assert.equal(await rawRedisCompareAndDelete('oauth:famptr:rt-contract', 'expected-pointer'), true);
+      assert.equal(
+        await rawRedisCompareAndDeleteIfAbsent(
+          'oauth:famptr:rt-contract',
+          'expected-pointer',
+          'oauth:refresh:rt-contract',
+        ),
+        true,
+      );
       assert.equal(calls[0].url, 'https://test.upstash.io/');
       assert.equal(calls[0].init.method, 'POST');
       assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token');
@@ -229,12 +237,17 @@ describe('OAuth Redis compare-and-delete production contract', () => {
       assert.equal(calls[0].init.headers['User-Agent'], 'worldmonitor-edge/1.0');
       const command = JSON.parse(calls[0].init.body);
       assert.equal(command[0], 'EVAL');
-      assert.equal(command[2], '1');
+      assert.equal(command[2], '2');
       assert.equal(command[3], 'oauth:famptr:rt-contract');
-      assert.equal(command[4], 'expected-pointer');
+      assert.equal(command[4], 'oauth:refresh:rt-contract');
+      assert.equal(command[5], 'expected-pointer');
 
       await assert.rejects(
-        rawRedisCompareAndDelete('oauth:famptr:rt-contract', 'expected-pointer'),
+        rawRedisCompareAndDeleteIfAbsent(
+          'oauth:famptr:rt-contract',
+          'expected-pointer',
+          'oauth:refresh:rt-contract',
+        ),
         /invalid response/,
       );
     } finally {
@@ -949,7 +962,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(sibling.status, 200, 'a sibling session in the family must still validate');
   });
 
-  it('a partial restore that writes the token but not its pointer removes the stale pointer and remains retryable', async () => {
+  it('a partial restore that writes the token keeps replay evidence and remains retryable', async () => {
     await ensureFixtures();
     const redis = makeRedis();
     const originalPipeline = redis.redisPipeline;
@@ -989,9 +1002,13 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(first.status, 503);
     assert.ok(redis.store.has('oauth:refresh:rt-partial'), 'partial pipeline restored the token record');
-    assert.equal(redis.store.has('oauth:famptr:rt-partial'), false, 'cleanup removes the stale pointer');
+    assert.equal(
+      redis.store.has('oauth:famptr:rt-partial'),
+      true,
+      'cleanup preserves replay evidence while the restored token exists',
+    );
     assert.deepEqual(restoreFailures, [
-      { stage: 'convex-transient', familyPointerRemoved: true },
+      { stage: 'convex-transient', familyPointerRemoved: false },
     ]);
 
     const retry = await tokenHandler(
@@ -999,6 +1016,61 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(retry.status, 200, 'the restored token remains usable after cleanup');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+  });
+
+  it('a lost restore response preserves replay evidence when Redis committed both records', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    redis.redisPipeline = async (commands) => {
+      const isRestore = commands.length === 2 && commands[0]?.[1] === 'oauth:refresh:rt-lost-response';
+      if (!isRestore) return originalPipeline(commands);
+
+      await originalPipeline(commands);
+      throw new Error('response lost after Redis committed the restore');
+    };
+    let validationCalls = 0;
+    const { deps, restoreFailures } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        validationCalls += 1;
+        return validationCalls === 1
+          ? { ok: 'transient' }
+          : { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_lost_restore_response';
+    redis.store.set('oauth:refresh:rt-lost-response', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-lost-response', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-lost-response', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(first.status, 503);
+    assert.ok(redis.store.has('oauth:refresh:rt-lost-response'), 'Redis committed the restored token');
+    assert.ok(
+      redis.store.has('oauth:famptr:rt-lost-response'),
+      'cleanup must preserve the pointer while the restored token exists',
+    );
+    assert.deepEqual(restoreFailures, [
+      { stage: 'convex-transient', familyPointerRemoved: false },
+    ]);
+
+    const retry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-lost-response', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(retry.status, 200);
     assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
   });
 
@@ -1019,10 +1091,11 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const cleanupStarted = new Promise((resolve) => { signalCleanupStarted = resolve; });
     let releaseCleanup;
     const cleanupReleased = new Promise((resolve) => { releaseCleanup = resolve; });
-    redis.redisCompareAndDelete = async (key, expectedValue) => {
-      redis.ops.push({ kind: 'compare-delete', key, expectedValue });
+    redis.redisCompareAndDeleteIfAbsent = async (key, expectedValue, absentKey) => {
+      redis.ops.push({ kind: 'compare-delete', key, expectedValue, absentKey });
       signalCleanupStarted();
       await cleanupReleased;
+      if (redis.store.has(absentKey)) return false;
       if (redis.store.get(key) !== expectedValue) return false;
       redis.store.delete(key);
       return true;
