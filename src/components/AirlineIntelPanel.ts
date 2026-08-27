@@ -17,6 +17,7 @@ import {
     type DatePrice,
 } from '@/services/aviation';
 import { aviationWatchlist } from '@/services/aviation/watchlist';
+import { flightBoardTime } from '@/services/aviation/board-time';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { Panel } from './Panel';
@@ -418,11 +419,7 @@ export class AirlineIntelPanel extends Panel {
         }
         const rows = this.flightsData.map(f => {
             const color = STATUS_BADGE[f.status] ?? '#6b7280';
-            // The board is ordered server-side by when each flight touches THIS
-            // airport, so show that same time — an arrival's departure time is
-            // from somewhere else and would read as out of order here.
-            const arriving = !!this.flightsAirport && f.destination.iata === this.flightsAirport;
-            const when = arriving ? (f.scheduledArrival ?? f.scheduledDeparture) : f.scheduledDeparture;
+            const when = flightBoardTime(f, this.flightsAirport);
             return `
         <div class="flight-row">
           <div class="flight-num">${escapeHtml(f.flightNumber)}</div>
