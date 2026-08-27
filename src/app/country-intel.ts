@@ -120,6 +120,7 @@ export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
   private pendingBriefRequest: PendingCountryBriefRequest | null = null;
+  private visibleBriefOwner: PendingCountryBriefRequest['owner'] | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
   private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
   // Re-fire PRO-gated country sections on false→true entitlement transition.
@@ -189,8 +190,16 @@ export class CountryIntelManager implements AppModule {
     const pendingRequest = this.pendingBriefRequest;
     if (
       owner === 'agent'
-      && pendingRequest?.owner === 'human'
-      && pendingRequest.token === this.briefRequestToken
+      && (
+        (
+          pendingRequest?.owner === 'human'
+          && pendingRequest.token === this.briefRequestToken
+        )
+        || (
+          this.visibleBriefOwner === 'human'
+          && this.hasVisibleRealCountryBrief()
+        )
+      )
     ) {
       return null;
     }
@@ -367,9 +376,9 @@ export class CountryIntelManager implements AppModule {
       const page = this.ctx.countryBriefPage;
       if (!page) return;
       const hasVisibleBrief = this.hasVisibleRealCountryBrief();
-      // A cancellable agent open must not replace human-visible state with a
-      // loading shell that its abort cleanup would subsequently close.
-      const preserveVisibleBrief = !!opts?.signal && hasVisibleBrief;
+      // An agent open must not replace visible state while it works. Ownership
+      // is explicit because shipping WebMCP browsers omit the target signal.
+      const preserveVisibleBrief = request.owner === 'agent' && hasVisibleBrief;
       if (!preserveVisibleBrief && (!hasVisibleBrief || page.getCode() !== code)) {
         if (!showedLoading) page.showLoading();
         showedLoading = true;
@@ -393,6 +402,7 @@ export class CountryIntelManager implements AppModule {
 
       page.show(country, code, score, signals);
       pageShown = true;
+      this.visibleBriefOwner = request.owner;
       this.clearBriefRequest(request);
       // Agent selection needs to acknowledge the visible UI transition, not
       // wait for the slower background intelligence/LLM enrichment below.

@@ -205,19 +205,15 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 // `executeTool()`. A cancelled invocation rejects on the agent side while the
 // page work runs on: a phantom completion.
 //
-// Gate a tool only when that phantom completion SILENTLY PERSISTS outside any
-// metering or consent system — a write nothing counts and nobody sees. Effects
-// that are already metered, or visible and human-overwritable, stay ungated.
-//   - 'silently-persistent' (gated): set_map_layers writes
+// Gate a tool when its effect can outlive caller cancellation. The policy name
+// describes the runtime requirement instead of one particular reason for it.
+//   - 'cancellation-required' (gated): set_map_layers writes
 //     STORAGE_KEYS.mapLayers to local storage (and for `ais` opens a network
 //     stream); open_search_result reaches the same writes through the search
 //     selection dispatcher. Putting the map back by hand restores neither.
-//   - 'metered' (deliberately NOT gated): openCountryBrief's LLM spend is
-//     metered per user by the entitlement layer — premiumFetch sends the
-//     user's own credentials and the gateway counts the call against their
-//     daily tier allowance. An aborted openCountryBrief still consumes one
-//     brief generation from that allowance: a charge the user's own quota
-//     records, not a silent write.
+//     openCountryBrief can start server-side LLM generation that consumes the
+//     caller's daily allowance. The gateway cannot refund a request merely
+//     because browser-side execution was cancelled.
 //   - 'view-state': set_map_view also writes share-URL state via
 //     history.replaceState — visible in the address bar and overwritten by the
 //     next human map move.
@@ -226,22 +222,22 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 // Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
 // a TypeScript error. That is the forcing function: nothing ships unclassified.
 export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
-  Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'metered' | 'silently-persistent'>
+  Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'cancellation-required'>
 > = Object.freeze({
   [WEBMCP_SPA_TOOL.getDashboardContext]: 'read-only',
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
   [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
   [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
   [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
-  [WEBMCP_SPA_TOOL.openCountryBrief]: 'metered',
-  [WEBMCP_SPA_TOOL.setMapLayers]: 'silently-persistent',
-  [WEBMCP_SPA_TOOL.openSearchResult]: 'silently-persistent',
+  [WEBMCP_SPA_TOOL.openCountryBrief]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.setMapLayers]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.openSearchResult]: 'cancellation-required',
 });
 
 /** Tools the page refuses to run without a target-side AbortSignal. */
 export const CANCELLATION_REQUIRED_WEBMCP_TOOLS: ReadonlySet<WebMcpSpaToolName> = new Set(
   Object.entries(WEBMCP_TOOL_CANCELLATION_POLICY)
-    .filter(([, policy]) => policy === 'silently-persistent')
+    .filter(([, policy]) => policy === 'cancellation-required')
     .map(([name]) => name as WebMcpSpaToolName),
 );
 const MAX_SEARCH_QUERY_CHARS = 160;
@@ -293,10 +289,10 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
 };
 const UNSUPPORTED_MUTATION_MESSAGE =
   'This browser cannot cancel work already running in the page, so World Monitor '
-  + 'will not run tools that persist state beyond this session. Read-only and '
-  + 'view-state dashboard tools still work.';
+  + 'will not run tools whose effects can outlive cancellation. Read-only and '
+  + 'reversible view-state dashboard tools still work.';
 
-function unsupportedMutationResult(): Record<string, unknown> {
+function unsupportedCancellationResult(): Record<string, unknown> {
   return {
     ok: false,
     status: 'denied',
@@ -425,7 +421,7 @@ function withInvocationLogging(
         // the host cannot deliver the target-side signal. Return a structured
         // denial because some hosts erase the name and message of errors
         // raised by the page callback.
-        result = unsupportedMutationResult();
+        result = unsupportedCancellationResult();
       } else {
         throwIfWebMcpAborted(signal);
         result = await fn(args, signal ? { signal } : undefined);

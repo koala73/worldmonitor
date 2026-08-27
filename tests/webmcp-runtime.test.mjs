@@ -176,6 +176,46 @@ describe('WebMCP registry behavioral contract', () => {
     }
   });
 
+  it('marks an empty registration pass without authorizing an inventory read', async () => {
+    const previousWindow = Object.hasOwn(globalThis, 'window') ? globalThis.window : undefined;
+    const hadWindow = Object.hasOwn(globalThis, 'window');
+    const marks = [];
+    globalThis.window = { __wmLcpDebug: { enabled: true, marks } };
+    try {
+      const failures = new Map(WEBMCP_SPA_TOOL_NAMES.map((name) => [
+        name,
+        new DOMException(`${name} rejected`, 'NotAllowedError'),
+      ]));
+      const provider = new FakeWebMcpModelContext({ registrationFailure: failures });
+      const harness = trackedRuntime(provider);
+      registerWebMcpTools(createBindings(), harness.runtime);
+
+      assert.equal(marks.length, 0, 'no settlement mark appears before registration finishes');
+      await settlePromises();
+
+      const empty = marks.filter(({ name }) => name === 'wm:webmcp:registration-empty');
+      assert.equal(empty.length, 1, 'the all-rejected pass settles exactly once');
+      assert.deepEqual(empty[0].detail, { toolCount: 0 });
+      assert.equal(
+        marks.some(({ name }) => name === 'wm:webmcp:registered'),
+        false,
+        'an empty pass must not authorize the probe to read the provider inventory',
+      );
+      assert.deepEqual(await provider.getTools(), []);
+      assert.equal(
+        harness.events.filter(({ event }) => event === 'webmcp-registration-failed').length,
+        WEBMCP_SPA_TOOL_NAMES.length,
+      );
+      assert.equal(
+        harness.events.some(({ event }) => event === 'webmcp-registered'),
+        false,
+      );
+    } finally {
+      if (hadWindow) globalThis.window = previousWindow;
+      else delete globalThis.window;
+    }
+  });
+
   it('does not enter a registered callback for a pre-aborted invocation', async () => {
     let mutationCalls = 0;
     const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
@@ -226,21 +266,21 @@ describe('WebMCP registry behavioral contract', () => {
     );
     assert.deepEqual(
       Object.values(WEBMCP_TOOL_CANCELLATION_POLICY)
-        .filter((policy) => !['read-only', 'view-state', 'metered', 'silently-persistent'].includes(policy)),
+        .filter((policy) => !['read-only', 'view-state', 'cancellation-required'].includes(policy)),
       [],
-      'policy values are limited to the four documented classifications',
+      'policy values are limited to the three documented classifications',
     );
   });
 
-  it('denies the persistence-capable tools when the host omits the target signal', async () => {
+  it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
     // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
     // stream); open_search_result reaches the same write through a layer
     // command. An uncancellable invocation of either outlives the session, so
     // both stay fail-closed while the browser cannot deliver a signal.
     assert.deepEqual(
       [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
-      ['open_search_result', 'set_map_layers'],
-      'the gated set is the persistence-capable tools',
+      ['openCountryBrief', 'open_search_result', 'set_map_layers'],
+      'the gated set includes persistent effects and metered country generation',
     );
     let mutationCalls = 0;
     let openCalls = 0;
@@ -263,9 +303,13 @@ describe('WebMCP registry behavioral contract', () => {
       status: 'denied',
       reason: 'target_cancellation_unsupported',
       message: 'This browser cannot cancel work already running in the page, so World Monitor '
-        + 'will not run tools that persist state beyond this session. Read-only and '
-        + 'view-state dashboard tools still work.',
+        + 'will not run tools whose effects can outlive cancellation. Read-only and '
+        + 'reversible view-state dashboard tools still work.',
     };
+    assert.deepEqual(
+      await executeRegistered(provider, 'openCountryBrief', JSON.stringify({ iso2: 'DE' })),
+      denial,
+    );
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_layers', JSON.stringify({ layers: { conflicts: true } })),
       denial,

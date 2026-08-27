@@ -278,7 +278,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(open.inputSchema.properties.resultKey.pattern, '^sr_[a-f0-9]{32}$');
   });
 
-  it('runs view-state tools and gates persistence-capable ones without target cancellation', async () => {
+  it('runs reversible view-state tools and gates effects that can outlive cancellation', async () => {
     let mutationCalls = 0;
     const events = [];
     const tools = buildProductionWebMcpTools(createBindings({
@@ -318,23 +318,25 @@ describe('webmcp.ts: current API contract', () => {
       0,
     );
 
-    // set_map_layers and open_search_result silently persist
-    // STORAGE_KEYS.mapLayers, so they stay fail-closed; the rest only move
-    // visible view state, or bill a metered call, and run.
+    // openCountryBrief can consume daily LLM allowance after caller
+    // cancellation. set_map_layers and open_search_result persist
+    // STORAGE_KEYS.mapLayers. All three stay fail-closed without a target
+    // signal; the remaining dashboard-changing tools only move reversible
+    // visible view state.
     //
     // Every tool is pinned to its EXACT return, gated and ungated alike.
     // `notDeepEqual(result, denial)` excluded exactly one literal object, so a
     // swallowed error, a differently shaped failure, a wrong country name, or a
     // dropped actionType all passed it. createBindings() is deterministic, so
     // there is nothing environment-dependent left to hedge against.
-    const gated = ['set_map_layers', 'open_search_result'];
+    const gated = ['openCountryBrief', 'set_map_layers', 'open_search_result'];
     const denial = {
       ok: false,
       status: 'denied',
       reason: 'target_cancellation_unsupported',
       message: 'This browser cannot cancel work already running in the page, so World Monitor '
-        + 'will not run tools that persist state beyond this session. Read-only and '
-        + 'view-state dashboard tools still work.',
+        + 'will not run tools whose effects can outlive cancellation. Read-only and '
+        + 'reversible view-state dashboard tools still work.',
     };
     const appliedAction = (actionType) => ({
       ok: true,
@@ -346,7 +348,7 @@ describe('webmcp.ts: current API contract', () => {
       targetsTruncated: false,
     });
     const expected = {
-      openCountryBrief: 'Opened intelligence brief for Country DE (DE).',
+      openCountryBrief: denial,
       openSearch: 'Opened search palette.',
       open_dashboard_panel: appliedAction('open_panel'),
       set_map_view: appliedAction('set_view'),
@@ -364,7 +366,7 @@ describe('webmcp.ts: current API contract', () => {
         await tool.execute(input),
         expected[name],
         gated.includes(name)
-          ? `${name} silently persists state and must fail closed`
+          ? `${name} can outlive cancellation and must fail closed`
           : `${name} must run and return exactly its documented result`,
       );
     }
@@ -376,20 +378,18 @@ describe('webmcp.ts: current API contract', () => {
     assert.deepEqual(
       events.filter(({ data }) => data.reason === 'unavailable').map(({ data }) => data.tool).sort(),
       [...gated].sort(),
-      'only the persistence-capable tools may report the compatibility denial',
+      'only cancellation-required tools may report the compatibility denial',
     );
 
-    // A signal-LIKE object still is not an AbortSignal, so this invocation has
-    // no target cancellation either. It must be refused on its malformed
-    // input — by validation, which the compatibility gate used to pre-empt.
+    // A real target signal admits the tool and therefore reaches validation.
     await assert.rejects(
       () => tools.find(({ name }) => name === 'openCountryBrief').execute(
         { iso2: 'not-valid' },
-        { signal: { aborted: false } },
+        { signal: new AbortController().signal },
       ),
       (error) => error.analyticsReason === 'validation'
         && /ISO 3166-1 alpha-2/.test(error.message),
-      'the refusal must come from input validation, not the compatibility gate',
+      'a signal-capable invocation must validate its input',
     );
     assert.equal(
       mutationCalls,

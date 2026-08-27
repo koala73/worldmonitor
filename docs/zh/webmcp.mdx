@@ -63,9 +63,9 @@ Boolean(document.modelContext?.registerTool)
 
 Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只传入 input，并非文档所述的 `execute(input, { signal })` 形式。中止你传给 `executeTool()` 的 signal 会以 `AbortError` 拒绝**你自己的** Promise，但浏览器无法把该中止告知页面，因此页面中已在运行的工作会继续执行，其效果依然会生效。也就是说，你已取消的操作仍可能执行完毕。
 
-即便如此，WorldMonitor 仍会在这些版本上执行那些效果已被现有计量或同意机制覆盖、或以用户可自行覆盖的可见变化呈现的工具——门禁存在的目的是阻止一次无法取消的调用在任何此类机制之外静默持久化，而不是阻止一切有成本或有可见效果的工具。`openCountryBrief`、`openSearch`、`open_dashboard_panel` 与 `set_map_view` 均可正常使用。`openCountryBrief` 会触发一次服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`），但该开销由权益层按用户计量：网关会把它计入调用者自己的每日额度（付费 500/天，未验证 50/天），并在超额时退回；因此一次被中止的 `openCountryBrief` 仍会消耗调用者自己额度中的一次简报生成。`set_map_view` 会通过 `history.replaceState` 写入地址栏，生成的分享 URL 与页面复制链接控件生成的相同，并会在刷新时被仪表板还原；这次写入在地址栏中可见，并会被下一次人工移动地图覆盖。
+在这些版本上，WorldMonitor 仍会执行只读工具和可逆的仪表板视图变更。`openSearch`、`open_dashboard_panel` 与 `set_map_view` 均可正常使用。`set_map_view` 会通过 `history.replaceState` 写入地址栏，生成的分享 URL 与页面复制链接控件生成的相同，并会在刷新时被仪表板还原；这次写入在地址栏中可见，并会被下一次人工移动地图覆盖。
 
-`set_map_layers` 与 `open_search_result` 则继续被拦截并返回不可用：两者都会把地图图层选择持久化到浏览器存储（启用 AIS 图层还会建立网络连接）。此类调用若无法取消，其影响会超出本次会话，而不是停留在屏幕上等待用户撤销，并且把地图移回原处也不会还原已存储的值。当浏览器提供目标侧信号后，它们即可使用。
+`openCountryBrief`、`set_map_layers` 与 `open_search_result` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。后两个工具会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。这些影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时，这些工具才可用。
 
 <Note>
 如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
@@ -88,7 +88,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 六个仪表板变体都注册相同的八个命令式工具。登录和权益变化不会改变注册集合；每次调用都会重新检查实时状态。
 
-在没有提供目标侧调用信号的浏览器上，改变视图状态的工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `set_map_layers` 与 `open_search_result` 在此类浏览器上会返回不可用，因为它们会把图层选择持久化、影响超出本次会话。参见[可用性](#availability)。
+在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 会返回不可用。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，后两个工具则会把图层选择持久化并影响本次会话之外的状态。参见[可用性](#availability)。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|
@@ -223,7 +223,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-该套件断言线上构建 SHA、`Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、被测浏览器上的调用方侧取消与“幽灵完成”不变式——即便调用方自己的调用看到 `AbortError`，页面工作仍会完成、其可见效果仍会生效——仅针对 `set_map_layers` 与 `open_search_result` 的持久化能力拒绝、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
+该套件断言线上构建 SHA、`Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、被测浏览器上的调用方侧取消与“幽灵完成”不变式——即便调用方自己的调用看到 `AbortError`，页面工作仍会完成、其可见效果仍会生效——针对 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 的取消能力门禁、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
 
 还要确认 `/embed` 与 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档和嵌入页面没有获得顶层清单。部署控制平面的 SHA 检查、响应头、清单、UI 行为和终态结果应视为独立断言；仅有部署成功或注册日志不等于验收通过。
 

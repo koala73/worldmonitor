@@ -1893,6 +1893,7 @@ export class App {
         return runDashboardActionBinding(this.state, action, {
           waitForUiReady: () => this.waitForDashboardReady(false, execution?.signal),
           waitForMapReady: () => this.waitForDashboardReady(true, execution?.signal),
+          getMapAuthorityToken: () => this.state.map?.getViewportAuthorityToken() ?? 0,
           signal: execution?.signal,
           applierOptions: {
             getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
