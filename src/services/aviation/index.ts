@@ -339,7 +339,9 @@ const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({
   })),
 });
 const breakerOps = createCircuitBreaker<AirportOpsSummary[]>({ name: 'Airport Ops', cacheTtlMs: 6 * 60 * 1000, persistCache: true });
-const breakerFlights = createCircuitBreaker<FlightInstance[]>({ name: 'Airport Flights', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
+type AirportFlightBoard = { flights: FlightInstance[]; source: string };
+
+const breakerFlights = createCircuitBreaker<AirportFlightBoard>({ name: 'Airport Flights', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
 const breakerCarrier = createCircuitBreaker<CarrierOps[]>({ name: 'Carrier Ops', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
 const breakerStatus = createCircuitBreaker<FlightInstance[]>({ name: 'Flight Status', cacheTtlMs: 6 * 60 * 1000, persistCache: false });
 const breakerTrack = createCircuitBreaker<PositionSample[]>({ name: 'Track Aircraft', cacheTtlMs: 15 * 1000, persistCache: false });
@@ -380,10 +382,14 @@ export async function fetchAirportOpsSummary(airports: string[]): Promise<Airpor
 
 export async function fetchAirportFlights(airport: string, direction: 'departure' | 'arrival' | 'both' = 'both', limit = 30): Promise<FlightInstance[]> {
   const dirMap = { departure: 'FLIGHT_DIRECTION_DEPARTURE', arrival: 'FLIGHT_DIRECTION_ARRIVAL', both: 'FLIGHT_DIRECTION_BOTH' } as const;
-  return breakerFlights.execute(async () => {
+  const board = await breakerFlights.execute(async () => {
     const r = await client.listAirportFlights({ airport, direction: dirMap[direction], limit });
-    return r.flights.map(toDisplayFlight);
-  }, [], { cacheKey: `${airport}:${direction}:${limit}` });
+    return { flights: r.flights.map(toDisplayFlight), source: r.source };
+  }, { flights: [], source: 'error' }, {
+    cacheKey: `${airport}:${direction}:${limit}`,
+    shouldCache: (r) => r.source === 'aviationstack',
+  });
+  return board.flights;
 }
 
 export async function fetchCarrierOps(airports: string[]): Promise<CarrierOps[]> {
