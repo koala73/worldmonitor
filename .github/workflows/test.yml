@@ -241,8 +241,35 @@ jobs:
           python3 scripts/convert-zh-tw.py --check
       - name: Enforce health-probe cutovers
         env:
-          HEALTH_PROBE_CUTOVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: node --import tsx scripts/check-health-probe-cutovers.mts "$HEALTH_PROBE_CUTOVER_BASE"
+          # NOT github.event.pull_request.base.sha. GitHub pins that SHA when the
+          # PR is opened and never advances it as main moves, but actions/checkout
+          # builds refs/pull/N/merge — this PR merged onto main's CURRENT tip. So
+          # the pinned SHA diffs today's tree against a base that can be weeks old,
+          # and every probe added to main after the PR opened reads as brand-new
+          # on every run, re-litigating a cutover the PR never touched. That stays
+          # invisible until the probe's acknowledgement is legitimately pruned —
+          # then the PR fails outright demanding an entry nobody should restore,
+          # owned by an issue that is already closed (#7021 on tpsMci/#7035).
+          #
+          # The merge commit's FIRST parent is the base tip this tree was merged
+          # onto, so it tracks what is actually under test. The pre-push hook
+          # compares against origin/main for the same reason.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            if git rev-parse --verify --quiet HEAD^2 >/dev/null 2>&1; then
+              base="$(git rev-parse HEAD^1)"
+            else
+              # Unmergeable PR: checkout fell back to the head commit, whose
+              # first parent is the PR's own history, not the base branch.
+              base="origin/$BASE_REF"
+            fi
+          else
+            base="$PUSH_BEFORE"
+          fi
+          echo "health-probe cutover base: $base"
+          node --import tsx scripts/check-health-probe-cutovers.mts "$base"
       - name: OpenAPI bundle capacity (#6558)
         # The <= 950,000-byte scanner guard lives in
         # tests/openapi-json-dedup.test.mjs and stays the gate. This step
