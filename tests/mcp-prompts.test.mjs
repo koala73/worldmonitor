@@ -27,6 +27,9 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import jmespath from 'jmespath';
 
 import {
@@ -314,6 +317,94 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
         }
       }
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 2 — evaluate the JMESPath against a real captured response
+  // -------------------------------------------------------------------------
+  // The parity test above is prompt-vs-SCHEMA, which is not enough on its
+  // own: get_market_data's schema advertised `changePercent` while every
+  // seeder wrote `change`, so the prompt and the schema agreed on a key the
+  // payload never carried and this suite stayed green while the shipped
+  // market-open-prep projection returned changePercent:null for all 29 rows.
+  //
+  // Running the expression against the committed fixture closes the loop:
+  // prompt -> schema -> actual bytes. A projected column that is null on every
+  // row is the exact signature of a field-name drift.
+  const FIXTURE_BY_TOOL = {
+    get_market_data: 'fat-get-market-data.response.json',
+    get_conflict_events: 'medium-get-conflict-events.response.json',
+    get_chokepoint_status: 'thin-get-chokepoint-status.response.json',
+  };
+
+  // Report every array-of-objects column whose value is null/undefined on all
+  // rows. Rows are homogeneous, so an all-null column means the projection is
+  // reading a key the payload does not have — not that the data is sparse.
+  //
+  // Caveat for a future fixture recapture: a field that is genuinely null on
+  // every captured row would also land here. Check the producer before
+  // relaxing anything — the far likelier cause is a renamed key.
+  function collectDeadColumns(value, path, out) {
+    if (Array.isArray(value)) {
+      const rows = value.filter((r) => r && typeof r === 'object' && !Array.isArray(r));
+      if (rows.length === 0) return;
+      for (const key of new Set(rows.flatMap((r) => Object.keys(r)))) {
+        const column = rows.map((r) => r[key]);
+        if (column.every((v) => v == null)) out.push(`${path}[].${key} (null on all ${rows.length} rows)`);
+        else collectDeadColumns(column.filter((v) => v != null), `${path}[].${key}`, out);
+      }
+      return;
+    }
+    if (value && typeof value === 'object') {
+      for (const [key, sub] of Object.entries(value)) collectDeadColumns(sub, `${path}.${key}`, out);
+    }
+  }
+
+  it('every prompt step JMESPath projects live values when evaluated against the captured fixture', () => {
+    const fixtureDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'jmespath-samples');
+    let covered = 0;
+
+    for (const prompt of PROMPT_REGISTRY) {
+      for (const [i, step] of prompt.steps.entries()) {
+        const file = FIXTURE_BY_TOOL[step.tool];
+        if (!file) continue;
+        covered++;
+        const fixture = JSON.parse(readFileSync(path.join(fixtureDir, file), 'utf8'));
+        const label = `prompt "${prompt.name}" step ${i + 1} (${step.tool})`;
+
+        const projected = jmespath.search(fixture, step.jmespath);
+        assert.ok(
+          projected != null,
+          `${label}: JMESPath "${step.jmespath}" projected null from ${file} — the expression matches nothing in a real response`,
+        );
+
+        // A drifted SECTION name (data."stocks-bootstrapp") collapses its whole
+        // branch to null rather than to a column of nulls, so the row walk below
+        // would never see it. Checked only at the top level: a nested null is
+        // ordinary sparse data, a null the prompt asked for by name is not.
+        if (!Array.isArray(projected) && typeof projected === 'object') {
+          const emptyBranches = Object.entries(projected)
+            .filter(([, v]) => v == null)
+            .map(([k]) => k);
+          assert.deepEqual(
+            emptyBranches, [],
+            `${label}: JMESPath "${step.jmespath}" projected null for ${emptyBranches.join(', ')} against ` +
+            `${file} — that path does not exist in a real response`,
+          );
+        }
+
+        const dead = [];
+        collectDeadColumns(projected, 'result', dead);
+        assert.deepEqual(
+          dead, [],
+          `${label}: JMESPath "${step.jmespath}" projects columns that are null on every row of ${file}. ` +
+          'The prompt is reading a field name the payload does not serve — align the projection with the ' +
+          "producer's keys (and fix the tool's outputSchema if it advertises the same phantom).",
+        );
+      }
+    }
+
+    assert.ok(covered > 0, 'no prompt step mapped to a captured fixture — FIXTURE_BY_TOOL has gone stale');
   });
 });
 

@@ -7,7 +7,12 @@
 //   2. Every fixture in tests/fixtures/jmespath-samples/ validates against the
 //      schema declared by the tool that produced it. Drift between declared
 //      schema and the real response shape fails the test by tool name.
-//   3. tools/list emits outputSchema on every advertised tool — surfacing the
+//   3. The reverse direction of 2: no tool may declare a list-item field that
+//      is absent from every captured row. Schema validation alone cannot see
+//      this — `properties` without `required` admits a payload that omits a
+//      declared key, which is how get_market_data advertised `changePercent`
+//      while every seeder wrote `change`.
+//   4. tools/list emits outputSchema on every advertised tool — surfacing the
 //      field at the wire boundary in addition to the in-process registry.
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -211,7 +216,118 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       );
       assert.equal(market.probability, undefined, `${bucket} must not advertise the drifted probability field`);
     }
+
+    // get_market_data advertised `changePercent` on all five quote
+    // lists and `flow` on ETF rows; the seeders write `change` (a percent --
+    // scripts/shared/market-quote-provider.mjs maps Finnhub `dp`) and
+    // `estFlow` (scripts/seed-etf-flows.mjs). Every agent projecting per the
+    // schema's own hint got null for every row.
+    const marketData = dataProperties('get_market_data');
+    const quoteLists = [
+      ['stocks-bootstrap', 'quotes'],
+      ['commodities-bootstrap', 'quotes'],
+      ['crypto', 'quotes'],
+      ['gulf-quotes', 'quotes'],
+      ['sectors', 'sectors'],
+    ];
+    for (const [section, list] of quoteLists) {
+      const row = marketData[section].properties[list].items.properties;
+      assert.ok(row.change, `${section}.${list}[] must declare the served \`change\` key`);
+      assert.equal(
+        row.changePercent, undefined,
+        `${section}.${list}[] must not advertise the drifted changePercent field`,
+      );
+    }
+    const etfRow = marketData['etf-flows'].properties.etfs.items.properties;
+    assert.ok(etfRow.estFlow, 'etf-flows.etfs[] must declare the served `estFlow` key');
+    assert.equal(etfRow.flow, undefined, 'etf-flows.etfs[] must not advertise the drifted flow field');
   });
+
+  // --------------------------------------------------------------------
+  // Test 2c — no declared list-item field is absent from EVERY captured row
+  // --------------------------------------------------------------------
+  // Test 2 validates the fixture against the schema, which is a one-way check:
+  // JSON Schema `properties` without `required` admits a payload that omits a
+  // declared key entirely, so "schema promises changePercent, seeder writes
+  // change" validated clean in both directions for this tool's whole life.
+  //
+  // This is the missing direction. Scoped to ARRAY ROWS because list rows are
+  // homogeneous -- a declared row field served on 0 of N rows is a phantom the
+  // agent will project to null, whereas envelope-level flags (`rateLimited`,
+  // `currentValuationCount`, `unavailable`) are legitimately omit-when-absent
+  // and are deliberately not covered here.
+  //
+  // Pre-existing phantoms outside this fix's blast radius are listed explicitly
+  // rather than silently skipped, so the count can only go down. Each is the
+  // same defect class -- schema key never written by the producer:
+  const KNOWN_PHANTOM_ROW_FIELDS = new Set([
+    // Serves `locationName` (+ latitude/longitude) -- scripts/seed-iran-events.mjs.
+    'get_conflict_events.data.iran-events.events[].country',
+    'get_conflict_events.data.iran-events.events[].location',
+    // Serves staticBaseline/dynamicScore/combinedScore, never a flat `score`.
+    'get_conflict_events.data.scores.ciiScores[].score',
+    // Baseline rows serve id/name/mbd/lat/lon; `relayId` is also read by the
+    // tool's own `chokepoint` filter, so aligning it is a behaviour decision,
+    // not a rename.
+    'get_chokepoint_status.data.chokepoint-baselines.chokepoints[].relayId',
+  ]);
+
+  // Walks the schema alongside the values actually observed at each node, so
+  // the row check runs wherever a fixture supplies rows -- not just at paths
+  // this test hardcodes.
+  function collectPhantomRowFields(schema, values, path, out) {
+    if (!schema || typeof schema !== 'object') return;
+    const objects = values.filter((v) => v && typeof v === 'object' && !Array.isArray(v));
+    const arrays = values.filter(Array.isArray);
+
+    if (schema.properties && objects.length > 0) {
+      for (const [key, subSchema] of Object.entries(schema.properties)) {
+        const observed = objects.map((o) => o[key]).filter((v) => v !== undefined && v !== null);
+        if (observed.length > 0) collectPhantomRowFields(subSchema, observed, `${path}.${key}`, out);
+      }
+    }
+    if (schema.items && arrays.length > 0) {
+      const rows = arrays.flat().filter((r) => r && typeof r === 'object' && !Array.isArray(r));
+      if (rows.length === 0) return;
+      const served = new Set();
+      for (const row of rows) for (const key of Object.keys(row)) served.add(key);
+      for (const key of Object.keys(schema.items.properties ?? {})) {
+        if (!served.has(key)) out.push({ field: `${path}[].${key}`, rows: rows.length });
+      }
+      collectPhantomRowFields(schema.items, rows, `${path}[]`, out);
+    }
+  }
+
+  for (const { file, tool: toolName } of FIXTURES) {
+    it(`${toolName} declares no list-item field that is absent from every captured row (${file})`, () => {
+      const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
+      const fixture = JSON.parse(
+        readFileSync(path.join(fixtureDir, 'fixtures', 'jmespath-samples', file), 'utf8'),
+      );
+      const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
+      assert.ok(tool, `tool ${toolName} not found in registry`);
+
+      const found = [];
+      collectPhantomRowFields(tool.outputSchema, [fixture], toolName, found);
+      const unexpected = found.filter(({ field }) => !KNOWN_PHANTOM_ROW_FIELDS.has(field));
+      assert.deepEqual(
+        unexpected.map(({ field, rows }) => `${field} (served on 0 of ${rows} rows)`),
+        [],
+        `${toolName} advertises row fields the captured payload never serves — an agent projecting ` +
+        'them gets null for every row. Align the schema to the producer, or the producer to the schema.',
+      );
+
+      // A fixed phantom must leave the allowlist, or the list rots into cover
+      // for the next regression.
+      const stillListed = new Set(found.map(({ field }) => field));
+      const staleAllowlist = [...KNOWN_PHANTOM_ROW_FIELDS]
+        .filter(field => field.startsWith(`${toolName}.`) && !stillListed.has(field));
+      assert.deepEqual(
+        staleAllowlist, [],
+        'KNOWN_PHANTOM_ROW_FIELDS entries are no longer phantom — delete them from the allowlist',
+      );
+    });
+  }
 
   // --------------------------------------------------------------------
   // Test 3 — outputSchema is emitted on the wire for every tool in tools/list

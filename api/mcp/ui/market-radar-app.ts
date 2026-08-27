@@ -6,10 +6,10 @@
 //
 // Tool result shape (cache tool — content[0].text JSON, freshness envelope):
 //   { cached_at, stale, data: {
-//       "stocks-bootstrap": { quotes: [{ symbol, price, changePercent }] },
+//       "stocks-bootstrap": { quotes: [{ symbol, price, change }] },
 //       "commodities-bootstrap": { quotes: [...] }, "crypto": { quotes: [...] },
 //       "gulf-quotes": { quotes: [...] },
-//       "sectors": { sectors: [{ symbol, name, changePercent }] },
+//       "sectors": { sectors: [{ symbol, name, change }] },
 //       "fear-greed": { composite: { score, label, previous } } } }
 // Any label may be absent (asset_class / symbols filters narrow the bundle).
 //
@@ -102,7 +102,10 @@ const RENDER = `
         var price = num(it.price);
         tbl.appendChild(el("span", "qprice",
           price == null ? "—" : price.toLocaleString(undefined, { maximumFractionDigits: 2 })));
-        var chg = num(it.changePercent);
+        // The served percent key is "change". No seeder writes
+        // changePercent, so reading it rendered the em-dash in every row.
+        // NOTE: no backticks here -- this string is a template literal.
+        var chg = num(it.change);
         var cell = el("span", "qchg", pctText(chg));
         if (chg != null) cell.style.color = chg >= 0 ? cssVar("--up") : cssVar("--down");
         tbl.appendChild(cell);

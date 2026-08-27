@@ -108,7 +108,10 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
       {
         tool: 'get_market_data',
         args: { asset_class: ['equity', 'commodity', 'crypto'] },
-        jmespath: '{equity: data."stocks-bootstrap".quotes[*].{symbol: symbol, changePercent: changePercent}, commodity: data."commodities-bootstrap".quotes[*].{symbol: symbol, changePercent: changePercent}, crypto: data.crypto.quotes[*].{symbol: symbol, changePercent: changePercent}}',
+        // The served key is `change` and it is already a percent; the
+        // projection renames it so the agent reading the result cannot mistake
+        // it for an absolute price delta.
+        jmespath: '{equity: data."stocks-bootstrap".quotes[*].{symbol: symbol, changePercent: change}, commodity: data."commodities-bootstrap".quotes[*].{symbol: symbol, changePercent: change}, crypto: data.crypto.quotes[*].{symbol: symbol, changePercent: change}}',
         purpose: 'Per-asset-class quote pairs (symbol + changePercent only). Skip ETF flows / sectors / Gulf / fear-greed — they belong in a deeper drill-down, not a session-opening read.',
       },
     ],

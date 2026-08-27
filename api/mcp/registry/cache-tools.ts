@@ -423,11 +423,17 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
+    // Every quote list serves `change` (a PERCENT — the seeders
+    // normalise Finnhub `dp` / Alpha Vantage / Yahoo through
+    // scripts/shared/market-quote-provider.mjs) and ETF rows serve `estFlow`.
+    // This schema previously advertised `changePercent` and `flow`, which no
+    // producer has ever written, so every agent projecting per the hint got
+    // null for each row. Keep these names pinned to the seeders.
     outputSchema: cacheEnvelope({
       'stocks-bootstrap': {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
           finnhubSkipped: { type: 'boolean' },
           skipReason: { type: 'string' },
           rateLimited: { type: 'boolean' },
@@ -436,7 +442,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       'commodities-bootstrap': {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
         },
       },
       'physical-premium': {
@@ -462,13 +468,13 @@ export const CACHE_TOOLS: ToolDef[] = [
       crypto: {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
         },
       },
       sectors: {
         type: ['object', 'null'],
         properties: {
-          sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, changePercent: { type: 'number' } } } },
+          sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
           valuations: { type: ['object', 'array', 'null'] },
           valuationCoverage: {
             type: ['object', 'null'],
@@ -535,14 +541,14 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           timestamp: { type: ['string', 'number', 'null'] },
           summary: { type: ['object', 'null'] },
-          etfs: { type: 'array', items: { type: 'object', properties: { ticker: { type: 'string' }, flow: { type: 'number' } } } },
+          etfs: { type: 'array', items: { type: 'object', properties: { ticker: { type: 'string' }, estFlow: { type: 'number', description: 'Estimated net USD flow (volume x price heuristic).' } } } },
           rateLimited: { type: 'boolean' },
         },
       },
       'gulf-quotes': {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
           rateLimited: { type: 'boolean' },
         },
       },
