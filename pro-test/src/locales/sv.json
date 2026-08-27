@@ -384,7 +384,11 @@
           "Dedikerad support",
           "Anpassade integreringar",
           "SLA-garanti",
-          "On-premise-alternativ"
+          "On-premise-alternativ",
+          "Databehandlingsavtal (DPA)",
+          "Faktureringsviainköpsorder",
+          "SAML SSO, SCIM",
+          "Anpassade säkerhet- och sekretessinställningar"
         ],
         "cta": "Kontakta försäljning"
       },

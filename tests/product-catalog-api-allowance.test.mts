@@ -1,7 +1,8 @@
 // U1 (#3199) — apiDailyAllowance catalog field + Business marketing copy.
 // The per-account rate-limit layer reads features.apiDailyAllowance; these
-// values are the single source of truth for the included allowance and the
-// 10× safety ceiling, and feed the /pro marketing + docs/usage-rate-limits.mdx.
+// values are the single source of truth for the included allowance (enforced
+// at the sold cap since #4635), and feed the /pro marketing +
+// docs/usage-rate-limits.mdx.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';

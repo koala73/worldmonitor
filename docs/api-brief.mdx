@@ -68,23 +68,24 @@ is a pure function of `{userId, issueSlot, BRIEF_SHARE_SECRET}`.
 
 ## Carousel (images for social)
 
-### `GET /api/brief/carousel/{userId}/{issueSlot}/{page}.png`
+### `GET /api/brief/carousel/{userId}/{issueDate}/{page}.png?t={token}`
 
-Server-rendered PNG page (`page` = 1..N) of the brief, intended for Telegram `sendMediaGroup`, Slack `chat.postMessage`, LinkedIn, etc.
+Server-rendered PNG page of the brief, intended for Telegram `sendMediaGroup`, Slack `chat.postMessage`, LinkedIn, etc.
 
-- Rendered via `@resvg/resvg-js` with the bundled Linux native binding.
-- `Content-Type: image/png`, 1080×1350 (4:5 portrait).
-- Not gated — uses the HMAC'd path as the capability.
+- `page` is **0, 1, or 2** (`cover`, `threads`, `story`); anything else is `404 invalid_page`.
+- Rendered via `@vercel/og`.
+- `Content-Type: image/png`, 1200×630.
+- Gated by an HMAC capability **token in the `?t=` query parameter** — a missing or wrong token returns `403`.
 
 ## Ancillary
 
-### `GET /api/story?date=YYYY-MM-DD`
+### `GET /api/story?c={ISO2}&t={type}`
 
-Public read-only "story view" (web reader) for a shared brief. SEO-friendly HTML response.
+Public read-only HTML page for a shared **country story** (default type `ciianalysis`), built for social-media crawlers. Parameters: `c` (country, required), `t` (story type), `ts` (timestamp), `s` (score), `l` (level). It is not a brief reader and takes no `date` parameter.
 
-### `GET /api/og-story?date=YYYY-MM-DD`
+### `GET /api/og-story?c={ISO2}&t={type}`
 
-Open Graph preview image for `/api/story`. Returns `image/png`, cached aggressively.
+Open Graph preview image for `/api/story`, taking the same `c`/`t`/`s`/`l` parameters. Returns `image/png`, cached aggressively.
 
 ### `POST /api/chat-analyst`
 
@@ -105,4 +106,4 @@ client can tell a plan verdict from a session problem from an outage:
 
 ### `POST /api/widget-agent`
 
-Single-shot completion endpoint used by embedded widget iframes. Auth via `X-WorldMonitor-Key` (partner keys). Rate-limited per key.
+Single-shot completion endpoint used by embedded widget iframes. Auth via `X-WorldMonitor-Key` (partner keys); the legacy `X-Widget-Key` / `X-Pro-Key` headers and the `wm-widget-key` cookie are also accepted. Rate-limited per key.

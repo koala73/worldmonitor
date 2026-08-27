@@ -384,7 +384,11 @@
           "Wsparcie dedykowane",
           "Niestandardowe integracje",
           "Gwarancja SLA",
-          "Opcja on-premise"
+          "Opcja on-premise",
+          "Umowa przetwarzania danych (DPA)",
+          "Rozliczanie na podstawie zamówienia zakupu",
+          "SAML SSO, SCIM",
+          "Niestandardowe ustawienia bezpieczeństwa i prywatności"
         ],
         "cta": "Skontaktuj się z działem sprzedaży"
       },

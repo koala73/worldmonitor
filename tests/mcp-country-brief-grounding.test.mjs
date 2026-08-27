@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { mcpHandler } from '../api/mcp.ts';
+import { __testing__, mcpHandler } from '../api/mcp.ts';
 import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.mjs';
 
 const ENV_KEY = 'operator_test_key_country_brief_grounding';
@@ -64,13 +64,21 @@ const UPSTREAM_SOURCES = [{
   publishedAt: '2026-08-10T01:00:00.000Z',
 }];
 
-function stubDownstream({ digestItems, digestOk = true, briefSources = UPSTREAM_SOURCES }) {
-  globalThis.fetch = async (input) => {
+function stubDownstream({
+  digestItems,
+  digestOk = true,
+  digestCoverage,
+  briefSources = UPSTREAM_SOURCES,
+}) {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
     const { pathname } = new URL(String(input));
+    calls.push({ pathname, init });
     if (pathname === '/api/news/v1/list-feed-digest') {
       if (!digestOk) throw new Error('digest unavailable');
       return new Response(JSON.stringify({
         categories: { world: { items: digestItems } },
+        ...(digestCoverage ? { coverage: digestCoverage } : {}),
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
@@ -86,24 +94,29 @@ function stubDownstream({ digestItems, digestOk = true, briefSources = UPSTREAM_
     }
     throw new Error(`Unexpected downstream URL: ${String(input)}`);
   };
+  return calls;
 }
 
-async function callCountryBriefResult(id = 1) {
+async function callCountryBriefRpc(params = { country_code: 'FR' }, id = 1) {
   const request = new Request(MCP_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': ENV_KEY },
-    body: JSON.stringify(callBody('get_country_brief', { country_code: 'FR' }, id)),
+    body: JSON.stringify(callBody('get_country_brief', params, id)),
   });
   const response = await mcpHandler(request, makeDeps());
   assert.equal(response.status, 200, 'transport status');
-  const rpc = await response.json();
+  return response.json();
+}
+
+async function callCountryBriefResult(params = { country_code: 'FR' }, id = 1) {
+  const rpc = await callCountryBriefRpc(params, id);
   assert.ok(rpc.result?.content?.[0]?.text, `no tool result: ${JSON.stringify(rpc).slice(0, 400)}`);
   const rawText = rpc.result.content[0].text;
   return { payload: JSON.parse(rawText), rawText };
 }
 
-async function callCountryBrief(id = 1) {
-  const { payload } = await callCountryBriefResult(id);
+async function callCountryBrief(params = { country_code: 'FR' }, id = 1) {
+  const { payload } = await callCountryBriefResult(params, id);
   return payload;
 }
 
@@ -128,6 +141,96 @@ afterEach(() => {
 });
 
 describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
+  it('declares the stale opt-in and machine-readable digest coverage contract', () => {
+    const tool = __testing__.TOOL_REGISTRY.find(candidate => candidate.name === 'get_country_brief');
+    assert.ok(tool);
+    assert.equal(tool.inputSchema.properties.allow_stale.type, 'boolean');
+    const coverage = tool.outputSchema.properties.digestCoverage.properties;
+    for (const field of ['state', 'servedStale', 'staleAgeSeconds', 'staleReason', 'attemptedAt']) {
+      assert.ok(coverage[field], `digestCoverage must declare ${field}`);
+    }
+  });
+
+  it('DROPS stale digest grounding by default, and still returns a brief', async () => {
+    // #7084: this used to throw -32003. That made the MILDER degradation fatal
+    // while the worse one was tolerated -- a digest fetch that times out is
+    // swallowed a few lines earlier and the brief is generated ungrounded, so
+    // an operator could restore the tool by breaking the digest harder. The
+    // brief comes from a different upstream; the digest is only grounding.
+    // Default now: drop the stale grounding, still answer, and report what
+    // happened in digestCoverage so the caller can apply its own policy.
+    const digestCoverage = {
+      state: 'stale',
+      servedStale: true,
+      staleAgeSeconds: 900,
+      staleReason: 'empty-rebuild',
+      attemptedAt: '2026-08-10T02:05:00.000Z',
+    };
+    const calls = stubDownstream({ digestItems: [digestItem()], digestCoverage });
+
+    const rpc = await callCountryBriefRpc();
+
+    assert.equal(rpc.error, undefined, 'a stale digest must not fail the whole tool call');
+    assert.ok(
+      calls.some(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief'),
+      'the brief itself still has to be generated',
+    );
+
+    const payload = JSON.parse(rpc.result.content[0].text);
+    assert.deepEqual(payload.groundingStories, [], 'stale digest grounding is dropped, not used');
+    // `sources` here is the GATEWAY's own source list, a different upstream
+    // that this drop does not touch — only the digest-derived grounding goes.
+    assert.deepEqual(
+      payload.sources.map((entry) => entry.url), ['https://example.com/upstream'],
+      'the gateway source list is unaffected',
+    );
+    assert.equal(
+      payload.digestCoverage?.servedStale, true,
+      'the caller must still learn the grounding was withheld and why',
+    );
+    assert.equal(payload.digestCoverage?.staleAgeSeconds, 900);
+
+    const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(
+      !String(briefCall?.body ?? '').includes('retained snapshot'),
+      'the stale headlines must not reach the LLM prompt when allow_stale is not set',
+    );
+  });
+
+  it('allows explicit stale grounding and returns structured digest coverage', async () => {
+    const digestCoverage = {
+      state: 'stale',
+      servedStale: true,
+      staleAgeSeconds: 900,
+      staleReason: 'feed_timeout',
+      attemptedAt: '2026-08-10T02:05:00.000Z',
+    };
+    const calls = stubDownstream({ digestItems: [digestItem()], digestCoverage });
+
+    const payload = await callCountryBrief({ country_code: 'FR', allow_stale: true });
+
+    assert.deepEqual(payload.digestCoverage, digestCoverage);
+    const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(briefCall, 'explicit stale opt-in should reach the LLM brief endpoint');
+    assert.match(JSON.parse(String(briefCall.init.body)).context, /retained snapshot/i);
+  });
+
+  it('returns structured digest coverage for fresh grounding', async () => {
+    const digestCoverage = {
+      state: 'complete',
+      servedStale: false,
+      staleAgeSeconds: 0,
+      staleReason: '',
+      attemptedAt: '2026-08-10T02:05:00.000Z',
+    };
+    stubDownstream({ digestItems: [digestItem()], digestCoverage });
+
+    const payload = await callCountryBrief();
+
+    assert.equal(payload.brief, 'Synthesized country brief.');
+    assert.deepEqual(payload.digestCoverage, digestCoverage);
+  });
+
   it('emits groundingStories even when the upstream supplies its own sources', async () => {
     // The decision this pins: sources keeps the gateway's proto BriefSource
     // list untouched, and corroboration arrives on a sibling field that is
@@ -178,6 +281,7 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
 
     assert.equal(payload.brief, 'Synthesized country brief.');
     assert.deepEqual(payload.groundingStories, []);
+    assert.equal(payload.digestCoverage, undefined);
   });
 
   it('caps groundingStories at six and dedupes repeated titles', async () => {

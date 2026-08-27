@@ -16,6 +16,11 @@
  *
  * This module is deliberately free of DOM and three.js imports so the real
  * selection function can be unit-tested directly against real payload shapes.
+ *
+ * It is shared with the SVG/D3 renderer (`MapComponent.renderOverlays`), which
+ * has the same shape of problem for a different reason (#7112) — see
+ * `MAP_OVERLAY_MARKER_BUDGET_DESKTOP` below. The names keep the `Globe` prefix
+ * they were introduced with; the selection itself is renderer-agnostic.
  */
 
 /** A single layer's contribution to the globe, before budgeting. */
@@ -84,6 +89,33 @@ export const GLOBE_MARKER_BUDGET_MOBILE: GlobeMarkerBudget = { perLayer: 150, to
 
 /** Desktop's default view is 2,319 markers today, so this cuts it ~2.9x. */
 export const GLOBE_MARKER_BUDGET_DESKTOP: GlobeMarkerBudget = { perLayer: 300, total: 800 };
+
+/**
+ * The same selection, applied to the SVG/D3 renderer's HTML overlay (#7112).
+ *
+ * `MapComponent` is not only the mobile renderer: `MapContainer.shouldUseDeckGL`
+ * falls back to it on any desktop client without a hardware WebGL2 context
+ * (`hasWebGLSupport` rejects SwiftShader/llvmpipe by name), which is the normal
+ * state of a synthetic lab runner. There each marker is an absolutely-positioned
+ * `<div>` carrying its own `click` listener, and `renderOverlays` rebuilds the
+ * whole set on every render — so an uncapped feed sets both the live DOM size
+ * and, through the rebuild churn, the renderer's detached-node count.
+ *
+ * Measured on production 2026-08-24, desktop viewport, default layers, SVG
+ * fallback: 2,088 overlay markers (1,502 military vessels, 293 military
+ * flights, 147 earthquakes), 17.4k renderer nodes and 2.8k listeners at rest,
+ * peaking at 49.7k nodes / 21.5k listeners mid-rebuild. The DeckGL path on the
+ * same page carries 7.6k nodes / 736 listeners because its vessels are a single
+ * WebGL draw call.
+ *
+ * Deliberately the same numbers as the globe: both renderers pay per DOM marker,
+ * and two different ceilings for the same layer set would be a surprise when a
+ * client falls back between them.
+ */
+export const MAP_OVERLAY_MARKER_BUDGET_DESKTOP: GlobeMarkerBudget = { perLayer: 300, total: 800 };
+
+/** Mobile always uses the SVG renderer, so it keeps the tighter mobile ceiling. */
+export const MAP_OVERLAY_MARKER_BUDGET_MOBILE: GlobeMarkerBudget = { perLayer: 150, total: 400 };
 
 /**
  * Largest per-group cap `c <= max` for which `sum(min(len_i, c)) <= total`.

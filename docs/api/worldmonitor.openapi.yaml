@@ -10852,7 +10852,13 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationOutcome
-            description: GetSimulationOutcome returns the latest stored forecast simulation outcome; the response note is populated when a supplied runId does not match the returned outcome.
+            description: |-
+                GetSimulationOutcome returns the latest stored forecast simulation outcome.
+                 Outcomes auto-refresh on the deep-forecast cron cadence (~hourly): each
+                 seed-forecasts cycle writes a simulation package and enqueues a worker
+                 task (scripts/seed-forecasts.mjs enqueueSimulationTask). Callers usually
+                 poll this endpoint rather than TriggerSimulation. The response note is
+                 populated when a supplied runId does not match the returned outcome.
             operationId: GetSimulationOutcome
             parameters:
                 - name: runId
@@ -10993,10 +10999,12 @@ paths:
             summary: TriggerSimulation
             description: |-
                 TriggerSimulation enqueues a simulation task for the current
-                 SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. The runId
-                 is server-derived; callers cannot supply one. The Railway worker
-                 (scripts/process-simulation-tasks.mjs) polls the queue and writes
-                 outcomes; callers poll GetSimulationOutcome with the returned runId
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. Usually
+                 unnecessary — outcomes auto-run on each deep-forecast cron cycle (~hourly)
+                 via enqueueSimulationTask; use this only when you need a fresh run outside
+                 that cadence. The runId is server-derived; callers cannot supply one. The
+                 Railway worker (scripts/process-simulation-tasks.mjs) polls the queue and
+                 writes outcomes; callers poll GetSimulationOutcome with the returned runId
                  to retrieve the result. Mirrors run-scenario.ts pattern. See #3734. Requires entitlement tier >= 1.
             operationId: TriggerSimulation
             security:
@@ -22013,8 +22021,12 @@ paths:
             tags:
                 - MilitaryService
             summary: GetAircraftDetails
-            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
+            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex. PRO-gated. Requires an active Pro subscription.
             operationId: GetAircraftDetails
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: icao24
                   in: query
@@ -22023,6 +22035,7 @@ paths:
                   example: "a835af"
                   schema:
                     type: string
+                    pattern: '^[0-9a-fA-F]{6}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -22061,7 +22074,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -23600,6 +23613,13 @@ paths:
                                               "link": "https://example.com/worldmonitor"
                                               "source": "example"
                                               "title": "example"
+                                "coverage":
+                                    "attemptedAt": "2026-01-15T12:00:00Z"
+                                    "categoryCompleted": 1
+                                    "categoryStates":
+                                        "exampleKey": "example"
+                                    "categoryTotal": 1
+                                    "droppedCategoryCap": 1
                                 "feedStatuses":
                                     "exampleKey": "example"
                                 "generatedAt": "2026-01-15T12:00:00Z"
@@ -40940,10 +40960,12 @@ components:
                          request messages). Safe to omit; default empty string.
             description: |-
                 TriggerSimulationRequest enqueues a simulation task for the current
-                 SIMULATION_PACKAGE_LATEST_KEY package pointer. Caller-supplied
-                 run_id is intentionally absent — the runId is server-derived from
-                 the package pointer (avoids lock-key collision, queue stuffing, and
-                 race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. Usually unnecessary —
+                 outcomes auto-run on each deep-forecast cron cycle (~hourly) via
+                 enqueueSimulationTask; use only when a fresh run is needed outside that
+                 cadence. Caller-supplied run_id is intentionally absent — the runId is
+                 server-derived from the package pointer (avoids lock-key collision, queue
+                 stuffing, and race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
                  feat-simulation-trigger-and-runid-filter-plan.md D1.
         worldmonitor_forecast_v1_TriggerSimulationResponse:
             type: object
@@ -47525,7 +47547,7 @@ components:
             properties:
                 icao24:
                     type: string
-                    minLength: 1
+                    pattern: ^[0-9a-fA-F]{6}$
                     description: ICAO 24-bit hex address (lowercase).
             required:
                 - icao24
@@ -48470,6 +48492,8 @@ components:
                 generatedAt:
                     type: string
                     description: ISO 8601 timestamp of when this digest was generated
+                coverage:
+                    $ref: '#/components/schemas/worldmonitor_news_v1_DigestCoverage'
         worldmonitor_news_v1_ListFeedDigestResponse_CategoriesEntry:
             type: object
             properties:
@@ -48629,6 +48653,98 @@ components:
                         - STORY_PHASE_FADING
                     description: StoryPhase represents the lifecycle stage of a tracked news story.
             description: StoryMeta carries cross-cycle persistence data attached to each news item.
+        worldmonitor_news_v1_DigestCoverage:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: |-
+                        complete | partial | stale | unavailable.
+                         complete: every configured category had at least one completed eligible
+                           feed and the build did not hit the global deadline.
+                         partial: content exists, but a category had no completed feed or the
+                           build hit the global deadline.
+                         stale: accepted older content is served after a failed latest attempt
+                           (durable last-good serving, #7084).
+                         unavailable: no eligible content could be served.
+                attemptedAt:
+                    type: string
+                    description: ISO 8601 time of the latest build attempt (attempt identity).
+                itemsServed:
+                    type: integer
+                    format: int32
+                    description: Items served in this response, after every gate.
+                publisherCount:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Distinct publishers among the served items (normalized source labels,
+                         current cycle only — not feed-label counts, not historical sets).
+                feedTotal:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Eligible feeds configured for this variant+language, and how many
+                         completed (with or without items).
+                feedCompleted:
+                    type: integer
+                    format: int32
+                categoryTotal:
+                    type: integer
+                    format: int32
+                    description: Configured categories, and how many had at least one completed feed.
+                categoryCompleted:
+                    type: integer
+                    format: int32
+                categoryStates:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: 'Per-category state: ok (a feed completed) | missing (none did).'
+                droppedFeedCap:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Per-gate drop counts, named by gate position in the pipeline:
+                         feed cap, undated-item, freshness floor, category cap.
+                droppedUndated:
+                    type: integer
+                    format: int32
+                droppedFreshness:
+                    type: integer
+                    format: int32
+                droppedCategoryCap:
+                    type: integer
+                    format: int32
+                servedStale:
+                    type: boolean
+                    description: |-
+                        Durable last-good serving (#7084): true exactly when accepted older
+                         content is replayed after a failed latest attempt. The content counts
+                         above still describe the served body; attempted_at names the FAILED
+                         attempt, so it and generated_at diverge on a replay.
+                staleAgeSeconds:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Age of the served content since acceptance, in seconds (0 when fresh).
+                         Bounded at 21600 (six hours): past that window the service reports
+                         state=unavailable rather than serving older content.
+                staleReason:
+                    type: string
+                    description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'
+            description: |-
+                Content vs attempt state for one digest response (#7085). generated_at
+                 keeps the CONTENT identity (when the served items were produced);
+                 attempted_at keeps the latest BUILD identity — the two diverge when
+                 stale content is served after a failed attempt (#7084).
+        worldmonitor_news_v1_DigestCoverage_CategoryStatesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
         worldmonitor_positive_events_v1_ListPositiveGeoEventsRequest:
             type: object
         worldmonitor_positive_events_v1_ListPositiveGeoEventsResponse:

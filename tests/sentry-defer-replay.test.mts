@@ -62,6 +62,55 @@ describe('deferred Sentry replay event shaping', () => {
     }
   });
 
+  // Production calls scheduleSentryInit() twice for real: src/main.ts at
+  // bootstrap, then src/components/ProActivationInterstitial.ts, whose comment
+  // relies on it being idempotent. `initPromise` is the ONLY latch enforcing
+  // that (the redundant `scheduled` boolean was removed), so pin it here: if a
+  // later refactor makes the assignment conditional or moves it past an await,
+  // the SDK chunk and its global error listeners would load twice and this is
+  // what goes red.
+  it('schedules once across repeated scheduleSentryInit() calls', () => {
+    _resetSentryDeferStateForTests();
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const previousSetTimeout = Object.getOwnPropertyDescriptor(globalThis, 'setTimeout');
+    let idleCallbackCount = 0;
+    let setTimeoutCount = 0;
+
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        requestIdleCallback: () => {
+          idleCallbackCount += 1;
+          return 1;
+        },
+        addEventListener() {},
+        removeEventListener() {},
+      },
+    });
+    Object.defineProperty(globalThis, 'setTimeout', {
+      configurable: true,
+      value: () => {
+        setTimeoutCount += 1;
+        return 1;
+      },
+    });
+
+    try {
+      const first = scheduleSentryInit();
+      const second = scheduleSentryInit();
+      const third = scheduleSentryInit();
+
+      assert.equal(second, first, 'second call must return the identical promise');
+      assert.equal(third, first, 'third call must return the identical promise');
+      assert.equal(setTimeoutCount, 1, 'the deferred load must be scheduled exactly once');
+      assert.equal(idleCallbackCount, 0, 'the idle callback only registers after the timer fires');
+    } finally {
+      _resetSentryDeferStateForTests();
+      restoreGlobalProperty('window', previousWindow);
+      restoreGlobalProperty('setTimeout', previousSetTimeout);
+    }
+  });
+
   it('matches Sentry globalHandlers for primitive promise rejections', () => {
     const event = _buildQueuedUnhandledRejectionEventForTests('timeout');
     const value = event?.exception?.values?.[0];

@@ -2826,19 +2826,12 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   border-top-color: var(--accent);
 }
 
-/* Hide the drop zone below the ultrawide threshold — which is RUNTIME
-   dependent, so the breakpoints here must mirror getUltraWideMinWidth()
-   (src/app/panel-layout.ts): 1600px on the web, 900px in the desktop app
-   (`.desktop-grid` on .main-content). Hiding the desktop app's zone below
-   1600px is #6426: from 900px up, ensureCorrectZones() moves saved
-   bottom-set panels INTO this container, so a blanket 1599px rule makes
-   those panels vanish for any desktop window in the 900-1599px band. */
-@media (max-width: 1599px) {
-  .main-content:not(.desktop-grid) .map-bottom-grid {
-    display: none !important;
-  }
-}
-
+/* Hide the drop zone below the split threshold. 899px mirrors
+   SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts), one threshold for web
+   and desktop since #6417 — from that width up, ensureCorrectZones() moves
+   saved bottom-set panels INTO this container, so hiding it any higher
+   makes those panels vanish (#6426).
+   tests/responsive-zone-listener.test.mjs pins the alignment. */
 @media (max-width: 899px) {
   .map-bottom-grid {
     display: none !important;

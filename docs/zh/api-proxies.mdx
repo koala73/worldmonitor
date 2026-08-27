@@ -42,10 +42,10 @@ description: "面向上游第三方 API 的轻量级服务端代理端点完整�
 
 ## 遗留/内部
 
-### `POST /api/fwdstart`
+### `GET /api/fwdstart`
 
-桌面应用首次运行时使用的转发启动场景助手。内部使用。
+抓取 FwdStart 通讯归档并以 RSS 2.0 XML 订阅源重新发布（缓存 30 分钟）。内部订阅源垫片，不是 JSON API。
 
-### `GET /api/mcp-proxy`
+### `GET|POST /api/mcp-proxy`
 
-遗留 MCP 垫片 — 转发到当前 MCP 路由。已弃用；请直接使用 [`/api/mcp`](/zh/mcp-overview)。
+Pro 门控的出站 MCP 代理：将 MCP 流量转发到调用方指定的第三方 MCP 服务器，带 SSRF 防护（拒绝私网/链路本地目标）和独立的每 IP 每分钟 30 次限流。它**不会**转发到 WorldMonitor 自己的 [`/api/mcp`](/zh/mcp-overview) —— 请直接调用后者。

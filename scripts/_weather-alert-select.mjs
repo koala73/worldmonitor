@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { roundGeoCoordinate } from './_seed-utils.mjs';
+
 const ISO3_TO_ISO2 = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'shared/iso3-to-iso2.json'), 'utf8'),
 );
@@ -80,14 +82,22 @@ export function requireAlertFeatures(data) {
   return data.features;
 }
 
+// NWS ships 6-7 decimal coordinates. Five decimals retain metre-level detail
+// while reducing the FAST-tier weather-alert payload. Shared with the earthquake
+// seeder via _seed-utils.mjs (both files, and _seed-utils.mjs itself, are COPY'd
+// into the relay image — see Dockerfile.relay and tests/dockerfile-relay-imports.test.mjs).
+function roundPosition(position) {
+  return [roundGeoCoordinate(position[0]), roundGeoCoordinate(position[1])];
+}
+
 export function extractCoordinates(geometry) {
   if (!geometry) return [];
   try {
     if (geometry.type === 'Polygon') {
-      return geometry.coordinates[0]?.map(c => [c[0], c[1]]) || [];
+      return geometry.coordinates[0]?.map(roundPosition) || [];
     }
     if (geometry.type === 'MultiPolygon') {
-      return geometry.coordinates[0]?.[0]?.map(c => [c[0], c[1]]) || [];
+      return geometry.coordinates[0]?.[0]?.map(roundPosition) || [];
     }
   } catch { /* ignore */ }
   return [];
@@ -103,12 +113,12 @@ export function extractRings(geometry) {
   if (!geometry) return [];
   try {
     if (geometry.type === 'Polygon') {
-      const ring = geometry.coordinates[0]?.map(c => [c[0], c[1]]);
+      const ring = geometry.coordinates[0]?.map(roundPosition);
       return ring ? [ring] : [];
     }
     if (geometry.type === 'MultiPolygon') {
       return (geometry.coordinates || [])
-        .map(poly => poly?.[0]?.map(c => [c[0], c[1]]))
+        .map(poly => poly?.[0]?.map(roundPosition))
         .filter(Array.isArray);
     }
   } catch { /* ignore */ }
@@ -126,8 +136,18 @@ function isClosedLinearRing(ring) {
   if (!Array.isArray(ring) || ring.length < 4) return false;
   const first = ring[0];
   const last = ring[ring.length - 1];
-  return Array.isArray(first) && Array.isArray(last)
-    && first[0] === last[0] && first[1] === last[1];
+  if (!Array.isArray(first) || !Array.isArray(last)) return false;
+  if (first[0] !== last[0] || first[1] !== last[1]) return false;
+  // Position count and endpoint equality are not sufficient once coordinates are
+  // rounded: sub-metre-adjacent vertices collapse onto each other, so a ring can
+  // keep 4+ positions and matching endpoints while enclosing zero area. PostGIS
+  // accepts that as "closed" and it reaches third-party webhooks as a degenerate
+  // Polygon. A real ring has at least 3 distinct vertices.
+  const distinct = new Set();
+  for (const position of ring) {
+    if (Array.isArray(position)) distinct.add(`${position[0]},${position[1]}`);
+  }
+  return distinct.size >= 3;
 }
 
 export function calculateCentroid(coords) {

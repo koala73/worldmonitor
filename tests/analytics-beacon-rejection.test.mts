@@ -95,7 +95,11 @@ async function assertNoLeak(fire: () => void, label: string): Promise<void> {
   }
 }
 
-describe('umami beacon rejection is swallowed (WORLDMONITOR-WW/WX/WY)', () => {
+// Every suite below mutates the shared analytics transport and the process-wide
+// `window` test double. Keep the suites serial even when test:data runs with
+// `--test-concurrency=16`; otherwise another suite can reset or replace the
+// collector between two awaited writes in the wiring assertions.
+describe('umami beacon rejection is swallowed (WORLDMONITOR-WW/WX/WY)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
     stubFailingUmami();
@@ -196,7 +200,7 @@ async function drainPromiseHandlers(until?: () => boolean, label = 'condition'):
   if (until) throw new Error(`drainPromiseHandlers: ${label} never became true`);
 }
 
-describe('Umami client retry policy (#5715)', () => {
+describe('Umami client retry policy (#5715)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -823,6 +827,8 @@ const {
   installCollectorFetchGate,
   getCollectorHealthForTesting,
   _setCollectorHealthReporterForTesting,
+  _setCollectorOutcomeObserverForTesting,
+  _setCollectorSentryEnqueueForTesting,
 } = await import('../src/services/analytics-collector-transport.ts');
 
 function collectorEventInit(signal?: AbortSignal): RequestInit {
@@ -856,7 +862,7 @@ function createNativeTimeoutError(): Error {
   return error;
 }
 
-describe('collector request timeout compatibility (#6086)', () => {
+describe('collector request timeout compatibility (#6086)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -906,6 +912,8 @@ describe('collector request timeout compatibility (#6086)', () => {
     const fakeTimers = installFakeTimers();
     const originalWarn = console.warn;
     console.warn = () => {};
+    const outcomes: Array<{ timeoutMechanism: string }> = [];
+    _setCollectorOutcomeObserverForTesting((outcome) => { outcomes.push(outcome); });
     Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
     window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => rejectWhenAborted(init?.signal)) as typeof window.fetch;
     installCollectorFetchGate();
@@ -920,6 +928,11 @@ describe('collector request timeout compatibility (#6086)', () => {
       deadline.callback();
 
       await assert.rejects(stalled, { name: 'TimeoutError' });
+      assert.equal(
+        outcomes[0]?.timeoutMechanism,
+        'manual',
+        'an existing signal without AbortSignal.any must expose the compatibility marker',
+      );
       assert.ok(deadline.cancelled, 'the timeout timer is cleared after rejection');
     } finally {
       console.warn = originalWarn;
@@ -1236,7 +1249,7 @@ function findLatchDeadline(timers: ScheduledTimer[]): ScheduledTimer | undefined
  * The tests below therefore assert what the #6086 fixtures structurally cannot:
  * the latch releases WITHOUT the transport promise ever settling.
  */
-describe('collector latch release is module-owned (#6288)', () => {
+describe('collector latch release is module-owned (#6288)', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -2440,7 +2453,7 @@ describe('collector latch release is module-owned (#6288)', () => {
  * the delivery classification, or a suppressed alert silently becomes a
  * suppressed retry and a cleared conversion marker.
  */
-describe('bot-filtered collector writes (#5964 alert-noise regression)', () => {
+describe('bot-filtered collector writes (#5964 alert-noise regression)', { concurrency: false }, () => {
   const botBody = '{"beep":"boop"}';
 
   it('flags a bot-filtered 200 without changing its delivery classification', async () => {
@@ -2497,7 +2510,7 @@ describe('bot-filtered collector writes (#5964 alert-noise regression)', () => {
   });
 });
 
-describe('collector alert policy suppresses expected background conditions', () => {
+describe('collector alert policy suppresses expected background conditions', { concurrency: false }, () => {
   const net = { kind: 'network' as const };
   const timeout = { kind: 'timeout' as const };
 
@@ -2561,7 +2574,7 @@ describe('collector alert policy suppresses expected background conditions', () 
   });
 });
 
-describe('collector alert policy is wired into the reporting path', () => {
+describe('collector alert policy is wired into the reporting path', { concurrency: false }, () => {
   beforeEach(() => {
     resetAnalyticsForTesting();
   });
@@ -2588,6 +2601,7 @@ describe('collector alert policy is wired into the reporting path', () => {
     assert.deepEqual(reports[0], {
       cohort: 'event',
       writes: 1,
+      manualTimeoutWrites: 0,
       failures: 1,
       failureKind: 'missing-receipt',
       bucket: Math.floor(Date.now() / 60_000),
@@ -2624,6 +2638,7 @@ describe('collector alert policy is wired into the reporting path', () => {
     assert.deepEqual(reports, [{
       cohort: 'event',
       writes: 1,
+      manualTimeoutWrites: 0,
       failures: 0,
       failureKind: 'none',
       bucket: 0,
@@ -2707,6 +2722,7 @@ describe('collector alert policy is wired into the reporting path', () => {
     assert.deepEqual(reports.at(-1), {
       cohort: 'critical-event',
       writes: 1,
+      manualTimeoutWrites: 0,
       failures: 1,
       failureKind: 'missing-receipt',
       bucket: Math.floor(Date.now() / 60_000),
@@ -2752,7 +2768,7 @@ describe('collector alert policy is wired into the reporting path', () => {
  * An alarm has to be attacked for the case it exists to catch: can it stay
  * SILENT while the collector is actually dead? #5565 ran for four days unseen.
  */
-describe('collector alert policy still fires when the collector is dead', () => {
+describe('collector alert policy still fires when the collector is dead', { concurrency: false }, () => {
   it('alerts on the first 5xx, with no sample or rate floor to clear', () => {
     // The #5565 shape: Railway origin OOM-dead, Cloudflare answers 502. This is
     // kind:'http', so it is never subject to the environment-noise gating.
@@ -2785,5 +2801,267 @@ describe('collector alert policy still fires when the collector is dead', () => 
     assert.equal(failure?.kind, 'http');
     assert.ok(!failure?.botFiltered, 'a non-2xx must never be classified as bot-filtered');
     assert.equal(isAlertWorthyCollectorFailure(failure!, { writes: 1, failures: 1 }), true);
+  });
+});
+
+/**
+ * #6289 — the compatibility timeout path must be observable without widening
+ * `CollectorFailure.kind`. Operators triaging a `timeout` need to know whether
+ * it came from native `AbortSignal.timeout` or `withManualAbort`, and on
+ * success the compat population must be countable too.
+ */
+describe('collector timeout mechanism observability (#6289)', { concurrency: false }, () => {
+  beforeEach(() => {
+    resetAnalyticsForTesting();
+  });
+
+  afterEach(() => {
+    resetAnalyticsForTesting();
+  });
+
+  it('counts only manual-path writes in the health window', async () => {
+    window.fetch = (() => Promise.resolve(collectorResponse(true, 200))) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    await window.fetch(UMAMI_SEND_URL, collectorEventInit());
+    await drainPromiseHandlers();
+    assert.equal(getCollectorHealthForTesting().manualTimeoutWrites, 0);
+    assert.equal(getCollectorHealthForTesting().writes, 1);
+  });
+
+  it('reports a successful manual-path write once on page exit with its denominator', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const lifecycle = stubPageLifecycle('visible');
+    const reports: unknown[] = [];
+    const outcomes: Array<{ failure: unknown; timeoutMechanism: string }> = [];
+    let sentryEnqueues = 0;
+    _setCollectorHealthReporterForTesting(async (report) => {
+      reports.push(report);
+      return true;
+    });
+    _setCollectorOutcomeObserverForTesting((outcome) => { outcomes.push(outcome); });
+    _setCollectorSentryEnqueueForTesting(() => { sentryEnqueues += 1; });
+    window.fetch = (() => Promise.resolve(collectorResponse(true, 200))) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      await window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      lifecycle.firePageHide(false);
+      lifecycle.firePageHide(false);
+      await drainPromiseHandlers();
+
+      assert.equal(outcomes.length, 1);
+      assert.equal(outcomes[0]?.failure, null);
+      assert.equal(outcomes[0]?.timeoutMechanism, 'manual');
+      assert.equal(getCollectorHealthForTesting().manualTimeoutWrites, 1);
+      assert.equal(getCollectorHealthForTesting().writes, 1);
+      assert.deepEqual(reports, [{
+        cohort: 'event',
+        writes: 1,
+        manualTimeoutWrites: 1,
+        failures: 0,
+        failureKind: 'none',
+        bucket: Math.floor(Date.now() / 60_000),
+      }], 'the cursor makes repeated pagehide delivery idempotent');
+      assert.equal(sentryEnqueues, 0, 'successful manual writes do not consume the deferred Sentry queue');
+    } finally {
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('reports manual-path counter deltas independently across minute windows', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const originalDateNow = Date.now;
+    const lifecycle = stubPageLifecycle('visible');
+    const reports: unknown[] = [];
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    _setCollectorHealthReporterForTesting(async (report) => {
+      reports.push(report);
+      return true;
+    });
+    window.fetch = (() => Promise.resolve(collectorResponse(true, 200))) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      Date.now = () => 1_000;
+      await window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      Date.now = () => 62_000;
+      await window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      lifecycle.firePageHide(false);
+      await drainPromiseHandlers();
+
+      assert.deepEqual(reports, [
+        {
+          cohort: 'event',
+          writes: 1,
+          manualTimeoutWrites: 1,
+          failures: 0,
+          failureKind: 'none',
+          bucket: 0,
+        },
+        {
+          cohort: 'event',
+          writes: 1,
+          manualTimeoutWrites: 1,
+          failures: 0,
+          failureKind: 'none',
+          bucket: 1,
+        },
+      ]);
+    } finally {
+      Date.now = originalDateNow;
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('keeps manual markers on pre-dispatch overflow outcomes and Sentry tags', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    const outcomes: Array<{ failure: { kind: string } | null; timeoutMechanism: string }> = [];
+    const captures: Array<{ message: string; options: Record<string, unknown> }> = [];
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    console.warn = () => {};
+    _setCollectorOutcomeObserverForTesting((outcome) => { outcomes.push(outcome); });
+    _setCollectorSentryEnqueueForTesting((fn) => {
+      fn({
+        captureMessage(message: string, options: Record<string, unknown>) {
+          captures.push({ message, options });
+        },
+      } as Parameters<typeof fn>[0]);
+    });
+    window.fetch = (() => parkForever()) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      for (let index = 0; index < COLLECTOR_QUEUE_LIMIT + 2; index += 1) {
+        void window.fetch(UMAMI_SEND_URL, collectorEventInit()).catch(() => {});
+      }
+      await drainPromiseHandlers(
+        () => outcomes.some((outcome) => outcome.failure?.kind === 'queue-overflow'),
+        'the bounded queue drops a request before dispatch',
+      );
+
+      const overflow = outcomes.filter((outcome) => outcome.failure?.kind === 'queue-overflow');
+      assert.ok(overflow.length > 0);
+      assert.ok(overflow.every((outcome) => outcome.timeoutMechanism === 'manual'));
+      assert.equal(captures[0]?.message, 'Umami collector write failed');
+      const tags = captures[0]?.options.tags as Record<string, string> | undefined;
+      const extra = captures[0]?.options.extra as Record<string, unknown> | undefined;
+      assert.equal(tags?.failureKind, 'queue-overflow');
+      assert.equal(tags?.timeoutMechanism, 'manual');
+      assert.equal(extra?.timeoutMechanism, 'manual');
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('keeps the intended manual marker when compatibility setup fails before binding', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const abortControllerDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'AbortController');
+    const originalWarn = console.warn;
+    const outcomes: Array<{ failure: { kind: string } | null; timeoutMechanism: string }> = [];
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    Object.defineProperty(globalThis, 'AbortController', { configurable: true, value: undefined });
+    console.warn = () => {};
+    _setCollectorOutcomeObserverForTesting((outcome) => { outcomes.push(outcome); });
+    _setCollectorHealthReporterForTesting(async () => true);
+    let fetchCalls = 0;
+    window.fetch = (() => {
+      fetchCalls += 1;
+      return Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      await assert.rejects(window.fetch(UMAMI_SEND_URL, collectorEventInit()), { name: 'TimeoutError' });
+      assert.equal(fetchCalls, 0, 'the binding failed before the request reached the transport');
+      assert.equal(outcomes[0]?.failure?.kind, 'timeout');
+      assert.equal(outcomes[0]?.timeoutMechanism, 'manual');
+    } finally {
+      console.warn = originalWarn;
+      if (abortControllerDescriptor) {
+        Object.defineProperty(globalThis, 'AbortController', abortControllerDescriptor);
+      }
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('threads manual timeoutMechanism into failure diagnostics without widening kind', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    const diagnostics: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object') diagnostics.push(detail as Record<string, unknown>);
+    };
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => rejectWhenAborted(init?.signal)) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const stalled = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      const requestDeadline = fakeTimers.timers.find((timer) => timer.delay === 20_000);
+      assert.ok(requestDeadline, 'the compatibility path must schedule the request bound');
+      requestDeadline.callback();
+      await assert.rejects(stalled, { name: 'TimeoutError' });
+      await drainPromiseHandlers(() => diagnostics.length > 0, 'the failure is reported');
+
+      assert.equal(diagnostics[0]?.failureKind, 'timeout', 'kind must stay timeout, not a new classification');
+      assert.equal(diagnostics[0]?.timeoutMechanism, 'manual');
+      assert.equal(diagnostics[0]?.manualTimeoutWrites, 1);
+      assert.equal(diagnostics[0]?.manualTimeoutRate, 1);
+      assert.equal(diagnostics[0]?.raced, false);
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('records native timeoutMechanism in failure diagnostics on the default path', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const deadlines: { ms: number; controller: AbortController }[] = [];
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: (ms: number) => {
+        const controller = new AbortController();
+        deadlines.push({ ms, controller });
+        return controller.signal;
+      },
+    });
+    const originalWarn = console.warn;
+    const diagnostics: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object') diagnostics.push(detail as Record<string, unknown>);
+    };
+    window.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => rejectWhenAborted(init?.signal)) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const stalled = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      assert.equal(deadlines.length, 1, 'the native path must request a collector deadline');
+      deadlines[0]?.controller.abort(createNativeTimeoutError());
+      await assert.rejects(stalled, { name: 'TimeoutError' });
+      await drainPromiseHandlers(() => diagnostics.length > 0, 'the failure is reported');
+
+      assert.equal(diagnostics[0]?.failureKind, 'timeout');
+      assert.equal(diagnostics[0]?.timeoutMechanism, 'native');
+      assert.equal(diagnostics[0]?.manualTimeoutWrites, 0);
+      assert.equal(diagnostics[0]?.manualTimeoutRate, 0);
+    } finally {
+      console.warn = originalWarn;
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
   });
 });

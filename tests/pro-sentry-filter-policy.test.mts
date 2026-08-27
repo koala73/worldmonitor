@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -57,6 +57,23 @@ describe('marketing ignoreErrors', () => {
 
   it('drops the extension runtime.sendMessage rejection (WORLDMONITOR-ZX)', () => {
     assert.equal(isIgnored('Error', 'Invalid call to runtime.sendMessage(). Tab not found.'), true);
+  });
+
+  it('drops the extension no-listener messaging rejection (WORLDMONITOR-10N)', () => {
+    // Verbatim production value. Chrome emits this exact sentence when a
+    // `chrome.runtime`/`chrome.tabs` sendMessage finds no receiver — the
+    // no-listener half of the `runtime.sendMessage()` entry above, and a
+    // different sentence, so that pattern does not cover it.
+    assert.equal(
+      isIgnored('Error', 'Could not establish connection. Receiving end does not exist.'),
+      true,
+    );
+  });
+
+  // Positive control: the match is substring-based, so phrasing that shares
+  // only the opening clause must stay reportable.
+  it('keeps near-miss connection errors lacking the no-listener sentence', () => {
+    assert.equal(isIgnored('Error', 'Could not establish connection to Dodo'), false);
   });
 
   it('drops the Zalo in-app-browser bridge global (WORLDMONITOR-102)', () => {
@@ -273,5 +290,27 @@ describe('policy wiring', () => {
       MARKETING_IGNORE_ERRORS.length < 20,
       `marketing array must stay a vetted subset, got ${MARKETING_IGNORE_ERRORS.length}`,
     );
+  });
+
+  // The WORLDMONITOR-10N no-listener entry is frame-blind (ignoreErrors runs
+  // before marketingBeforeSend, and the observed event carried zero frames),
+  // so its only safety argument is that this surface can never itself produce
+  // a runtime-messaging rejection. That premise lives in the array's comments;
+  // this test turns it into a failing check. If it goes red, either move the
+  // suppression behind marketingBeforeSend's first-party-frame gate or
+  // re-justify message-level suppression for the new call site. Note the same
+  // limit the comment carries: this covers pro-test sources, not bundled
+  // vendor chunks.
+  it('keeps the no-listener admission true: no runtime-messaging call site under pro-test/src', () => {
+    const files = readdirSync(resolve(root, 'pro-test/src'), { recursive: true })
+      .map((entry) => String(entry))
+      .filter((file) => /\.(ts|tsx)$/.test(file) && !file.endsWith('sentry-filter-policy.ts'));
+    assert.ok(files.length > 0, 'sanity: expected to scan pro-test sources');
+    const offenders = files.filter((file) =>
+      /chrome\.runtime|browser\.runtime|\bsendMessage\b/.test(
+        readFileSync(resolve(root, 'pro-test/src', file), 'utf8'),
+      ),
+    );
+    assert.deepEqual(offenders, []);
   });
 });

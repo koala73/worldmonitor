@@ -3,6 +3,7 @@ import { getOptionalUpstashCreds } from './_upstash-rest.mjs';
 import {
   CHINA_COVERAGE_ENTRIES,
   CHINA_COVERAGE_REASON_CODES as REASON,
+  CHINA_COVERAGE_SUMMARY_KEY,
   chinaCoverageRedisKeys,
 } from './china-coverage-manifest.mjs';
 
@@ -174,6 +175,7 @@ export function evaluateChinaCoverage({
   data = {},
   meta = {},
   now = Date.now(),
+  previous = null,
 } = {}) {
   const evaluated = entries.map((entry) => {
     if (entry.launchStatus !== 'launched') {
@@ -219,10 +221,29 @@ export function evaluateChinaCoverage({
   if (launched.length > 0 && counts.unavailable === launched.length) status = 'unavailable';
   else if (counts.degraded > 0 || counts.unavailable > 0) status = 'degraded';
 
+  // How many CONSECUTIVE evaluations have landed non-healthy. `status` stays
+  // instantaneous and truthful — isValidChinaCoverageSummary recomputes it from
+  // counts and rejects any summary whose status disagrees, so debouncing the
+  // field itself would make every held summary read CHINA_UNAVAILABLE. The
+  // streak is published alongside it and the CONSUMER decides how many
+  // observations it wants before alarming.
+  //
+  // This runs hourly against 16 sources, so a source that is degraded at the
+  // sampling instant and healthy moments later freezes the verdict for a full
+  // hour. Observed 2026-08-25: the evaluator sampled market.china-stock-connect
+  // at 17:03:23 and its snapshot published `status: healthy` at 17:05:26 — a
+  // two-minute miss that cost ~50 minutes of CHINA_DEGRADED, with 13 of the
+  // surrounding 16 monitor runs clean.
+  const previousStreak = Number.isInteger(previous?.degradedStreak) && previous.degradedStreak > 0
+    ? previous.degradedStreak
+    : 0;
+  const degradedStreak = status === 'healthy' ? 0 : previousStreak + 1;
+
   return {
     schemaVersion: 1,
     countryCode: 'CN',
     status,
+    degradedStreak,
     evaluatedAt: new Date(now).toISOString(),
     counts,
     entries: evaluated,
@@ -243,7 +264,9 @@ export async function readChinaCoverageInputs(entries = CHINA_COVERAGE_ENTRIES) 
   const credentials = getOptionalUpstashCreds();
   if (!credentials) throw new Error('Redis not configured');
   const keys = chinaCoverageRedisKeys(entries);
-  const ordered = [...keys.data, ...keys.meta];
+  // The previous summary rides the same pipeline: one extra GET, and the streak
+  // cannot be computed without it.
+  const ordered = [...keys.data, ...keys.meta, CHINA_COVERAGE_SUMMARY_KEY];
   const response = await fetch(`${credentials.restUrl}/pipeline`, {
     method: 'POST',
     headers: {
@@ -263,13 +286,24 @@ export async function readChinaCoverageInputs(entries = CHINA_COVERAGE_ENTRIES) 
   if (errorCount > 0) throw new Error(`Redis pipeline returned ${errorCount} command error(s)`);
   const data = {};
   const meta = {};
+  let previous = null;
   for (let index = 0; index < ordered.length; index++) {
     const key = ordered[index];
+    if (index === ordered.length - 1) {
+      try {
+        previous = parseRedisJson(results[index]?.result);
+      } catch {
+        // History is advisory. A corrupt prior summary must not prevent this
+        // run from publishing a fresh value that repairs the Redis slot.
+        previous = null;
+      }
+      continue;
+    }
     const value = parseRedisJson(results[index]?.result);
     if (index < keys.data.length) data[key] = value;
     else meta[key] = value;
   }
-  return { data, meta };
+  return { data, meta, previous };
 }
 
 export function chinaCoverageReadCommands(keys) {

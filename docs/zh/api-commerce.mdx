@@ -32,7 +32,7 @@ WorldMonitor 使用 [Dodo Payments](https://dodopayments.com) 处理 PRO 订阅�
 
 ### `GET /api/product-catalog`
 
-返回 `/pro` 定价页使用的分层视图模型。在 Redis 中以 `product-catalog:v3` 为键缓存 1 小时；缓存未命中时，从 Dodo Payments 获取实时价格，若 Dodo 不可达则回退到 `_product-fallback-prices.js`。响应携带 `X-Product-Catalog-Source` 头，以便探针区分缓存命中与实时获取。
+返回 `/pro` 定价页使用的分层视图模型。在 Redis 中以 `product-catalog:v2` 为键缓存 1 小时；缓存未命中时，从 Dodo Payments 获取实时价格，若 Dodo 不可达则回退到 `_product-catalog.generated.js` 中生成的 `FALLBACK_PRICES`。响应携带 `X-Product-Catalog-Source` 头，以便探针区分缓存命中与实时获取。
 
 **响应**（分层顺序为 `free`、`pro`、`pro_business`、`api_starter`、`api_business`、`enterprise`）：
 

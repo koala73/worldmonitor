@@ -8,7 +8,28 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta, getCachedJson, setCachedJson, getCachedJsonBatch, readCachedJson, runRedisPipeline } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import {
+  classifyStaleSnapshot,
+  filterRevokedUrls,
+  type RevocationRead,
+  type StaleReason,
+} from './_lastgood';
+import {
+  beginDigestAttempt,
+  completeDigestAttempt,
+  publishAcceptedSnapshot,
+  publishFailedAttempt,
+  readAcceptedSnapshot,
+  readRevokedUrlSet,
+  recoverFailedAttempt,
+  shouldStartDigestAttempt,
+  __testing__ as lastGoodStoreTesting,
+  type FailedDigestAttempt,
+  type LastGoodRead,
+} from './_lastgood-store';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -21,6 +42,7 @@ import {
 } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import {
+  buildDigestCoverage,
   cachedAttemptFrom,
   classifyFeedAttempt,
   interleaveByCategory,
@@ -29,10 +51,25 @@ import {
   summarizeFeedAttempts,
   type FeedFetchAttempt,
 } from './_attempts';
+import {
+  FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_COVERAGE_KEY,
+  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+  FORECAST_EVIDENCE_TTL_S,
+  accumulatorPruneBounds,
+  advanceForecastEvidenceCoverage,
+  buildForecastEvidenceMember,
+  evidencePruneBounds,
+  forecastEvidenceCoversWindow,
+  forecastEvidenceRecordKey,
+  isEligibleForecastEvidence,
+  parseForecastEvidenceCoverage,
+} from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
+import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
@@ -73,10 +110,223 @@ const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
 const DIGEST_RESPONSE_TIMEOUT_MS = 14_000;
 const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
+const RESPONSE_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
+// #7084: latest wall-clock point at which the best-effort snapshot publish may
+// still start. Derivation: 25s platform ceiling - 3s guard band - the
+// publish's own worst case (one 5s EVAL pipeline timeout).
+const PUBLISH_DEADLINE_CUTOFF_MS =
+  VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS - 5_000;
+
+async function settleBeforeDeadline<T>(
+  promise: Promise<T>,
+  deadlineAt: number,
+  fallback: T,
+): Promise<T> {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) return fallback;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
+
+/**
+ * #7084: apply the revocation set to a whole digest body at SERVE time.
+ * Shared by every path that can return bytes — fresh build, digest cache hit,
+ * durable snapshot, warm-isolate replay — so an operator's SADD takes effect
+ * on the next request rather than on the next rebuild. Returns the original
+ * object untouched when nothing was suppressed, so the common path stays free.
+ */
+function suppressRevoked(
+  data: ListFeedDigestResponse,
+  revoked: ReadonlySet<string>,
+): { data: ListFeedDigestResponse; dropped: number } {
+  if (revoked.size === 0) return { data, dropped: 0 };
+  const categories: Record<string, { items: ProtoNewsItem[] }> = {};
+  let dropped = 0;
+  for (const [category, bucket] of Object.entries(data.categories ?? {})) {
+    const { kept, dropped: n } = filterRevokedUrls(
+      (bucket?.items ?? []) as Array<{ link?: string }>,
+      revoked,
+    );
+    dropped += n;
+    categories[category] = { items: kept as ProtoNewsItem[] };
+  }
+  if (dropped === 0) return { data, dropped: 0 };
+  const next = { ...data, categories } as ListFeedDigestResponse;
+  // Counts must describe the body actually served, per the DigestCoverage
+  // contract ("Items served in this response, after every gate").
+  if (next.coverage) {
+    const items = Object.values(categories).flatMap((b) => b.items);
+    next.coverage = {
+      ...next.coverage,
+      itemsServed: items.length,
+      publisherCount: new Set(items.map((i) => publisherFamilyFor(i?.source ?? ''))).size,
+    };
+  }
+  return { data: next, dropped };
+}
+
+/**
+ * #7084: durable last-good serving, tried before the warm-isolate cache on the
+ * degraded paths. Returns a stale-marked response when Redis is readable and
+ * the accepted snapshot is inside the six-hour contract, else null so the
+ * caller falls through to the isolate tier and finally the explicit
+ * unavailable response.
+ */
+async function serveLastGood(
+  variant: string,
+  lang: string,
+  reason: StaleReason,
+  attemptedAt: string,
+  // Shared with the isolate tier so a degraded request pays for ONE
+  // revocation read, not one per tier — two serial pipeline reads were part
+  // of how the worst-case degraded path blew through the 25s Edge budget.
+  revokedPromise: Promise<RevocationRead> = readRevokedUrlSet(),
+  snapshotPromise: Promise<LastGoodRead<ListFeedDigestResponse>> = readAcceptedSnapshot(variant, lang),
+): Promise<ListFeedDigestResponse | null> {
+  const stored = await snapshotPromise;
+  if (!stored.readable) {
+    console.warn(`[digest-serving] tier=durable result=redis-unreadable variant=${variant} lang=${lang}`);
+    return null;
+  }
+  const snapshot = stored.snapshot;
+
+  // Everything below runs over a body deserialized from Redis. A malformed
+  // shape must fail THIS tier, never the request — a throw escaping here
+  // reaches the handler's catch, whose own degraded path re-throws on the
+  // same body, and the second throw escapes as a 500 with every fallback
+  // still unserved.
+  try {
+    const now = Date.now();
+
+    const revoked = await revokedPromise;
+    if (!revoked.readable) {
+      // Fail CLOSED on replay: revocation is a content-suppression control,
+      // and no path may serve unfiltered content when operator suppressions
+      // cannot be checked.
+      // `tier=` lines are hand-offs, not outcomes: only the tier that actually
+      // returns a body emits `outcome=`. Counting `outcome=` occurrences used
+      // to double-count isolate-fallback and record one request as two
+      // different outcomes.
+      console.warn(
+        `[digest-serving] tier=durable result=revocations-unreadable variant=${variant} lang=${lang}`,
+      );
+      captureSilentError(new Error('revocation set unreadable on durable serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-durable'],
+      });
+      return null;
+    }
+
+    // Revoke BEFORE the servability gate: a snapshot whose every item has
+    // been revoked is not servable content, and classifying the unfiltered
+    // body would let it through with counts describing items nobody receives.
+    const suppressed = snapshot ? suppressRevoked(snapshot.data, revoked.urls) : null;
+
+    const verdict = classifyStaleSnapshot(
+      snapshot && suppressed ? { acceptedAt: snapshot.acceptedAt, data: suppressed.data } : null,
+      now,
+    );
+    if (!verdict.serve) {
+      console.log(`[digest-serving] tier=durable result=${verdict.outcome} reason=${reason} variant=${variant} lang=${lang}`);
+      return null;
+    }
+
+    console.log(
+      `[digest-serving] outcome=stale reason=${reason} age_s=${verdict.ageSeconds} ` +
+        `variant=${variant} lang=${lang} revoked_urls=${revoked.urls.size} ` +
+        `revoked_dropped=${suppressed!.dropped}`,
+    );
+    // attemptedAt names the FAILED attempt, not the content.
+    return markFallbackCoverageStale(suppressed!.data, attemptedAt, {
+      ageSeconds: verdict.ageSeconds,
+      reason,
+    });
+  } catch (err) {
+    console.warn(`[digest-serving] tier=durable result=snapshot-malformed variant=${variant} lang=${lang}`);
+    captureSilentError(err, {
+      tags: { surface: 'news', component: 'digest-lastgood', stage: 'serve-classify', variant, lang },
+      fingerprint: ['digest-lastgood', 'serve-classify-threw'],
+    });
+    return null;
+  }
+}
+
+/**
+ * Stamp a replayed body with the coverage that describes how it is being
+ * served. Every replay tier goes through here — the durable snapshot (#7084)
+ * and the warm in-isolate cache — so no tier can go out wearing the state its
+ * original build stamped on it, and the stale fields have exactly one
+ * implementation.
+ *
+ * `staleAgeSeconds`/`staleReason` are 0/'' for the isolate tier, which knows
+ * only that the content is old, not how old relative to an acceptance.
+ */
+function markFallbackCoverageStale(
+  fallback: ListFeedDigestResponse,
+  attemptedAt: string,
+  stale: { ageSeconds: number; reason: string } = { ageSeconds: 0, reason: '' },
+): ListFeedDigestResponse {
+  const coverage = fallback.coverage;
+  if (coverage) {
+    return {
+      ...fallback,
+      coverage: {
+        ...coverage,
+        state: 'stale',
+        attemptedAt,
+        servedStale: true,
+        staleAgeSeconds: stale.ageSeconds,
+        staleReason: stale.reason,
+      },
+    };
+  }
+
+  // Redis can still contain a digest written before the coverage field was
+  // introduced. Keep that retained content useful, but do not describe it as
+  // current. Only content-derived counts can be reconstructed here.
+  // `bucket?.` / `item?.` guards throughout: this body was read back from
+  // Redis, and a malformed bucket must degrade the counts, not throw out of
+  // the last serving tier standing.
+  const categoryEntries = Object.entries(fallback.categories ?? {});
+  const items = categoryEntries.flatMap(([, bucket]) => bucket?.items ?? []);
+  const categoryStates = Object.fromEntries(
+    categoryEntries.map(([category, bucket]) => [category, (bucket?.items?.length ?? 0) > 0 ? 'ok' : 'missing']),
+  );
+  return {
+    ...fallback,
+    coverage: {
+      state: 'stale',
+      attemptedAt,
+      itemsServed: items.length,
+      publisherCount: new Set(items.map(item => publisherFamilyFor(item?.source ?? ''))).size,
+      feedTotal: 0,
+      feedCompleted: 0,
+      categoryTotal: Object.keys(categoryStates).length,
+      categoryCompleted: Object.values(categoryStates).filter(state => state === 'ok').length,
+      categoryStates,
+      droppedFeedCap: 0,
+      droppedUndated: 0,
+      droppedFreshness: 0,
+      droppedCategoryCap: 0,
+      servedStale: true,
+      staleAgeSeconds: stale.ageSeconds,
+      staleReason: stale.reason,
+    },
+  };
+}
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
@@ -951,9 +1201,13 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   // so the cache prefix (currently classify:sebuf:v6:) lives in exactly
   // one place — bumping it again only requires touching _shared.ts and
   // the relay's independent .cjs helper. See U4 of the plan.
+  // Titles are independent — hash them concurrently instead of N sequential
+  // WebCrypto hops on this hot fast-tier surface.
+  const keyed = await Promise.all(
+    candidates.map((item) => buildClassifyCacheKey(item.title).then((key) => ({ key, item }))),
+  );
   const keyMap = new Map<string, ParsedItem[]>();
-  for (const item of candidates) {
-    const key = await buildClassifyCacheKey(item.title);
+  for (const { key, item } of keyed) {
     const existing = keyMap.get(key) ?? [];
     existing.push(item);
     keyMap.set(key, existing);
@@ -1154,18 +1408,54 @@ interface StoryTrack {
   lastSeen: number;
   mentionCount: number;
   sourceCount: number;
-  currentScore: number;
-  peakScore: number;
 }
 
-function derivePhase(track: StoryTrack): ProtoStoryPhase {
-  const ageMs = Date.now() - track.firstSeen;
-  if (track.mentionCount <= 1) return 'STORY_PHASE_BREAKING';
-  if (track.mentionCount <= 5 && ageMs < 2 * 60 * 60 * 1000) return 'STORY_PHASE_DEVELOPING';
-  // FADING requires real scores from E1. Until E1 ships, currentScore and
-  // peakScore are both 0 (HSETNX placeholders), so this branch is intentionally
-  // inactive — stories fall through to SUSTAINED rather than incorrectly FADING.
-  if (track.currentScore > 0 && track.peakScore > 0 && track.currentScore < track.peakScore * 0.5) return 'STORY_PHASE_FADING';
+/**
+ * Derive the wire lifecycle phase for a story appearing in THIS build cycle.
+ *
+ * FADING is deliberately not derivable here. #7081 ran a bounded study against
+ * frozen production evidence (tests/fixtures/story-phase-fading-study.json,
+ * replayed by scripts/study-story-phase-fading.mjs) and recorded a no-go for
+ * the previously documented `currentScore < 0.5 * peakScore` rule. Three
+ * findings, each reproducible from that fixture:
+ *
+ *   1. The rule was unreachable. It read `peakScore` from the story:track hash,
+ *      but the peak is written to the story:peak:v1 ZSet and that hash field has
+ *      no writer — the field was absent on 14,000/14,000 sampled rows, so the
+ *      branch could never be taken. The old comment here blamed "HSETNX
+ *      placeholders" for both scores; that was wrong about currentScore, which
+ *      is written on every cycle and was positive on all 14,000 rows.
+ *
+ *   2. Repaired to read the real peak, the ratio measures article age, not
+ *      traction. importanceScore weights severity at 0.55 and recency at 0.10,
+ *      so the score's dynamic range at fixed severity is min/max = 0.63
+ *      (critical), 0.57 (high), 0.49 (medium), 0.37 (low), 0.18 (info). A
+ *      critical or high story therefore cannot reach half its peak without a
+ *      severity downgrade, while an info story crosses it on the recency term
+ *      alone once its article passes 24h (18 -> 8). Measured on the same rows:
+ *      673 firings, 670 of them info/low, and 0 of 679 critical/high rows.
+ *
+ *   3. Fading is not observable at this call site at all. derivePhase only runs
+ *      for stories present in the current cycle, and it is handed a track whose
+ *      lastSeen is `now` — a story that stopped being covered is absent from the
+ *      cycle and never reaches this function. Silence, the one signal that does
+ *      identify a fading story, is only visible where the non-serving population
+ *      is in scope: scripts/seed-digest-notifications.mjs calls
+ *      deriveNotificationStoryPhase() from shared/story-phase.js, which
+ *      applies the same core mention-count/age rules documented here and
+ *      additionally treats >24h of silence as fading.
+ *
+ * The STORY_PHASE_FADING wire value is retained for compatibility and is still
+ * handled by consumers (the client alert gate suppresses it), but this handler
+ * does not emit it. Do not reintroduce a score-ratio branch here without new
+ * evidence that clears the acceptance bar recorded in the study.
+ *
+ * `nowMs` is injectable so the phase boundaries are testable without a live clock.
+ */
+function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryPhase {
+  const phase = deriveCoreStoryPhase(track, nowMs);
+  if (phase === 'breaking') return 'STORY_PHASE_BREAKING';
+  if (phase === 'developing') return 'STORY_PHASE_DEVELOPING';
   return 'STORY_PHASE_SUSTAINED';
 }
 
@@ -1175,7 +1465,15 @@ function derivePhase(track: StoryTrack): ProtoStoryPhase {
  */
 async function readStoryTracks(titleHashes: string[]): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
-  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', 'currentScore', 'peakScore'];
+  // currentScore and peakScore are deliberately NOT read here. derivePhase is
+  // the only consumer this handler ever had for them, and it no longer uses a
+  // score at all (#7081 no-go — see derivePhase). peakScore in particular never
+  // existed as a hash field: the peak lives in the story:peak:v1 ZSet, so the
+  // HMGET slot returned null on every sampled production row. Dropping both
+  // trims two fields from every per-story HMGET in the batch. The WRITE side is
+  // unchanged — buildStoryTrackHsetFields still persists currentScore, which
+  // scripts/seed-digest-notifications.mjs reads.
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount'];
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
@@ -1189,8 +1487,6 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
       lastSeen:     Number(vals[1] ?? 0),
       mentionCount: Number(vals[2] ?? 0),
       sourceCount:  Number(vals[3] ?? 0),
-      currentScore: Number(vals[4] ?? 0),
-      peakScore:    Number(vals[5] ?? 0),
     });
   }
   return map;
@@ -1228,41 +1524,354 @@ export async function listFeedDigest(
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
+  const requestStart = Date.now();
+  const attemptedAt = new Date(requestStart).toISOString();
+  const responseDeadlineAt = requestStart + RESPONSE_DEADLINE_MS;
+  // Wall-clock budget for optional tail work. The build alone can consume
+  // ~19s worst case (14s fetcher timeout + a 5s sentinel write inside the
+  // cache wrapper); every awaited Redis op after it must fit inside the 25s
+  // Edge response ceiling minus a guard band.
+  // ONE revocation read per request, started at t=0 so its worst case
+  // overlaps the build instead of stacking after it. Shared by the fresh
+  // serve path and both replay tiers.
+  const revokedPromise = readRevokedUrlSet();
 
-  const empty = (): ListFeedDigestResponse => ({ categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() });
+  // #7085: an empty response still carries an explicit `unavailable`
+  // coverage block so clients can distinguish "nothing served" from
+  // "digest temporarily absent".
+  const empty = (at: string, reason: string): ListFeedDigestResponse => ({
+    categories: {},
+    feedStatuses: {},
+    generatedAt: new Date().toISOString(),
+    coverage: {
+      state: 'unavailable',
+      attemptedAt: at,
+      itemsServed: 0,
+      publisherCount: 0,
+      feedTotal: 0,
+      feedCompleted: 0,
+      categoryTotal: 0,
+      categoryCompleted: 0,
+      categoryStates: {},
+      droppedFeedCap: 0,
+      droppedUndated: 0,
+      droppedFreshness: 0,
+      droppedCategoryCap: 0,
+      servedStale: false,
+      staleAgeSeconds: 0,
+      staleReason: reason,
+    },
+  });
+
+  /**
+   * #7084: the last serving tier — the warm in-isolate cache, reached when the
+   * durable snapshot was unreadable, absent, or expired. Bounded by the same
+   * six-hour contract as the durable tier: the `ts` recorded at write time was
+   * previously never read, so this tier could replay content of unbounded age.
+   */
+  const serveIsolateFallback = async (
+    reason: StaleReason,
+    at: string,
+    revoked: RevocationRead,
+  ): Promise<ListFeedDigestResponse> => {
+    const entry = fallbackDigestCache.get(fallbackKey);
+    if (!entry) {
+      console.log(`[digest-serving] outcome=unavailable reason=${reason} variant=${variant} lang=${lang}`);
+      return empty(at, reason);
+    }
+    if (!revoked.readable) {
+      // Same fail-closed rule as the durable tier: replayed content must not
+      // go out unfiltered when the suppression set could not be read.
+      console.warn(
+        `[digest-serving] outcome=unavailable reason=revocations-unreadable variant=${variant} lang=${lang} tier=isolate`,
+      );
+      captureSilentError(new Error('revocation set unreadable on isolate serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-isolate'],
+      });
+      return empty(at, reason);
+    }
+    // The body below was cached in-process, but it originated from a build or
+    // a Redis read — degrade this tier on a malformed shape, never the request.
+    try {
+      // Suppress BEFORE the servability gate, mirroring the durable tier: a
+      // fully-revoked body is not servable content, and classifying the
+      // unfiltered body would serve it as a valid (empty) stale response.
+      const { data, dropped } = suppressRevoked(entry.data, revoked.urls);
+      // Same window policy as the durable tier — one implementation, so the
+      // two replay tiers cannot drift apart on what "six hours" means.
+      const verdict = classifyStaleSnapshot({ acceptedAt: entry.ts, data }, Date.now());
+      if (!verdict.serve) {
+        fallbackDigestCache.delete(fallbackKey);
+        console.log(
+          `[digest-serving] outcome=${verdict.outcome} reason=${reason} variant=${variant} ` +
+            `lang=${lang} tier=isolate age_s=${verdict.ageSeconds}`,
+        );
+        return empty(at, reason);
+      }
+      const ageSeconds = verdict.ageSeconds;
+      console.log(
+        `[digest-serving] outcome=isolate-fallback reason=${reason} age_s=${ageSeconds} ` +
+          `variant=${variant} lang=${lang} revoked_urls=${revoked.urls.size} revoked_dropped=${dropped}`,
+      );
+      return markFallbackCoverageStale(data, at, { ageSeconds, reason });
+    } catch (err) {
+      fallbackDigestCache.delete(fallbackKey);
+      console.warn(`[digest-serving] outcome=unavailable reason=isolate-malformed variant=${variant} lang=${lang}`);
+      captureSilentError(err, {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'isolate-serve', variant, lang },
+        fingerprint: ['digest-lastgood', 'isolate-serve-threw'],
+      });
+      return empty(at, reason);
+    }
+  };
+
+  /** Durable snapshot first, warm isolate second, unavailable last. */
+  const serveDegraded = async (
+    fallbackReason: StaleReason,
+    knownAttempt: FailedDigestAttempt | null,
+    preferRecentAttempt = true,
+  ): Promise<ListFeedDigestResponse> => {
+    if (Date.now() >= responseDeadlineAt) {
+      return empty(knownAttempt?.at ?? attemptedAt, knownAttempt?.reason ?? fallbackReason);
+    }
+    // Start the large body read only after degradation is known. It overlaps
+    // attempt recovery and the already-running revocation read without adding
+    // ~126KB of Redis I/O to every healthy/cache-hit request.
+    const degradedSnapshotPromise = readAcceptedSnapshot<ListFeedDigestResponse>(variant, lang);
+    const fallbackAttempt = Object.freeze({ at: attemptedAt, reason: fallbackReason });
+    const attempt = knownAttempt ?? await settleBeforeDeadline(
+      recoverFailedAttempt(variant, lang, fallbackAttempt, preferRecentAttempt),
+      responseDeadlineAt,
+      fallbackAttempt,
+    );
+    const unavailable = empty(attempt.at, attempt.reason);
+    const stale = await settleBeforeDeadline(
+      serveLastGood(
+        variant,
+        lang,
+        attempt.reason,
+        attempt.at,
+        revokedPromise,
+        degradedSnapshotPromise,
+      ),
+      responseDeadlineAt,
+      null,
+    );
+    if (stale) return stale;
+    const revoked = await settleBeforeDeadline(
+      revokedPromise,
+      responseDeadlineAt,
+      { urls: new Set<string>(), readable: false },
+    );
+    return settleBeforeDeadline(
+      serveIsolateFallback(attempt.reason, attempt.at, revoked),
+      responseDeadlineAt,
+      unavailable,
+    );
+  };
+
+  let leaderSlot: ReturnType<typeof beginDigestAttempt> | null = null;
+  let leaderFailure: FailedDigestAttempt | null = null;
 
   try {
-    // cachedFetchJson coalesces concurrent cold-path calls: concurrent requests
-    // for the same key share a single buildDigest() run instead of fanning out
-    // across all RSS feeds. Returning null skips the Redis write and caches a
-    // neg-sentinel (120s) to absorb the request storm during degraded periods.
-    const fresh = await cachedFetchJson<ListFeedDigestResponse>(
-      digestCacheKey,
-      900,
-      async () => {
-        const result = await buildDigest(variant, lang);
-        const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
-        return totalItems > 0 ? result : null;
-      },
-      120,
-      { timeoutMs: DIGEST_RESPONSE_TIMEOUT_MS },
+    // cachedFetchJsonWithMeta reports whether the fetcher actually ran, which
+    // the plain wrapper hides. Publishing on a cache hit would mean a full
+    // read+write of the ~126KB snapshot on EVERY request, awaited before the
+    // response, and would re-stamp acceptance for content that had not changed.
+    const cachedResult = await settleBeforeDeadline(
+      cachedFetchJsonWithMeta<ListFeedDigestResponse>(
+        digestCacheKey,
+        900,
+        async () => {
+          leaderSlot = beginDigestAttempt(variant, lang, attemptedAt);
+          try {
+            const result = await buildDigest(variant, lang, (await revokedPromise).urls);
+            const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
+            if (totalItems > 0) {
+              completeDigestAttempt(variant, lang, leaderSlot);
+              return result;
+            }
+            leaderFailure = publishFailedAttempt(
+              variant,
+              lang,
+              digestCacheKey,
+              leaderSlot,
+              'empty-rebuild',
+              120,
+            );
+            completeDigestAttempt(variant, lang, leaderSlot);
+            return null;
+          } catch (err) {
+            leaderFailure = publishFailedAttempt(
+              variant,
+              lang,
+              digestCacheKey,
+              leaderSlot,
+              'build-error',
+              30,
+            );
+            completeDigestAttempt(variant, lang, leaderSlot);
+            throw err;
+          }
+        },
+        120,
+        {
+          timeoutMs: DIGEST_RESPONSE_TIMEOUT_MS,
+          // The fetcher publishes attempt + sentinel atomically. Letting the
+          // generic wrapper write its own sentinel first would detach identity.
+          cacheFailures: false,
+          shouldFetch: () => shouldStartDigestAttempt(digestCacheKey),
+        },
+      ),
+      responseDeadlineAt,
+      { data: null, source: 'skipped', leader: false },
     );
+    const { data: fresh, source, leader } = cachedResult;
 
     if (fresh === null) {
       markNoCacheResponse(ctx.request);
-      return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
+      if (leaderSlot && !leaderFailure) {
+        leaderFailure = publishFailedAttempt(
+          variant,
+          lang,
+          digestCacheKey,
+          leaderSlot,
+          'build-error',
+          30,
+        );
+        completeDigestAttempt(variant, lang, leaderSlot);
+      }
+      return await serveDegraded('empty-rebuild', leaderFailure, source !== 'cache');
     }
 
     if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
-    fallbackDigestCache.set(fallbackKey, { data: fresh, ts: Date.now() });
-    return fresh;
+    // Anchor the isolate entry to the CONTENT clock, exactly like acceptedAt:
+    // stamping Date.now() re-aged unchanged content on every cache hit, so a
+    // steadily-hit digest never expired from this tier and a later replay
+    // reported an age measured from the last request rather than the build.
+    const contentTs = Date.parse(fresh.generatedAt ?? '');
+    fallbackDigestCache.set(fallbackKey, {
+      data: fresh,
+      ts: Number.isFinite(contentTs) ? contentTs : Date.now(),
+    });
+    // Revocation is a SERVE-time gate. Applying it only inside buildDigest
+    // would let a cache hit replay the pre-revocation body for up to 900s.
+    // The read has been in flight since t=0, so this await is essentially
+    // free by the time a build has run.
+    const revoked = await settleBeforeDeadline(
+      revokedPromise,
+      responseDeadlineAt,
+      { urls: new Set<string>(), readable: false },
+    );
+    if (!revoked.readable) {
+      console.warn(
+        `[digest-serving] outcome=unavailable reason=revocations-unreadable variant=${variant} lang=${lang} tier=fresh`,
+      );
+      captureSilentError(new Error('revocation set unreadable on fresh serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-fresh'],
+      });
+      markNoCacheResponse(ctx.request);
+      return empty(fresh.coverage?.attemptedAt || attemptedAt, '');
+    }
+    // Only the coalescing LEADER of a real build publishes: followers resolve
+    // with source 'fresh' too, and each would repeat the full ~126KB guarded
+    // write for a body identical to the one the leader just published. The
+    // deadline gate keeps the worst case inside the 25s Edge ceiling: a
+    // maximally slow build (~19s with its own cache writes) plus this
+    // publish's worst case (~6.5s of Redis timeouts) would exceed it, and
+    // the publish is best-effort by contract — skipping it under pressure
+    // loses nothing the next uncontended build will not restore.
+    if (source === 'fresh' && leader) {
+      if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
+        await settleBeforeDeadline(
+          publishAcceptedSnapshot(variant, lang, fresh),
+          responseDeadlineAt,
+          undefined,
+        );
+      } else {
+        console.warn(
+          `[digest-lastgood] publish skipped (over deadline budget) variant=${variant} lang=${lang} ` +
+            `elapsed_ms=${Date.now() - requestStart}`,
+        );
+      }
+    }
+    // #7084: while ANY revocation is live, stop feeding shared caches. This
+    // endpoint is the gateway's `slow` tier (s-maxage=1800, CDN-Cache-Control
+    // s-maxage=3600), so without this an operator's SADD left the revoked item
+    // being served from the CDN for up to an hour from the very endpoint the
+    // runbook calls clean. This does not evict copies already stored — the
+    // runbook in _lastgood.ts still requires a purge for those — it stops new
+    // ones accumulating for as long as the suppression is in force.
+    if (revoked.urls.size > 0) markNoCacheResponse(ctx.request);
+    const { data: served, dropped } = suppressRevoked(fresh, revoked.urls);
+    if (dropped > 0) {
+      console.log(`[digest-serving] outcome=fresh variant=${variant} lang=${lang} revoked_dropped=${dropped}`);
+    }
+    return served;
   } catch {
     markNoCacheResponse(ctx.request);
-    return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
+    // A cache-layer timeout rejects outside the fetcher. Name it from the
+    // leader's request-start clock without waiting for telemetry; followers
+    // recover the same in-isolate identity.
+    if (leaderSlot && !leaderFailure) {
+      leaderFailure = publishFailedAttempt(
+        variant,
+        lang,
+        digestCacheKey,
+        leaderSlot,
+        'build-error',
+        30,
+      );
+      completeDigestAttempt(variant, lang, leaderSlot);
+    }
+    return await serveDegraded('build-error', leaderFailure);
   }
 }
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
+
+function redisPipelineConfirmed(
+  results: Array<{ result?: unknown; error?: string }>,
+  expectedCommands: number,
+): boolean {
+  return results.length === expectedCommands && results.every(result => !result?.error);
+}
+
+/**
+ * The prune is destructive, so this gate takes no staleness budget: the marker
+ * handed in was written by THIS publication and must already reach `nowMs`.
+ * (The read path in seed-forecast-resolutions.mjs is the only caller that opts
+ * into FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS.)
+ *
+ * `evidenceDropped` is deliberately separate from `evidenceWritesConfirmed`:
+ * a story whose member could not be built never reached Redis, so it says
+ * nothing about whether the writes that DID happen were confirmed. It still
+ * blocks the marker advance (and therefore this gate, via coverageAdvanced),
+ * but it must not be laundered into a write-failure signal.
+ */
+function shouldPruneAccumulator(options: {
+  evidenceEligible: boolean;
+  cutoverEnabled: boolean;
+  coverage: unknown;
+  nowMs: number;
+  trackingWritesConfirmed: boolean;
+  evidenceWritesConfirmed: boolean;
+  coverageAdvanced: boolean;
+  accumulatorTtlConfirmed: boolean;
+}): boolean {
+  if (!options.trackingWritesConfirmed || !options.accumulatorTtlConfirmed) return false;
+  if (!options.evidenceEligible) return true;
+  return options.cutoverEnabled
+    && options.evidenceWritesConfirmed
+    && options.coverageAdvanced
+    && forecastEvidenceCoversWindow(
+      options.coverage,
+      options.nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+      options.nowMs,
+    );
+}
 
 /**
  * Build the HSET field list for a story:track:v1 row.
@@ -1348,6 +1957,27 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   if (items.length === 0) return;
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
+  // The archive/coverage keys are written raw (see the pipeline call below), so
+  // getKeyPrefix() does NOT isolate them per deployment the way the accumulator
+  // ZADD on the adjacent line is isolated. Preview and dev deployments share
+  // this Upstash instance, and the marker they would rewrite is the artefact
+  // that authorises destructive accumulator pruning — so production is the only
+  // deployment allowed to publish evidence at all.
+  const productionDeployment = (process.env.VERCEL_ENV ?? 'production') === 'production';
+  const evidenceEligible = isEligibleForecastEvidence(variant, lang) && productionDeployment;
+  const cutoverEnabled = process.env.FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
+  const coverageRead = evidenceEligible
+    ? await readCachedJson(FORECAST_EVIDENCE_COVERAGE_KEY, true)
+    : { status: 'miss' as const };
+  const coverageReadConfirmed = !evidenceEligible || coverageRead.status !== 'error';
+  const coverageBefore = evidenceEligible && coverageRead.status === 'hit'
+    ? parseForecastEvidenceCoverage(coverageRead.value)
+    : null;
+  // #7082 evidence archive publication counters (operator visibility).
+  let evidenceAttempted = 0;
+  let evidenceDropped = 0;
+  let trackingWritesConfirmed = true;
+  let evidenceWritesConfirmed = coverageReadConfirmed;
 
   // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
   // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
@@ -1380,6 +2010,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
     const commands: Array<Array<string | number>> = [];
+    const evidenceBatchCommands: Array<Array<string | number>> = [];
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i]!;
@@ -1402,6 +2033,38 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
           ['EXPIRE', trackKey, ttl],
           ['ZADD', accKey, nowStr, hash],
         );
+        // #7082 dual publication: forecast judging needs this story for up
+        // to 14 days, beyond the accumulator's retention contract. The
+        // evidence archive member is self-contained (title/link/description
+        // ride on the member; no story:track dependency) and only the
+        // full/English scope that judging actually reads is archived.
+        if (evidenceEligible) {
+          const evidenceMember = buildForecastEvidenceMember(
+            {
+              hash,
+              title: representative.title,
+              link: representative.link,
+              description: representative.description,
+              publishedAt: representative.publishedAt,
+            },
+            now,
+          );
+          if (evidenceMember) {
+            // The ZSet member is the stable story hash. Mutable lastSeen and
+            // representative fields live in a self-contained, independently
+            // retained record key, so refreshing one story cannot create a
+            // second index member or crowd unique evidence out of the cap.
+            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
+            evidenceAttempted += 1;
+          } else {
+            // Counted, but NOT folded into evidenceWritesConfirmed: nothing was
+            // attempted against Redis, so this says nothing about whether the
+            // writes that did happen were confirmed. evidenceDropped gates the
+            // coverage advance on its own below.
+            evidenceDropped += 1;
+          }
+        }
         // #4924: alias rows for every member exact-title hash -> the FINAL
         // (post-adoption) canonical, story-track TTL — next cycle's
         // adoption source. Includes the canonical's own hash.
@@ -1423,11 +2086,107 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       );
     }
 
-    await runRedisPipeline(commands);
+    // The two pipelines touch disjoint keyspaces and neither reads the other's
+    // result, so they run concurrently: this path is inside the digest's own
+    // OVERALL_DEADLINE_MS budget and serialising them doubled its Redis
+    // round-trips per batch.
+    //
+    // Archive keys are deliberately raw: the Railway resolver and backfill
+    // operate outside a Vercel deployment prefix and must read this same
+    // durable evidence namespace.
+    const [trackingResults, evidenceResults] = await Promise.all([
+      runRedisPipeline(commands),
+      evidenceEligible
+        ? runRedisPipeline(evidenceBatchCommands, true)
+        : Promise.resolve([]),
+    ]);
+    if (!redisPipelineConfirmed(trackingResults, commands.length)) trackingWritesConfirmed = false;
+    if (evidenceEligible) {
+      if (!redisPipelineConfirmed(evidenceResults, evidenceBatchCommands.length)) {
+        evidenceWritesConfirmed = false;
+      }
+    }
   }
 
-  // Refresh accumulator TTL once per build — 48h, shorter than STORY_TTL since digest cron only needs ~24h lookback.
-  await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
+  // Refresh accumulator TTL once per build. The TTL is abandoned-key cleanup
+  // only: member retention is the explicit prune below (#7082) — millions of
+  // expired members previously lived here forever because the TTL never
+  // removed them.
+  const accumulatorTtlCommands: Array<Array<string | number>> = [['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]];
+  const accumulatorTtlResults = await runRedisPipeline(accumulatorTtlCommands);
+  const accumulatorTtlConfirmed = redisPipelineConfirmed(accumulatorTtlResults, accumulatorTtlCommands.length);
+  let coverageAdvanced = false;
+  let coverageAfter = coverageBefore;
+  if (evidenceEligible && coverageBefore) {
+    const canAdvance = trackingWritesConfirmed && evidenceWritesConfirmed && evidenceDropped === 0;
+    // Even when this cycle cannot advance the window, re-SET the marker so its
+    // EX is refreshed. Otherwise a condition that recurs for 15 days (a feed
+    // that keeps emitting one unbuildable item, say) lets the marker EXPIRE,
+    // coverageBefore becomes null forever, and the only way back is another
+    // backfill run — a self-inflicted outage on top of a recoverable blip.
+    const advanced = advanceForecastEvidenceCoverage(coverageBefore, now);
+    coverageAfter = canAdvance && advanced ? advanced : coverageBefore;
+    const coverageCommands: Array<Array<string | number>> = [[
+      'SET',
+      FORECAST_EVIDENCE_COVERAGE_KEY,
+      JSON.stringify(coverageAfter),
+      'EX',
+      FORECAST_EVIDENCE_TTL_S,
+    ]];
+    const coverageResults = await runRedisPipeline(coverageCommands, true);
+    coverageAdvanced = canAdvance && redisPipelineConfirmed(coverageResults, coverageCommands.length);
+  }
+
+  // For the judged full/en accumulator, pruning is destructive migration:
+  // retain legacy evidence until backfill has installed a verified coverage
+  // marker AND this cycle's archive writes and coverage update are confirmed.
+  // Other accumulator scopes are not used by forecast judging.
+  const pruneAllowed = shouldPruneAccumulator({
+    evidenceEligible,
+    cutoverEnabled,
+    coverage: coverageAfter,
+    nowMs: now,
+    trackingWritesConfirmed,
+    evidenceWritesConfirmed,
+    coverageAdvanced,
+    accumulatorTtlConfirmed,
+  });
+  let pruneConfirmed = true;
+  if (pruneAllowed) {
+    const prune = accumulatorPruneBounds(now);
+    const pruneCommands: Array<Array<string | number>> = [['ZREMRANGEBYSCORE', accKey, prune.min, prune.max]];
+    const pruneResults = await runRedisPipeline(pruneCommands);
+    // A silently-failing prune is how an unbounded key stays unbounded while
+    // the operator log reports a healthy cutover.
+    pruneConfirmed = redisPipelineConfirmed(pruneResults, pruneCommands.length);
+  }
+  const archiveMaintenanceCommands: Array<Array<string | number>> = [];
+  if (evidenceEligible) {
+    // Rolling archive retention + TTL (contract + guard band).
+    const evidencePrune = evidencePruneBounds(now);
+    archiveMaintenanceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
+    archiveMaintenanceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
+  }
+  const archiveMaintenanceResults = await runRedisPipeline(archiveMaintenanceCommands, true);
+  const maintenanceConfirmed = redisPipelineConfirmed(archiveMaintenanceResults, archiveMaintenanceCommands.length);
+  if (evidenceEligible) {
+    // `published` counts what the confirmed pipeline actually wrote. Drops are
+    // reported separately — folding them in here reported published=0 for a
+    // cycle where every attempted member landed.
+    const published = evidenceWritesConfirmed ? evidenceAttempted : 0;
+    const message =
+      `[forecast-evidence] attempted=${evidenceAttempted} published=${published} dropped=${evidenceDropped} ` +
+      `coverage_read_confirmed=${coverageReadConfirmed} tracking_writes_confirmed=${trackingWritesConfirmed} ` +
+      `writes_confirmed=${evidenceWritesConfirmed} coverage_advanced=${coverageAdvanced} ` +
+      `accumulator_ttl_confirmed=${accumulatorTtlConfirmed} maintenance_confirmed=${maintenanceConfirmed} ` +
+      `accumulator_pruned=${pruneAllowed} accumulator_prune_confirmed=${pruneConfirmed} ` +
+      `cutover_enabled=${cutoverEnabled} cutover_verified=${pruneAllowed} ` +
+      `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`;
+    if (evidenceWritesConfirmed && coverageAdvanced && maintenanceConfirmed && pruneConfirmed) console.info(message);
+    else console.warn(message);
+  } else if (!pruneConfirmed) {
+    console.warn(`[forecast-evidence] accumulator prune unconfirmed key=${accKey}`);
+  }
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
@@ -1470,7 +2229,16 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   return { allEntries, batches };
 }
 
-async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
+async function buildDigest(
+  variant: string,
+  lang: string,
+  // #7084: the operator suppression set, threaded in so a revoked item is
+  // dropped BEFORE the per-category cap rather than after it. Filtering only
+  // at serve time left a hole: the revoked item had already taken a cap slot,
+  // so the category shipped 19 items and the 21st-ranked one was never
+  // promoted, while droppedCategoryCap still counted the item it displaced.
+  revokedUrls: ReadonlySet<string> = new Set(),
+): Promise<ListFeedDigestResponse> {
   const feedStatuses: Record<string, string> = {};
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
@@ -1709,8 +2477,13 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
       );
-      ledgerDrops.perCategoryCap += Math.max(0, items.length - MAX_ITEMS_PER_CATEGORY);
-      slicedByCategory.set(category, items.slice(0, MAX_ITEMS_PER_CATEGORY));
+      // Suppress BEFORE the cap so a revoked item never occupies a slot and
+      // the next-ranked item is promoted into it.
+      const servable = revokedUrls.size === 0
+        ? items
+        : items.filter((item) => typeof item.link !== 'string' || !revokedUrls.has(item.link));
+      ledgerDrops.perCategoryCap += Math.max(0, servable.length - MAX_ITEMS_PER_CATEGORY);
+      slicedByCategory.set(category, servable.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
 
     const allSliced = [...slicedByCategory.values()].flat();
@@ -1746,14 +2519,12 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
             lastSeen: now,
             mentionCount,
             sourceCount,
-            currentScore: stale?.currentScore ?? 0,
-            peakScore: stale?.peakScore ?? 0,
           };
           const storyMeta: ProtoStoryMeta = {
             firstSeen,
             mentionCount,
             sourceCount,
-            phase: derivePhase(merged),
+            phase: derivePhase(merged, now),
           };
           return toProtoItem(item, storyMeta);
         }),
@@ -1786,10 +2557,27 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       );
     }
 
+    // #7085 coverage block: one compact summary of the content served and
+    // the latest build attempt. Content identity (generatedAt) and attempt
+    // identity (attemptedAt) are separate on purpose — they diverge the day
+    // durable last-good serving lands (#7084). Counts only: no raw errors,
+    // feed URLs, hostnames, or per-host timings leave the server.
+    // This describes the BUILD; a replay is stamped by markFallbackCoverageStale.
+    const coverage = buildDigestCoverage({
+      entries: allEntries,
+      attemptOutcomes: attempts.attemptOutcomes,
+      itemsServed: allSliced.length,
+      publisherSources: allSliced.map((item) => publisherFamilyFor(item.originPublisher || item.source)),
+      deadlineAborted: deadlineController.signal.aborted,
+      drops: { ...ledgerDrops },
+      buildStartMs: buildStart,
+    });
+
     return {
       categories,
       feedStatuses,
       generatedAt: new Date().toISOString(),
+      coverage,
     };
   } finally {
     clearTimeout(deadlineTimeout);
@@ -1798,6 +2586,22 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
+  // than asserted against this file's own source text — a grep for
+  // `serveLastGood(...)` passes whether or not the function behaves.
+  publishAcceptedSnapshot,
+  serveLastGood,
+  readRevokedUrlSet,
+  suppressRevoked,
+  fallbackDigestCache,
+  markFallbackCoverageStale,
+  settleBeforeDeadline,
+  lastGoodStoreTesting,
+  beginDigestAttempt,
+  completeDigestAttempt,
+  publishFailedAttempt,
+  recoverFailedAttempt,
+  shouldStartDigestAttempt,
   buildDigestFeedBatches,
   parseRssXml,
   decodeXmlEntities,
@@ -1812,6 +2616,7 @@ export const __testing__ = {
   promoteDiplomacySeverity,
   computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
+  derivePhase,
   readStoryTracks,
   resolveMaxAgeMs,
   capLlmUpgrade,
@@ -1820,8 +2625,12 @@ export const __testing__ = {
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,
   RESPONSE_GUARD_BAND_MS,
+  RESPONSE_DEADLINE_MS,
   OVERALL_DEADLINE_MS,
   BATCH_CONCURRENCY,
+  redisPipelineConfirmed,
+  shouldPruneAccumulator,
+  writeStoryTracking,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

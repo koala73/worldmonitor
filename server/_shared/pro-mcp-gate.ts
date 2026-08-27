@@ -59,10 +59,10 @@ export type ProMcpEntitlement = {
 
 export type ProMcpGateDenial =
   /**
-   * The entitlement could not be verified, or a renewal re-check is in flight,
-   * or the provider confirmed a lapse. `denial.retryable` distinguishes the
-   * first two (retry) from the third (resubscribe) — callers must not flatten
-   * them, that flattening is #5600.
+   * The entitlement could not be verified or a renewal re-check is in flight.
+   * Provider-confirmed ended coverage is reclassified to `free_account` by
+   * `checkProMcpAccess`; callers must not flatten these retryable verification
+   * states into a terminal tier verdict (#5600).
    */
   | { kind: 'billing_verification'; denial: BillingVerificationDenial }
   /** A verified no-row or well-formed tier-0 account eligible at the MCP call site. */
@@ -205,10 +205,10 @@ export function checkProMcpAccess(
  * travels, in `X-Billing-Verification` and `error_description`, for monitoring
  * and support — it just does not fork the SPA's control flow three ways.
  *
- * `INSUFFICIENT_TIER` deliberately keeps covering a provider-confirmed lapse: it
- * IS a confirmed insufficient tier, retrying cannot fix it, and every existing
- * SPA/consumer branch for that code stays correct. Only the header is added, so
- * a lapse is distinguishable from a plain free account in logs.
+ * `checkProMcpAccess` normally reclassifies a provider-confirmed lapse to
+ * `free_account`, so the handshake callers do not render a denial for it. The
+ * non-retryable billing branch below remains defensive for an explicitly
+ * constructed legacy denial and preserves its machine-readable header.
  */
 export const GRANT_VERIFICATION_UNAVAILABLE_CODE = 'TIER_VERIFICATION_UNAVAILABLE';
 

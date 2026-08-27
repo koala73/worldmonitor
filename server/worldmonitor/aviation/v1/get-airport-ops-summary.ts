@@ -38,6 +38,9 @@ export async function getAirportOpsSummary(
         const summaries: AirportOpsSummary[] = [];
 
         // Read delay alerts from relay seed cache (no direct AviationStack call)
+        // PERF: seed read and NOTAM loader are independent — start the NOTAM
+        // fetch now so it overlaps the cache round-trip below.
+        const notamRead = loadNotamClosures();
         let alerts: AirportDelayAlert[] = [];
         let healthy = false;
         // Per-hub coverage the seeder recorded this tick (see #3707's fix to the
@@ -70,7 +73,7 @@ export async function getAirportOpsSummary(
         let notamRestrictedIcaos = new Set<string>();
         let notamReasons: Record<string, string> = {};
         try {
-            const notamResult = await loadNotamClosures();
+            const notamResult = await notamRead;
             if (notamResult) {
                 notamClosedIcaos = new Set(notamResult.closedIcaos);
                 notamRestrictedIcaos = new Set(notamResult.restrictedIcaos ?? []);

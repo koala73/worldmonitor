@@ -1879,6 +1879,15 @@ describe('security header guardrails', () => {
     assert.match(webMcpE2eSource, /window\.addEventListener\('unhandledrejection'/);
     assert.match(webMcpE2eSource, /lateLeakWindowMs/);
     assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
+    assert.match(webMcpE2eSource, /testInfo\.outputPath\(name\)/);
+    assert.match(webMcpE2eSource, /writeFile\(path/);
+    assert.match(webMcpE2eSource, /testInfo\.attach\(name, \{ path/);
+    assert.match(webMcpE2eSource, /webmcp-production-matrix\.json/);
+    assert.match(webMcpE2eSource, /build-hash\.txt/);
+    assert.match(webMcpE2eSource, /expect\(servedSha,[\s\S]*?\.toBe\(expectedDeployedSha\)/);
+    assert.match(webMcpE2eSource, /https:\/\/tech\.worldmonitor\.app\/embed/);
+    assert.match(webMcpE2eSource, /redirectHeaders\['origin-trial'\]/);
+    assert.match(playwrightConfigSource, /preserveOutput:\s*'always'/);
     assert.match(embedE2eSource, /WEBMCP_MIN_CHROME_MAJOR = 149/);
     assert.match(embedE2eSource, /WM_REQUIRE_WEBMCP requires Chrome/);
   });
@@ -1927,36 +1936,41 @@ describe('security header guardrails', () => {
     }
   });
 
-  it('enrolls only eligible production pages with exact-origin WebMCP trial tokens', () => {
+  it('enrolls only eligible production documents with exact-origin WebMCP trial tokens', () => {
     const rules = vercelConfig.headers.filter((entry) =>
       entry.headers?.some((header) => header.key.toLowerCase() === 'origin-trial')
     );
-    assert.equal(rules.length, WEBMCP_PRODUCTION_HOSTS.length * 3);
+    assert.equal(rules.length, 3 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
 
     for (const host of WEBMCP_PRODUCTION_HOSTS) {
       const hostPattern = '^' + host.replaceAll('.', '\\.') + '$';
       const hostRules = rules.filter((rule) =>
         rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
       );
+      const expectedSources = host === 'www.worldmonitor.app'
+        ? ['/', '/dashboard', '/dashboard.html']
+        : ['/dashboard', '/dashboard.html'];
       assert.deepEqual(
         hostRules.map((rule) => rule.source).sort(),
-        ['/', '/dashboard', '/dashboard.html'],
-        host + ' must enroll the homepage, canonical dashboard, and direct dashboard document',
+        expectedSources,
+        host + ' must enroll only documents that directly return WebMCP HTML',
       );
-      const rootRule = hostRules.find((rule) => rule.source === '/');
-      assert.ok(rootRule, host + ' must define a homepage origin-trial rule');
-      assert.deepEqual(
-        rootRule.missing,
-        [{ type: 'query', key: 'mode', value: 'agent' }],
-        host + ' must exclude the /?mode=agent JSON representation from enrollment',
-      );
-      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host }), true);
-      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'reader' } }), true);
-      assert.equal(
-        headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'agent' } }),
-        false,
-        host + ' must not attach an Origin-Trial token to /?mode=agent',
-      );
+      if (host === 'www.worldmonitor.app') {
+        const rootRule = hostRules.find((rule) => rule.source === '/');
+        assert.ok(rootRule, host + ' must define a homepage origin-trial rule');
+        assert.deepEqual(
+          rootRule.missing,
+          [{ type: 'query', key: 'mode', value: 'agent' }],
+          host + ' must exclude the /?mode=agent JSON representation from enrollment',
+        );
+        assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host }), true);
+        assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'reader' } }), true);
+        assert.equal(
+          headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'agent' } }),
+          false,
+          host + ' must not attach an Origin-Trial token to /?mode=agent',
+        );
+      }
       assert.equal(
         hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard', host })),
         true,
@@ -2028,6 +2042,38 @@ describe('security header guardrails', () => {
       getHeaderValue('Permissions-Policy'),
       'Self-hosted docker users must have the same Permissions-Policy as Vercel.'
     );
+  });
+
+  it('every shipped CSP directive name is a real CSP directive', () => {
+    // A detect-secrets pragma once leaked into the header value itself
+    // (`object-src 'none'; x-allowlist // pragma: allowlist secret;
+    // form-action ...`), which Chrome reported on every production page load
+    // as "Unrecognized Content-Security-Policy directive 'x-allowlist'". JSON
+    // has no comment syntax, so any such annotation ships to browsers.
+    const KNOWN_CSP_DIRECTIVES = new Set([
+      'base-uri', 'block-all-mixed-content', 'child-src', 'connect-src',
+      'default-src', 'font-src', 'form-action', 'frame-ancestors', 'frame-src',
+      'img-src', 'manifest-src', 'media-src', 'object-src', 'prefetch-src',
+      'report-to', 'report-uri', 'require-trusted-types-for', 'sandbox',
+      'script-src', 'script-src-attr', 'script-src-elem', 'style-src',
+      'style-src-attr', 'style-src-elem', 'trusted-types',
+      'upgrade-insecure-requests', 'worker-src',
+    ]);
+    const surfaces = [
+      ['vercel', getHeaderValue('Content-Security-Policy')],
+      ['docker/nginx', getNginxHeaderValue('Content-Security-Policy')],
+    ];
+    for (const [label, csp] of surfaces) {
+      assert.ok(csp, `${label} must define a Content-Security-Policy`);
+      for (const segment of csp.split(';')) {
+        const name = segment.trim().split(/\s+/)[0];
+        if (!name) continue;
+        assert.ok(
+          KNOWN_CSP_DIRECTIVES.has(name),
+          `${label} CSP ships unrecognized directive "${name}" — browsers ignore it and log an error on every page load`,
+        );
+      }
+    }
   });
 
   it('CSP connect-src does not allow unencrypted WebSocket (ws:)', () => {

@@ -8,7 +8,7 @@ Complete reference for every MCP tool. Use this alongside the [MCP Server overvi
 Every tool returns the standard MCP content-block format:
 
 ```json
-{ "jsonrpc": "2.0", "id": 1, "result": { "content": [{ "type": "text", "text": "{...json payload...}" }], "isError": false } }
+{ "jsonrpc": "2.0", "id": 1, "result": { "content": [{ "type": "text", "text": "{...json payload...}" }] } }
 ```
 
 Cache-backed tools (the majority) include `cached_at` (ISO timestamp) and `stale: boolean` in their JSON payload so you can reason about freshness.
@@ -22,7 +22,7 @@ export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth 
 If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"` in each example.
 
 <Tip>
-**Recently added** (May 2026): `get_displacement_data`, `get_health_signals`, `get_energy_intelligence`, `get_consumer_prices`, `get_tariff_trends`, `get_chokepoint_status` — six new bundled tools that exposed previously-cached domains via MCP.
+The registry grows over time — `tools/list` (or the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json)) is always the authoritative live inventory. Every tool section below carries an **Access** line (`free`, `free-account`, or `subscription`) matching the `_meta["worldmonitor/access"]` marker the server emits.
 </Tip>
 
 ## Discovering tools
@@ -44,7 +44,7 @@ Since v1.5.0, `tools/list` returns each tool's `description` truncated to the fi
 }
 ```
 
-Response — identical shape to a `tools/list` entry, with the full uncompressed `description` and the full `inputSchema.properties` text:
+Response — identical shape to a `tools/list` entry, with the full uncompressed `description` and the full `inputSchema.properties` text. Every entry also carries `_meta["worldmonitor/access"]` (the tier marker: `free`, `free-account`, or `subscription`), and UI-bearing tools add `_meta.ui.resourceUri`:
 
 ```json
 {
@@ -165,7 +165,7 @@ Universal arguments:
 
 ### `get_market_data`
 
-Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold and silver premiums), crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
+Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold and silver premiums), crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only — `symbols` filters that snapshot rather than looking up arbitrary tickers, so an unseeded ticker returns nothing instead of triggering a fetch.
 
 **Parameters (tool-specific):**
 
@@ -176,8 +176,9 @@ Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold 
 | `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** market and sector snapshots allow **30 min**; the daily physical-premium snapshot allows **72 hours** so one missed publish cycle or a market closure does not create a false stale alarm.
+- **Freshness budget:** the `stale` flag tracks the market and sector snapshots only (**30 min** each). The daily physical-premium snapshot is deliberately not wired into this flag — its staleness is monitored on `/api/health` — so read `physicalPremiums.updatedAt` when the age of that dataset specifically matters.
 - Sector `valuationCoverage` separates write age (`stale`) from completeness (`sourceStatus`: `ok`, `partial`, or `degraded`). `stale` describes the seed write, not the individual records — a freshly written payload can still contain older valuations. `valuationCount` and `expectedValuationCount` follow a `symbols` filter when one is supplied. `valuationCount` counts live and replayed records together; `currentValuationCount` gives the subset actually fetched this cycle and is omitted when every record is current. `staleValuationSymbols` lists symbols served from an older snapshot — those symbols **do** have values in `valuations`, and `lastGood.fetchedAt` gives their age (bounded by a 7-day snapshot TTL). `unavailableSymbols` lists symbols with no valuation published at all, and is disjoint from `staleValuationSymbols`. `lastGood` covers both whole records and borrowed return metrics, and includes that snapshot's timestamp. `sourceStatus` is `degraded` when no record is current, `partial` when some are stale or missing. `valuationDiagnostics` is bounded per-symbol route metadata across the `v7Quote`, `v7QuoteBatch`, and `quoteSummary` routes, showing independent direct/proxy outcomes, response classes, and missing fields; it never contains credentials.
 
 <CodeGroup>
@@ -207,7 +208,8 @@ Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel
 | `country` | string | Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code. |
 | `limit` | number | Cap each list dataset (calendar, spending, earnings) to at most this many items (default 30, pass 0 for no cap). |
 
-- **API endpoints:** `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
+- **API endpoints:** `GET /api/economic/v1/get-china-macro-snapshot`, `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 - **Per-dataset caveat:** the single `stale` flag is derived from a subset of these sub-datasets, so it is not a per-dataset guarantee. `cbr-rates` is not one of them — it is published daily on a 3-day staleness budget with a 14-day content-age contract, both monitored on `/api/health` rather than through this flag. Read `cbr-rates.effectiveDate` when the age of that dataset specifically matters.
@@ -247,6 +249,7 @@ Search active global public-procurement opportunities through the canonical Pro-
 | `cursor` | string | Opaque `nextCursor` from the preceding result; keep the same filters and sort while paging. |
 
 - **API endpoint:** `GET /api/economic/v1/list-global-tenders`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** bounded canonical-route proxy — Pro entitlement remains enforced by the downstream route; no bootstrap or direct-cache exposure.
 - **Output budget:** 10 compact records by default, at most 25. The result retains `nextCursor`, `total`, `appliedFilters`, `countryCoverage`, `availability`, snapshot time, and per-source health summaries. An empty `nextCursor` means there are no further pages.
 
@@ -285,6 +288,7 @@ Per-company corporate intelligence from SEC EDGAR and market data (#5695). Compa
 | `limit` | integer | Result cap: up to 25 for `filings-search`, up to 100 for `material-events`. A value above the view's own maximum is rejected rather than silently clamped. Ignored by `enrichment` and `signals`. |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-company-enrichment`, `GET /api/intelligence/v1/list-company-signals`, `GET /api/intelligence/v1/search-sec-filings`, `GET /api/intelligence/v1/list-material-events`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** canonical-route proxy — `enrichment` fans out to SEC submissions, Finnhub profile + earnings surprises, and news mentions; `signals` uses timestamped SEC filings + news (not fiscal period ends). Each upstream is independently cached. `filings-search` proxies EDGAR full-text search; `material-events` reads the seeded market-wide 8-K stream (30-minute cadence).
 - **Freshness:** every view's payload carries its own timestamp (`enrichedAtMs`, `discoveredAtMs`, `fetchedAtMs`); `material-events.fetchedAtMs` is the seed time of the stream snapshot.
 
@@ -315,6 +319,7 @@ Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly caden
 | `limit` | integer | Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **70 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -345,6 +350,7 @@ Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU membe
 | `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **50 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -375,6 +381,7 @@ Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 
 | `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **14 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -405,6 +412,7 @@ Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl
 | `limit` | integer | Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -436,8 +444,9 @@ Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index,
 | `limit` | number | Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **9 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per sub-dataset — tariffs **7 h**, BigMac **7 d**, FAO FFPI and national debt **60 d** each. The single `stale` flag ORs all four checks: it flips as soon as any one sub-dataset exceeds its own budget, tariffs in practice being the tightest.
 
 <CodeGroup>
 
@@ -468,6 +477,7 @@ WTO merchandise trade flows for one reporting country versus the World, over a c
 **Response distinctions:** `unavailableReason` is the closed `TradeFlowUnavailableReason` enum from the RPC. `TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer — the combination is simply outside seeded coverage, a retry cannot help. Every other non-UNSPECIFIED reason names a fault (`seed_missing`, `coverage_unknown`, `cache_unavailable`), with `upstreamUnavailable: true`.
 
 - **API endpoint:** `GET /api/trade/v1/get-trade-flows`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** RPC proxy over the canonical trade-flows route (the handler owns window slicing and miss classification).
 - **Freshness budget:** up to **7 h** before `stale` (6 h seeder cadence plus one hour of grace).
 
@@ -497,7 +507,8 @@ Per-country consumer-prices intelligence: 30-day overview, category-level inflat
 | `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code. Currently supported: AE (case-insensitive). |
 
 - **API endpoints:** `GET /api/consumer-prices/v1/get-consumer-price-freshness`, `GET /api/consumer-prices/v1/get-consumer-price-overview`, `GET /api/consumer-prices/v1/list-consumer-price-categories`, `GET /api/consumer-prices/v1/list-consumer-price-movers`, `GET /api/consumer-prices/v1/list-retailer-price-spreads`
-- **Kind:** hybrid — reads cache keys directly (sub-second) but requires an input parameter to select the slice.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC tool that reads Upstash directly (sub-second) — requires an input parameter to select the slice. Despite the cache-speed reads, it is an `_execute` tool, which is why its access class is `subscription` and it takes no `summary` argument.
 - **Freshness budget:** up to **25 h** per slice (24 h cron + 1 h grace) before `stale: true` is flagged.
 
 <CodeGroup>
@@ -527,6 +538,7 @@ USDA PSD cereal stocks-to-use by marketing year. Ask for a country plus optional
 | `commodity` | string | no | `wheat`, `corn`, `rice`, `soybeans`, `barley`, or `palmOil` (note the camelCase). Empty = all six. |
 
 - **API endpoints:** `GET /api/resilience/v1/get-food-stocks`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** RPC proxy — the handler owns WORLD vs ISO-2 and commodity filtering.
 - **Freshness budget:** oldest world marketing year present (WASDE monthly cycle; 60-day fetch-age / 120-day content-age).
 
@@ -568,6 +580,7 @@ Country age structure, education capacity, and industrial-workforce observations
 | `country_code` | string | yes | ISO 3166-1 alpha-2 country code, for example `DE`. Case-insensitive. |
 
 - **API endpoint:** `GET /api/resilience/v1/get-demographics-capability`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** subscription RPC proxy over the annual demographics seed.
 - **Freshness:** read each observation's `year`; it is the source observation year, not the seed run year. Stage metadata reports whether the current snapshot is `fresh`, retained a last-good stage, or is unavailable.
 
@@ -601,7 +614,8 @@ Country shares of mine and refinery production, plus HHI, from the annual USGS M
 | `stage` | string: mine / refinery | no | Restrict to one stage |
 
 - **API endpoints:** `GET /api/supply-chain/v1/get-mineral-production`
-- **Kind:** cache read — Redis seed `supply-chain:mineral-production:v1`.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC fetch — proxies `GET /api/supply-chain/v1/get-mineral-production`, which serves the Redis seed `supply-chain:mineral-production:v1`. An `_execute` tool, hence `subscription` access and no `summary` argument.
 - **Freshness budget:** annual MCS edition. Withheld USGS values stay flagged and are never treated as zero.
 
 <CodeGroup>
@@ -631,7 +645,8 @@ Global mining sites with coordinates, operator, mineral type, and production sta
 | `country` | string | no | Filter by country name (e.g. "Australia", "Chile") |
 
 - **API endpoints:** none — this tool reads no cache and makes no HTTP fetch.
-- **Kind:** static registry — filters the bundled `MINING_SITES_RAW` constant (in-memory, ships with the MCP server's edge bundle). Sub-millisecond, no upstream call. The dataset updates only when the MCP server is redeployed with a refreshed registry.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** static registry — filters the bundled `MINING_SITES_RAW` constant (in-memory, ships with the MCP server's edge bundle). Sub-millisecond, no upstream call. The dataset updates only when the MCP server is redeployed with a refreshed registry. Implemented as an `_execute` tool, so its access class is `subscription` and it takes no `summary` argument despite making no fetch.
 
 <CodeGroup>
 
@@ -662,6 +677,7 @@ Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), fin
 | `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -695,8 +711,9 @@ Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, e
 | `limit` | number | Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **3 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per slice — most daily-seeded slices (electricity prices, Ember, gas storage, fuel shortages) allow **48 h** and EIA petroleum **72 h**; slower registries (disruptions, renewable/fossil shares, crisis policies) allow 7 d to ~400 d. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
 
 <CodeGroup>
 
@@ -728,8 +745,9 @@ Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, a
 | `limit` | number | Cap each event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per slice — UCDP conflict events **30 min**, unrest events **2 h**. The single `stale` flag ORs both checks, so it flips as soon as either slice exceeds its own budget.
 
 <CodeGroup>
 
@@ -760,6 +778,7 @@ Toronto Police Service Major Crime Indicators records. These are retrospective r
 | `limit` | `number` | Maximum rows to return, from 1 to 100 (default 50). |
 
 - **API endpoints:** `GET /api/safety/v1/get-toronto-safety`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** bounded cache read from the on-demand TPS Major Crime Indicators snapshot.
 - **Freshness budget:** up to **14 days** before `stale: true` is flagged; source-content freshness is also validated before the canonical snapshot is published.
 
@@ -792,6 +811,7 @@ Toronto Police Service Calls for Service Attended annual aggregates. These are n
 | `limit` | `number` | Maximum rows to return, from 1 to 100 (default 50). |
 
 - **API endpoints:** `GET /api/safety/v1/get-toronto-safety`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** bounded cache read from the on-demand TPS Calls for Service Attended snapshot.
 - **Freshness budget:** up to **14 days** before `stale: true` is flagged; source-content freshness is also validated before the canonical snapshot is published.
 
@@ -821,6 +841,7 @@ Structured risk intelligence for a specific country: Composite Instability Index
 | `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code, e.g. "RU", "IR", "CN", "UA" |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-risk`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **8.0s**.
 
 <CodeGroup>
@@ -851,6 +872,7 @@ Curated public news-account posts from monitored X accounts. Returns permalink p
 | `account` | string | no | Optional account handle without @ |
 
 - **API endpoints:** `GET /api/intelligence/v1/list-x-feed`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **10.0s**.
 - **Content policy:** post text is R4. MCP/embed partners receive facts + permalink only.
 
@@ -884,6 +906,7 @@ dependency?” TIV is a transfer-volume indicator, not a financial value.
 | `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code, for example `UA`, `DE`, or `IN`. |
 
 - **API endpoint:** `GET /api/military/v1/get-defense-industrial-base`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC backed by two annual Redis snapshots.
 - **Freshness:** `industrialFetchedAt` and `supplierFetchedAt` report the two source clocks separately. `supplierRetained` identifies an importer row preserved after a partial SIPRI failure; `fetchedAt` is the older clock among the values served. Seeder liveness alarms after 28 days, and source observation years are checked separately against the annual content-age budget.
 - **Mapping:** `supplierMappingCoverage` reports the share of positive supplier TIV mapped to ISO2 suppliers. Supplier shares and HHI keep unmapped positive TIV in the denominator.
@@ -912,6 +935,7 @@ AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitic
 | `framework` | string | no | Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT) |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-intel-brief`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (2s context-digest fetch + 22s brief generation, sequential).
 - **Sources:** returns a bounded `sources` array with original article links from the digest items used to ground the country context. URLs are copied from feed data, not generated by the LLM.
 - **Corroboration:** returns a separate `groundingStories` array for the digest articles used as grounding, each with `corroborationCount` (distinct outlets carrying the story at digest time), `mentionCount`, and lifecycle `storyPhase`. It is independent of `sources`, which may instead carry the server-side grounding set, and is empty when the digest read failed. Cite from `sources`; use `groundingStories` to weigh how well-reported the underlying claims are.
@@ -948,9 +972,10 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 | `limit` | number | Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). Applied AFTER query and min_importance, so a capped list is drawn from the matches. |
 
 - **API endpoints:** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Corroboration:** every top story carries `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, the contributing outlet names in `sources`, and every clustered headline in `memberTitles`, alongside `lastUpdated`, `upstreamImportanceScore`, `effectiveImportanceScore`, and `credibilityScore` (0-100 source reliability, distinct from importance; state-controlled media is capped at 40).
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per slice — news insights **30 min**, GDELT intel **45 min**, cross-source signals **60 min**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
 
 <CodeGroup>
 
@@ -978,6 +1003,7 @@ Classify a supplied news headline or short text into a threat category and sever
 | `text` | string (required) | Headline or short excerpt to classify, 1-500 characters. Longer input is rejected with an `error`, not truncated. |
 
 - **API endpoint:** `GET /api/intelligence/v1/classify-event`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** bounded canonical-route proxy over an LLM classifier. This op was previously parity-excluded as `llm-passthrough`; the 24h per-title cache absorbs repeats and the classifier is capped at 50 output tokens.
 - **Quota:** standard — every call consumes the MCP daily reservation for OAuth and dashboard-issued `wm_…` key contexts (50/UTC day by default). Only legacy operator keys explicitly allowlisted by the deployment skip that daily reservation; every authenticated context remains bounded by the 60 requests/minute limiter.
 
@@ -1005,10 +1031,12 @@ Deterministic named-entity extraction shared with the dashboard: registry entiti
 | Name | Type | Description |
 |------|------|-------------|
 | `text` | string | Optional text to extract from, max 2048 characters (longer input is rejected with an `error`). When omitted, the tool aggregates entities across the current headline digest instead. |
-| `category` | string (enum) | In headlines mode, restrict aggregation to one full-digest category (`politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`). Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
+| `variant` | `string: full / tech` | In headlines mode, which digest to aggregate. Defaults to `full`; use `tech` for the Tech dashboard categories. Ignored in text mode. |
+| `category` | string (enum) | In headlines mode, restrict aggregation to one category of the selected `variant`. `full`: `politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`. `tech`: `tech`, `ai`, `startups`, `vcblogs`, `regionalStartups`, `unicorns`, `accelerators`, `security`, `policy`, `github`, `funding`, `cloud`, `layoffs`, `finance`, `dev`, `ipo`, `producthunt`, `hardware`, `outages`. Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
 | `limit` | integer | Maximum entities per list (1-50). Defaults to 20. |
 
 - **API endpoint:** `GET /api/news/v1/list-feed-digest` (headlines mode only; text mode performs no fetch).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** deterministic local compute over the shared extraction cores. In headlines mode, entities aggregate to `mentionCount`/`avgConfidence`; in text mode each match reports `matchType`, `matchedText`, and `confidence`.
 - **Quota:** standard — every call consumes the MCP daily reservation.
 
@@ -1037,10 +1065,12 @@ Current topic clusters computed over the live headline digest with the same Jacc
 |------|------|-------------|
 | `limit` | integer | Maximum clusters returned (1-25). Defaults to 10. |
 | `min_sources` | integer | Only return clusters carrying at least this many **distinct outlets** (1-10) — real corroboration, not one outlet filing twice. Defaults to 1. |
-| `category` | string (enum) | Restrict clustering to one full-digest category (`politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`). Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
+| `variant` | `string: full / tech` | Which headline digest to cluster. Defaults to `full`; use `tech` for the Tech dashboard categories. |
+| `category` | string (enum) | Restrict clustering to one category of the selected `variant`. `full`: `politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`. `tech`: `tech`, `ai`, `startups`, `vcblogs`, `regionalStartups`, `unicorns`, `accelerators`, `security`, `policy`, `github`, `funding`, `cloud`, `layoffs`, `finance`, `dev`, `ipo`, `producthunt`, `hardware`, `outages`. Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
 | `query` | string | Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Member headlines are matched too, because the primary is recency-picked — the searched term often sits on a sibling headline. Filters the LIVE digest window only, not a historical index. Applied before `limit`, so a capped list is drawn from the matches. |
 
 - **API endpoint:** `GET /api/news/v1/list-feed-digest`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** deterministic local compute — clustering runs per call over the ~150-200 digest headlines (CDN/Redis-cached upstream, 15-min cadence).
 - **Quota:** standard — every call consumes the MCP daily reservation.
 
@@ -1072,6 +1102,7 @@ Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using th
 | `limit` | integer | Maximum spikes returned (1-25). Defaults to 10. |
 
 - **API endpoint:** none — reads the story accumulator and story-track keys from Redis directly; no HTTP endpoint is proxied.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** deterministic local compute with a 10-minute Redis result cache. `note` is present when the accumulator is unavailable/empty or the story store was only partially readable — a partial read is never cached, so a transient Redis fault cannot serve wrong spikes for the rest of the TTL.
 - **Quota:** standard — every call consumes the MCP daily reservation.
 
@@ -1104,6 +1135,7 @@ Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA kno
 | `limit` | number | Cap the threat list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **4 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1136,6 +1168,7 @@ OFAC SDN sanctioned entities list and sanctions pressure scores by country. Usef
 | `limit` | number | Cap the entity list and recent pressure entries to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1166,6 +1199,7 @@ Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and 
 | `limit` | number | Cap the post list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-social-velocity`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1198,8 +1232,9 @@ Temporal anomaly watch: current event counts vs day-of-week and seasonal baselin
 | `limit` | number | Cap the anomaly list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only; the REST baseline endpoints are write-through and excluded from parity).
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **45 min** before `stale: true` is flagged (the producer refreshes hourly and is kept warm by the infra seeder).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache-only read — sub-second response from Redis bootstrap cache. MCP calls do not invoke the producer or trigger a rebuild.
+- **Freshness budget:** up to **45 min** before `stale: true` is flagged. Only traffic to the underlying producer route/RPC (`GET /api/infrastructure/v1/list-temporal-anomalies`) triggers an on-demand rebuild once the snapshot is older than 20 min. `cached_at` records that rebuild — not the time of the MCP call — so it advances only when the producer route rebuilds the snapshot. With no traffic to that route, the request-driven stamp can age past the budget.
 
 <CodeGroup>
 
@@ -1229,6 +1264,7 @@ Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored
 | `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only; the underlying earthquake list is covered by `get_natural_disasters`).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1255,12 +1291,13 @@ Geographic signal convergence: one-degree grid cells where protests, military fl
 
 | Name | Type | Description |
 |------|------|-------------|
-| `lat` | number | Latitude of the area of interest; requires lon and radius_km as well. |
-| `lon` | number | Longitude of the area of interest; requires lat and radius_km as well. |
-| `radius_km` | number | Radius in km around lat/lon to keep alerts for; requires lat and lon. |
+| `lat` | number | Latitude of the area of interest (-90 to 90); requires lon and radius_km as well. |
+| `lon` | number | Longitude of the area of interest (-180 to 180); requires lat and radius_km as well. |
+| `radius_km` | number | Radius in km around lat/lon to keep alerts for (above 0, at most 20000); requires lat and lon. |
 | `min_domains` | number | Distinct signal domains required per cell, 2-5 (default 3). With the current four feeds, 5 is a compatibility safety threshold that yields no alerts. |
 
 - **API endpoints:** none (MCP-only derived analysis).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
 - **Freshness budget:** per-feed (flights 30 min, unrest 120 min, earthquakes 30 min, fleet 720 min); `stale: true` when any feed exceeds its budget.
 
@@ -1291,6 +1328,7 @@ Focal-point detection: entities where news coverage and live map signals converg
 | `limit` | number | Cap the focal point list (default 10, pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only derived analysis).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
 - **Freshness budget:** up to **30 min** per contributing feed before `stale: true`.
 
@@ -1321,6 +1359,7 @@ Infrastructure cascade simulation: breadth-first failure propagation across the 
 | `disruption_level` | number | Initial failure severity between 0.1 and 1 (default 1). |
 
 - **API endpoints:** none (MCP-only derived analysis).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis — dependency graph built per request from the seeded cable table.
 - **Freshness budget:** up to **25200 min** (~17.5 days) for the weekly cable table before `stale: true`.
 
@@ -1350,6 +1389,7 @@ Military surge watch: per-theater aircraft postures (fighters, tankers, AWACS, r
 | `theater` | string | Filter to one theater by id or name substring (case-insensitive). |
 
 - **API endpoints:** none (MCP-only derived analysis; posture aggregates are also served by `get_military_posture`).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
 - **Freshness budget:** flights **30 min**, theater posture **60 min** before `stale: true`.
 
@@ -1384,6 +1424,7 @@ Population exposure: estimated people within the impact radius of active earthqu
 | `limit` | number | Cap the enriched event list in events mode (default 20, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/displacement/v1/get-population-exposure`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis — shared exposure core; events mode reads Redis seed caches.
 - **Freshness budget:** per-feed (earthquakes 30 min, wildfires 360 min, conflicts 1440 min); point and countries modes are computed, `cached_at: null`.
 
@@ -1413,6 +1454,7 @@ Cross-domain alert digest: every threshold trip across seven domains (country in
 | `view` | string: today / weekly | today lists current threshold trips (default); weekly adds trend context. |
 
 - **API endpoints:** none (MCP-only derived analysis).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis — shared digest core over seven Redis seed caches.
 - **Freshness budget:** per-feed (30-360 min); `stale: true` when any contributing feed exceeds its budget.
 
@@ -1443,6 +1485,7 @@ Hotspot escalation scores: the 29 curated intelligence hotspots ranked on the do
 | `limit` | number | Cap the ranked hotspot list (default 29, the full curated set; pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only derived analysis).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis — shared dashboard engine over Redis seed caches.
 - **Freshness budget:** up to **30 min** for news/risk/flights, **120 min** for unrest before `stale: true`.
 
@@ -1477,6 +1520,7 @@ does not expose detailed bilateral trade rows or operator-only source health.
 
 - **Parameters:** none, apart from the optional common `jmespath` projection.
 - **API endpoint:** `GET /api/intelligence/v1/get-china-decision-signals`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** canonical RPC over the Railway-composed cache.
 - **Refresh cadence:** every **15 min**; each group can degrade independently.
 
@@ -1508,6 +1552,7 @@ Theater posture assessment and military risk scores. Reflects aggregated militar
 | `limit` | number | Cap the theaters list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/military/v1/get-theater-posture`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **2 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1539,6 +1584,7 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 | `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead. |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **12 h** for chokepoint flows, **14 d** for the PortWatch chokepoint reference, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
 - **Per-country content freshness (PortWatch slice):** `stale: true` also flags when a decision-critical country's own observation (`CN`/`HK`) is older than **72 h**, even though the run's heartbeat is fresh and all 174 countries are published. The seeder reuses a cached country payload while upstream `max(date)` has not advanced, so transport age and record count both read healthy while an individual country's data is days old. This mirrors the `STALE_CONTENT` verdict on `/api/health` for the same seed key — see [Health endpoints](/health-endpoints). `stale` stays a single boolean, so it does not say which dimension tripped; `/api/health` names the stale country.
@@ -1570,6 +1616,7 @@ Positive geopolitical events: diplomatic agreements, humanitarian aid, developme
 | `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/positive-events/v1/list-positive-geo-events`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1620,6 +1667,7 @@ Semantic search over the stored history, ranked by similarity to a free-text que
 | `limit` | integer | no | Maximum matches. MCP returns 16 when omitted and caps at 16 to stay within its output budget |
 
 - **API endpoint:** `POST /api/intelligence/v1/search-intel-history`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — embeds the query, then ranks the history store. Edge-runtime timeout: **12.0s**.
 - **Cost note:** every call spends one embeddings round-trip, so the route is rate-limited fail-closed. Prefer one well-phrased query over several near-duplicates.
 
@@ -1642,7 +1690,7 @@ curl -s https://worldmonitor.app/mcp \
 
 Reverse-chronological read of the stored history for one scope. Pure index read — no embedding and no ranking — so ordering is by `occurredAt` alone and every record's `score` is `0`.
 
-At least one of `domain` or `country` is required. Those are the two indexed scopes on the store; an unscoped read has no index to serve it and is rejected with an argument error rather than run as a table scan. Supplying both narrows to their intersection.
+At least one of `domain` or `country` is required. Those are the two indexed scopes on the store; an unscoped read has no index to serve it and is rejected rather than run as a table scan. The rule is enforced inside the tool body, not by the input schema (`required` is empty), so schema-validating clients will not pre-catch it — the server rejects the call with a JSON-RPC `-32603` internal error whose message names the missing argument. Supplying both narrows to their intersection.
 
 **Parameters:**
 
@@ -1652,9 +1700,10 @@ At least one of `domain` or `country` is required. Those are the two indexed sco
 | `country` | string | one of the two | ISO 3166-1 alpha-2, uppercase, e.g. "UA". Required unless `domain` is set |
 | `from` | number | no | Earliest `occurredAt`, Unix epoch milliseconds, inclusive. Omit for no lower bound |
 | `to` | number | no | Latest `occurredAt`, Unix epoch milliseconds, inclusive. Omit for no upper bound |
-| `limit` | integer | no | Maximum events. The route returns 50 when omitted and caps at 200 |
+| `limit` | integer | no | Maximum events. Returns 40 when omitted and caps at 40 — the schema declares `maximum: 40`, and larger values are clamped |
 
 - **API endpoint:** `GET /api/intelligence/v1/get-intel-timeline`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — one store read, no embedding. Edge-runtime timeout: **8.0s**.
 
 <CodeGroup>
@@ -1688,6 +1737,7 @@ Leaving `country` unset is usually the right choice — a precedent elsewhere is
 | `limit` | integer | no | Maximum precedents. MCP returns 8 when omitted and caps at 8 to stay within its output budget |
 
 - **API endpoint:** `POST /api/intelligence/v1/get-similar-events`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — embeds the situation text, then ranks the history store. Edge-runtime timeout: **12.0s**.
 - **Cost note:** embeddings-backed like `search_intel_history`, so the same fail-closed rate policy applies.
 
@@ -1722,6 +1772,7 @@ Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers F
 | `limit` | number | Cap the alert list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1752,6 +1803,7 @@ Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and
 | `type` | string (all / civilian / military) | no | Filter: all flights (default), civilian only, or military only |
 
 - **API endpoints:** `GET /api/aviation/v1/track-aircraft`, `GET /api/military/v1/list-military-flights`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **8.0s**.
 
 <CodeGroup>
@@ -1780,6 +1832,7 @@ Live vessel traffic and maritime disruptions for a country's waters. Returns AIS
 | `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code (e.g. "AE", "SA", "JP", "EG") |
 
 - **API endpoints:** `GET /api/maritime/v1/get-vessel-snapshot`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **8.0s**.
 
 <CodeGroup>
@@ -1811,6 +1864,7 @@ Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral tr
 | `limit` | number | Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **2 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1842,6 +1896,7 @@ Internet infrastructure health: Cloudflare Radar outages and service status for 
 | `limit` | number | Cap the outage list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/infrastructure/v1/list-internet-outages`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -1878,6 +1933,7 @@ Search Google Flights for real-time flight options between two airports on a spe
 | `sort_by` | string | no | Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional) |
 
 - **API endpoints:** `GET /api/aviation/v1/search-google-flights`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
 <CodeGroup>
@@ -1914,6 +1970,7 @@ Search Google Flights date-grid pricing across a date range. Returns cheapest pr
 | `sort_by_price` | boolean | no | Sort results by price ascending (default false, sorts by date) |
 
 - **API endpoints:** `GET /api/aviation/v1/search-google-dates`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
 <CodeGroup>
@@ -1946,8 +2003,9 @@ Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normal
 | `limit` | number | Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **2 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per slice — weather alerts **45 min**, climate news intelligence **90 min**, anomalies **2 h**, air quality **3 h**, ocean/ice **24 h**, CO2 monitoring **48 h**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
 
 <CodeGroup>
 
@@ -1978,6 +2036,7 @@ Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires
 | `limit` | number | Cap each hazard list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -2009,6 +2068,7 @@ Radiation observation levels from global monitoring stations. Flags anomalous re
 | `limit` | number | Cap the observation list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/radiation/v1/list-radiation-observations`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -2040,6 +2100,7 @@ Tech and research event signals: emerging technology events bootstrap data from 
 | `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/research/v1/list-tech-events`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **8 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -2075,8 +2136,9 @@ Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings
 | `limit` | number | Cap the outbreak and station lists to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/health/v1/list-air-quality-alerts`, `GET /api/health/v1/list-disease-outbreaks`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **2 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** per slice — air quality **3 h**, disease outbreaks **48 h**. The single `stale` flag ORs both checks, so it flips as soon as either slice exceeds its own budget.
 
 <CodeGroup>
 
@@ -2107,6 +2169,7 @@ Refugee and IDP counts by country (UNHCR annual data).
 | `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **2.5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -2137,7 +2200,8 @@ Citation-grounded world intelligence brief from the same precomputed `news:insig
 |------|------|---------:|-------------|
 | `geo_context` | string | no | Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request. |
 
-- **API endpoints:** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` — authenticated gateway read of the same `news:insights:v1` payload used by the dashboard.
+- **API endpoints:** `GET /api/infrastructure/v1/get-bootstrap-data` (called with `?keys=insights`) — authenticated gateway read of the same `news:insights:v1` payload used by the dashboard.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** cache-backed RPC — returns the latest accepted seeder snapshot and fails closed when it is missing, stale, or degraded. No request-time LLM call.
 - **Sources:** returns the bounded `worldBriefSources` array published with the seeded payload in producer order. URLs are copied from explicit source records, not generated at MCP execution time; empty URL fallbacks are retained so citation indexes cannot shift.
 - **Corroboration:** each entry in `headlines` has an index-aligned entry in `topStories` (`topStories[i]` describes `headlines[i]`) carrying `sourceCount`, `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, and the contributing outlet names in `sources` (capped at 12). All of it is published by the insights seeder, so nothing is computed per request. Note that this per-story `sources` is a list of outlet names, unlike the tool's top-level `sources`, which carries citation records. `memberTitles` is deliberately not returned here — it is available on `get_news_intelligence`, which has a larger output budget.
@@ -2170,6 +2234,7 @@ AI geopolitical situation analysis (DeductionPanel). Provide a query and optiona
 | `framework` | string | no | Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT, Porter's Five Forces) |
 
 - **API endpoints:** `POST /api/intelligence/v1/deduct-situation`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
 <CodeGroup>
@@ -2199,6 +2264,7 @@ Generate live AI geopolitical and economic forecasts. Unlike get_forecast_predic
 | `region` | string | no | Geographic region filter, e.g. "Middle East", "Europe", "Asia Pacific", or empty for global |
 
 - **API endpoints:** no public OpenAPI row; runtime proxies `POST /api/forecast/v1/get-forecasts` (the OpenAPI spec only declares `GET` on that path, which is covered by `get_forecast_predictions` — this tool's POST variant runs a fresh forecast).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
 <CodeGroup>
@@ -2229,6 +2295,7 @@ AI-generated geopolitical and economic forecasts from WorldMonitor's predictive 
 | `limit` | number | Cap the forecast list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
@@ -2254,6 +2321,7 @@ Forecast resolution scorecard with calibration, Brier/log score, domain and gene
 **Parameters (tool-specific):** none
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecast-scorecard`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **36 h** before `stale: true` is flagged (daily resolver cadence with missed-cron tolerance).
 
@@ -2289,6 +2357,7 @@ A provider is a host; an outlet is a public editorial source identity. Only 3 of
 |-----------|------|-------------|
 | `view` | string (enum) | `summary` (default) returns counts only and is small. `providers` and `outlets` enumerate. |
 | `kind` | string | `providers` view only — restrict to one kind. |
+| `country` | string | `providers` view only — restrict by publisher origin using a two-letter country code or `intl` for international sources. Case-insensitive. |
 | `tier` | integer 1-4 | `outlets` view only — restrict to one editorial tier. Outlets with no declared tier are never returned by this filter. |
 | `risk` | string (enum) | `outlets` view only — `low` / `medium` / `high` / `unknown`. |
 | `platform` | string (enum) | `outlets` view only — restrict to sources configured on a platform such as `telegram`. |
@@ -2300,7 +2369,7 @@ A provider is a host; an outlet is a public editorial source identity. Only 3 of
 - **Truncation is visible.** Enumerated views return `matched` alongside `returned`; the full provider inventory does not fit one response.
 - **API endpoints:** none — committed-registry read, no upstream call.
 - **Kind:** deterministic local compute. No LLM, no freshness budget.
-- **Access: free.** This is the one tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool carries either `"free-account"` for cache-backed signed-in allowance eligibility or `"subscription"` for Pro-only access.
+- **Access: free.** This is the one tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool carries either `"free-account"` (direct cache reads, callable by any signed-in account within the allowance) or `"subscription"` (Pro-only — every tool with server-side execute logic, including a few that never fetch upstream). Each tool section on this page states its class on its **Access** line.
 
 ---
 
@@ -2312,7 +2381,7 @@ Returns the full uncompressed definition of any other tool by name. Use when the
 |-----------|------|----------|-------------|
 | `tool_name` | string | **yes** | Exact tool name from `tools/list` (e.g. `"get_market_data"`). |
 
-**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool).
+**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool). `_meta` always carries the `worldmonitor/access` tier marker, plus `ui.resourceUri` on UI-bearing tools.
 
 **Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
 
@@ -2320,6 +2389,7 @@ Returns the full uncompressed definition of any other tool by name. Use when the
 - `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
 
 - **API endpoints:** none — server-local lookup, no upstream call.
+- **Access:** `free-account` — callable by any signed-in account; exempt from both the free-account allowance and the Pro daily quota (the per-minute rate limit still applies).
 - **Kind:** metadata lookup — sub-millisecond, no Redis, no LLM.
 - **Quota:** **EXEMPT** from the Pro daily quota (50/day). Per-minute rate limit (60/min) still applies.
 

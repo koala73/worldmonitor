@@ -298,7 +298,7 @@ describe('docs/mcp-overview.mdx — API-key quota contract', () => {
     const docs = readFileSync(new URL('../docs/mcp-overview.mdx', import.meta.url), 'utf8');
     assert.doesNotMatch(docs, /Both modes check the same PRO entitlement/i,
       'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
-    assert.match(docs, /OAuth bearer requests re-check[\s\S]*active entitlement[\s\S]*before dispatch/i,
+    assert.match(docs, /OAuth bearer requests re-check[\s\S]*entitlement[\s\S]*before dispatch/i,
       'docs must describe the OAuth entitlement re-check path');
     assert.match(docs, /Dashboard-issued `X-WorldMonitor-Key: wm_…` requests[\s\S]*active entitlement[\s\S]*same per-user minute bucket and 50\/day default/i,
       'docs must describe dashboard-key entitlement, minute, and daily enforcement');

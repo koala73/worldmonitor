@@ -7,7 +7,7 @@ import ts from 'typescript';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import {
   DashboardBindingError,
-  buildWebMcpTools,
+  buildWebMcpTools as buildProductionWebMcpTools,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 import {
@@ -32,11 +32,22 @@ const settlePromises = async () => {
   await new Promise((resolvePromise) => setImmediate(resolvePromise));
 };
 
+// Most callback unit tests model the newer host contract explicitly. The raw
+// production builder remains available for compatibility/fail-closed tests.
+function buildWebMcpTools(app, track) {
+  return buildProductionWebMcpTools(app, track).map((tool) => ({
+    ...tool,
+    execute(input, context = { signal: new AbortController().signal }) {
+      return tool.execute(input, context);
+    },
+  }));
+}
+
 function createBindings(overrides = {}) {
   return {
-    openCountryBriefByCode: async () => {},
+    openCountryBriefByCode: async () => true,
     resolveCountryName: (code) => `Country ${code}`,
-    openSearch: async () => {},
+    openSearch: async () => true,
     getDashboardContext: async () => ({
       variant: 'full',
       map: {
@@ -266,6 +277,119 @@ describe('webmcp.ts: current API contract', () => {
     assert.deepEqual(Object.keys(open.inputSchema.properties), ['resultKey']);
     assert.equal(open.inputSchema.properties.resultKey.pattern, '^sr_[a-f0-9]{32}$');
   });
+
+  it('returns a branchable denial without entering mutating callbacks when target cancellation is unavailable', async () => {
+    let mutationCalls = 0;
+    const events = [];
+    const tools = buildProductionWebMcpTools(createBindings({
+      openCountryBriefByCode: async () => { mutationCalls += 1; return true; },
+      openSearch: async () => { mutationCalls += 1; return true; },
+      applyDashboardAction: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          message: 'Applied.',
+          targets: [],
+        };
+      },
+      openSearchResult: async () => {
+        mutationCalls += 1;
+        return { ok: true, status: 'opened' };
+      },
+    }), (event, data) => events.push({ event, data }));
+    const validInputs = {
+      openCountryBrief: { iso2: 'DE' },
+      openSearch: {},
+      open_dashboard_panel: { panelId: 'markets' },
+      set_map_view: { view: 'eu' },
+      set_map_layers: { layers: { conflicts: true } },
+      open_search_result: { resultKey: `sr_${'a'.repeat(32)}` },
+    };
+
+    assert.equal(
+      (await tools.find(({ name }) => name === 'get_dashboard_context').execute({})).variant,
+      'full',
+    );
+    assert.equal(
+      (await tools.find(({ name }) => name === 'search_dashboard')
+        .execute({ query: 'safe' })).resultCount,
+      0,
+    );
+
+    for (const [name, input] of Object.entries(validInputs)) {
+      const tool = tools.find((candidate) => candidate.name === name);
+      assert.deepEqual(
+        await tool.execute(input),
+        {
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+          message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+        },
+        name,
+      );
+    }
+    assert.deepEqual(
+      await tools.find(({ name }) => name === 'openCountryBrief').execute(
+        { iso2: 'not-valid' },
+        { signal: { aborted: false } },
+      ),
+      {
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+        message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+      },
+      'a malformed input and signal-like object must not bypass the compatibility gate',
+    );
+    assert.equal(mutationCalls, 0);
+    assert.deepEqual(
+      events.filter(({ data }) => data.outcome === 'denied').map(({ data }) => [
+        data.tool,
+        data.reason,
+      ]),
+      [
+        ...Object.keys(validInputs).map((name) => [name, 'unavailable']),
+        ['openCountryBrief', 'unavailable'],
+      ],
+    );
+  });
+
+  it('records only tool identity and target cancellation capability at callback entry', async () => {
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const marks = [];
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { __wmLcpDebug: { enabled: true, marks } },
+    });
+    try {
+      const tools = buildProductionWebMcpTools(createBindings(), () => {});
+      await tools.find(({ name }) => name === 'get_dashboard_context').execute({});
+      await tools.find(({ name }) => name === 'openSearch').execute(
+        {},
+        { signal: new AbortController().signal },
+      );
+
+      assert.deepEqual(marks.map(({ name, detail }) => ({ name, detail })), [
+        {
+          name: 'wm:webmcp:tool-start',
+          detail: { tool: 'get_dashboard_context', targetCancellationSupported: false },
+        },
+        {
+          name: 'wm:webmcp:tool-start',
+          detail: { tool: 'openSearch', targetCancellationSupported: true },
+        },
+      ]);
+    } finally {
+      globalThis.performance?.clearMarks?.('wm:webmcp:tool-start');
+      if (previousWindow) {
+        Object.defineProperty(globalThis, 'window', previousWindow);
+      } else {
+        delete globalThis.window;
+      }
+    }
+  });
 });
 
 describe('webmcp.ts: native tool execution and telemetry', () => {
@@ -273,7 +397,10 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
     const calls = [];
     const events = [];
     const tools = buildWebMcpTools(createBindings({
-      openCountryBriefByCode: async (code, country) => calls.push({ code, country }),
+      openCountryBriefByCode: async (code, country) => {
+        calls.push({ code, country });
+        return true;
+      },
     }), (event, data) => events.push({ event, data }));
 
     const result = await tools.find((tool) => tool.name === 'openCountryBrief').execute({ iso2: 'de' });
@@ -318,6 +445,51 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
       event: 'webmcp-tool-invoked',
       data: { tool: 'openSearch', outcome: 'failure', reason: 'internal' },
     }]);
+  });
+
+  it('does not report country or search opens before their UI is visible', async () => {
+    const events = [];
+    const tools = buildWebMcpTools(createBindings({
+      openCountryBriefByCode: async () => false,
+      openSearch: async () => false,
+    }), (event, data) => events.push({ event, data }));
+
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'openCountryBrief').execute({ iso2: 'DE' }),
+      (error) => error.name === 'WebMcpToolError'
+        && error.message === 'The requested country brief did not become visible.',
+    );
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'openSearch').execute({}),
+      (error) => error.name === 'WebMcpToolError'
+        && error.message === 'The search palette did not become visible.',
+    );
+    assert.deepEqual(events, [
+      {
+        event: 'webmcp-tool-invoked',
+        data: { tool: 'openCountryBrief', outcome: 'failure', reason: 'unavailable' },
+      },
+      {
+        event: 'webmcp-tool-invoked',
+        data: { tool: 'openSearch', outcome: 'failure', reason: 'unavailable' },
+      },
+    ]);
+  });
+
+  it('requires an explicit visible acknowledgement for country and search opens', async () => {
+    const tools = buildWebMcpTools(createBindings({
+      openCountryBriefByCode: async () => undefined,
+      openSearch: async () => undefined,
+    }), () => {});
+
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'openCountryBrief').execute({ iso2: 'DE' }),
+      (error) => error.name === 'WebMcpToolError' && /did not become visible/.test(error.message),
+    );
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'openSearch').execute({}),
+      (error) => error.name === 'WebMcpToolError' && /did not become visible/.test(error.message),
+    );
   });
 
   it('preserves closed dashboard availability reasons', async () => {
@@ -498,10 +670,12 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
     const open = tools.find((tool) => tool.name === 'open_search_result');
 
     await search.execute({ query: '  iran  ' });
-    assert.deepEqual(searchCalls, [['iran', 'all', 8]]);
+    assert.deepEqual(searchCalls[0].slice(0, 3), ['iran', 'all', 8]);
+    assert.ok(searchCalls[0][3]?.signal instanceof AbortSignal);
 
     await search.execute({ query: 'iran', scope: 'signals', limit: 1 });
-    assert.deepEqual(searchCalls[1], ['iran', 'signals', 1]);
+    assert.deepEqual(searchCalls[1].slice(0, 3), ['iran', 'signals', 1]);
+    assert.ok(searchCalls[1][3]?.signal instanceof AbortSignal);
 
     await assert.rejects(
       search.execute({ query: 'iran', url: 'https://attacker.invalid/' }),
@@ -591,7 +765,10 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
     const openCalls = [];
     let unrelatedUiCalls = 0;
     const tools = buildWebMcpTools(createBindings({
-      openSearch: async () => { unrelatedUiCalls += 1; },
+      openSearch: async () => {
+        unrelatedUiCalls += 1;
+        return true;
+      },
       applyDashboardAction: async () => {
         unrelatedUiCalls += 1;
         return {
@@ -1213,13 +1390,13 @@ describe('webmcp App.ts binding invariants', () => {
     assertCallArguments(
       callByExpression(waitForUiReady, appFile, 'this.waitForDashboardReady'),
       appFile,
-      ['false'],
+      ['false', 'execution?.signal'],
     );
     const waitForMapReady = objectPropertyInitializer(options, appFile, 'waitForMapReady');
     assertCallArguments(
       callByExpression(waitForMapReady, appFile, 'this.waitForDashboardReady'),
       appFile,
-      [],
+      ['true', 'execution?.signal'],
     );
 
     const applierOptions = objectPropertyInitializer(options, appFile, 'applierOptions');
@@ -1280,6 +1457,32 @@ describe('webmcp App.ts binding invariants', () => {
     assert.match(syncCondition, /result\.actionType === 'set_view'/);
   });
 
+  it('routes country opens through lazy presentation without requiring a pre-created page', () => {
+    const openCountryBrief = objectPropertyInitializer(bindings, appFile, 'openCountryBriefByCode');
+    assertCallArguments(
+      callByExpression(openCountryBrief, appFile, 'this.openWebMcpCountryBrief'),
+      appFile,
+      ['code', 'country', 'execution'],
+    );
+
+    const openWebMcpCountryBrief = appMember('openWebMcpCountryBrief');
+    const ready = callByExpression(openWebMcpCountryBrief, appFile, 'this.waitForUiReady');
+    const open = callByExpression(
+      openWebMcpCountryBrief,
+      appFile,
+      'this.openCountryBriefWithAcknowledgement',
+    );
+    assert.ok(ready.getStart(appFile) < open.getStart(appFile));
+    assert.equal(
+      findNodes(openWebMcpCountryBrief, (node) => (
+        ts.isPropertyAccessExpression(node)
+        && node.getText(appFile) === 'this.state.countryBriefPage'
+      )).length,
+      0,
+      'the country manager must be allowed to lazy-create its page after UI readiness',
+    );
+  });
+
   it('keeps search readiness lazy and refuses fabricated opener keys without loading search', () => {
     const searchDashboard = objectPropertyInitializer(bindings, appFile, 'searchDashboard');
     const searchReady = callByExpression(
@@ -1288,7 +1491,7 @@ describe('webmcp App.ts binding invariants', () => {
       'this.waitForDashboardReady',
       'search dashboard readiness',
     );
-    assertCallArguments(searchReady, appFile, ['false']);
+    assertCallArguments(searchReady, appFile, ['false', 'execution?.signal']);
     const ensureSearch = callByExpression(searchDashboard, appFile, 'this.ensureSearchManager');
     const executeSearch = callByExpression(searchDashboard, appFile, 'manager.searchDashboard');
     assert.ok(searchReady.getStart(appFile) < ensureSearch.getStart(appFile));
@@ -1323,13 +1526,14 @@ describe('webmcp App.ts binding invariants', () => {
       'invalid or expired result-key denial',
     );
     const openReady = callByExpression(openSearchResult, appFile, 'this.waitForUiReady');
+    assertCallArguments(openReady, appFile, ['execution?.signal']);
     const openResult = callByExpression(openSearchResult, appFile, 'manager.openSearchResult');
     assert.ok(openReady.getStart(appFile) < openResult.getStart(appFile));
     assert.ok(openResult.arguments[1], 'open_search_result must receive a renderer readiness callback');
     assertCallArguments(
       callByExpression(openResult.arguments[1], appFile, 'this.waitForDashboardReady'),
       appFile,
-      [],
+      ['true', 'execution?.signal'],
     );
   });
 
@@ -1373,7 +1577,7 @@ describe('webmcp App.ts binding invariants', () => {
     assertCallArguments(
       callByExpression(waitForUiReady, appFile, 'waitForWebMcpUiReady'),
       appFile,
-      ['this.uiReady', 'this.appDestroyed', 'timeoutMs'],
+      ['this.uiReady', 'this.appDestroyed', 'timeoutMs', "'UI'", 'signal'],
     );
     const waitForDashboardReady = appMember('waitForDashboardReady');
     const dashboardUiReady = callByExpression(
