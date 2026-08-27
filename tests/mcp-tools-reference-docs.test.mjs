@@ -183,6 +183,21 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
       for (const stale of ['country_code', 'travelAdvisory', 'sanctionsExposure']) {
         assert.ok(!sketch.includes(stale), `${label} CountryRisk type sketch still advertises removed field ${stale}`);
       }
+      assert.match(
+        doc,
+        /parsed\.cii\?\.combinedScore/,
+        `${label} CountryRisk example must read the headline score from cii.combinedScore`,
+      );
+      assert.match(
+        doc,
+        /parsed\.cii\?\.components\?\.geoConvergence/,
+        `${label} CountryRisk example must read component values from cii.components`,
+      );
+      assert.doesNotMatch(
+        doc,
+        /parsed\.components\.conflict/,
+        `${label} CountryRisk example must not use the removed top-level components.conflict path`,
+      );
     });
   }
 });

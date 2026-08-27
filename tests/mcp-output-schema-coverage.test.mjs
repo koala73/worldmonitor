@@ -308,7 +308,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     }],
     ['search_flights', {
       why: 'SearchGoogleFlightsResponse carries degraded/error/flights',
-      names: ['search_metadata'],
+      names: ['search_metadata', 'flights[].currency', 'flights[].airline', 'flights[].total_duration', 'flights[].segments'],
       types: [],
     }],
     ['search_flight_prices_by_date', {
@@ -344,41 +344,54 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
 
   // Resolve the 200 JSON response schema through its $ref chain and return its
   // properties, each dereferenced so a $ref'd field carries a type and its own
-  // nested properties. `unresolved` names any $ref that did not resolve: those
-  // would otherwise become untyped `{}` and silently turn a real mismatch into
-  // a pass, so the caller asserts the list is empty rather than shrinking
-  // coverage quietly.
+  // nested properties. Arrays are resolved through `items` as well: flight
+  // responses carry their load-bearing contract inside array elements. `unresolved`
+  // names any $ref that did not resolve: those would otherwise become untyped
+  // `{}` and silently turn a real mismatch into a pass, so the caller asserts
+  // the list is empty rather than shrinking coverage quietly.
   function wireResponseProperties({ op, spec }) {
     const schema = deref(op?.responses?.['200']?.content?.['application/json']?.schema, spec);
     if (!schema?.properties) return null;
     const unresolved = [];
     const resolve = (node, path) => {
-      const out = {};
-      for (const [key, sub] of Object.entries(node.properties ?? {})) {
-        const here = path ? `${path}.${key}` : key;
-        const target = deref(sub, spec);
-        if (!target) { unresolved.push(here); out[key] = {}; continue; }
-        out[key] = target.properties ? { ...target, properties: resolve(target, here) } : target;
+      const target = deref(node, spec);
+      if (!target) {
+        unresolved.push(path || '<root>');
+        return {};
       }
-      return out;
+      const out = {};
+      if (target.type === 'array' && target.items) {
+        out.type = 'array';
+        out.items = resolve(target.items, `${path}[]`);
+        return { ...target, ...out };
+      }
+      for (const [key, sub] of Object.entries(target.properties ?? {})) {
+        const here = path ? `${path}.${key}` : key;
+        out[key] = resolve(sub, here);
+      }
+      return { ...target, properties: out };
     };
-    return { properties: resolve(schema, ''), unresolved };
+    return { properties: resolve(schema, '').properties ?? {}, unresolved };
   }
 
   // The two comparisons the population loop and the positive control below
   // both run through, so a control cannot pass against a copy of the rule.
-  // Both recurse: the load-bearing content of the get_country_risk schema is
-  // nested (cii.combinedScore, cii.components.*), and a top-level-only check
-  // would leave exactly that subtree unanchored — the same self-referential
-  // gap that let the original bug ship, one level down.
+  // Both recurse through objects and arrays: the load-bearing content of the
+  // get_country_risk schema is nested (cii.combinedScore, cii.components.*),
+  // and flight contracts put their fields under array items. A top-level-only
+  // check would leave both subtrees unanchored.
   function declaredButNotOnWire(outputSchema, wireProps, path = '') {
     const drift = [];
     for (const [key, declared] of Object.entries(outputSchema?.properties ?? {})) {
       const here = path ? `${path}.${key}` : key;
       const wire = wireProps[key];
       if (!wire) { drift.push(here); continue; }
-      // Only descend where both sides describe an object; a declared leaf
-      // against a wire object is a type mismatch, reported by the sibling.
+      if (declared?.type === 'array' && wire.type === 'array') {
+        if (declared.items && wire.items) {
+          drift.push(...declaredButNotOnWire({ properties: declared.items.properties }, wire.items.properties, `${here}[]`));
+        }
+        continue;
+      }
       if (declared?.properties && wire.properties) {
         drift.push(...declaredButNotOnWire(declared, wire.properties, here));
       }
@@ -407,6 +420,14 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
         if (!compatible) {
           mismatches.push(`${here}: declared ${JSON.stringify(declared.type)}, wire is ${JSON.stringify(wireType)}`);
         }
+      }
+      if (declared?.type === 'array' && wire.type === 'array' && declared.items && wire.items) {
+        mismatches.push(...declaredTypeMismatches(
+          { properties: declared.items.properties },
+          wire.items.properties,
+          `${here}[]`,
+        ));
+        continue;
       }
       if (declared?.properties && wire.properties) {
         mismatches.push(...declaredTypeMismatches(declared, wire.properties, here));
@@ -448,6 +469,14 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
 
       const drift = declaredButNotOnWire(tool.outputSchema, wire.properties);
       const mismatches = declaredTypeMismatches(tool.outputSchema, wire.properties);
+      // Safety flags are never part of a name/type exemption. A known drift
+      // entry may pin legacy data fields, but it must not bypass the outage
+      // discriminator check that protects downstream readers.
+      assert.deepEqual(
+        undeclaredSafetyFlags(tool.outputSchema, wire.properties), [],
+        `${toolName}'s response carries a degraded-state flag its outputSchema never declares. An agent cannot ` +
+          'distinguish "no data" from "everything is fine" without it.',
+      );
       const known = KNOWN_DRIFT.get(toolName);
       if (known) {
         assert.deepEqual(
@@ -472,15 +501,6 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
         `${toolName} declares outputSchema property types its response contradicts:\n  ${mismatches.join('\n  ')}`,
       );
 
-      // The other direction. A schema that simply DROPS a degraded-state flag
-      // leaves every check above green while an agent silently loses the
-      // outage-versus-calm distinction — which is the half of this fix that
-      // matters most.
-      assert.deepEqual(
-        undeclaredSafetyFlags(tool.outputSchema, wire.properties), [],
-        `${toolName}'s response carries a degraded-state flag its outputSchema never declares. An agent cannot ` +
-          'distinguish "no data" from "everything is fine" without it.',
-      );
     });
   }
 
@@ -668,6 +688,45 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       declaredTypeMismatches(drifted, wireProps),
       ['cii.combinedScore: declared "string", wire is "number"'],
       'a nested type contradiction must be reported with its full path',
+    );
+  });
+
+  it('the drift comparisons descend into array item properties (positive control)', () => {
+    const wireProps = {
+      flights: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            durationMinutes: { type: 'number' },
+            legs: { type: 'array' },
+          },
+        },
+      },
+    };
+    const drifted = {
+      properties: {
+        flights: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              durationMinutes: { type: 'string' },
+              airline: { type: 'string' },
+            },
+          },
+        },
+      },
+    };
+    assert.deepEqual(
+      declaredButNotOnWire(drifted, wireProps),
+      ['flights[].airline'],
+      'array item names must be reported with their full path',
+    );
+    assert.deepEqual(
+      declaredTypeMismatches(drifted, wireProps),
+      ['flights[].durationMinutes: declared "string", wire is "number"'],
+      'array item type contradictions must be reported with their full path',
     );
   });
 
