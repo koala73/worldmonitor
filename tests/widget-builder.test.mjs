@@ -1356,7 +1356,7 @@ describe('PRO widget — store and sanitizer', () => {
     const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
     assert.ok(script, 'sandbox inline script not found');
 
-    function runSandbox(referrer) {
+    function runSandbox(referrer, sandboxProtocol = 'https:') {
       const readyMessages = [];
       const writes = [];
       const listeners = new Map();
@@ -1372,7 +1372,7 @@ describe('PRO widget — store and sanitizer', () => {
       function FakeEvent() {}
       FakeEvent.prototype.stopImmediatePropagation = () => {};
       const sandboxWindow = new FakeEventTarget();
-      sandboxWindow.location = { hash: '#id=wm-1&token=test-token' };
+      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', protocol: sandboxProtocol };
       sandboxWindow.parent = parent;
       const context = {
         URL,
@@ -1452,6 +1452,121 @@ describe('PRO widget — store and sanitizer', () => {
       source: spoofed.parent,
     });
     assert.deepEqual(spoofed.writes, []);
+  });
+
+  it('widget sandbox trusts a localhost referrer only when the sandbox itself is also running on localhost', () => {
+    // This file (public/wm-widget-sandbox.html) ships byte-for-byte to
+    // production -- there is no build-time dev/prod flag available inside
+    // it. Anyone can run their own local HTTP server and set
+    // document.referrer to http://localhost freely, so trusting that
+    // referrer alone would let such a page embed the PRODUCTION sandbox
+    // and receive real widget HTML. The fix requires window.location
+    // (the sandbox's own, unspoofable origin) to also be localhost.
+    const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
+    assert.ok(script, 'sandbox inline script not found');
+
+    function runSandboxAt(selfHostname, referrer) {
+      const readyMessages = [];
+      const writes = [];
+      const listeners = new Map();
+      const parent = {
+        postMessage(payload, targetOrigin) {
+          readyMessages.push({ payload, targetOrigin });
+        },
+      };
+      function FakeEventTarget() {}
+      FakeEventTarget.prototype.addEventListener = (type, listener) => {
+        listeners.set(type, listener);
+      };
+      function FakeEvent() {}
+      FakeEvent.prototype.stopImmediatePropagation = () => {};
+      const sandboxWindow = new FakeEventTarget();
+      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', hostname: selfHostname };
+      sandboxWindow.parent = parent;
+      const context = {
+        URL,
+        URLSearchParams,
+        Event: FakeEvent,
+        EventTarget: FakeEventTarget,
+        document: {
+          referrer,
+          open() {},
+          write(html) {
+            writes.push(html);
+          },
+          close() {},
+        },
+        window: sandboxWindow,
+      };
+      vm.runInNewContext(script, context);
+      const message = listeners.get('message');
+      assert.equal(typeof message, 'function', 'message listener must be registered');
+      return { parent, readyMessages, writes, message };
+    }
+
+    // Production sandbox (window.location.hostname === worldmonitor.app)
+    // embedded by a page whose referrer claims http://localhost: must be
+    // rejected outright, both for the initial readiness ping and for a
+    // forged wm-html delivery attempt.
+    const prodAgainstLocalhostReferrer = runSandboxAt('worldmonitor.app', 'http://localhost:5173/dashboard');
+    assert.deepEqual(
+      prodAgainstLocalhostReferrer.readyMessages,
+      [],
+      'production sandbox must not send the readiness ping to a localhost-claiming referrer',
+    );
+    prodAgainstLocalhostReferrer.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>should not render</p>' },
+      origin: 'http://localhost:5173',
+      source: prodAgainstLocalhostReferrer.parent,
+    });
+    assert.deepEqual(
+      prodAgainstLocalhostReferrer.writes,
+      [],
+      'production sandbox must not accept HTML claiming to come from localhost',
+    );
+
+    // Same check for 127.0.0.1.
+    const prodAgainst127Referrer = runSandboxAt('worldmonitor.app', 'http://127.0.0.1:5173/dashboard');
+    assert.deepEqual(prodAgainst127Referrer.readyMessages, []);
+
+    // Legitimate local dev: both the sandbox page itself and the embedding
+    // page run on localhost (e.g. `npm run dev`). This must keep working.
+    const devSandbox = runSandboxAt('localhost', 'http://localhost:5173/dashboard');
+    assert.equal(devSandbox.readyMessages.length, 1, 'dev sandbox on localhost must still trust a localhost parent');
+    assert.equal(devSandbox.readyMessages[0].targetOrigin, 'http://localhost:5173');
+    devSandbox.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>dev ok</p>' },
+      origin: 'http://localhost:5173',
+      source: devSandbox.parent,
+    });
+    assert.deepEqual(devSandbox.writes, ['<p>dev ok</p>']);
+
+    // 127.0.0.1 sandbox self-origin (some dev setups bind there instead).
+    const dev127Sandbox = runSandboxAt('127.0.0.1', 'http://127.0.0.1:5173/dashboard');
+    assert.equal(dev127Sandbox.readyMessages.length, 1, '127.0.0.1 dev sandbox must trust a 127.0.0.1 parent');
+
+    // HTTPS variants — same hostname gate, protocol-agnostic for localhost.
+    const prodHttpsLocalhost = runSandboxAt('worldmonitor.app', 'https://localhost:5173/dashboard');
+    assert.deepEqual(prodHttpsLocalhost.readyMessages, [], 'prod must block https localhost too');
+    prodHttpsLocalhost.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>should not render</p>' },
+      origin: 'https://localhost:5173',
+      source: prodHttpsLocalhost.parent,
+    });
+    assert.deepEqual(prodHttpsLocalhost.writes, []);
+    const prodHttps127 = runSandboxAt('worldmonitor.app', 'https://127.0.0.1:5173/dashboard');
+    assert.deepEqual(prodHttps127.readyMessages, []);
+    const devHttpsLocalhost = runSandboxAt('localhost', 'https://localhost:5173/dashboard');
+    assert.equal(devHttpsLocalhost.readyMessages.length, 1, 'dev localhost must trust https localhost parent');
+    assert.equal(devHttpsLocalhost.readyMessages[0].targetOrigin, 'https://localhost:5173');
+    devHttpsLocalhost.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>dev https ok</p>' },
+      origin: 'https://localhost:5173',
+      source: devHttpsLocalhost.parent,
+    });
+    assert.deepEqual(devHttpsLocalhost.writes, ['<p>dev https ok</p>']);
+    const devHttps127 = runSandboxAt('127.0.0.1', 'https://127.0.0.1:5173/dashboard');
+    assert.equal(devHttps127.readyMessages.length, 1, '127.0.0.1 dev must trust https 127.0.0.1 parent');
   });
 
   it('widget sandbox blocks beforeunload without breaking normal events before widget execution', () => {

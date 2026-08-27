@@ -199,10 +199,47 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
   'result_no_longer_available',
   'result_no_longer_executable',
 ]);
-const READ_ONLY_WEBMCP_TOOLS = new Set<WebMcpSpaToolName>([
-  WEBMCP_SPA_TOOL.getDashboardContext,
-  WEBMCP_SPA_TOOL.searchDashboard,
-]);
+// Cancellation policy per tool. Chrome documents the callback as
+// `execute(input, { signal })`, but shipped builds through 151 invoke it with
+// the input alone — true even when the caller passes `{ signal }` to
+// `executeTool()`. A cancelled invocation rejects on the agent side while the
+// page work runs on: a phantom completion.
+//
+// Gate a tool when its effect can outlive caller cancellation. The policy name
+// describes the runtime requirement instead of one particular reason for it.
+//   - 'cancellation-required' (gated): set_map_layers writes
+//     STORAGE_KEYS.mapLayers to local storage (and for `ais` opens a network
+//     stream); open_search_result reaches the same writes through the search
+//     selection dispatcher. Putting the map back by hand restores neither.
+//     openCountryBrief can start server-side LLM generation that consumes the
+//     caller's daily allowance. The gateway cannot refund a request merely
+//     because browser-side execution was cancelled.
+//   - 'view-state': set_map_view also writes share-URL state via
+//     history.replaceState — visible in the address bar and overwritten by the
+//     next human map move.
+//   - 'read-only': nothing to undo.
+//
+// Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
+// a TypeScript error. That is the forcing function: nothing ships unclassified.
+export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
+  Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'cancellation-required'>
+> = Object.freeze({
+  [WEBMCP_SPA_TOOL.getDashboardContext]: 'read-only',
+  [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
+  [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
+  [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
+  [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
+  [WEBMCP_SPA_TOOL.openCountryBrief]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.setMapLayers]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.openSearchResult]: 'cancellation-required',
+});
+
+/** Tools the page refuses to run without a target-side AbortSignal. */
+export const CANCELLATION_REQUIRED_WEBMCP_TOOLS: ReadonlySet<WebMcpSpaToolName> = new Set(
+  Object.entries(WEBMCP_TOOL_CANCELLATION_POLICY)
+    .filter(([, policy]) => policy === 'cancellation-required')
+    .map(([name]) => name as WebMcpSpaToolName),
+);
 const MAX_SEARCH_QUERY_CHARS = 160;
 const MAX_SEARCH_RESULTS = 10;
 const DEFAULT_SEARCH_RESULTS = 8;
@@ -251,9 +288,11 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   open_search_result: 'World Monitor could not open that search result.',
 };
 const UNSUPPORTED_MUTATION_MESSAGE =
-  'This browser cannot safely execute dashboard-changing WebMCP tools.';
+  'This browser cannot cancel work already running in the page, so World Monitor '
+  + 'will not run tools whose effects can outlive cancellation. Read-only and '
+  + 'reversible view-state dashboard tools still work.';
 
-function unsupportedMutationResult(): Record<string, unknown> {
+function unsupportedCancellationResult(): Record<string, unknown> {
   return {
     ok: false,
     status: 'denied',
@@ -377,14 +416,12 @@ function withInvocationLogging(
     });
     try {
       let result: unknown;
-      if (!READ_ONLY_WEBMCP_TOOLS.has(name) && !signal) {
-        // Chrome releases that implement the original one-argument callback
-        // can abort executeTool() without cancelling work already running in
-        // this page. Never enter a mutation-capable binding unless the host
-        // supplies the target-side signal introduced by the cancellable
-        // callback API. Return a structured denial because some hosts erase
-        // the name and message of errors raised by the page callback.
-        result = unsupportedMutationResult();
+      if (CANCELLATION_REQUIRED_WEBMCP_TOOLS.has(name) && !signal) {
+        // This tool declared that a phantom completion would be unsafe, and
+        // the host cannot deliver the target-side signal. Return a structured
+        // denial because some hosts erase the name and message of errors
+        // raised by the page callback.
+        result = unsupportedCancellationResult();
       } else {
         throwIfWebMcpAborted(signal);
         result = await fn(args, signal ? { signal } : undefined);
@@ -1052,13 +1089,19 @@ function startRegistration(
   void Promise.all(registrations).then((accepted) => {
     if (controller.signal.aborted) return;
     const toolCount = accepted.filter(Boolean).length;
-    // Emitted for EVERY settled registration pass, including the zero-tool
-    // one. A discovery probe that polls getTools() before this point observes
-    // an empty inventory, and on the Chrome origin-trial path that empty read
-    // wedges every later getTools() call for the lifetime of the page. Waiting
-    // on this mark is how a probe reaches the inventory in one call instead.
+    // EVERY settled registration pass emits a mark, so a probe waiting on one
+    // never hangs: a probe that polls getTools() before this point observes an
+    // empty inventory, and on the Chrome origin-trial path that empty read
+    // wedges every later getTools() call for the lifetime of the page.
+    // The zero-tool pass gets its OWN mark, though — 'wm:webmcp:registered'
+    // means "the inventory is there to read", and firing it with nothing
+    // registered would authorize the probe to read the empty inventory this
+    // mark exists to keep it away from.
+    if (toolCount === 0) {
+      markLcpDebug('wm:webmcp:registration-empty', { toolCount: 0 });
+      return;
+    }
     markLcpDebug('wm:webmcp:registered', { toolCount });
-    if (toolCount === 0) return;
     reportWebMcpEvent(trackEvent, 'webmcp-registered', {
       toolCount,
       pageSurface: 'dashboard',

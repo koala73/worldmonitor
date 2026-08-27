@@ -15,6 +15,7 @@ interface MapContainerHarness {
     map: {
       setView: (view: string, zoom?: number) => number;
       setCenter: (lat: number, lon: number, zoom?: number) => number;
+      getViewportAuthorityToken: () => number;
       whenRendererReady: () => Promise<void>;
       whenViewportSettled: (viewportActionToken?: number) => Promise<void>;
       destroy: () => void;
@@ -78,12 +79,14 @@ before(async () => {
         export function createMapContainerHarness() {
           const map = Object.create(MapContainer.prototype);
           const internals = {
+            container: { removeEventListener() {} },
             rendererReady: false,
             rendererReadyWaiters: new Set(),
             rendererDemandRequested: false,
             releaseRendererDemand: null,
             rendererInitToken: 7,
             viewportActionToken: 0,
+            humanViewportInteractionToken: 0,
             destroyed: false,
             pendingViewportActions: [],
             pendingCenter: null,
@@ -128,6 +131,14 @@ before(async () => {
 });
 
 describe('map viewport runtime lifecycle', () => {
+  it('invalidates delayed agent authority when direct map interaction starts', () => {
+    const { map, internals } = harness.createMapContainerHarness();
+
+    assert.equal(map.getViewportAuthorityToken(), 0);
+    (internals.markHumanViewportInteraction as () => void).call(map);
+    assert.equal(map.getViewportAuthorityToken(), 1);
+  });
+
   it('replays pre-ready viewport work before waking readiness callers', async () => {
     const { map, internals } = harness.createMapContainerHarness();
     const calls: unknown[][] = [];

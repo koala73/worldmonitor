@@ -3,6 +3,7 @@
 import { loadEnvFile, loadSharedConfig, runSeed } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
+import { parseEtfChartData, toSeedEtfFlow } from './shared/etf-flow-provider.mjs';
 
 const etfConfig = loadSharedConfig('etfs.json');
 
@@ -16,52 +17,6 @@ const ETF_LIST = etfConfig.btcSpot;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-function parseEtfChartData(chart, ticker, issuer) {
-  const result = chart?.chart?.result?.[0];
-  if (!result) return null;
-
-  const quote = result.indicators?.quote?.[0];
-  const closes = quote?.close || [];
-  const volumes = quote?.volume || [];
-
-  // Filter closes and volumes TOGETHER so price and volume always come from
-  // the same bar — Yahoo routinely nulls one but not the other, and pairing
-  // today's volume with yesterday's close fabricated false flows.
-  const alignedBars = closes
-    .map((p, i) => ({ p, v: volumes[i] }))
-    .filter(({ p, v }) => p != null && v != null);
-  const validCloses = alignedBars.map(({ p }) => p);
-  const validVolumes = alignedBars.map(({ v }) => v);
-
-  if (validCloses.length < 2) return null;
-
-  const latestPrice = validCloses[validCloses.length - 1];
-  const prevPrice = validCloses[validCloses.length - 2];
-  const priceChange = prevPrice ? ((latestPrice - prevPrice) / prevPrice) * 100 : 0;
-
-  const latestVolume = validVolumes.length > 0 ? validVolumes[validVolumes.length - 1] : 0;
-  const avgVolume =
-    validVolumes.length > 1
-      ? validVolumes.slice(0, -1).reduce((a, b) => a + b, 0) / (validVolumes.length - 1)
-      : latestVolume;
-
-  const volumeRatio = avgVolume > 0 ? latestVolume / avgVolume : 1;
-  const direction = priceChange > 0.1 ? 'inflow' : priceChange < -0.1 ? 'outflow' : 'neutral';
-  const estFlowMagnitude = latestVolume * latestPrice * (priceChange > 0 ? 1 : -1) * 0.1;
-
-  return {
-    ticker,
-    issuer,
-    price: +latestPrice.toFixed(2),
-    priceChange: +priceChange.toFixed(2),
-    volume: latestVolume,
-    avgVolume: Math.round(avgVolume),
-    volumeRatio: +volumeRatio.toFixed(2),
-    direction,
-    estFlow: Math.round(estFlowMagnitude),
-  };
 }
 
 async function fetchEtfFlows() {
@@ -78,12 +33,10 @@ async function fetchEtfFlows() {
       const av = avData.get(ticker);
       if (!av) continue;
       const { price, change: priceChange, volume } = av;
-      const direction = priceChange > 0.1 ? 'inflow' : priceChange < -0.1 ? 'outflow' : 'neutral';
-      const estFlow = Math.round(volume * price * (priceChange > 0 ? 1 : -1) * 0.1);
       // avgVolume and volumeRatio require 5-day history not available from REALTIME_BULK_QUOTES
-      etfs.push({ ticker, issuer, price: +price.toFixed(2), priceChange: +priceChange.toFixed(2), volume, avgVolume: 0, volumeRatio: 0, direction, estFlow });
+      etfs.push(toSeedEtfFlow({ ticker, issuer, price, priceChange, volume }));
       covered.add(ticker);
-      console.log(`  [AV] ${ticker}: $${price.toFixed(2)} (${direction})`);
+      console.log(`  [AV] ${ticker}: $${price.toFixed(2)} (${etfs.at(-1).direction})`);
     }
   }
 
@@ -154,15 +107,17 @@ export function declareRecords(data) {
   return Array.isArray(data?.etfs) ? data.etfs.length : 0;
 }
 
-runSeed('market', 'etf-flows', CANONICAL_KEY, fetchEtfFlows, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'alphavantage+yahoo-chart-5d',
+if (process.argv[1]?.endsWith('seed-etf-flows.mjs')) {
+  runSeed('market', 'etf-flows', CANONICAL_KEY, fetchEtfFlows, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'alphavantage+yahoo-chart-5d',
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 60,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 60,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

@@ -85,19 +85,31 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 {
   "type": "object",
   "properties": {
-    "country_code": { "type": "string" },
-    "cii": { "type": ["number", "null"], "description": "Composite Instability Index 0-100." },
-    "components": {
-      "type": "object",
+    "countryCode": { "type": "string" },
+    "countryName": { "type": "string" },
+    "cii": {
+      "type": ["object", "null"],
+      "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
       "properties": {
-        "unrest":   { "type": ["number", "null"] },
-        "conflict": { "type": ["number", "null"] },
-        "security": { "type": ["number", "null"] },
-        "news":     { "type": ["number", "null"] }
+        "combinedScore": { "type": "number", "description": "The headline CII, 0-100." },
+        "trend": { "type": "string", "enum": ["TREND_DIRECTION_UNSPECIFIED", "TREND_DIRECTION_RISING", "TREND_DIRECTION_STABLE", "TREND_DIRECTION_FALLING"] },
+        "components": {
+          "type": "object",
+          "description": "Names are historical and do NOT describe their contents -- read the descriptions.",
+          "properties": {
+            "ciiContribution":  { "type": "number", "description": "DOMESTIC UNREST contribution." },
+            "geoConvergence":   { "type": "number", "description": "ARMED CONFLICT contribution." },
+            "militaryActivity": { "type": "number", "description": "SECURITY AND MOBILITY contribution." },
+            "newsActivity":     { "type": "number", "description": "INFORMATION ENVIRONMENT contribution." }
+          }
+        }
       }
     },
-    "travelAdvisory":    { "type": ["object", "string", "null"] },
-    "sanctionsExposure": { "type": ["object", "array", "null"] }
+    "advisoryLevel":   { "type": "string" },
+    "sanctionsActive": { "type": "boolean" },
+    "sanctionsCount":  { "type": "number" },
+    "fetchedAt":       { "type": "number", "description": "Unix epoch ms; 0 means unknown." },
+    "upstreamUnavailable": { "type": "boolean", "description": "True when ANY required upstream read failed; the whole response is withheld, so the zeroed risk fields mean UNKNOWN, not low." }
   }
 }
 ```
@@ -121,11 +133,24 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 ```ts
 // Synthesise types from the schema once (e.g. with json-schema-to-typescript).
 type CountryRisk = {
-  country_code: string;
-  cii: number | null;
-  components: { unrest: number | null; conflict: number | null; security: number | null; news: number | null };
-  travelAdvisory: object | string | null;
-  sanctionsExposure: object | unknown[] | null;
+  countryCode: string;
+  countryName: string;
+  // The four component names are historical misnomers: ciiContribution is
+  // domestic unrest, geoConvergence is armed conflict, militaryActivity is
+  // security/mobility, newsActivity is the information environment.
+  cii?: {
+    combinedScore: number;
+    trend: 'TREND_DIRECTION_UNSPECIFIED' | 'TREND_DIRECTION_RISING' | 'TREND_DIRECTION_STABLE' | 'TREND_DIRECTION_FALLING';
+    components?: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number };
+  };
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  // Check this BEFORE reading any score: true means a required upstream
+  // read failed and the response was withheld — the zeroed fields are
+  // unknown, not calm.
+  upstreamUnavailable: boolean;
 };
 
 const reply = await callTool('get_country_risk', { country_code: 'IR' });
@@ -145,7 +170,7 @@ if ('_budget_exceeded' in parsed) {
 } else if ('_jmespath_error' in parsed) {
   // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
 } else {
-  console.log(parsed.cii, parsed.components.conflict);
+  console.log(parsed.cii?.combinedScore, parsed.cii?.components?.geoConvergence);
 }
 ```
 
@@ -660,7 +685,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_risk`
 
-特定国家的结构化风险情报：综合不稳定指数（CII）评分 0-100、组成部分细分（动荡/冲突/安全/新闻）、旅行警示级别和 OFAC 制裁风险敞口。快速 Redis 读取 — 无 LLM。用于量化风险筛选或回答"X 现在有多危险？"
+特定国家的结构化风险情报：综合不稳定指数（CII）位于 `cii.combinedScore`（0-100），四个贡献项位于 `cii.components`（国内动荡、武装冲突、安全与出行、信息环境），政府旅行警示级别，以及以 `sanctionsActive` 和 `sanctionsCount` 表示的 OFAC 制裁敞口。快速 Redis 读取 - 无 LLM。解读低分前先检查 `upstreamUnavailable`：为 true 表示至少一个必需的上游读取失败，归零的风险字段代表 UNKNOWN，而不是平静。用于量化风险筛选或回答“X 现在有多危险？”
 
 **参数：**
 
