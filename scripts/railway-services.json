@@ -16,6 +16,7 @@
       "scripts/_country-stock-index.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_ingestion-coverage.cjs",
+      "scripts/_opensky-account-cooldown.cjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
