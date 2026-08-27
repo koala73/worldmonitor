@@ -624,6 +624,32 @@ async function handleRefreshToken(
     );
   }
 
+  // Advance an existing replay pointer before GETDEL. A concurrent redemption
+  // can then never expose a token-absent window with the cleanup generation:
+  // late cleanup only knows the previous generation and cannot erase this
+  // request's claim while it is between GETDEL and the normal pointer write.
+  let claimedFamilyId: string | null = null;
+  let claimedPointerId = '';
+  let claimedPointerValue = '';
+  try {
+    claimedFamilyId = familyIdFromRefreshPointer(await deps.redisGet(refreshFamilyPointerKey(refreshToken)));
+    if (claimedFamilyId) {
+      claimedPointerId = deps.randomPointerId();
+      claimedPointerValue = serializeRefreshFamilyPointer(claimedFamilyId, claimedPointerId);
+      if (!(await persistRefreshFamilyPointer(deps, refreshToken, claimedPointerValue))) {
+        return jsonResp(
+          { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+          503,
+        );
+      }
+    }
+  } catch {
+    return jsonResp(
+      { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+      503,
+    );
+  }
+
   // Atomically consume the refresh token (GETDEL — prevents concurrent rotation race).
   let refreshData: RefreshDataPro | RefreshDataLegacy | null;
   try {
@@ -649,9 +675,8 @@ async function handleRefreshToken(
     // failures: returning invalid_grant without recording famrev would lose
     // the only reuse signal.
     try {
-      const familyId = familyIdFromRefreshPointer(await deps.redisGet(refreshFamilyPointerKey(refreshToken)));
-      if (familyId) {
-        const revoked = await markRefreshFamilyRevoked(deps, familyId);
+      if (claimedFamilyId) {
+        const revoked = await markRefreshFamilyRevoked(deps, claimedFamilyId);
         if (!revoked) {
           return jsonResp(
             { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
@@ -680,7 +705,9 @@ async function handleRefreshToken(
     priorPointerValue = refreshData.pointer_id
       ? serializeRefreshFamilyPointer(refreshData.family_id, refreshData.pointer_id)
       : JSON.stringify(refreshData.family_id);
-    const pointerId = deps.randomPointerId();
+    const pointerId = claimedFamilyId === refreshData.family_id
+      ? claimedPointerId
+      : deps.randomPointerId();
     pointerValue = serializeRefreshFamilyPointer(refreshData.family_id, pointerId);
     refreshData = { ...refreshData, pointer_id: pointerId };
   }
@@ -689,7 +716,8 @@ async function handleRefreshToken(
   // patch, and advance its attempt id so late recovery cleanup cannot erase a
   // pointer written by a concurrent redemption.
   if (refreshData.family_id) {
-    const pointerStored = await persistRefreshFamilyPointer(deps, refreshToken, pointerValue);
+    const pointerStored = pointerValue === claimedPointerValue
+      || await persistRefreshFamilyPointer(deps, refreshToken, pointerValue);
     if (!pointerStored) {
       await restoreOrRemoveFamilyPointer(
         deps,

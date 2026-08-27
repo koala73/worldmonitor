@@ -846,7 +846,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     ]);
   });
 
-  it('family-pointer backfill failure clears the stale pointer when token restore also fails', async () => {
+  it('family-pointer preclaim failure leaves the token and pointer untouched', async () => {
     await ensureFixtures();
     const redis = makeRedis();
     const { deps, restoreFailures } = makeDeps({ redis });
@@ -870,10 +870,9 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
-    assert.equal(redis.store.has('oauth:famptr:rt-backfill-fail'), false);
-    assert.deepEqual(restoreFailures, [
-      { stage: 'persist-family-pointer', familyPointerRemoved: true },
-    ]);
+    assert.equal(redis.store.has('oauth:refresh:rt-backfill-fail'), true);
+    assert.equal(redis.store.has('oauth:famptr:rt-backfill-fail'), true);
+    assert.deepEqual(restoreFailures, []);
   });
 
   it('transient Pro validation restores the refresh token and its family pointer together', async () => {
