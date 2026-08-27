@@ -155,7 +155,12 @@ function firesContentClock(
   skewLimit: number,
 ): TemporalAnomaliesContentAge | null | undefined {
   if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
-  const fires = (data as { fireDetections?: unknown }).fireDetections;
+  const payload = data as { fireDetections?: unknown; _firmsState?: unknown };
+  // Canonical wildfire merge preserves `_firmsState: 'failed'` when CWFIS/BC
+  // still publish. That is Canada-only coverage, not a skippable empty FIRMS
+  // window — returning undefined here lets a live news clock hide the outage.
+  if (payload._firmsState === 'failed') return null;
+  const fires = payload.fireDetections;
   if (!Array.isArray(fires) || fires.length === 0) {
     // A live FIRMS 1-day window can be empty in the monitored regions. That is
     // "no satellite observations right now", not "we cannot date this".
@@ -174,8 +179,8 @@ function firesContentClock(
     if (ts != null) timestamps.push(ts);
   }
   if (firmsRows === 0) {
-    // Agency-only payload: satellite_fires has nothing to date. Skip rather
-    // than clock off ignition dates that can be days old on ongoing fires.
+    // Agency-only payload without an explicit FIRMS failure: skip rather than
+    // clock off ignition dates that can be days old on ongoing fires.
     return undefined;
   }
   if (timestamps.length === 0) return null;

@@ -110,6 +110,20 @@ function frozenFires(now = Date.now(), ageMs = 72 * HOUR_MS, totalCount = 5) {
   return liveFires(now, ageMs, totalCount);
 }
 
+/** Canonical wildfire merge when FIRMS is down and CWFIS/BC still publish. */
+function canadaOnlyDegradedFires(now = Date.now()) {
+  return {
+    fireDetections: [
+      { id: 'cwfis-1', source: 'cwfis', detectedAt: now - 30 * 60_000 },
+      { id: 'bc-1', source: 'bc', detectedAt: now - 20 * 60_000 },
+    ],
+    _firmsState: 'failed',
+    _firmsErrorCode: 'FIRMS_SOURCE_FAILED',
+    _cwfisState: 'ok',
+    _bcState: 'ok',
+  };
+}
+
 function seedMetaStamp(calls: { method: string; key: string; value?: unknown }[]) {
   return calls.find((call) => call.method === 'POST' && call.key === 'seed-meta:temporal:anomalies');
 }
@@ -565,6 +579,35 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     assert.equal(meta.newestItemAt, firmsAt);
   });
 
+  it('fails closed on an explicit FIRMS failure even when CWFIS/BC still publish', () => {
+    const newsAge = 12 * 60_000;
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, newsAge),
+      satellite_fires: canadaOnlyDegradedFires(NOW),
+    }, NOW);
+
+    assert.equal(
+      meta,
+      null,
+      'Canada-only degraded payload must fail closed, not skip so live news looks fresh',
+    );
+  });
+
+  it('still skips an agency-only payload that does not declare a FIRMS failure', () => {
+    const newsAge = 12 * 60_000;
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, newsAge),
+      satellite_fires: {
+        fireDetections: [
+          { id: 'cwfis-1', source: 'cwfis', detectedAt: NOW - 30 * 60_000 },
+        ],
+      },
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, NOW - newsAge);
+  });
+
   it('drops future-dated observations beyond the 1h clock-skew tolerance', () => {
     const real = NOW - 30 * 60_000;
     const future = NOW + 2 * HOUR_MS;
@@ -655,6 +698,35 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
       false,
       'MCP must stay fresh when content is inside budget',
+    );
+  });
+
+  it('a Canada-only degraded FIRMS payload does not read green on seed-meta, health, or MCP', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now, 12 * 60_000),
+      'wildfire:fires:v1': canadaOnlyDegradedFires(now),
+    });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'rebuild must stamp seed-meta for the degraded Canada-only payload');
+    assert.equal(
+      meta.newestItemAt,
+      null,
+      'explicit FIRMS failure must stamp newestItemAt null, not the live news clock',
+    );
+    assert.equal(meta.maxContentAgeMin, TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN);
+
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'health must fail closed when worldwide FIRMS coverage is missing',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must not answer stale:false for the Canada-only degraded payload',
     );
   });
 
