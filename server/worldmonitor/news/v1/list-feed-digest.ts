@@ -8,7 +8,15 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import {
+  cachedFetchJson,
+  getCachedJson,
+  setCachedJson,
+  getCachedJsonBatch,
+  runRedisPipeline,
+  runRedisTransaction,
+  REDIS_PIPELINE_TIMEOUT_MS,
+} from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -66,6 +74,13 @@ const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
+const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
+// #4925 item 1: canonical adoption reads two commands per member hash
+// (alias GET + track HMGET), so the hash budget is half the command budget.
+const ADOPTION_BATCH_SIZE = 400;
+// Keep adoption inside the cold digest response budget, with the same guard
+// band reserved for final assembly and cache writes.
+const ADOPTION_DEADLINE_MS = DIGEST_RESPONSE_TIMEOUT_MS - RESPONSE_GUARD_BAND_MS;
 
 type DigestFeedEntry = { category: string; feed: ServerFeed };
 
@@ -1127,6 +1142,127 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
   return map;
 }
 
+function parseRedisTimestamp(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  if (typeof value === 'string' && value.trim().length === 0) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+interface AdoptionState {
+  aliasTargetByHash: Map<string, string>;
+  trackFirstSeenByHash: Map<string, number>;
+  incompleteHashes: Set<string>;
+}
+
+function isCompleteRedisResult(result: unknown): result is { result: unknown } {
+  if (!result || typeof result !== 'object') return false;
+  const record = result as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, 'result')
+    && !Object.prototype.hasOwnProperty.call(record, 'error');
+}
+
+/**
+ * Read the alias and track state for one adoption pass.
+ *
+ * Each bounded chunk is one MULTI/EXEC call so the two reads for every hash
+ * come from the same Redis snapshot. The reader has one absolute deadline
+ * shared by all chunks and only starts a chunk when the Redis helper's own
+ * timeout still fits. A timeout, incomplete response, command error, or
+ * deadline skip leaves every hash in that chunk marked incomplete; callers
+ * must use their batch-derived canonical for any affected cluster.
+ */
+async function readAdoptionState(
+  memberHashes: string[],
+  freshnessCutoff: number,
+  deadlineAt = Date.now() + ADOPTION_DEADLINE_MS,
+): Promise<AdoptionState> {
+  const aliasTargetByHash = new Map<string, string>();
+  const trackFirstSeenByHash = new Map<string, number>();
+  const incompleteHashes = new Set(memberHashes);
+
+  for (let offset = 0; offset < memberHashes.length; offset += ADOPTION_BATCH_SIZE) {
+    const chunk = memberHashes.slice(offset, offset + ADOPTION_BATCH_SIZE);
+    const remainingMs = deadlineAt - Date.now();
+    // runRedisTransaction has a fixed per-call timeout and returns [] when it
+    // aborts. Do not start work that cannot finish inside the digest budget;
+    // awaiting every started call also prevents detached work after return.
+    if (remainingMs < REDIS_PIPELINE_TIMEOUT_MS) {
+      console.warn(
+        `[digest] story adoption deadline reached; skipped ${memberHashes.length - offset} member hash(es)`,
+      );
+      break;
+    }
+
+    const adoptionResults = await runRedisTransaction([
+      ...chunk.map((h) => ['GET', STORY_ALIAS_KEY(h)]),
+      ...chunk.map((h) => ['HMGET', STORY_TRACK_KEY(h), 'firstSeen', 'lastSeen']),
+    ]);
+
+    // A response that crossed the deadline is not a usable snapshot. Do this
+    // check before applying either map so no half-read can influence adoption.
+    if (Date.now() > deadlineAt) {
+      console.warn(
+        `[digest] story adoption chunk crossed deadline; skipped ${chunk.length} member hash(es)`,
+      );
+      break;
+    }
+
+    const expectedLength = chunk.length * 2;
+    const complete = Array.isArray(adoptionResults)
+      && adoptionResults.length === expectedLength
+      && adoptionResults.every(isCompleteRedisResult);
+    if (!complete) {
+      console.warn(
+        `[digest] story adoption chunk incomplete; expected ${expectedLength} Redis result(s), got ${Array.isArray(adoptionResults) ? adoptionResults.length : 'non-array'}`,
+      );
+      // A failed chunk is a Redis-health signal, not a per-key miss. Stop
+      // here so later chunks cannot extend the cold-path work while the
+      // adoption result is already unconfirmed.
+      break;
+    }
+
+    // A successful Redis response can still contain an unexpected command
+    // shape. Treat that as an unconfirmed chunk, not as a cache miss that is
+    // safe to combine with other members in the same cluster.
+    const aliases = adoptionResults.slice(0, chunk.length);
+    const tracks = adoptionResults.slice(chunk.length);
+    const validShapes = aliases.every(({ result }) => result === null || typeof result === 'string')
+      && tracks.every(({ result }) => Array.isArray(result) && result.length >= 2);
+    if (!validShapes) {
+      console.warn('[digest] story adoption chunk returned invalid Redis value shapes');
+      break;
+    }
+
+    // Only a complete, error-free chunk is eligible for adoption. A normal
+    // HMGET miss is [null, null] and simply contributes no live track.
+    for (let i = 0; i < chunk.length; i++) {
+      const target = adoptionResults[i]!.result;
+      if (typeof target === 'string' && target.length > 0) {
+        aliasTargetByHash.set(chunk[i]!, target);
+      }
+    }
+    for (let i = 0; i < chunk.length; i++) {
+      const row = adoptionResults[chunk.length + i]!.result;
+      if (!Array.isArray(row)) continue;
+      const firstSeen = parseRedisTimestamp(row[0]);
+      const lastSeen = parseRedisTimestamp(row[1]);
+      if (firstSeen === undefined || lastSeen === undefined) continue;
+      // A track the digest has not seen inside its own freshness floor is
+      // not a live story identity — adopting it would anchor on a row that
+      // is ageing out, and the story would re-fork on a later cycle. Same
+      // cutoff the items themselves are held to, so there is no second
+      // freshness knob to tune.
+      if (lastSeen < freshnessCutoff) continue;
+      trackFirstSeenByHash.set(chunk[i]!, firstSeen);
+    }
+    for (const hash of chunk) incompleteHashes.delete(hash);
+  }
+
+  return { aliasTargetByHash, trackFirstSeenByHash, incompleteHashes };
+}
+
 function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
   return {
     source: item.source,
@@ -1192,11 +1328,6 @@ export async function listFeedDigest(
     return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
   }
 }
-
-const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
-// #4925 item 1: canonical adoption reads two commands per member hash
-// (alias GET + track HMGET), so the hash budget is half the command budget.
-const ADOPTION_BATCH_SIZE = 400;
 
 /**
  * Build the HSET field list for a story:track:v1 row.
@@ -1399,6 +1530,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
   // we NOT show" is a queryable number instead of a feeling.
   const ledgerDrops = { perFeedCap: 0, undated: 0, freshnessFloor: 0, perCategoryCap: 0 };
   const categories: Record<string, CategoryBucket> = {};
+  const digestStartedAt = Date.now();
 
   const deadlineController = new AbortController();
   const deadlineTimeout = setTimeout(() => deadlineController.abort(), OVERALL_DEADLINE_MS);
@@ -1506,8 +1638,8 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // at first observation, so it is server-side state, unlike publishedAt,
     // which decides the batch-derived default and is publisher-controlled.
     // Read it alongside the alias row and prefer the oldest live track.
-    // A failed read degrades to batch-derived canonicals (pre-adoption
-    // behavior).
+    // A failed or skipped chunk degrades affected clusters to batch-derived
+    // canonicals (pre-adoption behavior).
     const allMemberHashes = new Set<string>();
     for (const identity of identityByItem.values()) {
       for (const h of identity.memberTitleHashes ?? []) allMemberHashes.add(h);
@@ -1518,46 +1650,31 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // Chunked because this read now carries two commands per member hash, and
     // a full batch runs to four figures of hashes — the alias read was already
     // unchunked at one command each, which STORY_BATCH_SIZE's own comment says
-    // is the wrong side of Upstash's 1000-command cap. Both reads for a given
-    // hash stay in the SAME call, so a cluster never decides from an alias row
-    // and a track row observed in different states. A chunk that fails yields
-    // no adoption data for its own hashes only; those clusters fall back to
-    // the batch-derived canonical exactly as they did before adoption existed.
-    for (let offset = 0; offset < memberHashes.length; offset += ADOPTION_BATCH_SIZE) {
-      const chunk = memberHashes.slice(offset, offset + ADOPTION_BATCH_SIZE);
-      const adoptionResults = await runRedisPipeline([
-        ...chunk.map((h) => ['GET', STORY_ALIAS_KEY(h)]),
-        ...chunk.map((h) => ['HMGET', STORY_TRACK_KEY(h), 'firstSeen', 'lastSeen']),
-      ]);
-      for (let i = 0; i < chunk.length; i++) {
-        const target = adoptionResults[i]?.result;
-        if (typeof target === 'string' && target.length > 0) aliasTargetByHash.set(chunk[i]!, target);
-      }
-      for (let i = 0; i < chunk.length; i++) {
-        const row = adoptionResults[chunk.length + i]?.result;
-        if (!Array.isArray(row)) continue;
-        const firstSeen = Number(row[0]);
-        const lastSeen = Number(row[1]);
-        if (!Number.isFinite(firstSeen) || !Number.isFinite(lastSeen)) continue;
-        // A track the digest has not seen inside its own freshness floor is
-        // not a live story identity — adopting it would anchor on a row that
-        // is ageing out, and the story would re-fork on a later cycle. Same
-        // cutoff the items themselves are held to, so there is no second
-        // freshness knob to tune.
-        if (lastSeen < freshnessCutoff) continue;
-        trackFirstSeenByHash.set(chunk[i]!, firstSeen);
-      }
-    }
+    // is the wrong side of Upstash's 1000-command cap. readAdoptionState keeps
+    // both reads for a hash in one atomic MULTI/EXEC call, validates the whole
+    // response before applying either map, and enforces one digest deadline.
+    const adoptionState = await readAdoptionState(
+      memberHashes,
+      freshnessCutoff,
+      digestStartedAt + ADOPTION_DEADLINE_MS,
+    );
+    const { aliasTargetByHash: adoptionAliases, trackFirstSeenByHash: adoptionTracks } = adoptionState;
+    for (const [hash, target] of adoptionAliases) aliasTargetByHash.set(hash, target);
+    for (const [hash, firstSeen] of adoptionTracks) trackFirstSeenByHash.set(hash, firstSeen);
 
     await Promise.all(allItems.map(async (item) => {
       const identity = identityByItem.get(item);
       if (identity) {
-        item.titleHash = adoptExistingCanonical(
-          identity.memberTitleHashes,
-          identity.titleHash,
-          aliasTargetByHash,
-          trackFirstSeenByHash,
-        );
+        const clusterReadIncomplete = (identity.memberTitleHashes ?? [])
+          .some((hash) => adoptionState.incompleteHashes.has(hash));
+        item.titleHash = clusterReadIncomplete
+          ? identity.titleHash
+          : adoptExistingCanonical(
+            identity.memberTitleHashes,
+            identity.titleHash,
+            aliasTargetByHash,
+            trackFirstSeenByHash,
+          );
         item.corroborationCount = identity.corroborationCount;
       } else {
         // Defensive: assignStoryIdentity covers every input by
@@ -1747,6 +1864,7 @@ export const __testing__ = {
   computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
   readStoryTracks,
+  readAdoptionState,
   resolveMaxAgeMs,
   capLlmUpgrade,
   parseClassifyCacheHit,
@@ -1755,6 +1873,8 @@ export const __testing__ = {
   POST_FETCH_HEADROOM_MS,
   RESPONSE_GUARD_BAND_MS,
   OVERALL_DEADLINE_MS,
+  ADOPTION_BATCH_SIZE,
+  ADOPTION_DEADLINE_MS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

@@ -142,14 +142,17 @@ export async function assignStoryIdentity(items, normalizeTitle, sha256Hex) {
  * story:track first-seen stamps, return the hash the cluster should track
  * under. Three rules, in order:
  *
- *   1. The OLDEST member hash that already anchors a live story:track row.
- *      firstSeen is HSETNX'd by the digest at first observation, so it is
- *      server-side state a feed cannot fake — unlike publishedAt, which
- *      decides the batch-derived default and is publisher-controlled. This
- *      is what stops a feed that backdates inside the freshness window from
- *      seizing a live story's identity, and what stops an attacker who can
- *      place several member hashes in the cluster from out-voting the
- *      genuine story under rule 2 (#4925 item 1).
+ *   1. The OLDEST member hash that already anchors a live story:track row,
+ *      except when that member has a live alias to a different canonical.
+ *      Such a track is superseded by the alias and must not re-seize the
+ *      story before rule 2 can preserve the aliased identity. firstSeen is
+ *      HSETNX'd by the digest at first observation, so it is server-side
+ *      state a feed cannot fake — unlike publishedAt, which decides the
+ *      batch-derived default and is publisher-controlled. This is what stops
+ *      a feed that backdates inside the freshness window from seizing a live
+ *      story's identity, and what stops an attacker who can place several
+ *      member hashes in the cluster from out-voting the genuine story under
+ *      rule 2 (#4925 item 1).
  *   2. Otherwise the live canonical most of the members already point at,
  *      so a story keeps its identity when the original canonical member
  *      drops out of the batch (#4924). Rule 1 cannot cover this case: a
@@ -170,10 +173,21 @@ export function adoptExistingCanonical(
   trackFirstSeenByHash,
 ) {
   const members = Array.isArray(memberTitleHashes) ? memberTitleHashes : [];
+  const getAliasTarget = (memberHash) => aliasTargetByHash instanceof Map
+    ? aliasTargetByHash.get(memberHash)
+    : aliasTargetByHash?.[memberHash];
 
   let oldestHash = null;
   let oldestFirstSeen = Infinity;
   for (const memberHash of members) {
+    const aliasTarget = getAliasTarget(memberHash);
+    // Once a member has a conclusively-read alias to another canonical, its
+    // own live track is obsolete. Let rule 2 vote for the aliased target —
+    // including when that target is absent from this batch — instead of
+    // re-forking on the stale member hash (#7022 review feedback 1).
+    if (typeof aliasTarget === 'string' && aliasTarget.length > 0 && aliasTarget !== memberHash) {
+      continue;
+    }
     const firstSeen = trackFirstSeenByHash instanceof Map
       ? trackFirstSeenByHash.get(memberHash)
       : trackFirstSeenByHash?.[memberHash];
@@ -191,9 +205,7 @@ export function adoptExistingCanonical(
 
   const counts = new Map();
   for (const memberHash of members) {
-    const target = aliasTargetByHash instanceof Map
-      ? aliasTargetByHash.get(memberHash)
-      : aliasTargetByHash?.[memberHash];
+    const target = getAliasTarget(memberHash);
     if (typeof target !== 'string' || target.length === 0) continue;
     counts.set(target, (counts.get(target) ?? 0) + 1);
   }

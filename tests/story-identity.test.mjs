@@ -517,10 +517,11 @@ describe('adopt-existing-track canonical (#4925 item 1)', () => {
 
   it('precedence: oldest live track, then most-common alias, then the batch default', () => {
     const members = ['m1', 'm2', 'm3'];
-    const aliasMap = new Map([['m1', 'alias-target'], ['m2', 'alias-target'], ['m3', 'other']]);
+    const aliasMap = new Map([['m1', 'alias-target'], ['m2', 'alias-target']]);
 
-    // 1. A live track outranks the alias vote even when the alias vote is
-    //    unanimous, because only firstSeen is beyond a feed's reach.
+    // 1. A live track with no superseding alias outranks the alias vote even
+    //    when the alias vote is unanimous, because only firstSeen is beyond
+    //    a feed's reach.
     assert.equal(
       adoptExistingCanonical(members, 'default', aliasMap, new Map([['m3', 500]])),
       'm3',
@@ -532,6 +533,51 @@ describe('adopt-existing-track canonical (#4925 item 1)', () => {
     // 4. Omitting the argument entirely keeps the pre-#4925 behaviour, so the
     //    17 existing three-argument call sites are unaffected.
     assert.equal(adoptExistingCanonical(members, 'default', aliasMap), 'alias-target');
+  });
+
+  it('REGRESSION: a superseded member track cannot defeat alias continuity across three cycles', () => {
+    // Cycle 1: A-only creates A's track and self-alias.
+    const tracks = new Map([['A', 100]]);
+    let aliases = new Map([['A', 'A']]);
+    assert.equal(adoptExistingCanonical(['A'], 'A', aliases, tracks), 'A');
+
+    // Cycle 2: B-only creates its own live track and self-alias.
+    tracks.set('B', 200);
+    aliases = new Map([['A', 'A'], ['B', 'B']]);
+    assert.equal(adoptExistingCanonical(['B'], 'B', aliases, tracks), 'B');
+
+    // Cycle 3: A+B keeps the older A identity. The digest then persists the
+    // final aliases, including B -> A, while B's old track is still live.
+    assert.equal(adoptExistingCanonical(['A', 'B'], 'A', aliases, tracks), 'A');
+    aliases = new Map([['A', 'A'], ['B', 'A']]);
+
+    // Cycle 4: A is absent. B's own live row must not re-fork the story;
+    // alias adoption must retain A even though the canonical is not a member.
+    assert.equal(
+      adoptExistingCanonical(['B'], 'B', aliases, tracks),
+      'A',
+      'a member track superseded by B -> A must defer to the aliased canonical',
+    );
+  });
+
+  it('skips only tracks with a different alias and preserves deterministic alias ties', () => {
+    const members = ['m1', 'm2'];
+    const aliases = new Map([['m1', 'z-canonical'], ['m2', 'a-canonical']]);
+    const tracks = new Map([['m1', 1], ['m2', 2]]);
+
+    // Both member tracks are superseded, so the alias tie-break remains
+    // lexicographic and independent of member/track insertion order.
+    assert.equal(
+      adoptExistingCanonical([...members].reverse(), 'default', aliases, tracks),
+      'a-canonical',
+    );
+
+    // A self-alias is not a supersession: the canonical member's own track
+    // remains eligible under rule 1.
+    assert.equal(
+      adoptExistingCanonical(['m1', 'm2'], 'default', new Map([['m1', 'm1'], ['m2', 'other']]), tracks),
+      'm1',
+    );
   });
 
   it('track adoption is deterministic and ignores unusable stamps', () => {
@@ -596,12 +642,12 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
       'digest must adopt live canonicals from alias targets AND story:track first-seen stamps (#4925 item 1) before assigning hashes',
     );
     // #4925 item 1: a member hash's alias row and its track row must be read
-    // in the SAME pipeline call, or a cluster can decide from two Redis states
-    // observed at different moments.
+    // in the SAME atomic transaction, or a cluster can decide from two Redis
+    // states observed at different moments.
     assert.match(
       src,
-      /runRedisPipeline\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen'\]\),\s*\]\)/,
-      'alias and story:track reads for a hash must share one pipeline call',
+      /runRedisTransaction\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen'\]\),\s*\]\)/,
+      'alias and story:track reads for a hash must share one atomic transaction',
     );
     // ...and that call must stay bounded: two commands per hash means the hash
     // budget is half the command budget STORY_BATCH_SIZE is sized against.
