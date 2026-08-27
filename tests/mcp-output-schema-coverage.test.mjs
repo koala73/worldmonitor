@@ -295,13 +295,27 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   ];
 
   // Pre-existing instances of the same defect, recorded rather than hidden.
-  // Each entry is load-bearing in both directions: an unlisted tool that
-  // starts drifting fails, and a listed tool that stops drifting ALSO fails,
-  // so a fix cannot leave a stale exemption behind.
+  // Each entry pins the EXACT drift, not merely "drifts somehow": a bare
+  // non-empty check would let a tool delete one fabricated field, add a
+  // different one, and stay "justified" — shipping new fiction on a tool the
+  // guard nominally covers. Movement in either direction reds instead, so an
+  // entry cannot rot into a blanket exemption.
   const KNOWN_DRIFT = new Map([
-    ['analyze_situation', 'declares deduction/confidence/signals/framework/generatedAt; DeductSituationResponse is {analysis, model, provider}'],
-    ['search_flights', 'declares search_metadata, which SearchGoogleFlightsResponse does not carry'],
-    ['search_flight_prices_by_date', 'declares prices/search_metadata; SearchGoogleDatesResponse carries dates/degraded/error'],
+    ['analyze_situation', {
+      why: 'DeductSituationResponse is {analysis, model, provider}',
+      names: ['deduction', 'confidence', 'signals', 'framework', 'generatedAt'],
+      types: [],
+    }],
+    ['search_flights', {
+      why: 'SearchGoogleFlightsResponse carries degraded/error/flights',
+      names: ['search_metadata'],
+      types: [],
+    }],
+    ['search_flight_prices_by_date', {
+      why: 'SearchGoogleDatesResponse carries dates/degraded/error',
+      names: ['prices', 'search_metadata'],
+      types: [],
+    }],
   ]);
 
   function loadOpenApiOperations() {
@@ -329,42 +343,86 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   }
 
   // Resolve the 200 JSON response schema through its $ref chain and return its
-  // top-level properties, each dereferenced so a $ref'd field carries a type.
+  // properties, each dereferenced so a $ref'd field carries a type and its own
+  // nested properties. `unresolved` names any $ref that did not resolve: those
+  // would otherwise become untyped `{}` and silently turn a real mismatch into
+  // a pass, so the caller asserts the list is empty rather than shrinking
+  // coverage quietly.
   function wireResponseProperties({ op, spec }) {
     const schema = deref(op?.responses?.['200']?.content?.['application/json']?.schema, spec);
     if (!schema?.properties) return null;
-    const out = {};
-    for (const [key, sub] of Object.entries(schema.properties)) out[key] = deref(sub, spec) ?? {};
-    return out;
+    const unresolved = [];
+    const resolve = (node, path) => {
+      const out = {};
+      for (const [key, sub] of Object.entries(node.properties ?? {})) {
+        const here = path ? `${path}.${key}` : key;
+        const target = deref(sub, spec);
+        if (!target) { unresolved.push(here); out[key] = {}; continue; }
+        out[key] = target.properties ? { ...target, properties: resolve(target, here) } : target;
+      }
+      return out;
+    };
+    return { properties: resolve(schema, ''), unresolved };
   }
 
   // The two comparisons the population loop and the positive control below
   // both run through, so a control cannot pass against a copy of the rule.
-  function declaredButNotOnWire(outputSchema, wireProps) {
-    return Object.keys(outputSchema?.properties ?? {}).filter(k => !(k in wireProps));
+  // Both recurse: the load-bearing content of the get_country_risk schema is
+  // nested (cii.combinedScore, cii.components.*), and a top-level-only check
+  // would leave exactly that subtree unanchored — the same self-referential
+  // gap that let the original bug ship, one level down.
+  function declaredButNotOnWire(outputSchema, wireProps, path = '') {
+    const drift = [];
+    for (const [key, declared] of Object.entries(outputSchema?.properties ?? {})) {
+      const here = path ? `${path}.${key}` : key;
+      const wire = wireProps[key];
+      if (!wire) { drift.push(here); continue; }
+      // Only descend where both sides describe an object; a declared leaf
+      // against a wire object is a type mismatch, reported by the sibling.
+      if (declared?.properties && wire.properties) {
+        drift.push(...declaredButNotOnWire(declared, wire.properties, here));
+      }
+    }
+    return drift;
   }
 
   // Name parity alone would have missed half the get_country_risk bug: `cii`
   // exists on the wire, but as a CiiScore object against a declared
   // ['number','null']. Compare types wherever both sides state one.
-  function declaredTypeMismatches(outputSchema, wireProps) {
+  function declaredTypeMismatches(outputSchema, wireProps, path = '') {
     const mismatches = [];
     for (const [key, declared] of Object.entries(outputSchema?.properties ?? {})) {
-      const wireType = wireProps[key]?.type;
-      if (!wireType || !declared?.type) continue;
-      // `null` is a legitimate declaration widening: proto scalars are absent
-      // rather than null, but a tool may still admit null for a missing field.
-      const declaredTypes = (Array.isArray(declared.type) ? declared.type : [declared.type])
-        .filter(t => t !== 'null');
-      if (declaredTypes.length === 0) continue;
-      const compatible = declaredTypes.some(t => t === wireType
-        || (t === 'number' && wireType === 'integer')
-        || (t === 'integer' && wireType === 'number'));
-      if (!compatible) {
-        mismatches.push(`${key}: declared ${JSON.stringify(declared.type)}, wire is ${JSON.stringify(wireType)}`);
+      const here = path ? `${path}.${key}` : key;
+      const wire = wireProps[key];
+      if (!wire) continue;
+      const wireType = wire.type;
+      if (wireType && declared?.type) {
+        // `null` is a legitimate declaration widening: proto scalars are absent
+        // rather than null, but a tool may still admit null for a missing field.
+        const declaredTypes = (Array.isArray(declared.type) ? declared.type : [declared.type])
+          .filter(t => t !== 'null');
+        const compatible = declaredTypes.length === 0 || declaredTypes.some(t => t === wireType
+          || (t === 'number' && wireType === 'integer')
+          || (t === 'integer' && wireType === 'number'));
+        if (!compatible) {
+          mismatches.push(`${here}: declared ${JSON.stringify(declared.type)}, wire is ${JSON.stringify(wireType)}`);
+        }
+      }
+      if (declared?.properties && wire.properties) {
+        mismatches.push(...declaredTypeMismatches(declared, wire.properties, here));
       }
     }
     return mismatches;
+  }
+
+  // The missing direction. Declared-but-not-on-wire catches invented fields;
+  // this catches a REMOVED one. `upstreamUnavailable` is the field this whole
+  // guard exists to protect — drop it from the schema and an agent silently
+  // loses the outage-versus-calm distinction, with every other check green.
+  const SAFETY_FLAG = /degraded|unavailable|stale|error|partial/i;
+  function undeclaredSafetyFlags(outputSchema, wireProps) {
+    const declared = new Set(Object.keys(outputSchema?.properties ?? {}));
+    return Object.keys(wireProps).filter(k => SAFETY_FLAG.test(k) && !declared.has(k));
   }
 
   for (const toolName of VERBATIM_PASSTHROUGH_TOOLS) {
@@ -379,28 +437,142 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
 
       const entry = loadOpenApiOperations().get(tool._apiPaths[0].replace(/\s+/g, ' ').trim());
       assert.ok(entry, `${toolName}: no OpenAPI operation for "${tool._apiPaths[0]}"`);
-      const wireProps = wireResponseProperties(entry);
-      assert.ok(wireProps, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
+      const wire = wireResponseProperties(entry);
+      assert.ok(wire, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
+      // An unresolvable $ref would become an untyped {} and quietly make that
+      // property unverifiable — shrink coverage loudly, never silently.
+      assert.deepEqual(
+        wire.unresolved, [],
+        `${toolName}: OpenAPI response has unresolvable $refs, so these fields cannot be checked: ${JSON.stringify(wire.unresolved)}`,
+      );
 
-      const drift = declaredButNotOnWire(tool.outputSchema, wireProps);
-      const mismatches = declaredTypeMismatches(tool.outputSchema, wireProps);
+      const drift = declaredButNotOnWire(tool.outputSchema, wire.properties);
+      const mismatches = declaredTypeMismatches(tool.outputSchema, wire.properties);
       const known = KNOWN_DRIFT.get(toolName);
       if (known) {
-        assert.ok(
-          drift.length + mismatches.length > 0,
-          `${toolName} is in KNOWN_DRIFT ("${known}") but no longer drifts — delete its KNOWN_DRIFT entry so the guard stays live for this tool`,
+        assert.deepEqual(
+          drift.slice().sort(), known.names.slice().sort(),
+          `${toolName}'s recorded drift moved (${known.why}). Update or delete its KNOWN_DRIFT entry — an entry that ` +
+            'no longer describes the actual drift is no longer a justified exemption.',
+        );
+        assert.deepEqual(
+          mismatches.slice().sort(), known.types.slice().sort(),
+          `${toolName}'s recorded type drift moved (${known.why}). Update or delete its KNOWN_DRIFT entry.`,
         );
         return;
       }
       assert.deepEqual(
         drift, [],
         `${toolName} declares outputSchema properties that its response does not carry: ${JSON.stringify(drift)}\n` +
-          `  wire properties: ${JSON.stringify(Object.keys(wireProps))}\n` +
+          `  wire properties: ${JSON.stringify(Object.keys(wire.properties))}\n` +
           '  `_execute` returns res.json() verbatim, so an agent reading these gets null.',
       );
       assert.deepEqual(
         mismatches, [],
         `${toolName} declares outputSchema property types its response contradicts:\n  ${mismatches.join('\n  ')}`,
+      );
+
+      // The other direction. A schema that simply DROPS a degraded-state flag
+      // leaves every check above green while an agent silently loses the
+      // outage-versus-calm distinction — which is the half of this fix that
+      // matters most.
+      assert.deepEqual(
+        undeclaredSafetyFlags(tool.outputSchema, wire.properties), [],
+        `${toolName}'s response carries a degraded-state flag its outputSchema never declares. An agent cannot ` +
+          'distinguish "no data" from "everything is fine" without it.',
+      );
+    });
+  }
+
+  // The list above is hand-written, so an omission is silent: a new tool that
+  // returns the gateway response verbatim would simply never be checked, which
+  // is how this defect class survives. Derive the candidate set mechanically
+  // and require the list to match it exactly, so adding such a tool without
+  // enrolling it fails here instead of shipping unguarded.
+  // Matches a tail-position `return res.json()` — the whole definition of
+  // "verbatim". Read against the TRANSPILED function body, which drops the
+  // trailing semicolon (`return res.json()}`), so both forms are accepted. If
+  // a future transpiler reshapes this further the set collapses toward empty
+  // and the assertion fails loudly rather than quietly covering nothing.
+  const RETURNS_RESPONSE_VERBATIM = /return\s+(?:res|response)\.json\(\)\s*;?\s*\}\s*$/;
+
+  it('VERBATIM_PASSTHROUGH_TOOLS enrolls every RPC tool that returns the gateway response verbatim', () => {
+    const candidates = mod.__testing__.TOOL_REGISTRY
+      .filter(t => typeof t._execute === 'function'
+        && RETURNS_RESPONSE_VERBATIM.test(t._execute.toString())
+        // A tool with no single declared OpenAPI operation has no contract to
+        // check against; `generate_forecasts` declares `_apiPaths: []`.
+        && (t._apiPaths ?? []).length === 1)
+      .map(t => t.name)
+      .sort();
+
+    // Floor first: without it, the way to clear a red from a transpiler
+    // reshape is to empty the hand list too, at which point deepEqual([], [])
+    // passes and every per-tool guard above vanishes with nothing failing.
+    assert.ok(
+      candidates.length >= 10,
+      `only ${candidates.length} verbatim-passthrough tools were derived from the registry — the detection regex ` +
+        'has stopped matching. Fix the regex; do NOT empty VERBATIM_PASSTHROUGH_TOOLS to match, which would ' +
+        'silently delete every per-tool parity check.',
+    );
+    assert.deepEqual(
+      [...VERBATIM_PASSTHROUGH_TOOLS].sort(),
+      candidates,
+      'VERBATIM_PASSTHROUGH_TOOLS is out of step with the registry — add the newly-listed tool(s) so their ' +
+        'declared outputSchema is checked against the OpenAPI response, or remove any that no longer ' +
+        'return res.json() verbatim.',
+    );
+  });
+
+  // Verbatim-by-SPREAD: `_execute` returns `{ ...res.json(), <extra keys> }`,
+  // so every response field still passes through unchanged and the same defect
+  // class applies — but the tail-position regex above can never enrol it.
+  // `get_country_brief` is exactly this, and it carried the same bug
+  // (`country_code` against a camelCase wire, plus a declared `framework` and
+  // `provider` the response never had). Guarding only the literal-return form
+  // would leave the second half of that fix unprotected.
+  //
+  // `adds` lists the keys `_execute` layers on top; they are legitimately
+  // absent from the wire, so they are subtracted before comparing.
+  const SPREAD_PASSTHROUGH_TOOLS = new Map([
+    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories'] }],
+  ]);
+
+  for (const [toolName, { adds }] of SPREAD_PASSTHROUGH_TOOLS) {
+    it(`${toolName} declares only fields its OpenAPI response carries, plus its own additions`, () => {
+      const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
+      assert.ok(tool, `tool ${toolName} not found in registry`);
+      assert.equal(
+        (tool._apiPaths ?? []).length, 1,
+        `${toolName} must declare exactly one _apiPaths entry to be checked against a single OpenAPI operation`,
+      );
+
+      const entry = loadOpenApiOperations().get(tool._apiPaths[0].replace(/\s+/g, ' ').trim());
+      assert.ok(entry, `${toolName}: no OpenAPI operation for "${tool._apiPaths[0]}"`);
+      const wire = wireResponseProperties(entry);
+      assert.ok(wire, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
+      assert.deepEqual(wire.unresolved, [], `${toolName}: OpenAPI response has unresolvable $refs`);
+
+      const drift = declaredButNotOnWire(tool.outputSchema, wire.properties)
+        .filter(name => !adds.includes(name));
+      assert.deepEqual(
+        drift, [],
+        `${toolName} declares outputSchema properties that neither its response nor its own _execute provides: ` +
+          `${JSON.stringify(drift)}\n  wire properties: ${JSON.stringify(Object.keys(wire.properties))}\n` +
+          `  _execute adds: ${JSON.stringify(adds)}`,
+      );
+      assert.deepEqual(
+        declaredTypeMismatches(tool.outputSchema, wire.properties), [],
+        `${toolName} declares outputSchema property types its response contradicts`,
+      );
+
+      // Every declared addition must really be an addition — an `adds` entry
+      // that the wire now carries is a stale carve-out hiding real coverage.
+      const stale = adds.filter(name => name in wire.properties);
+      assert.deepEqual(
+        stale, [],
+        `${toolName}: ${JSON.stringify(stale)} now exist(s) on the wire, so listing them as _execute additions ` +
+          'exempts real fields from the check — remove them from `adds`.',
       );
     });
   }
@@ -445,6 +617,75 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       declaredTypeMismatches(shipped, wireProps),
       ['cii: declared ["number","null"], wire is "object"'],
       'a name that exists but whose declared type contradicts the wire must still be reported',
+    );
+  });
+
+  // The comparisons recurse, and a recursion that silently stops descending
+  // looks identical to a clean pass. Prove it reaches nested properties.
+  it('the drift comparisons descend into nested properties (positive control)', () => {
+    const wireProps = {
+      cii: {
+        type: 'object',
+        properties: {
+          combinedScore: { type: 'number' },
+          components: { type: 'object', properties: { ciiContribution: { type: 'number' } } },
+        },
+      },
+    };
+    const faithful = {
+      properties: {
+        cii: {
+          type: 'object',
+          properties: {
+            combinedScore: { type: 'number' },
+            components: { type: 'object', properties: { ciiContribution: { type: 'number' } } },
+          },
+        },
+      },
+    };
+    assert.deepEqual(declaredButNotOnWire(faithful, wireProps), []);
+    assert.deepEqual(declaredTypeMismatches(faithful, wireProps), []);
+
+    // A fabricated name and a contradicted type, both two levels down — the
+    // depth at which get_country_risk's real content lives.
+    const drifted = {
+      properties: {
+        cii: {
+          type: 'object',
+          properties: {
+            combinedScore: { type: 'string' },
+            components: { type: 'object', properties: { unrest: { type: 'number' } } },
+          },
+        },
+      },
+    };
+    assert.deepEqual(
+      declaredButNotOnWire(drifted, wireProps),
+      ['cii.components.unrest'],
+      'a fabricated nested field must be reported with its full path',
+    );
+    assert.deepEqual(
+      declaredTypeMismatches(drifted, wireProps),
+      ['cii.combinedScore: declared "string", wire is "number"'],
+      'a nested type contradiction must be reported with its full path',
+    );
+  });
+
+  it('undeclaredSafetyFlags reports a dropped degraded-state flag (positive control)', () => {
+    const wireProps = {
+      countryCode: { type: 'string' },
+      upstreamUnavailable: { type: 'boolean' },
+      degraded: { type: 'boolean' },
+    };
+    assert.deepEqual(
+      undeclaredSafetyFlags({ properties: { countryCode: {}, upstreamUnavailable: {}, degraded: {} } }, wireProps),
+      [],
+      'a schema declaring every safety flag must report nothing',
+    );
+    assert.deepEqual(
+      undeclaredSafetyFlags({ properties: { countryCode: {} } }, wireProps),
+      ['upstreamUnavailable', 'degraded'],
+      'dropping the outage flags must be reported — that is the half of the fix that matters most',
     );
   });
 });

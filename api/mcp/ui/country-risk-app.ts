@@ -59,6 +59,10 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   [data-theme="dark"] {
     --bg: #0b1220; --fg: #e5e7eb; --muted: #94a3b8; --card: #131c2e;
     --border: #1e293b; --accent: #60a5fa;
+    /* The severity ramp needs dark variants too: the light values sit at
+       3.5:1 on --card, under WCAG AA for the 12px degraded banner — the one
+       element whose whole job is being noticed during an outage. */
+    --low: #4ade80; --moderate: #facc15; --high: #fb923c; --severe: #f87171;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
@@ -152,11 +156,21 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (el) el.textContent = text == null ? "—" : String(text);
   }
 
+  // Server strings are collapsed and capped before they reach the DOM. The
+  // sibling shells get this from shell.ts's collapseWs; this shell is
+  // hand-rolled, and the tool's 256 KB output budget means an unbounded value
+  // could flood a cell and push a huge height back to the host.
+  // NOTE the doubled backslash: this file is a TS template literal, so a bare
+  // \\s would reach the browser as a literal "s" and collapse every letter s
+  // in the value. shell.ts:189 escapes the same way for the same reason.
+  function cleanText(s, max) {
+    return String(s == null ? "" : s).replace(/\\s+/g, " ").trim().slice(0, max);
+  }
   // GetCountryRiskResponse.advisory_level is a plain string ("do-not-travel",
   // "reconsider", "caution", …), empty when no advisory applies.
   function describeAdvisory(level) {
-    if (typeof level !== "string" || level === "") return "None";
-    return level.replace(/[-_]+/g, " ");
+    var text = cleanText(level, 64).replace(/[-_]+/g, " ");
+    return text === "" ? "None" : text;
   }
   // Sanctions arrive as two scalars, not a collection: sanctions_active plus
   // sanctions_count. count alone is enough to render, but active is the
@@ -175,7 +189,11 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   };
   function describeTrend(trend) {
     if (typeof trend !== "string") return "—";
-    return TREND_LABELS[trend] || "—";
+    // Require a string hit: a bare lookup also finds inherited members, so a
+    // payload sending trend "constructor" or "__proto__" would render an
+    // Object internal into the row instead of the em-dash.
+    var label = TREND_LABELS[trend];
+    return typeof label === "string" ? label : "—";
   }
   // The four CiiComponents wire names are historical and do not describe what
   // they measure (cii_contribution is unrest, geo_convergence is armed
@@ -196,7 +214,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     var degraded = data.upstreamUnavailable === true;
     document.getElementById("degraded").style.display = degraded ? "block" : "none";
 
-    setText("country", data.countryName || data.countryCode || "—");
+    setText("country", cleanText(data.countryName, 64) || cleanText(data.countryCode, 8) || "—");
 
     // cii is a CiiScore object; combinedScore is the headline 0-100 number.
     var score = (data.cii && typeof data.cii === "object") ? data.cii : {};
@@ -204,11 +222,20 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     setText("cii", cii == null ? "—" : String(Math.round(cii)));
     var lv = levelFor(cii);
     var levelEl = document.getElementById("level");
+    var bar = document.getElementById("ciibar");
     levelEl.textContent = lv.label;
-    if (cii != null) {
+    // The host can post a second tool-result into this same shell, so every
+    // branch must fully own the score visuals. Leaving them untouched when
+    // cii is null let an outage inherit the PREVIOUS country's severity —
+    // "Unknown" in red above a full red bar — which is the exact
+    // outage-reads-as-a-verdict failure this shell exists to prevent.
+    if (cii == null) {
+      levelEl.style.color = "";
+      bar.style.width = "0%";
+      bar.style.background = "";
+    } else {
       var color = getComputedStyle(document.documentElement).getPropertyValue(lv.varName).trim();
       levelEl.style.color = color;
-      var bar = document.getElementById("ciibar");
       bar.style.width = clampPct(cii) + "%";
       bar.style.background = color || "var(--accent)";
     }
