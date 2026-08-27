@@ -147,18 +147,29 @@ async function rawRedisGet(key: string): Promise<unknown | null> {
   }
 }
 
-/** Delete one raw OAuth key outside a pipeline. Throws when deletion is not confirmed. */
-async function rawRedisDelete(key: string): Promise<void> {
+/** Atomically delete one raw OAuth key only while it still has the expected value. */
+export async function rawRedisCompareAndDelete(key: string, expectedValue: string): Promise<boolean> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Redis not configured');
-  const resp = await fetch(`${url}/del/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'worldmonitor-edge/1.0' },
+  const script = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+  const resp = await fetch(`${url}/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'worldmonitor-edge/1.0',
+    },
+    body: JSON.stringify(['EVAL', script, '1', key, expectedValue]),
     signal: AbortSignal.timeout(3_000),
   });
   if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
-  const data = (await resp.json()) as { result?: number };
-  if (typeof data?.result !== 'number') throw new Error('Redis DEL returned an invalid response');
+  const data = (await resp.json().catch(() => null)) as { result?: unknown; error?: string } | null;
+  if (data?.error) throw new Error(`Redis EVAL failed: ${data.error}`);
+  if (data?.result !== 0 && data?.result !== 1) {
+    throw new Error('Redis compare-and-delete returned an invalid response');
+  }
+  return data.result === 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +291,30 @@ function refreshFamilyRevocationKey(familyId: string): string {
   return `oauth:famrev:${familyId}`;
 }
 
+interface RefreshFamilyPointer {
+  family_id: string;
+  pointer_id: string;
+}
+
+function serializeRefreshFamilyPointer(familyId: string, pointerId: string): string {
+  return JSON.stringify({ family_id: familyId, pointer_id: pointerId } satisfies RefreshFamilyPointer);
+}
+
+function familyIdFromRefreshPointer(pointer: unknown): string | null {
+  if (typeof pointer === 'string' && pointer) return pointer;
+  if (
+    pointer
+    && typeof pointer === 'object'
+    && typeof (pointer as Partial<RefreshFamilyPointer>).family_id === 'string'
+    && (pointer as Partial<RefreshFamilyPointer>).family_id
+    && typeof (pointer as Partial<RefreshFamilyPointer>).pointer_id === 'string'
+    && (pointer as Partial<RefreshFamilyPointer>).pointer_id
+  ) {
+    return (pointer as RefreshFamilyPointer).family_id;
+  }
+  return null;
+}
+
 function pipelineOk(results: PipelineResult[] | null): boolean {
   return Array.isArray(results) && results.every((r) => r?.result === 'OK');
 }
@@ -287,10 +322,10 @@ function pipelineOk(results: PipelineResult[] | null): boolean {
 async function persistRefreshFamilyPointer(
   deps: TokenHandlerDeps,
   refreshToken: string,
-  familyId: string,
+  pointerValue: string,
 ): Promise<boolean> {
   return pipelineOk(await deps.redisPipeline([
-    ['SET', refreshFamilyPointerKey(refreshToken), JSON.stringify(familyId), 'EX', REFRESH_TTL_SECONDS],
+    ['SET', refreshFamilyPointerKey(refreshToken), pointerValue, 'EX', REFRESH_TTL_SECONDS],
   ]));
 }
 
@@ -304,6 +339,7 @@ async function restoreConsumedRefreshToken(
   deps: TokenHandlerDeps,
   refreshToken: string,
   refreshData: RefreshDataPro | RefreshDataLegacy,
+  pointerValue: string,
 ): Promise<boolean> {
   const commands: PipelineCommand[] = [
     ['SET', `oauth:refresh:${refreshToken}`, JSON.stringify(refreshData), 'EX', REFRESH_TTL_SECONDS],
@@ -312,7 +348,7 @@ async function restoreConsumedRefreshToken(
     commands.push([
       'SET',
       refreshFamilyPointerKey(refreshToken),
-      JSON.stringify(refreshData.family_id),
+      pointerValue,
       'EX',
       REFRESH_TTL_SECONDS,
     ]);
@@ -326,27 +362,34 @@ async function restoreOrRemoveFamilyPointer(
   deps: TokenHandlerDeps,
   refreshToken: string,
   refreshData: RefreshDataPro | RefreshDataLegacy,
+  pointerValue: string,
+  priorPointerValue: string,
   stage: RefreshRestoreStage,
 ): Promise<void> {
   let restored = false;
   try {
-    restored = await restoreConsumedRefreshToken(deps, refreshToken, refreshData);
+    restored = await restoreConsumedRefreshToken(deps, refreshToken, refreshData, pointerValue);
   } catch {
     // The cleanup and capture below handle thrown transport failures too.
   }
   if (restored) return;
 
-  // A failed/partial restore must not leave a reuse pointer for a token that
-  // may still be absent. Otherwise the client's retry looks like an attack and
-  // revokes every sibling in the family. Use a separate Redis request because
-  // the restore pipeline itself is the operation known to be unreliable.
+  // A failed/partial restore must not leave this attempt's reuse pointer for a
+  // token that may still be absent. Compare-and-delete both this generation
+  // and the prior serialized form (legacy string or versioned object). A
+  // concurrent redemption advances the pointer to another generation, so late
+  // cleanup cannot erase its genuine replay evidence.
   let familyPointerRemoved = false;
   if (refreshData.family_id) {
-    try {
-      await deps.redisDelete(refreshFamilyPointerKey(refreshToken));
-      familyPointerRemoved = true;
-    } catch {
-      // Telemetry below includes cleanup failure without changing the retryable response.
+    for (const expectedValue of new Set([pointerValue, priorPointerValue])) {
+      try {
+        if (await deps.redisCompareAndDelete(refreshFamilyPointerKey(refreshToken), expectedValue)) {
+          familyPointerRemoved = true;
+          break;
+        }
+      } catch {
+        // Telemetry below includes cleanup failure without changing the retryable response.
+      }
     }
   }
   try {
@@ -365,8 +408,8 @@ export interface TokenHandlerDeps {
   redisGetDel: (key: string) => Promise<unknown | null>;
   /** Non-consuming parsed read of raw `oauth:*` keys. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
-  /** Single-key delete, deliberately independent of a failed restore pipeline. */
-  redisDelete: (key: string) => Promise<void>;
+  /** Atomic compare-and-delete, deliberately independent of a failed restore pipeline. */
+  redisCompareAndDelete: (key: string, expectedValue: string) => Promise<boolean>;
   /** Pipeline writer used by the three storeXxx writers + the sliding TTL EXPIRE. */
   redisPipeline: (commands: PipelineCommand[]) => Promise<PipelineResult[] | null>;
   /**
@@ -379,6 +422,8 @@ export interface TokenHandlerDeps {
   validateProMcpToken: typeof validateProMcpToken;
   /** Random UUID — injectable so tests can assert specific ids in the response payload. */
   randomUuid: () => string;
+  /** Attempt id used to version the consumed refresh token's family pointer. */
+  randomPointerId: () => string;
   /** Stable, non-secret Sentry capture for a failed consumed-token restore. */
   captureRestoreFailure: (context: { stage: RefreshRestoreStage; familyPointerRemoved: boolean }) => void;
 }
@@ -409,6 +454,7 @@ interface RefreshDataPro {
   mcpTokenId: string;
   scope: string;
   family_id: string;
+  pointer_id?: string;
 }
 
 interface RefreshDataLegacy {
@@ -416,6 +462,7 @@ interface RefreshDataLegacy {
   api_key_hash: string;
   scope: string;
   family_id: string;
+  pointer_id?: string;
   kind?: undefined;
 }
 
@@ -592,8 +639,8 @@ async function handleRefreshToken(
     // failures: returning invalid_grant without recording famrev would lose
     // the only reuse signal.
     try {
-      const familyId = await deps.redisGet(refreshFamilyPointerKey(refreshToken));
-      if (typeof familyId === 'string' && familyId) {
+      const familyId = familyIdFromRefreshPointer(await deps.redisGet(refreshFamilyPointerKey(refreshToken)));
+      if (familyId) {
         const revoked = await markRefreshFamilyRevoked(deps, familyId);
         if (!revoked) {
           return jsonResp(
@@ -617,13 +664,31 @@ async function handleRefreshToken(
     return jsonResp({ error: 'invalid_grant', error_description: 'client_id mismatch' }, 400);
   }
 
-  // Keep a consumed-token family pointer even for tokens issued before this
-  // patch, and extend old-token pointers so near-expiry replay still revokes
-  // any freshly issued descendant token.
+  let pointerValue = '';
+  let priorPointerValue = '';
   if (refreshData.family_id) {
-    const pointerStored = await persistRefreshFamilyPointer(deps, refreshToken, refreshData.family_id);
+    priorPointerValue = refreshData.pointer_id
+      ? serializeRefreshFamilyPointer(refreshData.family_id, refreshData.pointer_id)
+      : JSON.stringify(refreshData.family_id);
+    const pointerId = deps.randomPointerId();
+    pointerValue = serializeRefreshFamilyPointer(refreshData.family_id, pointerId);
+    refreshData = { ...refreshData, pointer_id: pointerId };
+  }
+
+  // Keep a consumed-token family pointer even for tokens issued before this
+  // patch, and advance its attempt id so late recovery cleanup cannot erase a
+  // pointer written by a concurrent redemption.
+  if (refreshData.family_id) {
+    const pointerStored = await persistRefreshFamilyPointer(deps, refreshToken, pointerValue);
     if (!pointerStored) {
-      await restoreOrRemoveFamilyPointer(deps, refreshToken, refreshData, 'persist-family-pointer');
+      await restoreOrRemoveFamilyPointer(
+        deps,
+        refreshToken,
+        refreshData,
+        pointerValue,
+        priorPointerValue,
+        'persist-family-pointer',
+      );
       return jsonResp(
         { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
         503,
@@ -642,7 +707,14 @@ async function handleRefreshToken(
     try {
       familyRevoked = (await deps.redisGet(refreshFamilyRevocationKey(refreshData.family_id))) != null;
     } catch {
-      await restoreOrRemoveFamilyPointer(deps, refreshToken, refreshData, 'read-family-revocation');
+      await restoreOrRemoveFamilyPointer(
+        deps,
+        refreshToken,
+        refreshData,
+        pointerValue,
+        priorPointerValue,
+        'read-family-revocation',
+      );
       return jsonResp(
         { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
         503,
@@ -684,7 +756,14 @@ async function handleRefreshToken(
       // If restoration fails, remove the old family pointer. The user must
       // re-authorize this session, but its retry must not be misclassified as
       // reuse and revoke every sibling session in the family (GHSA-f6gj).
-      await restoreOrRemoveFamilyPointer(deps, refreshToken, refreshData, 'convex-transient');
+      await restoreOrRemoveFamilyPointer(
+        deps,
+        refreshToken,
+        refreshData,
+        pointerValue,
+        priorPointerValue,
+        'convex-transient',
+      );
       return jsonResp(
         { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
         503,
@@ -867,10 +946,11 @@ export default async function handler(
   return tokenHandler(req, {
     redisGetDel: rawRedisGetDel,
     redisGet: rawRedisGet,
-    redisDelete: rawRedisDelete,
+    redisCompareAndDelete: rawRedisCompareAndDelete,
     redisPipeline: rawRedisPipeline,
     validateProMcpToken,
     randomUuid: () => crypto.randomUUID(),
+    randomPointerId: () => crypto.randomUUID(),
     captureRestoreFailure: (context) => {
       void captureSilentError(new Error('OAuth refresh token restore failed'), {
         tags: {

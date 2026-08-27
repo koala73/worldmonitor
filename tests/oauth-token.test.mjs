@@ -22,7 +22,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import crypto from 'node:crypto';
 
-import { tokenHandler } from '../api/oauth/token.ts';
+import { rawRedisCompareAndDelete, tokenHandler } from '../api/oauth/token.ts';
 import {
   resolveBearerToContext,
   resolveApiKeyFromBearer,
@@ -104,9 +104,11 @@ function makeRedis() {
       }
       return v;
     },
-    redisDelete: async (key) => {
-      ops.push({ kind: 'delete', key });
+    redisCompareAndDelete: async (key, expectedValue) => {
+      ops.push({ kind: 'compare-delete', key, expectedValue });
+      if (store.get(key) !== expectedValue) return false;
       store.delete(key);
+      return true;
     },
     redisPipeline: async (commands) => {
       const results = [];
@@ -141,10 +143,33 @@ function assertSetEx(ops, key, expectedValue, expectedTtl) {
   assert.deepEqual(cmd, ['SET', key, expectedValue, 'EX', expectedTtl]);
 }
 
+function assertFamilyPointerSetEx(ops, key, expectedFamilyId, expectedTtl) {
+  const cmd = findSetCommand(ops, key);
+  assert.ok(cmd, `expected SET command for ${key}`);
+  assert.equal(cmd[0], 'SET');
+  assert.equal(cmd[1], key);
+  assert.equal(cmd[3], 'EX');
+  assert.equal(cmd[4], expectedTtl);
+  const pointer = JSON.parse(cmd[2]);
+  if (typeof pointer === 'string') {
+    assert.equal(pointer, expectedFamilyId);
+    return;
+  }
+  assert.equal(pointer.family_id, expectedFamilyId);
+  assert.equal(typeof pointer.pointer_id, 'string');
+  assert.ok(pointer.pointer_id);
+}
+
 let _uuidCounter = 0;
+let _pointerCounter = 0;
 function deterministicUuid() {
   _uuidCounter += 1;
   return `uuid_${String(_uuidCounter).padStart(4, '0')}`;
+}
+
+function deterministicPointerId() {
+  _pointerCounter += 1;
+  return `pointer_${String(_pointerCounter).padStart(4, '0')}`;
 }
 
 function makeDeps(overrides = {}) {
@@ -156,7 +181,7 @@ function makeDeps(overrides = {}) {
     deps: {
       redisGetDel: redis.redisGetDel,
       redisGet: redis.redisGet,
-      redisDelete: redis.redisDelete,
+      redisCompareAndDelete: redis.redisCompareAndDelete,
       redisPipeline: redis.redisPipeline,
       // F3 (U7+U8 review pass): validateProMcpToken now returns the
       // ProMcpValidateUnion. Tests passing `null` are normalised here to
@@ -164,6 +189,7 @@ function makeDeps(overrides = {}) {
       // tests passing the new shape pass through unchanged.
       validateProMcpToken: overrides.validateProMcpToken ?? (async () => ({ ok: 'valid', userId: USER_ID })),
       randomUuid: overrides.randomUuid ?? deterministicUuid,
+      randomPointerId: overrides.randomPointerId ?? deterministicPointerId,
       captureRestoreFailure: overrides.captureRestoreFailure ?? ((context) => restoreFailures.push(context)),
     },
   };
@@ -177,6 +203,49 @@ function makeReq(grantType, params) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 }
+
+describe('OAuth Redis compare-and-delete production contract', () => {
+  it('uses POST EVAL and validates the Upstash response body', async () => {
+    const realFetch = globalThis.fetch;
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(JSON.stringify({ result: calls.length === 1 ? 1 : '1' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      assert.equal(await rawRedisCompareAndDelete('oauth:famptr:rt-contract', 'expected-pointer'), true);
+      assert.equal(calls[0].url, 'https://test.upstash.io/');
+      assert.equal(calls[0].init.method, 'POST');
+      assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token');
+      assert.equal(calls[0].init.headers['Content-Type'], 'application/json');
+      assert.equal(calls[0].init.headers['User-Agent'], 'worldmonitor-edge/1.0');
+      const command = JSON.parse(calls[0].init.body);
+      assert.equal(command[0], 'EVAL');
+      assert.equal(command[2], '1');
+      assert.equal(command[3], 'oauth:famptr:rt-contract');
+      assert.equal(command[4], 'expected-pointer');
+
+      await assert.rejects(
+        rawRedisCompareAndDelete('oauth:famptr:rt-contract', 'expected-pointer'),
+        /invalid response/,
+      );
+    } finally {
+      globalThis.fetch = realFetch;
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // authorization_code — Pro path
@@ -233,7 +302,7 @@ describe('U6 tokenHandler — authorization_code (Pro)', () => {
     assert.equal(refresh.scope, 'mcp_pro');
     assert.equal(refresh.family_id, 'uuid_0003');
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0001', JSON.stringify('uuid_0003'), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0002', JSON.stringify('uuid_0003'), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0002', 'uuid_0003', REFRESH_TTL_SECONDS);
 
     // The auth code was consumed via GETDEL.
     assert.equal(redis.store.has('oauth:code:abc'), false);
@@ -368,7 +437,7 @@ describe('U6 tokenHandler — authorization_code (legacy)', () => {
     assert.equal(refresh.scope, 'mcp');
     assert.equal(typeof refresh.family_id, 'string');
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0101', JSON.stringify(refresh.family_id), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0102', JSON.stringify(refresh.family_id), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0102', refresh.family_id, REFRESH_TTL_SECONDS);
   });
 });
 
@@ -415,9 +484,9 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.equal(refresh.mcpTokenId, MCP_TOKEN_ID);
     assert.equal(refresh.scope, 'mcp_pro');
     assert.equal(refresh.family_id, FAMILY); // PRESERVED across rotation
-    assertSetEx(redis.ops, 'oauth:famptr:rt-1', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-1', FAMILY, REFRESH_TTL_SECONDS);
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0201', JSON.stringify(FAMILY), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0202', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0202', FAMILY, REFRESH_TTL_SECONDS);
 
     // Old refresh token consumed.
     assert.equal(redis.store.has('oauth:refresh:rt-1'), false);
@@ -477,7 +546,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.equal(restoredObj.userId, USER_ID);
     assert.equal(restoredObj.mcpTokenId, MCP_TOKEN_ID);
     assert.equal(restoredObj.family_id, 'fam');
-    assertSetEx(redis.ops, 'oauth:famptr:rt-1', JSON.stringify('fam'), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-1', 'fam', REFRESH_TTL_SECONDS);
   });
 
   it('Pro refresh rejects when client_id does not match', async () => {
@@ -567,9 +636,9 @@ describe('U6 tokenHandler — refresh_token (legacy)', () => {
     assert.equal(refresh.kind, undefined);
     assert.equal(refresh.api_key_hash, ENV_KEY_HASH);
     assert.equal(refresh.family_id, FAMILY);
-    assertSetEx(redis.ops, 'oauth:famptr:rt-old', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-old', FAMILY, REFRESH_TTL_SECONDS);
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0301', JSON.stringify(FAMILY), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0302', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0302', FAMILY, REFRESH_TTL_SECONDS);
   });
 });
 
@@ -634,7 +703,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const r1 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-old', client_id: CLIENT_ID }), deps);
     assert.equal(r1.status, 200);
     const rotated = (await r1.json()).refresh_token;
-    assertSetEx(redis.ops, 'oauth:famptr:rt-old', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-old', FAMILY, REFRESH_TTL_SECONDS);
 
     const r2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-old', client_id: CLIENT_ID }), deps);
     assert.equal(r2.status, 400);
@@ -665,7 +734,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(r1.status, 200);
     const rotated = (await r1.json()).refresh_token;
-    assertSetEx(redis.ops, 'oauth:famptr:rt-legacy', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-legacy', FAMILY, REFRESH_TTL_SECONDS);
 
     const r2 = await tokenHandler(
       makeReq('refresh_token', { refresh_token: 'rt-legacy', client_id: CLIENT_ID }),
@@ -725,7 +794,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const restored = redis.store.get('oauth:refresh:rt-live');
     assert.ok(restored, 'refresh token is restored when revocation state is unknown');
     assert.equal(redis.store.has('oauth:token:uuid_0951'), false, 'must not mint a new access token');
-    assertSetEx(redis.ops, 'oauth:famptr:rt-live', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-live', FAMILY, REFRESH_TTL_SECONDS);
   });
 
   it('revocation-state read failure clears the pointer when the consumed token cannot be restored', async () => {
@@ -814,7 +883,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(resp.status, 503);
     assert.ok(redis.store.has('oauth:refresh:rt-transient'));
-    assertSetEx(redis.ops, 'oauth:famptr:rt-transient', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-transient', FAMILY, REFRESH_TTL_SECONDS);
   });
 
   it('a failed transient restore removes the stale pointer so retry cannot revoke sibling sessions', async () => {
@@ -931,6 +1000,81 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(retry.status, 200, 'the restored token remains usable after cleanup');
     assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+  });
+
+  it('late failed-restore cleanup preserves a newer pointer written by a concurrent redemption', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    redis.redisPipeline = async (commands) => {
+      const isPartialRestore = commands.length === 2 && commands[0]?.[1] === 'oauth:refresh:rt-concurrent';
+      if (!isPartialRestore) return originalPipeline(commands);
+
+      for (const cmd of commands) redis.ops.push({ kind: 'pipeline', cmd });
+      redis.store.set(commands[0][1], commands[0][2]);
+      return [{ result: 'OK' }, { error: 'pointer write failed' }];
+    };
+
+    let signalCleanupStarted;
+    const cleanupStarted = new Promise((resolve) => { signalCleanupStarted = resolve; });
+    let releaseCleanup;
+    const cleanupReleased = new Promise((resolve) => { releaseCleanup = resolve; });
+    redis.redisCompareAndDelete = async (key, expectedValue) => {
+      redis.ops.push({ kind: 'compare-delete', key, expectedValue });
+      signalCleanupStarted();
+      await cleanupReleased;
+      if (redis.store.get(key) !== expectedValue) return false;
+      redis.store.delete(key);
+      return true;
+    };
+
+    let validationCalls = 0;
+    const { deps } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        validationCalls += 1;
+        return validationCalls === 1
+          ? { ok: 'transient' }
+          : { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_concurrent_restore';
+    redis.store.set('oauth:refresh:rt-concurrent', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-concurrent', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const failedRestore = tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
+      deps,
+    );
+    await cleanupStarted;
+
+    const concurrentRedemption = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(concurrentRedemption.status, 200);
+
+    releaseCleanup();
+    assert.equal((await failedRestore).status, 503);
+    assert.ok(
+      redis.store.has('oauth:famptr:rt-concurrent'),
+      'late cleanup must preserve the pointer advanced by the concurrent redemption',
+    );
+
+    const replay = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(replay.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`), 'replay must still revoke the token family');
   });
 
   it('a genuine expired/unknown refresh token (no family pointer) does NOT revoke anything', async () => {
