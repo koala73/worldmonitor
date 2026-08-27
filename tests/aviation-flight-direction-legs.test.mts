@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import { listAirportFlights } from '../server/worldmonitor/aviation/v1/list-airport-flights.ts';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
+import { __resetFetcherTimeoutForTests, __setFetcherTimeoutForTests } from '../server/_shared/redis.ts';
 
 const ENV_KEYS = [
   'AVIATIONSTACK_MONTHLY_BUDGET',
@@ -42,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   mock.restoreAll();
   globalThis.fetch = originalFetch;
+  __resetFetcherTimeoutForTests();
   for (const key of ENV_KEYS) {
     const value = originalEnv.get(key);
     if (value === undefined) delete process.env[key];
@@ -69,7 +71,7 @@ function avsFlight(iata: string, from: string, to: string, dep: string, arr: str
 }
 
 type LegPayloads = { departures?: AVSFlight[]; arrivals?: AVSFlight[] };
-type LegFailures = { departures?: boolean; arrivals?: boolean };
+type LegFailures = { departures?: boolean; arrivals?: boolean; arrivalsHang?: boolean };
 
 /**
  * Redis mock that actually stores. The per-leg cache-sharing test needs a
@@ -113,6 +115,9 @@ function installFetchMock(payloads: LegPayloads = {}, failures: LegFailures = {}
     if (url.startsWith('https://relay.test/aviationstack')) {
       calls.relayUrls.push(url);
       const arrivals = url.includes('arr_iata=');
+      // Hangs forever: the cache layer's own timeout backstop is what settles
+      // this leg, and it settles it by REJECTING.
+      if (arrivals && failures.arrivalsHang) return new Promise<Response>(() => {});
       if (arrivals ? failures.arrivals : failures.departures) {
         return new Response(JSON.stringify({ error: { message: 'relay unavailable' } }), { status: 503 });
       }
@@ -123,7 +128,7 @@ function installFetchMock(payloads: LegPayloads = {}, failures: LegFailures = {}
     throw new Error(`unexpected fetch: ${url}`);
   });
 
-  return calls;
+  return { ...calls, store };
 }
 
 function requestFor(path: string): Request {
@@ -279,6 +284,55 @@ describe('list-airport-flights direction legs', () => {
     assert.equal(response.source, 'partial');
     assert.deepEqual(response.flights.map(f => f.flightNumber), ['TK1']);
     assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1', 'a partial board must not be edge-cached');
+  });
+
+  it('still serves the healthy leg when the other one rejects rather than returning null', async () => {
+    // cachedFetchJson does not always resolve to null on failure — it REJECTS
+    // on its fetcher-timeout backstop (and while an isolate-local unavailable
+    // backoff is armed). Under Promise.all that one rejection takes the whole
+    // board down, discarding a leg that was ready to serve.
+    const calls = installFetchMock({
+      departures: [avsFlight('TK1', 'IST', 'JFK', '2026-08-27T10:00:00+00:00', '2026-08-27T18:00:00+00:00')],
+    }, { arrivalsHang: true });
+    __setFetcherTimeoutForTests(50);
+    const request = requestFor('/api/aviation/v1/list-airport-flights?airport=IST&direction=FLIGHT_DIRECTION_BOTH');
+
+    const response = await listAirportFlights(ctxFor(request), {
+      airport: 'IST', direction: 'FLIGHT_DIRECTION_BOTH', limit: 30,
+    } as never);
+
+    assert.equal(response.source, 'partial');
+    assert.deepEqual(response.flights.map(f => f.flightNumber), ['TK1']);
+    assert.ok(calls.relayUrls.some(u => u.includes('arr_iata=IST')), 'the arrivals leg was attempted');
+  });
+
+  it('names the actionable failure when the other leg is only negative-cached', async () => {
+    // 'unavailable' is what a negative-cache hit reports — it says a failure
+    // was cached here, not which. A sibling leg that hit the budget ceiling is
+    // the answer worth surfacing.
+    const failures = { departures: true };
+    const { store } = installFetchMock({ arrivals: [] }, failures);
+
+    // Round one negative-caches the departures leg and positive-caches arrivals.
+    await listAirportFlights(
+      ctxFor(requestFor('/api/aviation/v1/list-airport-flights?airport=IST&direction=FLIGHT_DIRECTION_BOTH')),
+      { airport: 'IST', direction: 'FLIGHT_DIRECTION_BOTH', limit: 30 } as never,
+    );
+    const arrivalsKey = [...store.keys()].find(k => k.includes(':arrival:'));
+    assert.ok(arrivalsKey, 'arrivals leg cached a payload in round one');
+    store.delete(arrivalsKey);
+
+    // Round two: departures reads the cached sentinel ('unavailable'), arrivals
+    // misses and is refused by the budget ceiling ('budget').
+    process.env.AVIATIONSTACK_MONTHLY_BUDGET = '1';
+    process.env.AVIATIONSTACK_REQUEST_BUDGET = '0';
+    const response = await listAirportFlights(
+      ctxFor(requestFor('/api/aviation/v1/list-airport-flights?airport=IST&direction=FLIGHT_DIRECTION_BOTH')),
+      { airport: 'IST', direction: 'FLIGHT_DIRECTION_BOTH', limit: 30 } as never,
+    );
+
+    assert.equal(response.source, 'budget');
+    assert.deepEqual(response.flights, []);
   });
 
   it('reports the failure source when no leg serves', async () => {

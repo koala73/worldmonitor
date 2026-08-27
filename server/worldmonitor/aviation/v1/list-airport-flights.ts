@@ -268,7 +268,15 @@ export async function listAirportFlights(
     const legs = legsFor(req.direction);
 
     try {
-        const legResults = await Promise.all(legs.map(leg => fetchLeg(airport, leg, now)));
+        // allSettled, not all: cachedFetchJson throws outright while an
+        // isolate-local unavailable backoff is armed, and one leg in that state
+        // must not discard a board the other leg is ready to serve.
+        const settled = await Promise.allSettled(legs.map(leg => fetchLeg(airport, leg, now)));
+        const legResults: LegResult[] = settled.map(r => {
+            if (r.status === 'fulfilled') return r.value;
+            console.warn(`[Aviation] Flights leg failed for ${airport}: ${r.reason instanceof Error ? r.reason.message : r.reason}`);
+            return { flights: [], source: 'error' };
+        });
         const served = legResults.filter(r => r.source === 'aviationstack');
 
         if (served.length === 0) {
@@ -276,7 +284,11 @@ export async function listAirportFlights(
             return {
                 flights: [],
                 totalAvailable: 0,
-                source: legResults[0]?.source ?? 'unavailable',
+                // Prefer a leg that named its failure. 'unavailable' is what a
+                // negative-cache hit reports — it only means "something cached
+                // a failure here", so a sibling leg's 'budget' or 'error' is
+                // the more actionable answer.
+                source: legResults.find(r => r.source !== 'unavailable')?.source ?? 'unavailable',
                 updatedAt: now,
             };
         }
