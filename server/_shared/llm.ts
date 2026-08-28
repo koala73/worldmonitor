@@ -5,6 +5,7 @@ import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usag
 import {
   DEEPSEEK_V4_FLASH_MODEL_PREFIX,
   GROQ_DEFAULT_MODEL,
+  GROQ_REASONING_EXTRA_BODY,
   getLlmAttemptTimeoutMs,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
@@ -116,6 +117,7 @@ export function getProviderCredentials(
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      extraBody: GROQ_REASONING_EXTRA_BODY,
     };
   }
 
