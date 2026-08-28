@@ -3039,7 +3039,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
   });
 
   it('fails closed when stable snapshot publication or readback cannot be confirmed', async () => {
-    const { module, cleanup } = await importListMilitaryFlights();
+    const firstIsolate = await importListMilitaryFlights();
+    const secondIsolate = await importListMilitaryFlights();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
@@ -3058,7 +3059,10 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         if (key === 'military:flights:v1') {
           return jsonResponse({
             result: JSON.stringify({
-              flights: [{ id: 'unpersisted', callsign: 'RCH900', lat: 20.2, lon: 10.2 }],
+              flights: [
+                { id: 'unpersisted-a', callsign: 'RCH900', lat: 20.2, lon: 10.2 },
+                { id: 'unpersisted-b', callsign: 'RCH901', lat: 20.3, lon: 10.3 },
+              ],
               coverage: 'global',
               fetchedAt: Date.now(),
             }),
@@ -3081,18 +3085,39 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.listMilitaryFlights(
-        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
-        seededRequest,
-      );
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+      const result = await firstIsolate.module.listMilitaryFlights(ctx, {
+        ...seededRequest,
+        pageSize: 1,
+        cursor: '',
+      });
       assert.deepEqual(
         result.flights.map((flight) => flight.id),
         [],
         'an unpersisted local snapshot must not become a cursor source',
       );
+      assert.equal(
+        result.pagination?.nextCursor,
+        '',
+        'unconfirmed publication must fail closed before a numeric cursor is emitted',
+      );
       assert.equal(openskyCalls, 0, 'failed publication must fail closed instead of opening OpenSky');
+
+      const continued = await secondIsolate.module.listMilitaryFlights(ctx, {
+        ...seededRequest,
+        pageSize: 1,
+        cursor: '1',
+      });
+      assert.deepEqual(
+        continued.flights.map((flight) => flight.id),
+        [],
+        'another isolate must not continue an unconfirmed snapshot at a numeric cursor',
+      );
+      assert.equal(continued.pagination?.nextCursor, '');
+      assert.equal(openskyCalls, 0);
     } finally {
-      cleanup();
+      firstIsolate.cleanup();
+      secondIsolate.cleanup();
       globalThis.fetch = originalFetch;
       restoreEnv();
     }
