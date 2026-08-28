@@ -4,13 +4,13 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { __testing__ as healthTesting } from '../api/health.js';
 import {
   IMD_API_REFERENCE_URL,
   IMD_CANONICAL_KEY,
   IMD_HOST,
   IMD_MAX_CONTENT_AGE_MIN,
   IMD_PRODUCTS,
-  IMD_RIGHTS_DECISION,
   assembleImdSnapshot,
   buildDisabledSnapshot,
   cycloneEventsFromSnapshot,
@@ -281,20 +281,108 @@ test('omits unstamped previous wind or cone geometry when the product fetch fail
   assert.equal(snapshot.products.cycloneCou.carried, false);
 });
 
-test('keeps live fetch disabled without rights and key, and that is not all-clear', () => {
+test('requires only IMD_API_KEY and reports a missing key as explicitly disabled', async () => {
   assert.equal(imdLiveFetchEnabled({}), false);
-  assert.equal(imdLiveFetchEnabled({ WM_IMD_RIGHTS_ACCEPTED: '1' }), false);
-  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret' }), false);
-  assert.equal(imdLiveFetchEnabled({ WM_IMD_RIGHTS_ACCEPTED: '1', IMD_API_KEY: 'secret' }), true);
-  const snapshot = buildDisabledSnapshot({ now: NOW });
+  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret' }), true);
+  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\r\nkey' }), false);
+  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\u2028key' }), false);
+  const requested = [];
+  const snapshot = await fetchImdCycloneMarine({
+    env: {},
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('a missing API key must not make an IMD request');
+    },
+    now: NOW,
+  });
   assert.equal(snapshot.coverageState, 'disabled');
-  assert.equal(snapshot.skipReason, IMD_RIGHTS_DECISION.reason);
+  assert.equal(snapshot.skipReason, 'IMD_API_KEY_MISSING');
+  assert.equal(snapshot.rights.status, 'reviewed');
+  assert.deepEqual(requested, []);
   assert.equal(declareImdRecords(snapshot), 0);
   assert.equal(validateImdEnvelope(snapshot), true);
   assert.equal(snapshot.products.fishermenWarning.reason, 'INDEXED_WITHOUT_FIELD_REFERENCE');
   const meta = imdAfterPublish(snapshot);
   assert.equal(meta.freshnessMetaPatch.sourceState, 'unavailable');
   assert.notEqual(snapshot.coverageState, 'ok');
+
+  const invalidKey = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'bad\r\nkey' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('an invalid API key must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(invalidKey.coverageState, 'disabled');
+  assert.equal(invalidKey.skipReason, 'IMD_API_KEY_INVALID');
+  assert.deepEqual(requested, []);
+
+  const invalidHeader = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'test-key', IMD_API_KEY_HEADER: 'bad header' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('an invalid API key header must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(invalidHeader.coverageState, 'disabled');
+  assert.equal(invalidHeader.skipReason, 'IMD_API_KEY_HEADER_INVALID');
+  assert.deepEqual(requested, []);
+});
+
+test('redacts IMD transport errors before they reach the cached public snapshot', async () => {
+  const snapshot = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'test-key' },
+    fetchFn: async () => {
+      throw new Error('upstream rejected key secret-imd-key');
+    },
+    now: NOW,
+  });
+
+  assert.equal(snapshot.coverageState, 'unavailable');
+  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_FETCH_FAILED');
+  assert.doesNotMatch(JSON.stringify(snapshot), /secret-imd-key/);
+
+  const timeout = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'test-key' },
+    fetchFn: async () => {
+      const error = new Error('timeout details must not be public');
+      error.name = 'TimeoutError';
+      throw error;
+    },
+    now: NOW,
+  });
+  assert.equal(timeout.products.cycloneTrack.reason, 'IMD_FETCH_TIMEOUT');
+  assert.doesNotMatch(JSON.stringify(timeout), /timeout details/);
+});
+
+test('marks a missing IMD key as an error after the source has activated', () => {
+  const { ACTIVATION_MARKERS, SEED_META, STANDALONE_KEYS, STATUS_COUNTS, classifyKey } = healthTesting;
+  const name = 'imdCycloneMarine';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const now = Date.parse('2026-08-28T00:00:00.000Z');
+  const ctx = (activated) => ({
+    keyStrens: new Map([[dataKey, 128]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify({
+      fetchedAt: now,
+      recordCount: 0,
+      sourceState: 'unavailable',
+      errorCode: 'IMD_API_KEY_MISSING',
+      coverageState: 'disabled',
+    })]]),
+    keyMetaErrors: new Map(),
+    activationStates: new Map([[name, activated]]),
+    now,
+  });
+
+  assert.equal(ACTIVATION_MARKERS[name], 'seed-activated:weather:imd-cyclone-marine');
+  assert.equal(classifyKey(name, dataKey, { allowOnDemand: true }, ctx(false)).status, 'NOT_CONFIGURED');
+  const afterActivation = classifyKey(name, dataKey, { allowOnDemand: true }, ctx(true));
+  assert.equal(afterActivation.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[afterActivation.status], 'warn');
 });
 
 test('never fetches fishermen warning even when live fetch is enabled', async () => {
@@ -313,7 +401,7 @@ test('never fetches fishermen warning even when live fetch is enabled', async ()
     return jsonResponse({ error: 'API key missing' }, 401);
   };
   const snapshot = await fetchImdCycloneMarine({
-    env: { WM_IMD_RIGHTS_ACCEPTED: '1', IMD_API_KEY: 'test-key' },
+    env: { IMD_API_KEY: 'test-key' },
     fetchFn,
     now: CYCLONE_NOW,
   });
@@ -325,7 +413,7 @@ test('never fetches fishermen warning even when live fetch is enabled', async ()
 
 test('rejects untrusted hosts and does not treat 401 as all-clear', async () => {
   const snapshot = await fetchImdCycloneMarine({
-    env: { WM_IMD_RIGHTS_ACCEPTED: '1', IMD_API_KEY: 'test-key' },
+    env: { IMD_API_KEY: 'test-key' },
     fetchFn: async () => jsonResponse({ error: 'API key missing' }, 401),
     now: NOW,
   });

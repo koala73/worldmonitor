@@ -1,5 +1,5 @@
 ---
-title: Keep IMD cyclone and marine products typed, rights-gated, and unflattened
+title: Keep IMD cyclone and marine products typed, key-gated, and unflattened
 date: 2026-08-27
 category: integration-issues
 module: Weather and natural seed pipeline
@@ -15,7 +15,7 @@ severity: high
 tags: [weather, tropical-cyclones, imd, marine-warnings, source-admission, railway-seeders]
 ---
 
-# Keep IMD cyclone and marine products typed, rights-gated, and unflattened
+# Keep IMD cyclone and marine products typed, key-gated, and unflattened
 
 ## Problem
 
@@ -39,8 +39,8 @@ public API is account- and key-gated.
   undocumented fishermen warning, and keeps observed positions, forecast
   positions, forecast-wind-radii, and cone-of-uncertainty as distinct
   `geometryKind` values.
-- Live fetch requires `WM_IMD_RIGHTS_ACCEPTED=1` and `IMD_API_KEY`. Otherwise
-  the seeder publishes `coverageState: disabled` with `sourceState:
+- Live fetch requires `IMD_API_KEY`. Without it, the seeder publishes
+  `coverageState: disabled` with `sourceState:
   unavailable` (not all-clear).
 - One failed product carries last-good for that product only.
 - Dashboard hydration is the on-demand bootstrap key `imdCycloneMarine`.

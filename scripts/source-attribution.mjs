@@ -154,23 +154,23 @@ const PROVIDER_OVERRIDES = {
   'api.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
-    license: 'IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. Redistribution and public-display rights are unconfirmed; live fetch stays disabled until accepted.',
+    license: 'IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. World Monitor public-display and redistribution rights are validated.',
     attribution: 'Data source: India Meteorological Department. Link https://api.imd.gov.in/public/api_reference.html and the official product page.',
-    status: 'terms-review',
+    status: 'reviewed',
   },
   'mausam.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
     license: 'Official IMD visualization pages cited for attribution and source links, not scraped.',
     attribution: 'Data source: India Meteorological Department. Link the official marine/coastal bulletin page.',
-    status: 'terms-review',
+    status: 'reviewed',
   },
   'rsmcnewdelhi.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
     license: 'Official RSMC New Delhi visualization pages cited for attribution and source links, not scraped.',
     attribution: 'Data source: India Meteorological Department / RSMC New Delhi. Link https://rsmcnewdelhi.imd.gov.in/.',
-    status: 'terms-review',
+    status: 'reviewed',
   },
   'api.worldbank.org': {
     provider: 'World Bank Open Data',

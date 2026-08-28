@@ -114,7 +114,7 @@ describe('get_imd_cyclone_marine cache tool', () => {
     const now = Date.now();
     const disabled = snapshot({
       coverageState: 'disabled',
-      skipReason: 'RIGHTS_NOT_ACCEPTED',
+      skipReason: 'IMD_API_KEY_MISSING',
       cycloneEvents: [],
       portAlerts: [],
       marineBulletins: [],
@@ -135,7 +135,7 @@ describe('get_imd_cyclone_marine cache tool', () => {
       },
     }, {}, now);
     assert.equal(result.data.imd_cyclone_marine.coverageState, 'disabled');
-    assert.equal(result.data.imd_cyclone_marine.skipReason, 'RIGHTS_NOT_ACCEPTED');
+    assert.equal(result.data.imd_cyclone_marine.skipReason, 'IMD_API_KEY_MISSING');
     assert.equal(result.data.imd_cyclone_marine.cycloneEvents.length, 0);
     assert.equal(result.stale, false);
   });

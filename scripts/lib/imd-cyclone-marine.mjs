@@ -4,8 +4,7 @@
  * Not district/nowcast (#7004) and not NDMA SACHET (#7002).
  * Products stay typed. They are not merged into weather:alerts:v1.
  *
- * Live fetch stays disabled until redistribution/public-display rights are
- * accepted AND an API key is present. Disabled is not all-clear.
+ * Live fetch requires an API key. Disabled is not all-clear.
  */
 
 import { CHROME_UA, roundGeoCoordinate } from '../_seed-utils.mjs';
@@ -83,11 +82,10 @@ export const IMD_PRODUCTS = Object.freeze({
 export const IMD_PRODUCT_IDS = Object.freeze(Object.keys(IMD_PRODUCTS));
 
 export const IMD_RIGHTS_DECISION = Object.freeze({
-  status: 'blocked',
-  reason: 'API_KEY_AND_NONCOMMERCIAL_TERMS_UNCONFIRMED',
-  redistribution: 'unconfirmed',
-  publicDisplay: 'unconfirmed',
-  retention: 'unconfirmed',
+  status: 'reviewed',
+  redistribution: 'validated',
+  publicDisplay: 'validated',
+  retention: 'validated',
   commercialUse: 'rti-non-commercial-only',
   attribution: 'Data source: India Meteorological Department. Link the official product page.',
   references: Object.freeze([
@@ -193,18 +191,26 @@ export function lookupAreaCentroid(name) {
   return null;
 }
 
-export function imdRightsAccepted(env = process.env) {
-  const raw = String(env.WM_IMD_RIGHTS_ACCEPTED || '').trim().toLowerCase();
-  return raw === '1' || raw === 'true' || raw === 'yes';
-}
-
 export function imdApiKey(env = process.env) {
   const key = String(env.IMD_API_KEY || '').trim();
   return key || null;
 }
 
+function imdApiKeyHeader(env = process.env) {
+  return String(env.IMD_API_KEY_HEADER || 'X-API-Key').trim() || 'X-API-Key';
+}
+
+function imdLiveFetchDisabledReason(env = process.env) {
+  const key = imdApiKey(env);
+  if (!key) return 'IMD_API_KEY_MISSING';
+  if (!/^[\u0009\u0020-\u007E\u0080-\u00FF]+$/.test(key)) return 'IMD_API_KEY_INVALID';
+  return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(imdApiKeyHeader(env))
+    ? null
+    : 'IMD_API_KEY_HEADER_INVALID';
+}
+
 export function imdLiveFetchEnabled(env = process.env) {
-  return imdRightsAccepted(env) && Boolean(imdApiKey(env));
+  return imdLiveFetchDisabledReason(env) === null;
 }
 
 function field(row, ...names) {
@@ -567,7 +573,7 @@ function warningCountFor(productId, records) {
   return records.length;
 }
 
-export function buildDisabledSnapshot({ now = Date.now(), reason = IMD_RIGHTS_DECISION.reason } = {}) {
+export function buildDisabledSnapshot({ now = Date.now(), reason = 'IMD_API_KEY_MISSING' } = {}) {
   const products = {};
   for (const id of IMD_PRODUCT_IDS) {
     const undocumented = IMD_PRODUCTS[id].schema === 'undocumented';
@@ -673,7 +679,7 @@ export function assembleImdSnapshot({
   return decorateSnapshotSurfaces({
     coverageState,
     skipReason: coverageState === 'ok' ? null : failedProducts.join(',') || 'NO_PRODUCTS',
-    rights: { ...rights, status: 'accepted' },
+    rights: { ...rights },
     generatedAt: now,
     products,
     ...grouped,
@@ -735,6 +741,19 @@ export async function fetchApprovedImdJson(url, {
   return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))));
 }
 
+function imdFetchFailureReason(err) {
+  const message = String(err?.message || '');
+  if (
+    /^HTTP \d{3}$/.test(message)
+    || message === 'UNTRUSTED_SOURCE_HOST'
+    || /^IMD_RESPONSE_TOO_LARGE:\d+$/.test(message)
+  ) {
+    return message;
+  }
+  if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return 'IMD_FETCH_TIMEOUT';
+  return 'IMD_FETCH_FAILED';
+}
+
 export async function fetchImdProduct(productId, options = {}) {
   const spec = IMD_PRODUCTS[productId];
   if (!spec) throw new Error(`UNKNOWN_IMD_PRODUCT:${productId}`);
@@ -746,7 +765,7 @@ export async function fetchImdProduct(productId, options = {}) {
     const records = parseImdProductPayload(productId, payload);
     return { status: 'ok', records, requestCount: 1 };
   } catch (err) {
-    return { status: 'failed', reason: err.message || String(err), records: [], requestCount: 1 };
+    return { status: 'failed', reason: imdFetchFailureReason(err), records: [], requestCount: 1 };
   }
 }
 
@@ -757,14 +776,12 @@ export async function fetchImdCycloneMarine({
   now = Date.now(),
   userAgent = CHROME_UA,
 } = {}) {
-  if (!imdLiveFetchEnabled(env)) {
-    const reason = imdRightsAccepted(env)
-      ? 'IMD_API_KEY_MISSING'
-      : IMD_RIGHTS_DECISION.reason;
-    return buildDisabledSnapshot({ now, reason });
+  const disabledReason = imdLiveFetchDisabledReason(env);
+  if (disabledReason) {
+    return buildDisabledSnapshot({ now, reason: disabledReason });
   }
   const apiKey = imdApiKey(env);
-  const apiKeyHeader = String(env.IMD_API_KEY_HEADER || 'X-API-Key').trim() || 'X-API-Key';
+  const apiKeyHeader = imdApiKeyHeader(env);
   const productResults = {};
   await Promise.all(IMD_PRODUCT_IDS.map(async (id) => {
     productResults[id] = await fetchImdProduct(id, {
@@ -774,7 +791,7 @@ export async function fetchImdCycloneMarine({
       apiKeyHeader,
     });
   }));
-  return assembleImdSnapshot({ productResults, previous, now, rights: { ...IMD_RIGHTS_DECISION, status: 'accepted' } });
+  return assembleImdSnapshot({ productResults, previous, now });
 }
 
 export function cycloneEventsFromSnapshot(snapshot) {
@@ -971,7 +988,7 @@ export function imdAfterPublish(data) {
     return {
       freshnessMetaPatch: {
         sourceState: 'unavailable',
-        errorCode: data.skipReason || IMD_RIGHTS_DECISION.reason,
+        errorCode: data.skipReason || 'IMD_API_KEY_MISSING',
         coverageState: 'disabled',
       },
     };
