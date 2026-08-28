@@ -487,28 +487,26 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // live-page HTML scrape of youtube.com, so it takes the same 30/min
   // provider-proxy budget as the batch fan-out routes above.
   '/api/youtube/live': { limit: 30, window: '60 s' },
-  // reverse-geocode: already Upstash-cached on a 0.1-degree grid and memoized
+  // reverse-geocode: already Upstash-cached on a 0.001-degree grid and memoized
   // per cell in the browser (src/utils/reverse-geocode.ts), so 60/min is a
-  // floor against scripted coordinate sweeps rather than a throttle on real
-  // map use. Nominatim's usage policy is the strictest in our stack and is
-  // enforced by egress-IP ban, and there are two callers sharing one egress:
+  // per-caller floor against scripted coordinate sweeps rather than a throttle
+  // on real map use. Nominatim's usage policy is the strictest in our stack and
+  // is enforced by egress-IP ban, and there are two callers sharing one egress:
   // the legacy `api/reverse-geocode.js` edge function (which carries these
   // same numbers as literal constants and enforces them in-handler via
   // checkRateLimit — api/*.js cannot import ../server/) and the gateway RPC
   // below. Both use the shared `geocode:` cache namespace (604800 s TTL), so
-  // a hit on either serves the other and the budget is a floor against
-  // scripted sweeps, not a throttle on real map use. (#6234, #6432)
+  // a hit on either serves the other. Cache misses also pass through one
+  // fail-closed provider-wide bucket, `rl:scope:reverse-geocode:global`, capped
+  // at 1 request/second across both handlers. (#6234, #6432, #7279)
   '/api/reverse-geocode': { limit: 60, window: '60 s' },
   // Gateway reverse-geocode RPC (#6432): the second Nominatim caller. Same
-  // provider, same shared 0.1-degree grid cache, same egress IPs — must carry
+  // provider, same shared 0.001-degree grid cache, same egress IPs — must carry
   // the same 60/min budget as the legacy edge route, and it now does. Both are
-  // per-IP budgets, so they bound any one caller but do not cap aggregate
-  // egress to Nominatim (60/min from a single IP is Nominatim's whole
-  // documented allowance for the application); a global companion budget
-  // keyed on 'reverse-geocode:global' is still required but is out of scope
-  // for this change. Fail-closed on
-  // Redis outage (default) — Nominatim's enforcement is an egress-IP ban, so
-  // a degraded limiter must 503 rather than inherit the fail-open fallback.
+  // per-IP budgets. After a shared-cache miss, each handler also applies the
+  // same fail-closed `reverse-geocode:global` scoped bucket at 1 request/second
+  // before Nominatim. Redis outage therefore 503s instead of inheriting a
+  // fail-open path that could expose the provider to unbounded aggregate load.
   '/api/infrastructure/v1/reverse-geocode': { limit: 60, window: '60 s' },
   // Partner embed entitlement (#6599): keyed panels look up wm_ keys in Convex.
   // Cap per-IP so a stolen snippet cannot amplify validation traffic.
