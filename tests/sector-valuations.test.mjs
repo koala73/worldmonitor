@@ -662,6 +662,205 @@ describe('sector valuation collection', () => {
     assert.equal(result.lastGoodMetricsUsed, undefined);
   });
 
+  it('keeps unstamped metrics due after a failed refresh writes core values', async () => {
+    const writes = [];
+    const firstCycle = await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: (raw) => raw,
+      sleepFn: async () => {},
+      now: () => 1_700_000_500_000,
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'success',
+          value: {
+            trailingPE: 25,
+            forwardPE: 22,
+            beta: 1.1,
+            ytdReturn: null,
+            threeYearReturn: null,
+            fiveYearReturn: null,
+            source: 'yahoo_v7_quote_authenticated_direct',
+          },
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => ({
+        fetchedAt: 1_700_000_000_000,
+        valuations: {
+          XLK: {
+            trailingPE: 24,
+            forwardPE: 21,
+            beta: 1.05,
+            ytdReturn: null,
+            threeYearReturn: null,
+            fiveYearReturn: null,
+          },
+        },
+      }),
+      upstashSet: async (_key, value) => { writes.push(value); return true; },
+    });
+
+    assert.equal(firstCycle.valuations.XLK.ytdReturn, null);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].metricsFetchedAt, undefined, 'failed refresh must not make null return metrics look fresh');
+
+    const secondCycleQuoteSummaryCalls = [];
+    await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async (symbol) => {
+        secondCycleQuoteSummaryCalls.push(symbol);
+        return null;
+      },
+      parseValue: (raw) => raw,
+      sleepFn: async () => {},
+      now: () => 1_700_000_800_000,
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'success',
+          value: {
+            trailingPE: 26,
+            forwardPE: 23,
+            beta: 1.2,
+            ytdReturn: null,
+            threeYearReturn: null,
+            fiveYearReturn: null,
+            source: 'yahoo_v7_quote_authenticated_direct',
+          },
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => writes[0],
+      upstashSet: async () => true,
+    });
+
+    assert.deepEqual(secondCycleQuoteSummaryCalls, ['XLK'], 'unstamped metrics must retry on the next cycle');
+  });
+
+  it('accepts return-only quoteSummary values during a metrics refresh', async () => {
+    const nowMs = 1_700_000_000_000 + METRICS_REFRESH_MAX_AGE_MS + 1;
+    let written = null;
+    const result = await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => ({
+        value: {
+          ytdReturn: '0.41',
+          threeYearReturn: 0.42,
+          fiveYearReturn: 0.43,
+        },
+        source: 'yahoo_quote_summary_authenticated',
+      }),
+      parseValue: (raw) => {
+        const value = raw?.value;
+        if (!value) return null;
+        return value.trailingPE == null && value.forwardPE == null ? null : value;
+      },
+      sleepFn: async () => {},
+      now: () => nowMs,
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'success',
+          value: {
+            trailingPE: 25,
+            forwardPE: 22,
+            beta: 1.1,
+            ytdReturn: null,
+            threeYearReturn: null,
+            fiveYearReturn: null,
+            source: 'yahoo_v7_quote_authenticated_direct',
+          },
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => ({
+        fetchedAt: 1_700_000_000_000,
+        metricsFetchedAt: 1_700_000_000_000,
+        valuations: {
+          XLK: {
+            trailingPE: 24,
+            forwardPE: 21,
+            beta: 1.05,
+            ytdReturn: 0.08,
+            threeYearReturn: 0.12,
+            fiveYearReturn: 0.1,
+          },
+        },
+      }),
+      upstashSet: async (_key, value) => { written = value; return true; },
+    });
+
+    assert.deepEqual(result.valuations.XLK, {
+      trailingPE: 25,
+      forwardPE: 22,
+      beta: 1.1,
+      ytdReturn: 0.41,
+      threeYearReturn: 0.42,
+      fiveYearReturn: 0.43,
+    });
+    assert.equal(written.metricsFetchedAt, nowMs);
+  });
+
+  it('persists partial live return refreshes without advancing metric freshness', async () => {
+    const nowMs = 1_700_000_000_000 + METRICS_REFRESH_MAX_AGE_MS + 1;
+    let written = null;
+    const result = await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => ({
+        value: {
+          ytdReturn: 0.51,
+          threeYearReturn: null,
+          fiveYearReturn: null,
+        },
+        source: 'yahoo_quote_summary_authenticated',
+      }),
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      now: () => nowMs,
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'success',
+          value: {
+            trailingPE: 25,
+            forwardPE: 22,
+            beta: 1.1,
+            ytdReturn: null,
+            threeYearReturn: null,
+            fiveYearReturn: null,
+            source: 'yahoo_v7_quote_authenticated_direct',
+          },
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => ({
+        fetchedAt: 1_700_000_000_000,
+        metricsFetchedAt: 1_700_000_000_000,
+        valuations: {
+          XLK: {
+            trailingPE: 24,
+            forwardPE: 21,
+            beta: 1.05,
+            ytdReturn: 0.08,
+            threeYearReturn: 0.12,
+            fiveYearReturn: 0.1,
+          },
+        },
+      }),
+      upstashSet: async (_key, value) => { written = value; return true; },
+    });
+
+    assert.equal(result.valuations.XLK.ytdReturn, 0.51);
+    assert.equal(result.valuations.XLK.threeYearReturn, 0.12);
+    assert.equal(result.valuations.XLK.fiveYearReturn, 0.1);
+    assert.ok(written, 'partial live return metrics must be saved');
+    assert.equal(written.valuations.XLK.ytdReturn, 0.51);
+    assert.equal(written.valuations.XLK.threeYearReturn, 0.12);
+    assert.equal(written.metricsFetchedAt, 1_700_000_000_000, 'partial freshness cannot advance the all-metrics clock');
+  });
+
   it('persists a complete v7 valuation snapshot when return metrics are unavailable', async () => {
     let written = null;
     const nowMs = 1_700_000_000_000;
@@ -864,6 +1063,7 @@ describe('sector valuation collection', () => {
 
     assert.ok(written, 'a fully live core-complete run must refresh the snapshot');
     assert.equal(written.fetchedAt, nowMs);
+    assert.equal(written.metricsFetchedAt, undefined, 'core-only refresh must not stamp return metric freshness');
     assert.equal(written.valuations.XLK.trailingPE, 26, 'fresh values replace stored ones');
   });
 

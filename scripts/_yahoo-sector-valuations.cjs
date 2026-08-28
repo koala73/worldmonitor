@@ -665,6 +665,27 @@ function hasLiveReturnMetrics(valuation) {
   );
 }
 
+function parseReturnMetricValue(value) {
+  const candidate = typeof value === 'string' ? Number.parseFloat(value) : value;
+  return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : null;
+}
+
+function extractReturnMetrics(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const source = raw.value && typeof raw.value === 'object' && !Array.isArray(raw.value)
+    ? raw.value
+    : raw;
+  const metrics = {};
+  let hasMetric = false;
+  for (const key of ['ytdReturn', 'threeYearReturn', 'fiveYearReturn']) {
+    const value = parseReturnMetricValue(source[key]);
+    if (value == null) continue;
+    metrics[key] = value;
+    hasMetric = true;
+  }
+  return hasMetric ? metrics : null;
+}
+
 function metricsRefreshDue(metricsFetchedAt, nowMs, maxAgeMs = METRICS_REFRESH_MAX_AGE_MS) {
   if (!Number.isFinite(metricsFetchedAt)) return true;
   if (!Number.isFinite(nowMs) || !Number.isFinite(maxAgeMs)) return true;
@@ -1846,7 +1867,8 @@ async function collectSectorValuations({
       ? await fetchValueDetailed(symbol, { deadlineAt })
       : null;
     const raw = detailed?.value ?? (detailed ? null : await fetchValue(symbol));
-    const parsed = parseValue(raw);
+    const parsed = parseValue(raw)
+      || (needsMetricsRefresh ? extractReturnMetrics(raw) : null);
     if (parsed) {
       v7Vals[symbol] = applyQuoteSummaryValuation(existing, parsed, raw?.source);
       if (raw?.source) valuationSources.add(raw.source);
@@ -1914,9 +1936,21 @@ async function collectSectorValuations({
     // module writes satisfies, so it froze the key until its TTL expired.
     && lastGoodMetricsUsed.length === 0
     && lastGoodValuationSymbols.length === 0;
+  const hasAnyLiveReturnMetrics = Object.values(currentValuations).some((valuation) => (
+    valuation
+    && (
+      valuation.ytdReturn != null
+      || valuation.threeYearReturn != null
+      || valuation.fiveYearReturn != null
+    )
+  ));
+  const canPersistPartialReturnSnapshot = hasCompleteCoreCoverage
+    && !hasCompleteReturnMetrics
+    && hasAnyLiveReturnMetrics
+    && lastGoodValuationSymbols.length === 0;
   const shouldPersistLastGood = (
     hasCompleteReturnMetrics && lastGoodMetricsUsed.length === 0
-  ) || canPersistCoreSnapshot;
+  ) || canPersistCoreSnapshot || canPersistPartialReturnSnapshot;
   if (shouldPersistLastGood && typeof upstashSet === 'function') {
     try {
       const source = hasCompleteReturnMetrics ? valuations : currentValuations;
@@ -1931,7 +1965,7 @@ async function collectSectorValuations({
       );
       const previousMetricsFetchedAt = Number.isFinite(lastGoodMetricsFetchedAt)
         ? lastGoodMetricsFetchedAt
-        : lastGoodFetchedAt;
+        : null;
       const metricsFetchedAt = hasCompleteReturnMetrics ? now() : previousMetricsFetchedAt;
       const ok = await upstashSet(LAST_GOOD_KEY, {
         valuations: snapshotValuations,
