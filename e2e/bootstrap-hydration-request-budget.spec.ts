@@ -209,8 +209,9 @@ const HYDRATION_DATASET_KEYS = HYDRATION_DATASETS.map((dataset) => dataset.key);
 
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
-/** Mark data-loader emits at the top of runLoadAllData — proves a fan-out RAN. */
-const LOAD_ALL_DATA_MARK = 'wm:data:load-all-start';
+/** Mark data-loader emits around runLoadAllData — proves a fan-out ran and drained. */
+const LOAD_ALL_DATA_START_MARK = 'wm:data:load-all-start';
+const LOAD_ALL_DATA_END_MARK = 'wm:data:load-all-end';
 
 async function installHydrationRequestAccounting(
   page: Page,
@@ -365,18 +366,31 @@ function countMarks(page: Page, markName: string): Promise<number> {
   }, markName);
 }
 
-/** Prove a second `runLoadAllData` fan-out ran after `fanOutsBefore`. */
+/** Prove a second `runLoadAllData` fan-out ran and drained after the baseline. */
 async function waitForLoadAllDataFanOut(
   page: Page,
-  fanOutsBefore: number,
+  marksBefore: { start: number; end: number },
   message: string,
 ): Promise<void> {
   await expect
-    .poll(() => countMarks(page, LOAD_ALL_DATA_MARK), {
+    .poll(() => countMarks(page, LOAD_ALL_DATA_START_MARK), {
       message,
       timeout: REPEAT_LOAD_SETTLE_MS,
     })
-    .toBeGreaterThan(fanOutsBefore);
+    .toBeGreaterThan(marksBefore.start);
+  await expect
+    .poll(() => countMarks(page, LOAD_ALL_DATA_END_MARK), {
+      message: `${message} (fan-out did not drain)`,
+      timeout: REPEAT_LOAD_SETTLE_MS,
+    })
+    .toBeGreaterThan(marksBefore.end);
+}
+
+async function snapshotLoadAllDataMarks(page: Page): Promise<{ start: number; end: number }> {
+  return {
+    start: await countMarks(page, LOAD_ALL_DATA_START_MARK),
+    end: await countMarks(page, LOAD_ALL_DATA_END_MARK),
+  };
 }
 
 function countViewportTriggers(page: Page): Promise<number> {
@@ -467,7 +481,7 @@ for (const [deviceClass, deviceViewport] of [
       await waitForStartup(page);
       await mountPanel(page, 'insights');
       await mountSanctionsPanel(page);
-      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
+      const fanOutsBefore = await snapshotLoadAllDataMarks(page);
       await fireHydrationTrigger(page);
       await fireInsightsRepeatConsumer(page);
       await waitForLoadAllDataFanOut(
@@ -524,8 +538,9 @@ for (const [deviceClass, deviceViewport] of [
 
       await waitForStartup(page);
       await mountSanctionsPanel(page);
-      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
-      expect(fanOutsBefore, 'startup must have run at least one fan-out').toBeGreaterThan(0);
+      const fanOutsBefore = await snapshotLoadAllDataMarks(page);
+      expect(fanOutsBefore.start, 'startup must have run at least one fan-out').toBeGreaterThan(0);
+      expect(fanOutsBefore.end, 'startup fan-out must have drained').toBeGreaterThan(0);
 
       await fireHydrationTrigger(page);
 
@@ -571,7 +586,7 @@ for (const [deviceClass, deviceViewport] of [
         },
       );
 
-      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
+      const fanOutsBefore = await snapshotLoadAllDataMarks(page);
       await expireRejectedFallbackCooldown(page);
       await fireHydrationTrigger(page);
       await fireInsightsRepeatConsumer(page);
@@ -606,7 +621,7 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
     await waitForStartup(page);
     await mountPanel(page, 'insights');
     await mountSanctionsPanel(page);
-    const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
+    const fanOutsBefore = await snapshotLoadAllDataMarks(page);
     await fireHydrationTrigger(page);
     await fireInsightsRepeatConsumer(page);
     await waitForLoadAllDataFanOut(
@@ -704,7 +719,7 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       await target.scrollIntoViewIfNeeded();
       await expect(target).toBeVisible();
       await expect(target).not.toHaveAttribute('data-deferred-panel', 'true');
-      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
+      const fanOutsBefore = await snapshotLoadAllDataMarks(page);
       await fireHydrationTrigger(page);
       await waitForLoadAllDataFanOut(
         page,

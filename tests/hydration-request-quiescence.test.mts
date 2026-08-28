@@ -51,3 +51,19 @@ test('quiescence waits for in-flight handlers to drain before freezing (#7212)',
   assert.equal(baseline.earthquakes, 2);
   assert.equal(log.inflight, 0);
 });
+
+test('quiescence fails loudly when handlers never drain (#7212)', async () => {
+  const log: HydrationRequestLog = {
+    counts: { earthquakes: 1 },
+    tiers: [],
+    inflight: 1,
+  };
+
+  await assert.rejects(
+    waitForHydrationRequestQuiescence(clock, log, ['earthquakes'], {
+      message: 'stuck handler',
+      timeout: QUIESCENCE_SAMPLE_MS * 2,
+    }),
+    /stuck handler \(inflight=1, lastCounts=\{"earthquakes":1\}\)/,
+  );
+});
