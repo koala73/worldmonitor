@@ -155,11 +155,33 @@ function firesContentClock(
   skewLimit: number,
 ): TemporalAnomaliesContentAge | null | undefined {
   if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
-  const payload = data as { fireDetections?: unknown; _firmsState?: unknown };
-  // Canonical wildfire merge preserves `_firmsState: 'failed'` when CWFIS/BC
-  // still publish. That is Canada-only coverage, not a skippable empty FIRMS
-  // window — returning undefined here lets a live news clock hide the outage.
-  if (payload._firmsState === 'failed') return null;
+  const payload = data as {
+    fireDetections?: unknown;
+    _firmsState?: unknown;
+    _firmsPartial?: unknown;
+    _firmsCount?: unknown;
+  };
+  // Canonical wildfire merge preserves explicit FIRMS coverage failures even
+  // when CWFIS/BC still publish. A full loss is Canada-only coverage; a partial
+  // loss leaves known regions dark. Neither is a skippable empty FIRMS window —
+  // returning undefined here lets a live news clock hide an incomplete global
+  // source behind a fresh temporal-anomalies clock.
+  if (payload._firmsState === 'failed' || payload._firmsPartial === true) return null;
+  // Same outage, older payload shape: before the #7141 follow-up the merge
+  // graded FIRMS on promise settlement alone, so a total outage published
+  // `{_firmsState: 'ok', _firmsCount: 0}` with Canada-only rows. The producer
+  // now marks that 'failed', but a payload written by the previous version can
+  // still be in Redis (2h TTL) across a deploy, so fail closed on the declared
+  // count too.
+  //
+  // This deliberately also fails closed on a genuinely empty WORLDWIDE FIRMS
+  // window, which is indistinguishable from the outage in this payload shape.
+  // That is the intended bias: zero satellite detections across every
+  // monitored region in a 1-day window is vanishingly rare, a global FIRMS
+  // outage is not, and a false STALE_CONTENT is recoverable where a silently
+  // green monitor is the bug this contract exists to prevent. Once legacy
+  // payloads age out, the `_firmsState: 'failed'` guard above is what fires.
+  if (payload._firmsState === 'ok' && payload._firmsCount === 0) return null;
   const fires = payload.fireDetections;
   if (!Array.isArray(fires) || fires.length === 0) {
     // A live FIRMS 1-day window can be empty in the monitored regions. That is
@@ -226,6 +248,58 @@ export function temporalAnomaliesContentMeta(
   return {
     newestItemAt: Math.min(...clocks.map((clock) => clock.newestItemAt)),
     oldestItemAt: Math.min(...clocks.map((clock) => clock.oldestItemAt)),
+  };
+}
+
+/**
+ * Content clock over ONLY the sources that were actually readable this cycle.
+ *
+ * Sibling of `temporalAnomaliesContentMeta` for the transient-read-error path.
+ * That function fail-closes on an ABSENT configured source, which is right when
+ * absence means "the key is gone" — but wrong when it means "this one read
+ * timed out", because then every cycle with a Redis blip asserts STALE_CONTENT
+ * on live data.
+ *
+ * The caller still must not mask a KNOWN outage behind a carried-forward clock,
+ * so this reports the three states separately rather than collapsing them:
+ *   - `fail-closed` — a readable source is explicitly unhealthy or undatable.
+ *     Stamp the null; never substitute a prior clock for a source that just
+ *     told you it is broken.
+ *   - `no-signal`   — every readable source legitimately skipped (empty FIRMS
+ *     window / agency-only). Nothing learned this cycle.
+ *   - `ok`          — at least one readable source produced a clock.
+ */
+export type TemporalAnomaliesReadableClock =
+  | { status: 'ok'; clock: TemporalAnomaliesContentAge }
+  | { status: 'fail-closed' }
+  | { status: 'no-signal' };
+
+export function temporalAnomaliesReadableContentMeta(
+  sources: { news?: unknown; satellite_fires?: unknown },
+  nowMs = Date.now(),
+): TemporalAnomaliesReadableClock {
+  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
+  const clocks: TemporalAnomaliesContentAge[] = [];
+  for (const clock of [
+    // Absent here means "not readable this cycle", which the caller handles —
+    // so absence is skipped rather than fail-closed. That is the ONLY
+    // difference from temporalAnomaliesContentMeta.
+    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : undefined,
+    sources.satellite_fires !== undefined
+      ? firesContentClock(sources.satellite_fires, skewLimit)
+      : undefined,
+  ]) {
+    if (clock === undefined) continue;
+    if (clock === null) return { status: 'fail-closed' };
+    clocks.push(clock);
+  }
+  if (clocks.length === 0) return { status: 'no-signal' };
+  return {
+    status: 'ok',
+    clock: {
+      newestItemAt: Math.min(...clocks.map((clock) => clock.newestItemAt)),
+      oldestItemAt: Math.min(...clocks.map((clock) => clock.oldestItemAt)),
+    },
   };
 }
 

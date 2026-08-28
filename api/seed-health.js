@@ -133,6 +133,7 @@ const SEED_DOMAINS = {
   'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
   'conflict:acled-intel':     { key: 'seed-meta:conflict:acled-intel',     intervalMin: 19 },
   'weather:alerts':           { key: 'seed-meta:weather:alerts',           intervalMin: 15 },
+  'weather:imd-cyclone-marine': { key: 'seed-meta:weather:imd-cyclone-marine', intervalMin: 15 },
   // Hyphen: runSeed('transit', 'ttc-alerts') writes seed-meta:transit:ttc-alerts.
   'transit:ttc:alerts':       { key: 'seed-meta:transit:ttc-alerts',       intervalMin: 15 },
   'economic:spending':        { key: 'seed-meta:economic:spending',        intervalMin: 60 },

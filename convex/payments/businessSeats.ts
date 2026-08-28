@@ -2,8 +2,8 @@
  * API Business domain-gated Pro-seat invites (#4634/#4635).
  *
  * An active `api_business` subscriber on a corporate email domain may invite up
- * to 4 same-domain teammates. Each accepted invitee resolves to a full Pro
- * entitlement (minus billing/account management) via the grant row in
+ * to 4 teammates at any corporate email domain. Each accepted invitee resolves
+ * to a full Pro entitlement (minus billing/account management) via the grant row in
  * `businessProGrants`. Grants are auto-revoked when the Business subscription
  * stops covering.
  */
@@ -113,8 +113,8 @@ async function countActiveOrPendingGrants(
 }
 
 /**
- * Owner invites up to 4 same-domain teammates. Pending invites count against
- * the cap; each gets a single-use HMAC token emailed via Resend.
+ * Owner invites up to 4 teammates at any corporate email domain. Pending
+ * invites count against the cap; each gets a single-use HMAC token emailed via Resend.
  */
 export const inviteSeats = mutation({
   args: { emails: v.array(v.string()) },
@@ -183,9 +183,6 @@ export const inviteSeats = mutation({
       }
       if (!isCorporateDomain(email)) {
         throw new ConvexError({ kind: "INVITEE_DOMAIN_NOT_CORPORATE" });
-      }
-      if (!sameDomain(ownerEmail, email)) {
-        throw new ConvexError({ kind: "INVITEE_DOMAIN_MISMATCH" });
       }
 
       const existing = existingByEmail.get(email);

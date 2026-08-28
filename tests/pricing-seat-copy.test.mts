@@ -23,6 +23,8 @@ import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
+const API_BUSINESS_CROSS_DOMAIN_COPY = '5 Pro licenses — invite users at any corporate email domain';
+const RETIRED_SAME_COMPANY_COPY = /same company email(?: domain)? required/i;
 
 /** States a count of people, in any of the forms the copy actually uses. */
 const SEAT_STATEMENT = /\b(\d+)\s+(named users?|licensed users?|Pro licenses?|seats?)\b/i;
@@ -34,7 +36,7 @@ const SEAT_STATEMENT = /\b(\d+)\s+(named users?|licensed users?|Pro licenses?|se
 const SEATED_TIERS = [
   { planKey: 'pro_monthly', localeKey: 'pro', seats: 1, eula: /Personal license \(Pro\)[\s\S]*?One named subscriber/ },
   { planKey: 'pro_business_monthly', localeKey: 'proBusiness', seats: 1, eula: /Commercial license \(Pro Business\)[\s\S]*?One named subscriber/ },
-  { planKey: 'api_business', localeKey: 'apiBusiness', seats: 5, eula: /five included seats give named users at the same organization/ },
+  { planKey: 'api_business', localeKey: 'apiBusiness', seats: 5, eula: /five included seats give named users at any corporate email domain/ },
 ];
 
 function catalogCopy(planKey: string): string {
@@ -82,12 +84,12 @@ const eula = read('docs/eula.mdx').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
     // A review recommended renaming API Business's bundled seats to "Pro
     // Business seats" because a Personal licence cannot cover company work.
     // Implementing that in the EULA alone described a product nobody sells —
-    // the catalog and every card say "5 Pro licenses included". The licence
+    // the catalog and every card say "5 Pro licenses — invite users at any corporate email domain". The licence
     // resolves the scope wrinkle instead: bundled seats carry the plan's
     // commercial scope. This fails if the legal text drifts back to inventing
     // a SKU.
     const catalogText = read('convex/config/productCatalog.ts');
-    assert.match(catalogText, /"5 Pro licenses included"/, 'the shipped bundle is Pro licences');
+    assert.match(catalogText, /"5 Pro licenses — invite users at any corporate email domain"/, 'the shipped bundle is Pro licences');
     assert.doesNotMatch(
       eula,
       /Pro Business seats/,
@@ -98,6 +100,26 @@ const eula = read('docs/eula.mdx').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
       /commercial scope rather than the Personal licence/i,
       'the EULA must resolve the scope of the bundled seats without inventing a SKU',
     );
+  });
+
+  it('API Business policy copy allows corporate invitees at any domain everywhere it is published', () => {
+    const publicPricing = read('public/pricing.md');
+    const apiBusinessBlock = publicPricing.slice(
+      publicPricing.indexOf('## API Business'),
+      publicPricing.indexOf('## Enterprise'),
+    );
+    const policySources = [
+      ['catalog source', read('convex/config/productCatalog.ts')],
+      ['public-facts generator', read('scripts/generate-public-product-facts.mjs')],
+      ['generated product catalog', read('shared/product-catalog.generated.json')],
+      ['generated product facts', read('shared/product-facts.generated.json')],
+      ['public pricing', apiBusinessBlock],
+    ] as const;
+
+    for (const [name, source] of policySources) {
+      assert.ok(source.includes(API_BUSINESS_CROSS_DOMAIN_COPY), name + ' must state the cross-domain policy');
+      assert.doesNotMatch(source, RETIRED_SAME_COMPANY_COPY, name + ' must not restore the retired same-company policy');
+    }
   });
 
   it('API Starter is stated as having no dashboard seat', () => {

@@ -158,11 +158,11 @@ describe('generateWeeklyBrief', () => {
         }
         const body = JSON.parse(String(init.body || '{}'));
         bodies.push(body);
-        const isBackup = body.model === 'openai/gpt-oss-20b:free';
+        const isBackup = body.model === 'minimax/minimax-m3:free';
         return {
           ok: true,
           json: async () => ({
-            model: isBackup ? 'openai/gpt-oss-20b:free:resolved' : body.model,
+            model: isBackup ? 'minimax/minimax-m3:free:resolved' : body.model,
             choices: [{ message: { content: isBackup ? validPayload : 'not valid JSON' } }],
             usage: { total_tokens: 10 },
           }),
@@ -173,11 +173,11 @@ describe('generateWeeklyBrief', () => {
     const brief = await generateWeeklyBrief(mena, snapshotFixture, transitionsFixture);
 
     assert.equal(brief.provider, 'openrouter-free-backup');
-    assert.equal(brief.model, 'openai/gpt-oss-20b:free:resolved');
+    assert.equal(brief.model, 'minimax/minimax-m3:free:resolved');
     assert.deepEqual(bodies.map(body => body.model), [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
-      'openai/gpt-oss-20b:free',
+      'minimax/minimax-m3:free',
     ]);
     for (const body of bodies) {
       assert.deepEqual(body.reasoning, { enabled: false });

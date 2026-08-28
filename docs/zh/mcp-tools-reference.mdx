@@ -122,7 +122,7 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
   "required": ["cached_at", "stale", "data"],
   "properties": {
     "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
-    "stale":     { "type": "boolean", "description": "True when any contributing cache key is older than its per-key maxStaleMin freshness budget." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help." },
     "data":      { "type": "object", "properties": { /* per-tool fields */ } }
   }
 }

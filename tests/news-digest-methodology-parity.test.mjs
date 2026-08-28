@@ -902,13 +902,13 @@ describe('news digest methodology parity', () => {
     assert.deepEqual(providerModels, [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
-      'openai/gpt-oss-20b:free',
+      'minimax/minimax-m3:free',
       'openai/gpt-oss-20b',
     ]);
     assert.equal(weeklyTemperature, 0.3);
 
     assertDocMatches(
-      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*`google\/gemma-4-26b-a4b-it:free`[\s\S]*`openai\/gpt-oss-20b:free`[\s\S]*Groq `openai\/gpt-oss-20b`[\s\S]*temperature\s+`0\.3`/,
+      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*`google\/gemma-4-26b-a4b-it:free`[\s\S]*`minimax\/minimax-m3:free`[\s\S]*Groq `openai\/gpt-oss-20b`[\s\S]*temperature\s+`0\.3`/, // pragma: allowlist secret
       'regional weekly brief provider order, models, and temperature',
     );
     assertDocMatches(

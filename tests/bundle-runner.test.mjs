@@ -12,7 +12,7 @@ import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
 import {
   SUPERSEDED_KEY_TTL_SECONDS,
@@ -159,6 +159,38 @@ function runBundleWith(sections, opts = {}, env = {}) {
     `import { runBundle } from '../_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
       fixtureSections,
     )}, ${JSON.stringify(opts)});\n`,
+  );
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c) => { stdout += c; });
+    child.stderr.on('data', (c) => { stderr += c; });
+    child.on('close', (code) => {
+      try { unlinkSync(runPath); } catch {}
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+function runBundleWithVirtualClock(sections, opts = {}, clockOffsetsMs = [], env = {}) {
+  const runPath = join(FIXTURES_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
+  const fixtureSections = sections.map((section) => ({
+    ...section,
+    script: fixtureScript(section.script),
+  }));
+  writeFileSync(
+    runPath,
+    `import { runBundle } from '../_bundle-runner.mjs';\n`
+    + `const realNow = Date.now;\n`
+    + `const baseNow = realNow();\n`
+    + `const offsets = ${JSON.stringify(clockOffsetsMs)};\n`
+    + `let idx = 0;\n`
+    + `Date.now = () => baseNow + (offsets[Math.min(idx++, offsets.length - 1)] ?? 0);\n`
+    + `await runBundle('test', ${JSON.stringify(fixtureSections)}, ${JSON.stringify(opts)});\n`,
   );
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [runPath], {
@@ -1028,6 +1060,80 @@ test('graceful-only fetch failure exits 0 (no data lost) but still logs the skip
     assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:0 failed:0 graceful:1/);
     assert.match(stdout, /\[Bundle:test\] 1 graceful fetch skip\(s\), no hard failures — no data lost, exiting 0/);
     assert.doesNotMatch(combined, /\[Bundle:test\] section=GRACEFUL status=OK/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a coverage-gate refusal reports PUBLISH_BLOCKED, never OK (#6396)', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-publish-blocked.mjs',
+    `console.error('COVERAGE GATE FAILED: china-missing (dataMonth=missing)');\nconsole.log('Extended TTL on 52 key(s)');\nprocess.exit(${PUBLISH_BLOCKED_EXIT_CODE});\n`,
+  );
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'GATED', script: '_bundle-fixture-publish-blocked.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const combined = stdout + stderr;
+    // The gate refused to publish and preserved the last-good TTL: not a
+    // crash (the freshness monitor owns the staleness alarm), but the summary
+    // must never be able to say OK for a section that wrote no seed keys.
+    assert.equal(code, 0, 'publish-blocked-only tick preserves last-good and is not a crash');
+    assert.match(combined, /\[GATED\] COVERAGE GATE FAILED: china-missing/);
+    assert.match(combined, new RegExp(`Failed after .*s: coverage gate refused to publish \\(exit ${PUBLISH_BLOCKED_EXIT_CODE}\\)`));
+    assert.match(combined, new RegExp(`\\[Bundle:test\\] section=GATED status=PUBLISH_BLOCKED .*reason=coverage gate refused to publish \\(exit ${PUBLISH_BLOCKED_EXIT_CODE}\\)`));
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:0 failed:0 graceful:0 stalled:0 publish_blocked:1/);
+    assert.match(stdout, /\[Bundle:test\] 1 publish-blocked section\(s\) preserved last-good and wrote no seed keys/);
+    assert.doesNotMatch(combined, /\[Bundle:test\] section=GATED status=OK/);
+    assert.doesNotMatch(stdout, /graceful:1/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a publish-blocked section does not claim exit 0 when the tick starves due work', async () => {
+  const cleanupBlocked = writeFixture(
+    '_bundle-fixture-publish-blocked-starves.mjs',
+    `console.error('COVERAGE GATE FAILED: china-missing (dataMonth=missing)');\nprocess.exit(${PUBLISH_BLOCKED_EXIT_CODE});\n`,
+  );
+  const cleanupLate = writeFixture('_bundle-fixture-publish-blocked-late.mjs', `console.log('late-ran');\n`);
+  try {
+    const { code, stdout, stderr } = await runBundleWithVirtualClock(
+      [
+        { label: 'GATED', script: '_bundle-fixture-publish-blocked-starves.mjs', intervalMs: 1, timeoutMs: 5_000 },
+        { label: 'LATE', script: '_bundle-fixture-publish-blocked-late.mjs', intervalMs: 1, timeoutMs: 5_000 },
+      ],
+      { maxBundleMs: 30_000 },
+      [0, 0, 0, 100, 16_000, 16_000],
+    );
+    assert.equal(code, 1, 'publish-blocked work must not mask deferred due work');
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:1 failed:0 graceful:0 stalled:0 publish_blocked:1/);
+    assert.match(
+      stderr,
+      /\[Bundle:test\] ran:0 while 1 due section\(s\) were deferred/,
+      `expected the starvation explanation; stderr:\n${stderr}`,
+    );
+    assert.doesNotMatch(stdout, /publish-blocked section\(s\).*exiting 0/);
+    assert.doesNotMatch(stdout, /late-ran/);
+  } finally {
+    cleanupBlocked();
+    cleanupLate();
+  }
+});
+
+test('bundles without gate refusals keep a byte-identical summary line', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-ok-member.mjs',
+    `console.log('seeded');\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'OKMEMBER', script: '_bundle-fixture-ok-member.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 0);
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:0 deferred:0 failed:0 graceful:0 stalled:0$/m);
+    // publish_blocked is appended only when non-zero, exactly like disabled:.
+    assert.doesNotMatch(stdout, /publish_blocked/);
   } finally {
     cleanup();
   }

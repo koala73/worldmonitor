@@ -122,7 +122,7 @@ Cache tools wrap their declared `data` shape in the standard freshness envelope:
   "required": ["cached_at", "stale", "data"],
   "properties": {
     "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
-    "stale":     { "type": "boolean", "description": "True when any contributing cache key is older than its per-key maxStaleMin freshness budget." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help." },
     "data":      { "type": "object", "properties": { /* per-tool fields */ } }
   }
 }
@@ -2042,6 +2042,37 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_climate_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_imd_cyclone_marine`
+
+Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. Products stay typed and are not merged into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`. Always read `coverageState`: `disabled` means the key is missing, `degraded` is a partial product failure, `unavailable` is a total fetch failure, and `ok` is live. Empty lists with `disabled`, `degraded`, or `unavailable` coverage are not an India all-clear.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: cyclone / port / marine>` | Restrict to cyclone tracks/wind/cones, port warnings, or sea-area/coastal bulletins. Omit for the full snapshot. coverageState and per-product health are always returned. |
+| `limit` | number | Cap each product list to at most this many items (default 30, pass 0 for no cap). |
+
+- **API endpoints:** none (MCP-only cache read of `weather:imd-cyclone-marine:v1`; no equivalent public REST operation yet).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** bounded cache read from the on-demand IMD cyclone/marine snapshot.
+- **Freshness budget:** up to **45 min** before `stale: true` is flagged (matches `seed-meta:weather:imd-cyclone-marine`).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_imd_cyclone_marine","arguments":{"dataset":["cyclone"]}}
   }'
 ```
 

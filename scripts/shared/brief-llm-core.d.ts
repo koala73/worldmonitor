@@ -69,6 +69,7 @@ export function checkLeadGrounding(
   synthesis: { lead?: string; threads?: Array<{ tag?: string; teaser?: string }> },
   stories: Array<{ headline?: string }>,
   storyCap?: number,
+  opts?: { combinedThreshold?: number | null },
 ): boolean;
 export function leadGroundsAgainstStory(lead: string, headline: string): boolean;
 export function verifyCitationIndexes(
