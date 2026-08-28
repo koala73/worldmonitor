@@ -57,6 +57,11 @@ const EXPOSED_HEADERS = [
   'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
+  // Fail-open limiter degradation (oauth/token, wm-session, gateway). Mode is
+  // not part of the Limit/Remaining/Reset triplet; omitting it left
+  // `response.headers.get('X-RateLimit-Mode')` null for cross-origin JS
+  // even though the header is on the wire (#7270).
+  'X-RateLimit-Mode',
   'X-WorldMonitor-Bbox',
   'X-WorldMonitor-Bbox-Missing',
   'X-WorldMonitor-Bbox-Invalid',

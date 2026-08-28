@@ -127,6 +127,7 @@ test('CORS allow headers include MCP transport headers', () => {
     assert.match(exposed, /\bX-RateLimit-Limit\b/);
     assert.match(exposed, /\bX-RateLimit-Remaining\b/);
     assert.match(exposed, /\bX-RateLimit-Reset\b/);
+    assert.match(exposed, /\bX-RateLimit-Mode\b/);
     assert.match(exposed, /\bX-WorldMonitor-Bbox\b/);
     assert.match(exposed, /\bX-WorldMonitor-Bbox-Missing\b/);
     assert.match(exposed, /\bX-WorldMonitor-Bbox-Invalid\b/);

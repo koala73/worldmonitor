@@ -31,6 +31,8 @@
 #   bash scripts/prepush-attest.sh cache-read   <file> <tree> <diff-resolved>
 #   bash scripts/prepush-attest.sh cache-write  <file> <tree> <diff-resolved> <attestable>
 #   bash scripts/prepush-attest.sh base-guard   <base-ref> [limit]  # "<base>\t<count>" on stdout
+#   bash scripts/prepush-attest.sh gate-read    <cache-dir> <gate> <diff-resolved> -- <pathspec>...
+#   bash scripts/prepush-attest.sh gate-write   <cache-dir> <gate> <diff-resolved> <attestable> -- <pathspec>...
 #
 # Exit codes are three-valued on purpose. A gate that answers "no" and a gate
 # that could not run must never collapse into the same status as "yes":
@@ -42,9 +44,9 @@
 
 mode="${1:-}"
 case "$mode" in
-  changed | changed-live | drift | dirty | cache-read | cache-write | base-guard) ;;
+  changed | changed-live | drift | dirty | cache-read | cache-write | base-guard | gate-read | gate-write) ;;
   *)
-    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write|base-guard> [args]" >&2
+    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write|base-guard|gate-read|gate-write> [args]" >&2
     exit 2
     ;;
 esac
@@ -252,6 +254,118 @@ NODE
 
     printf '%s\t%s\n' "$base" "$count"
     [ "$count" -le "$limit" ] || exit 3
+    ;;
+
+  gate-read | gate-write)
+    # Per-gate green cache (#6765). The whole-tree cache above is all-or-
+    # nothing: any byte anywhere invalidates every gate, so it never hits in
+    # a merge/amend loop. These modes key ONE gate on the WORKTREE bytes of
+    # ITS declared inputs — the bytes the gate actually executes — so a
+    # docs-only amend re-pays the markdown lint and nothing else.
+    #
+    # Key = hash of (gate name + sorted input paths + each path's worktree
+    # blob hash). Inputs are enumerated with `ls-files -z -co
+    # --exclude-standard`: tracked AND untracked-unignored files both count
+    # (a brand-new source file is an input change), gitignored build output
+    # does not, and -z means a unicode/backslash/newline path can never be
+    # C-quoted into a name that silently drops out of the key — the same
+    # class of hole the `changed` modes close above.
+    #
+    # The refusal rules deliberately mirror cache-write below:
+    #   * diff-resolved != true  -> no read, no write. The tree hash covers
+    #     content-derived plan inputs but a blind RUN_ALL run must not trust
+    #     or mint attestations (same reasoning as cache-read/cache-write).
+    #   * attestable != true     -> no write. The key hashes worktree bytes,
+    #     but the push ships HEAD; only when the two are byte-identical does
+    #     "this gate passed on these bytes" also vouch for what is pushed.
+    cache_dir="${2:-}"
+    gate="${3:-}"
+    diff_resolved="${4:-}"
+    if [ "$mode" = gate-write ]; then
+      attestable="${5:-}"
+      shift 5
+    else
+      shift 4
+    fi
+    [ "${1:-}" = "--" ] && shift
+    [ -n "$cache_dir" ] && [ -n "$gate" ] && [ -n "$diff_resolved" ] && [ "$#" -gt 0 ] ||
+      usage_error "<cache-dir> <gate> <diff-resolved> [<attestable>] -- <pathspec>..."
+    case "$gate" in
+      *[!a-z0-9-]*)
+        # The gate name becomes a file name inside cache_dir; anything
+        # outside [a-z0-9-] could traverse or collide.
+        echo "gate name must be [a-z0-9-]: $gate" >&2
+        exit 2
+        ;;
+    esac
+
+    gate_key() {
+      # Streams through temp files: bash variables cannot hold NUL, and
+      # every intermediate here is NUL-delimited by construction. Blob
+      # hashing is bulk (`--stdin-paths`, one git exec for the whole set);
+      # that interface is newline-delimited, so the rare legal path that
+      # CONTAINS a newline is hashed individually via argv instead of being
+      # mangled into two names that match nothing — the same class of hole
+      # the -z reads above exist to close.
+      local tmpdir status=0
+      tmpdir="$(mktemp -d)" || return 1
+      if ! git ls-files -z -co --exclude-standard -- "$@" > "$tmpdir/all" 2>/dev/null; then
+        rm -rf "$tmpdir"; return 1
+      fi
+      : > "$tmpdir/paths"
+      : > "$tmpdir/bulk_paths"
+      local f
+      while IFS= read -r -d '' f; do
+        # ls-files -c also lists files deleted from the worktree; a missing
+        # file simply drops out of the manifest, which changes the key.
+        [ -f "$f" ] || continue
+        printf '%s\0' "$f" >> "$tmpdir/paths"
+        case "$f" in
+          *$'\n'*) ;;
+          *) printf '%s\n' "$f" >> "$tmpdir/bulk_paths" ;;
+        esac
+      done < "$tmpdir/all"
+      if ! git hash-object --stdin-paths < "$tmpdir/bulk_paths" > "$tmpdir/bulk_hashes" 2>/dev/null; then
+        rm -rf "$tmpdir"; return 1
+      fi
+      (
+        exec 3< "$tmpdir/bulk_hashes"
+        printf 'gate\0%s\0' "$gate"
+        while IFS= read -r -d '' f; do
+          printf '%s\0' "$f"
+          case "$f" in
+            *$'\n'*) git hash-object -- "$f" || exit 1 ;;
+            *) IFS= read -r h <&3 || exit 1; printf '%s\n' "$h" ;;
+          esac
+        done < "$tmpdir/paths"
+      ) > "$tmpdir/manifest" || status=1
+      if [ "$status" -eq 0 ]; then
+        git hash-object --stdin < "$tmpdir/manifest" || status=1
+      fi
+      rm -rf "$tmpdir"
+      return "$status"
+    }
+
+    if [ "$diff_resolved" != true ]; then
+      [ "$mode" = gate-write ] && echo "not caching $gate: the branch diff could not be resolved."
+      exit 3
+    fi
+
+    key="$(gate_key "$@")" || exit 1
+    [ -n "$key" ] || exit 1
+
+    if [ "$mode" = gate-read ]; then
+      [ -f "$cache_dir/$gate" ] || exit 3
+      grep -qxF "$key" "$cache_dir/$gate" 2>/dev/null || exit 3
+    else
+      [ -n "$attestable" ] || usage_error "<cache-dir> <gate> <diff-resolved> <attestable> -- <pathspec>..."
+      if [ "$attestable" != true ]; then
+        echo "not caching $gate: the worktree is not byte-identical to HEAD."
+        exit 3
+      fi
+      mkdir -p "$cache_dir" || exit 1
+      printf '%s\n' "$key" > "$cache_dir/$gate" || exit 1
+    fi
     ;;
 
   cache-read)
