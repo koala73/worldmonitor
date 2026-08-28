@@ -476,13 +476,17 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
     );
   });
 
-  it('publishNotificationEvent call passes coalesceKey when derivable from VTEC', () => {
-    // Spread-conditional: only includes the field when the parser returned a value,
+  it('publishNotificationEvent call passes the shared weather family key as coalesceKey', () => {
+    // Spread-conditional: only includes the field when the key is non-empty,
     // so undefined isn't sent over the wire.
+    // Narrowing this to deriveWeatherCoalesceKey(a.vtec) left every VTEC-less
+    // SWIC/ECCC alert on publishNotificationEvent's global `weather_alert:
+    // <title>` dedup hash, so two countries sharing a generic WMO title
+    // collided on SET NX (#7243).
     assert.match(
       aisRelaySrc,
-      /coalesceKey\s*=\s*deriveWeatherCoalesceKey\(a\.vtec\)/,
-      'weather publisher must derive coalesceKey via deriveWeatherCoalesceKey(a.vtec)',
+      /coalesceKey\s*=\s*weatherAlertFamilyKey\(a\)/,
+      'weather publisher must key dedup on the same family key the selector partitions by',
     );
     assert.match(
       aisRelaySrc,
@@ -527,21 +531,33 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
     );
   });
 
-  it('family-key fallback is source-prefixed so VTEC-less sources cannot collide', () => {
+  it('family-key fallback is source- and country-scoped so VTEC-less alerts cannot collide', () => {
     // A hardcoded `nws:fallback:` prefix would swallow SWIC rows into an NWS
     // family when ids overlap on the shared weather:alerts:v1 path.
-    assert.equal(weatherAlertFamilyKey({ source: 'swic', id: '123' }), 'swic:123');
-    assert.equal(weatherAlertFamilyKey({ source: 'eccc', id: '123' }), 'eccc:123');
+    assert.equal(
+      weatherAlertFamilyKey({ source: 'swic', countryCode: 'CH', headline: 'Heavy rain' }),
+      'swic:CH:Heavy rain',
+    );
     assert.notEqual(
-      weatherAlertFamilyKey({ source: 'swic', id: '123' }),
-      weatherAlertFamilyKey({ source: 'nws', id: '123' }),
+      weatherAlertFamilyKey({ source: 'swic', countryCode: 'CH', headline: 'Heavy rain' }),
+      weatherAlertFamilyKey({ source: 'swic', countryCode: 'IN', headline: 'Heavy rain' }),
+      'the same generic WMO title in two countries must be two families',
+    );
+    assert.notEqual(
+      weatherAlertFamilyKey({ source: 'swic', countryCode: 'CA', headline: 'Storm' }),
+      weatherAlertFamilyKey({ source: 'eccc', countryCode: 'CA', headline: 'Storm' }),
+      'two authorities for one country must not share a family',
     );
     assert.equal(
-      weatherAlertFamilyKey({ source: 'nws', id: 'x', vtec: '/O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/' }),
+      weatherAlertFamilyKey({ source: 'nws', countryCode: 'US', headline: 'x', vtec: '/O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/' }),
       'nws:KSGF.SV.W.0034',
-      'VTEC wins over the id fallback when present',
+      'VTEC wins over the title fallback when present',
     );
-    assert.equal(weatherAlertFamilyKey({ headline: 'no id' }), 'weather:no id');
+    assert.equal(
+      weatherAlertFamilyKey({ source: 'swic', countryCode: 'KZ', id: 'only-an-id' }),
+      'swic:KZ:only-an-id',
+      'a titleless alert still gets a usable family rather than an empty key',
+    );
     assert.doesNotMatch(
       weatherSelectSrc,
       /nws:fallback:/,

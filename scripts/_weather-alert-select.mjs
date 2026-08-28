@@ -425,13 +425,38 @@ export function deriveWeatherCoalesceKey(vtec) {
 }
 
 /**
- * Notification family identity for one alert: the VTEC-derived coalesce key
- * when the source publishes VTEC, else a stable per-alert identity prefixed by
- * source so a VTEC-less ECCC/SWIC id cannot collide with an NWS one.
+ * Notification family identity for one alert — the single notion of "family"
+ * shared by the selection below and by the publisher's SET NX dedup key. When
+ * the two disagree, the selector's per-country guarantee is silently undone by
+ * publisher dedup, which is exactly how #7243 survived its first fix.
+ *
+ * NWS publishes VTEC, so its family is the VTEC tuple (adjacent-zone bulletins
+ * for one storm collapse). VTEC-less sources fall back to
+ * `source:country:title`:
+ *
+ *  - `country` is required. SWIC titles are generic WMO event names — the live
+ *    2026-08-28 payload carries "Forestfire", "Heavy rain", and one alert
+ *    titled literally "CAP Alert" — so without it two countries share a dedup
+ *    key and only the first SET NX wins.
+ *  - `title`, NOT the id. SWIC and ECCC ids embed a timestamp and a message
+ *    sequence (`2.49.0.0.398.0-20260828-101702-0470417-00-EN`), so the same
+ *    logical alert arrives with a new id on every CAP update; an id-keyed
+ *    family would re-notify each tick instead of coalescing. Titles are also
+ *    what the pre-#7243 publisher hashed, so cross-tick behaviour is unchanged
+ *    apart from the added country partition.
+ *  - `source` keeps a VTEC-less ECCC id from colliding with an NWS one on the
+ *    shared weather:alerts:v1 path.
+ *
+ * The trade-off is deliberate: 19 identically-titled Kazakh wildfires are ONE
+ * family, which is both what a subscriber wants and what frees that country's
+ * remaining slots for a genuinely different hazard.
  */
 export function weatherAlertFamilyKey(alert) {
-  return deriveWeatherCoalesceKey(alert?.vtec)
-    ?? `${alert?.source || 'weather'}:${alert?.id || alert?.headline || alert?.event || ''}`;
+  const vtecKey = deriveWeatherCoalesceKey(alert?.vtec);
+  if (vtecKey) return vtecKey;
+  const source = alert?.source || 'weather';
+  const country = weatherAlertNotifyCountryCode(alert) ?? '';
+  return `${source}:${country}:${alert?.headline || alert?.event || alert?.id || ''}`;
 }
 
 export const WEATHER_NOTIFY_HIGH_SEVERITIES = Object.freeze(['Extreme', 'Severe']);

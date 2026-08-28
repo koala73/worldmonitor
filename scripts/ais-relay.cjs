@@ -5185,7 +5185,6 @@ async function seedWeatherAlerts() {
       NWS_HOST,
       SWIC_MAX_BYTES,
       WEATHER_ALERTS_SOURCE_VERSION,
-      deriveWeatherCoalesceKey,
       fetchApprovedWeatherJson,
       fetchEcccAlertFeatures,
       fetchSwicAlertCatalog,
@@ -5195,6 +5194,7 @@ async function seedWeatherAlerts() {
       selectEcccAlerts,
       selectSwicAlerts,
       selectWeatherNotificationAlerts,
+      weatherAlertFamilyKey,
       weatherAlertNotifyCountryCode,
       weatherAlertNotifyLocation,
       weatherAlertNotifySource,
@@ -5339,11 +5339,13 @@ async function seedWeatherAlerts() {
     // are unit-testable without booting the relay.
     const distinctFamilyAlerts = selectWeatherNotificationAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
-      // so adjacent-zone bulletins for the same logical event collapse to one
-      // notification per user. Falls back to title-based dedup when VTEC is
-      // absent (ECCC, rare advisory types, or missing parameters).
-      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
+      // The SAME family key the selector partitioned by. Publishing a narrower
+      // key (VTEC only) let publishNotificationEvent fall back to its global
+      // `weather_alert:<title>` dedup hash for every VTEC-less SWIC/ECCC
+      // alert, so two countries sharing a generic WMO title ("Heavy rain",
+      // "Forestfire") collided on SET NX and only the first survived —
+      // recreating the #7243 starvation one layer below the selector.
+      const coalesceKey = weatherAlertFamilyKey(a);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',

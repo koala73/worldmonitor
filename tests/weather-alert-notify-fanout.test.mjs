@@ -19,28 +19,37 @@
 
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
 
 import {
   WEATHER_NOTIFY_MAX_PER_TICK,
   WEATHER_NOTIFY_SLOTS_PER_COUNTRY,
   selectWeatherNotificationAlerts,
+  weatherAlertFamilyKey,
   weatherAlertNotifyCountryCode,
 } from '../scripts/_weather-alert-select.mjs';
+
+const require = createRequire(import.meta.url);
+const { buildDedupMaterial } = require('../scripts/shared/notification-dedup.cjs');
 
 const AIS_RELAY_SOURCE = readFileSync(
   new URL('../scripts/ais-relay.cjs', import.meta.url),
   'utf8',
 );
 
-function notifyAlert({ source, countryCode, id, severity, event, vtec }) {
+function notifyAlert({ source, countryCode, id, severity, event, headline, vtec }) {
   return {
     id,
     source,
     countryCode,
     severity,
     event,
-    headline: `${event} ${id}`,
+    // SWIC/ECCC headlines are generic event names repeated verbatim across
+    // every alert of that type — the live payload carries 19 Kazakh rows all
+    // titled "Forestfire". Default to that shape rather than a per-id title,
+    // which would make every fixture row look like its own family.
+    headline: headline ?? event,
     ...(vtec ? { vtec } : {}),
   };
 }
@@ -59,11 +68,23 @@ function productionShape20260828() {
     alerts.push(notifyAlert({
       source: 'swic',
       countryCode: 'CH',
-      id: `swic-ch-${i}`,
+      // CAP ids embed a timestamp and a message sequence, so they differ per
+      // row even for one storm system; the shared title is what identifies it.
+      id: `2.49.0.0.756.0-20260828-10170${i}-0470417-00-EN`,
       severity: 'Extreme',
       event: 'Violent thunderstorm',
     }));
   }
+  // Two further Swiss hazards, so CH has three genuinely distinct families and
+  // can still exercise the full per-country budget.
+  alerts.push(notifyAlert({
+    source: 'swic', countryCode: 'CH', id: 'swic-ch-rain', severity: 'Extreme', event: 'Heavy rain',
+  }));
+  alerts.push(notifyAlert({
+    source: 'swic', countryCode: 'CH', id: 'swic-ch-wind', severity: 'Extreme', event: 'Wind',
+  }));
+  // Deliberately shares CH's "Heavy rain" title: generic WMO event names
+  // repeat across countries, and before #7243 that collided in publisher dedup.
   alerts.push(notifyAlert({
     source: 'swic',
     countryCode: 'IN',
@@ -130,17 +151,19 @@ describe('weather_alert notification fan-out — per-country slots (#7243)', () 
 
   it('bounds the whole tick at WEATHER_NOTIFY_MAX_PER_TICK', () => {
     // 30 countries x 5 distinct Extreme families each = 150 candidates, far
-    // above anything the 50-alert payload can actually hold.
+    // above anything the 50-alert payload can actually hold. Distinct hazard
+    // names per row, or they would coalesce into one family per country and
+    // never approach the ceiling.
     const many = [];
     for (let c = 0; c < 30; c += 1) {
       const countryCode = `${String.fromCharCode(65 + Math.floor(c / 26))}${String.fromCharCode(65 + (c % 26))}`;
-      for (let i = 0; i < 5; i += 1) {
+      for (const event of ['Storm', 'Flood', 'Wind', 'Snow', 'Fire']) {
         many.push(notifyAlert({
           source: 'swic',
           countryCode,
-          id: `swic-${c}-${i}`,
+          id: `swic-${c}-${event}`,
           severity: 'Extreme',
-          event: 'Storm',
+          event,
         }));
       }
     }
@@ -216,12 +239,15 @@ describe('weather_alert notification fan-out — per-country slots (#7243)', () 
     // weatherAlertNotifyCountryCode() returns undefined for these; downstream
     // they only reach unscoped rules, so they must neither consume CH's slots
     // nor be starved by CH.
+    // Four DISTINCT hazards per bucket — same-titled rows coalesce into one
+    // family, so distinct titles are what make this a slot-contention test.
+    const hazards = ['Storm', 'Flood', 'Wind', 'Snow'];
     const alerts = [
-      ...Array.from({ length: 4 }, (_, i) => notifyAlert({
-        source: 'swic', countryCode: 'CH', id: `ch-${i}`, severity: 'Extreme', event: 'Storm',
+      ...hazards.map((event, i) => notifyAlert({
+        source: 'swic', countryCode: 'CH', id: `ch-${i}`, severity: 'Extreme', event,
       })),
-      ...Array.from({ length: 4 }, (_, i) => notifyAlert({
-        source: 'swic', countryCode: '', id: `unattributed-${i}`, severity: 'Extreme', event: 'Storm',
+      ...hazards.map((event, i) => notifyAlert({
+        source: 'swic', countryCode: '', id: `unattributed-${i}`, severity: 'Extreme', event,
       })),
     ];
     const selected = selectWeatherNotificationAlerts(alerts);
@@ -251,6 +277,100 @@ describe('weather_alert notification fan-out — per-country slots (#7243)', () 
       notifyAlert({ source: 'swic', countryCode: 'CH', id: 'ch-extreme', severity: 'Extreme', event: 'Storm' }),
     ]);
     assert.deepEqual(selected.map((a) => a.id), ['ch-extreme', 'ca-severe']);
+  });
+
+  it('does not let two countries with the same headline collide in publisher dedup', () => {
+    // The selector can hand the publisher one alert per country and STILL lose
+    // every country but one: publishNotificationEvent keys its SET NX dedup on
+    // buildDedupMaterial(eventType, title, coalesceKey), which falls back to
+    // `weather_alert:<title>` whenever coalesceKey is absent — i.e. for every
+    // VTEC-less SWIC/ECCC alert. SWIC titles are generic event names ("Heavy
+    // rain", "Forestfire", and one live alert titled literally "CAP Alert"),
+    // so two countries collide on the title hash and only the first SET NX
+    // wins. That recreates the #7243 starvation one layer down.
+    const chRain = notifyAlert({
+      source: 'swic', countryCode: 'CH', id: 'ch-rain', severity: 'Extreme', event: 'Heavy rain',
+    });
+    const inRain = notifyAlert({
+      source: 'swic', countryCode: 'IN', id: 'in-rain', severity: 'Extreme', event: 'Heavy rain',
+    });
+    chRain.headline = 'Heavy rain';
+    inRain.headline = 'Heavy rain';
+    // Positive control for the trap itself: with no coalesceKey — what the
+    // relay passed for every VTEC-less alert before this fix — they collide.
+    assert.equal(
+      buildDedupMaterial('weather_alert', chRain.headline, undefined),
+      buildDedupMaterial('weather_alert', inRain.headline, undefined),
+      'sanity: the title-hash fallback is what makes two countries collide',
+    );
+    const material = (a) => buildDedupMaterial('weather_alert', a.headline, weatherAlertFamilyKey(a));
+    assert.notEqual(
+      material(chRain),
+      material(inRain),
+      'a Swiss and an Indian "Heavy rain" must not share a publisher dedup key',
+    );
+  });
+
+  it('coalesces same-headline alerts within one country to a single family', () => {
+    // Live payload 2026-08-28: 19 Kazakh high-severity alerts ALL titled
+    // "Forestfire". Keying the family on the raw alert id would treat them as
+    // 19 families and burn all 3 KZ slots on one wildfire event; the ids also
+    // embed a CAP timestamp (2.49.0.0.398.0-20260828-101702-0470417-00-EN), so
+    // every CAP update would re-notify. Coalesce on (source, country, title)
+    // instead: one family, freeing KZ's other slots for other hazards.
+    const forestFires = Array.from({ length: 19 }, (_, i) => notifyAlert({
+      source: 'swic',
+      countryCode: 'KZ',
+      id: `2.49.0.0.398.0-20260828-10170${i}-0470417-00-EN`,
+      severity: 'Extreme',
+      event: 'Forestfire',
+    }));
+    for (const a of forestFires) a.headline = 'Forestfire';
+    const flood = notifyAlert({
+      source: 'swic', countryCode: 'KZ', id: 'kz-flood', severity: 'Extreme', event: 'Flood',
+    });
+    flood.headline = 'Flood';
+    const selected = selectWeatherNotificationAlerts([...forestFires, flood]);
+    assert.deepEqual(
+      selected.map((a) => a.headline),
+      ['Forestfire', 'Flood'],
+      '19 identically-titled Kazakh wildfires are one family, and the flood must still get a slot',
+    );
+  });
+
+  it('keeps a VTEC-less family key stable across CAP updates of the same alert', () => {
+    // SWIC/ECCC ids carry a timestamp and a message sequence, so the same
+    // logical alert arrives with a new id on every update. An id-keyed family
+    // would re-notify each tick; the 1800s dedup TTL only helps if the key
+    // survives the update.
+    const first = notifyAlert({
+      source: 'swic',
+      countryCode: 'KZ',
+      id: '2.49.0.0.398.0-20260828-101702-0470417-00-EN',
+      severity: 'Extreme',
+      event: 'Forestfire',
+    });
+    const updated = notifyAlert({
+      source: 'swic',
+      countryCode: 'KZ',
+      id: '2.49.0.0.398.0-20260828-111702-0470417-01-EN',
+      severity: 'Extreme',
+      event: 'Forestfire',
+    });
+    first.headline = 'Forestfire';
+    updated.headline = 'Forestfire';
+    assert.equal(weatherAlertFamilyKey(first), weatherAlertFamilyKey(updated));
+  });
+
+  it('ais-relay publishes the shared family key as the coalesceKey', () => {
+    // The selector and the publisher must agree on what a family is. When they
+    // disagree the selector's per-country guarantee is undone by the
+    // publisher's title-hash dedup.
+    assert.match(
+      AIS_RELAY_SOURCE,
+      /const coalesceKey = weatherAlertFamilyKey\(a\);/,
+      'the publisher must key dedup on the same family key the selector partitions by',
+    );
   });
 
   it('ais-relay delegates weather notification selection to the shared module', () => {
