@@ -61,13 +61,13 @@ export interface ServerInsights {
 let cached: ServerInsights | null = null;
 let inFlight: Promise<ServerInsights | null> | null = null;
 /**
- * True once this page consumed a hydrated insights payload that failed
+ * True once this page drained a hydrated insights payload that failed
  * validation. Empty slots (`undefined` from production `getHydratedData`,
- * or `null` from harness stubs) are not a consumed CDN body and must not
- * latch. The slot is drain-once and this loader is the only
- * `getHydratedData('insights')` reader, so retrying `?keys=insights` after
- * a real rejected body would repeat the same CDN body. Remember that miss
- * for the page so the three consumers do not each open that request (#7290).
+ * or `null` from harness stubs) are not a consumed body and must not set
+ * this flag. The slot is drain-once; the flag only skips a second drain.
+ * It must not skip `fetchServerInsights()`: persistent FAST-tier cache can
+ * be up to 24h old while insights freshness is 1h, and the credentialed
+ * `?keys=insights` URL is no-store, so the first caller may still recover.
  */
 let rejectedHydration = false;
 // Server cron interval: scripts/seed-insights.mjs runs every 30 min
@@ -92,7 +92,7 @@ function consumeHydration(): ServerInsights | null {
   if (rejectedHydration) return null;
   const raw = getHydratedData('insights');
   // Empty slot: production returns undefined; panel harnesses often return
-  // null. Latch only a present invalid body so on-demand fetch can recover.
+  // null. Neither is a consumed body — on-demand fetch may still recover.
   if (raw == null) return null;
   const data = validateInsights(raw);
   if (data) {
@@ -117,16 +117,15 @@ export function getServerInsights(): ServerInsights | null {
  * null because the bootstrap hydration cache is empty — typically:
  *   - mobile fast-tier abort on 4G (bootstrap.ts:179 — 1.2 s budget),
  *   - cached value went stale (>MAX_AGE_MS) with no second bootstrap fetch,
- *   - hydration never landed (empty slot — not the same as a rejected body,
- *     which is remembered for the page and does not refetch).
+ *   - hydration never landed (empty slot),
+ *   - hydration drained as stale/invalid (persistent FAST-tier cache is 24h;
+ *     the credentialed `?keys=insights` URL is no-store and may still recover).
  *
  * Concurrent callers share one in-flight promise (cleared on settle — not a
- * second result cache). A rejected hydration payload is remembered for the
- * page so the three consumers do not each retry the same CDN body. A settled
- * network/validation failure does not latch; a later caller may retry.
+ * second result cache). A rejected hydration body is not promoted and is not
+ * re-drained; the first fetch still runs so a newer Redis snapshot can land.
+ * A settled network/validation failure does not latch; a later caller may retry.
  *
- * The bootstrap API supports `?keys=insights` filtering (api/bootstrap.js:250)
- * and is CDN-cached (s-maxage=600 for fast tier), so polling is cheap.
  * Mirrors the AAIISentimentPanel fallback shape (AAIISentimentPanel.ts:147).
  *
  * Returns the validated insights on success, null on any failure (network,
@@ -136,7 +135,6 @@ export function getServerInsights(): ServerInsights | null {
 export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsights | null> {
   const hydrated = getServerInsights();
   if (hydrated) return hydrated;
-  if (rejectedHydration) return null;
   if (inFlight) return inFlight;
 
   inFlight = (async () => {

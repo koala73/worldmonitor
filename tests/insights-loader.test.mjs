@@ -241,6 +241,34 @@ describe('insights-loader', () => {
       assert.equal(fetchCount, 1, 'an empty/null slot must still open ?keys=insights');
     });
 
+    it('recovers from stale persistent hydration with one coalesced refetch (#7290)', async () => {
+      // Persistent FAST-tier cache is 24h; insights freshness is 1h. A drained
+      // stale snapshot must not skip the credentialed no-store ?keys=insights
+      // recovery, but the three boot consumers must share that one request.
+      const stale = {
+        ...makeValidInsights(),
+        generatedAt: new Date(Date.now() - MAX_AGE_MS - 60_000).toISOString(),
+      };
+      const fresh = makeValidInsights();
+      bootstrapTesting.seedHydrationCacheForTests({ insights: stale });
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount += 1;
+        return new Response(JSON.stringify({ data: { insights: fresh } }), { status: 200 });
+      };
+
+      assert.equal(getServerInsights(), null, 'stale hydration must not be promoted');
+      const [first, second, third] = await Promise.all([
+        fetchServerInsights(),
+        fetchServerInsights(),
+        fetchServerInsights(),
+      ]);
+      assert.equal(first?.worldBrief, 'Test brief');
+      assert.equal(second, first);
+      assert.equal(third, first);
+      assert.equal(fetchCount, 1, 'invalid hydration may recover via one coalesced ?keys=insights fetch');
+    });
+
     it('does not issue one network request per consumer after invalid hydration (#7290)', async () => {
       bootstrapTesting.seedHydrationCacheForTests({
         insights: { ...makeValidInsights(), topStories: [] },
@@ -257,10 +285,10 @@ describe('insights-loader', () => {
         fetchServerInsights(),
         fetchServerInsights(),
       ]);
-      assert.equal(first, null);
-      assert.equal(second, null);
-      assert.equal(third, null);
-      assert.equal(fetchCount, 0, 'the drained invalid slot must not be retried per consumer');
+      assert.equal(first?.worldBrief, 'Test brief');
+      assert.equal(second, first);
+      assert.equal(third, first);
+      assert.equal(fetchCount, 1, 'shape-invalid hydration still gets one coalesced recovery fetch');
     });
 
     it('consumes a valid FAST-tier hydration payload without a per-key fetch (#7290)', async () => {
