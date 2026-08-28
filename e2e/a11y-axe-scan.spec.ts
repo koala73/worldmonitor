@@ -99,8 +99,18 @@ test.describe('a11y — axe-core WCAG A/AA scan', () => {
   });
 
   test('settings dialog has no axe violations outside the known backlog', async ({ page }) => {
+    // Cold dashboard boot + the lazy UnifiedSettings chunk + axe, under the
+    // 4-worker ci-smoke pool, regularly burns the default 90s clock. Job
+    // 98862790240 on #7271 logged `[axe:settings] violations: []` on both
+    // the first attempt and retry #1, then died with "Test timeout of
+    // 90000ms exceeded" — not an a11y regression. Same budget pattern as
+    // variant-live-smoke / visual-chrome.
+    test.setTimeout(180_000);
+
     await loadDashboard(page);
-    await page.locator('#unifiedSettingsBtn').click();
+    const settingsBtn = page.locator('#unifiedSettingsBtn');
+    await expect(settingsBtn).toBeVisible({ timeout: 60_000 });
+    await settingsBtn.click();
     await page.locator('#unifiedSettingsModal.active').waitFor({ timeout: 30_000 });
 
     const results = await new AxeBuilder({ page })
