@@ -60,6 +60,9 @@ export interface ServerInsights {
 
 let cached: ServerInsights | null = null;
 let inFlight: Promise<ServerInsights | null> | null = null;
+let inFlightAbort: AbortController | null = null;
+let inFlightAbortTimer: ReturnType<typeof setTimeout> | null = null;
+let inFlightDeadlineMs = 0;
 /**
  * True once this page drained a hydrated insights payload that failed
  * validation. Empty slots (`undefined` from production `getHydratedData`,
@@ -111,6 +114,45 @@ export function getServerInsights(): ServerInsights | null {
   return consumeHydration();
 }
 
+function abortInFlightRequest(): void {
+  if (inFlightAbortTimer !== null) {
+    clearTimeout(inFlightAbortTimer);
+    inFlightAbortTimer = null;
+  }
+  if (!inFlightAbort || inFlightAbort.signal.aborted) return;
+  try {
+    inFlightAbort.abort(
+      typeof DOMException === 'function'
+        ? new DOMException('signal timed out', 'TimeoutError')
+        : undefined,
+    );
+  } catch {
+    /* already aborted or exotic AbortController */
+  }
+}
+
+function armInFlightTimeout(timeoutMs: number): void {
+  const deadline = Date.now() + timeoutMs;
+  if (deadline <= inFlightDeadlineMs && inFlightAbortTimer !== null) return;
+  inFlightDeadlineMs = Math.max(inFlightDeadlineMs, deadline);
+  if (inFlightAbortTimer !== null) clearTimeout(inFlightAbortTimer);
+  const remaining = inFlightDeadlineMs - Date.now();
+  if (remaining <= 0) {
+    abortInFlightRequest();
+    return;
+  }
+  inFlightAbortTimer = setTimeout(abortInFlightRequest, remaining);
+}
+
+function clearInFlightTimeout(): void {
+  if (inFlightAbortTimer !== null) {
+    clearTimeout(inFlightAbortTimer);
+    inFlightAbortTimer = null;
+  }
+  inFlightAbort = null;
+  inFlightDeadlineMs = 0;
+}
+
 /**
  * On-demand refetch of the server-insights snapshot via the bootstrap
  * key-filter endpoint. Used by InsightsPanel when getServerInsights() returns
@@ -122,9 +164,11 @@ export function getServerInsights(): ServerInsights | null {
  *     the credentialed `?keys=insights` URL is no-store and may still recover).
  *
  * Concurrent callers share one in-flight promise (cleared on settle — not a
- * second result cache). A rejected hydration body is not promoted and is not
- * re-drained; the first fetch still runs so a newer Redis snapshot can land.
- * A settled network/validation failure does not latch; a later caller may retry.
+ * second result cache). The shared abort follows the longest active caller
+ * budget so a 2500 ms Pro preview cannot cut off a later 5000 ms panel
+ * recovery. A rejected hydration body is not promoted and is not re-drained;
+ * the first fetch still runs so a newer Redis snapshot can land. A settled
+ * network/validation failure does not latch; a later caller may retry.
  *
  * Mirrors the AAIISentimentPanel fallback shape (AAIISentimentPanel.ts:147).
  *
@@ -135,12 +179,20 @@ export function getServerInsights(): ServerInsights | null {
 export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsights | null> {
   const hydrated = getServerInsights();
   if (hydrated) return hydrated;
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    armInFlightTimeout(timeoutMs);
+    return inFlight;
+  }
+
+  const controller = new AbortController();
+  inFlightAbort = controller;
+  inFlightDeadlineMs = 0;
+  armInFlightTimeout(timeoutMs);
 
   inFlight = (async () => {
     try {
       const resp = await fetch(toApiUrl('/api/bootstrap?keys=insights'), {
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: controller.signal,
       });
       if (!resp.ok) return null;
       const payload = (await resp.json()) as { data?: { insights?: unknown } };
@@ -150,6 +202,7 @@ export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsi
     } catch {
       return null;
     } finally {
+      clearInFlightTimeout();
       inFlight = null;
     }
   })();
@@ -165,5 +218,6 @@ export function setServerInsights(data: ServerInsights): void {
 export function __resetServerInsightsCacheForTests(): void {
   cached = null;
   inFlight = null;
+  clearInFlightTimeout();
   rejectedHydration = false;
 }
