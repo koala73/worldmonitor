@@ -185,7 +185,13 @@ describe('Railway Registry Sync workflow', () => {
     assert.equal(workflow.name, 'Railway Registry Sync');
     assert.deepEqual(workflow.on.push, {
       branches: ['main'],
-      paths: ['scripts/railway-services.json'],
+      // The fleet identity contract is the audit's other input, and its guard
+      // aborts before the config audit — so a provisioning edit must trigger
+      // this check too, not just a watchPatterns edit.
+      paths: [
+        'scripts/railway-services.json',
+        'scripts/railway-native-autodeploy-fleet.json',
+      ],
     });
     assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
     // A schedule here would duplicate Railway Native Deploy Health, which
@@ -244,7 +250,17 @@ describe('Railway Registry Sync workflow', () => {
     // check-railway-deploy-drift.mjs also asks whether every service runs head,
     // which is legitimately false for the first minutes after a merge. Running
     // it here would red on ordinary build lag instead of on drift.
-    assert.doesNotMatch(source, /check-railway-deploy-drift\.mjs/);
+    //
+    // Scoped to what the job EXECUTES, not to the file text: the header comment
+    // has to name that script to explain why it is excluded, and a whole-source
+    // assertion would make the explanation fail the test that enforces it.
+    for (const step of steps(workflow.jobs.audit)) {
+      assert.doesNotMatch(
+        step.run ?? '',
+        /check-railway-deploy-drift/,
+        `${step.name ?? step.uses} must not run the deployment-history check`,
+      );
+    }
     assert.doesNotMatch(check.run, /\|\||continue-on-error/);
   });
 

@@ -35,6 +35,11 @@ on:
     branches: [main]
     paths:
       - scripts/railway-services.json
+      # The fleet identity contract is the audit's other input, and its guard
+      # aborts BEFORE the config audit runs — one unenrolled service hid
+      # watch-path drift fleet-wide (#7256 predecessor). Provisioning is
+      # therefore exactly when this check becomes newly meaningful.
+      - scripts/railway-native-autodeploy-fleet.json
   workflow_dispatch:
 
 concurrency:
