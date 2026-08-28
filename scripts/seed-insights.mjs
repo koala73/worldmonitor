@@ -30,6 +30,7 @@ import {
   briefUserPrompt,
   synthesisSystemPrompt,
   synthesisUserPrompt,
+  synthesisRejectionFeedback,
 } from './_insights-brief.mjs';
 import {
   INSIGHTS_COMPOSER_THREW,
@@ -423,6 +424,8 @@ const LLM_PROVIDERS = [
 // provider's Retry-After (429/503) instead of dropping straight to the next
 // provider, but never sleep/fetch past the remaining call budget.
 const INSIGHTS_LLM_MAX_RETRIES = 2;
+const INSIGHTS_LLM_TEMPERATURE = 0.1;
+const INSIGHTS_LLM_RESAMPLE_TEMPERATURE = 0.7;
 const INSIGHTS_LLM_RETRY_BASE_MS = 1_000;
 const INSIGHTS_LLM_RETRY_AFTER_MAX_MS = 10_000;
 const INSIGHTS_LLM_CALL_BUDGET_MS = 60_000;
@@ -458,6 +461,16 @@ async function callLLM(headline, options = {}) {
   const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
   const events = [];
   let attemptIndex = 0;
+  // 0.1 keeps the first sample stable and cheap to reason about. But after a
+  // gate rejection, determinism is the enemy: the same prompt at the same
+  // temperature returns the same draft, so #6995's resample-once was a second
+  // identical call — 25 consecutive identical rejections on 2026-08-28 proved
+  // it. Once any sample has been gate-rejected, later samples run hot enough
+  // to actually vary, and carry the gate's correction (options.rejectionFeedback)
+  // appended to the user prompt. Both persist past the resample into the rest
+  // of the provider chain: a weaker model needs the correction more, not less.
+  let samplingTemperature = INSIGHTS_LLM_TEMPERATURE;
+  let gateFeedbackNote = null;
 
   // #6001: the chain used to fall through on TRANSPORT failures only. A model
   // that reliably returns well-formed text the brief composer then rejects on
@@ -525,10 +538,10 @@ async function callLLM(headline, options = {}) {
             model,
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
+              { role: 'user', content: gateFeedbackNote ? `${userPrompt}\n\n${gateFeedbackNote}` : userPrompt },
             ],
             max_tokens: maxTokens,
-            temperature: 0.1,
+            temperature: samplingTemperature,
             ...provider.extraBody,
           }),
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
@@ -591,6 +604,16 @@ async function callLLM(headline, options = {}) {
           record(false, { ...usage, model: json.model || model, reason: 'validate_reject' });
           if (faulted) { if (!firstFaulted) firstFaulted = candidate; }
           else if (!firstRejected) firstRejected = candidate;
+          if (!faulted) {
+            // A FAULTED acceptor teaches the sampler nothing — the fault is in
+            // our own gate, so neither the temperature bump nor a correction
+            // note applies.
+            samplingTemperature = INSIGHTS_LLM_RESAMPLE_TEMPERATURE;
+            const feedback = typeof options.rejectionFeedback === 'function'
+              ? options.rejectionFeedback()
+              : null;
+            if (typeof feedback === 'string' && feedback.trim()) gateFeedbackNote = feedback.trim();
+          }
           // One resample before demoting (see the queue comment above). A
           // FAULTED acceptor is excluded deliberately: that fault is in our own
           // gate, not in the sample, so a second identical call would throw
@@ -864,8 +887,16 @@ async function fetchInsights() {
     sanitizeTitle,
     sourceFromStory: briefSourceFromStory,
   };
-  const composeFromText = (text) =>
-    composeInsightsSynthesis(text, topStories, synthesisComposerOptions).brief;
+  // The accept callback used to swallow WHY composition failed; the rejection
+  // code and detail are exactly what the resample needs to not repeat itself.
+  let lastSynthesisRejection = null;
+  const composeFromText = (text) => {
+    const result = composeInsightsSynthesis(text, topStories, synthesisComposerOptions);
+    lastSynthesisRejection = result?.brief
+      ? null
+      : { code: result?.rejection ?? null, detail: result?.rejectionDetail ?? null };
+    return result?.brief ?? null;
+  };
 
   // #6001: L1 may now walk the whole provider chain, and L2 below makes a
   // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
@@ -878,8 +909,11 @@ async function fetchInsights() {
         maxTokens: 900,
         // A model whose output trips the editorial gates must not strand the
         // run. callLLM resamples this model once before demoting to a weaker
-        // one, so a single unusable sample no longer costs the better writer.
+        // one, so a single unusable sample no longer costs the better writer —
+        // and the resample carries the gate's correction plus real sampling
+        // variance, so it is a different draft rather than the same one twice.
         accept: composeFromText,
+        rejectionFeedback: () => synthesisRejectionFeedback(lastSynthesisRejection),
       })
     : null;
   const { composed, failureCode, failureDetail } = resolveInsightsSynthesis({

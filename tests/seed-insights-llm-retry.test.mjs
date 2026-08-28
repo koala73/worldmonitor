@@ -362,6 +362,77 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     }
   });
 
+  it('a gate-rejected sample raises the temperature and appends the rejection feedback', async () => {
+    // 2026-08-28: 25 consecutive identical LEAD_PROPER_NOUN rejections over four
+    // hours. temperature was pinned at 0.1 and the retry got the identical
+    // prompt, so #6995's resample-once was the same draft twice. The resample is
+    // only real if the second sample differs: hotter, and told what was wrong.
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+
+    const bodies = [];
+    __setInsightsLlmTransportForTests({
+      fetch: async (url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return okResponse(String(url).includes('openrouter') ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF);
+      },
+    });
+
+    const FEEDBACK = 'Correction: your previous draft was rejected because "strait of hormuz" does not appear in any story its sentence cited.';
+    const result = await callLLM(null, {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      accept: (text) => (text.includes('REJECT_ME') ? null : { composed: true }),
+      rejectionFeedback: () => FEEDBACK,
+    });
+    assert.ok(result, 'the chain still lands on an accepting provider');
+
+    // First sample: cold and unannotated — the baseline behaviour is untouched.
+    assert.equal(bodies[0].temperature, 0.1, 'the first sample stays at the base temperature');
+    assert.equal(bodies[0].messages[1].content, 'user', 'the first sample carries no correction');
+
+    // Every sample after the first rejection: hot, and corrected.
+    for (let i = 1; i < bodies.length; i += 1) {
+      assert.equal(bodies[i].temperature, 0.7, `sample ${i} after a rejection must actually vary`);
+      assert.ok(
+        bodies[i].messages[1].content.endsWith(FEEDBACK),
+        `sample ${i} must carry the gate's correction appended to the user prompt`,
+      );
+      assert.ok(
+        bodies[i].messages[1].content.startsWith('user'),
+        'the correction is appended, never a replacement for the prompt',
+      );
+    }
+  });
+
+  it('an accepted first sample never raises the temperature or consults the feedback hook', async () => {
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+
+    const bodies = [];
+    let feedbackCalls = 0;
+    __setInsightsLlmTransportForTests({
+      fetch: async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return okResponse(LONG_BRIEF);
+      },
+    });
+
+    const result = await callLLM(null, {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      accept: () => ({ composed: true }),
+      rejectionFeedback: () => { feedbackCalls += 1; return 'never'; },
+    });
+    assert.ok(result);
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0].temperature, 0.1);
+    assert.equal(bodies[0].messages[1].content, 'user');
+    assert.equal(feedbackCalls, 0, 'the feedback hook is rejection-only');
+  });
+
   it('returns the last attempt when every provider is rejected, so the failure stays classifiable', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     process.env.GROQ_API_KEY = 'groq-test-key';
