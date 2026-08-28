@@ -827,7 +827,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "server/_shared/llm-health.ts"
+          "path": "shared/llm-health-providers.js"
         }
       ]
     },

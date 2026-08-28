@@ -876,13 +876,13 @@ const LOGICAL_ENTRIES = [
   },
 ];
 
-// A few seeders build a URL from a classification/configuration document and
-// therefore do not contain the provider host beside the eventual fetch call.
-// Keep those dynamic hosts explicit so the lexical pass still provides a
-// reviewable reference and the CI gate cannot silently drop them.  The file is
-// pinned but the line deliberately is not: a line pin hard-fails the whole scan
-// the moment an unrelated edit shifts it.
+// A few runtime paths build a URL from configuration or live outside the
+// scanner's ordinary source roots. Keep those hosts explicit so the lexical
+// pass still provides a reviewable reference and the CI gate cannot silently
+// drop them. The file is pinned but the line deliberately is not: a line pin
+// hard-fails the whole scan the moment an unrelated edit shifts it.
 const DYNAMIC_HOSTS = [
+  { host: 'api.groq.com', kind: 'structured', path: 'shared/llm-health-providers.js' },
   { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
   { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
   { host: 'www.visionofhumanity.org', kind: 'structured', path: 'scripts/seed-resilience-static.mjs' },
