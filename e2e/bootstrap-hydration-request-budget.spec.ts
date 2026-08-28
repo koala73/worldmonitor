@@ -182,8 +182,15 @@ const EMPTY_FALLBACK_PAYLOAD = {
 };
 
 /** Long enough for a second fan-out to land if one is coming. The service TTLs
- * being guarded are 30 minutes, so any refetch inside this window is a miss. */
+ * being guarded are 30 minutes, so any refetch inside this window is a miss.
+ * Also the outer budget for quiescence waits — not a fixed sleep that freezes
+ * the baseline (#7212). */
 const REPEAT_LOAD_SETTLE_MS = 6_000;
+
+/** Sample gap while watching request counters for quiescence. The signal is
+ * N unchanged samples with zero in-flight handlers, not the wall clock alone. */
+const QUIESCENCE_SAMPLE_MS = 200;
+const QUIESCENCE_STABLE_SAMPLES = 3;
 
 /** The shared breaker opens after two rejected fallback responses for five
  * minutes. The uncacheable control intentionally rejects those responses, and
@@ -202,7 +209,57 @@ type HydrationRequestLog = {
   /** Per logical dataset: RPC hits plus public per-key bootstrap hits. */
   counts: Record<string, number>;
   tiers: string[];
+  /** Route handlers currently inside their fulfill body (including delays). */
+  inflight: number;
 };
+
+const HYDRATION_DATASET_KEYS = HYDRATION_DATASETS.map((dataset) => dataset.key);
+
+function snapshotHydrationCounts(
+  log: HydrationRequestLog,
+  keys: readonly string[],
+): Record<string, number> {
+  return Object.fromEntries(keys.map((key) => [key, log.counts[key] ?? 0]));
+}
+
+/**
+ * Wait until the named counters stop moving and no tracked route handler is
+ * still in flight. A fixed sleep cannot prove the first fallback pass finished
+ * (#7212): it freezes mid-cascade (false red) or after a premature baseline
+ * (false green). Consecutive unchanged samples with `inflight === 0` are the
+ * quiescence signal.
+ */
+async function waitForHydrationRequestQuiescence(
+  page: Page,
+  log: HydrationRequestLog,
+  keys: readonly string[],
+  options: { timeout?: number; message?: string } = {},
+): Promise<Record<string, number>> {
+  const timeoutMs = options.timeout ?? REPEAT_LOAD_SETTLE_MS;
+  const message = options.message
+    ?? 'hydration request counters did not quiesce';
+  const deadline = Date.now() + timeoutMs;
+  let previous = snapshotHydrationCounts(log, keys);
+  let stableSamples = 0;
+
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(QUIESCENCE_SAMPLE_MS);
+    const current = snapshotHydrationCounts(log, keys);
+    const quiet = log.inflight === 0
+      && keys.every((key) => (current[key] ?? 0) === (previous[key] ?? 0));
+    if (quiet) {
+      stableSamples += 1;
+      if (stableSamples >= QUIESCENCE_STABLE_SAMPLES) return current;
+    } else {
+      stableSamples = 0;
+      previous = current;
+    }
+  }
+
+  throw new Error(
+    `${message} (inflight=${log.inflight}, lastCounts=${JSON.stringify(previous)})`,
+  );
+}
 
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
@@ -229,7 +286,7 @@ async function installHydrationRequestAccounting(
   } = {},
 ): Promise<HydrationRequestLog> {
   const hydrate = options.hydrate ?? true;
-  const log: HydrationRequestLog = { counts: {}, tiers: [] };
+  const log: HydrationRequestLog = { counts: {}, tiers: [], inflight: 0 };
 
   // Catch-all FIRST: later-registered routes win in Playwright, so the specific
   // handlers below still see their traffic. A third-party asset must never
@@ -240,50 +297,55 @@ async function installHydrationRequestAccounting(
   );
 
   await page.route('**/api/bootstrap*', async (route) => {
-    const url = new URL(route.request().url());
-    const tier = url.searchParams.get('tier');
+    log.inflight += 1;
+    try {
+      const url = new URL(route.request().url());
+      const tier = url.searchParams.get('tier');
 
-    if (tier === 'fast' || tier === 'slow') {
-      log.tiers.push(tier);
-      if (tier === 'fast' && options.fastTierDelayMs) {
-        await new Promise((resolve) => setTimeout(resolve, options.fastTierDelayMs));
+      if (tier === 'fast' || tier === 'slow') {
+        log.tiers.push(tier);
+        if (tier === 'fast' && options.fastTierDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, options.fastTierDelayMs));
+        }
+        const data: Record<string, unknown> = {};
+        const missing: string[] = [];
+        for (const dataset of HYDRATION_DATASETS) {
+          if (dataset.tier !== tier) continue;
+          if (hydrate) data[dataset.key] = dataset.payload;
+          else missing.push(dataset.key);
+        }
+        if (tier === 'slow') Object.assign(data, options.extraSlowTierData ?? {});
+        // The client aborts the fast tier at its deadline, which rejects the
+        // fulfill of a request that no longer exists. That rejection IS the
+        // scenario under test, not a spec failure.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data, missing }),
+        }).catch(() => {});
+        return;
       }
-      const data: Record<string, unknown> = {};
-      const missing: string[] = [];
-      for (const dataset of HYDRATION_DATASETS) {
-        if (dataset.tier !== tier) continue;
-        if (hydrate) data[dataset.key] = dataset.payload;
-        else missing.push(dataset.key);
-      }
-      if (tier === 'slow') Object.assign(data, options.extraSlowTierData ?? {});
-      // The client aborts the fast tier at its deadline, which rejects the
-      // fulfill of a request that no longer exists. That rejection IS the
-      // scenario under test, not a spec failure.
+
+      const keys = requestedKeys(url.href);
+      for (const key of keys) log.counts[key] = (log.counts[key] ?? 0) + 1;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data, missing }),
+        body: JSON.stringify({
+          data: Object.fromEntries(keys.map((key) => [
+            key,
+            options.uncacheableFallbacks
+              ? EMPTY_FALLBACK_PAYLOAD
+              : HYDRATION_DATASETS.find((dataset) => dataset.key === key)?.payload
+                ?? ENERGY_BOOTSTRAP_DATA[key as (typeof ENERGY_KEYS)[number]]
+                ?? { key, records: [] },
+          ])),
+          missing: [],
+        }),
       }).catch(() => {});
-      return;
+    } finally {
+      log.inflight -= 1;
     }
-
-    const keys = requestedKeys(url.href);
-    for (const key of keys) log.counts[key] = (log.counts[key] ?? 0) + 1;
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: Object.fromEntries(keys.map((key) => [
-          key,
-          options.uncacheableFallbacks
-            ? EMPTY_FALLBACK_PAYLOAD
-            : HYDRATION_DATASETS.find((dataset) => dataset.key === key)?.payload
-              ?? ENERGY_BOOTSTRAP_DATA[key as (typeof ENERGY_KEYS)[number]]
-              ?? { key, records: [] },
-        ])),
-        missing: [],
-      }),
-    }).catch(() => {});
   });
 
   for (const dataset of HYDRATION_DATASETS) {
@@ -292,14 +354,19 @@ async function installHydrationRequestAccounting(
     // failures and the loader then stops issuing observable requests, which
     // would cap the control arm's counts instead of measuring them.
     await page.route(dataset.rpcGlob, async (route) => {
-      log.counts[dataset.key] = (log.counts[dataset.key] ?? 0) + 1;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(
-          options.uncacheableFallbacks ? EMPTY_FALLBACK_PAYLOAD : dataset.payload,
-        ),
-      }).catch(() => {});
+      log.inflight += 1;
+      try {
+        log.counts[dataset.key] = (log.counts[dataset.key] ?? 0) + 1;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            options.uncacheableFallbacks ? EMPTY_FALLBACK_PAYLOAD : dataset.payload,
+          ),
+        }).catch(() => {});
+      } finally {
+        log.inflight -= 1;
+      }
     });
   }
 
@@ -350,6 +417,20 @@ function countMarks(page: Page, markName: string): Promise<number> {
     }).__wmLcpDebug;
     return debug?.getSnapshot?.().marks.filter((mark) => mark.name === name).length ?? 0;
   }, markName);
+}
+
+/** Prove a second `runLoadAllData` fan-out ran after `fanOutsBefore`. */
+async function waitForLoadAllDataFanOut(
+  page: Page,
+  fanOutsBefore: number,
+  message: string,
+): Promise<void> {
+  await expect
+    .poll(() => countMarks(page, LOAD_ALL_DATA_MARK), {
+      message,
+      timeout: REPEAT_LOAD_SETTLE_MS,
+    })
+    .toBeGreaterThan(fanOutsBefore);
 }
 
 function countViewportTriggers(page: Page): Promise<number> {
@@ -424,6 +505,15 @@ for (const [deviceClass, deviceViewport] of [
   test.describe(`bootstrap hydration request budget — ${deviceClass} (#7045 U5)`, () => {
     test.use({ viewport: deviceViewport });
 
+    // Drop routes before Playwright tears the page down. An in-flight
+    // `route.fulfill` against a closed page surfaces as
+    // `Object with guid response@… was not bound in the connection`
+    // (playwright.config.ts retries). That is a harness race on teardown, not
+    // #6501 (browser gone during the first `page.goto`).
+    test.afterEach(async ({ page }) => {
+      await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+    });
+
     test('a complete tier pair answers repeat loaders with zero refetch', async ({ page }) => {
       await seedHydrationDashboard(page);
       const log = await installHydrationRequestAccounting(page, { hydrate: true });
@@ -431,9 +521,17 @@ for (const [deviceClass, deviceViewport] of [
       await waitForStartup(page);
       await mountPanel(page, 'insights');
       await mountSanctionsPanel(page);
+      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
       await fireHydrationTrigger(page);
       await fireInsightsRepeatConsumer(page);
-      await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
+      await waitForLoadAllDataFanOut(
+        page,
+        fanOutsBefore,
+        'no second loadAllData() fan-out ran, so zero-refetch is vacuous',
+      );
+      await waitForHydrationRequestQuiescence(page, log, HYDRATION_DATASET_KEYS, {
+        message: 'post-trigger traffic did not quiesce before the zero-refetch assertion',
+      });
 
       expect(log.tiers, 'both tiers must have been served').toEqual(
         expect.arrayContaining(['fast', 'slow']),
@@ -485,12 +583,11 @@ for (const [deviceClass, deviceViewport] of [
 
       await fireHydrationTrigger(page);
 
-      await expect
-        .poll(() => countMarks(page, LOAD_ALL_DATA_MARK), {
-          message: 'no second loadAllData() fan-out ran, so every zero-refetch assertion in this file is vacuous',
-          timeout: REPEAT_LOAD_SETTLE_MS,
-        })
-        .toBeGreaterThan(fanOutsBefore);
+      await waitForLoadAllDataFanOut(
+        page,
+        fanOutsBefore,
+        'no second loadAllData() fan-out ran, so every zero-refetch assertion in this file is vacuous',
+      );
     });
 
     test('without tier hydration the same flow refetches — the counters are live', async ({ page }) => {
@@ -516,16 +613,27 @@ for (const [deviceClass, deviceViewport] of [
         }).toBeGreaterThan(0);
       }
       // Some loaders cascade from an RPC miss to the public per-key endpoint.
-      // Let that first pass finish before freezing the baseline, or its tail
-      // could be misattributed to the repeat trigger below.
-      await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
-      const firstPassCounts = Object.fromEntries(
-        HYDRATION_DATASETS.map(({ key }) => [key, log.counts[key] ?? 0]),
+      // Freeze the baseline only after that first pass is quiescent (#7212) —
+      // a wall-clock sleep neither proves the cascade finished nor prevents a
+      // late tail from being misattributed to the repeat trigger below.
+      const firstPassCounts = await waitForHydrationRequestQuiescence(
+        page,
+        log,
+        HYDRATION_DATASET_KEYS,
+        {
+          message: 'first-pass fallback traffic did not quiesce before the repeat baseline freeze',
+        },
       );
 
+      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
       await expireRejectedFallbackCooldown(page);
       await fireHydrationTrigger(page);
       await fireInsightsRepeatConsumer(page);
+      await waitForLoadAllDataFanOut(
+        page,
+        fanOutsBefore,
+        'no second loadAllData() fan-out ran after the repeat trigger, so a refetch miss would be misread',
+      );
 
       for (const dataset of HYDRATION_DATASETS) {
         await expect.poll(() => log.counts[dataset.key] ?? 0, {
@@ -538,6 +646,10 @@ for (const [deviceClass, deviceViewport] of [
 }
 
 test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', () => {
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+  });
+
   test('a fast-tier abort keeps its fallback while accepted slow hydration still holds', async ({ page }) => {
     await seedHydrationDashboard(page);
     const log = await installHydrationRequestAccounting(page, {
@@ -548,9 +660,17 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
     await waitForStartup(page);
     await mountPanel(page, 'insights');
     await mountSanctionsPanel(page);
+    const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
     await fireHydrationTrigger(page);
     await fireInsightsRepeatConsumer(page);
-    await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
+    await waitForLoadAllDataFanOut(
+      page,
+      fanOutsBefore,
+      'no second loadAllData() fan-out ran after the abort-path trigger',
+    );
+    await waitForHydrationRequestQuiescence(page, log, HYDRATION_DATASET_KEYS, {
+      message: 'abort-path post-trigger traffic did not quiesce',
+    });
 
     // Without this, both assertions below are equally satisfied by a run in
     // which the fast tier was never requested at all: no fast tier means no
@@ -638,8 +758,16 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       await target.scrollIntoViewIfNeeded();
       await expect(target).toBeVisible();
       await expect(target).not.toHaveAttribute('data-deferred-panel', 'true');
+      const fanOutsBefore = await countMarks(page, LOAD_ALL_DATA_MARK);
       await fireHydrationTrigger(page);
-      await page.waitForTimeout(REPEAT_LOAD_SETTLE_MS);
+      await waitForLoadAllDataFanOut(
+        page,
+        fanOutsBefore,
+        `no second loadAllData() fan-out ran for the ${arm} rolling-deploy arm`,
+      );
+      await waitForHydrationRequestQuiescence(page, log, keys, {
+        message: `${arm} rolling-deploy traffic did not quiesce before the zero-refetch assertion`,
+      });
 
       // Rendered first: a panel that never asked for its registry would satisfy
       // the zero-request assertion below for the wrong reason.
@@ -655,4 +783,54 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       }
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// #7212 — quiescence helper contracts (false-green / false-red shape).
+// These do not boot the dashboard; they pin that the baseline freeze waits for
+// observed stability rather than a wall-clock timer.
+// ---------------------------------------------------------------------------
+test.describe('hydration request quiescence helper (#7212)', () => {
+  test('absorbs a late counter bump before freezing the baseline', async ({ page }) => {
+    await page.setContent('<html><body></body></html>');
+    const log: HydrationRequestLog = {
+      counts: { earthquakes: 1 },
+      tiers: [],
+      inflight: 0,
+    };
+
+    const pending = waitForHydrationRequestQuiescence(page, log, ['earthquakes'], {
+      message: 'late first-pass bump was not absorbed into the baseline',
+    });
+    // Land after the first quiet sample window would have begun — a fixed sleep
+    // that froze immediately after the first visible count would misattribute
+    // this bump to a later "repeat" window (false green).
+    setTimeout(() => {
+      log.counts.earthquakes = 2;
+    }, QUIESCENCE_SAMPLE_MS + 50);
+
+    const baseline = await pending;
+    expect(baseline.earthquakes).toBe(2);
+  });
+
+  test('waits for in-flight handlers to drain before freezing the baseline', async ({ page }) => {
+    await page.setContent('<html><body></body></html>');
+    const log: HydrationRequestLog = {
+      counts: { earthquakes: 1 },
+      tiers: [],
+      inflight: 1,
+    };
+
+    const pending = waitForHydrationRequestQuiescence(page, log, ['earthquakes'], {
+      message: 'in-flight first-pass handler was not drained before the baseline freeze',
+    });
+    setTimeout(() => {
+      log.counts.earthquakes = 2;
+      log.inflight = 0;
+    }, QUIESCENCE_SAMPLE_MS + 50);
+
+    const baseline = await pending;
+    expect(baseline.earthquakes).toBe(2);
+    expect(log.inflight).toBe(0);
+  });
 });
