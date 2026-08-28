@@ -92,7 +92,8 @@ they carry `Allow-Credentials: true` and an Origin-echoed ACAO in production
 today. Matching the origin on those needs the `ON_DEMAND_KEYS` /
 `PUBLIC_WEATHER_BOOTSTRAP_KEY` membership sets at the edge (`?keys=markets&public=1`
 is *not* public and must not be widened), which is a larger change than #7308
-asked for and touches genuinely CDN-cached URLs. Tracked as follow-up — do not
+asked for and touches genuinely CDN-cached URLs — where the `Vary: Origin` the
+Worker adds really does split the CDN entry per origin. Tracked as #7311; do not
 read this section as "the edge and origin shapes now agree everywhere."
 
 Two deliberate carve-outs inside the exception:
