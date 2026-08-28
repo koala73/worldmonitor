@@ -162,6 +162,39 @@ describe('callLlm', () => {
     assert.deepEqual(postBodies[0]?.reasoning, { enabled: false });
   });
 
+  it('sends Groq reasoning effort only for compatible model overrides', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq response' } }],
+        usage: { total_tokens: 10 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    await callLlm({
+      messages: [{ role: 'user', content: 'Use the default Groq model.' }],
+      providerOrder: ['groq'],
+    });
+    await callLlm({
+      messages: [{ role: 'user', content: 'Use a non-reasoning Groq model.' }],
+      providerOrder: ['groq'],
+      modelOverrides: { groq: 'llama-3.3-70b-versatile' },
+    });
+
+    assert.equal(postBodies[0]?.model, 'openai/gpt-oss-20b');
+    assert.equal(postBodies[0]?.reasoning_effort, 'low');
+    assert.equal(postBodies[1]?.model, 'llama-3.3-70b-versatile');
+    assert.equal('reasoning_effort' in (postBodies[1] ?? {}), false);
+  });
+
   it('preserves the provider finish reason on non-streaming completions', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.GROQ_API_KEY;

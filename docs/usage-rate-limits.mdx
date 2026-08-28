@@ -75,6 +75,8 @@ Matches the implementations in `api/oauth/register.js`, `api/oauth/authorize.js`
 
 For `/api/oauth/token`, the limiter key is `client_secret` hash for `client_credentials`, then `client_id` when present, and only falls back to caller IP when neither credential identifier is available.
 
+All three grant types (`authorization_code`, `refresh_token`, `client_credentials`) **fail open** when the Upstash limiter is unconfigured or throws. Token persistence still fails closed when Redis storage is down; a limiter-only 503 would abort MCP client handshakes during an SDK timeout even when the pipeline path still works. `client_credentials` keeps the operator env-key allowlist as a second gate. Degradation is observable: a bounded/deduplicated `[rate-limit] redis-error` log and Sentry capture, `X-RateLimit-Mode: degraded` on the response (listed in `Access-Control-Expose-Headers` so cross-origin JS can read it), and a usage `reason` of `rate_limit_degraded`. Genuine budget exhaustion remains HTTP **429** `rate_limit_exceeded`.
+
 Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
 
 ## Provider proxies
@@ -88,7 +90,7 @@ Routes that fetch a third-party host on our behalf carry their own per-IP budget
 | `GET /api/reverse-geocode` | 60 | 60 s | Per IP |
 | `GET /api/infrastructure/v1/reverse-geocode` | 60 | 60 s | Per IP |
 
-The two edge handlers (`/api/skills/fetch-agentskills`, `/api/youtube/live`) enforce their budgets in-handler via `checkScopedRateLimit`/`checkRateLimit`; `/api/reverse-geocode` mirrors its budget as a literal constant per `api/*.js` constraints. `/api/infrastructure/v1/reverse-geocode` is a gateway RPC, so the gateway enforces it via `checkEndpointRateLimit` (fail-closed on Redis outage). Both reverse-geocode routes reach Nominatim, whose usage policy is the strictest of any provider in the stack and whose enforcement is an egress-IP ban — treat those budgets as a ceiling rather than a target; a global (aggregate) companion budget is still required and is not implemented by this change.
+The two edge handlers (`/api/skills/fetch-agentskills`, `/api/youtube/live`) enforce their budgets in-handler via `checkScopedRateLimit`/`checkRateLimit`; `/api/reverse-geocode` mirrors its per-IP budget as a literal constant per `api/*.js` constraints. `/api/infrastructure/v1/reverse-geocode` is a gateway RPC, so the gateway enforces its per-IP budget through `checkEndpointRateLimit` (fail-closed on Redis outage). After a shared-cache miss, both reverse-geocode handlers also use one fail-closed provider-wide Redis bucket capped at 1 request per second before they call Nominatim; cache hits do not consume that aggregate budget.
 
 ## Write endpoints
 

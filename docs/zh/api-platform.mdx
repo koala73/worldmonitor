@@ -131,7 +131,7 @@ Geo-IP 回显：根据调用方 IP 的 CDN 国家头返回 `{ "country": "<ISO2>
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
-通过 OpenStreetMap Nominatim 将 lat/lon 反向地理编码为最近的国家 + 城市。结果按 0.1 度网格缓存七天，该路由限制为 60 请求/分钟/IP。
+通过 OpenStreetMap Nominatim 将 lat/lon 反向地理编码为最近的国家 + 城市。结果按 0.001 度网格缓存七天，该路由限制为 60 请求/分钟/IP。
 
 ## 账户与会话辅助端点
 

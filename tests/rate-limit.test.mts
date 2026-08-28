@@ -617,9 +617,19 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
 describe('scoped rate-limit degraded call-site policy (#3531)', () => {
   const SCOPED_RATE_LIMIT_CALLERS = [
     {
+      path: 'api/reverse-geocode.js',
+      expected: /failClosed:\s*true/,
+      reason: 'the provider-wide Nominatim bucket is shared across both routes and must fail closed before upstream work',
+    },
+    {
       path: 'server/worldmonitor/leads/v1/register-interest.ts',
       expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
       reason: 'desktop lead capture bypasses Turnstile, so Redis degradation must fail closed locally',
+    },
+    {
+      path: 'server/worldmonitor/infrastructure/v1/reverse-geocode.ts',
+      expected: /if\s*\(\s*providerLimit\.degraded\s*\)\s*\{/,
+      reason: 'the gateway half of the provider-wide Nominatim bucket must fail closed before upstream work',
     },
     {
       path: 'api/a2a.ts',
@@ -662,7 +672,7 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
     const fs = await import('node:fs');
     const cp = await import('node:child_process');
     const repo = new URL('..', import.meta.url);
-    const output = cp.execFileSync('git', ['grep', '-lF', 'checkScopedRateLimit(', '--', 'server', 'api'], {
+    const output = cp.execFileSync('git', ['grep', '-lE', 'checkScopedRateLimit\\(|PROVIDER_RATE_LIMIT_IDENTIFIER', '--', 'server', 'api'], {
       cwd: repo,
       encoding: 'utf8',
     });
@@ -676,7 +686,7 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
     assert.deepEqual(
       callers,
       SCOPED_RATE_LIMIT_CALLERS.map(({ path }) => path).sort(),
-      'new checkScopedRateLimit callers must be added here with a degraded-path decision',
+      'new scoped or provider-wide rate-limit callers must be added here with a degraded-path decision',
     );
 
     for (const { path, expected, reason } of SCOPED_RATE_LIMIT_CALLERS) {
