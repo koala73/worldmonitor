@@ -2766,6 +2766,26 @@ describe("webhook processWebhookEvent", () => {
     expect(events[0].status).toBe(expectedStatus);
   });
 
+  // WORLDMONITOR-114 — Dodo Dispute payloads send `amount` as a decimal string
+  // (e.g. "9999"), while paymentEvents.amount is v.number(). Passing the string
+  // through unchanged fails schema validation and aborts the webhook mutation.
+  test("dispute.opened coerces string Dispute amount into paymentEvents (WORLDMONITOR-114)", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.succeeded", {
+      // Production Dispute shape: string cents, no total_amount.
+      total_amount: undefined,
+      amount: "9999",
+    });
+    await processEvent(t, "wh_114_string_amount", "dispute.opened", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].status).toBe("dispute_opened");
+    expect(events[0].amount).toBe(9999);
+    expect(typeof events[0].amount).toBe("number");
+  });
+
   test("out-of-order events are rejected", async () => {
     const t = convexTest(schema, modules);
 

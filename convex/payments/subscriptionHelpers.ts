@@ -52,8 +52,11 @@ interface DodoSubscriptionData {
 interface DodoPaymentData {
   payment_id: string;
   customer?: DodoCustomer;
-  total_amount?: number;
-  amount?: number;
+  // Dodo Payment payloads usually send numeric cents; Dispute payloads send
+  // the same field as a decimal string (e.g. "9999"). Coerce at write time —
+  // see readPaymentAmountMinor / WORLDMONITOR-114.
+  total_amount?: number | string;
+  amount?: number | string;
   currency?: string;
   subscription_id?: string;
   metadata?: Record<string, string>;
@@ -61,6 +64,32 @@ interface DodoPaymentData {
   // requires_customer_action | …). On `payment.processing` this is where the
   // 3DS/SCA-pending state is surfaced. See derivePaymentEventStatus.
   status?: string;
+}
+
+/**
+ * Coerce a Dodo money field (minor units / cents) to a finite number.
+ * Dispute webhooks deliver `amount` as a string; Payment webhooks as a number.
+ * Rejects non-numeric strings (`Number("42abc")` is NaN) rather than truncating.
+ */
+export function readPaymentAmountMinor(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function paymentAmountFromData(data: DodoPaymentData): number {
+  return (
+    readPaymentAmountMinor(data.total_amount) ??
+    readPaymentAmountMinor(data.amount) ??
+    0
+  );
 }
 
 // The payment/refund webhook event types we route to handlePaymentOrRefundEvent
@@ -1768,7 +1797,7 @@ export async function handlePaymentOrRefundEvent(
     userId,
     dodoPaymentId: data.payment_id,
     type,
-    amount: data.total_amount ?? data.amount ?? 0,
+    amount: paymentAmountFromData(data),
     currency: data.currency ?? "USD",
     status,
     dodoSubscriptionId: data.subscription_id ?? undefined,
@@ -1805,7 +1834,7 @@ export async function handlePaymentOrRefundEvent(
       subCancelledAt: sub?.cancelledAt,
       subRawPayload: sub?.rawPayload,
       subUserId: sub?.userId,
-      refundAmount: data.total_amount ?? data.amount ?? 0,
+      refundAmount: paymentAmountFromData(data),
     });
     if (decision.kind === "alert") {
       console.error(
@@ -1932,7 +1961,7 @@ export async function handleDisputeEvent(
     userId,
     dodoPaymentId: data.payment_id,
     type: "charge", // disputes are related to charges
-    amount: data.total_amount ?? data.amount ?? 0,
+    amount: paymentAmountFromData(data),
     currency: data.currency ?? "USD",
     status: disputeStatus,
     dodoSubscriptionId: data.subscription_id ?? undefined,
