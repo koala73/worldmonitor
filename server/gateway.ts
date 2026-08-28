@@ -9,7 +9,7 @@
  * code for one domain per function, cutting cold-start cost by ~20×.
  */
 
-import { createRouter, type RouteDescriptor } from './router';
+import { createRouter, toHeadResponse, type RouteDescriptor } from './router';
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
@@ -746,7 +746,7 @@ export function createDomainGateway(
   assertProMcpGatewayHmacConfig();
   const router = createRouter(routes);
 
-  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+  async function dispatch(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
     const originalPathname = new URL(originalRequest.url).pathname;
 
     // Vercel resolves versioned API paths such as
@@ -2064,7 +2064,7 @@ export function createDomainGateway(
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;
-    if (response.status === 200 && request.method === 'GET' && response.body) {
+    if (response.status === 200 && (request.method === 'GET' || request.method === 'HEAD') && response.body) {
       const bodyBytes = await response.arrayBuffer();
 
       const bodyStr = new TextDecoder().decode(bodyBytes);
@@ -2189,7 +2189,7 @@ export function createDomainGateway(
       });
     }
 
-    if (response.status === 200 && request.method === 'GET') {
+    if (response.status === 200 && (request.method === 'GET' || request.method === 'HEAD')) {
       if (mergedHeaders.get('X-No-Cache')) {
         mergedHeaders.set('Cache-Control', 'no-store');
       }
@@ -2236,5 +2236,10 @@ export function createDomainGateway(
       statusText: response.statusText,
       headers: mergedHeaders,
     });
+  }
+
+  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+    const response = await dispatch(originalRequest, ctx);
+    return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
 }
