@@ -2509,6 +2509,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
 });
 
 describe('military flights bbox behavior', { concurrency: 1 }, () => {
+  const stableLiveCacheKey = 'military:flights:stable-live:v1';
   const stableStaleCacheKey = 'military:flights:stable-stale:v1';
 
   async function importListMilitaryFlights() {
@@ -2609,11 +2610,20 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           americasRequest,
         ),
       ]);
-      assert.deepEqual(redisGetKeys, ['military:flights:v1']);
+      assert.equal(
+        redisGetKeys.filter((key) => key === 'military:flights:v1').length,
+        1,
+        'concurrent covered requests should share one canonical seed read',
+      );
       assert.deepEqual(
         redisSetKeys.filter((key) => key.startsWith('military:flights:v1:')),
         [],
         'a global seed must never be copied into a bbox-specific provider cache entry',
+      );
+      assert.deepEqual(
+        redisSetKeys,
+        [stableLiveCacheKey],
+        'concurrent global seed requests should publish one shared cursor snapshot',
       );
       assert.equal(openskyCalls, 0, 'live seed coverage should prevent an OpenSky fetch');
       assert.deepEqual(europe.flights.map((flight) => flight.id), ['adsb-ae0301']);
@@ -2677,7 +2687,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.deepEqual(result.pagination, { nextCursor: '', totalCount: 2 });
       assert.deepEqual(
         redisKeys,
-        ['military:flights:v1'],
+        [stableLiveCacheKey, 'military:flights:v1'],
         'an authoritative seed should be filtered for the caller without a provider cache entry',
       );
     } finally {
@@ -2775,7 +2785,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
         seededRequest,
       );
-      assert.deepEqual(redisKeys, ['military:flights:v1']);
+      assert.deepEqual(redisKeys, [stableLiveCacheKey, 'military:flights:v1']);
       assert.equal(openskyCalls, 0);
       assert.deepEqual(result, { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } });
     } finally {
@@ -2867,7 +2877,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
         seededRequest,
       );
-      assert.equal(redisKeys[0], 'military:flights:v1');
+      assert.deepEqual(redisKeys.slice(0, 2), [stableLiveCacheKey, 'military:flights:v1']);
       assert.equal(openskyCalls, 0, 'Redis read failure must fail closed instead of amplifying OpenSky');
       assert.deepEqual(result, { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } });
     } finally {
@@ -2877,8 +2887,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 
-  it('keeps cursor pagination on one seeded snapshot while the root rotates', async () => {
-    const { module, cleanup } = await importListMilitaryFlights();
+  it('keeps seeded cursor pagination on a shared snapshot across edge isolates while the root rotates', async () => {
+    const firstIsolate = await importListMilitaryFlights();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
@@ -2917,17 +2927,24 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
 
     try {
       const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
-      const first = await module.listMilitaryFlights(ctx, { ...seededRequest, pageSize: 1, cursor: '' });
-      const second = await module.listMilitaryFlights(ctx, {
+      const first = await firstIsolate.module.listMilitaryFlights(ctx, { ...seededRequest, pageSize: 1, cursor: '' });
+      assert.ok(store.has(stableLiveCacheKey), 'page one must publish a shared stable seed snapshot');
+
+      // Importing through another temporary module simulates a different edge
+      // isolate with no process-local state. If it rereads the mutable root,
+      // the next numeric offset would slice `seed-new` instead of `seed-b`.
+      const secondIsolate = await importListMilitaryFlights();
+      const second = await secondIsolate.module.listMilitaryFlights(ctx, {
         ...seededRequest,
         pageSize: 1,
         cursor: first.pagination?.nextCursor ?? '',
       });
+      secondIsolate.cleanup();
       assert.deepEqual(first.flights.map((flight) => flight.id), ['seed-a']);
       assert.deepEqual(second.flights.map((flight) => flight.id), ['seed-b']);
-      assert.equal(rootReads, 1, 'continuation pages must stay on the cached unpaginated snapshot');
+      assert.equal(rootReads, 1, 'continuation pages must not reread the mutable seed root');
     } finally {
-      cleanup();
+      firstIsolate.cleanup();
       globalThis.fetch = originalFetch;
       restoreEnv();
     }
@@ -3838,7 +3855,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
 
     try {
       const result = await module.listMilitaryFlights({}, request);
-      assert.equal(redisGetCalls, 2, 'an uncovered bbox should read the live seed before its quantized cache');
+      assert.equal(redisGetCalls, 3, 'an uncovered bbox should read the stable and live seeds before its quantized cache');
       assert.equal(openskyCalls, 0, 'cache hit should avoid upstream fetch');
       assert.deepEqual(
         result.flights.map((flight) => flight.id),
