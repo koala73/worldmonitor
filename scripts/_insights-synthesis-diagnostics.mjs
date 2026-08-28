@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { isBriefLeadEligible } from './_clustering.mjs';
 import {
   BRIEF_REJECTIONS,
@@ -24,6 +25,54 @@ export const INSIGHTS_SYNTHESIS_FAILURE_CODES = Object.freeze({
 // Local sentinel for "the composer threw". The composer never returns it, so
 // it stays outside the BRIEF_REJECTIONS vocabulary.
 export const INSIGHTS_COMPOSER_THREW = 'composer-threw';
+
+// ---------------------------------------------------------------- breaker ---
+// Cross-cycle repeat breaker (2026-08-28). The seeder retried an identical
+// failing synthesis every cycle for four hours — 25 consecutive
+// LEAD_PROPER_NOUN rejections on the same phrase against the same story set,
+// each burning paid provider calls to produce nothing. The resample-feedback
+// and lead-repair changes make an identical repeat much rarer; this is the
+// backstop for whatever residue remains: when the SAME gate failure has
+// repeated against the SAME story set, skip the spend until the stories change.
+//
+// Deliberately narrow:
+//   - PROVIDER never trips it — a transport outage is not deterministic, and
+//     the chain itself varies between cycles.
+//   - MISSING_CLUSTER never trips it — no LLM call happens on that path, so
+//     there is no spend to save.
+//   - The signature must match exactly. Any change in the top stories —
+//     ordering included, since ordering changes the prompt — re-arms synthesis.
+const BREAKER_INELIGIBLE_CODES = new Set([
+  INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER,
+]);
+export const INSIGHTS_BREAKER_MIN_CONSECUTIVE = 3;
+
+// Order-sensitive on purpose: the prompt renders stories in order, so a
+// reorder IS a different synthesis input.
+export function insightsStoriesSignature(topStories) {
+  if (!Array.isArray(topStories) || topStories.length === 0) return null;
+  const titles = topStories.map((story) => String(story?.primaryTitle ?? ''));
+  if (titles.every((title) => title === '')) return null;
+  return createHash('sha256').update(titles.join('\u0000')).digest('hex').slice(0, 12);
+}
+
+export function shouldSkipInsightsSynthesis({
+  previousMeta,
+  storiesSignature,
+  minConsecutive = INSIGHTS_BREAKER_MIN_CONSECUTIVE,
+} = {}) {
+  if (typeof storiesSignature !== 'string' || storiesSignature.length === 0) return false;
+  const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : null;
+  if (!previous) return false;
+  const failures = Number.isInteger(previous.consecutiveFailures) ? previous.consecutiveFailures : 0;
+  if (failures < minConsecutive) return false;
+  const code = previous.lastSynthesisFailureCode;
+  if (typeof code !== 'string' || code.length === 0) return false;
+  if (!Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES).includes(code)) return false;
+  if (BREAKER_INELIGIBLE_CODES.has(code)) return false;
+  return previous.failedStoriesSignature === storiesSignature;
+}
 
 // This map refines only the final gate stage. Missing-cluster and parse
 // failures are classified by the earlier stage checks below.

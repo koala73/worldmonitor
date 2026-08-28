@@ -10,11 +10,14 @@ import {
   validateInsightsPayload,
 } from '../scripts/seed-insights.mjs';
 import {
+  INSIGHTS_BREAKER_MIN_CONSECUTIVE,
   INSIGHTS_COMPOSER_THREW,
   INSIGHTS_SYNTHESIS_FAILURE_CODES,
   classifyInsightsSynthesisFailure,
   composeInsightsSynthesis,
+  insightsStoriesSignature,
   resolveInsightsSynthesis,
+  shouldSkipInsightsSynthesis,
 } from '../scripts/_insights-synthesis-diagnostics.mjs';
 import { BRIEF_REJECTIONS } from '../scripts/_insights-brief.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
@@ -555,4 +558,130 @@ test('a rejected synthesized brief keeps a successful legacy fallback degraded',
     resolveInsightsFallbackStatus({ synthesisFailureCode: null, legacyStatus: 'ok' }),
     'ok',
   );
+});
+
+
+// ---------------------------------------------------------------- breaker ---
+// 2026-08-28: 25 consecutive identical gate rejections, one paid call every
+// cycle for four hours, against a story set that never changed. The breaker is
+// the backstop behind the resample-feedback and lead-repair changes: same gate
+// failure + same story set + three cycles running => skip the spend.
+
+const SIGNED_STORIES = [
+  { primaryTitle: 'Nepal floods kill hundreds' },
+  { primaryTitle: 'Russia strikes Ukrainian ports' },
+];
+
+test('insightsStoriesSignature is stable, order-sensitive, and null on empty', () => {
+  const sig = insightsStoriesSignature(SIGNED_STORIES);
+  assert.match(sig, /^[0-9a-f]{12}$/);
+  assert.equal(insightsStoriesSignature(SIGNED_STORIES), sig, 'same stories, same signature');
+  assert.notEqual(
+    insightsStoriesSignature([...SIGNED_STORIES].reverse()),
+    sig,
+    'the prompt renders stories in order, so a reorder IS a different input',
+  );
+  assert.equal(insightsStoriesSignature([]), null);
+  assert.equal(insightsStoriesSignature(undefined), null);
+  assert.equal(insightsStoriesSignature([{ primaryTitle: '' }]), null, 'all-empty titles sign nothing');
+});
+
+test('the breaker opens only on a repeated gate failure against the same story set', () => {
+  const sig = insightsStoriesSignature(SIGNED_STORIES);
+  const meta = (over = {}) => ({
+    consecutiveFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE,
+    lastSynthesisFailureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failedStoriesSignature: sig,
+    ...over,
+  });
+
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), storiesSignature: sig }), true);
+
+  // Below the threshold: the resample/repair machinery still gets its chances.
+  assert.equal(
+    shouldSkipInsightsSynthesis({
+      previousMeta: meta({ consecutiveFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE - 1 }),
+      storiesSignature: sig,
+    }),
+    false,
+  );
+
+  // A changed story set re-arms synthesis — that is the whole exit condition.
+  assert.equal(
+    shouldSkipInsightsSynthesis({
+      previousMeta: meta(),
+      storiesSignature: insightsStoriesSignature([...SIGNED_STORIES].reverse()),
+    }),
+    false,
+  );
+
+  // PROVIDER is transport, not determinism; MISSING_CLUSTER never spends.
+  for (const code of [
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER,
+  ]) {
+    assert.equal(
+      shouldSkipInsightsSynthesis({
+        previousMeta: meta({ lastSynthesisFailureCode: code }),
+        storiesSignature: sig,
+      }),
+      false,
+      `${code} must never open the breaker`,
+    );
+  }
+
+  // Pre-rollout metas carry no signature; absent evidence must not skip spend.
+  assert.equal(
+    shouldSkipInsightsSynthesis({
+      previousMeta: meta({ failedStoriesSignature: undefined }),
+      storiesSignature: sig,
+    }),
+    false,
+  );
+  // A garbage code (not in the vocabulary) must not open it either.
+  assert.equal(
+    shouldSkipInsightsSynthesis({
+      previousMeta: meta({ lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_SOMETHING_NEW' }),
+      storiesSignature: sig,
+    }),
+    false,
+  );
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: null, storiesSignature: sig }), false);
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), storiesSignature: null }), false);
+});
+
+test('a failed run persists the breaker pair; a publish clears it', () => {
+  const sig = insightsStoriesSignature(SIGNED_STORIES);
+  const failed = buildInsightsFreshnessMetaPatch({
+    previousMeta: { consecutiveFailures: 2 },
+    outcome: 'degraded',
+    failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failureDetail: '  strait   of\nhormuz  ',
+    storiesSignature: sig,
+  });
+  assert.equal(failed.failedStoriesSignature, sig);
+  assert.equal(failed.lastSynthesisFailureDetail, 'strait of hormuz', 'detail is flattened and bounded');
+  assert.equal(failed.consecutiveFailures, 3);
+
+  const published = buildInsightsFreshnessMetaPatch({
+    previousMeta: failed,
+    outcome: 'published',
+    storiesSignature: sig,
+  });
+  assert.equal(published.failedStoriesSignature, null, 'a publish clears the pair');
+  assert.equal(published.lastSynthesisFailureDetail, null);
+  assert.equal(published.consecutiveFailures, 0);
+});
+
+test('the run-meta seam projects detail and signature into the patch args', () => {
+  const sig = insightsStoriesSignature(SIGNED_STORIES);
+  const decorated = decorateInsightsRun({ generatedAt: '2026-08-28T10:00:00.000Z' }, {
+    outcome: 'degraded',
+    failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failureDetail: 'strait of hormuz',
+    storiesSignature: sig,
+  });
+  const args = insightsFreshnessPatchArgs(decorated, 'degraded', {});
+  assert.equal(args.failureDetail, 'strait of hormuz');
+  assert.equal(args.storiesSignature, sig);
 });
