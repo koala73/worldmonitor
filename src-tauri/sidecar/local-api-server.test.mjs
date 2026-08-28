@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
@@ -12,6 +13,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
+
+test('bundles the shared LLM health provider registry with the sidecar (#7126)', () => {
+  const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
+  assert.ok(config.bundle.resources.includes('../shared/llm-health-providers.js'));
+});
 
 test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
   assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
@@ -1323,6 +1329,50 @@ test('uses IPv4 sidecar fetch for allowed private-network LLM probes (#3549)', a
     assert.equal(sawOllamaProbe, true);
   } finally {
     http.request = originalHttpRequest;
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('reports Groq health for configured keys without a gsk_ prefix (#7126)', async () => {
+  const envSnapshot = {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    LLM_API_URL: process.env.LLM_API_URL,
+  };
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 404,
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+
+  process.env.GROQ_API_KEY = 'groq-test-key';
+  delete process.env.OPENROUTER_API_KEY;
+  delete process.env.OLLAMA_API_URL;
+  delete process.env.LLM_API_URL;
+
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await getJsonViaHttp(`http://127.0.0.1:${port}/api/llm-health`);
+    assert.equal(response.status, 200);
+    assert.equal(response.json.available, true);
+    assert.deepEqual(response.json.providers, [
+      { name: 'groq', url: 'https://api.groq.com', available: true },
+    ]);
+  } finally {
+    restoreHttps();
     for (const [key, value] of Object.entries(envSnapshot)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

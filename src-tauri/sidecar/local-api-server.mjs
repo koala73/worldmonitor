@@ -9,7 +9,13 @@ import { isIP } from 'node:net';
 import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const sharedResourceRoot = process.env.LOCAL_API_RESOURCE_DIR
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const { getConfiguredLlmHealthProviders } = await import(
+  pathToFileURL(path.join(sharedResourceRoot, 'shared/llm-health-providers.js')).href
+);
 
 const brotliCompressAsync = promisify(brotliCompress);
 const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
@@ -1487,8 +1493,6 @@ async function dispatch(requestUrl, req, routes, context) {
       routes: routes.length,
     });
   }
-  // LLM health endpoint — mirrors probe logic from server/_shared/llm-health.ts.
-  // TODO: refactor to import getLlmHealthStatus() once handlers share a process-level module cache.
   if (requestUrl.pathname === '/api/llm-health') {
     const PROBE_TIMEOUT = 2000;
     async function probeOrigin(url, options = {}) {
@@ -1499,33 +1503,15 @@ async function dispatch(requestUrl, req, routes, context) {
         return false;
       }
     }
-    const providers = [];
-    const providerChecks = [];
-    const ollamaUrl = process.env.OLLAMA_API_URL || process.env.LLM_API_URL;
-    const groqKey = process.env.GROQ_API_KEY;
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-
-    if (ollamaUrl) {
-      try {
-        const origin = new URL(ollamaUrl).origin;
-        providerChecks.push(
-          probeOrigin(origin, { allowPrivateNetwork: true }).then((available) => ({ name: 'ollama', url: origin, available })),
-        );
-      } catch {}
-    }
-    if (groqKey?.startsWith('gsk_')) {
-      providerChecks.push(
-        probeOrigin('https://api.groq.com').then((available) => ({ name: 'groq', url: 'https://api.groq.com', available })),
-      );
-    }
-    if (openrouterKey) {
-      providerChecks.push(
-        probeOrigin('https://openrouter.ai').then((available) => ({ name: 'openrouter', url: 'https://openrouter.ai', available })),
-      );
-    }
-    if (providerChecks.length > 0) {
-      providers.push(...(await Promise.all(providerChecks)));
-    }
+    const providers = await Promise.all(
+      getConfiguredLlmHealthProviders(process.env).map(async (provider) => ({
+        name: provider.name,
+        url: provider.url,
+        available: await probeOrigin(provider.url, {
+          allowPrivateNetwork: provider.allowPrivateNetwork,
+        }),
+      })),
+    );
 
     const anyAvailable = providers.some(p => p.available);
     return json({ available: anyAvailable, providers, checkedAt: Date.now() });
@@ -1966,20 +1952,6 @@ export async function createLocalApiServer(options = {}) {
       }
 
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
-
-      // Warm LLM health cache in background (non-blocking)
-      (async () => {
-        const urls = [
-          process.env.OLLAMA_API_URL || process.env.LLM_API_URL,
-          process.env.GROQ_API_KEY ? 'https://api.groq.com' : null,
-          process.env.OPENROUTER_API_KEY ? 'https://openrouter.ai' : null,
-        ].filter(Boolean);
-        for (const url of urls) {
-          const allowPrivateNetwork = url === process.env.OLLAMA_API_URL || url === process.env.LLM_API_URL;
-          try { await fetchWithTimeout(url, { method: 'GET', allowPrivateNetwork }, 2000); } catch {}
-        }
-        if (urls.length) console.log(`[local-api] LLM health warmed for ${urls.length} provider(s)`);
-      })();
 
       return { port: boundPort };
     },
