@@ -62,10 +62,12 @@ let cached: ServerInsights | null = null;
 let inFlight: Promise<ServerInsights | null> | null = null;
 /**
  * True once this page consumed a hydrated insights payload that failed
- * validation. The slot is drain-once and this loader is the only
- * `getHydratedData('insights')` reader, so retrying `?keys=insights` would
- * repeat the same CDN body. Remember the miss for the page so the three
- * consumers do not each open that request (#7290).
+ * validation. Empty slots (`undefined` from production `getHydratedData`,
+ * or `null` from harness stubs) are not a consumed CDN body and must not
+ * latch. The slot is drain-once and this loader is the only
+ * `getHydratedData('insights')` reader, so retrying `?keys=insights` after
+ * a real rejected body would repeat the same CDN body. Remember that miss
+ * for the page so the three consumers do not each open that request (#7290).
  */
 let rejectedHydration = false;
 // Server cron interval: scripts/seed-insights.mjs runs every 30 min
@@ -89,7 +91,9 @@ function validateInsights(raw: unknown): ServerInsights | null {
 function consumeHydration(): ServerInsights | null {
   if (rejectedHydration) return null;
   const raw = getHydratedData('insights');
-  if (raw === undefined) return null;
+  // Empty slot: production returns undefined; panel harnesses often return
+  // null. Latch only a present invalid body so on-demand fetch can recover.
+  if (raw == null) return null;
   const data = validateInsights(raw);
   if (data) {
     cached = data;

@@ -223,6 +223,24 @@ describe('insights-loader', () => {
       assert.equal(fetchCount, 2, 'in-flight lock must clear on settle so a later caller can retry');
     });
 
+    it('does not latch a null hydration slot — a later fetch may recover (#7290)', async () => {
+      // populateCache skips null, so this seeds an empty slot the same way
+      // production getHydratedData returns undefined. The panel harness stub
+      // that returns null is covered by tests/threat-timeline-panel.test.mts.
+      bootstrapTesting.seedHydrationCacheForTests({ insights: null });
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount += 1;
+        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
+      };
+
+      assert.equal(getServerInsights(), null, 'null is not a valid snapshot');
+      const fetched = await fetchServerInsights();
+      assert.equal(fetched?.worldBrief, 'Test brief');
+      assert.equal(fetchCount, 1, 'an empty/null slot must still open ?keys=insights');
+    });
+
     it('does not issue one network request per consumer after invalid hydration (#7290)', async () => {
       bootstrapTesting.seedHydrationCacheForTests({
         insights: { ...makeValidInsights(), topStories: [] },
