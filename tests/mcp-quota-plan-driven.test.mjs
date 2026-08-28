@@ -44,6 +44,7 @@ import {
   proReq,
   callBody,
 } from './helpers/mcp-pro-deps.mjs';
+import { MCP_QUOTA_RESERVE_SCRIPT } from '../shared/mcp-quota-reserve-script.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -157,7 +158,7 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     assert.equal(res.floor, 0);
   });
 
-    it('F4 overshoot clamp converges on the PLAN limit, not on 50', async () => {
+  it('F4 overshoot clamp converges on the PLAN limit, not on 50', async () => {
     // Counter stuck 30 above a 250 cap (failed DECR rollbacks). One over-cap
     // call must drive it back to exactly 250 — clamping to 50 would wrongly
     // hand the user 200 free calls.
@@ -259,15 +260,25 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     const source = readFileSync(fileURLToPath(new URL('../api/mcp/quota.ts', import.meta.url)), 'utf8');
     assert.match(source, /RESERVE_QUOTA_SCRIPT/, 'reserveQuota must ship a Redis script');
     assert.match(source, /dailyQuotaFloorKey/, 'clamp floor must be a sibling of the daily counter');
-    assert.match(source, /redis\.call\('INCR'/, 'script must INCR first');
-    assert.match(source, /redis\.call\('DECR'/, 'script must owner-rollback on reject');
-    assert.match(source, /redis\.call\('GET', KEYS\[2\]/, 'script must read the charged-limit floor');
-    assert.match(source, /redis\.call\('SET'/, 'script must clamp residue atomically');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('INCR'/, 'script must INCR first');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('DECR'/, 'script must owner-rollback on reject');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('GET', KEYS\[2\]/, 'script must read the charged-limit floor');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('SET'/, 'script must clamp residue atomically');
     assert.doesNotMatch(
       source,
       /postRollbackCount/,
       'the racy INCR/DECR probe clamp must not return — it undercounts concurrent rollbacks',
     );
+  });
+
+  it('keeps the Docker redis-rest proxy allowlist copy byte-identical to the reserve EVAL', () => {
+    const proxy = readFileSync(fileURLToPath(new URL('../docker/redis-rest-proxy.mjs', import.meta.url)), 'utf8');
+    const block = proxy.match(/const MCP_QUOTA_RESERVE_SCRIPT = (\[[\s\S]*?\])\.join\('\\n'\);/);
+    assert.ok(block, 'the proxy must carry a pinned MCP quota reserve script copy');
+    const proxyScript = (new Function(`return ${block[1]};`)()).join('\n');
+    assert.equal(proxyScript, MCP_QUOTA_RESERVE_SCRIPT);
+    const allowlist = proxy.match(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[([\s\S]*?)\]\);/);
+    assert.ok(allowlist?.[1]?.includes('MCP_QUOTA_RESERVE_SCRIPT'), 'the pinned quota script must be allowlisted');
   });
 });
 

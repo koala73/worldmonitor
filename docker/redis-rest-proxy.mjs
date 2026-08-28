@@ -79,10 +79,10 @@ const ALLOWED_COMMANDS = new Set([
 ]);
 
 // EVAL stays blocked as a class — arbitrary server-side Lua is exactly what
-// the allowlist exists to prevent — with two pinned digest exceptions. The
-// edge handler needs atomic last-good replacement and fenced story-alias
-// publication, and the only sound way to allow either through a command
-// allowlist is to pin the exact script text.
+// the allowlist exists to prevent. The handlers below need atomic last-good
+// replacement, fenced story-alias publication, and MCP quota reservation.
+// The only sound way to allow them through a command allowlist is to pin the
+// exact script text.
 //
 // PINNED COPY of shared/digest-lastgood-publish-script.mjs. This image
 // bundles only this file, so it cannot import the shared module — a parity
@@ -145,9 +145,75 @@ const STORY_ALIAS_PUBLISH_SCRIPT = [
   'end',
   'return 1',
 ].join('\n');
+
+// PINNED COPY of shared/mcp-quota-reserve-script.mjs. The script atomically
+// reserves a Pro MCP daily-quota slot, rolls back only the rejecting request,
+// and clamps failed-rollback residue without dropping below a higher successful
+// same-day allowance.
+const MCP_QUOTA_RESERVE_SCRIPT = [
+  'local ttl = tonumber(ARGV[2])',
+  "local n = redis.call('INCR', KEYS[1])",
+  'if ttl ~= nil and ttl > 0 then',
+  "  redis.call('EXPIRE', KEYS[1], ttl)",
+  'end',
+  '',
+  'local function read_floor()',
+  "  local raw = redis.call('GET', KEYS[2])",
+  "  if raw == false or raw == nil or raw == '' then return nil end",
+  '  return tonumber(raw)',
+  'end',
+  '',
+  'local function write_floor(value)',
+  "  redis.call('SET', KEYS[2], value)",
+  '  if ttl ~= nil and ttl > 0 then',
+  "    redis.call('EXPIRE', KEYS[2], ttl)",
+  '  end',
+  'end',
+  '',
+  'local function remember_success(limit)',
+  '  local seen = read_floor()',
+  '  if seen == -1 then return end',
+  '  if seen == nil or limit > seen then',
+  '    write_floor(limit)',
+  '  end',
+  'end',
+  '',
+  'local limit_raw = ARGV[1]',
+  "if limit_raw == nil or limit_raw == false or limit_raw == '' then",
+  '  write_floor(-1)',
+  '  return {1, n}',
+  'end',
+  '',
+  'local limit = tonumber(limit_raw)',
+  'if limit == nil or limit < 0 then',
+  "  redis.call('DECR', KEYS[1])",
+  '  return {-1, 0}',
+  'end',
+  '',
+  'if n <= limit then',
+  '  remember_success(limit)',
+  '  return {1, n}',
+  'end',
+  '',
+  "n = redis.call('DECR', KEYS[1])",
+  'local seen = read_floor()',
+  'if seen ~= -1 then',
+  '  local clamp_to = limit',
+  '  if seen ~= nil and seen > clamp_to then clamp_to = seen end',
+  '  if n > clamp_to then',
+  "    redis.call('SET', KEYS[1], clamp_to)",
+  '    if ttl ~= nil and ttl > 0 then',
+  "      redis.call('EXPIRE', KEYS[1], ttl)",
+  '    end',
+  '    n = clamp_to',
+  '  end',
+  'end',
+  'return {0, n}',
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
+  MCP_QUOTA_RESERVE_SCRIPT,
 ]);
 
 // Exact-text pin, not a pattern: any change to the script — including
