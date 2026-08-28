@@ -117,6 +117,10 @@
       "name": "seed-bundle-static-ref"
     },
     {
+      "id": "6285c37b-1327-46f1-bfd0-7454612764fb",
+      "name": "seed-bundle-static-ref-heavy"
+    },
+    {
       "id": "12e8e87d-1214-4ba3-a813-709f279a5ba9",
       "name": "seed-chokepoint-exposure"
     },

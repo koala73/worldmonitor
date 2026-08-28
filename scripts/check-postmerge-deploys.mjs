@@ -28,11 +28,15 @@
 //
 // DIRECTION OF FAILURE
 //
-// Every case where the record is missing, unreadable, ambiguous or truncated
-// resolves away from "healthy". A scanner whose unmatched case means HEALTHY
-// is the same defect in a new place.
+// A verified failed deploy is ALARM and fails the job. GitHub transport
+// unreadability after the retry budget (TLS, DNS, timeout, 5xx) is UNKNOWN:
+// visible as an Actions warning, never a claim that a deploy failed, and it
+// does not fail the job. Local proof failures (git, missing `gh`) and GitHub
+// 4xx answers are ALARM and still fail the job. An unmatched case that means
+// HEALTHY is the same defect in a new place.
 
 import { spawnSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 
 import { isMainModule } from './lib/main-module.mjs';
 import { REPOSITORY, readArgument } from './railway-cli.mjs';
@@ -147,6 +151,52 @@ export function isRetryableGhFailure(error) {
   return true;
 }
 
+const GITHUB_READ_SOURCE = 'github-api';
+
+function markGithubReadFailure(error) {
+  const marked = error instanceof Error ? error : new Error(String(error));
+  marked.githubReadSource = GITHUB_READ_SOURCE;
+  return marked;
+}
+
+function isGithubReadFailure(error) {
+  return error instanceof Error && error.githubReadSource === GITHUB_READ_SOURCE;
+}
+
+function isProvenGithubTransportFailure(message) {
+  return /\b(?:tls|x509|eof)\b|certificate|dial tcp|lookup .*no such host|no such host|connection (?:reset|refused|closed|aborted)|network is unreachable|no route to host|context deadline exceeded|i\/o timeout|operation timed out|temporary failure in name resolution/i.test(message);
+}
+
+function readGithub(gh, args) {
+  try {
+    return gh(args);
+  } catch (error) {
+    throw markGithubReadFailure(error);
+  }
+}
+
+/**
+ * After the retry budget, is this throw GitHub-record unreadability rather
+ * than a local proof failure or a GitHub answer?
+ *
+ * Only unreadability becomes UNKNOWN (a non-failing Actions warning). git
+ * throws, a missing `gh` binary, and HTTP 4xx answers are ALARM so the
+ * monitor still fails closed for those. Timeouts are not retried (they would
+ * burn the job) but they are still unreadability.
+ */
+export function isGithubRecordUnreadability(error) {
+  if (!isGithubReadFailure(error)) return false;
+  if (error.code === 'ENOENT') return false;
+  const message = error.message;
+  if (error.timedOut === true) return true;
+  const status = message.match(/\(HTTP (\d{3})\)/);
+  if (status) {
+    const code = Number(status[1]);
+    return code >= 500;
+  }
+  return isProvenGithubTransportFailure(message);
+}
+
 function sleepSync(ms) {
   // spawnSync makes the whole read path synchronous, so the backoff must be
   // too. Atomics.wait on a private buffer blocks without a busy loop.
@@ -180,11 +230,11 @@ function runGh(args) {
   if (result.signal) {
     const error = new Error(`gh ${args.join(' ')} timed out`);
     error.timedOut = true;
-    throw error;
+    throw markGithubReadFailure(error);
   }
-  if (result.error) throw result.error;
+  if (result.error) throw markGithubReadFailure(result.error);
   if (result.status !== 0) {
-    throw new Error(`gh ${args.join(' ')} failed (${result.status}): ${String(result.stderr).trim()}`);
+    throw markGithubReadFailure(new Error(`gh ${args.join(' ')} failed (${result.status}): ${String(result.stderr).trim()}`));
   }
   return result.stdout;
 }
@@ -206,7 +256,7 @@ export function readNewestRun({ gh, repository, workflowFile, now, noRunWindowMs
     'branch=main',
     'per_page=100',
   ].join('&');
-  const payload = JSON.parse(gh([
+  const payload = JSON.parse(readGithub(gh, [
     'api',
     `repos/${repository}/actions/workflows/${workflowFile}/runs?${query}`,
   ]));
@@ -282,7 +332,7 @@ export function readNewestRun({ gh, repository, workflowFile, now, noRunWindowMs
  * (runs 31323075509 / 31323823825).
  */
 export function readRunJobs({ gh, repository, runId, runAttempt }) {
-  const payload = JSON.parse(gh([
+  const payload = JSON.parse(readGithub(gh, [
     'api',
     `repos/${repository}/actions/runs/${runId}/attempts/${runAttempt}/jobs`,
   ]));
@@ -319,7 +369,7 @@ export function diffTouchesPath({ git, parentSha, headSha, pathPrefix }) {
  *
  * Path-filtered workflows can be dormant indefinitely. Their age alone says
  * nothing about health; the trigger-path tree diff says whether a newer deploy
- * was required. A read failure throws so the caller reports UNKNOWN, never OK.
+ * was required. A read failure throws so the caller reports ALARM, never OK.
  */
 export function diffTouchesPaths({ git, baseSha, headSha, paths }) {
   if (typeof baseSha !== 'string' || baseSha.length === 0) {
@@ -510,9 +560,9 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
 /**
  * Run the whole monitor for every monitored workflow and return the report.
  *
- * `io` bundles the injected side effects: `gh`, `git`, `now`. Every unreadable
- * record throws — the caller exits non-zero — because an unreadable record
- * must never resolve to healthy.
+ * `io` bundles the injected side effects: `gh`, `git`, `now`. GitHub
+ * transport unreadability becomes UNKNOWN. git/4xx/ENOENT throws become
+ * ALARM so they still fail the job.
  */
 export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() }) {
   const results = [];
@@ -558,16 +608,18 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
     } catch (error) {
       // #6479: one unreadable record used to abort the whole walk, so a
       // transient failure on the FIRST workflow hid a genuinely red deploy on
-      // the second. Every workflow gets its own verdict; an unread one is
-      // UNKNOWN, which is not healthy (it still exits non-zero) but is also not
-      // a claim that a deploy failed — the monitor never saw the record.
+      // the second. Every workflow gets its own verdict. GitHub transport
+      // unreadability is UNKNOWN (not a failed deploy). git, missing gh, and
+      // HTTP 4xx answers are ALARM so they still fail the job.
+      const detail = `the record could not be read: ${error instanceof Error ? error.message : String(error)}`;
+      const unread = isGithubRecordUnreadability(error);
       results.push({
         workflow: workflow.file,
         displayName: workflow.displayName,
-        state: 'UNKNOWN',
-        verdict: 'READ_FAILED',
+        state: unread ? 'UNKNOWN' : 'ALARM',
+        verdict: unread ? 'READ_FAILED' : 'READ_UNPROVEN',
         runId: null,
-        detail: `the record could not be read: ${error instanceof Error ? error.message : String(error)}`,
+        detail,
       });
     }
   }
@@ -578,17 +630,24 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
  * Split the results into the two things a notification must not conflate: a
  * deploy that failed, and a record that could not be read. (#6479)
  *
- * Both exit non-zero — an unreadable record must never pass as healthy — but
- * they are reported apart, because "Convex Deploy did not deploy" and "we could
- * not reach the GitHub API" call for opposite responses.
+ * Only ALARM results exit non-zero. GitHub transport unreadability remains a
+ * visible warning, because "Convex Deploy did not deploy" and "we could not
+ * reach the GitHub API" call for opposite responses. git/4xx/ENOENT are
+ * ALARM with verdict READ_UNPROVEN so they are not filed as a failed deploy.
  */
 export function summarizeResults(results) {
   const alarms = results.filter((result) => result.state === 'ALARM');
   const unknowns = results.filter((result) => result.state === 'UNKNOWN');
+  const deployAlarms = alarms.filter((result) => result.verdict !== 'READ_UNPROVEN');
+  const proofAlarms = alarms.filter((result) => result.verdict === 'READ_UNPROVEN');
   const lines = [];
-  if (alarms.length > 0) {
-    lines.push(`Post-merge deploy monitor found ${alarms.length} workflow(s) that did not deploy:`);
-    for (const alarm of alarms) lines.push(`- ${alarm.displayName} [${alarm.verdict}] ${alarm.detail}`);
+  if (deployAlarms.length > 0) {
+    lines.push(`Post-merge deploy monitor found ${deployAlarms.length} workflow(s) that did not deploy:`);
+    for (const alarm of deployAlarms) lines.push(`- ${alarm.displayName} [${alarm.verdict}] ${alarm.detail}`);
+  }
+  if (proofAlarms.length > 0) {
+    lines.push(`Post-merge deploy monitor could not prove ${proofAlarms.length} workflow(s) — git, gh, or a GitHub 4xx answer failed, not a transport outage:`);
+    for (const alarm of proofAlarms) lines.push(`- ${alarm.displayName} [${alarm.verdict}] ${alarm.detail}`);
   }
   if (unknowns.length > 0) {
     lines.push(`Post-merge deploy monitor could not be read for ${unknowns.length} workflow(s) — this is a read failure, not a failed deploy:`);
@@ -598,8 +657,46 @@ export function summarizeResults(results) {
     alarms,
     unknowns,
     lines,
-    exitCode: alarms.length + unknowns.length > 0 ? 1 : 0,
+    exitCode: alarms.length > 0 ? 1 : 0,
   };
+}
+
+export function formatResultMark(state) {
+  if (state === 'OK') return 'ok';
+  if (state === 'UNKNOWN') return 'warn';
+  return 'ERROR';
+}
+
+export function githubWarningAnnotations(results) {
+  return results
+    .filter((result) => result.state === 'UNKNOWN')
+    .map((result) => (
+      `::warning title=Post-merge deploy record unread::${result.displayName} [${result.verdict}] ${result.detail}`
+    ));
+}
+
+/**
+ * Make UNKNOWN visible on a green Actions job: a `::warning::` annotation
+ * plus the existing summary lines on `$GITHUB_STEP_SUMMARY`. Plain stdout
+ * `warn:` on an exit-0 job is easy to miss.
+ */
+export function writeUnknownVisibility({
+  results,
+  summary,
+  stderr = (...args) => console.error(...args),
+  env = process.env,
+  appendFile = appendFileSync,
+}) {
+  for (const line of githubWarningAnnotations(results)) stderr(line);
+  const summaryPath = env.GITHUB_STEP_SUMMARY;
+  if (typeof summaryPath !== 'string' || summaryPath.length === 0 || summary.lines.length === 0) {
+    return;
+  }
+  try {
+    appendFile(summaryPath, `${summary.lines.join('\n')}\n`);
+  } catch {
+    stderr('::warning::Could not write GitHub step summary');
+  }
 }
 
 async function main() {
@@ -628,12 +725,13 @@ async function main() {
     console.log(JSON.stringify({ repository, results }, null, 2));
   } else {
     for (const result of results) {
-      const mark = result.state === 'OK' ? 'ok' : 'ERROR';
+      const mark = formatResultMark(result.state);
       console.log(`postmerge-deploy ${mark}: ${result.displayName} [${result.verdict}] ${result.detail}`);
     }
   }
 
   const summary = summarizeResults(results);
+  writeUnknownVisibility({ results, summary });
   for (const line of summary.lines) console.error(line);
   process.exitCode = summary.exitCode;
 }

@@ -10,6 +10,7 @@ import type {
 import { toUniqueSorted } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { bindActivationKeys } from '@/utils/activation';
 
 interface InvestmentFilters {
   investingCountry: GulfInvestorCountry | 'ALL';
@@ -80,6 +81,7 @@ export class InvestmentsPanel extends Panel {
     });
     this.onInvestmentClick = onInvestmentClick;
     this.setupEventDelegation();
+    bindActivationKeys(this.content, '.fdi-row');
     this.render();
   }
 
@@ -130,7 +132,7 @@ export class InvestmentsPanel extends Panel {
       const sectorLabel = getSectorLabel(inv.sector);
       const year = inv.yearAnnounced ?? inv.yearOperational ?? '—';
       return `
-        <div class="fdi-row" data-id="${escapeHtml(inv.id)}">
+        <div class="fdi-row" data-id="${escapeHtml(inv.id)}" role="button" tabindex="0">
           <div class="fdi-row-line1">
             <span class="fdi-flag">${flag}</span>
             <span class="fdi-asset-name">${escapeHtml(inv.assetName)}</span>

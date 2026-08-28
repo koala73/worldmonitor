@@ -105,7 +105,7 @@ function renderSidebar(): void {
   const progress = getTotalProgress();
   const overviewDotClass = progress.ready === progress.total ? 'dot-ok' : progress.ready > 0 ? 'dot-partial' : 'dot-warn';
   items.push(`
-    <button class="settings-nav-item${activeSection === 'overview' ? ' active' : ''}" data-section="overview" role="tab" aria-selected="${activeSection === 'overview'}">
+    <button class="settings-nav-item${activeSection === 'overview' ? ' active' : ''}" id="settingsTab-overview" data-section="overview" role="tab" aria-selected="${activeSection === 'overview'}" aria-controls="contentArea">
       ${SIDEBAR_ICONS.overview}
       <span class="settings-nav-label">Overview</span>
       <span class="settings-nav-dot ${overviewDotClass}"></span>
@@ -118,7 +118,7 @@ function renderSidebar(): void {
     const { ready, total } = getFeatureStatusCounts(cat);
     const dotClass = ready === total ? 'dot-ok' : ready > 0 ? 'dot-partial' : 'dot-warn';
     items.push(`
-      <button class="settings-nav-item${activeSection === cat.id ? ' active' : ''}" data-section="${cat.id}" role="tab" aria-selected="${activeSection === cat.id}">
+      <button class="settings-nav-item${activeSection === cat.id ? ' active' : ''}" id="settingsTab-${cat.id}" data-section="${cat.id}" role="tab" aria-selected="${activeSection === cat.id}" aria-controls="contentArea">
         ${SIDEBAR_ICONS[cat.id] || ''}
         <span class="settings-nav-label">${escapeHtml(cat.label)}</span>
         <span class="settings-nav-count">${ready}/${total}</span>
@@ -130,13 +130,29 @@ function renderSidebar(): void {
   items.push('<div class="settings-nav-sep"></div>');
 
   items.push(`
-    <button class="settings-nav-item${activeSection === 'debug' ? ' active' : ''}" data-section="debug" role="tab" aria-selected="${activeSection === 'debug'}">
+    <button class="settings-nav-item${activeSection === 'debug' ? ' active' : ''}" id="settingsTab-debug" data-section="debug" role="tab" aria-selected="${activeSection === 'debug'}" aria-controls="contentArea">
       ${SIDEBAR_ICONS.debug}
       <span class="settings-nav-label">Debug &amp; Logs</span>
     </button>
   `);
 
   setTrustedHtml(nav, trustedHtml(items.join(''), "legacy direct innerHTML migration"));
+  // Pair the tabpanel with the selected tab so AT announces which section
+  // the content belongs to (the tablist/tabpanel pairing was otherwise
+  // broken on both ends - tabs had no ids, the panel no aria-labelledby).
+  labelSettingsContentArea('section');
+}
+
+function labelSettingsContentArea(mode: 'section' | 'search'): void {
+  const contentArea = document.getElementById('contentArea');
+  if (!contentArea) return;
+  if (mode === 'search') {
+    contentArea.removeAttribute('aria-labelledby');
+    contentArea.setAttribute('aria-label', 'Search results');
+    return;
+  }
+  contentArea.removeAttribute('aria-label');
+  contentArea.setAttribute('aria-labelledby', `settingsTab-${activeSection}`);
 }
 
 // ── Section rendering ──
@@ -706,7 +722,7 @@ function initDiagnostics(): void {
         return `<tr class="diag-${cls}"><td>${escapeHtml(ts)}</td><td>${e.method}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
       }).join('');
 
-      setTrustedHtml(trafficLogEl, trustedHtml(`<table class="diag-table"><thead><tr><th>${t('modals.settingsWindow.table.time')}</th><th>${t('modals.settingsWindow.table.method')}</th><th>${t('modals.settingsWindow.table.path')}</th><th>${t('modals.settingsWindow.table.status')}</th><th>${t('modals.settingsWindow.table.duration')}</th></tr></thead><tbody>${rows}</tbody></table>`, "legacy direct innerHTML migration"));
+      setTrustedHtml(trafficLogEl, trustedHtml(`<table class="diag-table"><thead><tr><th scope="col">${t('modals.settingsWindow.table.time')}</th><th scope="col">${t('modals.settingsWindow.table.method')}</th><th scope="col">${t('modals.settingsWindow.table.path')}</th><th scope="col">${t('modals.settingsWindow.table.status')}</th><th scope="col">${t('modals.settingsWindow.table.duration')}</th></tr></thead><tbody>${rows}</tbody></table>`, "legacy direct innerHTML migration"));
     } catch {
       setTrustedHtml(trafficLogEl, trustedHtml(`<p class="diag-empty">${t('modals.settingsWindow.sidecarUnreachable')}</p>`, "legacy direct innerHTML migration"));
     }
@@ -785,6 +801,7 @@ function handleSearch(query: string): void {
 
   if (matches.length === 0) {
     setTrustedHtml(area, trustedHtml(`<div class="settings-search-empty"><p>No features match "${escapeHtml(query)}"</p></div>`, "legacy direct innerHTML migration"));
+    labelSettingsContentArea('search');
     return;
   }
 
@@ -831,6 +848,7 @@ function handleSearch(query: string): void {
     <div class="settings-feat-list">${cards}</div>
   `, "legacy direct innerHTML migration"));
 
+  labelSettingsContentArea('search');
   initFeatureSectionListeners(area);
 }
 

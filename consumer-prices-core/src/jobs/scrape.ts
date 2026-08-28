@@ -412,7 +412,14 @@ export async function scrapeRetailer(slug: string) {
         pinnedProductId &&
         pinnedMatchId
       ) {
-        await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+        // We are already inside the failure handler: a throw here (transient
+        // DB blip in pin recovery) escapes the target loop and strands the
+        // scrape_run at status=running, freezing the market coverage snapshot.
+        try {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+        } catch (pinErr) {
+          logger.error(`  [${target.id}] pin recovery failed: ${pinErr}`);
+        }
       }
     }
 

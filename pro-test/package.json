@@ -2,6 +2,15 @@
   "name": "worldmonitor-pro",
   "private": true,
   "version": "0.1.0",
+  "allowScripts": {
+    "@clerk/shared": false,
+    "browser-tabs-lock": false,
+    "bufferutil": false,
+    "core-js": false,
+    "esbuild": true,
+    "fsevents": false,
+    "utf-8-validate": false
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000",
@@ -14,7 +23,6 @@
     "@sentry/react": "^10.47.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
-    "dodopayments-checkout": "^1.8.0",
     "hls.js": "^1.6.15",
     "i18next": "^25.8.14",
     "i18next-browser-languagedetector": "^8.2.1",

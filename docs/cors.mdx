@@ -21,7 +21,7 @@ Both files use the same regex patterns:
 | Pattern | Matches |
 | --- | --- |
 | `(*.)?worldmonitor.app` | Production + subdomains (`tech.`, `finance.`, etc.) |
-| `worldmonitor-*-elie-*.vercel.app` | Vercel preview deploys |
+| `worldmonitor-*-eliewm.vercel.app` | Vercel preview deploys (literal `-eliewm` suffix) |
 | `localhost:*` / `127.0.0.1:*` | Local development only when `NODE_ENV !== "production"` |
 | `tauri.localhost:*` / `*.tauri.localhost:*` | Desktop app (Tauri v2) |
 | `tauri://localhost` / `asset://localhost` | Desktop app (Tauri v2 asset protocol) |
@@ -88,13 +88,14 @@ Both implementations allow these request headers:
 - `X-Pro-Key`
 - `X-WorldMonitor-Desktop-Timestamp`
 - `X-WorldMonitor-Desktop-Signature`
+- `Idempotency-Key`
 - `Mcp-Session-Id`
 - `MCP-Protocol-Version`
 - `Last-Event-ID`
 
 To allow additional headers, update `Access-Control-Allow-Headers` in both files.
 
-Browser-visible response headers include `Mcp-Session-Id`, `WWW-Authenticate`, `Retry-After`, and `X-Billing-Verification` via `Access-Control-Expose-Headers` so MCP clients can continue sessions, re-authenticate, respect backoff hints, and tell a retryable billing-verification blip from a terminal lapse without parsing the response body. See [Error handling](/usage-errors).
+Browser-visible response headers exposed via `Access-Control-Expose-Headers` include `Mcp-Session-Id`, `WWW-Authenticate`, `Retry-After`, `X-Billing-Verification`, the idempotency headers (`Idempotency-Key`, `Idempotent-Replayed`), `Location`, and both rate-limit header families — the IETF fields (`RateLimit`, `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`) and the legacy `X-RateLimit-*` fields (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, plus `X-RateLimit-Mode` on fail-open limiter degradation) — so MCP clients can continue sessions, re-authenticate, respect backoff hints, self-throttle, tell a retryable billing-verification blip from a terminal lapse, and distinguish degraded limiter grants from healthy ones without parsing the response body. See [Error handling](/usage-errors) and [Rate limits](/usage-rate-limits).
 
 ## Railway Relay CORS
 

@@ -9,7 +9,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
 const vercelConfig = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 const csp = vercelConfig.headers
-  .find((entry) => entry.source === '/((?!docs|embed|embed\\.html).*)')
+  .find((entry) => entry.headers?.some(
+    (header) => header.key === 'X-Frame-Options' && header.value === 'SAMEORIGIN',
+  ))
   ?.headers
   ?.find((header) => header.key === 'Content-Security-Policy')
   ?.value ?? '';

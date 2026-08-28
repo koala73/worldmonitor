@@ -13,11 +13,14 @@ if [ -d /run/secrets ]; then
   done
 fi
 
+node /app/validate-session-secret.mjs
+
 export LOCAL_API_PORT="${LOCAL_API_PORT:-46123}"
 if [ -z "${LOCAL_API_TOKEN:-}" ]; then
   LOCAL_API_TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
   export LOCAL_API_TOKEN
 fi
 
+node /app/render-nginx-realip.mjs
 envsubst '$LOCAL_API_PORT $LOCAL_API_TOKEN' < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/worldmonitor.conf

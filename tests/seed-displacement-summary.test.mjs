@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   MIN_DISPLACEMENT_COUNTRIES,
+  contentMeta,
   declareRecords,
   seedOptions,
   validate,
@@ -50,5 +51,17 @@ describe('seed-displacement-summary validation floor', () => {
   it('treats sub-floor validation failure as a strict seeder failure', () => {
     assert.equal(seedOptions.emptyDataIsFailure, true);
     assert.equal(seedOptions.validateFn(payloadWithCountries(MIN_DISPLACEMENT_COUNTRIES - 1)), false);
+  });
+
+  it('reports content age from the actual UNHCR data year', () => {
+    const payload = payloadWithCountries(MIN_DISPLACEMENT_COUNTRIES);
+    payload.summary.year = 2024;
+
+    assert.deepEqual(contentMeta(payload), {
+      newestItemAt: Date.parse('2024-12-31T00:00:00.000Z'),
+      oldestItemAt: Date.parse('2024-12-31T00:00:00.000Z'),
+    });
+    assert.equal(contentMeta({ summary: { year: null } }), null);
+    assert.equal(seedOptions.maxContentAgeMin, 20 * 30 * 24 * 60);
   });
 });

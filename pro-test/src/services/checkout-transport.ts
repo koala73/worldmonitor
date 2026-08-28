@@ -23,6 +23,8 @@
  * tsx --test harness (see tests/checkout-transport.test.mts).
  */
 
+import { createTimeoutSignal as abortTimeoutSignal } from './timeout-signal';
+
 export const RETRYABLE_CHECKOUT_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 
 export const CHECKOUT_RETRY_DELAY_MS = 1_500;
@@ -48,7 +50,7 @@ export function createDefaultCheckoutTransportDeps(): CreateCheckoutTransportDep
     fetch: (url, init) => globalThis.fetch(url, init),
     delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     generateIdempotencyKey: () => crypto.randomUUID(),
-    createTimeoutSignal: (ms) => AbortSignal.timeout(ms),
+    createTimeoutSignal: (ms) => abortTimeoutSignal(ms),
   };
 }
 

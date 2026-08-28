@@ -282,7 +282,7 @@ export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
   {
     uriTemplate: 'worldmonitor://countries/{iso2}/risk',
     name: 'Country Risk',
-    description: 'Composite Instability Index (CII) score 0–100 with unrest/conflict/security/news components, travel-advisory level, and OFAC sanctions exposure for a single ISO 3166-1 alpha-2 country. URI param {iso2} is lowercase alpha-2 (e.g. "de", "us", "ir").',
+    description: 'Composite Instability Index at cii.combinedScore (0–100) with its four contributing components under cii.components — historical names whose meanings are domestic unrest, armed conflict, security and mobility, and the information environment — plus advisoryLevel and OFAC exposure as sanctionsActive/sanctionsCount, for a single ISO 3166-1 alpha-2 country. Check upstreamUnavailable before trusting a low score: when true, at least one required upstream read failed and the whole response was withheld, so the zeroed fields mean UNKNOWN, not calm. URI param {iso2} is lowercase alpha-2 (e.g. "de", "us", "ir").',
     mimeType: 'application/json',
     tool: 'get_country_risk',
     // RPC tool — wrap freshness against the regional-snapshot-canonical
@@ -556,15 +556,17 @@ export async function buildResourceResponse(
     // a 200 with _budget_exceeded inside content[0].text — handled below
     // as a success-shape envelope, not an error — see PR 4 design).
     //
-    // Forward Retry-After from the inner response so quota-exhaustion
-    // (429 with seconds-until-UTC-midnight) and reservation-failure (503
-    // with 5s) honour the same client back-off contract tools/call does.
-    // Without this, a correctly-implemented client back-off would retry
-    // immediately on resources/read while waiting correctly on tools/call
-    // — directly contradicting the auth-symmetry contract.
+    // Forward Retry-After and X-Billing-Verification from the inner response
+    // so quota-exhaustion (429 with seconds-until-UTC-midnight),
+    // reservation-failure (503 with 5s), and mid-call billing denials
+    // honour the same client contract tools/call does. Dropping
+    // X-Billing-Verification (#7269) made a 503 look like rate-limit
+    // degradation and a 403 look like an ordinary tier precheck.
     const errorHeaders: Record<string, string> = withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders });
-    const retryAfter = dispatched.headers.get('Retry-After');
-    if (retryAfter !== null) errorHeaders['Retry-After'] = retryAfter;
+    for (const name of ['Retry-After', 'X-Billing-Verification'] as const) {
+      const value = dispatched.headers.get(name);
+      if (value !== null) errorHeaders[name] = value;
+    }
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: outerId, error: innerBodyParsed.error }),
       { status: dispatched.status, headers: errorHeaders },

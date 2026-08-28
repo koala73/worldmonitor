@@ -60,6 +60,7 @@ const CLASSIFY_PATH = "/api/intelligence/v1/classify-event";
 const DEDUCT_PATH = "/api/intelligence/v1/deduct-situation";
 const COUNTRY_BRIEF_PATH = "/api/intelligence/v1/get-country-intel-brief";
 const ANALYZE_PATH = "/api/market/v1/analyze-stock";
+const BACKTEST_PATH = "/api/market/v1/backtest-stock";
 // A Pro-fresh market route with NO endpoint rate policy, so it reaches the
 // GLOBAL limiter these tests exercise. The gateway skips the global limiter for
 // any route carrying an endpoint policy (gateway.ts, `!hasEndpointRatePolicy`),
@@ -121,6 +122,19 @@ function makeAnalyzeGateway(handlerCalls: { analyze: number }) {
       handler: async () => {
         handlerCalls.analyze += 1;
         return json({ ok: true, route: "analyze" });
+      },
+    },
+  ]);
+}
+
+function makeBacktestGateway(handlerCalls: { backtest: number }) {
+  return createDomainGateway([
+    {
+      method: "GET",
+      path: BACKTEST_PATH,
+      handler: async () => {
+        handlerCalls.backtest += 1;
+        return json({ ok: true, route: "backtest" });
       },
     },
   ]);
@@ -210,6 +224,26 @@ describe("gateway direct LLM quota", () => {
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
+  test("Pro bearer HEAD country brief reserves the same GET quota and suppresses the body", async () => {
+    const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+
+    const res = await makeGateway(calls)(
+      req(`${COUNTRY_BRIEF_PATH}?country_code=US`, {
+        method: "HEAD",
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    expect(calls.country).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_pro" }),
+    );
+  });
+
   test("Pro bearer country brief reserves quota and reaches the handler", async () => {
     const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
@@ -292,6 +326,27 @@ describe("gateway direct LLM quota", () => {
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
+  test("Pro bearer HEAD classify-event reserves the same GET quota before the handler", async () => {
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+        method: "HEAD",
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    expect(calls.classify).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_pro" }),
+    );
+  });
+
   test("Pro bearer classify-event reserves direct LLM quota before the handler", async () => {
     const calls = { classify: 0, deduct: 0, cache: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
@@ -338,6 +393,29 @@ describe("gateway direct LLM quota", () => {
       { principalUserId: "user_pro" },
     );
     expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  test("Pro bearer backtest-stock does not reserve the direct-LLM daily counter", async () => {
+    const calls = { backtest: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
+
+    const res = await makeBacktestGateway(calls)(
+      req(`${BACKTEST_PATH}?symbol=AAPL`, {
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls.backtest).toBe(1);
+    expect(checkEndpointRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      BACKTEST_PATH,
+      expect.any(Object),
+      { principalUserId: "user_pro" },
+    );
+    expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
   test("active Pro freshness bearer uses a principal-scoped global fallback bucket", async () => {

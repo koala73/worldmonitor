@@ -1,0 +1,212 @@
+---
+title: "World Monitor End User License Agreement (EULA)"
+description: "One license for every way you use World Monitor — web dashboard, desktop apps, API, MCP server, SDKs, embeds and alerts: what each plan grants, what you may do with the outputs, retention and redistribution rights, and the restrictions that apply to all of them."
+---
+
+{/* REVIEW — canonical license instrument; docs/terms.mdx points here for plan scope. Decided 20 August 2026: (1) the R1-R4 output-rights schedule ships as drafted (#6635) — counsel review on the EU sui generis database right still to come, and it may narrow R3; (2) the AI-training restriction in section 8.5 stands and training rights are sellable at Enterprise; (3) governing law and the liability cap stay as the Terms state them, with an explicit enterprise carve-out in section 2 (#6639); (4) the party is World Monitor FZ LLC, a Dubai free-zone company. Hardened alongside the Terms review: the five API Business seats carry the plan's commercial scope rather than the Personal licence (the shipped bundle is "5 Pro licenses" — the scope wrinkle is resolved in the licence, not by inventing a SKU), API Starter is stated as including no dashboard seat, section 8.9 carries an express compliance/journalism/research carve-out, section 10 says to delete cached R4, section 6.3 freezes quotas for the paid period so a pricing-page edit cannot narrow licence scope, section 9 no longer claims ownership of facts section 5 calls unowned, and section 11 matches the Terms on change notice. Warranties, indemnities, confidentiality and SLAs are Enterprise terms and are not granted here. Still open: no DPA (#6638), and the pricing bullet at convex/config/productCatalog.ts still sells unqualified "redistribution rights" without the class model. NOT legal advice; a legal review is still recommended. */}
+
+_Last updated: 20 August 2026_
+
+**Download:** [PDF](https://www.worldmonitor.app/legal/eula.pdf) · [Markdown](https://www.worldmonitor.app/docs/eula.md)
+
+## 1. What this agreement is
+
+This End User License Agreement (the "Agreement") is the license that governs **every way you use World Monitor**. It is made between you — and, where you use World Monitor for an organization, that organization — and **World Monitor FZ LLC, a free zone limited liability company registered in Dubai, United Arab Emirates** ("World Monitor", "we", "us").
+
+It applies whichever surface you use:
+
+- the **web dashboard** at `worldmonitor.app` and its variant subdomains (tech, finance, commodity, energy, happy);
+- the **desktop applications** for macOS, Windows, and Linux;
+- the **REST API** and the **MCP server**;
+- the **SDKs and CLI** (npm, Python, Ruby, Go);
+- **embeds and widgets**, including the live map embed;
+- **alerts, webhooks, digests, and email**;
+- **exports, downloads, reports, and briefings** produced by any of the above.
+
+We call all of these together the "Service", and everything the Service produces — dashboard views, alerts, reports, exports, API and MCP responses, and the analysis you build from them — the "Outputs".
+
+**Acceptance.** You accept this Agreement by creating an account, subscribing to a plan, installing or launching a desktop application, or sending a request to the API or MCP server. If you are accepting on behalf of an organization, you confirm that you are authorized to bind it. If you do not agree, do not use the Service.
+
+This page is written in plain language and is not legal advice.
+
+## 2. How this fits with our other documents
+
+| Document | What it governs |
+| --- | --- |
+| **This Agreement** | Your license to use the Service and the Outputs — every surface, every plan |
+| [Terms of Service](/terms) | Operation of the Service: accounts, acceptable use, the intelligence disclaimer, billing, warranties, liability, indemnity, and governing law |
+| [Privacy Policy](/privacy) | How we handle personal data |
+| [Data Processing Addendum](/dpa) | Where you are a controller and we process personal data for you |
+| [License](/license) — AGPL-3.0-only, MIT clients | Copyright in the World Monitor **source code** |
+| [Trademark Policy](/trademark-policy) | The World Monitor name, logo, and branding |
+
+The warranty disclaimer, limitation of liability, indemnity, and governing-law terms in the [Terms of Service](/terms) apply to this Agreement and are incorporated into it by reference.
+
+**A signed order form can differ from this.** The governing law, venue, and liability cap stated in the Terms are our standing self-serve terms, and matters such as warranties, indemnities, confidentiality and service levels are not part of any self-serve plan. A negotiated agreement can address them; nothing here commits us to any particular terms, and where a signed order form does address something it controls for that customer and changes nothing here for anyone else.
+
+**The source-code license is not affected by this Agreement.** World Monitor's source code is licensed under AGPL-3.0-only, and the official thin client packages under MIT. **Nothing in this Agreement removes, narrows, or adds conditions to any right the AGPL or MIT licenses grant you in that code.** This Agreement licenses the *hosted Service and its Outputs* — the data, the analysis, and the servers we operate. Those are two separate things, and where they meet — a desktop build that calls our cloud, a self-hosted deployment that uses our API — section 6.2 says exactly which one applies.
+
+**Order of precedence.** If these conflict, the one higher in this list controls: (1) a signed order form or enterprise agreement; (2) this Agreement; (3) the Terms of Service; (4) plan descriptions, pricing pages, and documentation.
+
+## 3. Definitions
+
+- **Licensed User** — one named individual authorized under your plan. A seat is not a role, a shift, or a shared login.
+- **Your Organization** — for organization plans, the single legal entity that subscribes, including its employees and contractors acting for it.
+- **Credentials** — account logins, sessions, API keys, license keys, MCP tokens, and OAuth grants.
+- **Derived Facts** — quantities we compute: resilience and risk scores, forecast probabilities, indices, event counts, aggregates, and rankings.
+- **Structured Events** — normalized event records: what, where, when, type, severity, entities, and a link to the source, **without** the source's own text.
+- **Source Content** — text, images, and other expression created by a third-party source: headlines, article bodies, feed items, and quotations.
+- **Term** — the period during which you hold an active plan or an active order form.
+
+## 4. License grant
+
+Subject to your payment of the applicable fees and your compliance with this Agreement, we grant you a **limited, non-exclusive, non-transferable, non-sublicensable, revocable, worldwide license** for the Term to access the Service and to use the Outputs within the scope of the plan you purchased.
+
+Every plan grants only the rights we are able to grant. Third-party data stays subject to its provider's own license and terms, which may be narrower than your plan.
+
+### 4.1 Plan license scopes
+
+The right plan depends on **who uses the Service and who receives its Outputs** — not on how much you use it.
+
+| Plan license | What it covers | What it does not cover |
+| --- | --- | --- |
+| **Free / anonymous** | The basic dashboard, the public corpus pages, and the credential-free `get_sources` tool, for personal evaluation and research. Signed-in free accounts also receive a small daily allowance of cached-data MCP calls. Provided as-is under [Free and anonymous access](/terms) in the Terms, which limits which sections apply and caps our liability at USD 100. | Any organizational, client, or product use; programmatic access beyond the published free allowance; redistribution of any kind. |
+| **Personal license (Pro)** | One named subscriber using World Monitor for their own research, learning, investing, and personal decision-making, across the dashboard, desktop apps, and the included MCP allowance. | Use on behalf of an employer, business, client, or other organization; shared accounts; client deliverables; internal or customer-facing products; redistribution. |
+| **Commercial license (Pro Business)** | One named subscriber using the dashboard, desktop apps, exports, and included MCP / SDK allowance for company or client work — analysis, reports, presentations, and internal tools used in that Licensed User's workflow. Reports and analysis may be shared with colleagues or clients as part of that work. | Shared login access; organization-wide programmatic deployments; customer-facing data products; live feeds; bulk or standalone data redistribution. |
+| **Commercial license — for your organization (API Starter)** | Your Organization using the API, MCP server, and SDKs in its own internal systems, dashboards, automations, research, and reporting. This is an API plan and includes no World Monitor dashboard seat; dashboard access is a separate Pro or Pro Business subscription. Employees and contractors may use the resulting internal tools and Outputs for that organization. | Making World Monitor data or API functionality available to customers or other third parties; customer-facing products; resale; external feeds; bulk or standalone data redistribution. |
+| **Commercial license — for your customers (API Business)** | Everything in API Starter, plus displaying, embedding, or delivering Outputs to your customers as part of Your Organization's own product or service. The five included seats give named users at any corporate email domain the Pro dashboard feature set, under this plan's commercial scope rather than the Personal licence, and may not be shared. | Reselling API keys or access to the Service; offering World Monitor data as a standalone database or substantially similar feed; enabling bulk extraction that substitutes for the Service; white-labeling or uses that require custom rights unless we agree in writing. |
+| **Enterprise** | The rights stated in the applicable order form — additional seats, higher-volume distribution, white-labeling, dedicated deployments, on-premises use, and **model-training or dataset rights** over the Outputs. | Any use outside the signed order form and this Agreement. |
+
+Examples:
+
+- an individual using Pro to research their own portfolio is covered by the Personal license;
+- a consultant using Pro Business to prepare a client report is covered by the Pro Business commercial license;
+- a company feeding API data into a private employee risk dashboard needs API Starter;
+- a software company showing API data inside a customer-facing product needs API Business;
+- a standalone data feed, bulk resale, white-label product, or custom deployment requires an Enterprise agreement or our written approval.
+
+If your use expands beyond the scope of your plan, **upgrade or obtain written permission before that expanded use begins.**
+
+### 4.2 Rules that apply to every plan
+
+- A seat belongs to one named user. Credentials may not be sold, transferred, published, or shared outside the people and systems your plan authorizes.
+- An agent, script, or MCP client acting for you consumes **your** license, at your plan's scope. Automating access does not widen what you are licensed to do, and does not let a personal seat serve an organization.
+- Customer redistribution under API Business must be part of a product or service with material value beyond providing a copy of World Monitor data.
+- Attribution to World Monitor is optional for reports, presentations, and derived analysis permitted by your plan. If you choose to credit us, "Source: World Monitor" or "via World Monitor" is sufficient. You must still preserve any source-specific citation, attribution, timestamp, license notice, or usage restriction supplied with an Output.
+- No plan transfers ownership of the Service or the underlying data, grants trademark or branding rights, or permits you to imply that World Monitor endorses your product.
+
+## 5. What you may do with the Outputs
+
+Outputs are not one thing, and they do not carry one set of rights. What you may keep, cache, and pass on depends on **which class an Output falls into**, and then on your plan.
+
+| Class | What it is | You may | Retention | Available |
+| --- | --- | --- | --- | --- |
+| **R1 — Derived facts and scores** | Resilience and risk indices, forecast probabilities, event counts, aggregates, rankings | Redistribute within your plan scope, **white-label, no attribution required** | **Indefinite** | Today, from all sources |
+| **R2 — Structured events** | Normalized what / where / when / type / severity, entities, and a source link — **no source text** | Redistribute within your plan scope, display in your own or a partner UI | **Indefinite** | Today, from all sources |
+| **R3 — Headline and snippet** | A source's headline, publisher name, URL, and up to 200 characters of its text | Display and cache; source attribution must remain and is **not** white-labellable | **30 days** | Per source, on request |
+| **R4 — Full source content** | Verbatim third-party text, images, or media | **Internal use only** | For as long as your plan is active | Never redistributable |
+
+**Default rule.** For any source whose provider terms we have not individually cleared, its **Source Content is R4**, while **facts derived from it are R1 and R2**. Facts are not owned; the sentence a wire service wrote is. We license you the first freely and the second not at all.
+
+**Retention and caching are granted, not merely tolerated.** Within the classes above you may store, cache, index, and re-query R1 and R2 Outputs for as long as you like, including after your subscription ends, for records, audit, and back-testing. What you may not do after the Term ends is **fetch, refresh, or operate integrations** that require an active entitlement (section 10).
+
+**Attribution travels with the Output.** Where an Output arrives with a source-specific citation, timestamp, license notice, or usage restriction, that notice must survive every copy you make and every screen you show it on.
+
+R3 rights are available per source on request — ask us and we will tell you which sources are cleared for it.
+
+## 6. Terms for each surface
+
+### 6.1 Web dashboard, embeds, and widgets
+
+The dashboard is licensed per Licensed User. Embeds and widgets may be placed only on properties your plan covers: internal properties for API Starter, customer-facing properties for API Business and Enterprise. Do not remove, obscure, or restyle attribution or source notices carried inside an embed.
+
+### 6.2 Desktop applications
+
+The desktop applications are built from World Monitor's AGPL-3.0-only source. **The application binary is licensed to you under AGPL-3.0-only, not under this Agreement** — you may run it, study it, modify it, and redistribute it under the AGPL's terms, and nothing here changes that.
+
+What this Agreement governs is the **World Monitor services the application reaches**: the cloud fallback that serves a request when a local handler is missing, entitlement and license-key checks, update checks, and any hosted data the app fetches. Using those is using the Service, at your plan's scope.
+
+It follows that:
+
+- Running a desktop build **entirely against your own API keys and your own local sources**, with no calls to World Monitor's servers, is governed by the AGPL alone. You need no plan from us for that.
+- The moment the app fetches World Monitor data — through cloud fallback, entitlements, or our API — that fetch is under this Agreement.
+- Modified builds must follow the [Trademark Policy](/trademark-policy): distinct branding, no presenting a modified build as the official World Monitor application.
+- Desktop and web are **the same license, not two**. A Pro seat is one person, whether that person is at a browser or in the desktop app, and using both does not consume two seats.
+
+### 6.3 API and MCP server
+
+- API keys and MCP credentials are issued to a subscriber and are **confidential**. You are responsible for all usage attributed to them. Do not publish them, embed them in client-side code you distribute, or hand them to another organization.
+- You may hold separate keys per environment or service within the licensed organization. You may not use one organization's key to serve another.
+- The rate limits, quotas, and plan allowances published for your plan when you purchased or last renewed apply for the remainder of that billing period; changes take effect at your next renewal. They are part of the license, not merely a technical ceiling. Circumventing them — key rotation to reset quotas, distributed request pools, scraping the front end to avoid metered endpoints — is a breach of this Agreement, not just of a limit.
+- We may throttle, suspend, or revoke access to protect the Service or to stop abuse, and will tell you why when we do.
+- MCP and agent access is licensed exactly like human access. See section 4.2.
+
+### 6.4 SDKs and CLI
+
+The official npm CLI and the Python, Ruby, and Go SDKs are MIT-licensed and may be embedded in any application, including proprietary ones. **The code is MIT; the data it fetches is not.** Everything those clients retrieve from the Service remains subject to this Agreement.
+
+### 6.5 Alerts, webhooks, digests, and exports
+
+Alerts and webhook deliveries may be routed into systems your plan covers — your own tooling for Personal and Pro, Your Organization's systems for API Starter, and customer-facing destinations only under API Business or Enterprise. Re-broadcasting alert streams beyond your licensed scope, including to a public channel, requires written permission.
+
+## 7. Your content
+
+You keep everything you bring: declared site coordinates, alert rules, saved views, queries, uploads, and prompts ("Your Content"). You grant us only the license we need to operate the Service for you — to store Your Content, process it, and transmit it to the subprocessors named in the [Privacy Policy](/privacy). Where Your Content includes personal data and you are its controller, the [Data Processing Addendum](/dpa) governs that processing.
+
+The Service's core monitoring is built to run on **customer-declared static coordinates and configuration** — it does not require names, locations, itineraries, or contact details of individuals. Do not submit personal data you do not need to submit, and do not put sensitive personal data into AI prompts.
+
+If you send us feedback or feature suggestions, we may use them without obligation to you.
+
+## 8. Restrictions
+
+Across every surface and every plan, you may not:
+
+1. **Share or transfer Credentials** beyond the users and systems your plan authorizes, or sell, sublicense, or resell access to the Service.
+2. **Circumvent** quotas, rate limits, entitlement checks, authentication, paywalls, or access controls — by any means, including scraping a rendered page to avoid a metered endpoint.
+3. **Bulk-extract** the Service, or any substantial part of it, in a way that substitutes for a subscription or reconstitutes our data as a standalone database or a substantially similar feed.
+4. **Redistribute beyond your class and plan** — in particular, redistribute R4 Source Content, or strip attribution from R3 Outputs.
+5. **Train on the Outputs.** Do not use Outputs to train, fine-tune, distill, evaluate, or benchmark a machine-learning model, or to build a dataset, that competes with the Service, without our written permission. Using Outputs *inside* your own AI workflows — as context, retrieval, or analysis for your licensed use — is expressly allowed. **Model-training and dataset rights are licensable**: if you want to train on World Monitor Outputs, that is an Enterprise order form, not a prohibition — [ask us](mailto:support@worldmonitor.app).
+6. **Remove or alter notices** — copyright, license, attribution, source citations, timestamps, or provenance markers.
+7. **Misrepresent affiliation** with, endorsement by, or certification from World Monitor.
+8. **Reverse-engineer the hosted Service** — its models, ranking, scoring, or infrastructure — to build a competing service. This does not apply to the source code, which the AGPL expressly permits you to study and modify.
+9. **Use the Service unlawfully or against a person** — to harm, harass, surveil, profile, or endanger any individual, or to make decisions about an individual that affect their rights. **This does not prohibit** sanctions screening, know-your-customer and other regulatory compliance checks, corporate due diligence, academic research, or journalism, in each case conducted lawfully and consistently with the terms of the underlying source. We publish sanctions lists and other public-interest data so they can be used for exactly those purposes.
+10. **Rely on the Service where errors cause harm.** Outputs are aggregated from third-party sources with automated and AI analysis layered on top. They may be delayed, incomplete, wrong, or misattributed, and AI-generated briefings and forecasts can be confidently wrong. Do not use the Service as the sole basis for trading, travel, security, medical, or life-safety decisions without independent verification. The full disclaimer is in the [Terms of Service](/terms).
+11. **Breach sanctions or export controls.** You may not use the Service, or make it available, where doing so would breach applicable sanctions or export-control law, or in favor of a restricted party under it.
+
+## 9. Ownership
+
+We own the Service: the platform, the data pipeline, the models and scoring methods, our compilations and databases, and all associated intellectual property, subject to the source-code licenses in [License](/license). Third-party data belongs to its sources.
+
+**On facts.** Individual facts are not protected by copyright and we do not claim to own them — section 5 says so and means it. What we own is the *selection, compilation and arrangement* of them, the methodology that produces the Derived Facts, and the databases they live in. Your rights in any Output are contractual under this Agreement, not a transfer of ownership in the underlying fact.
+
+You own Your Content and the reports, presentations, and analysis you create within your plan's scope.
+
+Nothing here transfers ownership. Everything not expressly granted is reserved.
+
+## 10. Term, suspension, and termination
+
+This Agreement runs for as long as you use the Service or hold an active plan.
+
+We may suspend or terminate access for non-payment, for a breach of this Agreement, or to protect the Service or its sources. You may stop at any time by cancelling; cancellation ends future renewals at the close of the current billing period.
+
+**When your plan ends:**
+
+- you may **keep and continue to use** reports, analysis, and R1/R2 Outputs lawfully created or retrieved during the Term, under the same class rules;
+- you must **stop fetching, refreshing, distributing to new recipients, and operating integrations** that depend on an active entitlement;
+- you must stop distributing R3 Outputs, and delete cached R3 Source Content once its 30-day window closes;
+- you must **delete cached R4 Source Content** — it is internal-use-only for the term of your plan, and the term has ended;
+- Credentials are revoked.
+
+Sections 2, 5 (for Outputs already retrieved), 7, 8, 9, this section, and the incorporated liability terms survive termination.
+
+## 11. Changes to this Agreement
+
+We may update this Agreement as the Service evolves. **For paid subscribers, material changes take effect at the start of your next billing period**, with at least 30 days' notice by email and in the product; if you object, cancel before they take effect and we will refund the pro-rata portion of prepaid fees. Non-material changes, changes required by law, and changes affecting only free or anonymous access take effect when published. Every change is published here with a new "Last updated" date. A signed order form is not changed by an update to this page during its term.
+
+## 12. Previous versions
+
+This page carries the date it was last changed. Every earlier version, and the exact change between any two, is in the repository history: [github.com/koala73/worldmonitor/commits/main/docs/eula.mdx](https://github.com/koala73/worldmonitor/commits/main/docs/eula.mdx). When you accept this Agreement we record the version you accepted, and that version resolves to the text above it in that history.
+
+## 13. Contact
+
+Licensing questions, plan-scope questions, R3 requests, and enterprise terms: [support@worldmonitor.app](mailto:support@worldmonitor.app).

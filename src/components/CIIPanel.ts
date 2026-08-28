@@ -15,6 +15,7 @@ import {
   partitionByFollowed,
   shouldRenderSectionLabels,
 } from './_cii-panel-partition';
+import { bindActivationKeys } from '@/utils/activation';
 
 export const CII_METHODOLOGY_HREF = '/docs/methodology/cii-risk-scores';
 
@@ -55,6 +56,10 @@ export class CIIPanel extends Panel {
     this.followedUnsubscribe = subscribeFollowed(() => {
       this.rerenderRows();
     });
+    // Drill-in lives on `.cii-name`, not `.cii-country`. The row wraps
+    // Follow + Share buttons; role="button" on the wrapper trips axe
+    // nested-interactive (WCAG 4.1.2) and fails e2e/a11y-axe-scan.
+    bindActivationKeys(this.content, '.cii-name');
   }
 
   public setShareStoryHandler(handler: (code: string, name: string) => void): void {
@@ -137,7 +142,7 @@ export class CIIPanel extends Panel {
       followHost,
       h('div', { className: 'cii-header' },
         h('span', { className: 'cii-emoji' }, emoji),
-        h('span', { className: 'cii-name' }, country.name),
+        h('span', { className: 'cii-name', role: 'button', tabindex: '0' }, country.name),
         h('span', { className: 'cii-score' }, String(country.score)),
         this.buildTrendArrow(country.trend, country.change24h),
         shareBtn,

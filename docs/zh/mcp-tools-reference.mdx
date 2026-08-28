@@ -85,19 +85,31 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 {
   "type": "object",
   "properties": {
-    "country_code": { "type": "string" },
-    "cii": { "type": ["number", "null"], "description": "Composite Instability Index 0-100." },
-    "components": {
-      "type": "object",
+    "countryCode": { "type": "string" },
+    "countryName": { "type": "string" },
+    "cii": {
+      "type": ["object", "null"],
+      "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
       "properties": {
-        "unrest":   { "type": ["number", "null"] },
-        "conflict": { "type": ["number", "null"] },
-        "security": { "type": ["number", "null"] },
-        "news":     { "type": ["number", "null"] }
+        "combinedScore": { "type": "number", "description": "The headline CII, 0-100." },
+        "trend": { "type": "string", "enum": ["TREND_DIRECTION_UNSPECIFIED", "TREND_DIRECTION_RISING", "TREND_DIRECTION_STABLE", "TREND_DIRECTION_FALLING"] },
+        "components": {
+          "type": "object",
+          "description": "Names are historical and do NOT describe their contents -- read the descriptions.",
+          "properties": {
+            "ciiContribution":  { "type": "number", "description": "DOMESTIC UNREST contribution." },
+            "geoConvergence":   { "type": "number", "description": "ARMED CONFLICT contribution." },
+            "militaryActivity": { "type": "number", "description": "SECURITY AND MOBILITY contribution." },
+            "newsActivity":     { "type": "number", "description": "INFORMATION ENVIRONMENT contribution." }
+          }
+        }
       }
     },
-    "travelAdvisory":    { "type": ["object", "string", "null"] },
-    "sanctionsExposure": { "type": ["object", "array", "null"] }
+    "advisoryLevel":   { "type": "string" },
+    "sanctionsActive": { "type": "boolean" },
+    "sanctionsCount":  { "type": "number" },
+    "fetchedAt":       { "type": "number", "description": "Unix epoch ms; 0 means unknown." },
+    "upstreamUnavailable": { "type": "boolean", "description": "True when ANY required upstream read failed; the whole response is withheld, so the zeroed risk fields mean UNKNOWN, not low." }
   }
 }
 ```
@@ -110,7 +122,7 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
   "required": ["cached_at", "stale", "data"],
   "properties": {
     "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
-    "stale":     { "type": "boolean", "description": "True when any contributing cache key is older than its per-key maxStaleMin freshness budget." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help." },
     "data":      { "type": "object", "properties": { /* per-tool fields */ } }
   }
 }
@@ -121,11 +133,24 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 ```ts
 // Synthesise types from the schema once (e.g. with json-schema-to-typescript).
 type CountryRisk = {
-  country_code: string;
-  cii: number | null;
-  components: { unrest: number | null; conflict: number | null; security: number | null; news: number | null };
-  travelAdvisory: object | string | null;
-  sanctionsExposure: object | unknown[] | null;
+  countryCode: string;
+  countryName: string;
+  // The four component names are historical misnomers: ciiContribution is
+  // domestic unrest, geoConvergence is armed conflict, militaryActivity is
+  // security/mobility, newsActivity is the information environment.
+  cii?: {
+    combinedScore: number;
+    trend: 'TREND_DIRECTION_UNSPECIFIED' | 'TREND_DIRECTION_RISING' | 'TREND_DIRECTION_STABLE' | 'TREND_DIRECTION_FALLING';
+    components?: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number };
+  };
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  // Check this BEFORE reading any score: true means a required upstream
+  // read failed and the response was withheld — the zeroed fields are
+  // unknown, not calm.
+  upstreamUnavailable: boolean;
 };
 
 const reply = await callTool('get_country_risk', { country_code: 'IR' });
@@ -145,7 +170,7 @@ if ('_budget_exceeded' in parsed) {
 } else if ('_jmespath_error' in parsed) {
   // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
 } else {
-  console.log(parsed.cii, parsed.components.conflict);
+  console.log(parsed.cii?.combinedScore, parsed.cii?.components?.geoConvergence);
 }
 ```
 
@@ -660,7 +685,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_risk`
 
-特定国家的结构化风险情报：综合不稳定指数（CII）评分 0-100、组成部分细分（动荡/冲突/安全/新闻）、旅行警示级别和 OFAC 制裁风险敞口。快速 Redis 读取 — 无 LLM。用于量化风险筛选或回答"X 现在有多危险？"
+特定国家的结构化风险情报：综合不稳定指数（CII）位于 `cii.combinedScore`（0-100），四个贡献项位于 `cii.components`（国内动荡、武装冲突、安全与出行、信息环境），政府旅行警示级别，以及以 `sanctionsActive` 和 `sanctionsCount` 表示的 OFAC 制裁敞口。快速 Redis 读取 - 无 LLM。解读低分前先检查 `upstreamUnavailable`：为 true 表示至少一个必需的上游读取失败，归零的风险字段代表 UNKNOWN，而不是平静。用于量化风险筛选或回答“X 现在有多危险？”
 
 **参数：**
 
@@ -681,6 +706,37 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_country_risk","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `list_x_feed`
+
+精选公开新闻账号的 X 动态。仅返回永久链接与派生事实 — 从不返回帖文正文。用于查看哪些账号最近发帖，而不是转载正文。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `limit` | number | 否 | 返回的最大帖文数（1-200，默认 50） |
+| `topic` | string | 否 | 可选主题过滤，例如 breaking、conflict、geopolitics、cyber |
+| `account` | string | 否 | 可选账号 handle（不含 @） |
+
+- **API 端点：** `GET /api/intelligence/v1/list-x-feed`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**10.0s**。
+- **内容政策：** 帖文正文为 R4。MCP/embed 合作方仅获得事实 + 永久链接。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_x_feed","arguments":{"limit":20,"topic":"breaking"}}
   }'
 ```
 
@@ -981,8 +1037,8 @@ curl -s https://worldmonitor.app/mcp \
 | `limit` | number | 将异常列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** 无（仅 MCP；底层 REST 基线端点为写穿式，已从对等性检查中排除）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**（生产者每小时刷新，并由 infra seeder 保持热度）。
+- **类型：** 仅缓存读取 — 从 Redis 引导缓存亚秒级返回。MCP 调用不会调用生产者，也不会触发重建。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**。只有底层生产者路由/RPC（`GET /api/infrastructure/v1/list-temporal-anomalies`）收到流量时，才会在快照超过 20 分钟后按需重建。`cached_at` 记录该次重建的时间，而不是 MCP 调用时间，因此仅在生产者路由重建快照时推进。如果该路由没有流量，这个请求驱动的时间戳可能超过新鲜度预算。
 
 <CodeGroup>
 
@@ -1326,7 +1382,7 @@ curl -s https://worldmonitor.app/mcp \
 | `country` | string | 二选一 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。未设置 `domain` 时必填 |
 | `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
 | `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
-| `limit` | integer | 否 | 最大事件数。省略时路由返回 50 条，上限为 200 |
+| `limit` | integer | 否 | 最大事件数。省略时返回 40 条，上限为 40 —— schema 声明 `maximum: 40`，更大的值会被钳制 |
 
 - **API 端点：** `GET /api/intelligence/v1/get-intel-timeline`
 - **类型：** 实时 RPC — 一次存储读取，无嵌入。Edge 运行时超时：**8.0s**。

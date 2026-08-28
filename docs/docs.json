@@ -182,6 +182,7 @@
                   "panels/monitors",
                   "panels/oref-sirens",
                   "panels/telegram-intel",
+                  "panels/x-intel",
                   "panels/fsi"
                 ]
               },
@@ -207,6 +208,7 @@
                   "cli",
                   "sdks",
                   "mcp-overview",
+                  "webmcp",
                   "mcp-apps",
                   "mcp-tools-reference",
                   "mcp-jmespath",
@@ -252,10 +254,12 @@
               {
                 "group": "Legal",
                 "pages": [
+                  "eula",
+                  "terms",
+                  "dpa",
                   "license",
                   "trademark-policy",
-                  "privacy",
-                  "terms"
+                  "privacy"
                 ]
               }
             ]
@@ -649,6 +653,7 @@
                   "zh/panels/monitors",
                   "zh/panels/oref-sirens",
                   "zh/panels/telegram-intel",
+                  "zh/panels/x-intel",
                   "zh/panels/fsi"
                 ]
               },
@@ -674,6 +679,7 @@
                   "zh/cli",
                   "zh/sdks",
                   "zh/mcp-overview",
+                  "zh/webmcp",
                   "zh/mcp-apps",
                   "zh/mcp-tools-reference",
                   "zh/mcp-jmespath",
@@ -719,10 +725,12 @@
               {
                 "group": "法律",
                 "pages": [
+                  "zh/eula",
+                  "zh/terms",
+                  "zh/dpa",
                   "zh/license",
                   "zh/trademark-policy",
-                  "zh/privacy",
-                  "zh/terms"
+                  "zh/privacy"
                 ]
               }
             ]

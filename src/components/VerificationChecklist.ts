@@ -153,7 +153,7 @@ export class VerificationChecklist extends Component {
         .notes-section h4 { margin: 0 0 8px; font-size: calc(12px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); }
         .notes-list { max-height: 100px; overflow-y: auto; }
         .note-item { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-faint); padding: 4px 0; }
-        .empty { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-ghost); font-style: italic; }
+        .empty { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-faint); font-style: italic; }
         .add-note { display: flex; gap: 8px; margin-top: 8px; }
         .add-note input { flex: 1; padding: 6px 8px; background: var(--surface-hover); border: 1px solid var(--border-strong); border-radius: 4px; color: var(--text); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); }
         .add-note button { padding: 6px 12px; background: var(--border-strong); border: none; border-radius: 4px; color: var(--accent); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); cursor: pointer; }

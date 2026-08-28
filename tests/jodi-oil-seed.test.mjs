@@ -56,8 +56,8 @@ describe('CANONICAL_KEY contract', () => {
     assert.equal(COUNTRY_KEY_PREFIX, 'energy:jodi-oil:v1:');
   });
 
-  it('JODI_TTL is 35 days in seconds', () => {
-    assert.equal(JODI_TTL, 35 * 24 * 3600);
+  it('JODI_TTL is 70 days in seconds', () => {
+    assert.equal(JODI_TTL, 70 * 24 * 3600);
   });
 });
 

@@ -141,7 +141,7 @@ function rateLimitDegradedResponse(corsHeaders) {
 /**
  * @param {Request} request
  * @param {Record<string, string>} corsHeaders
- * @param {{ failClosed?: boolean, ctx?: { waitUntil: (p: Promise<unknown>) => void }, scope?: string, limit?: number, window?: import('@upstash/ratelimit').Duration }} [opts]
+ * @param {{ failClosed?: boolean, ctx?: { waitUntil: (p: Promise<unknown>) => void }, scope?: string, identifier?: string, limit?: number, window?: import('@upstash/ratelimit').Duration }} [opts]
  *   When `failClosed` is true and Redis is unavailable, return a 503 with
  *   the `X-RateLimit-Mode: degraded` marker instead of allowing the
  *   request through. Pass `true` for endpoints where the rate-limit IS
@@ -150,8 +150,10 @@ function rateLimitDegradedResponse(corsHeaders) {
  *   doesn't black-hole the whole site. `ctx` is the Vercel handler
  *   context — passing it lets the Sentry envelope dispatch survive
  *   isolate teardown. Top-level Edge handlers may pass `scope`, `limit`,
- *   and `window` for explicit endpoint budgets while retaining the shared
- *   degraded/429 response semantics. (#3531)
+ *   `identifier`, `limit`, and `window` for explicit endpoint budgets while
+ *   retaining the shared degraded/429 response semantics. `identifier`
+ *   defaults to the caller IP; a stable explicit identifier lets sibling
+ *   handlers share one provider-wide Redis bucket. (#3531)
  */
 export async function checkRateLimit(request, corsHeaders, opts = {}) {
   const policy = getRateLimitPolicy(opts);
@@ -164,13 +166,13 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
     return null;
   }
 
-  const ip = getClientIp(request);
+  const identifier = opts.identifier ?? getClientIp(request);
   try {
     const fallbackPrefix = policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl:fw' : `rl:${policy.scope}:fw`;
     const result = await limitWithFallback(
       rl,
-      ip,
-      `${fallbackPrefix}:${ip}`,
+      identifier,
+      `${fallbackPrefix}:${identifier}`,
       policy.limit,
       durationToSeconds(policy.window),
     );

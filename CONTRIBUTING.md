@@ -202,6 +202,11 @@ See the [API dependencies docs](https://www.worldmonitor.app/docs/getting-starte
 4. **Keep PRs focused** — one feature or fix per pull request
 5. **Write a clear description** explaining what your PR does and why
 6. **Link related issues** if applicable
+7. **Base recovery and follow-up PRs on `main`**, never on an in-flight branch. A stacked PR whose parent merges (and auto-deletes its branch) can still show `MERGED` while its commits never reach `main` (#7006).
+
+### Stacked PRs
+
+Target another feature branch only while that parent is still open. Once the parent merges, retarget the child to `main` before merging — or open the follow-up against `main` from the start. CI fails a child whose base branch's own PR is already merged, because that merge would land on a tombstone.
 
 ### PR Title Convention
 

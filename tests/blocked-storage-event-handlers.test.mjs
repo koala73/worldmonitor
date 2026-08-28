@@ -33,6 +33,9 @@ describe('blocked-storage event handlers', () => {
     assert.doesNotMatch(resetLayout, /localStorage\./);
     assert.match(resetLayout, /removeStorageValue\(this\.ctx\.PANEL_ORDER_KEY\)/);
     assert.match(resetLayout, /removeStorageValue\('map-height'\)/);
+    assert.match(resetLayout, /removeStorageValue\('map-split-height'\)/);
+    assert.match(resetLayout, /removeStorageValue\('map-col-width'\)/);
+    assert.match(resetLayout, /removeStorageValue\('map-side'\)/);
   });
 
   it('keeps the globe webcam marker control functional without persistence', () => {

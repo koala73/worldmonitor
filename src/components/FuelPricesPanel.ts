@@ -86,9 +86,9 @@ export class FuelPricesPanel extends Panel {
         <div class="gb-scroll">
           <table class="gb-table">
             <thead><tr>
-              <th class="gb-item-col">${t('panels.fuelPricesCountry')}</th>
-              <th class="gb-cell">${t('panels.fuelPricesGasoline')}</th>
-              <th class="gb-cell">${t('panels.fuelPricesDiesel')}</th>
+              <th scope="col" class="gb-item-col">${t('panels.fuelPricesCountry')}</th>
+              <th scope="col" class="gb-cell">${t('panels.fuelPricesGasoline')}</th>
+              <th scope="col" class="gb-cell">${t('panels.fuelPricesDiesel')}</th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>

@@ -358,7 +358,8 @@
           "Prioritetno osvježavanje podataka"
         ],
         "highlightFeatures": [
-          "Osobna licenca"
+          "Osobna licenca",
+          "1 named korisnik"
         ]
       },
       "api": {
@@ -383,7 +384,12 @@
           "Namjenska podrška",
           "Prilagođene integracije",
           "SLA jamstvo",
-          "On-premise opcija"
+          "On-premise opcija",
+          "Ugovor o obradi podataka (DPA)",
+          "Naplata prema narudžbi",
+          "SAML SSO, SCIM",
+          "Prilagođene sigurnosne i privatnosne postavke",
+          "Potpuno rebrendiran — sa ili bez dijeljenja prihoda"
         ],
         "cta": "Kontaktirajte prodaju"
       },
@@ -394,7 +400,7 @@
           "Prava redistribucije — ugradite naše podatke u ono što prodajete",
           "300 zahtjeva/minutu",
           "10 000 zahtjeva/dan uključeno",
-          "5 Pro licencija uključeno",
+          "5 Pro licenci — pozovite korisnike s bilo kojom poslovnom domenom e-pošte",
           "Prioritetna podrška"
         ],
         "highlightFeatures": [
@@ -412,7 +418,8 @@
           "Prioritetna podrška"
         ],
         "highlightFeatures": [
-          "Komercijalna licenca uključena"
+          "Komercijalna licenca uključena",
+          "1 named korisnik — ne dijeljenja prijava"
         ]
       }
     },
@@ -423,7 +430,7 @@
     "axisPersonal": "Osobno",
     "axisPersonalNote": "individualna upotreba",
     "axisCommercial": "Komercijalno",
-    "axisCommercialNote": "rad, timovi i proizvodi"
+    "axisCommercialNote": "rad, klijenti i proizvodi"
   },
   "welcome": {
     "meta": {

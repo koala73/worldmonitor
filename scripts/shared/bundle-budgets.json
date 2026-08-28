@@ -1,0 +1,97 @@
+{
+  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
+  "variant": "full",
+  "tolerancePct": 2,
+  "toleranceBytes": 2048,
+  "totalTolerancePct": 0.25,
+  "totalToleranceBytes": 16384,
+  "total": {
+    "raw": 1584653
+  },
+  "chunks": {
+    "analytics": {
+      "raw": 117604,
+      "files": 1
+    },
+    "cached-risk-scores": {
+      "raw": 24574,
+      "files": 1
+    },
+    "clerk": {
+      "raw": 16749,
+      "files": 1
+    },
+    "continuous": {
+      "raw": 4933,
+      "files": 1
+    },
+    "cross-domain-storage": {
+      "raw": 392,
+      "files": 1
+    },
+    "data-freshness": {
+      "raw": 85732,
+      "files": 1
+    },
+    "dom-utils": {
+      "raw": 3856,
+      "files": 1
+    },
+    "embed-url": {
+      "raw": 59759,
+      "files": 1
+    },
+    "font-settings": {
+      "raw": 1440,
+      "files": 1
+    },
+    "gdelt-intel": {
+      "raw": 132663,
+      "files": 1
+    },
+    "i18n": {
+      "raw": 52460,
+      "files": 1
+    },
+    "layout-batch": {
+      "raw": 17352,
+      "files": 1
+    },
+    "main": {
+      "raw": 840609,
+      "files": 1
+    },
+    "panel-gating": {
+      "raw": 2849,
+      "files": 1
+    },
+    "panels": {
+      "raw": 146004,
+      "files": 1
+    },
+    "persistent-cache": {
+      "raw": 3768,
+      "files": 1
+    },
+    "storage-facility-registry-store": {
+      "raw": 14203,
+      "files": 1
+    },
+    "string": {
+      "raw": 20823,
+      "files": 1
+    },
+    "theme-manager": {
+      "raw": 1474,
+      "files": 1
+    },
+    "user-location": {
+      "raw": 11105,
+      "files": 1
+    },
+    "widget-store": {
+      "raw": 26304,
+      "files": 1
+    }
+  }
+}

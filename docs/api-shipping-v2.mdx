@@ -61,7 +61,7 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 - `warRiskTier` is one of the `WAR_RISK_TIER_*` enum values from the chokepoint status feed.
 - `bypassOptions` are filtered to those whose `suitableCargoTypes` includes `cargoType` (or is unset).
 
-**Caching**: `Cache-Control: public, max-age=60, stale-while-revalidate=120`.
+**Caching**: not CDN-cached — the route is premium-gated, so the gateway emits `Cache-Control: private, max-age=300, stale-while-revalidate=60, stale-if-error=1800` and no shared-cache header.
 
 **Errors**:
 
@@ -69,7 +69,7 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 |--------|-------|
 | 400 | `fromIso2` or `toIso2` missing/malformed |
 | 401 | API key required or invalid |
-| 403 | `PRO subscription required` |
+| 403 | `Pro subscription required` |
 | 405 | Method other than `GET` |
 
 ## Webhook subscriptions
@@ -126,6 +126,10 @@ Lists the caller's registered webhooks (filtered by the SHA-256 owner tag of the
 ```
 
 The `secret` is intentionally omitted from list and status responses.
+
+<Note>
+The three `{subscriberId}` sub-routes below are hand-written edge handlers, not generated gateway RPCs: they do not appear in the published OpenAPI spec (`ShippingV2Service`) or in generated clients, and their `403` message uses the literal `PRO subscription required` (all-caps), unlike the gateway routes' `Pro subscription required`.
+</Note>
 
 ### `GET /api/v2/shipping/webhooks/{subscriberId}`
 

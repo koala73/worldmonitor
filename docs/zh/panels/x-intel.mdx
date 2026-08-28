@@ -1,0 +1,47 @@
+---
+title: "X 新闻账号"
+description: "按主题分页的精选公开新闻账号 X 动态 — 第一方面板可显示 API 新鲜正文；MCP 合作方仅获得永久链接与派生事实。"
+---
+
+**X 新闻账号** 面板（内部 id `x-intel`）将一组产品管理的公开新闻账号镜像到仪表盘：按主题分标签页、新鲜度感知和 relay 状态感知，使面板能区分「近期无流量」和「relay 不可用」。
+
+这是精选的公开新闻账号监测，不是用户可配置的关注列表。
+
+## 面板显示内容
+
+顶部一行主题标签页，下方为源列表：
+
+- **主题标签页** — 来自 `src/services/x-intel` 中 `X_TOPICS` 的标签页。默认标签页为 `all`。
+- **源条目** — 活动主题的 `XItem[]`，每条显示账号、时间戳、API 新鲜正文和永久链接。
+- **实时区分** — 10 分钟以内（`LIVE_THRESHOLD_MS = 600_000`）的条目标记为实时。
+- **Relay 状态** — 当 X 轮询器未配置或不可达时（`relayEnabled = false`），面板指示降级模式而非显示空列表。
+
+面板 id 为 `x-intel`；规范组件为 `src/components/XIntelPanel.ts`。标题来自 i18n（`panels.xIntel`）；配置名："X News Accounts"。默认行跨度为 2。
+
+## 如何访问
+
+- **Cmd+K**：输入 *x news* 或 *twitter news*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用（`priority: 2`）。full 变体注册在桌面端叠加 `premium: 'locked'`，因此该面板在 **Web 端免费**，**桌面端 PRO 锁定**。来源：`src/config/panels.ts` 中 `FULL_PANELS` 的 `'x-intel'`。
+
+## 数据来源
+
+- `@/services/x-intel` — 由 `/api/x-feed` 支持，该端点代理到 Railway ais-relay 轮询器。轮询器使用官方 X API `GET /2/users/:id/tweets` 与 `since_id`，节奏为 5–15 分钟。账号覆盖范围由产品管理，而非用户可配置。
+
+### 后端端点
+
+| 访问面 | 端点 | 备注 |
+|---|---|---|
+| 面板 relay 路径 | `GET /api/x-feed` | 第一方浏览器路径，可包含 API 新鲜正文。 |
+| 生成的服务 RPC / MCP | `GET /api/intelligence/v1/list-x-feed` | 仅永久链接与派生事实。正文为 R4，不返回给 embed/OEM 合作方。 |
+
+## 刷新频率
+
+relay 每 5–15 分钟轮询一次。面板在挂载时以及 `src/config/variants/base.ts` 中的 `xIntel` 间隔刷新。
+
+## 内容政策
+
+正文为 R4。第一方面板可显示 API 新鲜帖文。告警、MCP 与 embed 合作方仅获得派生事实和永久链接。已删除帖文会在 24 小时内被墓碑化并清除。
+
+## 层级与门控
+
+与 Telegram Intel 相同的桌面端 PRO 锁定。Web 保持免费。

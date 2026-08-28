@@ -19,6 +19,8 @@ import { shouldDropOpinionTrack } from '../scripts/lib/digest-opinion-track-filt
 
 const {
   buildStoryTrackHsetFields,
+  isAnchorEligible,
+  isIdentityAnchorEligible,
   computeEntityCorroborationSignals,
   parseRssXml,
   promoteDiplomacySeverity,
@@ -67,6 +69,28 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.ok(m.has('link'));
     assert.ok(m.has('severity'));
     assert.ok(m.has('lang'));
+  });
+
+  it('persists a fail-closed canonical-anchor eligibility stamp', () => {
+    const hostile = baseItem({ source: 'Farm A', corroborationCount: 1 });
+    const trusted = baseItem({ source: 'Reuters', corroborationCount: 1 });
+    const corroborated = baseItem({ source: 'Farm A', corroborationCount: 2 });
+
+    assert.equal(isAnchorEligible(hostile), false, 'unknown single-source feeds cannot pre-seed an anchor');
+    assert.equal(isAnchorEligible(trusted), true, 'curated tier-1/2 sources may anchor');
+    assert.equal(isAnchorEligible(corroborated), true, 'two independent publisher families may anchor');
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(hostile, '1745000000000', 42)).get('anchorEligible'), '0');
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(trusted, '1745000000000', 42)).get('anchorEligible'), '1');
+  });
+
+  it('uses cluster-wide corroboration when selecting a safe batch default', () => {
+    const lowTierMember = baseItem({ source: 'Farm A', corroborationCount: 1 });
+    assert.equal(isAnchorEligible(lowTierMember), false, 'the parsed exact-title count alone is one');
+    assert.equal(
+      isIdentityAnchorEligible(lowTierMember, 2),
+      true,
+      'two independent publisher families must make a low-tier cluster eligible in its first cycle',
+    );
   });
 
   it('writes isOpinion as "1" / "0" — stamps the non-event brief verdict on the row (F3)', () => {
@@ -444,7 +468,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
 });
 
 describe('fetchAndParseRss — cache prefix invalidation contract', () => {
-  it('rss:feed cache prefix is v8 (duration-led historical-explainer stamp), not v4/v5/v6/v7', () => {
+  it('rss:feed cache prefix is v9 (per-attempt fetch verdicts), not v4/v5/v6/v7/v8', () => {
     // Pre-PR ParsedItems cached at rss:feed:v4 lack the
     // isEphemeralLiveCoverage field. If a cache hit returned one of those,
     // the falsy-coerce in
@@ -461,19 +485,20 @@ describe('fetchAndParseRss — cache prefix invalidation contract', () => {
       resolve(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', 'list-feed-digest.ts'),
       'utf-8',
     );
-    // v7→v8: duration-led historical explainers now receive the same stable
-    // ingest stamp. Digest reads trust explicit stamps, so warm v7 rows must
-    // not retain a pre-rule "0" verdict for a cache TTL.
+    // v8→v9: cached ParseResult rows now carry the fetch attempt verdict
+    // (source + failure classification, #7083). Warm v8 rows lack the
+    // attempt field and would misreport feed health as an unknown state.
     assert.ok(
-      src.includes("`rss:feed:v8:${variant}:${feed.url}`"),
-      'rss:feed cache key must use v8 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
+      src.includes("`rss:feed:v9:${variant}:${feed.url}`"),
+      'rss:feed cache key must use v9 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
     );
     assert.ok(
-      !src.includes("`rss:feed:v7:${variant}:${feed.url}`") &&
+      !src.includes("`rss:feed:v8:${variant}:${feed.url}`") &&
+        !src.includes("`rss:feed:v7:${variant}:${feed.url}`") &&
         !src.includes("`rss:feed:v6:${variant}:${feed.url}`") &&
         !src.includes("`rss:feed:v5:${variant}:${feed.url}`") &&
         !src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
-      'must NOT leave a residual v4/v5/v6/v7 cacheKey assignment — would silently revert the cutover',
+      'must NOT leave a residual v4/v5/v6/v7/v8 cacheKey assignment — would silently revert the cutover',
     );
   });
 });

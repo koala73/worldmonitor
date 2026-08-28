@@ -133,12 +133,26 @@ const SEED_DOMAINS = {
   'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
   'conflict:acled-intel':     { key: 'seed-meta:conflict:acled-intel',     intervalMin: 19 },
   'weather:alerts':           { key: 'seed-meta:weather:alerts',           intervalMin: 15 },
+  'weather:imd-cyclone-marine': { key: 'seed-meta:weather:imd-cyclone-marine', intervalMin: 15 },
   // Hyphen: runSeed('transit', 'ttc-alerts') writes seed-meta:transit:ttc-alerts.
   'transit:ttc:alerts':       { key: 'seed-meta:transit:ttc-alerts',       intervalMin: 15 },
   'economic:spending':        { key: 'seed-meta:economic:spending',        intervalMin: 60 },
   'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 720 }, // 720 × 2 = 1440min (24h) staleness; matches api/health.js gpsjam.maxStaleMin. Widened from 360 (12h) on 2026-04-29 alongside Wingbits API quota incident — see PR #3494 + the seeder graceful-failure path at scripts/fetch-gpsjam.mjs:258-262.
   'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
   'military:flights':         { key: 'seed-meta:military:flights',         intervalMin: 8 },
+  // #6845 item 3: staleness was invisible — this endpoint had no entry for the
+  // bases corpus at all, and /api/health checked only the presence of
+  // military:bases:active. The seeder runs on Military-Bases' 30-day cadence
+  // (seed-bundle-static-ref-HEAVY since #6806 moved the three expensive members
+  // off leftover), so intervalMin = one cadence and stale fires at
+  // 2x = one fully missed cycle. activationKey is the active-version pointer
+  // itself: atomicSwitch writes it atomically with seed-meta, so a deployment
+  // that has never published reads as pending-activation rather than missing,
+  // while the #6806 missing-marker case (pointer present, seed-meta absent)
+  // still alarms and forces the repair path to matter. minRecordCount floors
+  // the corpus near the published 125,380 — the integrity half of the item: a
+  // degenerate partial seed must not read as a healthy quiet cycle.
+  'military:bases':           { key: 'seed-meta:military:bases',           intervalMin: 43200, activationKey: 'military:bases:active', minRecordCount: 100_000 },
   'military:cross-strait-activity': { key: 'seed-meta:military:cross-strait-activity', intervalMin: 180 },
   'military:cross-strait-activity-bootstrap': { key: 'seed-meta:military:cross-strait-activity-bootstrap', intervalMin: 180 },
   'military:cross-strait-activity:complete': { key: 'seed-meta:military:cross-strait-activity:complete', intervalMin: 180 },

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import { collectQueryParamContractViolations } from '../scripts/lib/sebuf-query-param-contract.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -16,14 +17,12 @@ const OPENAPI_NOOP_PARAMS = [
   ['ConflictService.openapi.json', '/api/conflict/v1/list-acled-events', ['page_size', 'cursor']],
   ['ConflictService.openapi.json', '/api/conflict/v1/list-ucdp-events', ['start', 'end', 'page_size', 'cursor']],
   ['CyberService.openapi.json', '/api/cyber/v1/list-cyber-threats', ['start', 'end']],
-  ['EconomicService.openapi.json', '/api/economic/v1/get-economic-calendar', ['fromDate', 'toDate']],
   ['EconomicService.openapi.json', '/api/economic/v1/get-energy-capacity', ['years']],
   ['EconomicService.openapi.json', '/api/economic/v1/list-world-bank-indicators', ['page_size', 'cursor']],
   ['InfrastructureService.openapi.json', '/api/infrastructure/v1/list-internet-outages', ['page_size', 'cursor']],
   ['IntelligenceService.openapi.json', '/api/intelligence/v1/search-gdelt-documents', ['timespan', 'tone_filter', 'sort']],
   ['MaritimeService.openapi.json', '/api/maritime/v1/list-navigational-warnings', ['page_size', 'cursor']],
   ['MarketService.openapi.json', '/api/market/v1/get-sector-summary', ['period']],
-  ['MarketService.openapi.json', '/api/market/v1/list-earnings-calendar', ['fromDate', 'toDate']],
   ['MilitaryService.openapi.json', '/api/military/v1/get-theater-posture', ['theater']],
   ['MilitaryService.openapi.json', '/api/military/v1/list-military-flights', ['operator', 'aircraft_type']],
   ['NaturalService.openapi.json', '/api/natural/v1/list-natural-events', ['days']],
@@ -37,7 +36,7 @@ const OPENAPI_NOOP_PARAMS = [
 ];
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'wm-sebuf-query-'));
+  const root = createTempDir('wm-sebuf-query-');
   mkdirSync(join(root, 'proto/worldmonitor/demo/v1'), { recursive: true });
   mkdirSync(join(root, 'server/worldmonitor/demo/v1'), { recursive: true });
   return root;
@@ -96,6 +95,35 @@ describe('sebuf query-param implementation contract', () => {
       contractSource,
       /worldmonitor\/military\/v1\/list_military_flights\.proto:cursor/,
       'implemented military cursor must be removed from the forced no-op registry',
+    );
+  });
+
+  it('documents calendar date bounds as implemented rather than no-ops', () => {
+    const operations = [
+      ['EconomicService.openapi.json', '/api/economic/v1/get-economic-calendar'],
+      ['MarketService.openapi.json', '/api/market/v1/list-earnings-calendar'],
+    ];
+
+    for (const [file, path] of operations) {
+      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      const params = spec.paths?.[path]?.get?.parameters;
+      assert.ok(Array.isArray(params), file + ': missing GET parameters for ' + path);
+      for (const name of ['fromDate', 'toDate']) {
+        const param = params.find((candidate) => candidate.name === name);
+        assert.ok(param, file + ': missing query param ' + name + ' on ' + path);
+        assert.doesNotMatch(
+          String(param.description ?? ''),
+          /Accepted but currently ignored; no-op/,
+          file + ': implemented ' + name + ' must not be documented as a no-op',
+        );
+      }
+    }
+
+    const contractSource = readFileSync(resolve(root, 'scripts/lib/sebuf-query-param-contract.mjs'), 'utf8');
+    assert.doesNotMatch(
+      contractSource,
+      /(?:get_economic_calendar|list_earnings_calendar)\.proto:(?:fromDate|toDate)/,
+      'implemented calendar bounds must be removed from the forced no-op registry',
     );
   });
 

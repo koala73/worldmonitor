@@ -16,6 +16,12 @@ export interface WeatherAlert {
   countryCode?: string;
   source?: string;
   geometryPrecision?: 'polygon' | 'point' | 'country';
+  productKind?: string;
+  issuedBy?: string;
+  wind?: string;
+  visibility?: string;
+  seaState?: string;
+  sourceUrl?: string;
 }
 
 interface BootstrapAlert {

@@ -687,6 +687,46 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { sign
 // END of the day (23:59:59.999 UTC) so rows dated exactly maxDate still
 // satisfy `date <= anchor`. Returns null on parse failure; callers fall
 // back to `Date.now()` when anchor is null.
+// Where the dataset actually ends this run: the newest preflight that answered.
+// Free — these are calls the preflight already made — and it is the anchor a
+// country whose own preflight errored should inherit.
+//
+// The alternative, Date.now(), silently asserts upstream is current, and that
+// assertion is the failure mode this exists to stop. ArcGIS's max(date) lags
+// real-time by ~10 days even when healthy, and on 2026-08-21 the feed stopped
+// entirely: 1,481 rows/day through the 21st, then 0/day. A now-anchored 30-day
+// window still catches the 21st today, so the bug is invisible — but once the
+// stall passes 30 days every now-anchored country returns zero rows, scores
+// `empty_activity`, stops refreshing, and drops out at the 7-day cache wall: a
+// fleet-wide collapse to 0/174 caused by our own fallback, not by upstream.
+// Anchored on the real max date the same countries keep serving indefinitely,
+// which is what the anchor was introduced for (#3299).
+export function deriveRunAnchorMs(maxDateStrings) {
+  const list = Array.isArray(maxDateStrings) ? maxDateStrings : [];
+  let newest = null;
+  for (const value of list) {
+    const parsed = parseMaxDateToAnchor(value);
+    if (parsed === null) continue;
+    if (newest === null || parsed > newest) newest = parsed;
+  }
+  return newest;
+}
+
+// A country's own preflight wins. On failure, its last known max date wins
+// over the run anchor because country maxima can publish at different times.
+// fetchMaxDate returns null on ANY failure — including the sporadic HTTP 400 and
+// 504 this FeatureServer emits under load — so without this a transport blip was
+// converted into "assume upstream is current". undefined (not null) is returned
+// when nothing is known, so fetchCountryAccum's `?? Date.now()` still applies for
+// a run where nothing at all answered.
+export function resolveCountryAnchorMs(upstreamMaxDate, runAnchorMs, priorAsof) {
+  const own = parseMaxDateToAnchor(upstreamMaxDate);
+  if (own !== null) return own;
+  const prior = parseMaxDateToAnchor(priorAsof);
+  if (prior !== null) return prior;
+  return Number.isFinite(runAnchorMs) ? runAnchorMs : undefined;
+}
+
 function parseMaxDateToAnchor(maxDateStr) {
   if (!maxDateStr || typeof maxDateStr !== 'string') return null;
   const ts = Date.parse(maxDateStr + 'T23:59:59.999Z');
@@ -1176,6 +1216,12 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
   }
   console.log(`  [port-activity] Preflight maxDate for ${eligibleIso3.length} countries (${((Date.now() - preflightT0) / 1000).toFixed(1)}s)`);
 
+  // See deriveRunAnchorMs for why Date.now() is not the fallback.
+  const runAnchorFallbackMs = deriveRunAnchorMs(maxDates);
+  if (runAnchorFallbackMs === null) {
+    console.warn('  [port-activity] No preflight returned a max date — per-country windows fall back to now, which is only correct if upstream really is current.');
+  }
+
   // Partition: cache hits (reusable) vs misses (need expensive fetch).
   // For misses, capture `prevPayload` (may be null) so that if we end up
   // deferring this country to a later run we can still serve its previous
@@ -1311,12 +1357,18 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     const attemptedAt = Date.now();
     if (progress) progress.batchIdx = batchIdx;
 
-    const promises = batch.map(({ iso3, upstreamMaxDate }) => {
+    const promises = batch.map(({ iso3, upstreamMaxDate, prevPayload }) => {
       // Anchor the rolling windows to upstream max(date) so the aggregate
       // is stable day-over-day when upstream is frozen (required for cache
       // reuse to be semantically correct — see PR #3299 review P1).
-      // Falls back to Date.now() when preflight returned null.
-      const anchorEpochMs = parseMaxDateToAnchor(upstreamMaxDate);
+      //
+      // A failed preflight reuses the country's own cached anchor before the
+      // run anchor — see resolveCountryAnchorMs.
+      const anchorEpochMs = resolveCountryAnchorMs(
+        upstreamMaxDate,
+        runAnchorFallbackMs,
+        prevPayload?.asof,
+      );
       const p = withPerCountryTimeout(
         (childSignal) => retryRateLimited(
           (attemptSignal) => fetchCountryAccum(iso3, { signal: attemptSignal, anchorEpochMs, dateField }),

@@ -3,6 +3,7 @@
 const { buildLlmCallEvent, emitLlmEvents } = require('./llm-telemetry.cjs');
 const {
   GROQ_DEFAULT_MODEL,
+  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
@@ -48,6 +49,7 @@ const LLM_PROVIDERS = [
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
     model: GROQ_DEFAULT_MODEL,
+    extraBody: GROQ_REASONING_EXTRA_BODY,
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': SERVICE_UA }),
     timeout: 15_000,
   },

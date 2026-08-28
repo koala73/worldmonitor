@@ -670,43 +670,62 @@ describe('scheduled seed freshness monitor', () => {
         );
       }
 
-      const mineral = committed.acknowledged.find((entry) => entry.name === 'mineralProduction');
-      assert.ok(mineral, 'mineralProduction stays acknowledged until the first post-recovery tick publishes');
-      assert.equal(mineral.status, 'EMPTY');
-      // Re-anchored in #6806 onto the first seed-bundle-static-ref-heavy tick.
-      // The previous anchor (2026-08-18T03:00Z) expired on the very tick that
-      // deferred this section by 13 seconds: the #6807 concurrency fix cut
-      // Arms-Suppliers to 371s but left it FIRST and permanently due, so the
-      // budget it freed was consumed before Mineral-Production was offered it.
-      assert.equal(mineral.expiresAt, '2026-08-19T04:00:00.000Z');
-      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-19T04:00:00.000Z');
-      assert.equal(mineral.cutover?.probeKey, 'seed-meta:supply-chain:mineral-production');
+      // The remaining eight went the same way on 2026-08-20: a live monitor run
+      // reported every one as "no longer reported; remove it", and each had
+      // ALREADY passed its own entry-level expiresAt (all eight expired on
+      // 2026-08-19), so none of them was suppressing anything by then. Removal
+      // is therefore a no-op on the gate and pure hygiene — an acknowledgement
+      // that outlives its problem is a suppression with nothing to suppress,
+      // waiting to absorb a FUTURE outage of the same probe.
+      for (const [name, why] of [
+        ['canadaAlerts', 'the Canada alerts union probe publishes again'],
+        ['canadaAlertsAbSource', 'the Alberta sibling probe publishes again'],
+        ['canadaAlertsBcSource', 'the B.C. sibling probe publishes again'],
+        ['canadaAlertsSkSource', 'the SaskAlert sibling seed is no longer stale'],
+        ['demographicsCapability', 'the demographics-capability probe publishes again'],
+        ['manitobaRoads', 'the Manitoba 511 probe publishes again'],
+        ['mineralProduction', 'seed-meta:supply-chain:mineral-production carries 12 records'],
+        ['staticRefHeavyBundleTick', 'bundle:heartbeat:static-ref-heavy fired at 2026-08-20T04:01:04Z'],
+      ]) {
+        assert.equal(
+          committed.acknowledged.some((entry) => entry.name === name),
+          false,
+          `${name} recovered (${why}); do not suppress a future recurrence`,
+        );
+      }
+
+      // These producer contracts were pinned INSIDE the acknowledgement blocks
+      // above and nowhere else. Deleting the suppression must not delete the
+      // assertion that the producer it was waiting on still exists and still
+      // runs on the cadence the ack was sized against — that is how a pruned
+      // baseline quietly stops watching anything.
       const staticRefService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref');
       assert.equal(staticRefService?.cronSchedule, '0 3 * * *');
-      const owned6806 = committed.acknowledged
-        .filter((entry) => entry.issue === 6806)
-        .map((entry) => entry.name)
-        .sort();
-      assert.deepEqual(
-        owned6806,
-        ['staticRefHeavyBundleTick'],
-        '#6806 owns ONE consolidated bundle-tick ack — not one per member',
+      const heavyService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref-heavy');
+      // Prove the row EXISTS before asserting a field is absent from it —
+      // `Object.hasOwn({}, 'lifecycle')` is false for a deleted row too, so the
+      // absence assertion below would pass vacuously without this.
+      assert.ok(heavyService, 'seed-bundle-static-ref-heavy must remain in the Railway registry');
+      assert.equal(heavyService.cronSchedule, '0 4 * * *');
+      // ACTIVE, not planned. Service 6285c37b was provisioned on 2026-08-19 and
+      // published its heartbeat at 2026-08-20T04:01:04Z, so `planned` — which
+      // removes the entry from the live audit AND from `--apply` — would exempt
+      // a running daily cron from the watch-path and deploy-drift checks.
+      // Asserting the ABSENCE of the field is what stops it being reinstated to
+      // quiet a red gate.
+      assert.equal(
+        Object.hasOwn(heavyService, 'lifecycle'),
+        false,
+        'seed-bundle-static-ref-heavy is provisioned and must not carry a lifecycle field',
       );
-      for (const [name, serviceName, cron, probeKey, expiresAt] of [
-        ['staticRefHeavyBundleTick', 'seed-bundle-static-ref-heavy', '0 4 * * *', 'bundle:heartbeat:static-ref-heavy', '2026-08-19T04:00:00.000Z'],
-      ]) {
-        const entry = committed.acknowledged.find((item) => item.name === name);
-        assert.ok(entry, `${name} must be acknowledged until the first fire`);
-        assert.equal(entry.status, 'EMPTY');
-        assert.equal(entry.expiresAt, expiresAt);
-        assert.equal(entry.cutover?.firstScheduledRunAt, expiresAt);
-        assert.equal(entry.cutover?.probeKey, probeKey);
-        const service = readRailwayServices().find((item) => item.service === serviceName);
-        assert.equal(service?.cronSchedule, cron);
-        assert.equal(service?.lifecycle, 'planned');
-      }
+      // #6806 owns ONE consolidated bundle-tick ack when it owns any at all —
+      // never one per member. It owns none now that the heartbeat fired.
+      assert.deepEqual(
+        committed.acknowledged.filter((entry) => entry.issue === 6806).map((entry) => entry.name),
+        [],
+      );
       // The consolidation is the point: Railway caps a project at 100 services
-      // and the fleet is at 81. Three low-cadence members do not get three.
+      // and the fleet is at 82. Three low-cadence members do not get three.
       for (const retired of ['seed-bundle-arms-suppliers', 'seed-bundle-military-bases']) {
         assert.equal(
           readRailwayServices().find((item) => item.service === retired),
@@ -1012,6 +1031,33 @@ describe('scheduled seed freshness monitor', () => {
           hook,
           /node --import tsx scripts\/check-health-probe-cutovers\.mts origin\/main/,
         );
+      });
+
+      // #7021 — the pre-push hook above compares against origin/main, but CI
+      // compared against `github.event.pull_request.base.sha`. GitHub PINS that
+      // SHA when the PR is opened and never advances it as main moves, while
+      // actions/checkout builds refs/pull/N/merge — the PR merged onto main's
+      // CURRENT tip. So the gate diffs today's tree against a base that can be
+      // weeks old: every probe added to main after the PR opened reads as
+      // brand-new on every run, re-litigating a cutover the PR never touched.
+      // That is latent until the probe's acknowledgement is legitimately pruned,
+      // at which point the PR fails outright demanding an entry nobody should
+      // restore. #7021 died exactly this way on tpsMci (#7035) once #7120
+      // retired the acknowledgement, naming a closed issue as its owner.
+      //
+      // The merge ref's FIRST parent is the base tip the tree was merged onto,
+      // so it cannot drift away from what is actually being tested.
+      it('bases the cutover diff on the merged tree, not the pinned base.sha', () => {
+        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8');
+
+        // Matches the interpolation, not the prose: the step's own comment names
+        // the rejected expression to explain why it is rejected.
+        assert.doesNotMatch(
+          workflow,
+          /\$\{\{\s*github\.event\.pull_request\.base\.sha/,
+          'pull_request.base.sha is pinned at PR creation, so it re-litigates every probe added after the PR opened',
+        );
+        assert.match(workflow, /git rev-parse HEAD\^1/);
       });
     });
   });

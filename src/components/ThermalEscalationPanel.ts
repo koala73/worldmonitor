@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { ThermalEscalationCluster, ThermalEscalationWatch } from '@/services/thermal-escalation';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { bindActivationKeys } from '@/utils/activation';
 
 // P1: allowlists prevent unescaped API values from injecting into class attribute context
 const STATUS_CLASS: Record<string, string> = {
@@ -38,6 +39,7 @@ export class ThermalEscalationPanel extends Panel {
       const lon = Number(row.dataset.lon);
       if (Number.isFinite(lat) && Number.isFinite(lon)) this.onLocationClick?.(lat, lon);
     });
+    bindActivationKeys(this.content, '.te-card');
   }
 
   public setLocationClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -123,7 +125,7 @@ export class ThermalEscalationPanel extends Panel {
     const age = formatAge(c.lastDetectedAt);
 
     return `
-      <div class="te-card te-card-${statusClass}" data-lat="${c.lat}" data-lon="${c.lon}">
+      <div class="te-card te-card-${statusClass}" data-lat="${c.lat}" data-lon="${c.lon}" role="button" tabindex="0">
         <div class="te-card-accent"></div>
         <div class="te-card-body">
           <div class="te-region">${escapeHtml(c.regionLabel)}</div>

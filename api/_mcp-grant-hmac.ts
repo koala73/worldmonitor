@@ -81,22 +81,9 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
 export function readGrantSecret(env: NodeJS.ProcessEnv = process.env): string {
   const secret = env.MCP_PRO_GRANT_HMAC_SECRET ?? '';
   if (!secret) {
-    // TEMP DIAGNOSTIC (PR #3646): on missing-secret, log the NAMES (not values)
-    // of every process.env key starting with `MCP_` so we can confirm whether
-    // the runtime sees the linked Shared env vars at all. Removed in the next
-    // commit once root cause is confirmed.
-    try {
-      const mcpKeys = Object.keys(env)
-        .filter((k) => k.startsWith('MCP_'))
-        .sort();
-      console.warn(
-        `[mcp-grant-hmac] DIAGNOSTIC missing-secret: process.env MCP_* keys = ${
-          mcpKeys.length === 0 ? '<NONE>' : mcpKeys.join(', ')
-        }`,
-      );
-    } catch {
-      /* never let diagnostic hide the real error */
-    }
+    // Operator-visible and value-free; the PR #3646 MCP_* env-name inventory
+    // that used to sit here served its diagnostic purpose and is gone (#7278).
+    console.warn('[mcp-grant-hmac] MCP_PRO_GRANT_HMAC_SECRET is not set');
     throw new GrantConfigError('MCP_PRO_GRANT_HMAC_SECRET is not set');
   }
   return secret;

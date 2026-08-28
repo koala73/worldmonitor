@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 
 import {
   loadEnvFile,
+  PUBLISH_BLOCKED_EXIT_CODE,
   CHROME_UA,
   getRedisCredentials,
   acquireLockSafely,
@@ -37,7 +38,7 @@ const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json')
 
 export const CANONICAL_KEY = 'energy:jodi-oil:v1:_countries';
 export const COUNTRY_KEY_PREFIX = 'energy:jodi-oil:v1:';
-export const JODI_TTL = 3_024_000; // 35 days
+export const JODI_TTL = 70 * 24 * 3600; // 70 days: 2× 35d cadence so one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
 const META_KEY = 'seed-meta:energy:jodi-oil';
 const LOCK_DOMAIN = 'energy:jodi-oil';
 const LOCK_TTL_MS = 10 * 60 * 1000;
@@ -587,7 +588,11 @@ async function main() {
       } else {
         console.warn('  COVERAGE GATE: no last-good snapshot exists to preserve');
       }
-      return;
+      // #6396: the gate refused to publish, so exit 0 would make the bundle
+      // report OK for a section whose seed keys were not written. Signal the
+      // dedicated outcome; main()'s finally still releases the lock on this
+      // return path.
+      return { publishBlocked: true };
     }
 
     console.log(chinaCoverage.ok
@@ -643,7 +648,9 @@ async function main() {
 
 const isMain = process.argv[1]?.endsWith('seed-jodi-oil.mjs');
 if (isMain) {
-  main().catch(err => {
+  main().then((outcome) => {
+    if (outcome?.publishBlocked) process.exit(PUBLISH_BLOCKED_EXIT_CODE);
+  }).catch(err => {
     console.error(err);
     process.exit(1);
   });

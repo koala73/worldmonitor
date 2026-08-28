@@ -13,6 +13,11 @@ For example, `/api/market/v1/list-market-quotes` is a version 1 operation.
 Different domains may advance independently, so clients should use the version
 present in each path rather than assuming one global API version.
 
+One domain currently deviates from that shape: shipping v2 puts the version
+before the domain — `/api/v2/shipping/<operation>` (e.g.
+`/api/v2/shipping/route-intelligence`). Every other domain is at v1 with the
+standard `/api/<domain>/v1/` prefix.
+
 ## Compatibility within a major version
 
 Within a published major version, WorldMonitor may add optional request fields,
@@ -47,8 +52,9 @@ When WorldMonitor replaces or retires a public REST version or operation:
 2. The deprecated surface remains available for at least **six months** after
    the public deprecation announcement.
 3. We publish a specific shutdown date at least **90 days** before that date.
-4. Until shutdown, requests to the deprecated surface carry the HTTP signals
-   below.
+4. Until shutdown, requests to the deprecated surface will carry the HTTP
+   signals below. (This is forward-looking policy: nothing is deprecated
+   today, so no endpoint currently emits them.)
 
 Security, privacy, legal, or upstream-provider emergencies may require a faster
 change. When that happens, we publish notice and migration guidance as soon as

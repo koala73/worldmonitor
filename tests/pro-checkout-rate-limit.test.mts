@@ -100,18 +100,19 @@ function installBrowserHarness(): void {
   });
 }
 
+// No `dodopayments-checkout` or `./entitlement-watchdog` stub: #7222 removed
+// both imports from pro-test/src/services/checkout.ts, so these were dead
+// fixtures. Removing them is cleanup only, NOT a regression guard — the
+// dashboard still declares the SDK in the root package.json, so a re-added
+// import in /pro resolves against the repo-root node_modules and this suite
+// stays green either way (verified by mutation). The guard that actually
+// catches that is the source sweep in tests/pro-bundle-no-dodo-sdk.test.mts.
 const stubSources: Record<string, string> = {
   '@sentry/react': `
     export const addBreadcrumb = () => {};
     export const captureException = () => {};
     export const captureMessage = (message, payload) => {
       globalThis.__proRateLimitHarness.reports.push({ message, payload });
-    };
-  `,
-  'dodopayments-checkout': `
-    export const DodoPayments = {
-      Initialize() {},
-      Checkout: { isOpen: () => false, close: () => {} },
     };
   `,
   './clerk': `
@@ -121,11 +122,6 @@ const stubSources: Record<string, string> = {
         session: { getToken: async () => 'tok_test' },
         openSignIn: () => {},
       };
-    }
-  `,
-  './entitlement-watchdog': `
-    export function createEntitlementWatchdog() {
-      return { start: () => {}, stop: () => {}, isActive: () => false };
     }
   `,
 };

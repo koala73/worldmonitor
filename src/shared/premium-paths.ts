@@ -67,4 +67,24 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // stayed hidden until PR #3797 fixed the unlock-wipe so users could
   // actually type and click Send.
   '/api/chat-analyst',
+  // Single-aircraft Wingbits enrichment is a caller-controlled paid-provider
+  // lookup. Keep the batch sibling outside this registry because the map uses
+  // that route as its existing anonymous, rate-limited enrichment path.
+  '/api/military/v1/get-aircraft-details',
+  // The three AviationStack-METERED routes. Each cache miss buys a paid
+  // upstream call and get-carrier-ops buys one PER AIRPORT, so anonymous access
+  // was a standing invitation: one scripted client took ~1,000 calls/day, ~43%
+  // of spend, in August 2026. Registered here for the same reason /api/chat-
+  // analyst is — without the entry premiumFetch never attaches the Clerk Bearer
+  // and browser Pro users get 403 on a subscription they are paying for.
+  // The seeder-backed aviation routes (list-airport-delays,
+  // get-airport-ops-summary) stay OFF this list on purpose: they serve
+  // aviation:delays:intl:v3, already bought by cron, so gating them would cost
+  // the free map its airport-delay layer and save nothing.
+  '/api/aviation/v1/list-airport-flights',
+  '/api/aviation/v1/get-carrier-ops',
+  '/api/aviation/v1/get-flight-status',
+  // TravelPayouts, billed per search — a different provider from the three
+  // above but the same exposure, and the same scraper was spending on it.
+  '/api/aviation/v1/search-flight-prices',
 ]);

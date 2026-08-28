@@ -111,7 +111,8 @@ export async function listStorageFacilities(
   _ctx: unknown,
   req: ListStorageFacilitiesRequest,
 ): Promise<ListStorageFacilitiesResponse> {
-  const raw = (await getCachedJson(STORAGE_FACILITIES_KEY)) as RawRegistry | null;
+  // Seeder writes via raw key (no env-prefix) — match it on read.
+  const raw = (await getCachedJson(STORAGE_FACILITIES_KEY, true)) as RawRegistry | null;
 
   // upstreamUnavailable is reserved for "Redis didn't return a registry".
   // A healthy registry that filters down to zero rows via facilityType is

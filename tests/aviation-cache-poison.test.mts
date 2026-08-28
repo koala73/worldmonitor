@@ -40,6 +40,7 @@ beforeEach(() => {
   }
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+  process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
 });
 
 afterEach(() => {
@@ -54,6 +55,7 @@ afterEach(() => {
 });
 
 function installFetchMock(options: FetchMockOptions = {}) {
+  const cache = new Map<string, string>();
   const calls = {
     relayUrls: [] as string[],
     redisSets: [] as RedisSetCommand[],
@@ -65,7 +67,8 @@ function installFetchMock(options: FetchMockOptions = {}) {
     const url = String(input);
 
     if (url.startsWith('https://redis.test/get/')) {
-      return new Response(JSON.stringify({ result: null }), { status: 200 });
+      const key = decodeURIComponent(url.slice('https://redis.test/get/'.length));
+      return new Response(JSON.stringify({ result: cache.get(key) ?? null }), { status: 200 });
     }
 
     if (url === 'https://redis.test/pipeline') {
@@ -89,6 +92,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
     if (url === 'https://redis.test/') {
       const command = JSON.parse(String(init?.body ?? '[]')) as RedisSetCommand;
       calls.redisSets.push(command);
+      cache.set(command[1], command[2]);
       return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
     }
 
@@ -114,8 +118,14 @@ function installFetchMock(options: FetchMockOptions = {}) {
   return calls;
 }
 
+// The metered routes require identity (see requireLiveAviationAccess). These
+// tests are about what happens AFTER the gate — caching, negative caching,
+// budget — so every request carries a key; `tests/aviation-live-routes-require
+// -auth.test.mts` owns the gate itself.
 function requestFor(path: string): Request {
-  return new Request(`https://worldmonitor.app${path}`);
+  return new Request(`https://worldmonitor.app${path}`, {
+    headers: { 'X-WorldMonitor-Key': 'test-key' },
+  });
 }
 
 function ctxFor(request: Request) {
@@ -189,6 +199,26 @@ describe('aviation cache poison prevention', () => {
     assert.equal(calls.relayUrls.length, 1);
     assertOnlyNegativeSentinels(calls);
     assertNoCacheSideChannel(request);
+  });
+
+  it('reports a repeated negative flight-status result as a cache hit', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.test';
+    const calls = installFetchMock({ relay: 'http-503' });
+    const request = { flightNumber: 'TK1952', date: '2026-07-09', origin: '' };
+
+    const cold = await getFlightStatus(
+      ctxFor(requestFor('/api/aviation/v1/get-flight-status?flight_number=TK1952&date=2026-07-09')),
+      request,
+    );
+    const warm = await getFlightStatus(
+      ctxFor(requestFor('/api/aviation/v1/get-flight-status?flight_number=TK1952&date=2026-07-09')),
+      request,
+    );
+
+    assert.equal(cold.cacheHit, false);
+    assert.equal(warm.cacheHit, true);
+    assert.equal(calls.relayUrls.length, 1, 'the cached negative result must not retry the relay');
+    assertOnlyNegativeSentinels(calls);
   });
 
   it('keeps a healthy AviationStack zero-row response positive-cacheable', async () => {

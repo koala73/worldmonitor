@@ -56,14 +56,69 @@ const EXPOSED_HEADERS = [
   'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
+  // Fail-open limiter degradation marker. Parity with api/_cors.js (#7270):
+  // the Limit/Remaining/Reset triplet is not enough for browser JS to read Mode.
+  'X-RateLimit-Mode',
+  // IETF draft-ietf-httpapi-ratelimit-headers fields — emitted by the
+  // per-account API-key limiter; docs/usage-rate-limits.mdx tells browser
+  // clients to self-throttle on these, so they must be readable cross-origin
+  // (parity with api/_cors.js).
+  'RateLimit',
+  'RateLimit-Policy',
+  'RateLimit-Limit',
+  'RateLimit-Remaining',
+  'RateLimit-Reset',
   'X-WorldMonitor-Bbox',
   'X-WorldMonitor-Bbox-Missing',
   'X-WorldMonitor-Bbox-Invalid',
   'X-Military-Bbox',
 ].join(', ');
 
+/**
+ * Strip trailing DNS dots before allowlist match so
+ * `https://tech.worldmonitor.app.` is treated as first-party (#6411).
+ * Matching only — ACAO still echoes the raw Origin.
+ */
+function originForAllowlistMatch(origin: string): string {
+  if (!origin) return '';
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.replace(/\.+$/, '');
+    if (!host || host === url.hostname) return origin;
+    url.hostname = host;
+    return url.origin;
+  } catch {
+    return origin;
+  }
+}
+
+/**
+ * Decode Google Translate's hostname rewrite and require the reconstructed
+ * host to be worldmonitor.app / *.worldmonitor.app. Suffix-matching the
+ * encoded label would admit evil--worldmonitor-app.translate.goog (#6411).
+ * Keep in sync with api/_cors.js and workers/api-cors-preflight.
+ */
+function isWorldMonitorGoogleTranslateOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.replace(/\.+$/, '');
+    const suffix = '.translate.goog';
+    if (!host.endsWith(suffix)) return false;
+    const encoded = host.slice(0, -suffix.length);
+    if (!encoded || encoded.includes('.')) return false;
+    const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
+    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+  } catch {
+    return false;
+  }
+}
+
 export function isAllowedOrigin(origin: string): boolean {
-  return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+  if (!origin) return false;
+  if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
+  const candidate = originForAllowlistMatch(origin);
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }
 
 export function getCorsHeaders(req: Request): Record<string, string> {
@@ -71,6 +126,24 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': ALLOWED_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSED_HEADERS,
+    'Access-Control-Max-Age': '3600',
+    'Vary': 'Origin',
+  };
+}
+
+/**
+ * Echo the caller's Origin on an explicit origin_403 so credentials:include
+ * fetches can read the status instead of seeing an opaque network failure.
+ * Refusal bodies only — keep in sync with api/_cors.js (#6411).
+ */
+export function getOriginDeniedCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') || '';
+  return {
+    'Access-Control-Allow-Origin': origin || 'https://worldmonitor.app',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': ALLOWED_HEADERS,

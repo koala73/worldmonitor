@@ -6,6 +6,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '@/app/app-context';
 
+// #6984 / #6677: this file's single test used to pay for the data-loader
+// module graph's transform (data-loader.ts plus the i18n locale glob and
+// generated clients) inside its testTimeout. Under load that lands just
+// over the 5000ms vitest default — a false red on a green tree. Importing
+// the graph at module scope moves the transform cost into the file's
+// import phase, which vitest does not bill to any testTimeout. The
+// AbortSignal.timeout spy below still wraps the RPC deadline that fires
+// during the test, not during this import.
+await import('@/app/data-loader');
+
 describe('FIRMS timeout lock recovery (#6770)', () => {
   it('releases the fires key after the RPC deadline and permits a retry', async () => {
     const timeoutControllers: AbortController[] = [];

@@ -16,7 +16,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 
-import { signGrant, verifyGrant, GrantConfigError } from '../api/_mcp-grant-hmac.ts';
+import { signGrant, verifyGrant, readGrantSecret, GrantConfigError } from '../api/_mcp-grant-hmac.ts';
 import { mintGrantHandler } from '../api/internal/mcp-grant-mint.ts';
 import { grantContextHandler } from '../api/internal/mcp-grant-context.ts';
 
@@ -226,6 +226,23 @@ describe('_mcp-grant-hmac', () => {
       () => signGrant({ userId: 'u', nonce: 'n', exp: FIXED_NOW + 1000 }), // no explicit secret → reads env
       (err) => err instanceof GrantConfigError,
     );
+  });
+
+  it('readGrantSecret missing-secret warn is value-free and does not enumerate MCP_* keys (#7278)', () => {
+    const decoyKey = 'MCP_DECOY_UNUSED_FOR_7278';
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.map(String).join(' '));
+    try {
+      assert.throws(
+        () => readGrantSecret({ [decoyKey]: 'decoy-value-must-not-appear' }),
+        (err) => err instanceof GrantConfigError,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.deepEqual(warnings, ['[mcp-grant-hmac] MCP_PRO_GRANT_HMAC_SECRET is not set']);
+    assert.equal(warnings.join('\n').includes(decoyKey), false);
   });
 });
 

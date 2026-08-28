@@ -52,5 +52,5 @@ jobs:
           # Pick up commits merged since the checkout so the convex=false skip
           # proof diffs the head the API reports, not the SHA the checkout was
           # created at. Same shape as seed-freshness-monitor.yml's drift step.
-          git fetch --quiet origin main || true
+          git fetch --quiet origin main
           node scripts/check-postmerge-deploys.mjs

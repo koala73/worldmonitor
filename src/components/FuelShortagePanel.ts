@@ -19,6 +19,7 @@ import {
   type RawFuelShortageRegistry,
 } from '@/shared/fuel-shortage-registry-store';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
+import { bindActivationKeys } from '@/utils/activation';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -146,7 +147,22 @@ export class FuelShortagePanel extends Panel {
     if (typeof window !== 'undefined') {
       window.addEventListener('energy:open-fuel-shortage-detail', this.openDetailHandler);
     }
+    this.content.addEventListener('click', this.handleContentClick);
+    bindActivationKeys(this.content, '.fs-row');
   }
+
+  private handleContentClick = (e: Event): void => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest('.fs-drawer-close')) {
+      this.closeDetail();
+      return;
+    }
+    const row = target.closest<HTMLTableRowElement>('tr.fs-row');
+    if (!row || !this.content.contains(row)) return;
+    const id = row.dataset.shortageId;
+    if (id) void this.loadDetail(id);
+  };
 
   public destroy(): void {
     if (typeof window !== 'undefined') {
@@ -267,10 +283,10 @@ export class FuelShortagePanel extends Panel {
         <table class="fs-table">
           <thead>
             <tr>
-              <th>Country · Product</th>
-              <th>Since</th>
-              <th>Evidence</th>
-              <th>Severity</th>
+              <th scope="col">Country · Product</th>
+              <th scope="col">Since</th>
+              <th scope="col">Evidence</th>
+              <th scope="col">Severity</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -306,22 +322,13 @@ export class FuelShortagePanel extends Panel {
         .fs-src-type-press { background: #555; color: #ccc; }
       </style>
     `, 'legacy Panel.setContent() migration'));
-
-    const table = this.element?.querySelector('.fs-table') as HTMLTableElement | null;
-    table?.querySelectorAll<HTMLTableRowElement>('tr.fs-row').forEach(tr => {
-      const id = tr.dataset.shortageId;
-      if (!id) return;
-      tr.addEventListener('click', () => void this.loadDetail(id));
-    });
-    const closeBtn = this.element?.querySelector<HTMLButtonElement>('.fs-drawer-close');
-    closeBtn?.addEventListener('click', () => this.closeDetail());
   }
 
   private renderRow(s: FuelShortageEntry): string {
     const glyph = PRODUCT_GLYPH[s.product] ?? '•';
     const quality = deriveShortageEvidenceQuality(s.evidence);
     return `
-      <tr class="fs-row" data-shortage-id="${escapeHtml(s.id)}">
+      <tr class="fs-row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
         <td>
           <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
           <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>

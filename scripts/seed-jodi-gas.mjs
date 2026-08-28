@@ -28,7 +28,7 @@ const inflateRawAsync = promisify(inflateRaw);
 export const CANONICAL_KEY = 'energy:jodi-gas:v1:_countries';
 export const KEY_PREFIX = 'energy:jodi-gas:v1:';
 export const LNG_VULNERABILITY_KEY = 'energy:lng-vulnerability:v1';
-export const GAS_TTL = 3_024_000;
+export const GAS_TTL = 70 * 24 * 3600; // 70 days: 2× 35d cadence so one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
 
 const ZIP_URL = 'https://www.jodidata.org/jodi-publisher/gas/17/GAS_world_NewFormat.zip';
 const CSV_FILENAME = 'STAGING_world_NewFormat.csv';
@@ -371,7 +371,7 @@ if (isMain) {
 
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 57600,
+    maxStaleMin: 40 * 24 * 60, // 40d: 35d cadence + 5d late-publisher grace; must stay below GAS_TTL (#7273)
     sourceVersion: 'jodi-gas-v1',
   });
 }

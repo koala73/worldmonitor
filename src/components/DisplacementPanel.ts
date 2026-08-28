@@ -7,6 +7,7 @@ import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/fol
 import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-countries';
 import { toIso2 } from '@/utils/country-codes';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { bindActivationKeys } from '@/utils/activation';
 
 
 type DisplacementTab = 'origins' | 'hosts';
@@ -46,6 +47,7 @@ export class DisplacementPanel extends Panel {
       }
     });
     this.mountFollowedOnlyChip();
+    bindActivationKeys(this.content, '.disp-row');
   }
 
   private mountFollowedOnlyChip(): void {
@@ -166,7 +168,7 @@ export class DisplacementPanel extends Panel {
           ? `<span class="disp-badge ${badgeCls}">${badgeLabel}</span>`
           : '';
 
-        return `<tr class="disp-row" data-lat="${c.lat || ''}" data-lon="${c.lon || ''}">
+        return `<tr class="disp-row" data-lat="${c.lat || ''}" data-lon="${c.lon || ''}" tabindex="0">
           <td class="disp-name">${escapeHtml(c.name)}</td>
           <td class="disp-status">${badgeHtml}</td>
           <td class="disp-count">${formatPopulation(count)}</td>
@@ -177,9 +179,9 @@ export class DisplacementPanel extends Panel {
         <table class="disp-table">
           <thead>
             <tr>
-              <th>${t('components.displacement.country')}</th>
-              <th>${t('components.displacement.status')}</th>
-              <th>${t('components.displacement.count')}</th>
+              <th scope="col">${t('components.displacement.country')}</th>
+              <th scope="col">${t('components.displacement.status')}</th>
+              <th scope="col">${t('components.displacement.count')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

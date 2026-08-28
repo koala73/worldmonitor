@@ -3,6 +3,9 @@ import type {
     SearchFlightPricesRequest,
     SearchFlightPricesResponse,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import { requireLiveAviationAccess } from './_shared';
 import { generateDemoPrices } from './_providers/demo_prices';
 import { searchPricesTravelpayouts } from './_providers/travelpayouts_data';
 
@@ -31,14 +34,18 @@ function emptyDegraded(
 }
 
 export async function searchFlightPrices(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: SearchFlightPricesRequest,
 ): Promise<SearchFlightPricesResponse> {
+    // Metered route — TRAVELPAYOUTS_API_TOKEN is billed per search, and this
+    // was the fourth metered aviation route the same scraper was spending on
+    // (1,607 of 1,842 anonymous requests over 7 days). Gate before anything else.
+    await requireLiveAviationAccess(ctx.request);
+
     const origin = (req.origin || 'IST').toUpperCase();
     const destination = (req.destination || 'LHR').toUpperCase();
     const depDate = req.departureDate || new Date().toISOString().slice(0, 10);
     const returnDate = req.returnDate || '';
-    const adults = Math.max(1, Math.min(req.adults ?? 1, 9));
     const cabin = req.cabin || 'CABIN_CLASS_ECONOMY';
     const nonstopOnly = req.nonstopOnly ?? false;
     const maxResults = Math.max(1, Math.min(req.maxResults ?? 10, 30));
@@ -58,7 +65,7 @@ export async function searchFlightPrices(
         try {
             const result = await searchPricesTravelpayouts({
                 origin, destination, departureDate: depDate, returnDate,
-                adults, cabin, nonstopOnly, maxResults, currency, market, token,
+                cabin, nonstopOnly, maxResults, currency, market, token,
             });
 
             if (result.quotes.length > 0) {
@@ -81,7 +88,7 @@ export async function searchFlightPrices(
             // #3795 review-2 P2.
             const error: 'upstream_error' | 'no_results' = result.upstreamFailed ? 'upstream_error' : 'no_results';
             if (demoOptIn) {
-                const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
+                const quotes = generateDemoPrices(origin, destination, depDate, cabin, nonstopOnly, maxResults, currency);
                 return {
                     quotes,
                     provider: 'demo',
@@ -95,8 +102,9 @@ export async function searchFlightPrices(
             return emptyDegraded(now, error, 'travelpayouts_data');
         } catch (err) {
             console.warn(`[Aviation] Travelpayouts upstream error: ${err instanceof Error ? err.message : err}`);
+            void captureSilentError(err, { tags: { route: 'aviation/search-flight-prices', step: 'travelpayouts-fetch' } });
             if (demoOptIn) {
-                const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
+                const quotes = generateDemoPrices(origin, destination, depDate, cabin, nonstopOnly, maxResults, currency);
                 return {
                     quotes,
                     provider: 'demo',
@@ -113,7 +121,7 @@ export async function searchFlightPrices(
 
     // No token configured.
     if (demoOptIn) {
-        const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
+        const quotes = generateDemoPrices(origin, destination, depDate, cabin, nonstopOnly, maxResults, currency);
         return {
             quotes,
             provider: 'demo',

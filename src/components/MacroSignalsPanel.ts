@@ -88,7 +88,7 @@ function sparklineSvg(data: number[], width = 80, height = 24, color = '#4fc3f7'
     const y = height - ((v - min) / range) * (height - 2) - 1;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="signal-sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="signal-sparkline" aria-hidden="true"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 function donutGaugeSvg(value: number | null, size = 48): string {
@@ -101,7 +101,7 @@ function donutGaugeSvg(value: number | null, size = 48): string {
   if (v >= 75) color = '#4caf50';
   else if (v >= 50) color = '#ff9800';
   else if (v >= 25) color = '#ff5722';
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="fg-donut">
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="fg-donut" role="img" aria-label="Fear and greed index: ${v}">
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="5"/>
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="5" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" transform="rotate(-90 ${size / 2} ${size / 2})"/>
     <text x="${size / 2}" y="${size / 2 + 4}" text-anchor="middle" fill="${color}" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1))" font-weight="bold">${v}</text>

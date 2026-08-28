@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Check, ShieldCheck, ArrowRight, Zap, Loader2 } from 'lucide-react';
 import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../services/checkout';
+import { createTimeoutSignal } from '../services/timeout-signal';
+import { CheckoutConsent } from './CheckoutConsent';
 import { t, tArray } from '../i18n';
 
 // Static fallback from build-time generation (used while fetching live prices)
@@ -33,7 +35,7 @@ function usePricingData(): Tier[] {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(CATALOG_API, { signal: AbortSignal.timeout(5000) })
+    fetch(CATALOG_API, { signal: createTimeoutSignal(5000) })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (!cancelled && data?.tiers?.length) {
@@ -222,7 +224,11 @@ function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }
   // Sibling tiers stay clickable; if the user changes their
   // mind mid-flow, their next click simply updates the
   // pending intent. The pricing page is never hard-locked.
+  // Assent sits immediately above the button, inside the same fragment, so a
+  // card can never render the CTA without it (#6976).
   return (
+    <>
+    <CheckoutConsent />
     <button
       onClick={() => onCheckout(cta.productId)}
       disabled={isDisabled}
@@ -246,6 +252,7 @@ function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }
         </>
       )}
     </button>
+    </>
   );
 }
 

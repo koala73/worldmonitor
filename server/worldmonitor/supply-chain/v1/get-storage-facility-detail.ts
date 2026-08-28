@@ -30,7 +30,8 @@ export async function getStorageFacilityDetail(
     };
   }
 
-  const raw = (await getCachedJson(STORAGE_FACILITIES_KEY)) as RawRegistry | null;
+  // Seeder writes via raw key (no env-prefix) — match it on read.
+  const raw = (await getCachedJson(STORAGE_FACILITIES_KEY, true)) as RawRegistry | null;
   const entry = raw?.facilities?.[req.facilityId];
   if (!entry) {
     return {

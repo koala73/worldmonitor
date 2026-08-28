@@ -1,0 +1,446 @@
+{
+  "version": "webmcp_eval_v1",
+  "description": "Offline WebMCP tool-selection and execution-trace contract. No case invokes an external model.",
+  "toolInventory": {
+    "imperative": [
+      "openCountryBrief",
+      "openSearch",
+      "get_dashboard_context",
+      "open_dashboard_panel",
+      "set_map_view",
+      "set_map_layers",
+      "search_dashboard",
+      "open_search_result"
+    ],
+    "declarative": [
+      "search_procurement"
+    ]
+  },
+  "symbolSyntax": "$steps[<zero-based-step-index>].results[<zero-based-result-index>].key",
+  "cases": [
+    {
+      "id": "dashboard_context_direct",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "Read the current dashboard context and tell me which map layers and panels are active.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_dashboard_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_context_ambiguous",
+      "category": "dashboard_context",
+      "promptKind": "ambiguous",
+      "prompt": "What am I looking at right now?",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_dashboard_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_panel_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the markets panel.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "markets"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_controls_alternate_order",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the strategic-risk panel and focus the map on Europe.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "strategic-risk"
+            }
+          },
+          {
+            "tool": "set_map_view",
+            "arguments": {
+              "view": "eu"
+            }
+          }
+        ],
+        [
+          {
+            "tool": "set_map_view",
+            "arguments": {
+              "view": "eu"
+            }
+          },
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "strategic-risk"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_layers_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Enable the earthquakes layer and disable the flights layer.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "earthquakes": true,
+                "flights": false
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "country_brief_direct",
+      "category": "country_brief",
+      "promptKind": "direct",
+      "prompt": "Open the country intelligence brief for Iran.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "openCountryBrief",
+            "arguments": {
+              "iso2": "IR"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "country_brief_ambiguous",
+      "category": "country_brief",
+      "promptKind": "ambiguous",
+      "prompt": "Take me to Germany's country view.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "openCountryBrief",
+            "arguments": {
+              "iso2": "DE"
+            }
+          }
+        ],
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "Germany"
+            }
+          },
+          {
+            "tool": "open_search_result",
+            "arguments": {
+              "resultKey": "$steps[0].results[0].key"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_search_list_only",
+      "category": "search_selection",
+      "promptKind": "direct",
+      "prompt": "Find dashboard items about shipping disruptions and list the results, but do not open anything.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "shipping disruptions"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_search_and_select",
+      "category": "search_selection",
+      "promptKind": "direct",
+      "prompt": "Search the dashboard for cyber threats, return at most five matches, and open the first result.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "cyber threats",
+              "scope": "all",
+              "limit": 5
+            }
+          },
+          {
+            "tool": "open_search_result",
+            "arguments": {
+              "resultKey": "$steps[0].results[0].key"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "procurement_direct",
+      "category": "procurement",
+      "promptKind": "direct",
+      "prompt": "Search official procurement opportunities for cloud services in Canada, technology relevant only.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_procurement",
+            "arguments": {
+              "query": "cloud services",
+              "country": "CA",
+              "source": "canada-buys",
+              "sort": "relevance",
+              "techRelevant": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "procurement_ambiguous",
+      "category": "procurement",
+      "promptKind": "ambiguous",
+      "prompt": "Find the newest EU government tenders for cybersecurity.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_procurement",
+            "arguments": {
+              "query": "cybersecurity",
+              "source": "ted",
+              "sort": "newest"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "no_tool_explanation_negative",
+      "category": "negative",
+      "promptKind": "direct",
+      "prompt": "Explain what a country brief is in one sentence, but do not open or inspect anything.",
+      "expectedPlans": [
+        []
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "search_selection_stale_key_failure",
+      "category": "search_selection",
+      "promptKind": "direct",
+      "prompt": "Search for Iran sanctions and open the first result.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "Iran sanctions"
+            }
+          },
+          {
+            "tool": "open_search_result",
+            "arguments": {
+              "resultKey": "$steps[0].results[0].key"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "search_procurement"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "open_search_result",
+        "reason": "invalid_or_expired_key",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "openCountryBrief",
+          "openSearch",
+          "open_dashboard_panel"
+        ]
+      }
+    },
+    {
+      "id": "dashboard_control_entitlement_failure",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Read the dashboard context, open the strategic-risk panel, then focus the map on MENA.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_dashboard_context",
+            "arguments": {}
+          },
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "strategic-risk"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "open_dashboard_panel",
+        "reason": "panel_not_entitled",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "set_map_view"
+        ]
+      }
+    },
+    {
+      "id": "procurement_unavailable_failure",
+      "category": "procurement",
+      "promptKind": "direct",
+      "prompt": "Search official procurement opportunities for solar equipment in Australia.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_procurement",
+            "arguments": {
+              "query": "solar equipment",
+              "country": "AU",
+              "sort": "closing_soon"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result"
+      ],
+      "failure": {
+        "atStep": 1,
+        "tool": "search_procurement",
+        "reason": "panel_unavailable",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "openSearch",
+          "search_dashboard"
+        ]
+      }
+    }
+  ]
+}

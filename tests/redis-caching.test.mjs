@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createTempDir, removeTempDir } from './helpers/temp-dir.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -76,7 +77,7 @@ async function importPatchedTsModule(relPath, replacements) {
     return targetPath ? `from '${pathToFileURL(targetPath).href}'` : match;
   });
 
-  const tempDir = mkdtempSync(join(tmpdir(), 'wm-ts-module-'));
+  const tempDir = createTempDir('wm-ts-module-');
   const tempPath = join(tempDir, basename(sourcePath));
   writeFileSync(tempPath, source);
 
@@ -84,7 +85,7 @@ async function importPatchedTsModule(relPath, replacements) {
   return {
     module,
     cleanup() {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     },
   };
 }
@@ -815,6 +816,203 @@ describe('negative-result caching', { concurrency: 1 }, () => {
       assert.equal(fetcherCalls, 1, 'fetcher should NOT run again while the sentinel is live');
     } finally {
       globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('cachedFetchJson ignores WithMeta-only fields on a superset options object', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      USAGE_TELEMETRY: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+
+    const writes = [];
+    const warnings = [];
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        writes.push(parseSetRequest(url, init));
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+    console.warn = (...args) => { warnings.push(args); };
+
+    let shouldFetchCalls = 0;
+    let callerLocalChecks = 0;
+    let usageWaits = 0;
+    const supersetOpts = {
+      timeoutMs: 500,
+      cacheFetcherErrors: true,
+      shouldFetch: () => {
+        shouldFetchCalls += 1;
+        return true;
+      },
+      cacheFailures: false,
+      inflightKey: 'plain:test:shared-inflight-key',
+      isCallerLocalError: () => {
+        callerLocalChecks += 1;
+        return true;
+      },
+      usage: {
+        provider: 'plain-helper-regression',
+        ctx: {
+          waitUntil() {
+            usageWaits += 1;
+          },
+        },
+      },
+    };
+
+    try {
+      let releaseFetchers;
+      const fetcherGate = new Promise((resolvePromise) => {
+        releaseFetchers = resolvePromise;
+      });
+      const first = redis.cachedFetchJson(
+        'plain:test:first',
+        300,
+        async () => {
+          await fetcherGate;
+          return { value: 'first' };
+        },
+        60,
+        supersetOpts,
+      );
+      const second = redis.cachedFetchJson(
+        'plain:test:second',
+        300,
+        async () => {
+          await fetcherGate;
+          return { value: 'second' };
+        },
+        60,
+        supersetOpts,
+      );
+
+      await new Promise((resolvePromise) => setImmediate(resolvePromise));
+      releaseFetchers();
+      const [firstResult, secondResult] = await Promise.all([first, second]);
+
+      assert.deepEqual(firstResult, { value: 'first' });
+      assert.deepEqual(
+        secondResult,
+        { value: 'second' },
+        'plain calls with distinct keys must not share a WithMeta inflightKey',
+      );
+
+      const nullResult = await redis.cachedFetchJson(
+        'plain:test:null',
+        300,
+        async () => null,
+        60,
+        supersetOpts,
+      );
+      assert.equal(nullResult, null);
+
+      const rejection = new Error('plain superset rejection');
+      await assert.rejects(
+        () => redis.cachedFetchJson(
+          'plain:test:rejection',
+          300,
+          async () => {
+            throw rejection;
+          },
+          60,
+          supersetOpts,
+        ),
+        (error) => {
+          assert.strictEqual(error, rejection, 'plain helper must propagate the original fetcher error');
+          return true;
+        },
+      );
+
+      const writesByKey = new Map(writes.map((write) => [write.key, write]));
+      const nullWrite = writesByKey.get('plain:test:null');
+      const rejectionWrite = writesByKey.get('plain:test:rejection');
+      assert.ok(nullWrite, 'plain null results must keep legacy negative caching');
+      assert.ok(rejectionWrite, 'plain fetcher errors must keep legacy negative caching');
+      assert.equal(JSON.parse(nullWrite.value), '__WM_NEG__');
+      assert.equal(JSON.parse(rejectionWrite.value), '__WM_NEG__');
+      assert.equal(shouldFetchCalls, 0, 'plain helper must not evaluate WithMeta shouldFetch');
+      assert.equal(callerLocalChecks, 0, 'plain helper must not evaluate WithMeta isCallerLocalError');
+      assert.equal(usageWaits, 0, 'plain helper must not emit WithMeta usage telemetry');
+      assert.deepEqual(warnings, [[
+        '[redis] cachedFetchJson fetcher failed for "plain:test:rejection":',
+        'plain superset rejection',
+      ]]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      restoreEnv();
+    }
+  });
+
+  it('keeps rejected-fetcher warnings attributed to each public cache helper', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+    console.warn = (...args) => { warnings.push(args); };
+
+    try {
+      const plainError = new Error('plain helper rejected');
+      await assert.rejects(
+        () => redis.cachedFetchJson(
+          'warn:test:plain',
+          300,
+          async () => {
+            throw plainError;
+          },
+        ),
+        (error) => {
+          assert.strictEqual(error, plainError);
+          return true;
+        },
+      );
+
+      const metaError = new Error('meta helper rejected');
+      await assert.rejects(
+        () => redis.cachedFetchJsonWithMeta(
+          'warn:test:meta',
+          300,
+          async () => {
+            throw metaError;
+          },
+        ),
+        (error) => {
+          assert.strictEqual(error, metaError);
+          return true;
+        },
+      );
+
+      assert.deepEqual(warnings, [
+        ['[redis] cachedFetchJson fetcher failed for "warn:test:plain":', 'plain helper rejected'],
+        ['[redis] cachedFetchJsonWithMeta fetcher failed for "warn:test:meta":', 'meta helper rejected'],
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
       restoreEnv();
     }
   });
@@ -1673,11 +1871,21 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     return { request: new Request(url) };
   }
 
-  function installIntelFetchMock({ store, setKeys, userPrompts, counters }) {
+  function installIntelFetchMock({ store, setKeys, userPrompts, counters, revoked = [] }) {
     globalThis.fetch = async (url, init = {}) => {
       const raw = String(url);
       if (raw === 'https://api.groq.com') {
         return jsonResponse({});
+      }
+      // #7084: the shared country context now reads the operator revocation
+      // set before grounding, so every reader of news:digest:v1:* filters the
+      // same way. Without this branch the mock threw, the read reported
+      // unreadable, and grounding fail-closed to empty.
+      if (raw.includes('/pipeline')) {
+        const commands = JSON.parse(String(init.body || '[]'));
+        return jsonResponse(commands.map(([verb]) => (
+          String(verb).toUpperCase() === 'SMEMBERS' ? { result: revoked } : { result: null }
+        )));
       }
       if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
         counters.groqCalls += 1;
@@ -1711,6 +1919,61 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     VERCEL_ENV: undefined,
     VERCEL_GIT_COMMIT_SHA: undefined,
   };
+
+  it('an operator-revoked URL never reaches the country brief (#7084)', async () => {
+    // The digest body is stored UNFILTERED on purpose (a lifted revocation has
+    // to restore its items), so every reader of news:digest:v1:* must apply the
+    // suppression set itself. This handler read that key directly and did not,
+    // which published a revoked URL in the brief's sources[] -- and the brief
+    // is cached for six hours, so it outlived the digest's own TTL.
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    store.set('news:digest:v1:full:en', JSON.stringify({
+      categories: {
+        conflict: {
+          items: [
+            { title: 'Israel retracted report', source: 'Reuters', link: 'https://example.com/il-revoked', pubDate: '2026-07-05T06:00:00.000Z' },
+            { title: 'Israel announces new security framework', source: 'Reuters', link: 'https://example.com/il-ok', pubDate: '2026-07-05T06:00:00.000Z' },
+          ],
+        },
+      },
+    }));
+    const setKeys = [];
+    const userPrompts = [];
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({
+      store, setKeys, userPrompts, counters,
+      revoked: ['https://example.com/il-revoked'],
+    });
+
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL'),
+        { countryCode: 'IL' },
+      );
+      assert.ok(
+        !userPrompts[0]?.includes('Israel retracted report'),
+        'a revoked headline must not reach the LLM prompt',
+      );
+      assert.ok(
+        !userPrompts[0]?.includes('il-revoked'),
+        'a revoked URL must not reach the LLM prompt',
+      );
+      assert.equal(
+        out.sources.some((entry) => String(entry?.url).includes('il-revoked')), false,
+        'a revoked URL must not be published in the brief sources',
+      );
+      // Positive control: suppression must be surgical, not a blanket wipe.
+      assert.match(userPrompts[0], /Israel announces new security framework/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
 
   it('anon callers share one digest-grounded cache entry regardless of client context', async () => {
     const { module, cleanup } = await importCountryIntelBrief();

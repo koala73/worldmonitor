@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  aviationStackBudgetMonth,
+  aviationStackBudgetCycle,
   avstackBudgetKey as serverAvstackBudgetKey,
 } from '../server/worldmonitor/aviation/v1/_avstack-budget.ts';
 import { avstackBudgetKey as seederAvstackBudgetKey } from '../scripts/seed-aviation.mjs';
@@ -127,11 +127,15 @@ describe('aviation budget: call sites are wired to the cap', () => {
   it('list-airport-flights reserves budget and quantizes the limit out of the cache key', () => {
     const src = read('server/worldmonitor/aviation/v1/list-airport-flights.ts');
     assert.match(src, /reserveAviationStackCalls\(1, 'request'\)/);
-    assert.match(src, /aviationStackBudgetMonth\(\)/);
+    assert.match(src, /aviationStackBudgetCycle\(\)/);
     // Cache key must NOT vary by limit (was the spend-multiplying explosion).
-    assert.doesNotMatch(src, /aviation:flights:\$\{airport\}:\$\{direction\}:\$\{limit\}/);
-    assert.match(src, /aviation:flights:\$\{airport\}:\$\{direction\}:v2:\$\{aviationStackBudgetMonth\(\)\}/);
-    // Upstream always fetches a fixed page, then slices in memory.
+    assert.doesNotMatch(src, /aviation:flights:\$\{airport\}:\$\{[^}]*\}:\$\{limit\}/);
+    // Keyed by LEG, not by the caller's requested direction: three of the four
+    // directions issue the same dep_iata query, so keying on direction stored
+    // duplicate departure payloads under two extra paid keys.
+    assert.match(src, /aviation:flights:\$\{airport\}:\$\{leg\}:v3:\$\{aviationStackBudgetCycle\(\)\}/);
+    assert.doesNotMatch(src, /aviation:flights:\$\{airport\}:\$\{direction\}/);
+    // Upstream always fetches a fixed page per leg, then slices in memory.
     assert.match(src, /limit:\s*String\(UPSTREAM_PAGE\)/);
     assert.match(src, /flights\.slice\(0, limit\)/);
   });
@@ -139,7 +143,7 @@ describe('aviation budget: call sites are wired to the cap', () => {
   it('get-flight-status reserves budget before the upstream call and negative-caches relay errors', () => {
     const src = read('server/worldmonitor/aviation/v1/get-flight-status.ts');
     assert.match(src, /reserveAviationStackCalls\(1, 'request'\)/);
-    assert.match(src, /aviation:status:\$\{flightNumber\}:\$\{date\}:\$\{origin\}:v1:\$\{aviationStackBudgetMonth\(\)\}/);
+    assert.match(src, /aviation:status:\$\{flightNumber\}:\$\{date\}:\$\{origin\}:v1:\$\{aviationStackBudgetCycle\(\)\}/);
     assert.match(src, /Flight status relay fetch failed/);
     assert.match(src, /unavailableSource = 'error';\n\s+return null;/);
   });
@@ -148,10 +152,10 @@ describe('aviation budget: call sites are wired to the cap', () => {
     const src = read('scripts/seed-aviation.mjs');
     assert.match(src, /reserveAviationStackBudget\(AVIATIONSTACK_LIST\.length\)/);
     // Same Redis key format as the server helper — they MUST share the counter.
-    assert.match(src, /aviation:avstack:calls:\$\{ym\}/);
+    assert.match(src, /aviation:avstack:calls:\$\{cycle\}/);
   });
 
-  it('server and seeder count against the identical monthly budget key', () => {
+  it('server and seeder count against the identical cycle budget key', () => {
     // Drift here splits the shared ceiling into two independent counters and
     // silently doubles AviationStack spend. Run both key builders over the same
     // instants instead of grepping both files for `getUTCMonth()` — which
@@ -166,24 +170,96 @@ describe('aviation budget: call sites are wired to the cap', () => {
     }
   });
 
-  it('rolls the budget key over on the UTC month boundary, not the local one', () => {
+  it('rolls the budget key on the billing anniversary, not the calendar month', () => {
+    // The bug this replaces: the counter keyed on <YYYY-MM> while AviationStack
+    // invoices the 25th → 24th. A calendar key keeps refusing calls into the
+    // first days of a fresh allowance AND zeroes itself a week into a cycle
+    // that is already partly spent — wrong in both directions.
+    for (const key of [serverAvstackBudgetKey, seederAvstackBudgetKey]) {
+      // The calendar month turns over here; the cycle must NOT.
+      assert.equal(key(new Date('2026-07-31T23:59:59.999Z')), 'aviation:avstack:calls:2026-07-25');
+      assert.equal(key(new Date('2026-08-01T00:00:00.000Z')), 'aviation:avstack:calls:2026-07-25');
+      // The cycle turns over here; the calendar month does not.
+      assert.equal(key(new Date('2026-08-24T23:59:59.999Z')), 'aviation:avstack:calls:2026-07-25');
+      assert.equal(key(new Date('2026-08-25T00:00:00.000Z')), 'aviation:avstack:calls:2026-08-25');
+    }
+  });
+
+  it('rolls on the UTC anniversary, not the local one', () => {
     // A local-time boundary would roll early or late for the deployment region
-    // and hand a fresh month's quota to the tail of the previous month.
-    const lastInstantOfJan = new Date('2026-01-31T23:59:59.999Z');
-    const firstInstantOfFeb = new Date('2026-02-01T00:00:00.000Z');
-    assert.equal(serverAvstackBudgetKey(lastInstantOfJan), 'aviation:avstack:calls:2026-01');
-    assert.equal(serverAvstackBudgetKey(firstInstantOfFeb), 'aviation:avstack:calls:2026-02');
-    assert.equal(seederAvstackBudgetKey(lastInstantOfJan), 'aviation:avstack:calls:2026-01');
-    assert.equal(seederAvstackBudgetKey(firstInstantOfFeb), 'aviation:avstack:calls:2026-02');
+    // and hand a fresh cycle's quota to the tail of the previous one.
+    assert.equal(serverAvstackBudgetKey(new Date('2026-08-24T23:59:59.999Z')), 'aviation:avstack:calls:2026-07-25');
+    assert.equal(seederAvstackBudgetKey(new Date('2026-08-24T23:59:59.999Z')), 'aviation:avstack:calls:2026-07-25');
   });
 
-  it('zero-pads single-digit months so keys sort chronologically', () => {
-    assert.equal(aviationStackBudgetMonth(new Date('2026-09-15T00:00:00Z')), '2026-09');
+  it('carries a cycle that opened in the previous year back across January', () => {
+    // Date.UTC(y, -1, 25) must normalise to the previous December, not throw or
+    // clamp — otherwise every January restarts the counter mid-cycle.
+    for (const key of [serverAvstackBudgetKey, seederAvstackBudgetKey]) {
+      assert.equal(key(new Date('2026-01-24T12:00:00Z')), 'aviation:avstack:calls:2025-12-25');
+      assert.equal(key(new Date('2026-01-25T00:00:00Z')), 'aviation:avstack:calls:2026-01-25');
+    }
   });
 
-  it('request cache keys carry the budget month so denials expire at rollover', () => {
-    assert.match(read('server/worldmonitor/aviation/v1/list-airport-flights.ts'), /aviationStackBudgetMonth\(\)/);
-    assert.match(read('server/worldmonitor/aviation/v1/get-flight-status.ts'), /aviationStackBudgetMonth\(\)/);
+  it('zero-pads single-digit months and days so keys sort chronologically', () => {
+    assert.equal(aviationStackBudgetCycle(new Date('2026-09-26T00:00:00Z')), '2026-09-25');
+    assert.equal(aviationStackBudgetCycle(new Date('2026-10-01T00:00:00Z')), '2026-09-25');
+  });
+
+  it('opens a cycle in February, which an anniversary above 28 would skip', () => {
+    // A reset day of 29-31 has no February instant to land on. Both sides clamp
+    // to the 25th default rather than silently running a double-length cycle.
+    const prior = process.env.AVIATIONSTACK_CYCLE_RESET_DAY;
+    process.env.AVIATIONSTACK_CYCLE_RESET_DAY = '31';
+    try {
+      for (const key of [serverAvstackBudgetKey, seederAvstackBudgetKey]) {
+        assert.equal(key(new Date('2026-02-26T00:00:00Z')), 'aviation:avstack:calls:2026-02-25');
+      }
+    } finally {
+      if (prior === undefined) delete process.env.AVIATIONSTACK_CYCLE_RESET_DAY;
+      else process.env.AVIATIONSTACK_CYCLE_RESET_DAY = prior;
+    }
+  });
+
+  it('honours a configured anniversary day on both sides', () => {
+    const prior = process.env.AVIATIONSTACK_CYCLE_RESET_DAY;
+    process.env.AVIATIONSTACK_CYCLE_RESET_DAY = '5';
+    try {
+      for (const key of [serverAvstackBudgetKey, seederAvstackBudgetKey]) {
+        assert.equal(key(new Date('2026-08-04T23:59:59Z')), 'aviation:avstack:calls:2026-07-05');
+        assert.equal(key(new Date('2026-08-05T00:00:00Z')), 'aviation:avstack:calls:2026-08-05');
+      }
+    } finally {
+      if (prior === undefined) delete process.env.AVIATIONSTACK_CYCLE_RESET_DAY;
+      else process.env.AVIATIONSTACK_CYCLE_RESET_DAY = prior;
+    }
+  });
+
+  it('sizes both default ceilings under the 50k plan, with the seeder reserved', () => {
+    // The old defaults (130k hard / 85k request) were sized for a 135k plan the
+    // account does not have, so the cap never fired. These must stay under the
+    // real plan, and the request ceiling must stay well below the hard one or
+    // panel traffic starves the curated seeder.
+    const src = read('server/worldmonitor/aviation/v1/_avstack-budget.ts');
+    const hardCap = Number(/AVIATIONSTACK_MONTHLY_BUDGET', ([\d_]+)\)/.exec(src)?.[1].replace(/_/g, ''));
+    const requestCap = Number(/AVIATIONSTACK_REQUEST_BUDGET', ([\d_]+)\)/.exec(src)?.[1].replace(/_/g, ''));
+    const seederDefault = Number(
+      /AVIATIONSTACK_MONTHLY_BUDGET', ([\d_]+)\)/.exec(read('scripts/seed-aviation.mjs'))?.[1].replace(/_/g, ''),
+    );
+
+    assert.ok(hardCap > 0 && hardCap <= 50_000, `hard cap ${hardCap} must sit under the 50,000/cycle plan`);
+    assert.equal(seederDefault, hardCap, 'seeder mirror must default to the same hard cap');
+    assert.ok(requestCap < hardCap, `request ceiling ${requestCap} must leave the seeder headroom under ${hardCap}`);
+    // 56 airports x 24 sweeps x 30d — what the seeder structurally needs.
+    assert.ok(
+      hardCap - requestCap >= 40_320,
+      `only ${hardCap - requestCap} reserved for the seeder, which needs ~40,320/cycle`,
+    );
+  });
+
+  it('request cache keys carry the budget cycle so denials expire at rollover', () => {
+    assert.match(read('server/worldmonitor/aviation/v1/list-airport-flights.ts'), /aviationStackBudgetCycle\(\)/);
+    assert.match(read('server/worldmonitor/aviation/v1/get-flight-status.ts'), /aviationStackBudgetCycle\(\)/);
   });
 
   it('seeder freshness gate is clamped below the health staleness window', () => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -21,6 +21,7 @@ import {
   resolveChinaParityExitCode,
   summarizeChinaDecisionGroups,
 } from '../scripts/audit-china-decision-parity.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const ROUTE = '/api/intelligence/v1/get-china-decision-signals';
@@ -629,7 +630,7 @@ describe('China decision-signal audit CLI (#5643)', () => {
     // no-ops through a symlink: exit 0, zero output, indistinguishable from a
     // clean audit. `/tmp` -> `/private/tmp` on macOS makes that a normal way to
     // invoke a script, not a corner case.
-    const base = realpathSync(mkdtempSync(join(tmpdir(), 'parity-mainguard-')));
+    const base = realpathSync(createTempDir('parity-mainguard-'));
     const realDir = join(base, 'real');
     mkdirSync(realDir);
     const realScript = join(realDir, 'audit.mjs');

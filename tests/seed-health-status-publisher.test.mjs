@@ -18,6 +18,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const publisher = resolve(repoRoot, 'scripts/update-seed-health-statuses.mjs');
 const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ANCESTOR = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const STATUS_ANCHOR = 'cccccccccccccccccccccccccccccccccccccccc';
 const WRITER = 'github-actions[bot]';
 
 const failure = {
@@ -64,7 +65,10 @@ function runPublisher({
   observedAt,
   headStatuses = [],
   ancestorStatuses = [],
+  statusStatuses = [],
   observationOverride,
+  statusSha = HEAD,
+  ancestryValid = true,
 }) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-status-publisher-'));
   const fakeBin = join(tempDir, 'bin');
@@ -77,11 +81,20 @@ function runPublisher({
     writeFileSync(reportPath, JSON.stringify(observationOverride ?? observation(blocking, { acknowledged, observedAt })));
     writeFileSync(join(statusesDir, `${HEAD}.json`), JSON.stringify(headStatuses));
     writeFileSync(join(statusesDir, `${ANCESTOR}.json`), JSON.stringify(ancestorStatuses));
+    writeFileSync(join(statusesDir, `${STATUS_ANCHOR}.json`), JSON.stringify(statusStatuses));
     writeFileSync(postLog, '');
     writeFileSync(join(fakeBin, 'git'), [
       '#!/bin/sh',
-      'case "$1" in log) ;; *) exit 90 ;; esac',
-      `printf '%s\\n%s\\n' '${HEAD}' '${ANCESTOR}'`,
+      'case "$1" in',
+      '  log)',
+      `    printf '%s\\n%s\\n' '${HEAD}' '${ANCESTOR}'`,
+      '    ;;',
+      '  merge-base)',
+      '    [ "$2" = "--is-ancestor" ] || exit 91',
+      '    [ "$FAKE_ANCESTRY_VALID" = "true" ]',
+      '    ;;',
+      '  *) exit 90 ;;',
+      'esac',
       '',
     ].join('\n'));
     writeFileSync(join(fakeBin, 'gh'), [
@@ -113,13 +126,20 @@ function runPublisher({
     chmodSync(join(fakeBin, 'git'), 0o755);
     chmodSync(join(fakeBin, 'gh'), 0o755);
 
-    const result = spawnSync(process.execPath, [publisher, '--sha', HEAD, '--report', reportPath], {
+    const args = [
+      publisher,
+      '--sha', HEAD,
+      '--status-sha', statusSha,
+      '--report', reportPath,
+    ];
+    const result = spawnSync(process.execPath, args, {
       cwd: repoRoot,
       encoding: 'utf8',
       env: {
         ...process.env,
         FAKE_POST_LOG: postLog,
         FAKE_STATUS_DIR: statusesDir,
+        FAKE_ANCESTRY_VALID: String(ancestryValid),
         GH_TOKEN: 'test-token',
         GITHUB_REPOSITORY: 'koala73/worldmonitor',
         SEED_STATUS_WRITER_LOGIN: WRITER,
@@ -133,6 +153,90 @@ function runPublisher({
 }
 
 describe('seed health status publisher', () => {
+  it('keeps an unchanged incident off a new monitored revision', () => {
+    const firstAt = checkedAt(-120_000);
+    const repeated = runPublisher({
+      blocking: [{ name: 'example', status: 'STALE_SEED', seedAgeMin: 1_500 }],
+      observedAt: checkedAt(-60_000),
+      statusStatuses: [aggregate(firstAt), trusted(failure)],
+      statusSha: STATUS_ANCHOR,
+    });
+
+    assert.equal(repeated.status, 0, repeated.stderr);
+    assert.match(repeated.stdout, new RegExp(`"observedSha": "${HEAD}"`));
+    assert.match(repeated.stdout, new RegExp(`"statusSha": "${STATUS_ANCHOR}"`));
+    assert.doesNotMatch(repeated.posts, new RegExp(`/statuses/${HEAD}`));
+    assert.equal(repeated.posts, '', 'an unchanged incident must not append another anchor status');
+  });
+
+  it('posts recovery only to an initialized operational anchor', () => {
+    const firstAt = checkedAt(-120_000);
+    const recovered = runPublisher({
+      blocking: [],
+      observedAt: checkedAt(-60_000),
+      statusStatuses: [aggregate(firstAt), trusted(failure)],
+      statusSha: STATUS_ANCHOR,
+    });
+
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.match(recovered.posts, new RegExp(`/statuses/${STATUS_ANCHOR}`));
+    assert.doesNotMatch(recovered.posts, new RegExp(`/statuses/${HEAD}`));
+    assert.match(recovered.posts, /context=ingestion\/seed\/example/);
+    assert.match(recovered.posts, /state=success/);
+    assert.match(recovered.posts, /description=recovered; no longer reported/);
+    assert.match(recovered.posts, /context=ingestion\/seed\/acceptance/);
+  });
+
+  it('imports an unchanged legacy incident onto an empty anchor without alerting again', () => {
+    const firstAt = checkedAt(-120_000);
+    const migrated = runPublisher({
+      blocking: [{ name: 'example', status: 'STALE_SEED' }],
+      observedAt: checkedAt(-60_000),
+      ancestorStatuses: [aggregate(firstAt), trusted(failure)],
+      statusSha: STATUS_ANCHOR,
+    });
+
+    assert.equal(migrated.status, 0, migrated.stderr);
+    assert.match(migrated.stdout, /"newOrChangedFailures": \[\]/);
+    assert.match(migrated.stdout, new RegExp(`"importedFromSha": "${ANCESTOR}"`));
+    assert.match(migrated.posts, new RegExp(`/statuses/${STATUS_ANCHOR}`));
+    assert.doesNotMatch(migrated.posts, new RegExp(`/statuses/${HEAD}`));
+    assert.match(migrated.posts, /context=ingestion\/seed\/example/);
+    assert.match(migrated.posts, /context=ingestion\/seed\/acceptance/);
+  });
+
+  it('imports a legacy recovery onto an empty anchor without touching the monitored revision', () => {
+    const firstAt = checkedAt(-120_000);
+    const recovered = runPublisher({
+      blocking: [],
+      observedAt: checkedAt(-60_000),
+      ancestorStatuses: [aggregate(firstAt), trusted(failure)],
+      statusSha: STATUS_ANCHOR,
+    });
+
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.match(recovered.stdout, /"newOrChangedFailures": \[\]/);
+    assert.match(recovered.stdout, new RegExp(`"importedFromSha": "${ANCESTOR}"`));
+    assert.match(recovered.posts, new RegExp(`/statuses/${STATUS_ANCHOR}`));
+    assert.doesNotMatch(recovered.posts, new RegExp(`/statuses/${HEAD}`));
+    assert.match(recovered.posts, /context=ingestion\/seed\/example/);
+    assert.match(recovered.posts, /state=success/);
+    assert.match(recovered.posts, /description=recovered; no longer reported/);
+    assert.match(recovered.posts, /context=ingestion\/seed\/acceptance/);
+  });
+
+  it('fails closed when the status anchor is outside the monitored lineage', () => {
+    const result = runPublisher({
+      blocking: [],
+      statusSha: STATUS_ANCHOR,
+      ancestryValid: false,
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /is not an ancestor of monitored revision/);
+    assert.equal(result.posts, '');
+  });
+
   it('fails once for a new incident, stays quiet for the same incident, and posts recovery', () => {
     const currentProblem = [{ name: 'example', status: 'STALE_SEED', seedAgeMin: 999 }];
     const firstAt = checkedAt(-120_000);
@@ -185,15 +289,50 @@ describe('seed health status publisher', () => {
     assert.equal(result.posts, '');
   });
 
-  it('does not accept an old aggregate marker beneath a partial status projection', () => {
+  it('repairs a partial anchor projection without re-alerting the same incident', () => {
+    const firstAt = checkedAt(-120_000);
     const result = runPublisher({
       blocking: [{ name: 'example', status: 'STALE_SEED' }],
-      // GitHub returns newest first. The source status is newer than the
-      // aggregate marker, so the earlier write did not complete.
-      headStatuses: [trusted(failure), aggregate(checkedAt(-60_000))],
+      observedAt: checkedAt(-60_000),
+      // GitHub accepted the new failure status, then the workflow stopped
+      // before posting the anchor completion marker.
+      statusStatuses: [trusted(failure)],
+      ancestorStatuses: [aggregate(firstAt)],
+      statusSha: STATUS_ANCHOR,
     });
-    assert.equal(result.status, 1, result.stderr);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /"anchorState": "partial"/);
+    assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+    assert.match(result.posts, new RegExp(`/statuses/${STATUS_ANCHOR}`));
+    assert.doesNotMatch(result.posts, new RegExp(`/statuses/${HEAD}`));
     assert.match(result.posts, /context=ingestion\/seed\/example/);
+    assert.match(result.posts, /context=ingestion\/seed\/acceptance/);
+  });
+
+  it('finishes a partial anchor recovery with the completion marker only', () => {
+    const firstAt = checkedAt(-120_000);
+    const result = runPublisher({
+      blocking: [],
+      observedAt: checkedAt(-60_000),
+      // The recovery source status was accepted after the last complete
+      // projection, but its final acceptance marker was not.
+      statusStatuses: [
+        trusted({
+          context: 'ingestion/seed/example',
+          state: 'success',
+          description: 'recovered; no longer reported',
+        }),
+        aggregate(firstAt),
+        trusted(failure),
+      ],
+      statusSha: STATUS_ANCHOR,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /"anchorState": "partial"/);
+    assert.match(result.posts, new RegExp(`/statuses/${STATUS_ANCHOR}`));
+    assert.doesNotMatch(result.posts, /context=ingestion\/seed\/example/);
     assert.match(result.posts, /context=ingestion\/seed\/acceptance/);
   });
 
@@ -349,7 +488,6 @@ describe('seed health status publisher', () => {
       ],
     });
     assert.equal(unchanged.status, 0, unchanged.stderr);
-    assert.doesNotMatch(unchanged.posts, /context=ingestion\/seed\/example/);
-    assert.match(unchanged.posts, /context=ingestion\/seed\/acceptance/);
+    assert.equal(unchanged.posts, '', 'unchanged same-anchor observations must append no statuses');
   });
 });

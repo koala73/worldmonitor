@@ -1,0 +1,58 @@
+{
+  "status": true,
+  "message": "Cyclone Track",
+  "totalCount": {
+    "observed": 2,
+    "forecast": 2
+  },
+  "data": {
+    "observed": [
+      {
+        "CYCLONE_NAME": "BULBUL",
+        "Hour": "12",
+        "Date/Time": "05.11.19/1200",
+        "lat": "13.2",
+        "lon": "91.2",
+        "MSW range (kmph)": "50-60",
+        "Mean MSW (kmph)": "55",
+        "MSW (kt)": "29.7",
+        "Category": "DEEP DEPRESSION"
+      },
+      {
+        "CYCLONE_NAME": "BULBUL",
+        "Hour": "18",
+        "Date/Time": "05.11.19/1800",
+        "lat": "13.8",
+        "lon": "90.6",
+        "MSW range (kmph)": "60-70",
+        "Mean MSW (kmph)": "65",
+        "MSW (kt)": "35.1",
+        "Category": "CYCLONIC STORM"
+      }
+    ],
+    "forecast": [
+      {
+        "CYCLONE_NAME": "BULBUL",
+        "Hour": "06",
+        "Date/Time": "06.11.19/0600",
+        "lat": "14.6",
+        "lon": "89.8",
+        "MSW range (kmph)": "70-80",
+        "Mean MSW (kmph)": "75",
+        "MSW (kt)": "40.5",
+        "Category": "CYCLONIC STORM"
+      },
+      {
+        "CYCLONE_NAME": "BULBUL",
+        "Hour": "18",
+        "Date/Time": "06.11.19/1800",
+        "lat": "15.4",
+        "lon": "88.9",
+        "MSW range (kmph)": "80-90",
+        "Mean MSW (kmph)": "85",
+        "MSW (kt)": "45.9",
+        "Category": "SEVERE CYCLONIC STORM"
+      }
+    ]
+  }
+}

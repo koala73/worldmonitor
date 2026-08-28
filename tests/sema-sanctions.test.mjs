@@ -59,6 +59,85 @@ const serviceSrc = readFileSync(
   'utf8',
 );
 
+// Global Affairs Canada renamed every SEMA field tag to a bilingual hyphenated
+// form. `<record>` still matches, so parseSemaXml finds 5,690 blocks and returns
+// ZERO records — every field reads empty, legalName is blank, and every block is
+// dropped. Production reported `SEMA fetch failed: SEMA_EMPTY` on every 6-hourly
+// run while OFAC carried the whole list (0 of 20,558 entries from Canada).
+//
+// Every other fixture in this file uses the OLD tags, which is why the suite
+// stayed green while the live parse was dead. These blocks are copied verbatim
+// from the live feed on 2026-08-25.
+const SEMA_BILINGUAL_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<data-set xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<record>
+		<Country-Pays>Belarus / Bélarus</Country-Pays>
+		<LastName-NomDeFamille>Atabekov</LastName-NomDeFamille>
+		<GivenName-Prenom>Khazalbek Bakhtibekovich</GivenName-Prenom>
+		<Schedule-Annexe>1, Part 1</Schedule-Annexe>
+		<Item-NumeroDarticle>1</Item-NumeroDarticle>
+		<DateOfListing-DateDinscription>2020-09-28</DateOfListing-DateDinscription>
+	</record>
+	<record>
+		<Country-Pays>Russia / Russie</Country-Pays>
+		<EntityOrShip-EntiteOuNavire>Balitiyskiy III</EntityOrShip-EntiteOuNavire>
+		<TitleOrShipType-TitreOuTypeDeNavire>General Cargo/Multi Purpose | Cargo classique/navire polyvalent</TitleOrShipType-TitreOuTypeDeNavire>
+		<ShipIMONumber-NumeroOMIDuNavire>7612448</ShipIMONumber-NumeroOMIDuNavire>
+		<Schedule-Annexe>1.1</Schedule-Annexe>
+		<Item-NumeroDarticle>1</Item-NumeroDarticle>
+		<DateOfListing-DateDinscription>2025-02-21</DateOfListing-DateDinscription>
+	</record>
+	<record>
+		<Country-Pays>Belarus / Bélarus</Country-Pays>
+		<EntityOrShip-EntiteOuNavire>Belaeronavigatsia Republican Unitary Air Navigation Services Enterprise</EntityOrShip-EntiteOuNavire>
+		<Schedule-Annexe>1, Part 2</Schedule-Annexe>
+		<Item-NumeroDarticle>1</Item-NumeroDarticle>
+		<DateOfListing-DateDinscription>2021-06-17</DateOfListing-DateDinscription>
+	</record>
+</data-set>`;
+
+describe('SEMA bilingual field tags (Global Affairs Canada 2026-08 rename)', () => {
+  it('parses records whose fields carry the hyphenated bilingual tag names', () => {
+    const { records } = parseSemaXml(SEMA_BILINGUAL_XML);
+    assert.equal(records.length, 3, 'every block must yield a record, not be dropped for a blank name');
+  });
+
+  it('reads each renamed field, not just enough of them to survive', () => {
+    // A fix that only mapped Country/LastName/GivenName would satisfy the count
+    // assertion above while silently dropping schedule, listing date and IMO.
+    const { records } = parseSemaXml(SEMA_BILINGUAL_XML);
+    const byName = new Map(records.map((r) => [r.name, r]));
+
+    const person = byName.get('Khazalbek Bakhtibekovich Atabekov');
+    assert.ok(person, 'GivenName-Prenom + LastName-NomDeFamille compose the legal name');
+    assert.equal(person.entityType, 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL');
+    assert.match(person.note, /Schedule 1, Part 1/, 'Schedule-Annexe must be read');
+    assert.notEqual(person.effectiveAt, '0', 'DateOfListing-DateDinscription must be read');
+
+    const vessel = byName.get('Balitiyskiy III');
+    assert.ok(vessel, 'EntityOrShip-EntiteOuNavire must be read');
+    assert.equal(vessel.entityType, 'SANCTIONS_ENTITY_TYPE_VESSEL',
+      'ShipIMONumber-NumeroOMIDuNavire must be read, or a vessel is typed as an entity');
+    assert.ok(vessel._identifiers.includes('imo:7612448'));
+    assert.match(vessel.note, /General Cargo/, 'TitleOrShipType-TitreOuTypeDeNavire must be read');
+
+    const entity = byName.get('Belaeronavigatsia Republican Unitary Air Navigation Services Enterprise');
+    assert.ok(entity, 'an entity with no IMO and no person name must still parse');
+    assert.equal(entity.entityType, 'SANCTIONS_ENTITY_TYPE_ENTITY');
+  });
+
+  it('still parses the pre-rename tags', () => {
+    // The rename is upstream and could be reverted or served inconsistently;
+    // dropping the old names would trade one outage for another.
+    const legacy = '<record><Country>Belarus / Bélarus</Country><LastName>One</LastName>'
+      + '<GivenName>Person</GivenName><Schedule>1, Part 1</Schedule><Item>1</Item>'
+      + '<DateOfListing>2021-06-17</DateOfListing></record>';
+    const { records } = parseSemaXml(legacy);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].name, 'Person One');
+  });
+});
+
 describe('SEMA fixture parse', () => {
   it('maps individuals, entities, ships, aliases, IMO, and publication dates', () => {
     const { records, publishedAtMs } = parseSemaXml(fixtureXml);

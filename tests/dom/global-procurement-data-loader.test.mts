@@ -17,6 +17,14 @@ vi.mock('@/services/global-tenders', () => ({
   fetchGlobalTenders: procurementMocks.fetchGlobalTenders,
 }));
 
+// #6984 / #6677: the first case in this file used to pay for the data-loader
+// module graph's transform inside its testTimeout, which under load lands
+// just over the 5000ms vitest default and false-reds the file. Importing
+// the graph once at module scope moves that cost into the file's import
+// phase, which vitest does not bill to any testTimeout. The vi.mock calls
+// above still apply to every later import of `@/services/global-tenders`.
+await import('@/app/data-loader');
+
 function response(total = 0): ListGlobalTendersResponse {
   return {
     tenders: [],

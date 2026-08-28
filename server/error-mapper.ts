@@ -9,6 +9,37 @@
  */
 
 import { isBillingVerificationCode } from './_shared/entitlement-check';
+import { rateLimitHeaders } from './_shared/api-key-rate-limit';
+
+export interface ApiErrorRateLimitMetadata {
+  limit: number;
+  remaining: number;
+  resetMs: number;
+  windowSec?: number;
+}
+
+export interface ApiErrorHttpResponseMetadata {
+  /** Opt in to the public REST error envelope instead of the legacy RPC one. */
+  envelope: 'error';
+  /** Live quota state for a 429. Ignored for every other status. */
+  rateLimit?: ApiErrorRateLimitMetadata;
+}
+
+type ApiErrorWithHttpResponseMetadata = Error & {
+  httpResponseMetadata?: ApiErrorHttpResponseMetadata;
+};
+
+/**
+ * Opt one ApiError into the public REST error response contract.
+ * All ApiErrors without this metadata retain the legacy `{ message }` envelope.
+ */
+export function attachApiErrorHttpResponseMetadata<T extends Error>(
+  error: T,
+  metadata: ApiErrorHttpResponseMetadata,
+): T {
+  (error as T & ApiErrorWithHttpResponseMetadata).httpResponseMetadata = metadata;
+  return error;
+}
 
 /**
  * Detects network/fetch errors across runtimes. Per Fetch spec, network
@@ -33,10 +64,33 @@ function jsonMessageResponse(message: string, status: number, extras?: Record<st
   });
 }
 
+function jsonErrorResponse(message: string, status: number, headers?: Record<string, string>): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
+  });
+}
+
+function getHttpResponseMetadata(error: Error): ApiErrorHttpResponseMetadata | null {
+  const metadata = (error as ApiErrorWithHttpResponseMetadata).httpResponseMetadata;
+  return metadata?.envelope === 'error' ? metadata : null;
+}
+
+function isValidRateLimitMetadata(metadata: ApiErrorRateLimitMetadata): boolean {
+  return Number.isFinite(metadata.limit)
+    && metadata.limit > 0
+    && Number.isFinite(metadata.remaining)
+    && metadata.remaining >= 0
+    && Number.isFinite(metadata.resetMs)
+    && metadata.resetMs >= 0
+    && (metadata.windowSec === undefined || (Number.isFinite(metadata.windowSec) && metadata.windowSec > 0));
+}
+
 export function mapErrorToResponse(error: unknown, _req: Request): Response {
   // ApiError: has statusCode property (e.g., upstream returns 429, 403, etc.)
   if (error instanceof Error && 'statusCode' in error) {
     const statusCode = (error as Error & { statusCode: number }).statusCode;
+    const httpResponseMetadata = getHttpResponseMetadata(error);
     // Only expose error.message for 4xx (client errors). Use generic message for 5xx
     // to avoid leaking internal details like upstream URLs or API key fragments (H-3 fix).
     const retryAfter = (statusCode === 429 || statusCode === 503) && 'retryAfter' in error ? Number((error as Error & { retryAfter: number }).retryAfter) : null;
@@ -49,7 +103,7 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     const exposesRetryableUnavailable = statusCode === 503
       && retryAfter != null
       && Number.isFinite(retryAfter)
-      && (error as Error & { exposeMessage?: boolean }).exposeMessage === true;
+      && ((error as Error & { exposeMessage?: boolean }).exposeMessage === true || httpResponseMetadata != null);
     const message = (statusCode >= 400 && statusCode < 500) || exposesRetryableUnavailable ? error.message : 'Internal server error';
     const extras: Record<string, unknown> = {};
     const headers: Record<string, string> = {};
@@ -63,11 +117,31 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
       extras.code = billingVerificationCode;
       headers['X-Billing-Verification'] = billingVerificationCode;
     }
+    if (
+      statusCode === 429
+      && retryAfter != null
+      && Number.isFinite(retryAfter)
+      && httpResponseMetadata?.rateLimit
+      && isValidRateLimitMetadata(httpResponseMetadata.rateLimit)
+    ) {
+      Object.assign(headers, rateLimitHeaders({
+        ...httpResponseMetadata.rateLimit,
+        retryAfterSec: retryAfter,
+      }));
+    }
 
     if (statusCode >= 500) {
       // Log upstream response body (truncated) for debugging (M-4 fix)
       const apiBody = 'body' in error ? String((error as any).body).slice(0, 500) : '';
       console.error(`[error-mapper] ${statusCode}:`, error.message, apiBody ? `| body: ${apiBody}` : '');
+    }
+
+    if (httpResponseMetadata) {
+      return jsonErrorResponse(
+        message,
+        statusCode,
+        Object.keys(headers).length > 0 ? headers : undefined,
+      );
     }
 
     return jsonMessageResponse(

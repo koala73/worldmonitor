@@ -794,14 +794,106 @@ test('Manitoba partial poll must not replace last-good or flip health green', as
   );
 });
 
-test('manitobaRoads EMPTY cutover is acknowledged until the first Canada bundle tick', () => {
+test('manitobaRoads publishes, so its cutover acknowledgement is gone and the probe wiring is what stays pinned', () => {
+  // The #6622 ack was pruned on 2026-08-20: the live monitor reported
+  // manitobaRoads:EMPTY as "no longer reported", and the entry had already
+  // passed its own expiresAt. Asserting ABSENCE is what stops it being
+  // reinstated — an acknowledgement that outlives its problem silently absorbs
+  // the NEXT outage of the same probe.
   const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
-  const ack = baseline.acknowledged.find((row) => row.name === 'manitobaRoads');
-  assert.ok(ack, 'new manitobaRoads probe needs an expiring acknowledgement until first Railway tick');
-  assert.equal(ack.status, 'EMPTY');
-  assert.equal(ack.issue, 6622);
-  assert.equal(ack.cutover?.probeKey, 'seed-meta:infra:manitoba-511');
-  assert.equal(ack.expiresAt, ack.cutover?.firstScheduledRunAt);
+  assert.equal(
+    baseline.acknowledged.some((row) => row.name === 'manitobaRoads'),
+    false,
+    'manitobaRoads publishes; do not suppress a future recurrence',
+  );
+
+  // What the ack was pinning as a side effect, and the only reason its
+  // probeKey was ever worth asserting: health must watch the exact seed-meta
+  // key the seeder writes. runSeed derives `seed-meta:${domain}:${resource}`,
+  // and the colon-vs-hyphen slip (#6623) points a probe at a key nothing ever
+  // writes — which reads as a permanently EMPTY source, the very state the ack
+  // was suppressing. Without this the removal takes the check with it.
+  const seeder = readFileSync(new URL('../scripts/seed-provincial-511.mjs', import.meta.url), 'utf8');
+  const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+  assert.match(seeder, /MANITOBA_META_KEY = 'seed-meta:infra:manitoba-511'/);
+  assert.match(seeder, /MANITOBA_KEY = 'infra:manitoba-511:v1'/);
+  assert.match(health, /manitobaRoads:\s*\{\s*\n\s*key: 'seed-meta:infra:manitoba-511'/);
+  assert.match(health, /manitobaRoads:\s+'infra:manitoba-511:v1'/);
+});
+
+// 511.alberta.ca began enforcing api keys around 2026-08-19, answering an
+// unkeyed GET with `HTTP 400 {"Message":"Invalid Key"}` on both resources. It
+// reads as a malformed request rather than an auth failure, and because
+// fetchProvincial511Tick only throws when ALL THREE jurisdictions fail, the
+// bundle kept reporting `status=OK records=400` while Alberta silently
+// preserved last-good for 88 hours.
+test('Alberta 511 sends its key on every resource', async () => {
+  const seen = [];
+  const fetchFn = async (url) => {
+    seen.push(String(url));
+    return jsonResponse([]);
+  };
+
+  await fetchVendor511(ALBERTA_511, { key: 'ab-test-key', fetchFn, staggerMs: 0 });
+
+  assert.equal(seen.length, ALBERTA_511.resources.length, 'every resource is requested');
+  for (const url of seen) {
+    assert.match(
+      url,
+      /[?&]key=ab-test-key(?:&|$)/,
+      `Alberta resource requested without its key: ${url.replace(/key=[^&]*/, 'key=REDACTED')}`,
+    );
+  }
+});
+
+// The negative half. Without this, passing `key: ''` (or dropping the option)
+// would still satisfy the assertion above by sending `key=` — which the vendor
+// rejects exactly like no key at all, and which would look configured.
+test('Alberta 511 sends no key parameter when none is configured', async () => {
+  const seen = [];
+  const fetchFn = async (url) => {
+    seen.push(String(url));
+    return jsonResponse([]);
+  };
+
+  await fetchVendor511(ALBERTA_511, { fetchFn, staggerMs: 0 });
+
+  assert.equal(seen.length, ALBERTA_511.resources.length);
+  for (const url of seen) {
+    assert.doesNotMatch(url, /[?&]key=/, `unconfigured Alberta must not send an empty key: ${url}`);
+  }
+});
+
+test('the seeder reads ALBERTA_511_KEY and treats an unset one as not-configured', () => {
+  // Mirrors the Manitoba contract deliberately: an unset key is NOT an outage,
+  // it is a jurisdiction nobody configured, so it preserves last-good and stays
+  // quiet. A key that is PRESENT and rejected still fails through the ordinary
+  // fetch path and ages into a real health failure.
+  const seeder = readFileSync(new URL('../scripts/seed-provincial-511.mjs', import.meta.url), 'utf8');
+  assert.match(seeder, /process\.env\.ALBERTA_511_KEY/);
+
+  const fetchAlberta = seeder.slice(
+    seeder.indexOf('async function fetchAlberta511'),
+    seeder.indexOf('async function fetchManitoba511'),
+  );
+  assert.match(fetchAlberta, /if \(!key\)/, 'an unset key short-circuits before the fetch');
+  assert.match(fetchAlberta, /notConfigured = true/);
+  assert.match(fetchAlberta, /key,/, 'the key is threaded into fetchVendor511');
+
+  // The publish path must distinguish not-configured from failed, or an unset
+  // key would log as a fetch failure and read like an outage.
+  const publishAlberta = seeder.slice(
+    seeder.indexOf('async function publishAlbertaFromTick'),
+    seeder.indexOf('async function publishManitobaEnvelope'),
+  );
+  assert.match(publishAlberta, /_albertaNotConfigured/);
+  assert.match(publishAlberta, /_albertaFailed/);
+});
+
+test('seeder and adapter never embed an Alberta credential', () => {
+  const seeder = readFileSync(new URL('../scripts/seed-provincial-511.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(seeder, /ab-test-key/);
+  assert.doesNotMatch(ADAPTER_SOURCE, /ALBERTA_511_KEY\s*=\s*'[^']+'/);
 });
 
 test('seeder fixtures and adapter never embed a Manitoba credential', () => {

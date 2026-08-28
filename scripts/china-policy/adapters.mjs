@@ -357,69 +357,92 @@ export function parseAgencyListing(agency, raw) {
   return parseHtmlListing(agency, raw, sourceConfig);
 }
 
-function parsePolicyHtmlFields(html) {
+function createPolicyHtmlState() {
+  return {
+    stack: [],
+    openTagCounts: new Map(),
+    captures: new Map(),
+    candidates: new Map(),
+    allParts: [],
+    titleParts: [],
+    metadata: {},
+    bodyCapture: null,
+    titleDepth: 0,
+    titleComplete: false,
+  };
+}
+
+function unwindPolicyHtmlClosingTag(
+  tag,
+  state,
+  { requireKnownTag = true, onStackComparison } = {},
+) {
+  if (requireKnownTag && !state.openTagCounts.has(tag.name)) return false;
+  let stackIndex = state.stack.length - 1;
+  while (stackIndex >= 0 && state.stack[stackIndex] !== tag.name) {
+    onStackComparison?.();
+    stackIndex -= 1;
+  }
+  if (stackIndex < 0) return false;
+
+  const closingDepth = stackIndex + 1;
+  for (const [priority, capture] of state.captures) {
+    if (capture.depth !== closingDepth || capture.tagName !== tag.name) continue;
+    const text = normalizeHtmlText(capture.parts);
+    if (text.length >= 10) state.candidates.set(priority, text);
+    state.captures.delete(priority);
+  }
+  if (
+    state.bodyCapture
+    && state.bodyCapture.depth === closingDepth
+    && state.bodyCapture.tagName === tag.name
+  ) {
+    state.bodyCapture.text = normalizeHtmlText(state.bodyCapture.parts);
+  }
+  if (tag.name === 'title' && state.titleDepth > 0) {
+    state.titleDepth -= 1;
+    if (state.titleDepth === 0) state.titleComplete = true;
+  }
+  for (let index = state.stack.length - 1; index >= stackIndex; index -= 1) {
+    const openName = state.stack[index];
+    const remaining = state.openTagCounts.get(openName) - 1;
+    if (remaining === 0) state.openTagCounts.delete(openName);
+    else state.openTagCounts.set(openName, remaining);
+  }
+  state.stack.length = stackIndex;
+  return true;
+}
+
+function parsePolicyHtmlFields(html, options = {}) {
   const classPriority = ['article-content', 'main-content', 'TRS_Editor', 'content'];
-  const stack = [];
-  const openTagCounts = new Map();
-  const captures = new Map();
-  const candidates = new Map();
-  const allParts = [];
-  const titleParts = [];
-  const metadata = {};
-  let bodyCapture = null;
-  let titleDepth = 0;
-  let titleComplete = false;
+  const state = createPolicyHtmlState();
   walkHtml(html, {
     onTag: (tag) => {
       if (tag.closing) {
-        if (!openTagCounts.has(tag.name)) return;
-        let stackIndex = stack.length - 1;
-        while (stackIndex >= 0 && stack[stackIndex] !== tag.name) stackIndex -= 1;
-        const closingDepth = stackIndex + 1;
-        for (const [priority, capture] of captures) {
-          if (capture.depth !== closingDepth || capture.tagName !== tag.name) continue;
-          const text = normalizeHtmlText(capture.parts);
-          if (text.length >= 10) candidates.set(priority, text);
-          captures.delete(priority);
-        }
-        if (
-          bodyCapture
-          && bodyCapture.depth === closingDepth
-          && bodyCapture.tagName === tag.name
-        ) {
-          bodyCapture.text = normalizeHtmlText(bodyCapture.parts);
-        }
-        if (tag.name === 'title' && titleDepth > 0) {
-          titleDepth -= 1;
-          if (titleDepth === 0) titleComplete = true;
-        }
-        for (let index = stack.length - 1; index >= stackIndex; index -= 1) {
-          const openName = stack[index];
-          const remaining = openTagCounts.get(openName) - 1;
-          if (remaining === 0) openTagCounts.delete(openName);
-          else openTagCounts.set(openName, remaining);
-        }
-        stack.length = stackIndex;
+        unwindPolicyHtmlClosingTag(tag, state, options);
         return;
       }
       if (tag.name === 'meta') {
         const metaName = attributeValue(tag.attributes, 'name')?.toLowerCase();
         if (
           (metaName === 'articletitle' || metaName === 'pubdate')
-          && !metadata[metaName]
+          && !state.metadata[metaName]
         ) {
-          metadata[metaName] = normalizeHtmlText([
+          state.metadata[metaName] = normalizeHtmlText([
             attributeValue(tag.attributes, 'content') ?? '',
           ]);
         }
       }
       if (tag.selfClosing || VOID_TAGS.has(tag.name)) return;
-      stack.push(tag.name);
-      openTagCounts.set(tag.name, (openTagCounts.get(tag.name) ?? 0) + 1);
-      if (tag.name === 'title' && !titleComplete) titleDepth += 1;
-      if (tag.name === 'body' && !bodyCapture) {
-        bodyCapture = {
-          depth: stack.length,
+      state.stack.push(tag.name);
+      state.openTagCounts.set(
+        tag.name,
+        (state.openTagCounts.get(tag.name) ?? 0) + 1,
+      );
+      if (tag.name === 'title' && !state.titleComplete) state.titleDepth += 1;
+      if (tag.name === 'body' && !state.bodyCapture) {
+        state.bodyCapture = {
+          depth: state.stack.length,
           parts: [],
           tagName: tag.name,
           text: '',
@@ -428,32 +451,47 @@ function parsePolicyHtmlFields(html) {
       if (!['div', 'td', 'article'].includes(tag.name)) return;
       const classes = new Set((attributeValue(tag.attributes, 'class') ?? '').split(/\s+/));
       const priority = classPriority.findIndex((className) => classes.has(className));
-      if (priority === -1 || candidates.has(priority) || captures.has(priority)) return;
-      captures.set(priority, {
-        depth: stack.length,
+      if (
+        priority === -1
+        || state.candidates.has(priority)
+        || state.captures.has(priority)
+      ) return;
+      state.captures.set(priority, {
+        depth: state.stack.length,
         parts: [],
         tagName: tag.name,
       });
     },
     onText: (text) => {
-      allParts.push(text);
-      for (const capture of captures.values()) capture.parts.push(text);
-      if (bodyCapture && !bodyCapture.text) bodyCapture.parts.push(text);
-      if (titleDepth > 0 && !titleComplete) titleParts.push(text);
+      state.allParts.push(text);
+      for (const capture of state.captures.values()) capture.parts.push(text);
+      if (state.bodyCapture && !state.bodyCapture.text) state.bodyCapture.parts.push(text);
+      if (state.titleDepth > 0 && !state.titleComplete) state.titleParts.push(text);
     },
   });
   let originalText = '';
   for (let priority = 0; priority < classPriority.length; priority += 1) {
-    if (candidates.has(priority)) {
-      originalText = candidates.get(priority);
+    if (state.candidates.has(priority)) {
+      originalText = state.candidates.get(priority);
       break;
     }
   }
   return {
-    articleTitle: metadata.articletitle || normalizeHtmlText(titleParts),
-    publicationDate: metadata.pubdate || '',
-    originalText: originalText || bodyCapture?.text || normalizeHtmlText(allParts),
+    articleTitle: state.metadata.articletitle || normalizeHtmlText(state.titleParts),
+    publicationDate: state.metadata.pubdate || '',
+    originalText: originalText || state.bodyCapture?.text || normalizeHtmlText(state.allParts),
   };
+}
+
+function runPolicyHtmlClosingTagRegressionProbe(html) {
+  let stackComparisons = 0;
+  parsePolicyHtmlFields(html, {
+    requireKnownTag: false,
+    onStackComparison: () => {
+      stackComparisons += 1;
+    },
+  });
+  return stackComparisons;
 }
 
 export function extractEffectiveDate(text) {
@@ -673,5 +711,6 @@ export async function fetchAllChinaPolicyDocuments(options = {}) {
 export const __testing__ = Object.freeze({
   canonicalizeSourceUrl,
   readBoundedBody,
+  runPolicyHtmlClosingTagRegressionProbe,
   stripHtml,
 });

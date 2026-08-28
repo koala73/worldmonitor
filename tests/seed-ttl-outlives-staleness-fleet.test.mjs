@@ -61,12 +61,10 @@ const KNOWN_VIOLATIONS = new Set([
   // zero-fire run takes the RETRY path and does not advance seed-meta.fetchedAt — a tighter
   // gate would alarm every night.
   //
-  // The REAL defect is underneath and is tracked separately: wildfiresBootstrap is in
-  // EMPTY_DATA_OK_KEYS, so an ABSENT key + still-fresh seed-meta classifies as OK. In the
-  // very scenario its separate registration exists for (health.js:342 — "monitor it so
-  // canonical fallback cannot hide transform/write failures"), the panel is blank and the
-  // projection reports GREEN. Today the canonical's crit masks that; fixing the TTL would
-  // remove the mask AND the alarm.
+  // The compact projection is strict on disappearance: wildfiresBootstrap is also in
+  // MISSING_DATA_IS_FAILURE_KEYS, so an absent payload beside fresh seed metadata reports
+  // EMPTY. Keep both allowlist entries frozen together: raising either TTL would preserve
+  // old fire data through a failed producer cycle instead of making the vanished output loud.
   'seed-fire-detections.mjs',
   'seed-fire-detections.mjs::seed-meta:wildfire:fires-bootstrap',
   'seed-aaii-sentiment.mjs',
@@ -102,7 +100,6 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-imf-labor.mjs',
   'seed-imf-macro.mjs',
   'seed-iran-events.mjs',
-  'seed-jodi-gas.mjs',
   'seed-market-quotes.mjs',
   'seed-portwatch-chokepoints-ref.mjs',
   'seed-portwatch-disruptions.mjs',

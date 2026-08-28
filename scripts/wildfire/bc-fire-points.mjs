@@ -603,7 +603,25 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
     fetchCwfis(),
     fetchBcWildfire(),
   ]);
-  const firmsOk = firmsResult.status === 'fulfilled';
+  // Settlement alone is NOT coverage. fetchAllRegions catches every per-region
+  // error internally and always resolves, so an all-regions FIRMS outage
+  // settles 'fulfilled' with zero rows. When the fetcher reports its per-call
+  // counters, require at least one successful call: otherwise the canonical
+  // WORLDWIDE key silently republishes as Canada-only and reads healthy on
+  // every downstream clock (#7141 follow-up). Fetchers that report no counters
+  // keep the settlement-only grading.
+  const firmsValue = firmsResult.status === 'fulfilled' ? firmsResult.value : null;
+  const firmsReportedCalls = typeof firmsValue?._firmsFulfilledCalls === 'number';
+  const firmsFailedCalls = firmsReportedCalls ? (firmsValue._firmsFailedCalls ?? 0) : 0;
+  const firmsOk = firmsResult.status === 'fulfilled'
+    && (!firmsReportedCalls || firmsValue._firmsFulfilledCalls > 0);
+  // The FIRMS regions partition the globe, so a failed region is not a smaller
+  // sample of the same area — it is that area going dark while the surviving
+  // regions replace the canonical worldwide dataset. Zero coverage is an
+  // outage (above); PARTIAL coverage is reported rather than hard-failed,
+  // because failing closed on one flaky region of many would page constantly
+  // on a rate-limited free tier. The point is that it stops being SILENT.
+  const firmsPartial = firmsOk && firmsReportedCalls && firmsFailedCalls > 0;
   const cwfisOk = cwfisResult.status === 'fulfilled';
   const bcOk = bcResult.status === 'fulfilled';
   if (!firmsOk && !cwfisOk && !bcOk) {
@@ -614,7 +632,14 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
       `All wildfire upstreams failed (firms: ${firmsErr}; cwfis: ${cwfisErr}; bc-wildfire: ${bcErr})`,
     );
   }
-  if (!firmsOk) console.warn(`[wildfire] FIRMS failed: ${firmsResult.reason?.message || firmsResult.reason}`);
+  if (!firmsOk) {
+    // Distinguish the two failure shapes: a rejected fetch has a reason, a
+    // zero-coverage fetch settled fine but every region call failed.
+    const firmsErr = firmsResult.status === 'rejected'
+      ? (firmsResult.reason?.message || firmsResult.reason)
+      : `0 of ${(firmsValue?._firmsFulfilledCalls ?? 0) + (firmsValue?._firmsFailedCalls ?? 0)} region calls succeeded`;
+    console.warn(`[wildfire] FIRMS failed: ${firmsErr}`);
+  }
   if (!cwfisOk) console.warn(`[wildfire] CWFIS failed: ${cwfisResult.reason?.message || cwfisResult.reason}`);
   if (!bcOk) console.warn(`[wildfire] BC wildfire failed: ${bcResult.reason?.message || bcResult.reason}`);
 
@@ -636,6 +661,9 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
     _firmsCount: firmsDetections.length,
     _firmsState: firmsOk ? 'ok' : 'failed',
     _firmsErrorCode: firmsOk ? null : 'FIRMS_SOURCE_FAILED',
+    // Worldwide coverage held, but some regions went dark this run.
+    _firmsPartial: firmsPartial,
+    _firmsFailedCalls: firmsReportedCalls ? firmsFailedCalls : null,
     _cwfisCount: cwfisDetections.length,
     _cwfisActiveCount: cwfisOk ? (cwfisResult.value?._cwfisActiveCount ?? null) : null,
     _cwfisPrescribedCount: cwfisOk ? (cwfisResult.value?._cwfisPrescribedCount ?? null) : null,
@@ -658,9 +686,23 @@ export function canadianWildfireAfterPublish(data) {
   // any Canadian source failing — so it is checked first and reported first.
   // canadaSourceFailureCount deliberately stays a count of CANADIAN sources.
   const firmsFailed = data?._firmsState === 'failed';
+  const firmsPartial = data?._firmsPartial === true;
   const failureCount = Number(cwfisFailed) + Number(bcFailed);
-  if (failureCount === 0 && !firmsFailed) {
+  if (failureCount === 0 && !firmsFailed && !firmsPartial) {
     return { freshnessMetaPatch: { sourceState: 'ok' } };
+  }
+  // Worldwide coverage survived but some FIRMS regions went dark, so the
+  // canonical key is quietly narrower than it claims. Ranks below a full FIRMS
+  // outage and above healthy: report it rather than let the surviving regions
+  // stand in for the globe unremarked.
+  if (firmsPartial && !firmsFailed && failureCount === 0) {
+    return {
+      freshnessMetaPatch: {
+        sourceState: 'degraded',
+        errorCode: 'FIRMS_PARTIAL_COVERAGE',
+        canadaSourceFailureCount: 0,
+      },
+    };
   }
   if (firmsFailed) {
     return {

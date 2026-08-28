@@ -53,6 +53,7 @@ import {
   type ApiPlanLimitNotice,
 } from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { checkoutConsentHtml, legalLinksHtml, LEGAL_LINK_ATTR } from '@/utils/legal-links';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
@@ -114,6 +115,7 @@ export class UnifiedSettings {
   private focusTrap: FocusTrap;
   private config: UnifiedSettingsConfig;
   private activeTab: TabId = 'settings';
+  private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
   private sourceFilter = '';
   private activePanelCategory = 'all';
@@ -842,6 +844,7 @@ export class UnifiedSettings {
           ${this.renderMcpClientsContent()}
         </div>
         ` : ''}
+        ${legalLinksHtml(WEB_APP_ORIGIN)}
       </div>
     `, "legacy direct innerHTML migration"));
 
@@ -864,6 +867,8 @@ export class UnifiedSettings {
       });
     }
 
+    this.attachLegalLinkHandoff();
+
     this.renderPanelCategoryPills();
     this.renderPanelsTab();
     this.renderRegionPills();
@@ -883,6 +888,28 @@ export class UnifiedSettings {
         this.startMcpQuotaPolling();
       }
     }
+  }
+
+  /**
+   * Desktop hands legal links to the OS browser (#5911 precedent). A plain
+   * `target="_blank"` anchor inside the Tauri WebView opens another WebView
+   * window with no chrome, which is how a user ends up stranded on the Terms
+   * with no way back. Delegated on the overlay so it covers the legal row AND
+   * every checkout-consent line rendered inside a tab panel, including the ones
+   * re-rendered after this handler is attached.
+   */
+  private attachLegalLinkHandoff(): void {
+    if (!this.config.isDesktopApp || this.legalLinkHandoffAttached) return;
+    // The overlay element outlives every re-render, so an unguarded attach
+    // would stack one listener per render and open N windows on one click.
+    this.legalLinkHandoffAttached = true;
+    this.overlay.addEventListener('click', (e) => {
+      const link = (e.target as HTMLElement | null)?.closest?.(`a[${LEGAL_LINK_ATTR}]`);
+      const href = link instanceof HTMLAnchorElement ? link.href : '';
+      if (!href) return;
+      e.preventDefault();
+      void openExternalUrl(href);
+    });
   }
 
   private switchTab(tab: TabId): void {
@@ -1051,6 +1078,7 @@ export class UnifiedSettings {
       <div class="upgrade-pro-section" data-billing-state="free">
         <div class="upgrade-pro-title">WorldMonitor Free</div>
         <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
+        ${checkoutConsentHtml(WEB_APP_ORIGIN)}
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
@@ -1517,6 +1545,7 @@ export class UnifiedSettings {
                 </div>
               </div>
               <div class="api-plan-limit-notice-actions">
+                ${notice.ctaKind === 'checkout' ? checkoutConsentHtml(WEB_APP_ORIGIN) : ''}
                 ${cta ? `<button class="btn btn-primary api-plan-limit-notice-cta" data-plan-limit-cta="${escapeHtml(notice._id)}">${escapeHtml(cta)}</button>` : ''}
                 <button class="btn btn-ghost api-plan-limit-notice-ack" data-plan-limit-ack="${escapeHtml(notice._id)}">Dismiss</button>
               </div>
@@ -1650,6 +1679,7 @@ export class UnifiedSettings {
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
           <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }

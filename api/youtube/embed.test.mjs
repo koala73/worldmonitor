@@ -34,6 +34,18 @@ test('accepts custom origin parameter', async () => {
   assert.equal(html.includes('origin:"http://127.0.0.1:46123"'), true);
 });
 
+test('allows only team-pinned Vercel preview origins', async () => {
+  const allowed = await handler(makeRequest(
+    '?videoId=iEpJwprxDdk&origin=https://worldmonitor-git-feature-eliewm.vercel.app',
+  ));
+  assert.match(await allowed.text(), /origin:"https:\/\/worldmonitor-git-feature-eliewm\.vercel\.app"/);
+
+  const foreign = await handler(makeRequest(
+    '?videoId=iEpJwprxDdk&origin=https://worldmonitor-git-feature-attacker.vercel.app',
+  ));
+  assert.match(await foreign.text(), /origin:"https:\/\/worldmonitor\.app"/);
+});
+
 test('uses dedicated parentOrigin for iframe postMessage target', async () => {
   const response = await handler(makeRequest('?videoId=iEpJwprxDdk&origin=https://worldmonitor.app&parentOrigin=https://tauri.localhost'));
   const html = await response.text();
