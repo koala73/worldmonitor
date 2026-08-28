@@ -154,6 +154,15 @@ describe('Product catalog freshness', () => {
     assert.ok(names.includes('API Starter'), 'Missing API Starter tier');
   });
 
+  it('Enterprise tier advertises full white-label options', () => {
+    const enterprise = tiersJson.find(t => t.name === 'Enterprise');
+    assert.ok(enterprise, 'Enterprise tier not found');
+    assert.ok(
+      enterprise.features.includes('Fully white-labeled — with or without revenue sharing'),
+      'Enterprise white-label option missing',
+    );
+  });
+
   it('Pro tier has monthly and annual prices', () => {
     const pro = tiersJson.find(t => t.name === 'Pro');
     assert.ok(pro, 'Pro tier not found');
