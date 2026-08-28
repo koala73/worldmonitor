@@ -1862,6 +1862,46 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(joined.includes(clientId), false, 'full client_id must not appear in ops logs');
   });
 
+  it('redacts full client_id from Upstash command-key errors before log and Sentry', async () => {
+    const clientId = 'full-client-identifier-must-not-log';
+    const upstashMsg = `ERR Error running script, command was: ${JSON.stringify([
+      'evalsha',
+      'deadbeef',
+      '1',
+      `rl:oauth-token:cid:${clientId}`,
+      `rl:oauth-token:cid:${clientId}:1`,
+    ])}`;
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => {
+        throw new Error(upstashMsg);
+      },
+    });
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(
+      makeReq('authorization_code', { client_id: clientId }),
+      deps,
+    );
+    assert.equal(resp.status, 400, 'throw path must fail open, not 503');
+    assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
+    const joined = consoleErrors.join('\n');
+    assert.ok(
+      consoleErrors.some((line) => line.includes('[rate-limit] redis-error') && line.includes('stage=oauthToken')),
+      `expected throw-path ops log, got: ${joined}`,
+    );
+    assert.equal(joined.includes(clientId), false, 'full client_id must not appear in ops logs');
+    assert.ok(
+      joined.includes('cid:[redacted]'),
+      `expected identifier-bearing keys to be redacted, got: ${joined}`,
+    );
+    const src = readFileSync(fileURLToPath(new URL('../api/oauth/token.ts', import.meta.url)), 'utf8');
+    assert.match(
+      src,
+      /const sanitized = sanitizeTokenRateLimitError\(err\)/,
+      'Sentry must receive the sanitized Error, not the original Upstash error',
+    );
+    assert.match(src, /captureSilentError\(sanitized,/);
+  });
+
   it('limiter timeout reason fail-opens as degraded, not as a silent allow', async () => {
     __setOAuthTokenRatelimitForTest({
       limit: async () => ({ success: true, reason: 'timeout' }),
