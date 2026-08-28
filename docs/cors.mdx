@@ -95,7 +95,7 @@ Both implementations allow these request headers:
 
 To allow additional headers, update `Access-Control-Allow-Headers` in both files.
 
-Browser-visible response headers exposed via `Access-Control-Expose-Headers` include `Mcp-Session-Id`, `WWW-Authenticate`, `Retry-After`, `X-Billing-Verification`, the idempotency headers (`Idempotency-Key`, `Idempotent-Replayed`), `Location`, and both rate-limit header families — the IETF fields (`RateLimit`, `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`) and the legacy `X-RateLimit-*` triplet — so MCP clients can continue sessions, re-authenticate, respect backoff hints, self-throttle, and tell a retryable billing-verification blip from a terminal lapse without parsing the response body. See [Error handling](/usage-errors).
+Browser-visible response headers exposed via `Access-Control-Expose-Headers` include `Mcp-Session-Id`, `WWW-Authenticate`, `Retry-After`, `X-Billing-Verification`, the idempotency headers (`Idempotency-Key`, `Idempotent-Replayed`), `Location`, and both rate-limit header families — the IETF fields (`RateLimit`, `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`) and the legacy `X-RateLimit-*` fields (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, plus `X-RateLimit-Mode` on fail-open limiter degradation) — so MCP clients can continue sessions, re-authenticate, respect backoff hints, self-throttle, tell a retryable billing-verification blip from a terminal lapse, and distinguish degraded limiter grants from healthy ones without parsing the response body. See [Error handling](/usage-errors) and [Rate limits](/usage-rate-limits).
 
 ## Railway Relay CORS
 

@@ -75,6 +75,8 @@ Matches the implementations in `api/oauth/register.js`, `api/oauth/authorize.js`
 
 For `/api/oauth/token`, the limiter key is `client_secret` hash for `client_credentials`, then `client_id` when present, and only falls back to caller IP when neither credential identifier is available.
 
+All three grant types (`authorization_code`, `refresh_token`, `client_credentials`) **fail open** when the Upstash limiter is unconfigured or throws. Token persistence still fails closed when Redis storage is down; a limiter-only 503 would abort MCP client handshakes during an SDK timeout even when the pipeline path still works. `client_credentials` keeps the operator env-key allowlist as a second gate. Degradation is observable: a bounded/deduplicated `[rate-limit] redis-error` log and Sentry capture, `X-RateLimit-Mode: degraded` on the response (listed in `Access-Control-Expose-Headers` so cross-origin JS can read it), and a usage `reason` of `rate_limit_degraded`. Genuine budget exhaustion remains HTTP **429** `rate_limit_exceeded`.
+
 Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
 
 ## Provider proxies
