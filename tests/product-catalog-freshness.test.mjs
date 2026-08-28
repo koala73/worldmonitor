@@ -154,6 +154,34 @@ describe('Product catalog freshness', () => {
     assert.ok(names.includes('API Starter'), 'Missing API Starter tier');
   });
 
+  it('Enterprise tier advertises full white-label options', () => {
+    const enterprise = tiersJson.find(t => t.name === 'Enterprise');
+    assert.ok(enterprise, 'Enterprise tier not found');
+    assert.ok(
+      enterprise.features.includes('Fully white-labeled — with or without revenue sharing'),
+      'Enterprise white-label option missing',
+    );
+  });
+
+  it('translated Enterprise tiers include every canonical feature', () => {
+    const enterprise = tiersJson.find(t => t.name === 'Enterprise');
+    assert.ok(enterprise, 'Enterprise tier not found');
+
+    for (const [file, source] of Object.entries(readProLocaleFiles())) {
+      const features = JSON.parse(source)?.pricing?.tiers?.enterprise?.features;
+      assert.ok(Array.isArray(features), `${file} missing Enterprise pricing features`);
+      assert.equal(
+        features.length,
+        enterprise.features.length,
+        `${file} Enterprise pricing features are stale`,
+      );
+      assert.ok(
+        features.every((feature) => typeof feature === 'string' && feature.trim()),
+        `${file} has an empty Enterprise feature`,
+      );
+    }
+  });
+
   it('Pro tier has monthly and annual prices', () => {
     const pro = tiersJson.find(t => t.name === 'Pro');
     assert.ok(pro, 'Pro tier not found');

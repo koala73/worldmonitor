@@ -309,16 +309,25 @@ describe('get_world_brief seeded brief routing', () => {
   // schema bug need opposite responses. The thrown message must name the
   // bounded rejection reason; the client-facing RPC error stays generic.
   it('names the rejection reason when the seeded snapshot is rejected', async () => {
+    // `stale snapshot` is deliberately NOT in this list any more: age alone is
+    // no longer a rejection. The producer preserves last-known-good when
+    // synthesis fails, and throwing that away 60 minutes later handed Pro
+    // callers a hard error while a complete brief sat in Redis for another two
+    // hours (WORLDMONITOR-YJ). It is now served with stale:true — asserted by
+    // the sibling case below and by tests/mcp-world-brief-stale-lkg.test.mjs.
+    // Every reason that remains means the payload is absent or BROKEN, not
+    // merely old — including a future timestamp, which is corruption rather
+    // than staleness and leaves no trustworthy clock to report an age against.
     const scenarios = [
-      {
-        name: 'stale snapshot',
-        overrides: { generatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-        reason: 'stale-snapshot',
-      },
       {
         name: 'producer degraded status',
         overrides: { status: 'degraded' },
         reason: 'status-not-ok',
+      },
+      {
+        name: 'future generatedAt',
+        overrides: { generatedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
+        reason: 'future-generated-at',
       },
       {
         name: 'no headlines',
@@ -367,6 +376,35 @@ describe('get_world_brief seeded brief routing', () => {
         `${scenario.name}: reason named in the operator-facing message`,
       );
     }
+  });
+
+  it('serves a stale snapshot instead of rejecting it (WORLDMONITOR-YJ)', async () => {
+    // The counterpart to the scenario removed above: the SAME 2-hour-old
+    // snapshot that used to produce reason `stale-snapshot` now returns the
+    // brief, flagged. Kept in this suite so the routing contract still covers
+    // staleness — from the serving side rather than the rejecting side.
+    const deps = makeDeps();
+    globalThis.fetch = async (input) => {
+      const { pathname } = new URL(String(input));
+      if (pathname === '/api/infrastructure/v1/get-bootstrap-data') {
+        return insightsResponse({
+          generatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        });
+      }
+      throw new Error(`Unexpected downstream URL: ${input}`);
+    };
+
+    const response = await mcpHandler(
+      requestFor('https://api.worldmonitor.app/api/mcp', AUTH_CASES[0].headers, 760),
+      deps,
+    );
+    assert.equal(response.status, 200, 'transport status');
+    const rpc = await response.json();
+    assert.equal(rpc.error, undefined, `must not raise: ${JSON.stringify(rpc.error ?? {})}`);
+    const payload = JSON.parse(rpc.result.content[0].text);
+    assert.ok(payload.brief, 'the brief itself is served');
+    assert.equal(payload.stale, true, 'flagged as stale');
+    assert.ok(payload.ageMinutes >= 118, `ageMinutes should be ~120, got ${payload.ageMinutes}`);
   });
 
   it('classifies reproduced 401/405 responses without logging response bodies', async () => {
