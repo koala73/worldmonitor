@@ -1,6 +1,8 @@
 import { unwrapEnvelope } from './seed-envelope';
 import { getRpcNoStoreReasonFromPayload } from './cache-contract';
 import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
+// @ts-expect-error JavaScript module has no declaration file.
+import { captureSilentError } from '../../api/_sentry-edge.js';
 
 // Default Upstash REST timeouts are tuned for production (Vercel ↔ Upstash
 // same-datacenter latency is sub-50ms, 1.5s leaves >20× headroom). They
@@ -297,8 +299,9 @@ export async function setCachedJsonIfAbsent(key: string, value: unknown, ttlSeco
     }
     return data?.result === 'OK';
   } catch (err) {
-    // sentry-coverage-ok: callers read back the persisted winner and fail
-    // closed when first-writer publication cannot be confirmed.
+    void captureSilentError(err, {
+      tags: { component: 'redis', operation: 'setCachedJsonIfAbsent' },
+    });
     console.warn('[redis] setCachedJsonIfAbsent failed:', errMsg(err));
     return false;
   }
