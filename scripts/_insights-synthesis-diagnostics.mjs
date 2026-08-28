@@ -72,6 +72,7 @@ function runInsightsComposer(text, topStories, opts = {}) {
       validatorMode: opts.validatorMode ?? 'enforce',
       sanitizeTitle: opts.sanitizeTitle,
       sourceFromStory: opts.sourceFromStory,
+      promptScopedMembers: opts.promptScopedMembers,
       parsedSynthesis,
     };
     // Omitting briefCluster preserves the composer's implicit scan of the

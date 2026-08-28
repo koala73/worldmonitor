@@ -420,6 +420,34 @@ test('the composer rejection reason reaches the failure code through the real se
   );
 });
 
+test('the real seam scopes grounding to prompt-rendered member titles', () => {
+  const story = {
+    ...SEAM_STORY,
+    memberTitles: [
+      SEAM_STORY.primaryTitle,
+      'Growers blame drought for the Chile price surge',
+      'Retailers warn of pass-through to consumers',
+      'Bolivia mulls emergency fruit imports amid the squeeze',
+    ],
+  };
+  const hiddenMemberLead = 'Bolivia weighed emergency imports as Chile prices rose sharply [1].';
+  const resolve = (promptScopedMembers) => resolveInsightsSynthesis({
+    synthesisResult: { text: seamText(hiddenMemberLead), provider: 'openrouter', model: 'test' },
+    topStories: [story],
+    briefCluster: story,
+    validatorMode: 'enforce',
+    promptScopedMembers,
+  });
+
+  const scoped = resolve(true);
+  assert.equal(scoped.composed, null);
+  assert.equal(scoped.failureCode, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN);
+
+  const legacy = resolve(false);
+  assert.equal(legacy.failureCode, null);
+  assert.ok(legacy.composed, 'legacy grounding still sees every cluster member title');
+});
+
 test('the seam classifies an unparseable response as PARSE, not as a gate', () => {
   const { composed, failureCode } = resolveInsightsSynthesis({
     synthesisResult: { text: 'not parseable at all', provider: 'groq', model: 'test' },
