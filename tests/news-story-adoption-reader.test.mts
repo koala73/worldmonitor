@@ -261,4 +261,25 @@ describe('news digest adoption-state reader', () => {
     assert.deepEqual(deadlineCalls, []);
     assert.deepEqual([...skipped.incompleteHashes], ['late']);
   });
+
+  it('uses a short positive remainder as the Redis transaction timeout', async () => {
+    enableRedis();
+    const calls: number[] = [];
+    globalThis.fetch = (async (_input, init) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[];
+      calls.push(commands.length);
+      return redisResponse(commands.map((command) => {
+        const [verb] = command as string[];
+        return { result: verb === 'HMGET' ? [null, null, null] : null };
+      }));
+    }) as typeof fetch;
+
+    // A slow cold fetch can leave less than REDIS_PIPELINE_TIMEOUT_MS. The
+    // reader must still try an otherwise-fast transaction inside the remaining
+    // absolute budget instead of skipping every cluster at offset zero.
+    const state = await __testing__.readAdoptionState(['near-deadline'], 0, Date.now() + 250);
+
+    assert.deepEqual(calls, [2]);
+    assert.equal(state.incompleteHashes.size, 0);
+  });
 });

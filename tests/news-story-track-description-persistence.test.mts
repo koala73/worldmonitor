@@ -20,6 +20,7 @@ import { shouldDropOpinionTrack } from '../scripts/lib/digest-opinion-track-filt
 const {
   buildStoryTrackHsetFields,
   isAnchorEligible,
+  isIdentityAnchorEligible,
   computeEntityCorroborationSignals,
   parseRssXml,
   promoteDiplomacySeverity,
@@ -80,6 +81,16 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.equal(isAnchorEligible(corroborated), true, 'two independent publisher families may anchor');
     assert.equal(fieldsToMap(buildStoryTrackHsetFields(hostile, '1745000000000', 42)).get('anchorEligible'), '0');
     assert.equal(fieldsToMap(buildStoryTrackHsetFields(trusted, '1745000000000', 42)).get('anchorEligible'), '1');
+  });
+
+  it('uses cluster-wide corroboration when selecting a safe batch default', () => {
+    const lowTierMember = baseItem({ source: 'Farm A', corroborationCount: 1 });
+    assert.equal(isAnchorEligible(lowTierMember), false, 'the parsed exact-title count alone is one');
+    assert.equal(
+      isIdentityAnchorEligible(lowTierMember, 2),
+      true,
+      'two independent publisher families must make a low-tier cluster eligible in its first cycle',
+    );
   });
 
   it('writes isOpinion as "1" / "0" — stamps the non-event brief verdict on the row (F3)', () => {

@@ -75,6 +75,8 @@ import {
   parseForecastEvidenceCoverage,
 } from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
+// @ts-expect-error — JS module, no declaration file
+import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
@@ -93,6 +95,7 @@ import {
   STORY_SOURCES_KEY,
   STORY_PEAK_KEY,
   STORY_ALIAS_KEY,
+  STORY_ALIAS_PUBLICATION_LOCK_KEY,
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
   DIGEST_ACCUMULATOR_TTL,
@@ -559,6 +562,21 @@ function isAnchorEligible(item: Pick<ParsedItem, 'source' | 'originPublisher' | 
   return getSourceTier(item.source) <= MAX_TRUSTED_ANCHOR_SOURCE_TIER
     || (Number.isFinite(item.corroborationCount)
       && item.corroborationCount >= MIN_CORROBORATING_PUBLISHERS);
+}
+
+// Story identity calculates corroboration for the complete semantic cluster.
+// Use that value while selecting a safe batch default instead of the parsed
+// item's initial exact-title count, which is normally one before identity is
+// applied back to every member.
+function isIdentityAnchorEligible(
+  item: Pick<ParsedItem, 'source' | 'originPublisher'>,
+  corroborationCount: number,
+): boolean {
+  return isAnchorEligible({
+    source: item.source,
+    originPublisher: item.originPublisher,
+    corroborationCount,
+  });
 }
 
 function compareAnchorCandidates(a: ParsedItem, b: ParsedItem): number {
@@ -1531,7 +1549,10 @@ function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryP
  * Batch-read existing story:track hashes from Redis for a list of title hashes.
  * Returns a Map<titleHash, StoryTrack>. Missing entries are absent from the map.
  */
-async function readStoryTracks(titleHashes: string[]): Promise<Map<string, StoryTrack>> {
+async function readStoryTracks(
+  titleHashes: string[],
+  deadlineAt = Number.POSITIVE_INFINITY,
+): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
   // currentScore and peakScore are deliberately NOT read here. derivePhase is
   // the only consumer this handler ever had for them, and it no longer uses a
@@ -1545,7 +1566,9 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
-  const results = await runRedisPipeline(commands);
+  const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+  if (timeoutMs === undefined) return new Map();
+  const results = await runRedisPipeline(commands, false, timeoutMs);
   const map = new Map<string, StoryTrack>();
   for (let i = 0; i < titleHashes.length; i++) {
     const vals = results[i]?.result as string[] | null;
@@ -1580,6 +1603,18 @@ function chunkRedisCommands(
     chunks.push(commands.slice(offset, offset + maxCommands));
   }
   return chunks;
+}
+
+/**
+ * Convert an absolute digest deadline into a Redis request timeout. A caller
+ * must not start a request after its deadline, but a short positive remainder
+ * is still useful because same-region Upstash reads normally complete far
+ * below the shared five-second fallback timeout.
+ */
+function redisTimeoutForDeadline(deadlineAt: number): number | undefined {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) return undefined;
+  return Math.min(REDIS_PIPELINE_TIMEOUT_MS, Math.max(1, Math.ceil(remainingMs)));
 }
 
 /**
@@ -1620,11 +1655,12 @@ function isCompleteRedisResult(result: unknown): result is { result: unknown } {
  * three-field member-track read for every hash come from the same Redis
  * snapshot. Distinct non-self alias targets are then read in a second bounded
  * MULTI/EXEC call, because their keys are not known until the aliases return.
- * The reader has one absolute deadline shared by all chunks and only starts a
- * call when the Redis helper's own timeout still fits. A timeout, incomplete
- * response, command error, or deadline skip leaves the affected source hashes
- * marked incomplete; callers must use their batch-derived canonical for any
- * affected cluster.
+ * The reader has one absolute deadline shared by all chunks. Each Redis call
+ * is tightened to the remaining budget, so a short positive remainder can
+ * still serve a normal fast response without letting a slow call outlive the
+ * digest. A timeout, incomplete response, command error, or deadline skip
+ * leaves the affected source hashes marked incomplete; callers must use their
+ * batch-derived canonical for any affected cluster.
  */
 async function readAdoptionState(
   memberHashes: string[],
@@ -1637,11 +1673,8 @@ async function readAdoptionState(
 
   for (let offset = 0; offset < memberHashes.length; offset += ADOPTION_BATCH_SIZE) {
     const chunk = memberHashes.slice(offset, offset + ADOPTION_BATCH_SIZE);
-    const remainingMs = deadlineAt - Date.now();
-    // runRedisTransaction has a fixed per-call timeout and returns [] when it
-    // aborts. Do not start work that cannot finish inside the digest budget;
-    // awaiting every started call also prevents detached work after return.
-    if (remainingMs < REDIS_PIPELINE_TIMEOUT_MS) {
+    const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+    if (timeoutMs === undefined) {
       console.warn(
         `[digest] story adoption deadline reached; skipped ${memberHashes.length - offset} member hash(es)`,
       );
@@ -1651,7 +1684,7 @@ async function readAdoptionState(
     const adoptionResults = await runRedisTransaction([
       ...chunk.map((h) => ['GET', STORY_ALIAS_KEY(h)]),
       ...chunk.map((h) => ['HMGET', STORY_TRACK_KEY(h), 'firstSeen', 'lastSeen', 'anchorEligible']),
-    ]);
+    ], false, timeoutMs);
 
     // A response that crossed the deadline is not a usable snapshot. Do this
     // check before applying either map so no half-read can influence adoption.
@@ -1726,8 +1759,8 @@ async function readAdoptionState(
       .filter((target) => !trackRowByHash.has(target));
     const unreadableTargetHashes = new Set<string>();
     if (targetHashes.length > 0) {
-      const targetRemainingMs = deadlineAt - Date.now();
-      if (targetRemainingMs < REDIS_PIPELINE_TIMEOUT_MS) {
+      const targetTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+      if (targetTimeoutMs === undefined) {
         console.warn(
           `[digest] story adoption target deadline reached; skipped ${targetHashes.length} track read(s)`,
         );
@@ -1737,6 +1770,8 @@ async function readAdoptionState(
           targetHashes.map((target) => [
             'HMGET', STORY_TRACK_KEY(target), 'firstSeen', 'lastSeen', 'anchorEligible',
           ]),
+          false,
+          targetTimeoutMs,
         );
 
         // A response that crossed the deadline is not a usable target
@@ -2206,13 +2241,14 @@ function buildStoryTrackHsetFields(
   item: ParsedItem,
   nowStr: string,
   score: number,
+  anchorEligible = isAnchorEligible(item),
 ): Array<string | number> {
   return [
     'lastSeen', nowStr,
     'currentScore', score,
     // Canonical adoption may use firstSeen only when this server-derived
     // eligibility stamp is present. Legacy rows without it fail closed.
-    'anchorEligible', isAnchorEligible(item) ? '1' : '0',
+    'anchorEligible', anchorEligible ? '1' : '0',
     'title', item.title,
     'link', item.link,
     'severity', item.level,
@@ -2270,8 +2306,20 @@ function buildStoryTrackHsetFields(
   ];
 }
 
-async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[], memberHashesByFinal?: Map<string, Set<string>>): Promise<void> {
+async function writeStoryTracking(
+  items: ParsedItem[],
+  variant: string,
+  lang: string,
+  hashes: string[],
+  memberHashesByFinal?: Map<string, Set<string>>,
+  deadlineAt = Number.POSITIVE_INFINITY,
+  clusterAnchorEligibleByHash?: ReadonlyMap<string, boolean>,
+): Promise<void> {
   if (items.length === 0) return;
+  if (redisTimeoutForDeadline(deadlineAt) === undefined) {
+    console.warn('[digest] story tracking deadline reached before writes');
+    return;
+  }
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
   // The archive/coverage keys are written raw (see the pipeline call below), so
@@ -2296,6 +2344,15 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   let trackingWritesConfirmed = true;
   let evidenceWritesConfirmed = coverageReadConfirmed;
 
+  const runPipelineBeforeDeadline = async (
+    commands: Array<Array<string | number>>,
+    raw = false,
+  ) => {
+    const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+    if (timeoutMs === undefined) return [];
+    return runRedisPipeline(commands, raw, timeoutMs);
+  };
+
   // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
   // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
   // HSET representative fields) must run ONCE per unique hash per cycle —
@@ -2308,9 +2365,11 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   // are set-shaped stay per item: SADD source (distinct-source set is the
   // point of corroboration) and ZADD peak GT (max is idempotent).
   const representativeByHash = new Map<string, ParsedItem>();
+  const displayedAnchorEligibleByHash = new Map<string, boolean>();
   for (let i = 0; i < items.length; i++) {
     const hash = hashes[i]!;
     const item = items[i]!;
+    if (isAnchorEligible(item)) displayedAnchorEligibleByHash.set(hash, true);
     const current = representativeByHash.get(hash);
     if (
       !current
@@ -2324,6 +2383,8 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   }
 
   const writtenHashes = new Set<string>();
+  const aliasMembersByFinal = new Map<string, Set<string>>();
+  let trackingStopped = false;
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
     const commands: Array<Array<string | number>> = [];
@@ -2346,6 +2407,9 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
           representative,
           nowStr,
           representative.importanceScore,
+          clusterAnchorEligibleByHash?.get(hash)
+            ?? displayedAnchorEligibleByHash.get(hash)
+            ?? false,
         );
         const anchorFieldAt = hsetFieldsWithEligibility.indexOf('anchorEligible');
         const anchorEligible = anchorFieldAt >= 0
@@ -2402,12 +2466,11 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
             evidenceDropped += 1;
           }
         }
-        // #4924: alias rows for every member exact-title hash -> the FINAL
-        // (post-adoption) canonical, story-track TTL — next cycle's
-        // adoption source. Includes the canonical's own hash.
-        for (const memberHash of memberHashesByFinal?.get(hash) ?? []) {
-          commands.push(['SET', STORY_ALIAS_KEY(memberHash), hash, 'EX', ttl]);
-        }
+        // Alias rows publish canonical continuity. Keep each final-hash group
+        // separate from the mutable tracking pipeline so it can be committed
+        // atomically only after all base tracking writes are confirmed.
+        const aliasMembers = memberHashesByFinal?.get(hash);
+        if (aliasMembers?.size) aliasMembersByFinal.set(hash, new Set(aliasMembers));
       }
 
       commands.push(
@@ -2425,23 +2488,32 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
 
     // Tracking and evidence touch disjoint keyspaces and neither reads the
     // other's result, so evidence stays in flight while tracking chunks are
-    // sent in order. This path is inside the digest's own OVERALL_DEADLINE_MS
-    // budget; serialising the two keyspaces would double the Redis round-trips
-    // per batch.
+    // sent in order. Each request receives the digest's remaining budget;
+    // after any failed or expired chunk we stop rather than starting more
+    // writes that can outlive the cold response.
     //
     // Archive keys are deliberately raw: the Railway resolver and backfill
     // operate outside a Vercel deployment prefix and must read this same
     // durable evidence namespace.
-    // Upstash accepts at most 1,000 commands per pipeline. Alias rows are
-    // data-dependent, so STORY_BATCH_SIZE alone cannot prove that bound. Send
-    // command chunks sequentially to preserve the per-story write order while
-    // allowing a large alias cluster to span multiple requests.
-    const evidencePromise = evidenceEligible
-      ? runRedisPipeline(evidenceBatchCommands, true)
+    const evidenceTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+    const evidencePromise = evidenceEligible && evidenceTimeoutMs !== undefined
+      ? runRedisPipeline(evidenceBatchCommands, true, evidenceTimeoutMs)
       : Promise.resolve([]);
+    if (evidenceEligible && evidenceTimeoutMs === undefined) evidenceWritesConfirmed = false;
     for (const trackingChunk of chunkRedisCommands(commands)) {
-      const trackingResults = await runRedisPipeline(trackingChunk);
-      if (!redisPipelineConfirmed(trackingResults, trackingChunk.length)) trackingWritesConfirmed = false;
+      const trackingTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+      if (trackingTimeoutMs === undefined) {
+        console.warn('[digest] story tracking deadline reached; skipped remaining writes');
+        trackingWritesConfirmed = false;
+        trackingStopped = true;
+        break;
+      }
+      const trackingResults = await runRedisPipeline(trackingChunk, false, trackingTimeoutMs);
+      if (!redisPipelineConfirmed(trackingResults, trackingChunk.length)) {
+        trackingWritesConfirmed = false;
+        trackingStopped = true;
+        break;
+      }
     }
     const evidenceResults = await evidencePromise;
     if (evidenceEligible) {
@@ -2449,6 +2521,95 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
         evidenceWritesConfirmed = false;
       }
     }
+    if (trackingStopped) break;
+  }
+
+  // Alias rows decide whether a later, differently-worded batch can retain a
+  // live canonical. They must never be sliced at an arbitrary pipeline
+  // boundary: publish each complete canonical group atomically only after all
+  // base tracking writes have confirmed. A short, shared publication lease
+  // keeps separate Edge isolates and digest scopes from racing. Each Lua call
+  // checks its token inside Redis, which fences an older request that was
+  // delayed until after the lease expired. A group above the Redis command
+  // limit is deliberately deferred; preserving its prior aliases is safer
+  // than exposing a partial new cohort.
+  if (trackingWritesConfirmed && aliasMembersByFinal.size > 0) {
+    const aliasTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+    if (aliasTimeoutMs === undefined) {
+      console.warn('[digest] story alias deadline reached; skipped alias publication');
+      trackingWritesConfirmed = false;
+    } else {
+      // Keep the lease no longer than the request timeout. If an abort races
+      // with a late Redis execution, its orphaned lease can then block later
+      // publishers for at most the existing five-second Redis bound. A lease
+      // that expires during a long publication is safe: the fenced script
+      // rejects every remaining call before it writes aliases.
+      const aliasLeaseMs = aliasTimeoutMs;
+      const aliasLockToken = crypto.randomUUID();
+      const aliasLockResults = await runRedisPipeline([[
+        'SET',
+        STORY_ALIAS_PUBLICATION_LOCK_KEY,
+        aliasLockToken,
+        'NX',
+        'PX',
+        aliasLeaseMs,
+      ]], false, aliasTimeoutMs);
+      const aliasLockAcquired = aliasLockResults.length === 1
+        && aliasLockResults[0]?.result === 'OK';
+      if (!aliasLockAcquired) {
+        console.warn('[digest] story alias publication lease unavailable; preserved live aliases');
+      } else {
+        const aliasScriptCommands: Array<Array<string | number>> = [];
+        for (const [hash, memberHashes] of aliasMembersByFinal) {
+          if (memberHashes.size > MAX_REDIS_PIPELINE_COMMANDS) {
+            console.warn(
+              `[digest] deferred ${memberHashes.size} story aliases for ${hash.slice(0, 12)}; group exceeds Redis transaction limit`,
+            );
+            trackingWritesConfirmed = false;
+            break;
+          }
+          const aliasKeys = [...memberHashes].map(STORY_ALIAS_KEY);
+          aliasScriptCommands.push([
+            'EVAL',
+            STORY_ALIAS_PUBLISH_SCRIPT,
+            String(aliasKeys.length + 1),
+            STORY_ALIAS_PUBLICATION_LOCK_KEY,
+            ...aliasKeys,
+            aliasLockToken,
+            hash,
+            String(STORY_TTL),
+          ]);
+        }
+        if (trackingWritesConfirmed) {
+          // One EVAL is one bounded pipeline command even when the script writes
+          // a full alias group. Batch the independent, fenced group scripts so
+          // a high-cardinality digest cannot spend one network round-trip per
+          // story; each EVAL remains atomic on Redis.
+          for (const aliasScriptChunk of chunkRedisCommands(aliasScriptCommands)) {
+            const groupTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+            if (groupTimeoutMs === undefined) {
+              console.warn('[digest] story alias deadline reached; skipped remaining alias groups');
+              trackingWritesConfirmed = false;
+              break;
+            }
+            const aliasResults = await runRedisPipeline(aliasScriptChunk, false, groupTimeoutMs);
+            if (
+              aliasResults.length !== aliasScriptChunk.length
+              || aliasResults.some((result) => result?.result !== 1)
+            ) {
+              console.warn('[digest] story alias publication was not confirmed; stopped remaining groups');
+              trackingWritesConfirmed = false;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (redisTimeoutForDeadline(deadlineAt) === undefined) {
+    console.warn('[digest] story tracking deadline reached before maintenance writes');
+    return;
   }
 
   // Refresh accumulator TTL once per build. The TTL is abandoned-key cleanup
@@ -2456,7 +2617,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   // expired members previously lived here forever because the TTL never
   // removed them.
   const accumulatorTtlCommands: Array<Array<string | number>> = [['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]];
-  const accumulatorTtlResults = await runRedisPipeline(accumulatorTtlCommands);
+  const accumulatorTtlResults = await runPipelineBeforeDeadline(accumulatorTtlCommands);
   const accumulatorTtlConfirmed = redisPipelineConfirmed(accumulatorTtlResults, accumulatorTtlCommands.length);
   let coverageAdvanced = false;
   let coverageAfter = coverageBefore;
@@ -2476,7 +2637,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       'EX',
       FORECAST_EVIDENCE_TTL_S,
     ]];
-    const coverageResults = await runRedisPipeline(coverageCommands, true);
+    const coverageResults = await runPipelineBeforeDeadline(coverageCommands, true);
     coverageAdvanced = canAdvance && redisPipelineConfirmed(coverageResults, coverageCommands.length);
   }
 
@@ -2498,7 +2659,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   if (pruneAllowed) {
     const prune = accumulatorPruneBounds(now);
     const pruneCommands: Array<Array<string | number>> = [['ZREMRANGEBYSCORE', accKey, prune.min, prune.max]];
-    const pruneResults = await runRedisPipeline(pruneCommands);
+    const pruneResults = await runPipelineBeforeDeadline(pruneCommands);
     // A silently-failing prune is how an unbounded key stays unbounded while
     // the operator log reports a healthy cutover.
     pruneConfirmed = redisPipelineConfirmed(pruneResults, pruneCommands.length);
@@ -2510,7 +2671,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
     archiveMaintenanceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
     archiveMaintenanceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
   }
-  const archiveMaintenanceResults = await runRedisPipeline(archiveMaintenanceCommands, true);
+  const archiveMaintenanceResults = await runPipelineBeforeDeadline(archiveMaintenanceCommands, true);
   const maintenanceConfirmed = redisPipelineConfirmed(archiveMaintenanceResults, archiveMaintenanceCommands.length);
   if (evidenceEligible) {
     // `published` counts what the confirmed pipeline actually wrote. Drops are
@@ -2737,7 +2898,7 @@ async function buildDigest(
       for (const h of identity.memberTitleHashes ?? []) allMemberHashes.add(h);
     }
     for (const [item, identity] of identityByItem) {
-      if (!isAnchorEligible(item)) continue;
+      if (!isIdentityAnchorEligible(item, identity.corroborationCount)) continue;
       const current = eligibleAnchorByCluster.get(identity.titleHash);
       if (!current || compareAnchorCandidates(item, current) < 0) {
         eligibleAnchorByCluster.set(identity.titleHash, item);
@@ -2766,11 +2927,17 @@ async function buildDigest(
     for (const [hash, target] of adoptionAliases) aliasTargetByHash.set(hash, target);
     for (const [hash, firstSeen] of adoptionTracks) trackFirstSeenByHash.set(hash, firstSeen);
 
+    // Do not overwrite a live alias cohort when this build could not confirm
+    // all of the cluster's prior state. The batch default is safe only for
+    // serving this response; persisting it would erase continuity evidence
+    // and let a transient Redis failure re-fork the next cycle.
+    const incompleteIdentityHashes = new Set<string>();
     await Promise.all(allItems.map(async (item) => {
       const identity = identityByItem.get(item);
       if (identity) {
         const clusterReadIncomplete = (identity.memberTitleHashes ?? [])
           .some((hash) => adoptionState.incompleteHashes.has(hash));
+        if (clusterReadIncomplete) incompleteIdentityHashes.add(identity.titleHash);
         const batchDefaultHash = eligibleDefaultHashByCluster.get(identity.titleHash) ?? identity.titleHash;
         item.titleHash = clusterReadIncomplete
           ? batchDefaultHash
@@ -2793,12 +2960,23 @@ async function buildDigest(
       }
     }));
 
+    // Category capping happens after identity. A trusted/corroborated member
+    // can therefore be absent from allSliced while a lower-tier cluster member
+    // is retained. Preserve the full cluster's eligibility on the canonical
+    // track instead of deriving it only from the displayed representative.
+    const clusterAnchorEligibleByFinalHash = new Map<string, boolean>();
+    for (const item of allItems) {
+      if (item.titleHash && isAnchorEligible(item)) {
+        clusterAnchorEligibleByFinalHash.set(item.titleHash, true);
+      }
+    }
+
     // Final(post-adoption) hash -> member exact-title hashes, consumed by
     // writeStoryTracking to persist next cycle's alias rows.
     const memberHashesByFinal = new Map<string, Set<string>>();
     for (const item of allItems) {
       const identity = identityByItem.get(item);
-      if (!identity || !item.titleHash) continue;
+      if (!identity || !item.titleHash || incompleteIdentityHashes.has(identity.titleHash)) continue;
       let set = memberHashesByFinal.get(item.titleHash);
       if (!set) { set = new Set(); memberHashesByFinal.set(item.titleHash, set); }
       for (const h of identity.memberTitleHashes ?? []) set.add(h);
@@ -2877,6 +3055,9 @@ async function buildDigest(
     const allSliced = [...slicedByCategory.values()].flat();
     // titleHash was already set on each item during the corroboration pass above.
     const titleHashes = allSliced.map(i => i.titleHash!);
+    // Leave the response guard intact for final assembly and cache writes.
+    // All optional Redis work after feed fetches shares this absolute boundary.
+    const storyTrackingDeadlineAt = digestStartedAt + ADOPTION_DEADLINE_MS;
 
     const now = Date.now();
 
@@ -2884,10 +3065,19 @@ async function buildDigest(
     // mentionCount. We merge read state + this cycle's increment in memory to
     // produce accurate, current StoryMeta without a second Redis round-trip.
     const uniqueHashes = [...new Set(titleHashes)];
-    const storyTracks = await readStoryTracks(uniqueHashes).catch(() => new Map<string, StoryTrack>());
+    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt)
+      .catch(() => new Map<string, StoryTrack>());
 
     // Write story tracking. Errors never fail the digest build.
-    await writeStoryTracking(allSliced, variant, lang, titleHashes, memberHashesByFinal).catch((err: unknown) =>
+    await writeStoryTracking(
+      allSliced,
+      variant,
+      lang,
+      titleHashes,
+      memberHashesByFinal,
+      storyTrackingDeadlineAt,
+      clusterAnchorEligibleByFinalHash,
+    ).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
 
@@ -2999,6 +3189,7 @@ export const __testing__ = {
   extractFirstDateTag,
   buildStoryTrackHsetFields,
   isAnchorEligible,
+  isIdentityAnchorEligible,
   computeImportanceScore,
   computeCredibilityScore,
   computeItemCredibilityScore,
@@ -3009,6 +3200,7 @@ export const __testing__ = {
   derivePhase,
   readStoryTracks,
   readAdoptionState,
+  redisTimeoutForDeadline,
   chunkRedisCommands,
   resolveMaxAgeMs,
   capLlmUpgrade,

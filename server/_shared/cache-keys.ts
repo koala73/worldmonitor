@@ -48,8 +48,14 @@ export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titl
 export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
 // #4924: member exact-title hash -> canonical story hash, same TTL as the
 // track — lets a later cycle adopt the live canonical when the original
-// canonical member is absent from the batch.
+// canonical member is absent from the batch. Writers commit one complete
+// canonical alias group atomically under a fenced publication lease; an
+// oversized group is deferred.
 export const STORY_ALIAS_KEY = (titleHash: string) => `story:alias:v1:${titleHash}`;
+// A short lease serializes alias publication across digest isolates and scopes.
+// The publisher's Lua script verifies its unique token before it writes, so an
+// expired, delayed request cannot overwrite a newer alias cohort.
+export const STORY_ALIAS_PUBLICATION_LOCK_KEY = 'story:alias:publish-lock:v1';
 export const DIGEST_ACCUMULATOR_KEY = (variant: string, lang = 'en') => `digest:accumulator:v1:${variant}:${lang}`;
 export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest:last-sent:v1:${userId}:${variant}`;
 // NOTE: notification-relay.cjs owns the live value (shadow:score-log:v5 since prompt upgrade).

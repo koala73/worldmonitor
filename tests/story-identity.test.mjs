@@ -412,14 +412,27 @@ describe('list-feed-digest story-identity wiring (#4924 review)', () => {
   });
 
   it('canonical adoption requires persisted anchor eligibility', () => {
-    assert.match(digestSrc, /'anchorEligible', isAnchorEligible\(item\) \? '1' : '0'/);
+    assert.match(digestSrc, /'anchorEligible', anchorEligible \? '1' : '0'/);
+    assert.match(
+      digestSrc,
+      /isIdentityAnchorEligible\(item, identity\.corroborationCount\)/,
+      'the batch-default gate must use cluster-wide corroboration before items are mutated',
+    );
+    assert.match(digestSrc, /clusterAnchorEligibleByFinalHash/,
+      'the persisted eligibility stamp must retain trusted members excluded by the display cap');
     assert.match(digestSrc, /'firstSeen', 'lastSeen', 'anchorEligible'/);
     assert.match(digestSrc, /parseFreshEligibleTrackFirstSeen\(/,
       'legacy or explicitly ineligible tracks must not anchor on firstSeen alone');
     assert.match(digestSrc, /MAX_REDIS_PIPELINE_COMMANDS = 1000/,
       'tracking writes must declare the hard Redis command limit');
-    assert.match(digestSrc, /chunkRedisCommands\(commands\)/,
-      'tracking writes must split data-dependent alias commands before dispatch');
+    assert.match(digestSrc, /STORY_ALIAS_PUBLISH_SCRIPT/,
+      'each alias cohort must use the fenced atomic publication script');
+    assert.match(digestSrc, /STORY_ALIAS_PUBLICATION_LOCK_KEY/,
+      'alias publication must use one shared cross-isolate lease');
+    assert.match(digestSrc, /aliasLockToken/,
+      'the publication script must receive the writer token as a fence');
+    assert.match(digestSrc, /memberHashes\.size > MAX_REDIS_PIPELINE_COMMANDS/,
+      'an oversized alias cohort must be deferred instead of split into a partial generation');
   });
 });
 
@@ -710,10 +723,14 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
     assert.ok(!onceBlock.includes("['EXPIRE', peakKey"),
       'peak EXPIRE must not sit in the once-per-hash pre-block');
     const memberBlockStart = src.indexOf("['ZADD', peakKey, 'GT'");
-    const memberBlock = src.slice(memberBlockStart, src.indexOf('runRedisPipeline(commands)', memberBlockStart));
+    const memberBlock = src.slice(memberBlockStart, src.indexOf('const evidenceTimeoutMs', memberBlockStart));
     assert.ok(memberBlock.includes("['EXPIRE', sourcesKey") && memberBlock.includes("['EXPIRE', peakKey"),
       'both EXPIREs must follow the creating SADD/ZADD in the per-member block');
-    assert.match(src, /STORY_ALIAS_KEY\(memberHash\), hash, 'EX', ttl/, 'alias rows persisted with story TTL');
+    assert.match(src, /String\(STORY_TTL\)/, 'alias rows persisted with story TTL');
+    assert.match(src, /aliasResults\.length !== aliasScriptChunk\.length/,
+      'a short alias-script batch response must stop remaining groups');
+    assert.match(src, /aliasResults\.some\(\(result\) => result\?\.result !== 1\)/,
+      'an unconfirmed or stale fenced alias publication must stop remaining groups');
     assert.match(
       src,
       /adoptExistingCanonical\(\s*identity\.memberTitleHashes,\s*batchDefaultHash,\s*aliasTargetByHash,\s*trackFirstSeenByHash,\s*\)/,
@@ -724,7 +741,7 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
     // states observed at different moments.
     assert.match(
       src,
-      /runRedisTransaction\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen', 'anchorEligible'\]\),\s*\]\)/,
+      /runRedisTransaction\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen', 'anchorEligible'\]\),\s*\], false, timeoutMs\)/,
       'alias and story:track reads for a hash must share one atomic transaction',
     );
     // ...and that call must stay bounded: two commands per hash means the hash
