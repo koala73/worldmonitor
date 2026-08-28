@@ -2766,6 +2766,51 @@ describe("webhook processWebhookEvent", () => {
     expect(events[0].status).toBe(expectedStatus);
   });
 
+  // WORLDMONITOR-114 — Dodo dispute payloads type `amount` as a string and omit
+  // `total_amount`. Inserting that string into paymentEvents.amount (v.number)
+  // rejected the mutation before this coerce.
+  test("dispute.opened with string amount and no total_amount persists a numeric amount", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = {
+      type: "dispute.opened",
+      business_id: "biz_test",
+      timestamp: "2026-03-21T10:00:00Z",
+      data: {
+        payload_type: "Dispute",
+        dispute_id: "dp_string_amount",
+        payment_id: "pay_string_amount",
+        currency: "USD",
+        amount: "9999",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "test@example.com",
+          name: "Test User",
+        },
+        metadata: { wm_user_id: "test-user-001" },
+      },
+    };
+    await processEvent(t, "wh_dispute_string_amount", "dispute.opened", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(9999);
+    expect(events[0].status).toBe("dispute_opened");
+    expect(events[0].dodoPaymentId).toBe("pay_string_amount");
+  });
+
+  test("payment.succeeded with string total_amount persists a numeric amount", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.succeeded", { total_amount: "1999" });
+    await processEvent(t, "wh_payment_string_amount", "payment.succeeded", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(1999);
+    expect(events[0].status).toBe("succeeded");
+  });
+
   test("out-of-order events are rejected", async () => {
     const t = convexTest(schema, modules);
 
