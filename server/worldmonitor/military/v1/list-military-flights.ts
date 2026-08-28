@@ -9,7 +9,7 @@ import type {
 
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
 import { hasFiniteRequestBounds, normalizeBounds, type RequestBounds } from './_bounds';
-import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson, setCachedJsonIfAbsent } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import {
@@ -20,6 +20,7 @@ import {
 const REDIS_CACHE_KEY = 'military:flights:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — reduce upstream API pressure
 const REDIS_STALE_KEY = 'military:flights:stale:v1';
+const STABLE_LIVE_SNAPSHOT_CACHE_KEY = 'military:flights:stable-live:v1';
 const STABLE_STALE_CACHE_KEY = 'military:flights:stable-stale:v1';
 const STALE_SNAPSHOT_CACHE_TTL = 120; // Bind a bounded cursor traversal to one snapshot.
 const STALE_SNAPSHOT_NEG_TTL = 30;
@@ -274,6 +275,7 @@ type LiveSeedRead =
   | { status: 'hit'; flights: ListMilitaryFlightsResponse['flights']; coverage: SeedCoverage }
   | { status: 'miss' | 'error' };
 let liveSeedReadPromise: Promise<LiveSeedRead> | null = null;
+let stableLiveSeedSnapshotInflight: Promise<LiveSeedRead> | null = null;
 
 async function fetchLiveSeedSnapshot(): Promise<LiveSeedRead> {
   const now = Date.now();
@@ -306,6 +308,57 @@ async function fetchLiveSeedSnapshot(): Promise<LiveSeedRead> {
   }
 }
 
+interface StableLiveSeedSnapshot {
+  flights: ListMilitaryFlightsResponse['flights'];
+  coverage: SeedCoverage;
+}
+
+function parseStableLiveSeedSnapshot(value: unknown): StableLiveSeedSnapshot | null {
+  if (!value || typeof value !== 'object') return null;
+  const snapshot = value as Partial<StableLiveSeedSnapshot>;
+  if (
+    !Array.isArray(snapshot.flights)
+    || (snapshot.coverage !== 'global' && snapshot.coverage !== 'regional')
+  ) return null;
+  return { flights: snapshot.flights, coverage: snapshot.coverage };
+}
+
+// Cursors are numeric offsets, so every covered live-seed request must page
+// against one shared snapshot rather than isolate-local state. This fixed key
+// replaces the former one-copy-per-bbox cache while retaining its 10-minute
+// traversal window. It never receives provider recovery data.
+async function fetchStableLiveSeedSnapshot(): Promise<LiveSeedRead> {
+  const cached = await readCachedJson(STABLE_LIVE_SNAPSHOT_CACHE_KEY);
+  if (cached.status === 'hit') {
+    const snapshot = parseStableLiveSeedSnapshot(cached.value);
+    if (snapshot) return { status: 'hit', ...snapshot };
+  }
+
+  if (stableLiveSeedSnapshotInflight) return stableLiveSeedSnapshotInflight;
+  const promise = (async (): Promise<LiveSeedRead> => {
+    const seeded = await fetchLiveSeedSnapshot();
+    if (seeded.status !== 'hit') return seeded;
+    // First writer publishes the cursor source; losers must adopt that
+    // persisted snapshot. Returning the local read after an unconfirmed
+    // write lets the next numeric page slice a different isolate's snapshot.
+    await setCachedJsonIfAbsent(
+      STABLE_LIVE_SNAPSHOT_CACHE_KEY,
+      { flights: seeded.flights, coverage: seeded.coverage },
+      REDIS_CACHE_TTL,
+    );
+    const persisted = await readCachedJson(STABLE_LIVE_SNAPSHOT_CACHE_KEY);
+    if (persisted.status === 'hit') {
+      const snapshot = parseStableLiveSeedSnapshot(persisted.value);
+      if (snapshot) return { status: 'hit', ...snapshot };
+    }
+    return { status: 'error' };
+  })().finally(() => {
+    stableLiveSeedSnapshotInflight = null;
+  });
+  stableLiveSeedSnapshotInflight = promise;
+  return promise;
+}
+
 // Negative cache for the stale Redis read — mirrors the legacy
 // /api/military-flights handler's NEG_TTL=30_000ms. When the live fetch fails
 // AND the stale key is also empty/unparseable, suppress further Redis reads
@@ -328,6 +381,7 @@ export function _resetStaleNegativeCacheForTests(): void {
   liveSeedNegUntil = 0;
   liveSeedNegStatus = 'miss';
   liveSeedReadPromise = null;
+  stableLiveSeedSnapshotInflight = null;
   staleNegUntil = 0;
   staleSnapshotLocalCache = null;
   staleSnapshotInflight = null;
@@ -458,6 +512,27 @@ export async function listMilitaryFlights(
     if (!hasFiniteRequestBounds(req)) return emptyResponse();
     const requestBounds = normalizeBounds(req);
 
+    // The live seed is the source of truth for an authoritatively covered
+    // snapshot. Its value is independent of this request's bbox, so returning
+    // it through the bbox-keyed provider cache would duplicate the same full
+    // snapshot under every viewport key. Use one shared stable snapshot before
+    // judging payload-declared coverage so numeric cursors survive another
+    // edge isolate without making provider recovery globally cacheable.
+    const seeded = await fetchStableLiveSeedSnapshot();
+    if (seeded.status === 'error') {
+      // A Redis command/read failure is not proof the snapshot is missing.
+      // Throw before any provider call so the catch can consult stale data
+      // without turning a Redis outage into per-bbox OpenSky fanout.
+      throw new Error('military live seed read failed');
+    }
+    if (seeded.status === 'hit' && seedCovers(seeded.coverage, requestBounds)) {
+      return paginateResponseForCaller(ctx, seeded.flights, [], requestBounds, req);
+    }
+
+    // A miss, or a hit whose coverage does not contain this request (for
+    // example, a regional snapshot asked about the Americas), needs
+    // request-specific recovery. That response is genuinely bbox-dependent.
+
     // Quantize bbox to a 1° grid so nearby map views share cache entries.
     // Precise coordinates caused near-zero hit rate since every pan/zoom created a unique key.
     // Key by the quantized bbox only. The cached value is the complete
@@ -470,33 +545,6 @@ export async function listMilitaryFlights(
       cacheKey,
       REDIS_CACHE_TTL,
       async () => {
-        // The scheduled seeder is the single routine authenticated OpenSky
-        // writer. Cache its unpaginated regional snapshot under the existing
-        // bbox key so every cursor reads one stable version. Requests outside
-        // the producer's declared coverage continue to request-specific
-        // recovery instead of receiving a falsely authoritative empty result.
-        // The producer deliberately preserves its last-good snapshot during an
-        // upstream outage. Keep serving that snapshot (with each flight's old
-        // lastSeenAt intact) while seed health reports the stale fetchedAt;
-        // reopening per-viewer OpenSky recovery here recreates the credit fanout.
-        // Read first, THEN judge coverage: what the snapshot covers is a property
-        // of the payload (the producer stamps it), not of this module's constants.
-        const seeded = await fetchLiveSeedSnapshot();
-        if (seeded.status === 'error') {
-          // A Redis command/read failure is not proof the snapshot is
-          // missing. Throw before any provider call so cachedFetchJson's
-          // bounded negative path prevents per-bbox OpenSky amplification.
-          // The outer catch consults the 24h stale key before giving up.
-          throw new Error('military live seed read failed');
-        }
-        if (seeded.status === 'hit' && seedCovers(seeded.coverage, requestBounds)) {
-          return { flights: seeded.flights, clusters: [], pagination: undefined };
-        }
-        // A miss, or a hit whose coverage does not contain this request (a
-        // regional snapshot asked about the Americas), falls through to
-        // request-specific recovery rather than returning a falsely
-        // authoritative empty.
-
         if (redistributableOnly) return null;
 
         const isSidecar = (process.env.LOCAL_API_MODE || '').includes('sidecar');
