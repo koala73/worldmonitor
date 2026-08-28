@@ -15,15 +15,17 @@
  *   - singleton family ids are namespaced (`label:<name>`) so they can never
  *     collide with a curated family id.
  *
- * Cross-publisher syndication (#6430): the server ingest parser now carries
- * the RSS `<source>` element — the originating publisher Google News stamps
- * per item — as `originPublisher`, and the digest's corroboration counts
- * resolve THAT through this map when present, falling back to the feed
- * label. To let an origin NAME ("Reuters", "Associated Press") land in the
- * same family as the feed labels it syndicates through, each curated
- * family's `publisher` name is indexed alongside its labels. An unknown
- * origin name stays its own singleton family — same fail-closed direction
- * as an unmapped label.
+ * Cross-publisher syndication (#6430): the server ingest parser may carry the
+ * RSS `<source>` element — the originating publisher Google News stamps per
+ * item — as `originPublisher`. Corroboration consumers must call
+ * `publisherFamilyForItem`, which accepts that origin only when the parser
+ * marked the feed as an explicitly configured trusted aggregator. Ordinary
+ * feeds fall back to their server-configured label, so upstream text cannot
+ * manufacture independent families. To let a trusted origin NAME ("Reuters",
+ * "Associated Press") land in the same family as the feed labels it
+ * syndicates through, each curated family's `publisher` name is indexed
+ * alongside its labels. An unknown origin name stays its own singleton family
+ * — same fail-closed direction as an unmapped label.
  *
  * REMAINING LIMIT — origin names outside the curated set. "BBC News" from a
  * Google News <source> does not fold into the 'bbc' family unless curated
@@ -269,6 +271,25 @@ export function publisherFamiliesFor(labels) {
  */
 export function countPublisherFamilies(labels) {
   return publisherFamiliesFor(labels).size;
+}
+
+/**
+ * Resolve the publisher family for one parsed digest item.
+ *
+ * RSS <source> is upstream content and can be forged by a feed. The parser
+ * marks it trusted only for an explicitly configured aggregator (currently
+ * Google News). All other items use the server-configured feed label, so one
+ * hostile feed cannot manufacture independent families by emitting different
+ * <source> values.
+ *
+ * @param {{ source?: unknown; originPublisher?: unknown; originPublisherTrusted?: unknown }} item
+ * @returns {string}
+ */
+export function publisherFamilyForItem(item) {
+  const sourceFamily = publisherFamilyFor(item?.source);
+  if (item?.originPublisherTrusted !== true) return sourceFamily;
+  const originFamily = publisherFamilyFor(item?.originPublisher);
+  return originFamily || sourceFamily;
 }
 
 /**

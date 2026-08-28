@@ -596,7 +596,26 @@ function normalizePipelineCommand(command: RedisPipelineCommand, raw: boolean): 
   return [verb, prefixKey(key), ...rest];
 }
 
-export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = false): Promise<RedisCommandResult[]> {
+function resolvePipelineTimeoutMs(timeoutMs?: number): number {
+  if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return REDIS_PIPELINE_TIMEOUT_MS;
+  }
+  return Math.min(REDIS_PIPELINE_TIMEOUT_MS, Math.max(1, Math.ceil(timeoutMs)));
+}
+
+/**
+ * Execute allowlisted Redis commands through Upstash's pipeline endpoint.
+ *
+ * `timeoutMs` can tighten, but never extend, the shared pipeline timeout. It
+ * lets callers with an absolute response deadline abort the request inside
+ * their remaining budget instead of either starting a full five-second call
+ * or leaving work behind after their response has completed.
+ */
+export async function runRedisPipeline(
+  commands: RedisPipelineCommand[],
+  raw = false,
+  timeoutMs?: number,
+): Promise<RedisCommandResult[]> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
   if (commands.length === 0) return [];
 
@@ -612,7 +631,7 @@ export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = f
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
-      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(resolvePipelineTimeoutMs(timeoutMs)),
     });
     if (!response.ok) {
       console.warn(`[redis] runRedisPipeline HTTP ${response.status}`);
@@ -625,8 +644,15 @@ export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = f
   }
 }
 
-/** Execute allowlisted Redis commands in one MULTI/EXEC transaction. */
-export async function runRedisTransaction(commands: RedisPipelineCommand[], raw = false): Promise<RedisCommandResult[]> {
+/**
+ * Execute allowlisted Redis commands in one MULTI/EXEC transaction.
+ * `timeoutMs` can tighten, but never extend, the shared pipeline timeout.
+ */
+export async function runRedisTransaction(
+  commands: RedisPipelineCommand[],
+  raw = false,
+  timeoutMs?: number,
+): Promise<RedisCommandResult[]> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
   if (commands.length === 0) return [];
 
@@ -643,7 +669,7 @@ export async function runRedisTransaction(commands: RedisPipelineCommand[], raw 
         'User-Agent': 'worldmonitor-server/1.0 (redis)',
       },
       body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
-      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(resolvePipelineTimeoutMs(timeoutMs)),
     });
     if (!response.ok) {
       console.warn(`[redis] runRedisTransaction HTTP ${response.status}`);

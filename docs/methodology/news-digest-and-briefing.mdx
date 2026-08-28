@@ -219,7 +219,20 @@ The story-track hash fields written today are:
 `firstSeen`, `lastSeen`, `mentionCount`, `currentScore`, `title`, `link`,
 `severity`, `lang`, `description`, `publishedAt`,
 `entityCorroborationCount`, `isOpinion`, `isFeelGood`,
-`isEphemeralLiveCoverage`, and `category`.
+`isEphemeralLiveCoverage`, `category`, and `anchorEligible`.
+
+`anchorEligible` is `1` only when the mention has a curated tier-1/2 source
+or corroboration from at least two independent publisher families. Canonical
+adoption ignores rows with `0` or missing legacy metadata.
+
+Corroboration uses the server-configured feed label by default. An RSS
+`<source>` name can replace that label only for an explicitly configured
+trusted aggregator (currently Google News); ordinary feed content cannot
+manufacture publisher families. Redis tracking writes use pipelines of at most
+1,000 commands. Alias rows are committed separately, one complete canonical
+group per fenced atomic transaction; an oversized group is deferred so readers
+never observe a partial alias cohort. A short Redis lease and an in-transaction
+token check prevent an older delayed digest from overwriting a newer cohort.
 
 `sourceCount` is not stored in the story-track hash for current rows.
 Distinct feed names are written to `story:sources:v1:{titleHash}` with
@@ -408,7 +421,7 @@ intentionally differ from those digest prose and `whyMatters` surfaces:
 `scripts/regional-snapshot/weekly-brief.mjs`
 tries OpenRouter first with `deepseek/deepseek-v4-flash`, then the fixed free
 OpenRouter models `google/gemma-4-26b-a4b-it:free` and
-`openai/gpt-oss-20b:free`, then Groq `openai/gpt-oss-20b`. It sends every
+`minimax/minimax-m3:free`, then Groq `openai/gpt-oss-20b`. It sends every
 provider temperature `0.3` because the output is structured weekly JSON for regional snapshots
 rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"

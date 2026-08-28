@@ -48,7 +48,7 @@ export function climateNewsContentMeta(data, nowMs = Date.now()) {
 /**
  * Sprint 3a pilot threshold (7 days). Climate news from the listed feeds
  * (Carbon Brief, Guardian Environment, NASA EO, UNEP, Phys.org, Copernicus,
- * Inside Climate News, Climate Central, ReliefWeb) collectively publish daily
+ * Climate Central, ReliefWeb) collectively publish daily
  * to multiple-times-per-day. A 7-day budget tolerates a major holiday weekend
  * across all sources without paging on normal cadence — and trips on a real
  * upstream-aggregator outage where every feed's parse silently breaks.

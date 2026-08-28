@@ -26,6 +26,18 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
+  OPENSKY_COOLDOWN_KEY,
+  OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
+  OPENSKY_MAX_DEADLINE_SET_LUA,
+  accountFingerprint: openSkyAccountFingerprint,
+  clampCooldownMs,
+  ttlSecondsForCooldown,
+  inspectCooldownRecord,
+  buildCooldownRecord,
+  maxDeadlineSetCommand,
+} = require('./_opensky-account-cooldown.cjs');
+const {
   GROQ_DEFAULT_MODEL,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
@@ -286,7 +298,7 @@ if (UPSTASH_ENABLED) {
   console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY}${UPSTASH_REDIS_REST_URL.startsWith('http://') ? ', insecure-http opt-in' : ''})`);
 }
 
-function upstashGet(key, onFailure) {
+function upstashGet(key, onFailure, timeoutMs = 5000) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(null);
     let settled = false;
@@ -301,11 +313,12 @@ function upstashGet(key, onFailure) {
       if (onFailure) onFailure(reason);
       resolve(null);
     };
+    const requestTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
     const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
     const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
-      timeout: 5000,
+      timeout: requestTimeoutMs,
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
@@ -590,6 +603,31 @@ function upstashDel(key) {
   });
 }
 
+function upstashEval(script, keys, args) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(null);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const body = JSON.stringify(['EVAL', script, String(keys.length), ...keys, ...args.map((arg) => String(arg))]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(JSON.parse(data)?.result); } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.end(body);
+  });
+}
+
 function upstashReleaseLockIfOwner(key, owner) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(false);
@@ -711,33 +749,6 @@ function normalizeNotificationCountryCode(raw) {
 function marketAlertCoalesceKey(assetClass, identifier, direction, severity) {
   const stableIdentifier = String(identifier || 'unknown').trim().toLowerCase();
   return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}`;
-}
-
-/**
- * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
- *
- * NWS VTEC format (https://www.weather.gov/vtec/):
- *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
- *    │  │   │   │  │  │
- *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
- *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
- *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
- *    │  │   └──────────── forecast office (4-letter ICAO)
- *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
- *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
- *
- * The (office, phenomenon, significance, eventID) tuple identifies one logical
- * event across adjacent zones — exactly what we want to coalesce. We drop the
- * action so NEW + CON + CAN bulletins for the same event also collapse.
- *
- * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
- * VTEC string is missing or malformed.
- */
-function deriveWeatherCoalesceKey(vtec) {
-  if (typeof vtec !== 'string') return undefined;
-  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
-  if (!m) return undefined;
-  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
 }
 
 function nwsVtec(p) {
@@ -5182,6 +5193,8 @@ async function seedWeatherAlerts() {
       requireAlertFeatures,
       selectEcccAlerts,
       selectSwicAlerts,
+      selectWeatherNotificationAlerts,
+      weatherAlertFamilyKey,
       weatherAlertNotifyCountryCode,
       weatherAlertNotifyLocation,
       weatherAlertNotifySource,
@@ -5320,34 +5333,19 @@ async function seedWeatherAlerts() {
         : { sourceState: 'ok' }),
     }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (nws=${nwsAlerts.length} eccc=${ecccAlerts.length} swic=${swicAlerts.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
-    // Pick up to 3 DISTINCT event families before publishing. The naive
-    // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
-    // alerts are adjacent-zone duplicates for one VTEC family (one storm
-    // crossing 3 counties), the publisher-side dedup collapses them to 1
-    // notification and a 4th genuinely-distinct family (tornado / flood /
-    // different storm) sitting at index 3+ would NEVER be considered.
-    // Dedupe by coalesceKey FIRST, then take the top 3 distinct families.
-    // Slot B regression fix from PR #3467 review.
-    const seenFamilyKeys = new Set();
-    const distinctFamilyAlerts = [];
-    for (const a of highSeverityAlerts) {
-      // Family key: prefer VTEC-derived coalesce key; fall back to a stable
-      // identity from the alert so VTEC-less / ECCC alerts still deduplicate
-      // against themselves.
-      const familyKey = deriveWeatherCoalesceKey(a.vtec)
-        ?? `${a.source || 'weather'}:${a.id || a.headline || a.event || ''}`;
-      if (seenFamilyKeys.has(familyKey)) continue;
-      seenFamilyKeys.add(familyKey);
-      distinctFamilyAlerts.push(a);
-      if (distinctFamilyAlerts.length >= 3) break;
-    }
+    // Which high-severity alerts this tick notifies on. Distinct families,
+    // partitioned per country so a single-country burst cannot spend every
+    // slot (#7243). Selection rules live in _weather-alert-select.mjs so they
+    // are unit-testable without booting the relay.
+    const distinctFamilyAlerts = selectWeatherNotificationAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
-      // so adjacent-zone bulletins for the same logical event collapse to one
-      // notification per user. Falls back to title-based dedup when VTEC is
-      // absent (ECCC, rare advisory types, or missing parameters).
-      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
+      // The SAME family key the selector partitioned by. Publishing a narrower
+      // key (VTEC only) let publishNotificationEvent fall back to its global
+      // `weather_alert:<title>` dedup hash for every VTEC-less SWIC/ECCC
+      // alert, so two countries sharing a generic WMO title ("Heavy rain",
+      // "Forestfire") collided on SET NX and only the first survived —
+      // recreating the #7243 starvation one layer below the selector.
+      const coalesceKey = weatherAlertFamilyKey(a);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',
@@ -9093,13 +9091,106 @@ const OPENSKY_AUTH_COOLDOWN_MS = 60000; // 1 min cooldown after auth failure
 // Global OpenSky rate limiter — serializes upstream requests and enforces 429 cooldown
 let openskyGlobal429Until = 0; // timestamp: block ALL upstream requests until this time
 const OPENSKY_429_COOLDOWN_MS = Number(process.env.OPENSKY_429_COOLDOWN_MS) || 90 * 1000; // 90s cooldown after any 429
-const OPENSKY_MAX_429_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const OPENSKY_MAX_429_COOLDOWN_MS = OPENSKY_MAX_COOLDOWN_MS;
 const OPENSKY_REQUEST_SPACING_MS = Number(process.env.OPENSKY_REQUEST_SPACING_MS) || 2000; // 2s minimum between consecutive upstream requests
 let openskyLastUpstreamTime = 0;
 let openskyUpstreamQueue = Promise.resolve(); // serial chain — only 1 upstream request at a time
 let openskyRateLimitRemaining = null;
 let openskyLastSuccessAt = 0;
 let openskyLast429At = 0;
+
+function mergeLocalOpenSkyCooldown(untilMs) {
+  if (!Number.isFinite(untilMs) || untilMs <= Date.now()) return;
+  openskyGlobal429Until = Math.max(openskyGlobal429Until, untilMs);
+}
+
+// Aviation bbox callers abort this relay hop after 6s
+// (track-aircraft BBOX_RELAY_TIMEOUT_MS). The default Upstash GET waits 5s,
+// and the queued fetch used to repeat that read — a slow Redis consumed the
+// fail-open path before OpenSky could answer. Bound the GET and reuse the
+// result for the same request's second check (#6253).
+const OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS = 1_000;
+const OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS = 5_000;
+let sharedOpenSkyCooldownReadPromise = null;
+let sharedOpenSkyCooldownReadResult = 0;
+let sharedOpenSkyCooldownReadExpiresAt = 0;
+
+// Shared Redis record written by this relay and by seed-military-flights.
+// Fails OPEN on every error path: a Redis problem must never disable the
+// data tier, and the in-process cooldown still works when Redis is down (#6253).
+async function remainingSharedOpenSkyCooldownMs() {
+  if (sharedOpenSkyCooldownReadPromise) return sharedOpenSkyCooldownReadPromise;
+  if (Date.now() < sharedOpenSkyCooldownReadExpiresAt) return sharedOpenSkyCooldownReadResult;
+
+  const pending = readSharedOpenSkyCooldownMs().then((remainingMs) => {
+    sharedOpenSkyCooldownReadResult = remainingMs;
+    sharedOpenSkyCooldownReadExpiresAt = Date.now() + OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS;
+    return remainingMs;
+  });
+  sharedOpenSkyCooldownReadPromise = pending;
+  try {
+    return await pending;
+  } finally {
+    if (sharedOpenSkyCooldownReadPromise === pending) {
+      sharedOpenSkyCooldownReadPromise = null;
+    }
+  }
+}
+
+async function readSharedOpenSkyCooldownMs() {
+  try {
+    const record = await upstashGet(OPENSKY_COOLDOWN_KEY, (reason) => {
+      console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${reason}`);
+    }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
+    const inspected = inspectCooldownRecord(record, {
+      account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    });
+    if (inspected.ignoreReason === 'account-mismatch') {
+      console.warn('[Relay] OpenSky shared cooldown ignored — recorded for a different account');
+    } else if (inspected.ignoreReason === 'implausible-deadline') {
+      console.warn(`[Relay] OpenSky shared cooldown ignored — implausible deadline ${inspected.until}`);
+    }
+    if (inspected.remainingMs > 0) {
+      mergeLocalOpenSkyCooldown(Date.now() + inspected.remainingMs);
+    }
+    return inspected.remainingMs;
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${err.message || err}`);
+    return 0;
+  }
+}
+
+async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Date.now()) {
+  const localCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_429_COOLDOWN_MS);
+  mergeLocalOpenSkyCooldown(completedAt + localCooldownMs);
+  // The in-process limiter can stay short (90s). The shared record must
+  // outlive the seeder's */5 tick, so header-less 429s use the 10-minute
+  // persist fallback instead of the relay's local default (#6253).
+  const persistCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS);
+  const record = buildCooldownRecord({
+    now: completedAt,
+    cooldownMs: persistCooldownMs,
+    retryAfterSeconds,
+    account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    recordedBy: 'ais-relay',
+  });
+  try {
+    // Atomic max-deadline write: a late shorter persist must not erase a
+    // longer seeder (or earlier relay) lockout already stored at this key.
+    const command = maxDeadlineSetCommand(
+      OPENSKY_COOLDOWN_KEY,
+      record,
+      ttlSecondsForCooldown(persistCooldownMs),
+    );
+    const written = await upstashEval(OPENSKY_MAX_DEADLINE_SET_LUA, [OPENSKY_COOLDOWN_KEY], command.slice(4));
+    if (written == null && UPSTASH_ENABLED) {
+      console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
+    }
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown persist failed: ${err.message || err}`);
+  }
+  return localCooldownMs;
+}
 
 async function getOpenSkyToken() {
   const clientId = process.env.OPENSKY_CLIENT_ID;
@@ -9351,6 +9442,11 @@ function openskyQueuedFetch(url, token) {
     if (Date.now() < openskyGlobal429Until) {
       return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
     }
+    // Cross-process arming: a seeder 429 parked the shared Redis key while this
+    // process still had a zero in-process deadline (#6253). Fail-open on Redis.
+    if (await remainingSharedOpenSkyCooldownMs() > 0) {
+      return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
+    }
     openskyLastUpstreamTime = Date.now();
     incrementRelayMetric('openskyUpstreamFetches');
     const result = await _openskyRawFetch(url, token);
@@ -9362,14 +9458,7 @@ function openskyQueuedFetch(url, token) {
       openskyLastSuccessAt = completedAt;
     }
     if (result.status === 429) {
-      const providerCooldownMs = result.retryAfterSeconds == null
-        ? OPENSKY_429_COOLDOWN_MS
-        : result.retryAfterSeconds * 1000;
-      const cooldownMs = Math.min(
-        OPENSKY_MAX_429_COOLDOWN_MS,
-        Math.max(OPENSKY_429_COOLDOWN_MS, providerCooldownMs),
-      );
-      openskyGlobal429Until = Math.max(openskyGlobal429Until, completedAt + cooldownMs);
+      const cooldownMs = await persistSharedOpenSkyCooldown(result.retryAfterSeconds, completedAt);
       openskyLast429At = completedAt;
       console.warn(`[Relay] OpenSky 429 — global cooldown ${Math.ceil(cooldownMs / 1000)}s (all bbox queries blocked)`);
     }
@@ -9428,6 +9517,11 @@ async function handleOpenSkyRequest(req, res, PORT) {
     // 2b. Global 429 cooldown — blocks ALL bbox queries when OpenSky is rate-limiting.
     //     Without this, 5 unique bbox keys all fire simultaneously when neg cache expires,
     //     ALL get 429'd, and the cycle repeats forever with zero data flowing.
+    //     Also honor a seeder-written Redis deadline so this process does not
+    //     spend a doomed auth+data round-trip to rediscover the same lockout.
+    if (Date.now() >= openskyGlobal429Until) {
+      await remainingSharedOpenSkyCooldownMs();
+    }
     if (Date.now() < openskyGlobal429Until) {
       incrementRelayMetric('openskyNegativeHit');
       recordRelayOutcome('opensky', 'throttle');

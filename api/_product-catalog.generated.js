@@ -131,7 +131,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
     },
     {
       "planKey": "api_business_annual",
@@ -161,7 +161,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": false,
       "selfServe": false,
       "dashboardAiCallsPerDay": null,
-      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings"
+      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
   ]
 };
@@ -322,7 +322,7 @@ export const TIER_CONFIG = {
       "Redistribution rights — embed our data in what you sell",
       "300 requests/minute",
       "10,000 requests/day included",
-      "5 Pro licenses included",
+      "5 Pro licenses — invite users at any corporate email domain",
       "Priority support"
     ],
     "highlightFeatures": [
@@ -351,7 +351,8 @@ export const TIER_CONFIG = {
       "Data processing agreement (DPA)",
       "Purchase-order billing",
       "SAML SSO, SCIM",
-      "Custom security and privacy settings"
+      "Custom security and privacy settings",
+      "Fully white-labeled — with or without revenue sharing"
     ],
     "planLimits": {
       "apiRequestsPerDay": null,

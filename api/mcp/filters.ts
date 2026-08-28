@@ -303,7 +303,7 @@ export function cacheEnvelope(dataProperties: Record<string, object>): object {
       },
       stale: {
         type: 'boolean',
-        description: 'True when any contributing cache key is older than its per-key maxStaleMin freshness budget.',
+        description: 'True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help.',
       },
       activationUnknown: {
         type: 'boolean',

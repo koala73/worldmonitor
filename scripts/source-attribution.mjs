@@ -104,6 +104,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The B.C. catalogue record supplies the licence for the ArcGIS evacuation dataset.',
     reviewReference: 'Issue #6659 source-rights probe',
   }),
+  imd: Object.freeze({
+    provider: 'India Meteorological Department',
+    memberHosts: Object.freeze(['api.imd.gov.in', 'rsmcnewdelhi.imd.gov.in', 'mausam.imd.gov.in']),
+    reason: 'The API gateway, RSMC New Delhi visualization, and Mausam marine bulletin pages belong to one IMD identity.',
+    reviewReference: 'Issue #7005 source-rights probe',
+  }),
   interfax: Object.freeze({
     provider: 'Interfax',
     memberHosts: Object.freeze(['interfax.com', 'www.interfax.ru']),
@@ -145,6 +151,27 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 const PROVIDER_OVERRIDES = {
   'api.adsb.lol': { provider: 'adsb.lol' },
   'api.airplanes.live': { provider: 'airplanes.live' },
+  'api.imd.gov.in': {
+    provider: 'India Meteorological Department',
+    identityGroup: 'imd',
+    license: 'IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. World Monitor public-display and redistribution rights are validated.',
+    attribution: 'Data source: India Meteorological Department. Link https://api.imd.gov.in/public/api_reference.html and the official product page.',
+    status: 'reviewed',
+  },
+  'mausam.imd.gov.in': {
+    provider: 'India Meteorological Department',
+    identityGroup: 'imd',
+    license: 'Official IMD visualization pages cited for attribution and source links, not scraped.',
+    attribution: 'Data source: India Meteorological Department. Link the official marine/coastal bulletin page.',
+    status: 'reviewed',
+  },
+  'rsmcnewdelhi.imd.gov.in': {
+    provider: 'India Meteorological Department',
+    identityGroup: 'imd',
+    license: 'Official RSMC New Delhi visualization pages cited for attribution and source links, not scraped.',
+    attribution: 'Data source: India Meteorological Department / RSMC New Delhi. Link https://rsmcnewdelhi.imd.gov.in/.',
+    status: 'reviewed',
+  },
   'api.worldbank.org': {
     provider: 'World Bank Open Data',
     license: 'World Development Indicators are licensed under CC BY 4.0. UNESCO UIS indicators mirrored through WDI also require the UIS attribution stated in the public source documentation.',
@@ -820,13 +847,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'a7ab631b0e17d681791f6978832fb0a8c4f8567bfa1c90d9e79a747b5a7dfbfe',
-  reason: 'Keep Toronto Police Service C4S live-dispatch on services.arcgis.com distinct from Toronto Police Service Open Data on data.tps.ca and www.tps.ca, so live CAD is not catalogued as Open Data / geopolitics.',
+  sha256: '824486c88b8da9a37f53719e4b8f870985b7176406a4b65b7fbbc1d19909d7a2',
+  reason: 'Group api.imd.gov.in, rsmcnewdelhi.imd.gov.in, and mausam.imd.gov.in as India Meteorological Department so cyclone and marine product attribution is one provider identity.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
+  reviewReference: 'Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

@@ -1,18 +1,9 @@
----
-title: "Source Attribution"
-description: "Machine-generated inventory of every source host World Monitor uses — provider identity, observed surface, and source references."
----
 
-This page is the provenance companion to [Data Sources](/data-sources). That page explains **what** World Monitor covers and **which** providers power each domain. This page lists every source host observed in the source tree, its surface type, and where it is referenced.
-
-A host is the observed transport. The public [source catalog](https://worldmonitor.app/sources) groups related hosts under the logical publisher and separately records country of origin versus countries covered. Syndication transports such as FeedBurner and Google News stay in this host ledger; they are not catalog publishers.
-
-The inventory is **generated, not hand-written**: `scripts/source-attribution.mjs` scans source declarations in `scripts/`, `server/`, `api/`, and `src/`, and joins them against the committed manifest (`shared/source-attribution-manifest.json`). A host that appears in code but not in the manifest fails CI, so this disclosure cannot silently drift from the configured source inventory.
 
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **753 active source hosts** representing **746 active providers** (**322 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **755 active source hosts** representing **746 active providers** (**324 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -323,9 +314,12 @@ This generated inventory covers **753 active source hosts** representing **746 a
 | in.usembassy.gov (in.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
 | inc42.com (inc42.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | index.hu (index.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| India Meteorological Department (api.imd.gov.in) | structured — scripts/lib/imd-cyclone-marine.mjs, src/app/data-loader.ts |
+| India Meteorological Department (mausam.imd.gov.in) | structured — scripts/lib/imd-cyclone-marine.mjs |
+| India Meteorological Department (rsmcnewdelhi.imd.gov.in) | structured — scripts/lib/imd-cyclone-marine.mjs |
 | indianexpress.com (indianexpress.com) | feed — src/config/feeds.ts |
 | indiatodaylive.akamaized.net (indiatodaylive.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
-| insideclimatenews.org (insideclimatenews.org) | structured — scripts/seed-climate-news.mjs |
+| insideclimatenews.org (insideclimatenews.org) | Excluded / candidate — No current fetch observed |
 | insightcrime.org (insightcrime.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | Interfax (interfax.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | Interfax (www.interfax.ru) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -666,7 +660,7 @@ This generated inventory covers **753 active source hosts** representing **746 a
 | World Monitor hosted API (api.worldmonitor.app) | structured — api/a2a.ts, api/internal/mcp-grant-mint.ts, api/mcp/downstream.ts, api/mcp/skill-extension/generated.ts, +19 more |
 | World Monitor proxy (proxy.worldmonitor.app) | structured — api/widget-agent.ts, scripts/seed-security-advisories.mjs, src/utils/proxy.ts |
 | World Monitor web app (worldmonitor.app) | feed+structured — api/_agent-metadata.ts, api/a2a.ts, api/ask.ts, api/fwdstart.js, +41 more |
-| World Monitor web app (www.worldmonitor.app) | structured — api/a2a.ts, api/ask.ts, api/mcp/skill-extension/generated.ts, api/not-found.ts, +16 more |
+| World Monitor web app (www.worldmonitor.app) | structured — api/_cors.js, api/a2a.ts, api/ask.ts, api/mcp/skill-extension/generated.ts, +17 more |
 | WorldMonitor test origin (worldmonitor.invalid) | structured — src/shared/public-rpc-cache.ts |
 | worldmonitor.mintlify.dev (worldmonitor.mintlify.dev) | structured — api/docs-mcp.ts |
 | wublockchain.com (wublockchain.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |

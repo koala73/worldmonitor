@@ -614,12 +614,30 @@ export class MapComponent {
       'weather', 'fires',                     // operational risk
       'economic',                             // infrastructure context
     ];
+    // Commodity variant — SVG/mobile fallback. Only include keys that actually
+    // render in this file (miningSites/processingPlants/commodityPorts/climate/
+    // tradeRoutes/resilienceScore/dayNight do not, so they're omitted). Mirrors
+    // VARIANT_LAYER_ORDER.commodity in src/config/map-layer-definitions.ts but
+    // filtered to the SVG-capable subset. COMMODITY_MAP_LAYERS turns all eleven
+    // on; MAX_SVG_LAYERS = 9 then disables the last two active buttons on first
+    // load (outages, sanctions in this order). They stay in the picker so a
+    // later trim still discloses, instead of spending overlay fair-share with
+    // no row (#7144). fires is unbounded (toMapFires caps nothing) and must
+    // keep a row — it is the feed #7112 exists to bound.
+    const commodityLayers: (keyof MapLayers)[] = [
+      'commodityHubs', 'minerals',                    // commodity identity
+      'pipelines', 'waterways', 'ais',                // logistics
+      'economic', 'fires',                            // markets + FIRMS
+      'natural', 'weather',                           // operational risk
+      'outages', 'sanctions',                         // disruption context
+    ];
     // Filter sunset and renderer-incompatible layers so the SVG/mobile picker
     // cannot expose a toggle whose layer has no SVG paint path.
     const layers = (SITE_VARIANT === 'tech' ? techLayers
                  : SITE_VARIANT === 'finance' ? financeLayers
                  : SITE_VARIANT === 'happy' ? happyLayers
                  : SITE_VARIANT === 'energy' ? energyLayers
+                 : SITE_VARIANT === 'commodity' ? commodityLayers
                  : fullLayers).filter((key) => !isSunsetLayer(key) && isLayerExecutable(key, 'svg'));
     const MAX_SVG_LAYERS = 9;
     const enforceLayerLimit = () => {
@@ -1991,7 +2009,7 @@ export class MapComponent {
    * writes would restyle the toggle rows each time (#5080).
    *
    * A layer the budget trimmed that has no toggle row in this variant's picker
-   * (`fires` outside the energy variant, `webcams`, `radiationWatch`,
+   * (`fires` outside the energy/commodity variants, `webcams`, `radiationWatch`,
    * `spaceports`) has nowhere to show a badge. Those stay budgeted — an
    * unbounded feed is what #7112 is about, and `toMapFires` caps nothing — but
    * the cut is recorded on `overlayUndisclosedTruncation` and surfaced through

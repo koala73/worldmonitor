@@ -5,6 +5,7 @@ import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
+import { sha256Hex } from './_crypto.js';
 
 export const config = { runtime: 'edge' };
 
@@ -117,14 +118,22 @@ function toTextArray(values, mapper = toText) {
 
 /**
  * @param {RawTelegramMessage} message
- * @returns {TelegramFeedItem}
+ * @returns {Promise<TelegramFeedItem>}
  */
-function normalizeTelegramMessage(message) {
+async function normalizeTelegramMessage(message) {
   const channel = toText(message.channel ?? message.channelName ?? message.channelTitle).trim();
   const channelTitle = toText(message.channelTitle ?? message.channelName ?? message.channel).trim();
   const ts = toIsoTimestamp(message.timestampMs ?? message.timestamp ?? message.ts);
   const text = toText(message.text).trim();
-  const id = toText(message.id).trim() || `${channel || 'telegram'}:${ts}:${text.slice(0, 32)}`;
+  // Synthetic id (only when the relay omits message.id): hash the FULL text
+  // rather than a 32-char prefix. Same-channel same-second messages sharing a
+  // templated prefix ("BREAKING: ..." alerts) collided under the prefix and
+  // one of the pair was deduped away downstream (#7210). Timestamps are
+  // whole-second when the relay supplies epoch seconds, so the text is the
+  // only reliable discriminator - and byte-identical text at the same second
+  // is a genuine duplicate that SHOULD collapse to one id.
+  const id = toText(message.id).trim()
+    || `${channel || 'telegram'}:${ts}:${((await sha256Hex(text)) ?? '').slice(0, 16)}`;
 
   return {
     id,
@@ -144,13 +153,13 @@ function normalizeTelegramMessage(message) {
 /**
  * @param {RawTelegramFeedResponse} parsed
  */
-function normalizeTelegramFeed(parsed) {
+async function normalizeTelegramFeed(parsed) {
   const rawMessages = Array.isArray(parsed.messages)
     ? parsed.messages
     : Array.isArray(parsed.items)
       ? parsed.items
       : [];
-  const items = rawMessages.map(normalizeTelegramMessage);
+  const items = await Promise.all(rawMessages.map(normalizeTelegramMessage));
   return {
     source: toText(parsed.source).trim() || 'telegram',
     earlySignal: Boolean(parsed.earlySignal),
@@ -243,7 +252,7 @@ export default async function handler(req) {
 
     try {
       const parsed = /** @type {RawTelegramFeedResponse} */ (JSON.parse(body));
-      const normalized = normalizeTelegramFeed(parsed);
+      const normalized = await normalizeTelegramFeed(parsed);
       if (normalized.count === 0) {
         cacheControl = 'private, max-age=0';
       }

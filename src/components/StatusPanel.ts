@@ -124,7 +124,21 @@ export class StatusPanel extends Panel {
       });
       this.element.appendChild(this.digestCoverageRow);
     }
+    this.ensureCoverageRowMounted();
     this.digestCoverageRow.textContent = text;
+  }
+
+  /**
+   * Nothing else mounts this panel — it is otherwise a write-only data sink
+   * (no getElement() callers), so the row must reach the document from here
+   * or it renders into a detached node no user or screen reader can see.
+   * The site footer always exists by the first digest load (layout Phase 1
+   * precedes data loading), so a missing footer only means a non-dashboard
+   * document; the row then stays detached rather than throwing.
+   */
+  private ensureCoverageRowMounted(): void {
+    if (this.element.isConnected) return;
+    document.querySelector('.site-footer')?.appendChild(this.element);
   }
 
   public getDigestCoverage(): DigestCoverageSummary | null {

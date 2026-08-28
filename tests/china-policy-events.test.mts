@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
@@ -179,7 +178,13 @@ describe('China official policy adapters (#5576)', () => {
 
   // Scaling, not wall-clock: an absolute millisecond ceiling measures the
   // runner's load as much as the parser and flakes on a busy CI box while
-  // passing in isolation.
+  // passing in isolation. `process.cpuUsage()` is the clock for the same
+  // reason — `performance.now()` includes time this process was descheduled
+  // under `test:data`'s 16-way oversubscription, which compresses a genuine
+  // quadratic toward the linear band (observed 9.5x wall-clock on a loaded
+  // GitHub runner) even though the parser's own CPU still scales ~14x.
+  // CPU time still counts this process's GC; it just stops charging the
+  // parser for a sibling worker's slice.
   //
   // The size step is 4x, not 2x, on purpose. A 2x step puts linear (~2x) and
   // quadratic (~4x) close enough together that GC noise can straddle the
@@ -189,7 +194,7 @@ describe('China official policy adapters (#5576)', () => {
   // bands are ~4x versus ~16x.
   //
   // `test:data` runs this file at concurrency 16. A discarded warmup plus a
-  // 12x gate still fail quadratic (~16x) and ReDoS, but tolerate the ~10x
+  // 12x gate still fail quadratic (~14–16x) and ReDoS, but tolerate the ~10x
   // linear+GC ratios that 16-way CI has produced.
   // Inputs are built once per size, outside every timed call: allocating
   // them is linear bookkeeping, not parser work, and re-allocating on each
@@ -224,9 +229,10 @@ describe('China official policy adapters (#5576)', () => {
     const quadrupledFixtures = buildFixtures(baseRepeat * 4);
 
     const timeOnce = (fixtures: ScalingFixtures): number => {
-      const startedAt = performance.now();
+      const startedAt = process.cpuUsage();
       walk(fixtures);
-      return performance.now() - startedAt;
+      const used = process.cpuUsage(startedAt);
+      return (used.user + used.system) / 1000;
     };
 
     // Discarded warmup, one per size.

@@ -172,6 +172,7 @@ import { fetchWebcamImage } from '@/services/webcams';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { summarizeRenderTiming, formatRenderTiming } from '@/components/map/render-timing';
 import { DeferredHeavyCommit } from '@/components/map/deferred-layer-commit';
+import { dispatchWebcamLayerClick, resolveWebcamStreamUrl, type WebcamLeafLike } from '@/components/map/webcam-click';
 import {
   type BBox,
   type BoundedFeature,
@@ -2293,6 +2294,9 @@ export class DeckGLMap {
         getFillColor: (d) => ('count' in d ? [0, 212, 255, 180] : [255, 215, 0, 200]) as [number, number, number, number],
         radiusUnits: 'pixels',
         pickable: true,
+        // Consume the pick (return true) so MapboxOverlay onClick → handleClick
+        // does not double-fire. Cluster vs leaf is routed in handleWebcamLayerClick.
+        onClick: (info) => this.handleWebcamLayerClick(info),
       }));
     }
 
@@ -3242,6 +3246,40 @@ export class DeckGLMap {
         getPolygon: (d: { polygon: number[][] }) => d.polygon,
         getFillColor: [255, 255, 255, 30],
         getLineColor: [255, 255, 255, 80],
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }));
+    }
+
+    const windRadiiData: { polygon: number[][]; thresholdKt: number; stormName: string; _event: NaturalEvent }[] = [];
+    for (const e of cyclones) {
+      for (const band of e.windRadii || []) {
+        if (band.geometryKind && band.geometryKind !== 'forecast-wind-radii') continue;
+        for (const polygon of band.polygons || []) {
+          const ring = polygon[0];
+          if (ring?.length) {
+            windRadiiData.push({
+              polygon: ring,
+              thresholdKt: band.thresholdKt || 0,
+              stormName: e.stormName || e.title,
+              _event: e,
+            });
+          }
+        }
+      }
+    }
+    if (windRadiiData.length > 0) {
+      layers.push(new PolygonLayer({
+        id: 'storm-imd-wind-radii-layer',
+        data: windRadiiData,
+        getPolygon: (d: { polygon: number[][] }) => d.polygon,
+        getFillColor: (d: { thresholdKt: number }) => {
+          if (d.thresholdKt >= 64) return [180, 0, 0, 40] as [number, number, number, number];
+          if (d.thresholdKt >= 50) return [220, 80, 0, 36] as [number, number, number, number];
+          if (d.thresholdKt >= 34) return [220, 160, 0, 32] as [number, number, number, number];
+          return [200, 200, 0, 28] as [number, number, number, number];
+        },
+        getLineColor: [255, 180, 0, 120],
         lineWidthMinPixels: 1,
         pickable: true,
       }));
@@ -4892,7 +4930,9 @@ export class DeckGLMap {
       case 'storm-past-track-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Past Track (${obj.windKt} kt)</div>` };
       case 'storm-cone-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast Cone</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast cone of uncertainty<br/><small>Not an observed storm footprint</small></div>` };
+      case 'storm-imd-wind-radii-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || 'IMD cyclone')}</strong><br/>Forecast wind radii ${text(String(obj.thresholdKt || ''))} kt<br/><small>India Meteorological Department · not an observed footprint</small></div>` };
       case 'ais-density-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.layers.shipTraffic')}</strong><br/>${t('popups.intensity')}: ${text(obj.intensity)}</div>` };
       case 'waterways-layer':
@@ -4981,7 +5021,11 @@ export class DeckGLMap {
       case 'weather-layer': {
         const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
         const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${area}</div>` };
+        const issuedBy = typeof obj.issuedBy === 'string' && obj.issuedBy ? `<br/>${text(obj.issuedBy)}` : '';
+        const marine = [obj.wind, obj.seaState, obj.visibility].filter((value) => typeof value === 'string' && value).join(' · ');
+        const marineLine = marine ? `<br/><small>${text(marine)}</small>` : '';
+        const sourceLine = obj.sourceUrl ? `<br/><small>${text(String(obj.sourceUrl))}</small>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${issuedBy}${area}${marineLine}${sourceLine}</div>` };
       }
       case 'canada-roads-layer':
       case 'canada-roads-paths-layer': {
@@ -5285,8 +5329,8 @@ export class DeckGLMap {
       return;
     }
 
-    if (layerId === 'webcam-layer' && !('count' in info.object)) {
-      this.showWebcamClickPopup(info.object as WebcamEntry, info.x, info.y);
+    if (layerId === 'webcam-layer') {
+      this.handleWebcamLayerClick(info);
       return;
     }
 
@@ -5328,6 +5372,7 @@ export class DeckGLMap {
       'storm-forecast-track-layer': 'natEvent',
       'storm-past-track-layer': 'natEvent',
       'storm-cone-layer': 'natEvent',
+      'storm-imd-wind-radii-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
       'stock-exchanges-layer': 'stockExchange',
@@ -5406,7 +5451,24 @@ export class DeckGLMap {
     }
   }
 
-  private async showWebcamClickPopup(webcam: WebcamEntry, x: number, y: number): Promise<void> {
+  /**
+   * Layer-level webcam pick. Returns true so deck.gl consumes the event and the
+   * global MapboxOverlay handler does not run a second time (#3877 / #4230).
+   * Clusters zoom in instead of opening a tab per camera.
+   */
+  private handleWebcamLayerClick(info: PickingInfo): boolean {
+    return dispatchWebcamLayerClick(info.object, {
+      onLeaf: (webcam) => {
+        this.showWebcamClickPopup(webcam, info.x, info.y);
+      },
+      onCluster: (cluster) => {
+        const currentZoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
+        this.setCenter(cluster.lat, cluster.lng, Math.min(currentZoom + 2, 14));
+      },
+    });
+  }
+
+  private async showWebcamClickPopup(webcam: WebcamLeafLike, x: number, y: number): Promise<void> {
     // Remove any existing popup
     this.container.querySelector('.deckgl-webcam-popup')?.remove();
 
@@ -5428,12 +5490,20 @@ export class DeckGLMap {
     popup.appendChild(locationEl);
 
     const id = webcam.webcamId;
-
-    // Fetch playerUrl for when user pins
-    const imageData = await fetchWebcamImage(id).catch(() => null);
+    const streamUrl = resolveWebcamStreamUrl(webcam);
+    if (streamUrl) {
+      const link = document.createElement('a');
+      link.className = 'deckgl-webcam-popup-link';
+      link.href = streamUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Open on Windy \u2197';
+      popup.appendChild(link);
+    }
 
     const pinBtn = document.createElement('button');
     pinBtn.className = 'webcam-pin-btn';
+    let imageData: Awaited<ReturnType<typeof fetchWebcamImage>> | null = null;
     if (isPinned(id)) {
       pinBtn.classList.add('webcam-pin-btn--pinned');
       pinBtn.textContent = '\u{1F4CC} Pinned';
@@ -5469,7 +5539,16 @@ export class DeckGLMap {
     const autoDismiss = setTimeout(cleanup, 8000);
     setTimeout(() => document.addEventListener('click', closeHandler), 0);
 
+    // Show immediately so a slow image fetch cannot look like a dead click.
     this.container.appendChild(popup);
+
+    imageData = await fetchWebcamImage(id).catch(() => null);
+    if (!popup.isConnected) return;
+
+    if (imageData?.windyUrl) {
+      const existing = popup.querySelector<HTMLAnchorElement>('.deckgl-webcam-popup-link');
+      if (existing) existing.href = imageData.windyUrl;
+    }
   }
 
   // Utility methods

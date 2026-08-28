@@ -287,7 +287,6 @@ const HOST_ORIGINS = Object.freeze({
   'humanprogress.org': 'US',
   'inc42.com': 'IN',
   'indianexpress.com': 'IN',
-  'insideclimatenews.org': 'US',
   'insightcrime.org': 'US',
   'ipinfo.io': 'US',
   'islandtimes.org': 'PW',

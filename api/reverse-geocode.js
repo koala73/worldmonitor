@@ -1,4 +1,4 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { checkRateLimit } from './_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
@@ -41,6 +41,8 @@ export default async function handler(req, ctx) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
+  const publicCors = getPublicCorsHeaders();
+
   // Metered before the coordinate validation so malformed requests are not a
   // free unlimited path. Availability-first on purpose: the map degrades to an
   // unlabelled country rather than failing, and checkRateLimit already returns
@@ -72,7 +74,7 @@ export default async function handler(req, ctx) {
     return new Response(JSON.stringify(cached), {
       status: 200,
       headers: {
-        ...cors,
+        ...publicCors,
         'Content-Type': 'application/json',
         'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=3600',
       },
@@ -114,7 +116,7 @@ export default async function handler(req, ctx) {
     return new Response(body, {
       status: 200,
       headers: {
-        ...cors,
+        ...publicCors,
         'Content-Type': 'application/json',
         'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=3600',
       },

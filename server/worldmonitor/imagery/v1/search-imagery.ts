@@ -4,7 +4,7 @@ import type {
   SearchImageryResponse,
   ImageryScene,
 } from '../../../../src/generated/server/worldmonitor/imagery/v1/service_server';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 
 const STAC_SEARCH = 'https://earth-search.aws.element84.com/v1/search';
@@ -120,10 +120,16 @@ export async function searchImagery(
   const weekAgo = new Date(nowHour.getTime() - 7 * 24 * 60 * 60 * 1000);
   const defaultDatetime = `${weekAgo.toISOString().split('.')[0]}Z/${nowHour.toISOString().split('.')[0]}Z`;
   const datetime = req.datetime || defaultDatetime;
-  const key = cacheKey(snappedBbox, datetime, req.source, limit);
+  // Normalise once, before BOTH uses: collections are matched lowercased
+  // below, so a raw req.source in the key split the cache by casing —
+  // sentinel-2 / Sentinel-2 / SENTINEL-2 were three entries holding the same
+  // payload and three STAC round-trips (#7209). Every other key input is
+  // already normalised (bbox snapped, limit clamped, datetime defaulted).
+  const source = (req.source ?? '').trim().toLowerCase();
+  const key = cacheKey(snappedBbox, datetime, source, limit);
 
   try {
-    const result = await cachedFetchJson<{ scenes: ImageryScene[]; totalResults: number }>(
+    const result = await cachedFetchJsonWithMeta<{ scenes: ImageryScene[]; totalResults: number }>(
       key,
       CACHE_TTL,
       async () => {
@@ -134,13 +140,12 @@ export async function searchImagery(
           'sentinel-2': ['sentinel-2-l2a'],
         };
         let collections = COLLECTIONS;
-        if (req.source) {
-          const src = req.source.toLowerCase();
-          const legacy = LEGACY_SOURCE_MAP[src];
+        if (source) {
+          const legacy = LEGACY_SOURCE_MAP[source];
           if (legacy) {
             collections = legacy;
           } else {
-            const matched = COLLECTIONS.filter(c => c.toLowerCase().includes(src));
+            const matched = COLLECTIONS.filter(c => c.toLowerCase().includes(source));
             if (matched.length > 0) collections = matched;
           }
         }
@@ -177,10 +182,14 @@ export async function searchImagery(
       },
     );
 
-    if (result) {
-      return { scenes: result.scenes, totalResults: result.totalResults, cacheHit: true };
+    if (result.data) {
+      return {
+        scenes: result.data.scenes,
+        totalResults: result.data.totalResults,
+        cacheHit: result.source === 'cache',
+      };
     }
-    return { scenes: [], totalResults: 0, cacheHit: false };
+    return { scenes: [], totalResults: 0, cacheHit: result.source === 'cache' };
   } catch (err) {
     console.warn(`[Imagery] Search failed: ${err instanceof Error ? err.message : 'unknown'}`);
     return { scenes: [], totalResults: 0, cacheHit: false };

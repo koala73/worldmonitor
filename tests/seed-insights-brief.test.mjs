@@ -5,10 +5,13 @@ import {
   briefSystemPrompt,
   briefUserPrompt,
   synthesisSystemPrompt,
+  synthesisUserPrompt,
+  promptMemberTitles,
   maskAttributedSources,
   composeSynthesizedBrief,
   composeSynthesizedBriefResult,
   BRIEF_REJECTIONS,
+  synthesisRejectionFeedback,
 } from '../scripts/_insights-brief.mjs';
 
 describe('pickBriefCluster', () => {
@@ -207,7 +210,72 @@ describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
     assert.match(composed.lead, /U\.S\. embassies/, 'the published lead keeps its original text');
   });
 
-  it('still rejects a genuinely uncited lead sentence', () => {
+  it('a repaired lead survives the aggregate anchor check when the drop took the second anchor (#7253 review)', () => {
+    // Both reviewers found this independently: checkLeadGrounding demands 2
+    // combined anchor hits on a corpus with >=4 anchor tokens — calibrated for
+    // a FULL lead. Here the hallucinated sentence carried the extra anchors;
+    // dropping it leaves a fully-gated survivor with exactly one ("Kuwait"),
+    // which the aggregate check then rejected, discarding the fresh synthesis
+    // the repair had just saved.
+    const richStories = [
+      {
+        primaryTitle: 'GCC condemns Iranian attacks on Kuwait',
+        primarySource: 'The National',
+        primaryLink: 'http://gcc',
+        sources: ['The National', 'Reuters'],
+        memberTitles: ['GCC condemns Iranian attacks on Kuwait'],
+      },
+      {
+        primaryTitle: 'Pakistan Floods Devastate Punjab Province Villages',
+        primarySource: 'Dawn',
+        primaryLink: 'http://floods',
+        sources: ['Dawn', 'BBC World'],
+        memberTitles: ['Pakistan Floods Devastate Punjab Province Villages'],
+      },
+    ];
+    const richLines = [
+      { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+      { n: 2, text: 'Pakistan floods devastate Punjab villages [2]' },
+    ];
+    // Sentence 1 survives with ONE corpus anchor (Kuwait, via story 1).
+    // Sentence 2 invents Venezuela against story 2 and is dropped — taking
+    // Pakistan/Punjab, the anchors that would have satisfied threshold 2.
+    const repairedShort = JSON.stringify({
+      lead: 'Attacks were condemned in Kuwait [1]. Venezuela flooded Punjab villages [2].',
+      lines: richLines,
+    });
+    const composed = composeSynthesizedBrief(repairedShort, richStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'the shortened lead must not be re-rejected by the full-lead threshold');
+    assert.ok(!composed.lead.includes('Venezuela'), 'the invented claim still never publishes');
+    assert.match(composed.lead, /Kuwait \[1\]/);
+    assert.equal(composed.droppedLeadSentences, 1);
+
+    // The anti-mush floor is unconditional: a survivor with ZERO corpus
+    // anchors still rejects, dropped sentences or not. Requirement 1 is what
+    // the relaxed threshold deliberately does not touch.
+    const mushSurvivor = JSON.stringify({
+      lead: 'The situation worsened further overnight [1]. Venezuela flooded Punjab villages [2].',
+      lines: richLines,
+    });
+    const rejected = composeSynthesizedBriefResult(mushSurvivor, richStories, { validatorMode: 'enforce' });
+    assert.equal(rejected.brief, null);
+    assert.equal(rejected.rejection, BRIEF_REJECTIONS.LEAD_GROUNDING);
+
+    // An INTACT lead keeps the original two-hit bar: same corpus, no drops,
+    // single-anchor lead -> still rejected. The relaxation is drop-scoped.
+    const intactSingleAnchor = JSON.stringify({
+      lead: 'Attacks were widely and swiftly condemned across Kuwait [1].',
+      lines: richLines,
+    });
+    const intact = composeSynthesizedBriefResult(intactSingleAnchor, richStories, { validatorMode: 'enforce' });
+    assert.equal(intact.brief, null, 'no drop happened, so the full-lead threshold still applies');
+    assert.equal(intact.rejection, BRIEF_REJECTIONS.LEAD_GROUNDING);
+  });
+
+  it('drops a genuinely uncited lead sentence and publishes the cited remainder', () => {
+    // Repair policy (2026-08-28): the unverifiable sentence must never reach a
+    // reader — but the cited sentence passed every gate, and rejecting the whole
+    // brief over its neighbour cost a full cycle of fresh content.
     const uncited = JSON.stringify({
       lead: 'The GCC condemned Iranian attacks on Kuwait [1]. Analysts expect further escalation soon.',
       lines: [
@@ -215,7 +283,12 @@ describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
         { n: 2, text: 'U.S. embassies urge citizens to consider leaving the region [2]' },
       ],
     });
-    assert.equal(composeSynthesizedBrief(uncited, topStories, { validatorMode: 'enforce' }), null);
+    const composed = composeSynthesizedBrief(uncited, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'one bad sentence must not cost the whole brief');
+    assert.ok(!composed.lead.includes('Analysts expect'), 'the uncited sentence never publishes');
+    assert.match(composed.lead, /GCC condemned Iranian attacks/);
+    assert.equal(composed.droppedLeadSentences, 1);
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   it('still rejects a hallucinated proper noun in a cited sentence', () => {
@@ -275,22 +348,35 @@ describe('composeSynthesizedBrief acronym boundaries fail closed (#5947 review)'
     { n: 2, text: 'U.S. Embassies urge citizens to consider leaving the region [2]' },
   ];
 
-  it('rejects a claim whose proper nouns come from a story it does not cite', () => {
+  it('drops a claim whose proper nouns come from a story it does not cite', () => {
     // "the U.S." is attributed to [1], which never mentions the US. A merged
-    // validation unit would let it ground against [2] instead.
+    // validation unit would let it ground against [2] instead — and under the
+    // repair policy that merge bug would surface as "U.S." REACHING the
+    // published lead, which is exactly what this asserts against.
     const misattributed = JSON.stringify({
       lead: 'GCC states condemned Iranian attacks on Kuwait [1], and warnings were issued by the U.S. Embassies urged citizens to leave the region [2].',
       lines,
     });
-    assert.equal(composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }), null);
+    const composed = composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'the grounded sentence still publishes');
+    assert.ok(!composed.lead.includes('U.S.'), 'the misattributed claim never publishes');
+    assert.ok(!composed.lead.includes('warnings were issued'));
+    assert.match(composed.lead, /Embassies urged citizens/);
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
   });
 
-  it('rejects an uncited sentence that follows an acronym-terminated sentence', () => {
+  it('drops an uncited sentence that follows an acronym-terminated sentence', () => {
+    // A merge bug would let the uncited fragment ride inside the cited [2]
+    // sentence and publish; asserting its absence keeps that regression caught.
     const uncitedMiddle = JSON.stringify({
       lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Meanwhile pressure mounted on the U.S. Embassies urged citizens to leave the region [2].',
       lines,
     });
-    assert.equal(composeSynthesizedBrief(uncitedMiddle, topStories, { validatorMode: 'enforce' }), null);
+    const composed = composeSynthesizedBrief(uncitedMiddle, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null);
+    assert.ok(!composed.lead.includes('Meanwhile pressure'), 'the uncited fragment never publishes');
+    assert.match(composed.lead, /GCC states condemned/);
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   it('keeps a genuine sentence boundary after a terminal acronym', () => {
@@ -349,14 +435,21 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
     assert.match(composed.lead, /U\.S\. \[2\]/, 'the published lead keeps its original punctuation');
   });
 
-  it('still rejects an uncited sentence after an acronym that carries its citation', () => {
+  it('still drops an uncited sentence after an acronym that carries its citation', () => {
     // The merge must join the fragment to its OWN citation only. A following
-    // sentence with no citation of its own stays a separate unit and rejects.
+    // sentence with no citation of its own stays a separate unit — dropped,
+    // never smuggled into the cited unit and published.
     const trailingUncited = JSON.stringify({
       lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave by the U.S. [2]. Analysts expect further escalation soon.',
       lines,
     });
-    assert.equal(composeSynthesizedBrief(trailingUncited, topStories, { validatorMode: 'enforce' }), null);
+    const composed = composeSynthesizedBrief(trailingUncited, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null);
+    assert.ok(!composed.lead.includes('Analysts expect'), 'the uncited sentence never publishes');
+    // The rebuilt lead carries the collapse's dot-free acronym — the exact
+    // style the system prompt mandates ("US", never "U.S.").
+    assert.match(composed.lead, /Citizens were urged to leave by the US \[2\]/);
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   // Scoping must be pinned by a DISCRIMINATING pair, not a lone rejection.
@@ -371,11 +464,14 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [1].',
       lines,
     });
-    assert.equal(
-      composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }),
-      null,
+    const composed = composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null);
+    assert.ok(
+      !composed.lead.includes('pressured by the U.S.'),
       'story 1 never mentions the US — collapsing must not let it ground against story 2',
     );
+    assert.equal(composed.droppedLeadSentences, 1);
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
   });
 
   it('scopes the collapsed acronym to the story it cites (positive)', () => {
@@ -383,11 +479,15 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [2].',
       lines,
     });
+    const composed = composeSynthesizedBrief(grounded, topStories, { validatorMode: 'enforce' });
     assert.notEqual(
-      composeSynthesizedBrief(grounded, topStories, { validatorMode: 'enforce' }),
+      composed,
       null,
       'identical text citing [2] must pass — only the citation index differs',
     );
+    // The discriminating variable is the citation index alone: flipping it must
+    // flip the drop count, not merely the null-ness of the result.
+    assert.equal(composed.droppedLeadSentences, 0);
   });
 
   // Cross-model adversarial review (Codex) broke the first version of this fix,
@@ -404,11 +504,13 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lead: 'Citizens were urged to leave the region by the U.S. [1] GCC states condemned Iranian attacks on Kuwait [2].',
       lines,
     });
-    assert.equal(
-      composeSynthesizedBrief(unioned, topStories, { validatorMode: 'enforce' }),
-      null,
-      'a bare marker mid-lead must stay a boundary — merging would union {1,2}',
+    const composed = composeSynthesizedBrief(unioned, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null);
+    assert.ok(
+      !composed.lead.includes('U.S.'),
+      'a bare marker mid-lead must stay a boundary — merging would union {1,2} and publish the US claim',
     );
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   it('does not merge on an adjacent citation run that does not close the sentence', () => {
@@ -416,7 +518,10 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lead: 'Citizens were urged to leave the region by the U.S. [1][2] GCC states condemned Iranian attacks on Kuwait [2].',
       lines,
     });
-    assert.equal(composeSynthesizedBrief(adjacentUnioned, topStories, { validatorMode: 'enforce' }), null);
+    const composed = composeSynthesizedBrief(adjacentUnioned, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null);
+    assert.ok(!composed.lead.includes('U.S.'), 'the unclosed run must not license the US claim');
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   it('accepts an adjacent citation run that does close the sentence', () => {
@@ -463,11 +568,14 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
         lead: 'Chile reported grower losses [1].\nApple cut its regional orders [1].',
         lines,
       });
-      assert.equal(
-        composeSynthesizedBrief(smuggled, topStories, { validatorMode: 'enforce' }),
-        null,
+      const composed = composeSynthesizedBrief(smuggled, topStories, { validatorMode: 'enforce' });
+      assert.notEqual(composed, null);
+      assert.ok(
+        !composed.lead.includes('Apple'),
         '"apple" the fruit must not license "Apple" the company via a newline',
       );
+      assert.match(composed.lead, /Chile reported grower losses/);
+      assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
     });
 
     it('rejects a lead smuggling a capital past a lowercase abbreviation', () => {
@@ -495,7 +603,10 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [2026].',
       lines,
     });
-    assert.equal(composeSynthesizedBrief(bracketedYear, topStories, { validatorMode: 'enforce' }), null);
+    const composed = composeSynthesizedBrief(bracketedYear, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null);
+    assert.ok(!composed.lead.includes('pressured'), 'the year-bracketed fragment stays uncited and never publishes');
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   it('stays closed when an out-of-range marker is stripped down to a bare one', () => {
@@ -505,7 +616,10 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lead: 'Citizens were urged to leave the region by the U.S. [999] [2] GCC states condemned Iranian attacks on Kuwait [1].',
       lines,
     });
-    assert.equal(composeSynthesizedBrief(strippedToBare, topStories, { validatorMode: 'enforce' }), null);
+    const composed = composeSynthesizedBrief(strippedToBare, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null);
+    assert.ok(!composed.lead.includes('U.S.'), 'the stripped bare marker must not collapse — the US claim stays uncited and unpublished');
+    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 });
 
@@ -818,8 +932,18 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.equal(untitled.rejection, BRIEF_REJECTIONS.LEAD_GROUNDING);
   });
 
-  it('names an uncited lead sentence', () => {
+  it('names an uncited lead sentence on the repaired brief', () => {
     const out = compose('Prices rose sharply in Chile last quarter [1]. Analysts expect more increases ahead.');
+    assert.notEqual(out.brief, null, 'the cited sentence still publishes');
+    assert.ok(!out.brief.lead.includes('Analysts expect'));
+    assert.equal(out.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    assert.equal(out.rejection, null);
+  });
+
+  it('names the gate when every lead sentence fails', () => {
+    // The total-failure classification is unchanged by the repair policy: with
+    // no survivors, the FIRST failing sentence's code is the rejection.
+    const out = compose('Analysts expect more increases ahead. Markets may react next week.');
     assert.equal(out.brief, null);
     assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
@@ -1016,5 +1140,150 @@ describe('coordinating and is grammar in the composer (AE2, AE4, AE7)', () => {
     );
     assert.equal(out.brief, null);
     assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+});
+
+describe('synthesisUserPrompt member titles (prompt/gate symmetry)', () => {
+  const stories = [
+    {
+      primaryTitle: 'Iran War Diplomacy Turns Toward Reopening Hormuz',
+      primarySource: 'ISW',
+      uniquePublisherCount: 3,
+      memberTitles: [
+        'Iran War Diplomacy Turns Toward Reopening Hormuz',
+        'Iran says Strait of Hormuz agreement with Oman puts ball back in US court',
+        '  ',
+        'Iran says return to diplomacy is not impossible',
+        'A fourth member that must be capped away',
+      ],
+    },
+  ];
+
+  it('is byte-identical to the legacy prompt when the flag is off', () => {
+    assert.equal(
+      synthesisUserPrompt(stories),
+      'Stories:\n1. Iran War Diplomacy Turns Toward Reopening Hormuz (ISW, 3 sources)\n\nCompile the world brief JSON.',
+    );
+  });
+
+  it('renders capped, deduped member titles as sub-lines of the numbered story', () => {
+    const prompt = synthesisUserPrompt(stories, { includeMemberTitles: true });
+    // The gate grounds against these titles already (storyGroundText); showing
+    // them closes the asymmetry where the gate accepted facts from headlines
+    // the model was never allowed to see.
+    assert.match(prompt, /- also reported: Iran says Strait of Hormuz agreement/);
+    assert.match(prompt, /- also reported: Iran says return to diplomacy/);
+    assert.ok(!prompt.includes('fourth member'), 'capped at SYNTHESIS_PROMPT_MAX_MEMBER_TITLES');
+    assert.equal(
+      (prompt.match(/Iran War Diplomacy Turns Toward Reopening Hormuz/g) || []).length,
+      1,
+      'a member identical to the primary title is not repeated',
+    );
+  });
+
+  it('a story with no members renders exactly its legacy line even when the flag is on', () => {
+    const bare = [{ primaryTitle: 'A', primarySource: 'B', uniquePublisherCount: 1 }];
+    assert.equal(
+      synthesisUserPrompt(bare, { includeMemberTitles: true }),
+      synthesisUserPrompt(bare),
+    );
+  });
+});
+
+
+describe('prompt-scoped grounding symmetry (#7261 review)', () => {
+  // Cluster with FOUR distinct member titles; the prompt shows only two.
+  const stories = [{
+    primaryTitle: 'Regional apple prices rose sharply in Chile last quarter, growers say',
+    primarySource: 'Reuters',
+    primaryLink: 'http://apple',
+    sources: ['Reuters', 'AP News'],
+    memberTitles: [
+      'Regional apple prices rose sharply in Chile last quarter, growers say',
+      'Growers blame drought for the Chile price surge',
+      'Retailers warn of pass-through to consumers',
+      'Bolivia mulls emergency fruit imports amid the squeeze',
+    ],
+  }];
+  const lines = [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }];
+  // "Bolivia" exists ONLY in member title #3 — beyond the two-title cap, so
+  // the model was never shown it.
+  const hiddenMemberFact = JSON.stringify({
+    lead: 'Bolivia weighed emergency imports as Chile prices rose sharply [1].',
+    lines,
+  });
+  // "drought" claims ground in member title #1 — WITHIN the cap.
+  const shownMemberFact = JSON.stringify({
+    lead: 'Growers blamed drought as prices rose sharply in Chile last quarter [1].',
+    lines,
+  });
+
+  it('flag ON: a fact from a member title the model was never shown is rejected', () => {
+    const out = composeSynthesizedBriefResult(hiddenMemberFact, stories, {
+      validatorMode: 'enforce',
+      promptScopedMembers: true,
+    });
+    assert.equal(out.brief, null, 'evidence the model could not have seen must not license a claim');
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.match(out.rejectionDetail, /bolivia/);
+  });
+
+  it('flag ON: a fact from a SHOWN member title still grounds', () => {
+    const out = composeSynthesizedBriefResult(shownMemberFact, stories, {
+      validatorMode: 'enforce',
+      promptScopedMembers: true,
+    });
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+    assert.match(out.brief.lead, /drought/);
+  });
+
+  it('flag OFF: the legacy permissive mirror is unchanged', () => {
+    // Documented pre-existing stance: members in the ground text but not the
+    // prompt can only make the gate MORE permissive, never falsely reject.
+    const out = composeSynthesizedBriefResult(hiddenMemberFact, stories, {
+      validatorMode: 'enforce',
+    });
+    assert.equal(out.rejection, null, 'flag-off behavior is byte-for-byte the legacy gate');
+    assert.ok(out.brief);
+  });
+
+  it('the prompt and the gate read the same selection', () => {
+    // The prompt renders exactly promptMemberTitles; flag-on grounding admits
+    // exactly primaryTitle + promptMemberTitles. One list, two consumers.
+    const prompt = synthesisUserPrompt(stories, { includeMemberTitles: true });
+    for (const shown of promptMemberTitles(stories[0])) {
+      assert.ok(prompt.includes(shown), 'every grounded member title is shown');
+    }
+    assert.ok(!prompt.includes('Bolivia'), 'a hidden title is neither shown nor (flag-on) grounded');
+    assert.equal(promptMemberTitles(stories[0]).length, 2);
+  });
+});
+
+
+describe('synthesisRejectionFeedback', () => {
+  it('quotes the rejected phrase back with the repair instruction', () => {
+    const note = synthesisRejectionFeedback({
+      code: BRIEF_REJECTIONS.LEAD_PROPER_NOUN,
+      detail: 'strait of hormuz',
+    });
+    assert.match(note, /"strait of hormuz"/);
+    assert.match(note, /cites the story stating it/);
+  });
+
+  it('bounds and flattens a hostile detail before quoting it into a prompt', () => {
+    const note = synthesisRejectionFeedback({
+      code: BRIEF_REJECTIONS.LEAD_NUMERIC_FACT,
+      detail: `x${'y'.repeat(500)}\nline2\tline3`,
+    });
+    assert.ok(note.length < 300, 'the correction stays bounded');
+    assert.ok(!note.includes('\n'), 'newlines are flattened');
+  });
+
+  it('maps parse and uncited rejections to their own corrections, and null to null', () => {
+    assert.match(synthesisRejectionFeedback({ code: BRIEF_REJECTIONS.PARSE }), /JSON object ONLY/);
+    assert.match(synthesisRejectionFeedback({ code: BRIEF_REJECTIONS.LEAD_UNCITED }), /bracket number/);
+    assert.equal(synthesisRejectionFeedback(null), null);
+    assert.equal(synthesisRejectionFeedback({}), null);
   });
 });

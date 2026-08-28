@@ -30,6 +30,7 @@ import {
   briefUserPrompt,
   synthesisSystemPrompt,
   synthesisUserPrompt,
+  synthesisRejectionFeedback,
 } from './_insights-brief.mjs';
 import {
   INSIGHTS_COMPOSER_THREW,
@@ -37,6 +38,9 @@ import {
   classifyInsightsSynthesisFailure,
   composeInsightsSynthesis,
   resolveInsightsSynthesis,
+  insightsSynthesisSignature,
+  shouldSkipInsightsSynthesis,
+  formatInsightsBreakerOpenWarning,
 } from './_insights-synthesis-diagnostics.mjs';
 export {
   INSIGHTS_COMPOSER_THREW,
@@ -197,6 +201,8 @@ export function buildInsightsFreshnessMetaPatch({
   previousMeta,
   outcome,
   failureCode = null,
+  failureDetail = null,
+  storiesSignature = null,
   nowMs = Date.now(),
   servedGeneratedAt = null,
   briefEligibleClusters = null,
@@ -212,13 +218,41 @@ export function buildInsightsFreshnessMetaPatch({
   const normalizedFailureCode = failureCode == null ? null : normalizeInsightsFailureCode(failureCode);
   const eligibleClusters = normalizeBriefEligibleClusters(briefEligibleClusters);
 
+  // Bounded breaker inputs (see shouldSkipInsightsSynthesis): what failed and
+  // against which story set. Cleared on publish so a stale pair can never
+  // suppress a later synthesis of a genuinely different run.
+  const boundedDetail = typeof failureDetail === 'string' && failureDetail.length > 0
+    ? failureDetail.replace(/\s+/g, ' ').trim().slice(0, 80)
+    : null;
+  const boundedSignature = typeof storiesSignature === 'string' && storiesSignature.length > 0
+    ? storiesSignature.slice(0, 16)
+    : null;
+  // Per-signature repeat counter (#7255 review). consecutiveFailures counts
+  // every degraded run producer-wide, so provider noise inflated it past the
+  // breaker threshold before a gate failure ever repeated. This counter
+  // increments only while the (code, detail, signature) triple repeats
+  // EXACTLY, and resets to 1 on any change.
+  const previousSameSignature = Number.isInteger(previous.sameSignatureFailures) && previous.sameSignatureFailures > 0
+    ? previous.sameSignatureFailures
+    : 0;
+  const failureCodeForMeta = normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+  const repeatsPrevious = previousSameSignature > 0 || previous.lastSynthesisFailureCode
+    ? failureCodeForMeta === previous.lastSynthesisFailureCode
+      && (boundedDetail ?? null) === (previous.lastSynthesisFailureDetail ?? null)
+      && boundedSignature !== null
+      && boundedSignature === (previous.failedStoriesSignature ?? null)
+    : false;
+
   if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
     return {
       lastAttemptAt: now,
       lastSuccessAt: now,
       servedGeneratedAt: servedAt,
       consecutiveFailures: 0,
+      sameSignatureFailures: 0,
       lastSynthesisFailureCode: normalizedFailureCode,
+      lastSynthesisFailureDetail: null,
+      failedStoriesSignature: null,
       briefEligibleClusters: eligibleClusters,
     };
   }
@@ -228,7 +262,12 @@ export function buildInsightsFreshnessMetaPatch({
     lastSuccessAt: Number.isFinite(previous.lastSuccessAt) ? previous.lastSuccessAt : null,
     servedGeneratedAt: servedAt,
     consecutiveFailures: Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
-    lastSynthesisFailureCode: normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    sameSignatureFailures: repeatsPrevious
+      ? Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousSameSignature + 1)
+      : 1,
+    lastSynthesisFailureCode: failureCodeForMeta,
+    lastSynthesisFailureDetail: boundedDetail,
+    failedStoriesSignature: boundedSignature,
     briefEligibleClusters: eligibleClusters,
   };
 }
@@ -423,6 +462,8 @@ const LLM_PROVIDERS = [
 // provider's Retry-After (429/503) instead of dropping straight to the next
 // provider, but never sleep/fetch past the remaining call budget.
 const INSIGHTS_LLM_MAX_RETRIES = 2;
+const INSIGHTS_LLM_TEMPERATURE = 0.1;
+const INSIGHTS_LLM_RESAMPLE_TEMPERATURE = 0.7;
 const INSIGHTS_LLM_RETRY_BASE_MS = 1_000;
 const INSIGHTS_LLM_RETRY_AFTER_MAX_MS = 10_000;
 const INSIGHTS_LLM_CALL_BUDGET_MS = 60_000;
@@ -455,9 +496,18 @@ async function callLLM(headline, options = {}) {
   // llm_call telemetry (#4944 U5): one event per provider OUTCOME (the
   // withRetry duration covers in-provider retries), unified with the
   // Vercel-side stream via scripts/lib/llm-telemetry.cjs.
-  const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
   const events = [];
   let attemptIndex = 0;
+  // 0.1 keeps the first sample stable and cheap to reason about. But after a
+  // gate rejection, determinism is the enemy: the same prompt at the same
+  // temperature returns the same draft, so #6995's resample-once was a second
+  // identical call — 25 consecutive identical rejections on 2026-08-28 proved
+  // it. Once any sample has been gate-rejected, later samples run hot enough
+  // to actually vary, and carry the gate's correction (options.rejectionFeedback)
+  // appended to the user prompt. Both persist past the resample into the rest
+  // of the provider chain: a weaker model needs the correction more, not less.
+  let samplingTemperature = INSIGHTS_LLM_TEMPERATURE;
+  let gateFeedbackNote = null;
 
   // #6001: the chain used to fall through on TRANSPORT failures only. A model
   // that reliably returns well-formed text the brief composer then rejects on
@@ -504,11 +554,19 @@ async function callLLM(headline, options = {}) {
 
     const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
+    // Captured per attempt, BEFORE the request: a correction collected during
+    // this attempt's rejection belongs to the NEXT request. The request body
+    // and the telemetry both derive from this one variable, so the recorded
+    // promptChars is the size of what was actually sent — a corrected resample
+    // is larger than the base prompt, and the events must say so (#7248
+    // review: every event recorded the base-only size).
+    const effectiveUserPrompt = gateFeedbackNote ? `${userPrompt}\n\n${gateFeedbackNote}` : userPrompt;
+    const attemptPromptChars = (systemPrompt?.length ?? 0) + effectiveUserPrompt.length;
     const t0 = Date.now();
     const record = (ok, extra = {}) => {
       events.push(buildLlmCallEvent({
         provider: provider.name, model, stage: 'seed-insights', ok,
-        durationMs: Date.now() - t0, promptChars, maxTokens,
+        durationMs: Date.now() - t0, promptChars: attemptPromptChars, maxTokens,
         fallbackIndex: attemptIndex++,
         ...extra,
       }));
@@ -525,10 +583,10 @@ async function callLLM(headline, options = {}) {
             model,
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
+              { role: 'user', content: effectiveUserPrompt },
             ],
             max_tokens: maxTokens,
-            temperature: 0.1,
+            temperature: samplingTemperature,
             ...provider.extraBody,
           }),
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
@@ -591,6 +649,16 @@ async function callLLM(headline, options = {}) {
           record(false, { ...usage, model: json.model || model, reason: 'validate_reject' });
           if (faulted) { if (!firstFaulted) firstFaulted = candidate; }
           else if (!firstRejected) firstRejected = candidate;
+          if (!faulted) {
+            // A FAULTED acceptor teaches the sampler nothing — the fault is in
+            // our own gate, so neither the temperature bump nor a correction
+            // note applies.
+            samplingTemperature = INSIGHTS_LLM_RESAMPLE_TEMPERATURE;
+            const feedback = typeof options.rejectionFeedback === 'function'
+              ? options.rejectionFeedback()
+              : null;
+            if (typeof feedback === 'string' && feedback.trim()) gateFeedbackNote = feedback.trim();
+          }
           // One resample before demoting (see the queue comment above). A
           // FAULTED acceptor is excluded deliberately: that fault is in our own
           // gate, not in the sample, so a second identical call would throw
@@ -753,6 +821,39 @@ export function normalizeDigestItemsForInsights(items) {
   })).filter(item => item.title.length > 10);
 }
 
+/**
+ * Acceptance gate for the synthesis provider walk. Exported so the composer-
+ * fault contract is directly testable — the #7248 review found the contained
+ * composer sentinel riding the ordinary-rejection path, and the fix lived in
+ * an inline closure no test could reach.
+ *
+ * Contract:
+ *   - editorial rejection -> returns null and records {code, detail} for the
+ *     resample-feedback path;
+ *   - composer FAULT (the contained INSIGHTS_COMPOSER_THREW sentinel) ->
+ *     THROWS, so callLLM takes its faulted-acceptor path: no temperature bump,
+ *     no correction note, no resample. The sample may have been fine; the
+ *     fault is in OUR gate. resolveInsightsSynthesis still classifies the run
+ *     as COMPOSER_ERROR from its own contained composer call.
+ */
+export function createSynthesisAcceptor(topStories, composerOptions) {
+  let lastSynthesisRejection = null;
+  return {
+    accept: (text) => {
+      const result = composeInsightsSynthesis(text, topStories, composerOptions);
+      if (result?.rejection === INSIGHTS_COMPOSER_THREW) {
+        lastSynthesisRejection = null;
+        throw new Error(`composer fault: ${INSIGHTS_COMPOSER_THREW}`);
+      }
+      lastSynthesisRejection = result?.brief
+        ? null
+        : { code: result?.rejection ?? null, detail: result?.rejectionDetail ?? null };
+      return result?.brief ?? null;
+    },
+    lastRejection: () => lastSynthesisRejection,
+  };
+}
+
 async function fetchInsights() {
   const digest = await readOrWarmDigest('en');
   if (!digest) {
@@ -858,38 +959,84 @@ async function fetchInsights() {
   }
   // The acceptance gate is the composer itself (#6001), so the chain can never
   // accept output the composer would later reject.
+  // One read drives BOTH the prompt and the gate: symmetry between what the
+  // model sees and what grounds it is the whole point of the flag, and two
+  // separate reads could drift.
+  const promptMemberTitlesEnabled = process.env.INSIGHTS_PROMPT_MEMBER_TITLES === '1';
   const synthesisComposerOptions = {
     briefCluster,
     validatorMode: BRIEF_VALIDATOR_MODE,
     sanitizeTitle,
     sourceFromStory: briefSourceFromStory,
+    promptScopedMembers: promptMemberTitlesEnabled,
   };
-  const composeFromText = (text) =>
-    composeInsightsSynthesis(text, topStories, synthesisComposerOptions).brief;
+  const { accept: composeFromText, lastRejection } = createSynthesisAcceptor(topStories, synthesisComposerOptions);
 
   // #6001: L1 may now walk the whole provider chain, and L2 below makes a
   // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
   // otherwise two full 60s budgets could outlast the 120s seed lock.
   const llmRunStartedAtMs = Date.now();
-  const synthesisResult = hasBriefCluster
+  // Repeat breaker: same gate failure, same story set, three cycles running —
+  // a fourth identical paid call cannot succeed where three did not, and the
+  // resample/repair machinery has already had its chance on each. Re-arms the
+  // moment the story set (and therefore the prompt) changes.
+  const previousFreshnessMeta = await readExistingSeedMeta('news', 'insights');
+  // The signature hashes the exact prompts callLLM is about to send — computed
+  // here, passed there, one source of truth.
+  const synthesisSystem = synthesisSystemPrompt(new Date().toISOString().split('T')[0]);
+  const synthesisUser = synthesisUserPrompt(topStories, {
+    includeMemberTitles: promptMemberTitlesEnabled,
+  });
+  const storiesSignature = insightsSynthesisSignature(synthesisSystem, synthesisUser);
+  const synthesisBreakerOpen = hasBriefCluster && shouldSkipInsightsSynthesis({
+    previousMeta: previousFreshnessMeta,
+    synthesisSignature: storiesSignature,
+  });
+  if (synthesisBreakerOpen) {
+    console.warn(formatInsightsBreakerOpenWarning(previousFreshnessMeta));
+  }
+  const synthesisResult = hasBriefCluster && !synthesisBreakerOpen
     ? await callLLM(null, {
-        systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
-        userPrompt: synthesisUserPrompt(topStories),
+        systemPrompt: synthesisSystem,
+        userPrompt: synthesisUser,
         maxTokens: 900,
         // A model whose output trips the editorial gates must not strand the
         // run. callLLM resamples this model once before demoting to a weaker
-        // one, so a single unusable sample no longer costs the better writer.
+        // one, so a single unusable sample no longer costs the better writer —
+        // and the resample carries the gate's correction plus real sampling
+        // variance, so it is a different draft rather than the same one twice.
         accept: composeFromText,
+        rejectionFeedback: () => synthesisRejectionFeedback(lastRejection()),
       })
     : null;
-  const { composed, failureCode, failureDetail } = resolveInsightsSynthesis({
-    synthesisResult,
-    topStories,
-    ...synthesisComposerOptions,
-  });
+  let breakerCarriedDetail = null;
+  const { composed, failureCode, failureDetail } = synthesisBreakerOpen
+    ? { composed: null, failureCode: null, failureDetail: null }
+    : resolveInsightsSynthesis({
+      synthesisResult,
+      topStories,
+      ...synthesisComposerOptions,
+    });
   synthesisFailureCode = failureCode;
 
-  if (composed) {
+  if (synthesisBreakerOpen) {
+    // Preserve the TRUE cause. Classifying this run's null synthesisResult
+    // would report PROVIDER — but no provider was asked; the standing failure
+    // is whatever kept failing before the breaker opened. L2 is skipped as
+    // well: it is a second paid call, and the LKG it would lose to is already
+    // being served.
+    synthesisFailureCode = normalizeInsightsFailureCode(previousFreshnessMeta?.lastSynthesisFailureCode)
+      ?? INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+    status = 'degraded';
+    // Carry the standing detail too: a skipped run repeats the previous
+    // failure identically, and the per-signature counter downstream matches on
+    // (code, detail, signature) — a null detail here would read as a CHANGED
+    // failure, reset the counter, and flap the breaker open/closed every other
+    // run.
+    breakerCarriedDetail = typeof previousFreshnessMeta?.lastSynthesisFailureDetail === 'string'
+      ? previousFreshnessMeta.lastSynthesisFailureDetail
+      : null;
+  } else if (composed) {
     worldBrief = composed.lead;
     briefStoryLines = composed.lines;
     worldBriefSources = composed.sources;
@@ -897,6 +1044,11 @@ async function fetchInsights() {
     briefModel = synthesisResult.model;
     if (composed.strippedCitations > 0) {
       console.warn(`  [brief_citation ENFORCE] stripped ${composed.strippedCitations} out-of-range citation(s)`);
+    }
+    if (composed.droppedLeadSentences > 0) {
+      // Bounded vocabulary only — the detail may quote model output, and this
+      // line reaches Railway logs, so name the gate, not the text.
+      console.warn(`  [brief_repair ${BRIEF_VALIDATOR_MODE.toUpperCase()}] dropped ${composed.droppedLeadSentences} lead sentence(s) (first: ${composed.droppedLeadRejection}) — published the surviving lead`);
     }
     if (composed.hallucinatedLines > 0) {
       console.warn(`  [brief_hallucination ${BRIEF_VALIDATOR_MODE.toUpperCase()}] ${composed.hallucinatedLines}/${topStories.length} synthesis lines flagged`);
@@ -1038,6 +1190,8 @@ async function fetchInsights() {
         {
           outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
           failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+          failureDetail: breakerCarriedDetail ?? failureDetail,
+          storiesSignature,
           briefEligibleClusters,
         },
       );
@@ -1047,6 +1201,8 @@ async function fetchInsights() {
   return decorateInsightsRun(payload, {
     outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
     failureCode: synthesisFailureCode,
+    failureDetail: breakerCarriedDetail ?? failureDetail,
+    storiesSignature,
     briefEligibleClusters,
   });
 }
@@ -1077,6 +1233,8 @@ export function insightsFreshnessPatchArgs(data, outcome, previousMeta, nowMs = 
     previousMeta,
     outcome,
     failureCode: runMeta?.failureCode,
+    failureDetail: runMeta?.failureDetail ?? null,
+    storiesSignature: runMeta?.storiesSignature ?? null,
     nowMs,
     servedGeneratedAt: data?.generatedAt,
     briefEligibleClusters: runMeta?.briefEligibleClusters ?? null,

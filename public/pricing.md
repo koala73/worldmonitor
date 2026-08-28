@@ -69,8 +69,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $2,699.99/year
 - Annual savings: about 25 percent versus monthly billing
 - Best for: Teams with high-volume programmatic workloads that outgrow the Starter quota
-- Includes: Everything in API Starter, redistribution rights, 5 Pro licenses included and priority support
-- License: Commercial license for your customers — embed WorldMonitor data in what you sell; the 5 bundled Pro seats all require the same company email domain
+- Includes: Everything in API Starter, redistribution rights, 5 Pro licenses — invite users at any corporate email domain and priority support
+- License: Commercial license for your customers — embed WorldMonitor data in what you sell; the 5 bundled Pro seats may be assigned to users at any corporate email domain
 - Limits: 300 requests/minute, 10,000 requests/day
 - Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://worldmonitor.app/pro
 
@@ -167,8 +167,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "300 requests/minute",
         "10,000 requests/day",
         "10,000 dashboard-AI requests/day",
-        "5 Pro licenses included",
-        "same company email required",
+        "5 Pro licenses — invite users at any corporate email domain",
         "commercial license — for your customers",
         "priority support"
       ]

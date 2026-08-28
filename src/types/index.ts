@@ -1136,6 +1136,7 @@ export interface ForecastPoint {
   hour: number;
   windKt: number;
   category: number;
+  geometryKind?: string;
 }
 
 export interface PastTrackPoint {
@@ -1143,6 +1144,7 @@ export interface PastTrackPoint {
   lon: number;
   windKt: number;
   timestamp: number;
+  geometryKind?: string;
 }
 
 /** A single agency report retained on a canonical tropical cyclone event. */
@@ -1186,6 +1188,13 @@ export interface NaturalEvent {
   movementSpeedKt?: number;
   forecastTrack?: ForecastPoint[];
   conePolygon?: number[][][];
+  coneGeometryKind?: string;
+  windRadii?: Array<{
+    thresholdKt?: number | null;
+    thresholdLabel?: string;
+    polygons?: number[][][][];
+    geometryKind?: string;
+  }>;
   pastTrack?: PastTrackPoint[];
   canonicalId?: string;
   matchingConfidence?: string;

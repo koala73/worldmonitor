@@ -79,11 +79,10 @@ const ALLOWED_COMMANDS = new Set([
 ]);
 
 // EVAL stays blocked as a class — arbitrary server-side Lua is exactly what
-// the allowlist exists to prevent — with ONE pinned exception: the digest
-// last-good publish gate. The edge handler needs its read-decide-write to be
-// atomic (two isolates racing a plain SET pair can let a narrower snapshot
-// clobber a richer one), and the only sound way to allow that through a
-// command allowlist is to pin the exact script text.
+// the allowlist exists to prevent — with two pinned digest exceptions. The
+// edge handler needs atomic last-good replacement and fenced story-alias
+// publication, and the only sound way to allow either through a command
+// allowlist is to pin the exact script text.
 //
 // PINNED COPY of shared/digest-lastgood-publish-script.mjs. This image
 // bundles only this file, so it cannot import the shared module — a parity
@@ -135,7 +134,21 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   "redis.call('SET', KEYS[1], stored, 'EX', ARGV[4])",
   'return 1',
 ].join('\n');
-const ALLOWED_EVAL_SCRIPTS = new Set([DIGEST_LASTGOOD_PUBLISH_SCRIPT]);
+
+// PINNED COPY of shared/story-alias-publish-script.mjs. The script verifies
+// a short publication-lease token inside Redis before it writes any aliases,
+// so a delayed older Edge request cannot overwrite a newer alias cohort.
+const STORY_ALIAS_PUBLISH_SCRIPT = [
+  "if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end",
+  'for index = 2, #KEYS do',
+  "  redis.call('SET', KEYS[index], ARGV[2], 'EX', ARGV[3])",
+  'end',
+  'return 1',
+].join('\n');
+const ALLOWED_EVAL_SCRIPTS = new Set([
+  DIGEST_LASTGOOD_PUBLISH_SCRIPT,
+  STORY_ALIAS_PUBLISH_SCRIPT,
+]);
 
 // Exact-text pin, not a pattern: any change to the script — including
 // whitespace — must land in both copies deliberately.

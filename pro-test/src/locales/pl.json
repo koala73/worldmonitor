@@ -388,7 +388,8 @@
           "Umowa przetwarzania danych (DPA)",
           "Rozliczanie na podstawie zamówienia zakupu",
           "SAML SSO, SCIM",
-          "Niestandardowe ustawienia bezpieczeństwa i prywatności"
+          "Niestandardowe ustawienia bezpieczeństwa i prywatności",
+          "W pełni white-labeled — z podziałem przychodów lub bez niego"
         ],
         "cta": "Skontaktuj się z działem sprzedaży"
       },
@@ -399,7 +400,7 @@
           "Prawa do redystrybucji — osadzaj nasze dane w tym, co sprzedajesz",
           "300 żądań/minutę",
           "10 000 żądań/dzień w pakiecie",
-          "5 licencji Pro w pakiecie",
+          "5 licencji Pro — zapraszaj użytkowników z dowolnej firmowej domeny e-mail",
           "Wsparcie priorytetowe"
         ],
         "highlightFeatures": [

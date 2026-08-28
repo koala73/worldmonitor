@@ -57,6 +57,7 @@ Vessels reappearing after gaps are flagged for the duration of the session.
 |---|---|---|
 | Vessel snapshot | `GET /api/maritime/v1/get-vessel-snapshot` | Civilian AIS point-in-time view for traffic and disruption context. |
 | Navigational warnings | `GET /api/maritime/v1/list-navigational-warnings` | NGA maritime safety warnings used by chokepoint and undersea-cable awareness. |
+| IMD port / sea / coastal | Bootstrap `imdCycloneMarine` (`weather:imd-cyclone-marine:v1`) | Official IMD port warnings and sea-area / coastal bulletins with issuing ACWC/CWC, valid times, wind, visibility, and sea state. Not merged into NWS weather alerts. Fishermen warning stays disabled (indexed, no field reference). |
 
 ## WebSocket Architecture
 

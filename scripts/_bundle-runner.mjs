@@ -38,6 +38,7 @@ import {
   BUNDLE_COMPLETION_META_KEY_ENV,
   GRACEFUL_FETCH_FAILURE_EXIT_CODE,
   loadEnvFile,
+  PUBLISH_BLOCKED_EXIT_CODE,
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
@@ -362,6 +363,17 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
           status: 'GRACEFUL_FAIL',
           reason: `graceful fetch failure (exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE})`,
         });
+      } else if (code === PUBLISH_BLOCKED_EXIT_CODE) {
+        // #6396: exit 0 must mean "the keys were written". A member whose
+        // coverage gate refused to publish — after preserving the last-good
+        // TTL — signals it with this dedicated code so the summary can never
+        // report OK for a section that wrote no seed-meta.
+        settle({
+          elapsed,
+          ok: false,
+          status: 'PUBLISH_BLOCKED',
+          reason: `coverage gate refused to publish (exit ${PUBLISH_BLOCKED_EXIT_CODE})`,
+        });
       } else {
         settle({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
       }
@@ -565,7 +577,7 @@ export async function runBundle(label, sections, opts = {}) {
     ))))
     : null;
 
-  let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0, stalled = 0;
+  let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0, stalled = 0, publishBlocked = 0;
 
   let disabled = 0;
   for (const section of sections) {
@@ -672,6 +684,7 @@ export async function runBundle(label, sections, opts = {}) {
       // "Deploy Crashed!") over a benign per-member skip. Track it separately so
       // only HARD failures gate the exit code; the skip stays fully logged above.
       if (status === 'GRACEFUL_FAIL') gracefulFailed++;
+      else if (status === 'PUBLISH_BLOCKED') publishBlocked++;
       else failed++;
     }
   }
@@ -683,7 +696,11 @@ export async function runBundle(label, sections, opts = {}) {
   // rides along at the tail for the same reason: it is the starvation signal
   // #6562 item 4 exists to surface.
   const disabledField = disabled > 0 ? ` disabled:${disabled}` : '';
-  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred}${disabledField} failed:${failed} graceful:${gracefulFailed} stalled:${stalled}`);
+  // publish_blocked appends ONLY when non-zero, like `disabled:` above, so
+  // the documented summary line stays byte-identical for bundles without gate
+  // refusals (#6396).
+  const publishBlockedField = publishBlocked > 0 ? ` publish_blocked:${publishBlocked}` : '';
+  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred}${disabledField} failed:${failed} graceful:${gracefulFailed} stalled:${stalled}${publishBlockedField}`);
   // A tick that completed no section while deferring a due one accomplished
   // nothing AND shed work. Deferral only pays for itself if the deferred
   // section runs on a later tick, so this state repeating is a stalled
@@ -707,6 +724,7 @@ export async function runBundle(label, sections, opts = {}) {
   // with a graceful skip, where real work published and one source blipped. A
   // tick that published NOTHING has no successful work to vouch for it.
   const starvedTick = ran === 0 && deferred > 0;
+  const exitsNonZero = failed > 0 || starvedTick || stalled > 0;
   if (starvedTick) {
     console.error(
       `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `
@@ -728,5 +746,12 @@ export async function runBundle(label, sections, opts = {}) {
     // independently by the /api/health freshness monitor keyed on seed-meta TTL.
     console.log(`[Bundle:${label}] ${gracefulFailed} graceful fetch skip(s), no hard failures — no data lost, exiting 0 (not a crash)`);
   }
-  process.exit(failed > 0 || starvedTick || stalled > 0 ? 1 : 0);
+  if (!exitsNonZero && publishBlocked > 0) {
+    // #6396: a gate refusal is not a crash — the member verified preservation
+    // of the last-good snapshot before exiting, and the freshness monitor
+    // alarms if the refusal persists. What changed versus the old exit-0
+    // silence is that the per-section line and summary now say so.
+    console.log(`[Bundle:${label}] ${publishBlocked} publish-blocked section(s) preserved last-good and wrote no seed keys — exiting 0; the freshness monitor owns the alarm`);
+  }
+  process.exit(exitsNonZero ? 1 : 0);
 }

@@ -5,7 +5,7 @@ import type {
   TemporalAnomaly as TemporalAnomalyProto,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { getCachedJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
 import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
 import {
   BASELINE_TTL,
@@ -18,9 +18,12 @@ import {
   TEMPORAL_ANOMALIES_KEY,
   TEMPORAL_ANOMALIES_TTL,
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
+  TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   BASELINE_SAMPLE_INTERVAL_MS,
   BASELINE_LOCK_KEY,
   BASELINE_LOCK_TTL,
+  temporalAnomaliesContentMeta,
+  temporalAnomaliesReadableContentMeta,
   type BaselineEntry,
 } from './_shared';
 
@@ -77,6 +80,90 @@ async function tryAcquireLock(): Promise<boolean> {
 }
 
 /**
+ * Last-stamped content clock, for the transient-read-error path.
+ *
+ * Returns null when there is no prior stamp to carry forward (first run, or
+ * the previous cycle itself failed closed) — the caller then stamps the
+ * explicit null, which is the correct fail-closed answer when nothing is known.
+ */
+async function readPriorContentAge(
+  erroredSourceTypes: string[],
+): Promise<{ newestItemAt: number | null; oldestItemAt: number | null } | null> {
+  console.warn(
+    `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}); `
+    + 'carrying the previous content clock forward rather than stamping a false STALE_CONTENT',
+  );
+  const prior = await getCachedJson('seed-meta:temporal:anomalies').catch(() => null);
+  if (!prior || typeof prior !== 'object') return null;
+  const meta = prior as { newestItemAt?: unknown; oldestItemAt?: unknown };
+  const newestItemAt = typeof meta.newestItemAt === 'number' && Number.isFinite(meta.newestItemAt)
+    ? meta.newestItemAt
+    : null;
+  if (newestItemAt == null) return null;
+  return {
+    newestItemAt,
+    oldestItemAt: typeof meta.oldestItemAt === 'number' && Number.isFinite(meta.oldestItemAt)
+      ? meta.oldestItemAt
+      : null,
+  };
+}
+
+/**
+ * Content clock for a rebuild, tolerating a transient read failure without
+ * either false-alarming or masking a real one.
+ *
+ * With every source readable this is just `temporalAnomaliesContentMeta`.
+ * When a read errored, the rules are:
+ *   1. A readable source that fail-closes wins outright — stamp the null. A
+ *      known outage is never papered over with a previous clock.
+ *   2. Otherwise carry the previous clock, reduced with min() against whatever
+ *      the readable sources reported. min() is the house rule for multi-source
+ *      clocks and it can only make the stamp older, never fresher, so a stale
+ *      readable source still surfaces and the carried value can never make the
+ *      readable source look healthier than it is.
+ *   3. With no prior stamp to carry, stamp null. A partial rebuild with an
+ *      unreadable configured source cannot establish complete coverage, even
+ *      when the readable source is live.
+ */
+async function resolveContentAge(
+  countPayloads: { news?: unknown; satellite_fires?: unknown },
+  erroredSourceTypes: string[],
+  nowMs: number,
+): Promise<{ newestItemAt: number | null; oldestItemAt: number | null } | null> {
+  if (erroredSourceTypes.length === 0) {
+    return temporalAnomaliesContentMeta(countPayloads, nowMs);
+  }
+
+  const readable = temporalAnomaliesReadableContentMeta(countPayloads, nowMs);
+  if (readable.status === 'fail-closed') {
+    console.warn(
+      `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}) `
+      + 'alongside a readable source that failed closed; stamping STALE_CONTENT '
+      + 'rather than carrying the previous clock over a known outage',
+    );
+    return null;
+  }
+
+  const prior = await readPriorContentAge(erroredSourceTypes);
+  if (prior?.newestItemAt == null) {
+    console.warn(
+      `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}) `
+      + 'without a prior content clock; stamping STALE_CONTENT rather than '
+      + 'treating partial coverage as fresh',
+    );
+    return null;
+  }
+  if (readable.status !== 'ok') return prior;
+  return {
+    newestItemAt: Math.min(prior.newestItemAt, readable.clock.newestItemAt),
+    oldestItemAt: Math.min(
+      prior.oldestItemAt ?? readable.clock.oldestItemAt,
+      readable.clock.oldestItemAt,
+    ),
+  };
+}
+
+/**
  * `recordCount` must report the coverage actually ACHIEVED, not the coverage
  * configured.
  *
@@ -95,12 +182,20 @@ async function tryAcquireLock(): Promise<boolean> {
 async function writeTemporalAnomaliesSeedMeta(
   snapshot: AnomalySnapshot,
   coveredSourceCount: number,
+  contentAge: { newestItemAt: number | null; oldestItemAt: number | null },
 ): Promise<boolean> {
   return setCachedJson('seed-meta:temporal:anomalies', {
     fetchedAt: Date.now(),
     recordCount: Number.isFinite(coveredSourceCount)
       ? coveredSourceCount
       : (Array.isArray(snapshot.anomalies) ? snapshot.anomalies.length : 0),
+    // Presence of maxContentAgeMin is the opt-in signal classifyKey and
+    // evaluateFreshness both honor. newestItemAt may be explicit null when
+    // the contributing payloads were undatable — that is STALE_CONTENT,
+    // not a skipped contract.
+    newestItemAt: contentAge.newestItemAt,
+    oldestItemAt: contentAge.oldestItemAt,
+    maxContentAgeMin: TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   }, 604800).catch(() => false);
 }
 
@@ -137,14 +232,32 @@ export async function listTemporalAnomalies(
       const anomalies: TemporalAnomalyProto[] = [];
 
       const counts: Record<string, number> = {};
-      const countEntries = await Promise.all(
+      const countPayloads: { news?: unknown; satellite_fires?: unknown } = {};
+      // Status-aware reads: getCachedJson collapses a genuine miss and a
+      // transient read ERROR (timeout, non-2xx, parse failure) into the same
+      // null, and the content clock fails closed on a missing source. Without
+      // the distinction one Redis blip stamps newestItemAt:null on two live
+      // feeds, which health reads as STALE_CONTENT immediately (it never
+      // reaches the 48h budget) and the scheduled monitor pages on with no
+      // debounce. An errored read means "unknown this cycle", not "frozen".
+      const countReads = await Promise.all(
         Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
           type,
-          await getCachedJson(sourceKey) as Record<string, unknown> | null,
+          await readCachedJson(sourceKey),
         ] as const),
       );
+      const erroredSourceTypes = countReads
+        .filter(([, read]) => read.status === 'error')
+        .map(([type]) => type);
+      const countEntries = countReads.map(([type, read]) => [
+        type,
+        (read.status === 'hit' ? read.value : null) as Record<string, unknown> | null,
+      ] as const);
       for (const [type, data] of countEntries) {
         if (!data) continue;
+        if (type === 'news' || type === 'satellite_fires') {
+          countPayloads[type] = data;
+        }
 
         if (type === 'news') {
           const stories = (data as { topStories?: unknown[] })?.topStories;
@@ -262,7 +375,27 @@ export async function listTemporalAnomalies(
         // away — so surface it with a grep-able marker rather than discarding it.
         // typesWithCounts is the sources that actually returned a count this
         // rebuild — the achieved coverage, not the configured one.
-        const stamped = await writeTemporalAnomaliesSeedMeta(snapshot, typesWithCounts.length);
+        // A source whose read ERRORED is unknown, not frozen: carry the last
+        // stamped clock forward rather than asserting a fresh null. The
+        // liveness clock (fetchedAt) still advances, so a genuinely dead
+        // producer is caught by maxStaleMin, and a persistent read failure
+        // ages the carried-forward newestItemAt into STALE_CONTENT on its own.
+        //
+        // Evaluate what we COULD read FIRST. A readable source that is
+        // explicitly unhealthy (FIRMS outage, undatable payload) must stamp its
+        // fail-closed null — carrying a prior healthy clock over a source that
+        // just reported it is broken would mask exactly the freeze this
+        // contract exists to catch.
+        const contentAge = await resolveContentAge(
+          countPayloads,
+          erroredSourceTypes,
+          now.getTime(),
+        );
+        const stamped = await writeTemporalAnomaliesSeedMeta(
+          snapshot,
+          typesWithCounts.length,
+          contentAge ?? { newestItemAt: null, oldestItemAt: null },
+        );
         if (!stamped) {
           console.warn(
             '[TemporalAnomalies] seed-meta stamp FAILED after a successful publish; '

@@ -860,6 +860,23 @@
       ]
     },
     {
+      "host": "api.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. World Monitor public-display and redistribution rights are validated.",
+      "attribution": "Data source: India Meteorological Department. Link https://api.imd.gov.in/public/api_reference.html and the official product page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
+        },
+        {
+          "path": "src/app/data-loader.ts"
+        }
+      ]
+    },
+    {
       "host": "api.imf.org",
       "provider": "api.imf.org",
       "kind": "structured",
@@ -5007,15 +5024,10 @@
       "host": "insideclimatenews.org",
       "provider": "insideclimatenews.org",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit insideclimatenews.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-climate-news.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "insightcrime.org",
@@ -5849,6 +5861,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "mausam.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official IMD visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department. Link the official marine/coastal bulletin page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
         }
       ]
     },
@@ -7620,6 +7646,20 @@
       "references": [
         {
           "path": "scripts/seed-resilience-static.mjs"
+        }
+      ]
+    },
+    {
+      "host": "rsmcnewdelhi.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official RSMC New Delhi visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department / RSMC New Delhi. Link https://rsmcnewdelhi.imd.gov.in/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
         }
       ]
     },
@@ -13994,6 +14034,9 @@
       "attribution": "Excluded from the external-provider count: first-party web origin.",
       "status": "excluded",
       "references": [
+        {
+          "path": "api/_cors.js"
+        },
         {
           "path": "api/a2a.ts"
         },
