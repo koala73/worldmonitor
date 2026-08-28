@@ -12,6 +12,8 @@ export interface InsightSourceOptions {
 }
 
 export const INSIGHTS_MAX_AGE_MS: number;
+/** Ceiling on how old a snapshot may be and still be served as flagged LKG. */
+export const INSIGHTS_MAX_SERVEABLE_AGE_MS: number;
 
 export function normalizeInsightSourceUrl(value: unknown): string;
 

@@ -114,6 +114,7 @@ test('the unfiltered forecast feed has a CDN-shielded public shape', () => {
   assert.equal(isPublicSharedRpcRequest(`${base}?region=eu&public=1`, 'GET'), false);
   assert.equal(isPublicSharedRpcRequest(base, 'GET'), false, 'no marker, no public path');
   assert.equal(isPublicSharedRpcRequest(`${base}?public=1`, 'POST'), false);
+  assert.equal(isPublicSharedRpcRequest(`${base}?public=1`, 'HEAD'), true);
 });
 
 test('health monitors the dashboard list the fast tier actually serves', () => {

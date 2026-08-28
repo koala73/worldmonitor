@@ -83,7 +83,8 @@ function isDefenseIndustrialShape(params: URLSearchParams): boolean {
 }
 
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
-  if (method.toUpperCase() !== 'GET') return false;
+  const normalizedMethod = method.toUpperCase();
+  if (normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD') return false;
 
   let url: URL;
   try {

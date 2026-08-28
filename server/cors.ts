@@ -56,6 +56,9 @@ const EXPOSED_HEADERS = [
   'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
+  // Fail-open limiter degradation marker. Parity with api/_cors.js (#7270):
+  // the Limit/Remaining/Reset triplet is not enough for browser JS to read Mode.
+  'X-RateLimit-Mode',
   // IETF draft-ietf-httpapi-ratelimit-headers fields — emitted by the
   // per-account API-key limiter; docs/usage-rate-limits.mdx tells browser
   // clients to self-throttle on these, so they must be readable cross-origin

@@ -224,6 +224,26 @@ describe("gateway direct LLM quota", () => {
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
+  test("Pro bearer HEAD country brief reserves the same GET quota and suppresses the body", async () => {
+    const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+
+    const res = await makeGateway(calls)(
+      req(`${COUNTRY_BRIEF_PATH}?country_code=US`, {
+        method: "HEAD",
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    expect(calls.country).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_pro" }),
+    );
+  });
+
   test("Pro bearer country brief reserves quota and reaches the handler", async () => {
     const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
@@ -304,6 +324,27 @@ describe("gateway direct LLM quota", () => {
     expect(res.status).toBe(401);
     expect(calls.classify).toBe(0);
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
+  });
+
+  test("Pro bearer HEAD classify-event reserves the same GET quota before the handler", async () => {
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+        method: "HEAD",
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    expect(calls.classify).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_pro" }),
+    );
   });
 
   test("Pro bearer classify-event reserves direct LLM quota before the handler", async () => {

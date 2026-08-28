@@ -5,6 +5,7 @@
 import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './_client-ip.js';
 
 const AXIOM_INGEST_URL = 'https://api.axiom.co/v1/datasets/wm_api_usage/ingest';
+const TELEMETRY_USER_AGENT = 'worldmonitor-edge/1.0';
 const MAX_HEADER_FIELD_LEN = 512;
 const TELEMETRY_TIMEOUT_MS = 1_500;
 const CB_WINDOW_MS = 5 * 60 * 1_000;
@@ -139,6 +140,7 @@ async function deliver(event) {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'User-Agent': TELEMETRY_USER_AGENT,
       },
       body: JSON.stringify([event]),
       signal: controller.signal,
@@ -208,6 +210,19 @@ export function emitBootstrapR2Shadow(ctx, input) {
  * allowlisted request metadata; never add cookies or request/response bodies.
  */
 export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
+  emitStandaloneAuthUsage(ctx, req, res, startedAt, reason, '/api/wm-session');
+}
+
+/**
+ * Queue a token-endpoint limiter outcome. Same privacy allowlist as the
+ * session mint emitter — never client secrets, authorization codes, refresh
+ * tokens, or full client identifiers (#7270).
+ */
+export function emitOAuthTokenUsage(ctx, req, res, startedAt, reason) {
+  emitStandaloneAuthUsage(ctx, req, res, startedAt, reason, '/api/oauth/token');
+}
+
+function emitStandaloneAuthUsage(ctx, req, res, startedAt, reason, route) {
   if (!ctx?.waitUntil || process.env.USAGE_TELEMETRY !== '1') return;
   try {
     const requestId = req.headers.get('x-vercel-id') ?? '';
@@ -216,7 +231,7 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
       event_type: 'request',
       request_id: requestId,
       domain: 'auth',
-      route: '/api/wm-session',
+      route,
       method: req.method,
       status: res.status,
       duration_ms: Math.max(0, Date.now() - startedAt),
@@ -247,6 +262,6 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
       reason,
     }));
   } catch {
-    // Request metadata parsing must not alter the mint response path.
+    // Request metadata parsing must not alter the auth response path.
   }
 }
