@@ -3,7 +3,7 @@ import { jsonResponse } from './_json-response.js';
 import { checkRateLimit } from './_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash, setCachedData } from './_upstash-json.js';
-import { geocodeCacheKey } from '../shared/geocode-cache-key.js';
+import { geocodeCacheKey } from './_geocode-cache-key.js';
 
 export const config = { runtime: 'edge' };
 

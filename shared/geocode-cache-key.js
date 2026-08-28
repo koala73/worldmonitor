@@ -7,8 +7,9 @@
  * coarse enough that repeat clicks still coalesce. Ocean and Antarctic misses
  * use the same key so empty cells are not 100% provider passthrough.
  *
- * api/reverse-geocode.js, the gateway RPC, and the browser memoization all
- * import this helper so the three surfaces cannot drift.
+ * The gateway RPC and the browser memoization import this helper. The legacy
+ * Edge route cannot import `../shared/` (AGENTS.md), so `api/_geocode-cache-key.js`
+ * mirrors it; tests/reverse-geocode-cache-contract.test.mts fails if they drift.
  */
 export const GEOCODE_CACHE_DECIMALS = 3;
 

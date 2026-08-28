@@ -4,7 +4,12 @@ import { afterEach, describe, it } from 'node:test';
 import type { ServerContext } from '../src/generated/server/worldmonitor/infrastructure/v1/service_server.ts';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { reverseGeocode } from '../server/worldmonitor/infrastructure/v1/reverse-geocode.ts';
-import { geocodeCacheCell, geocodeCacheKey } from '../shared/geocode-cache-key.js';
+import { GEOCODE_CACHE_DECIMALS, geocodeCacheCell, geocodeCacheKey } from '../shared/geocode-cache-key.js';
+import {
+  GEOCODE_CACHE_DECIMALS as edgeDecimals,
+  geocodeCacheCell as edgeGeocodeCacheCell,
+  geocodeCacheKey as edgeGeocodeCacheKey,
+} from '../api/_geocode-cache-key.js';
 import {
   __resetReverseGeocodeCacheForTests,
   reverseGeocode as reverseGeocodeBrowser,
@@ -203,6 +208,27 @@ describe('reverse-geocode cache identity helper', () => {
     assert.equal(geocodeCacheKey(south.lat, south.lon), 'geocode:48.960,-97.040');
     assert.equal(geocodeCacheKey(north.lat, north.lon), 'geocode:49.040,-97.040');
     assert.notEqual(geocodeCacheCell(south.lat, south.lon), geocodeCacheCell(north.lat, north.lon));
+  });
+
+  it('keeps the Edge mirror identical to the shared helper', async () => {
+    const samples = [
+      [40.7, -74],
+      [0, -150],
+      [48.96, -97.04],
+      [49.04, -97.04],
+      [-89.999, 179.999],
+    ];
+    assert.equal(edgeDecimals, GEOCODE_CACHE_DECIMALS);
+    for (const [lat, lon] of samples) {
+      assert.equal(edgeGeocodeCacheCell(lat, lon), geocodeCacheCell(lat, lon));
+      assert.equal(edgeGeocodeCacheKey(lat, lon), geocodeCacheKey(lat, lon));
+    }
+
+    const edgeRoute = await import('node:fs/promises').then((fs) => (
+      fs.readFile(new URL('../api/reverse-geocode.js', import.meta.url), 'utf8')
+    ));
+    assert.match(edgeRoute, /from '\.\/_geocode-cache-key\.js'/);
+    assert.doesNotMatch(edgeRoute, /from '\.\.\/shared\//);
   });
 });
 
