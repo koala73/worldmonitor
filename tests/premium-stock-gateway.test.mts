@@ -454,6 +454,30 @@ describe('premium gateway API key enforcement', () => {
 });
 
 describe('POST-to-GET compatibility hardening', () => {
+  async function captureRedisCalls(run: () => Promise<Response>) {
+    const delegateFetch = globalThis.fetch;
+    const redisCalls: Array<{ url: string; body: string }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL || '')) {
+        redisCalls.push({
+          url,
+          body: typeof init?.body === 'string' ? init.body : '',
+        });
+      }
+      return delegateFetch(input, init);
+    }) as typeof fetch;
+    try {
+      return { response: await run(), redisCalls };
+    } finally {
+      globalThis.fetch = delegateFetch;
+    }
+  }
+
   function makePublicMarketHandler() {
     let seenUrl: URL | null = null;
     const handler = createDomainGateway([
@@ -536,11 +560,17 @@ describe('POST-to-GET compatibility hardening', () => {
     const { handler, seenUrl } = makePublicMarketHandler();
     const body = '{not json';
 
-    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+    const { response: res, redisCalls } = await captureRedisCalls(
+      () => handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) })),
+    );
 
     assert.equal(res.status, 400);
     assert.deepEqual(await res.json(), { error: 'Invalid JSON body for POST compatibility' });
     assert.equal(seenUrl(), null);
+    assert.ok(
+      redisCalls.some(({ body }) => body.includes('rl:ep') && body.includes('/api/market/v1/list-market-quotes')),
+      'malformed compatibility requests must traverse endpoint abuse limiting',
+    );
   });
 
   it('rejects a JSON array body instead of encoding index keys as query params', async () => {
@@ -664,7 +694,23 @@ describe('POST-to-GET compatibility hardening', () => {
       },
     }) as Request;
 
-    const res = await handler(req);
+    const { response: res, redisCalls } = await captureRedisCalls(() => handler(req));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'malformed_request' });
+    assert.equal(seenUrl(), null);
+    assert.ok(
+      redisCalls.some(({ body }) => body.includes('rl:ep') && body.includes('/api/market/v1/list-market-quotes')),
+      'unreadable compatibility requests must traverse endpoint abuse limiting',
+    );
+  });
+
+  it('enforces the actual-byte backstop when Content-Length understates a multibyte body', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['é'.repeat(524_288)] });
+    assert.ok(Buffer.byteLength(body) >= 1_048_576);
+
+    const res = await handler(compatPost(body, { 'Content-Length': '128' }));
 
     assert.equal(res.status, 400);
     assert.deepEqual(await res.json(), { error: 'malformed_request' });

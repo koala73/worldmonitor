@@ -1750,34 +1750,39 @@ export function createDomainGateway(
     }
 
     // Route matching — if POST doesn't match, convert to GET for stale clients
+    let pendingPostToGetCompatError: Response | null = null;
     let matchedHandler = router.match(request);
     if (!matchedHandler && request.method === 'POST') {
       if (isPostToGetCompatibleBodySize(request.headers)) {
         const url = new URL(request.url);
         const getProbe = new Request(url.toString(), { method: 'GET', headers: request.headers });
-        if (router.match(getProbe)) {
-          let bodyText: string;
+        const getProbeHandler = router.match(getProbe);
+        if (getProbeHandler) {
+          let compatErrorBody: Record<string, unknown> | null = null;
+          let compatFields: PostToGetCompatField[] = [];
           try {
-            bodyText = await request.clone().text();
+            const parsed = parsePostToGetCompatBody(await request.clone().text());
+            if (parsed.status === 'ok') {
+              compatFields = parsed.fields;
+            } else {
+              compatErrorBody = postToGetCompatErrorBody(parsed);
+            }
           } catch {
-            emitRequest(400, 'malformed_request', null);
-            return new Response(JSON.stringify({ error: 'malformed_request' }), {
+            compatErrorBody = { error: 'malformed_request' };
+          }
+          if (compatErrorBody) {
+            pendingPostToGetCompatError = new Response(JSON.stringify(compatErrorBody), {
               status: 400,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
             });
+            matchedHandler = getProbeHandler;
+            request = getProbe;
+          } else {
+            applyPostToGetCompatFields(url.searchParams, compatFields);
+            const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+            matchedHandler = router.match(getReq);
+            if (matchedHandler) request = getReq;
           }
-          const parsed = parsePostToGetCompatBody(bodyText);
-          if (parsed.status !== 'ok') {
-            emitRequest(400, 'malformed_request', null);
-            return new Response(JSON.stringify(postToGetCompatErrorBody(parsed)), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json', ...corsHeaders },
-            });
-          }
-          applyPostToGetCompatFields(url.searchParams, parsed.fields);
-          const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
-          matchedHandler = router.match(getReq);
-          if (matchedHandler) request = getReq;
         }
       }
     }
@@ -2018,6 +2023,11 @@ export function createDomainGateway(
           return rateLimitResponse;
         }
       }
+    }
+
+    if (pendingPostToGetCompatError) {
+      emitRequest(400, 'malformed_request', null);
+      return pendingPostToGetCompatError;
     }
 
     if (requiresDirectLlmQuota && !isEnterpriseAuth) {
