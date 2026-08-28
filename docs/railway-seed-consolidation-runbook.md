@@ -244,13 +244,33 @@ publisher, while still auditing their watch paths and required environment.
 Run the audit after adding or replacing a standalone seeder, changing a bundle
 dependency, or changing a production cron.
 
+**Editing `watchPatterns` is not complete until the apply runs.** Widening a
+service's closure in the registry does not touch Railway: until an operator
+applies it, Railway keeps filtering pushes against the old list and answers a
+matching commit with `No changes to watched files`, so the service silently
+keeps running older code. #6928 widened `ais-relay` without syncing, and
+Railway refused `6821a584e` (#7196) for it a day before anyone noticed (#7256).
+
+The `Railway Registry Sync` workflow
+(`.github/workflows/railway-registry-sync.yml`) is the reminder. It runs the
+deployment-only audit on every push to `main` that touches
+`scripts/railway-services.json` and fails within minutes, naming the drifted
+services and the apply command. It is read-only — the Viewer token cannot
+apply — so it reports the gap and leaves the sync to the operator. It runs the
+configuration audit only: the deployment-history check is legitimately red for
+the first minutes after a merge, so including it there would alarm on ordinary
+build lag. Drift that no registry edit caused, such as a hand edit in the
+Railway dashboard, stays the six-hourly monitor's job.
+
 The audit only proves the trigger config matches the registry. Proving a merge
 actually reached production is the separate
 [deploy-drift check](#deploy-drift-check) below.
 
 The six-hourly `Railway Native Deploy Health` workflow performs this audit in
 deployment-only mode and runs the deployment-history check from the same
-Viewer projection. `Seed Freshness Monitor` owns ingestion acceptance only.
+Viewer projection. `Railway Registry Sync` reuses the same environment and
+Viewer token for its push-triggered configuration audit. `Seed Freshness
+Monitor` owns ingestion acceptance only.
 Create the dedicated GitHub Actions environment
 `ingestion-acceptance-production`, restrict its deployment branch policy to
 `main`, and configure:
