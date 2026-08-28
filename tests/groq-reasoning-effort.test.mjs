@@ -48,6 +48,16 @@ const GROQ_CHAIN_FILES = [
   'server/_shared/llm.ts',
 ];
 
+const GROQ_ENTRY_PATTERN = /apiUrl:\s*['"]https:\/\/api\.groq\.com\/openai\/v1\/chat\/completions['"][\s\S]{0,700}?extraBody:\s*(?:model\.startsWith\('openai\/gpt-oss-'\)[\s\S]{0,100}?\?\s*)?GROQ_REASONING_EXTRA_BODY/;
+
+const EXTRA_BODY_FORWARDING_PATTERNS = {
+  'scripts/ais-relay.cjs': [
+    /provider\.extraBody\s*\|\|\s*\{\}/,
+    /\.\.\.extraBody/,
+  ],
+  'server/_shared/llm.ts': [/\.\.\.creds\.extraBody/],
+};
+
 describe('Groq reasoning control', () => {
   it('exports a shared extra-body constant rather than a per-site literal', () => {
     // One seam, because seven copies is exactly how the omission spread.
@@ -63,7 +73,11 @@ describe('Groq reasoning control', () => {
     for (const rel of GROQ_CHAIN_FILES) {
       const src = readFileSync(resolve(root, rel), 'utf8');
       assert.ok(/api\.groq\.com/.test(src), `${rel}: no longer builds a Groq entry — update this list`);
-      if (!/GROQ_REASONING_EXTRA_BODY/.test(src)) offenders.push(rel);
+      const forwardingPatterns = EXTRA_BODY_FORWARDING_PATTERNS[rel]
+        ?? [/\.\.\.\(?provider\.extraBody/];
+      if (!GROQ_ENTRY_PATTERN.test(src) || forwardingPatterns.some(pattern => !pattern.test(src))) {
+        offenders.push(rel);
+      }
     }
     assert.deepEqual(offenders, [],
       'Groq entries missing reasoning control — they will burn max_tokens on hidden reasoning');
