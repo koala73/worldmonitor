@@ -874,7 +874,13 @@ async function fetchInsights() {
   const synthesisResult = hasBriefCluster
     ? await callLLM(null, {
         systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
-        userPrompt: synthesisUserPrompt(topStories),
+        // Rollout flag, default off: the prompt-shape change alters what the
+        // model reads for every published brief, so it ships dark and is
+        // enabled per-service (INSIGHTS_PROMPT_MEMBER_TITLES=1) for A/B
+        // against the [brief_synthesis]/[brief_repair] log counters.
+        userPrompt: synthesisUserPrompt(topStories, {
+          includeMemberTitles: process.env.INSIGHTS_PROMPT_MEMBER_TITLES === '1',
+        }),
         maxTokens: 900,
         // A model whose output trips the editorial gates must not strand the
         // run. callLLM resamples this model once before demoting to a weaker

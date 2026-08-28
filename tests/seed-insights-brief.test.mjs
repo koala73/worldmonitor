@@ -5,6 +5,7 @@ import {
   briefSystemPrompt,
   briefUserPrompt,
   synthesisSystemPrompt,
+  synthesisUserPrompt,
   maskAttributedSources,
   composeSynthesizedBrief,
   composeSynthesizedBriefResult,
@@ -1016,5 +1017,53 @@ describe('coordinating and is grammar in the composer (AE2, AE4, AE7)', () => {
     );
     assert.equal(out.brief, null);
     assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+});
+
+
+describe('synthesisUserPrompt member titles (prompt/gate symmetry)', () => {
+  const stories = [
+    {
+      primaryTitle: 'Iran War Diplomacy Turns Toward Reopening Hormuz',
+      primarySource: 'ISW',
+      uniquePublisherCount: 3,
+      memberTitles: [
+        'Iran War Diplomacy Turns Toward Reopening Hormuz',
+        'Iran says Strait of Hormuz agreement with Oman puts ball back in US court',
+        '  ',
+        'Iran says return to diplomacy is not impossible',
+        'A fourth member that must be capped away',
+      ],
+    },
+  ];
+
+  it('is byte-identical to the legacy prompt when the flag is off', () => {
+    assert.equal(
+      synthesisUserPrompt(stories),
+      'Stories:\n1. Iran War Diplomacy Turns Toward Reopening Hormuz (ISW, 3 sources)\n\nCompile the world brief JSON.',
+    );
+  });
+
+  it('renders capped, deduped member titles as sub-lines of the numbered story', () => {
+    const prompt = synthesisUserPrompt(stories, { includeMemberTitles: true });
+    // The gate grounds against these titles already (storyGroundText); showing
+    // them closes the asymmetry where the gate accepted facts from headlines
+    // the model was never allowed to see.
+    assert.match(prompt, /- also reported: Iran says Strait of Hormuz agreement/);
+    assert.match(prompt, /- also reported: Iran says return to diplomacy/);
+    assert.ok(!prompt.includes('fourth member'), 'capped at SYNTHESIS_PROMPT_MAX_MEMBER_TITLES');
+    assert.equal(
+      (prompt.match(/Iran War Diplomacy Turns Toward Reopening Hormuz/g) || []).length,
+      1,
+      'a member identical to the primary title is not repeated',
+    );
+  });
+
+  it('a story with no members renders exactly its legacy line even when the flag is on', () => {
+    const bare = [{ primaryTitle: 'A', primarySource: 'B', uniquePublisherCount: 1 }];
+    assert.equal(
+      synthesisUserPrompt(bare, { includeMemberTitles: true }),
+      synthesisUserPrompt(bare),
+    );
   });
 });

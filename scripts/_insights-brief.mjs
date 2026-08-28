@@ -123,7 +123,12 @@ Rules:
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.`;
 }
 
-export function synthesisUserPrompt(stories) {
+// How many corroborating member headlines a story may show the model when
+// includeMemberTitles is on. Two is enough to give the synthesis real material
+// beyond the primary headline without ballooning the prompt eight-fold.
+const SYNTHESIS_PROMPT_MAX_MEMBER_TITLES = 2;
+
+export function synthesisUserPrompt(stories, { includeMemberTitles = false } = {}) {
   const lines = stories.map((story, i) => {
     // #6428: the model writes the published brief from these lines, so this
     // count is a corroboration claim reaching a reader. It counted feed
@@ -135,7 +140,28 @@ export function synthesisUserPrompt(stories) {
       ? story.uniquePublisherCount
       : countPublisherFamilies(story.sources);
     const sources = publishers > 0 ? publishers : 1;
-    return `${i + 1}. ${story.primaryTitle} (${story.primarySource}, ${sources} source${sources === 1 ? '' : 's'})`;
+    const head = `${i + 1}. ${story.primaryTitle} (${story.primarySource}, ${sources} source${sources === 1 ? '' : 's'})`;
+    if (!includeMemberTitles) return head;
+    // Prompt/gate symmetry (2026-08-28). The gate grounds each cited sentence
+    // against primaryTitle + memberTitles (storyGroundText), but the prompt
+    // showed only primaryTitle — so the gate would ACCEPT facts from member
+    // headlines the model was never allowed to see. The model was being asked
+    // to synthesize "the most consequential threads" from ~12 words per story,
+    // which is exactly the starvation that invites reaching for unprompted
+    // context. Showing the members gives it grounded material the gate already
+    // admits; no gate change is needed, by construction.
+    //
+    // Member titles render as sub-lines OF the numbered story, so the system
+    // prompt's "facts present in the numbered story text" already covers them
+    // and a claim drawn from one still requires that story's citation.
+    const members = (Array.isArray(story.memberTitles) ? story.memberTitles : [])
+      .map((title) => (typeof title === 'string' ? title.trim() : ''))
+      .filter((title, index, all) => title
+        && title !== story.primaryTitle
+        && all.indexOf(title) === index)
+      .slice(0, SYNTHESIS_PROMPT_MAX_MEMBER_TITLES)
+      .map((title) => `   - also reported: ${title}`);
+    return [head, ...members].join('\n');
   });
   return `Stories:\n${lines.join('\n')}\n\nCompile the world brief JSON.`;
 }
