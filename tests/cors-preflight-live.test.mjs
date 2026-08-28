@@ -167,15 +167,15 @@ for (const tier of ['fast', 'slow']) {
     assertPublicBootstrapCorsHeaders({ assert, resp, label: `public ${tier} tier (source=${source || 'origin'})` });
 
     if (source === 'kv') {
-      // Deliberate, and asserted so it stays a decision: a Worker-generated
-      // Response is never stored by the Cloudflare cache, so this path has no
-      // CDN lifetime to declare — the POP-local KV read is the cache, bounded
-      // by the serving path's own staleness gate. Advertising a shared
-      // lifetime nothing honours would be worse than saying no-store.
+      // Deliberate, and asserted so it stays a decision. Rationale:
+      // workers/api-cors-preflight/src/kv-serve.js#serveFromKv.
       assert.match(
         resp.headers.get('cache-control') || '', /\bno-store\b/,
         'the KV-served tier is browser-no-store by design (the POP-local KV read is the cache)',
       );
+      // Note this branch is chosen by a header browser JS cannot read (it is not in the Worker's
+      // Expose-Headers). Fine from Node; a browser-context canary would silently take the origin
+      // branch and assert a CDN shield against KV-minted bytes.
       assert.equal(
         resp.headers.get('cdn-cache-control'), null,
         'a KV-minted response must not advertise a CDN lifetime no shared cache will honour',
@@ -186,6 +186,26 @@ for (const tier of ['fast', 'slow']) {
       // Worker's header rewrite intact.
       assertPublicBootstrapSharedCacheHeaders({ assert, resp, label: `public ${tier} tier via origin` });
     }
+  });
+
+  test(`OPTIONS public ${tier} bootstrap tier preflight matches its own GET`, { skip: !SHOULD_RUN }, async () => {
+    // The preflight and the response are one contract. Advertising
+    // Allow-Credentials on the leg that clears a request whose answer is ACAO `*`
+    // with no credentials is the same split #7308 was filed about.
+    const resp = await fetch(`https://api.worldmonitor.app/api/bootstrap?tier=${tier}&public=1`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: ORIGIN,
+        'User-Agent': BROWSER_UA,
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+    await resp.arrayBuffer();
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*', `public ${tier} preflight ACAO must be '*'`);
+    assert.equal(
+      resp.headers.get('access-control-allow-credentials'), null,
+      `public ${tier} preflight must not advertise credentials for a public URL`,
+    );
   });
 }
 

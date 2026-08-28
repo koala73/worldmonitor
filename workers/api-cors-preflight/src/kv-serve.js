@@ -87,7 +87,13 @@ function serveFromKv(env, ctx, { tier, body, cf, started, corsHeaders }) {
   // (TIER_CACHE_TTL_S) bounded by classifyKvEnvelope's KTD4 staleness gate — not a CDN entry. A
   // CDN-Cache-Control here would advertise a shared lifetime nothing honours, and a browser
   // max-age would let a cache replay masquerade as a fresh transfer sample in the bootstrap RUM
-  // (#7047) — the same reason api/bootstrap.js serves no-store on this URL today.
+  // (#7047).
+  //
+  // This DOES diverge from the origin fallback, which serves TIER_CACHE's `max-age=60` (fast) /
+  // `max-age=300` (slow) for the same URL — considered, not missed. Do not justify it by what
+  // production currently returns from the origin: that is also `no-store` today, but only because
+  // finishBootstrapR2ShadowResponse overrides it while BOOTSTRAP_R2_SHADOW_MEASURE=1, a temporary
+  // U3a flag. The reasons above stand on their own once that flag is off.
   return new Response(body, {
     status: 200,
     headers: {

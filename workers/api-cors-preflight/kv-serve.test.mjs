@@ -12,6 +12,8 @@ import test from 'node:test';
 
 import worker from './src/index.js';
 import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION, TIER_MAX_AGE_MS } from './src/kv-shadow.js';
+// Shared with the origin-handler and deployed-URL guards — see index.test.mjs.
+import { assertPublicBootstrapCorsHeaders } from '../../tests/helpers/public-bootstrap-contract.mjs';
 
 const FAST_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1';
 const SLOW_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1';
@@ -98,24 +100,59 @@ test('the KV-served public tier carries the origin public header shape (#7308)',
   try {
     const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
     assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
-    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
-    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null);
+    assertPublicBootstrapCorsHeaders({ assert, resp: res, label: 'KV-served fast tier' });
     assert.equal(res.headers.get('Vary'), null, 'a caller-invariant payload must not be keyed by Origin');
-    assert.equal(res.headers.get('Timing-Allow-Origin'), '*');
   } finally { restore(); }
 });
 
-test('a disallowed Origin is never answered from KV (the origin 403 still decides)', async () => {
-  // api/bootstrap.js#isDisallowedOrigin refuses these before reading a payload.
-  // Serving them the ACAO:* public shape from KV would hand the seed bundle to
-  // a page the origin rejects, so the edge falls through and lets it answer.
+test('a disallowed Origin is still KV-served, but under the credentialed fallback bag', async () => {
+  // The header denial and the routing decision are separate. A disallowed Origin
+  // must not get ACAO:* — but it must still be answered from KV, or one bogus
+  // header on every request becomes a free lever for forcing Vercel/Redis load
+  // that the same caller could avoid entirely by omitting the header.
   const restore = installFetch();
   try {
     const evil = new Request(FAST_URL, { method: 'GET', headers: { Origin: 'https://evil.example' } });
     const res = await worker.fetch(evil, makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
-    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, 'not served from KV');
-    assert.equal(res.headers.get('X-Origin'), 'vercel', 'reached origin');
-    assert.notEqual(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv', 'still served from KV');
+    assert.equal(res.headers.get('X-Origin'), null, 'origin was not enlisted');
+    assert.equal(
+      res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app',
+      'the canonical fallback echo is what denies the browser read',
+    );
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
+  } finally { restore(); }
+});
+
+test('the KV path never receives a status function it would spread into nothing', async () => {
+  // serveFromKv spreads its corsHeaders argument directly, so a status-function
+  // reaching it would produce a 200 with zero CORS headers — a silent fail-open
+  // into an unreadable cross-origin response. Pinned for whoever widens the
+  // predicate next: every KV-served response carries a real ACAO, allowed Origin
+  // or not.
+  const restore = installFetch();
+  try {
+    const env = makeEnv({ serve: 'all', get: async (tier) => envelopeFor(tier) });
+    for (const [label, request] of [
+      ['allowed Origin', req(FAST_URL)],
+      ['no Origin', new Request(FAST_URL, { method: 'GET' })],
+      ['disallowed Origin', new Request(FAST_URL, { method: 'GET', headers: { Origin: 'https://evil.example' } })],
+      ['allowed Origin, slow tier', req(SLOW_URL)],
+    ]) {
+      const res = await worker.fetch(request, env, makeCtx().ctx);
+      assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv', `${label}: served from KV`);
+      assert.ok(res.headers.get('Access-Control-Allow-Origin'), `${label}: has an ACAO`);
+    }
+  } finally { restore(); }
+});
+
+test('the KV-served slow tier carries the same public shape as fast', async () => {
+  const restore = installFetch();
+  try {
+    const res = await worker.fetch(req(SLOW_URL), makeEnv({ serve: 'all', get: async (tier) => envelopeFor(tier) }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assertPublicBootstrapCorsHeaders({ assert, resp: res, label: 'KV-served slow tier' });
+    assert.equal(res.headers.get('Vary'), null);
   } finally { restore(); }
 });
 
@@ -125,19 +162,14 @@ test('no-Origin callers (curl, server-side, RUM beacons) are served the public s
     const anon = new Request(FAST_URL, { method: 'GET' });
     const res = await worker.fetch(anon, makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
     assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
-    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assertPublicBootstrapCorsHeaders({ assert, resp: res, label: 'no-Origin KV serve' });
     assert.equal(res.headers.get('Vary'), null);
   } finally { restore(); }
 });
 
 test('the KV-served tier stays browser-no-store — the POP-local KV read is the cache', async () => {
-  // Deliberate, and pinned so it reads as a decision rather than an omission:
-  // a Worker-generated Response is never stored by the Cloudflare cache, so the
-  // shared lifetime this path has is the KV read's own cacheTtl at the POP,
-  // bounded by classifyKvEnvelope's staleness gate. A CDN-Cache-Control here
-  // would advertise a shared lifetime nothing honours, and a browser max-age
-  // would let a cache replay masquerade as a fresh transfer sample in the
-  // bootstrap RUM (#7047) — the same reason the origin serves no-store today.
+  // Pinned so it reads as a decision rather than an omission. Rationale:
+  // src/kv-serve.js#serveFromKv.
   const restore = installFetch();
   try {
     const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
@@ -152,6 +184,9 @@ test('serve=off (kill-switch): public-tier GET falls through to origin unchanged
     const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'off', kvValue: envelopeFor('fast') }), makeCtx().ctx);
     assert.equal(res.headers.get('X-Origin'), 'vercel', 'reached origin');
     assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null);
+    // The kill-switch changes which path answers, never the contract it answers with.
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null);
   } finally { restore(); }
 });
 
@@ -184,6 +219,9 @@ test('every KV failure mode falls through to origin (never a served 5xx)', async
       assert.equal(res.status, 200, `${name}: still 200`);
       assert.equal(res.headers.get('X-Origin'), 'vercel', `${name}: reached origin`);
       assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, `${name}: not served from KV`);
+      // Absolute, not a same-shape comparison: which path answered must not change the contract.
+      assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*', `${name}: public shape`);
+      assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null, `${name}: no credentials`);
     } finally { restore(); }
   }
 });
@@ -272,6 +310,9 @@ test('a hung KV read hedges to origin after the delay and records reason=hedged'
     assert.equal(res.headers.get('X-Origin'), 'vercel', 'hedge falls back to origin');
     assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, 'not served from the hung KV');
     assert.equal(originCalls, 1, 'origin enlisted exactly once, at the hedge boundary');
+    // The header shape must not depend on which side won the race (#7308).
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null);
     await Promise.all(waits);
     assert.equal(event.kv_outcome, 'fallback');
     assert.equal(event.kv_reason, 'hedged');
