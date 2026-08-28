@@ -11,6 +11,7 @@ import {
   BASELINE_SAMPLE_INTERVAL_MS,
   makeBaselineKeyV2,
   temporalAnomaliesContentMeta,
+  temporalAnomaliesReadableContentMeta,
 } from '../server/worldmonitor/infrastructure/v1/_shared.ts';
 import { listTemporalAnomalies } from '../server/worldmonitor/infrastructure/v1/list-temporal-anomalies.ts';
 
@@ -27,7 +28,8 @@ async function runWithRedisStub(
   {
     lockGranted = true,
     failedPostKeys = [],
-  }: { lockGranted?: boolean; failedPostKeys?: string[] } = {},
+    failedGetKeys = [],
+  }: { lockGranted?: boolean; failedPostKeys?: string[]; failedGetKeys?: string[] } = {},
 ) {
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -65,6 +67,11 @@ async function runWithRedisStub(
     }
     const key = decodeURIComponent(new URL(String(input)).pathname.replace('/get/', ''));
     calls.push({ method: 'GET', key });
+    // A read ERROR is not a miss: readCachedJson reports status 'error', which
+    // the route must treat as "unknown this cycle" rather than "absent".
+    if (failedGetKeys.includes(key)) {
+      return Response.json({ error: `forced GET failure for ${key}` }, { status: 500 });
+    }
     const value = key in keyValues ? keyValues[key] : null;
     return Response.json({ result: value == null ? null : JSON.stringify(value) });
   }) as typeof globalThis.fetch;
@@ -704,6 +711,43 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     assert.equal(meta.newestItemAt, real);
   });
 
+  it('readable-only clock skips an unreadable source instead of failing closed', () => {
+    // The transient-read-error path: news could not be read this cycle, fires
+    // is live. temporalAnomaliesContentMeta fails closed here (absent = gone),
+    // which is what made one Redis blip page on live data.
+    const firesAge = 15 * 60_000;
+    const readable = temporalAnomaliesReadableContentMeta({
+      satellite_fires: liveFires(NOW, firesAge),
+    }, NOW);
+
+    assert.equal(readable.status, 'ok');
+    assert.equal(readable.status === 'ok' && readable.clock.newestItemAt, NOW - firesAge);
+    assert.equal(
+      temporalAnomaliesContentMeta({ satellite_fires: liveFires(NOW, firesAge) }, NOW),
+      null,
+      'the strict variant still fails closed on an absent configured source',
+    );
+  });
+
+  it('readable-only clock still fails closed on a readable source that is unhealthy', () => {
+    // The masking case: news is unreadable, and the source we CAN read reports
+    // an explicit FIRMS outage. Carrying a prior clock over this would hide a
+    // known outage behind a healthy number.
+    const readable = temporalAnomaliesReadableContentMeta({
+      satellite_fires: canadaOnlyDegradedFires(NOW),
+    }, NOW);
+
+    assert.equal(readable.status, 'fail-closed');
+  });
+
+  it('readable-only clock reports no-signal when every readable source skips', () => {
+    const readable = temporalAnomaliesReadableContentMeta({
+      satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
+    }, NOW);
+
+    assert.equal(readable.status, 'no-signal', 'an empty FIRMS window teaches us nothing');
+  });
+
   it('fails closed when a configured COUNT_SOURCE_KEYS read is missing', () => {
     assert.equal(
       temporalAnomaliesContentMeta({ news: liveNews(NOW, 8 * 60_000) }, NOW),
@@ -919,6 +963,69 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
       true,
       'MCP must not answer stale:false for undatable FIRMS',
+    );
+  });
+
+  it('a transient read error on one source does not stamp a false STALE_CONTENT', async () => {
+    const now = Date.now();
+    const priorNewest = now - 30 * 60_000;
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now, 20 * 60_000),
+      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      'seed-meta:temporal:anomalies': {
+        fetchedAt: now - 20 * 60_000,
+        recordCount: 2,
+        newestItemAt: priorNewest,
+        oldestItemAt: priorNewest,
+        maxContentAgeMin: TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
+      },
+    }, { failedGetKeys: ['news:insights:v1'] });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'rebuild must still stamp seed-meta');
+    assert.notEqual(
+      meta.newestItemAt,
+      null,
+      'a Redis blip on one live source must not assert STALE_CONTENT on live data',
+    );
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'OK',
+      'health must stay green through a transient read error',
+    );
+  });
+
+  it('a read error must not mask a readable source that failed closed', async () => {
+    // The masking case: news is unreadable this cycle, and the source we CAN
+    // read reports an explicit FIRMS outage. Carrying the previous healthy
+    // clock forward would hide a known outage behind a fresh-looking number —
+    // the exact freeze this contract exists to catch.
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now, 20 * 60_000),
+      'wildfire:fires:v1': canadaOnlyDegradedFires(now),
+      'seed-meta:temporal:anomalies': {
+        fetchedAt: now - 20 * 60_000,
+        recordCount: 2,
+        newestItemAt: now - 30 * 60_000,
+        oldestItemAt: now - 30 * 60_000,
+        maxContentAgeMin: TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
+      },
+    }, { failedGetKeys: ['news:insights:v1'] });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'rebuild must still stamp seed-meta');
+    assert.equal(
+      meta.newestItemAt,
+      null,
+      'a known FIRMS outage must not be papered over with the previous clock',
+    );
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'health must see the outage the readable source reported',
     );
   });
 

@@ -249,6 +249,58 @@ export function temporalAnomaliesContentMeta(
 }
 
 /**
+ * Content clock over ONLY the sources that were actually readable this cycle.
+ *
+ * Sibling of `temporalAnomaliesContentMeta` for the transient-read-error path.
+ * That function fail-closes on an ABSENT configured source, which is right when
+ * absence means "the key is gone" — but wrong when it means "this one read
+ * timed out", because then every cycle with a Redis blip asserts STALE_CONTENT
+ * on live data.
+ *
+ * The caller still must not mask a KNOWN outage behind a carried-forward clock,
+ * so this reports the three states separately rather than collapsing them:
+ *   - `fail-closed` — a readable source is explicitly unhealthy or undatable.
+ *     Stamp the null; never substitute a prior clock for a source that just
+ *     told you it is broken.
+ *   - `no-signal`   — every readable source legitimately skipped (empty FIRMS
+ *     window / agency-only). Nothing learned this cycle.
+ *   - `ok`          — at least one readable source produced a clock.
+ */
+export type TemporalAnomaliesReadableClock =
+  | { status: 'ok'; clock: TemporalAnomaliesContentAge }
+  | { status: 'fail-closed' }
+  | { status: 'no-signal' };
+
+export function temporalAnomaliesReadableContentMeta(
+  sources: { news?: unknown; satellite_fires?: unknown },
+  nowMs = Date.now(),
+): TemporalAnomaliesReadableClock {
+  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
+  const clocks: TemporalAnomaliesContentAge[] = [];
+  for (const clock of [
+    // Absent here means "not readable this cycle", which the caller handles —
+    // so absence is skipped rather than fail-closed. That is the ONLY
+    // difference from temporalAnomaliesContentMeta.
+    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : undefined,
+    sources.satellite_fires !== undefined
+      ? firesContentClock(sources.satellite_fires, skewLimit)
+      : undefined,
+  ]) {
+    if (clock === undefined) continue;
+    if (clock === null) return { status: 'fail-closed' };
+    clocks.push(clock);
+  }
+  if (clocks.length === 0) return { status: 'no-signal' };
+  return {
+    status: 'ok',
+    clock: {
+      newestItemAt: Math.min(...clocks.map((clock) => clock.newestItemAt)),
+      oldestItemAt: Math.min(...clocks.map((clock) => clock.oldestItemAt)),
+    },
+  };
+}
+
+/**
  * How often a rebuild folds a new sample into the `baseline:v2:*` running mean.
  *
  * Independent of the rebuild cadence on purpose. These were coupled only by

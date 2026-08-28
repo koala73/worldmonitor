@@ -23,6 +23,7 @@ import {
   BASELINE_LOCK_KEY,
   BASELINE_LOCK_TTL,
   temporalAnomaliesContentMeta,
+  temporalAnomaliesReadableContentMeta,
   type BaselineEntry,
 } from './_shared';
 
@@ -104,6 +105,56 @@ async function readPriorContentAge(
     oldestItemAt: typeof meta.oldestItemAt === 'number' && Number.isFinite(meta.oldestItemAt)
       ? meta.oldestItemAt
       : null,
+  };
+}
+
+/**
+ * Content clock for a rebuild, tolerating a transient read failure without
+ * either false-alarming or masking a real one.
+ *
+ * With every source readable this is just `temporalAnomaliesContentMeta`.
+ * When a read errored, the rules are:
+ *   1. A readable source that fail-closes wins outright — stamp the null. A
+ *      known outage is never papered over with a previous clock.
+ *   2. Otherwise carry the previous clock, reduced with min() against whatever
+ *      the readable sources reported. min() is the house rule for multi-source
+ *      clocks and it can only make the stamp older, never fresher, so a stale
+ *      readable source still surfaces and the carried value can never make the
+ *      readable source look healthier than it is.
+ *   3. With no prior stamp to carry, fall back to the readable clock, and to
+ *      null when there is nothing at all — the correct fail-closed answer when
+ *      nothing is known.
+ */
+async function resolveContentAge(
+  countPayloads: { news?: unknown; satellite_fires?: unknown },
+  erroredSourceTypes: string[],
+  nowMs: number,
+): Promise<{ newestItemAt: number | null; oldestItemAt: number | null } | null> {
+  if (erroredSourceTypes.length === 0) {
+    return temporalAnomaliesContentMeta(countPayloads, nowMs);
+  }
+
+  const readable = temporalAnomaliesReadableContentMeta(countPayloads, nowMs);
+  if (readable.status === 'fail-closed') {
+    console.warn(
+      `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}) `
+      + 'alongside a readable source that failed closed; stamping STALE_CONTENT '
+      + 'rather than carrying the previous clock over a known outage',
+    );
+    return null;
+  }
+
+  const prior = await readPriorContentAge(erroredSourceTypes);
+  if (prior?.newestItemAt == null) {
+    return readable.status === 'ok' ? readable.clock : null;
+  }
+  if (readable.status !== 'ok') return prior;
+  return {
+    newestItemAt: Math.min(prior.newestItemAt, readable.clock.newestItemAt),
+    oldestItemAt: Math.min(
+      prior.oldestItemAt ?? readable.clock.oldestItemAt,
+      readable.clock.oldestItemAt,
+    ),
   };
 }
 
@@ -324,9 +375,17 @@ export async function listTemporalAnomalies(
         // liveness clock (fetchedAt) still advances, so a genuinely dead
         // producer is caught by maxStaleMin, and a persistent read failure
         // ages the carried-forward newestItemAt into STALE_CONTENT on its own.
-        const contentAge = erroredSourceTypes.length > 0
-          ? await readPriorContentAge(erroredSourceTypes)
-          : temporalAnomaliesContentMeta(countPayloads, now.getTime());
+        //
+        // Evaluate what we COULD read FIRST. A readable source that is
+        // explicitly unhealthy (FIRMS outage, undatable payload) must stamp its
+        // fail-closed null — carrying a prior healthy clock over a source that
+        // just reported it is broken would mask exactly the freeze this
+        // contract exists to catch.
+        const contentAge = await resolveContentAge(
+          countPayloads,
+          erroredSourceTypes,
+          now.getTime(),
+        );
         const stamped = await writeTemporalAnomaliesSeedMeta(
           snapshot,
           typesWithCounts.length,

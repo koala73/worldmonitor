@@ -316,6 +316,36 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     );
   });
 
+  it('reports partial FIRMS coverage instead of passing it off as healthy', async () => {
+    // The FIRMS regions partition the globe, so 26 of 27 failing means most of
+    // the world went dark while the surviving region replaces the canonical
+    // worldwide dataset. Coverage held, so this is not an outage — but it must
+    // not read 'ok' either.
+    const mostlyDark = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => ({
+        fireDetections: [{ id: 'firms-1', detectedAt: Date.now() }],
+        pagination: undefined,
+        _firmsFulfilledCalls: 1,
+        _firmsFailedCalls: 26,
+      }),
+      fetchCwfis: async () => parseCwfisGeoJson(cwfisActiveJson, 'active'),
+      fetchBcWildfire: async () => parseBcFireKml(kml),
+    });
+
+    assert.equal(mostlyDark._firmsState, 'ok', 'some coverage survived, so not a full outage');
+    assert.equal(mostlyDark._firmsPartial, true);
+    assert.equal(mostlyDark._firmsFailedCalls, 26);
+    assert.deepEqual(
+      canadianWildfireAfterPublish(mostlyDark).freshnessMetaPatch,
+      {
+        sourceState: 'degraded',
+        errorCode: 'FIRMS_PARTIAL_COVERAGE',
+        canadaSourceFailureCount: 0,
+      },
+      'partial worldwide coverage must be visible, not silent',
+    );
+  });
+
   it('keeps FIRMS ok when some region calls succeed but return no rows', async () => {
     // A live worldwide window can legitimately be empty in the monitored
     // regions. That is coverage with nothing to report, not an outage.
@@ -332,6 +362,12 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
 
     assert.equal(emptyButLive._firmsState, 'ok');
     assert.equal(emptyButLive._firmsErrorCode, null);
+    assert.equal(emptyButLive._firmsPartial, false, 'full coverage is not partial');
+    assert.equal(
+      canadianWildfireAfterPublish(emptyButLive).freshnessMetaPatch.sourceState,
+      'ok',
+      'a live empty window with full coverage stays healthy',
+    );
   });
 
   it('publishes Canada-only fallback with health-visible FIRMS degradation metadata', async () => {
