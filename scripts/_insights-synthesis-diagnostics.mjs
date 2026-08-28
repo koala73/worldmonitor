@@ -155,6 +155,7 @@ function runInsightsComposer(text, topStories, opts = {}) {
       validatorMode: opts.validatorMode ?? 'enforce',
       sanitizeTitle: opts.sanitizeTitle,
       sourceFromStory: opts.sourceFromStory,
+      promptScopedMembers: opts.promptScopedMembers,
       parsedSynthesis,
     };
     // Omitting briefCluster preserves the composer's implicit scan of the
@@ -194,10 +195,11 @@ export function resolveInsightsSynthesis(options = {}) {
     validatorMode,
     sanitizeTitle,
     sourceFromStory,
+    promptScopedMembers,
   } = options;
   const hasExplicitBriefCluster = Object.prototype.hasOwnProperty.call(options, 'briefCluster');
   const briefCluster = hasExplicitBriefCluster ? options.briefCluster : undefined;
-  const composerOptions = { validatorMode, sanitizeTitle, sourceFromStory };
+  const composerOptions = { validatorMode, sanitizeTitle, sourceFromStory, promptScopedMembers };
   if (hasExplicitBriefCluster) composerOptions.briefCluster = briefCluster;
 
   const { composeResult, parsedSynthesis } = synthesisResult
