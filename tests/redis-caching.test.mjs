@@ -1,6 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -4572,49 +4571,35 @@ describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, (
     }
   });
 
-  it('reports transport exceptions from first-writer Redis publication', () => {
-    const childEnv = {
-      ...process.env,
+  it('passes first-writer transport exceptions to the caller error reporter', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
-      VITE_SENTRY_DSN: 'https://public@sentry.test/42',
-      VERCEL_ENV: 'test',
-    };
-    delete childEnv.NODE_TEST_CONTEXT;
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const reported = [];
+    globalThis.fetch = async () => { throw new Error('redis transport down'); };
+    console.warn = () => {};
 
-    const childScript = `
-      import { setCachedJsonIfAbsent } from ${JSON.stringify(REDIS_MODULE_URL)};
+    try {
+      const created = await redis.setCachedJsonIfAbsent(
+        'k',
+        { v: 1 },
+        30,
+        false,
+        (error) => { reported.push(error); },
+      );
 
-      const calls = [];
-      globalThis.fetch = async (url, init) => {
-        calls.push({ url: String(url), body: String(init?.body ?? '') });
-        if (String(url).startsWith('https://redis.test')) {
-          throw new Error('redis transport down');
-        }
-        return { ok: true, status: 200 };
-      };
-      console.warn = () => {};
-
-      const created = await setCachedJsonIfAbsent('k', { v: 1 }, 30);
-      process.stdout.write(JSON.stringify({ created, calls }));
-    `;
-
-    const child = spawnSync(
-      process.execPath,
-      ['--import', 'tsx', '--input-type=module', '--eval', childScript],
-      { cwd: root, env: childEnv, encoding: 'utf8' },
-    );
-
-    assert.equal(child.status, 0, child.stderr);
-    const result = JSON.parse(child.stdout);
-    assert.equal(result.created, false, 'transport failure must remain fail-closed');
-    const sentryCalls = result.calls.filter(({ url }) => url.includes('/api/42/envelope/'));
-    assert.equal(sentryCalls.length, 1, 'transport exception must emit one Sentry event');
-
-    const event = JSON.parse(sentryCalls[0].body.trim().split('\n').at(-1));
-    assert.equal(event.exception.values[0].value, 'redis transport down');
-    assert.equal(event.tags.component, 'redis');
-    assert.equal(event.tags.operation, 'setCachedJsonIfAbsent');
+      assert.equal(created, false, 'transport failure must remain fail-closed');
+      assert.equal(reported.length, 1, 'transport exception must reach the caller reporter');
+      assert.equal(reported[0]?.message, 'redis transport down');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      restoreEnv();
+    }
   });
 });
 
