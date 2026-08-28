@@ -1380,28 +1380,17 @@ const EnterprisePage = () => (
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
-  // Initialize Dodo checkout overlay with success handler.
+  // Resume a checkout the buyer started before signing in.
   //
-  // On overlay success, the buyer needs to be bridged from /pro to the
-  // main dashboard where their newly-minted entitlement actually
-  // unlocks panels. Two changes vs the original 3-second blind reload:
-  //
-  //   1. Explicit "Go to dashboard now →" button so engaged buyers
-  //      don't wait out the auto-redirect timer.
-  //   2. Auto-redirect is 1500ms (down from 3000ms) — fast enough to
-  //      feel responsive without clipping the confirmation reading time.
-  //   3. Redirect target carries `?wm_checkout=success` so the dashboard
-  //      side (handleCheckoutReturn in src/services/checkout-return.ts)
-  //      recognizes this as a post-purchase landing and triggers the
-  //      extended-unlock banner from PR-4, instead of rendering a
-  //      default dashboard with no context.
+  // This mount hook used to also call `initOverlay()`, which dynamically
+  // imported the heavy Dodo overlay SDK on every /pro mount and registered an
+  // overlay-success handler that bridged the buyer to the dashboard. #4449
+  // moved checkout to a top-level redirect to Dodo's hosted page (see
+  // startCheckout), which made that handler unreachable — after payment the
+  // buyer lands on the dashboard, not /pro, and handleCheckoutReturn owns that
+  // UX via the guarded `?wm_checkout=return` contract. #7222 deleted the
+  // function and dropped `dodopayments-checkout` from this bundle.
   useEffect(() => {
-    // #4449: the Dodo overlay is no longer used — checkout redirects top-level
-    // to the hosted page (see startCheckout). The `initOverlay()` call that
-    // used to live here dynamically imported the heavy Dodo overlay SDK on
-    // /pro mount and registered a success banner that can never fire (after
-    // payment the buyer lands on the dashboard, not /pro — handleCheckoutReturn
-    // owns that UX). #7222 deleted the function and the SDK dependency.
     // Consume checkout intent from URL (set by afterSignInUrl on the
     // checkout-initiated sign-in). No-op for any other /pro entry
     // point; strips params before any await so a reload can't re-fire.
