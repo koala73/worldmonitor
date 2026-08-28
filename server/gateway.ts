@@ -9,7 +9,7 @@
  * code for one domain per function, cutting cold-start cost by ~20×.
  */
 
-import { createRouter, type RouteDescriptor } from './router';
+import { createRouter, toHeadResponse, type RouteDescriptor } from './router';
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
@@ -514,6 +514,113 @@ function isPostToGetCompatibleBodySize(headers: Headers): boolean {
   return Number.isSafeInteger(contentLength) && contentLength < POST_TO_GET_MAX_BODY_BYTES;
 }
 
+type PostToGetScalar = string | number | boolean;
+
+function isPostToGetScalar(value: unknown): value is PostToGetScalar {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+}
+
+function isPostToGetPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type PostToGetCompatField =
+  | { kind: 'scalar'; name: string; value: string }
+  | { kind: 'array'; name: string; values: string[] };
+
+type PostToGetCompatParse =
+  | { status: 'ok'; fields: PostToGetCompatField[] }
+  | { status: 'too_large' }
+  | { status: 'malformed_json' }
+  | { status: 'unsupported_body' }
+  | { status: 'unsupported_value'; parameter: string }
+  | { status: 'oversized_array'; parameter: string };
+
+/**
+ * Decode a legacy POST body into GET query fields.
+ *
+ * Empty / whitespace-only bodies stay on the silent GET fallback for stale
+ * clients that POST with no payload. Any other body is all-or-nothing: a
+ * JSON object of scalars and scalar arrays becomes query parameters; mixed
+ * or nested values, non-object JSON, and malformed JSON return 400 without
+ * applying a partial translation. Compatibility-body errors are only
+ * returned when a GET handler exists for the path; unknown routes still
+ * 404/405. Body-read failures return 400. The 1 MB byte cap and
+ * 200-values-per-key cap from #3550 still bound expansion cost.
+ */
+function parsePostToGetCompatBody(bodyText: string): PostToGetCompatParse {
+  if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
+    return { status: 'too_large' };
+  }
+  if (bodyText.trim().length === 0) {
+    return { status: 'ok', fields: [] };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return { status: 'malformed_json' };
+  }
+
+  if (!isPostToGetPlainObject(parsed)) {
+    return { status: 'unsupported_body' };
+  }
+
+  const fields: PostToGetCompatField[] = [];
+  for (const [name, value] of Object.entries(parsed)) {
+    if (Array.isArray(value)) {
+      if (value.length > POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY) {
+        return { status: 'oversized_array', parameter: name };
+      }
+      const values: string[] = [];
+      for (const item of value) {
+        if (!isPostToGetScalar(item)) {
+          return { status: 'unsupported_value', parameter: name };
+        }
+        values.push(String(item));
+      }
+      fields.push({ kind: 'array', name, values });
+      continue;
+    }
+    if (isPostToGetScalar(value)) {
+      fields.push({ kind: 'scalar', name, value: String(value) });
+      continue;
+    }
+    return { status: 'unsupported_value', parameter: name };
+  }
+  return { status: 'ok', fields };
+}
+
+function applyPostToGetCompatFields(searchParams: URLSearchParams, fields: PostToGetCompatField[]): void {
+  for (const field of fields) {
+    if (field.kind === 'scalar') {
+      searchParams.set(field.name, field.value);
+      continue;
+    }
+    for (const value of field.values) {
+      searchParams.append(field.name, value);
+    }
+  }
+}
+
+function postToGetCompatErrorBody(parsed: Exclude<PostToGetCompatParse, { status: 'ok' }>): Record<string, unknown> {
+  if (parsed.status === 'too_large') return { error: 'malformed_request' };
+  if (parsed.status === 'malformed_json') return { error: 'Invalid JSON body for POST compatibility' };
+  if (parsed.status === 'unsupported_body') return { error: 'Unsupported POST compatibility body' };
+  if (parsed.status === 'oversized_array') {
+    return {
+      error: 'Too many values for POST compatibility parameter',
+      parameter: parsed.parameter,
+      maxValues: POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY,
+    };
+  }
+  return {
+    error: 'Unsupported value for POST compatibility parameter',
+    parameter: parsed.parameter,
+  };
+}
+
 function getRequiredBboxQueryProblems(searchParams: URLSearchParams): { missing: string[]; invalid: string[]; allZero: boolean } {
   const absent: string[] = [];
   const invalid: string[] = [];
@@ -635,9 +742,13 @@ const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
 
 const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
 
+function methodForGetEquivalentPolicy(method: string): string {
+  return method === 'HEAD' ? 'GET' : method;
+}
+
 async function shouldReserveGatewayDirectLlmQuota(request: Request, pathname: string): Promise<boolean> {
   if (!DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(pathname)) return false;
-  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== request.method) return false;
+  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== methodForGetEquivalentPolicy(request.method)) return false;
   if (pathname !== '/api/news/v1/summarize-article') return true;
 
   const contentLength = Number(request.headers.get('Content-Length') ?? '0');
@@ -746,7 +857,7 @@ export function createDomainGateway(
   assertProMcpGatewayHmacConfig();
   const router = createRouter(routes);
 
-  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+  async function dispatch(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
     const originalPathname = new URL(originalRequest.url).pathname;
 
     // Vercel resolves versioned API paths such as
@@ -1034,7 +1145,10 @@ export function createDomainGateway(
         // CONFIGURATION so operators see it; legacy wm_ key path is
         // unaffected because we only enter this branch when the caller
         // explicitly tried to use the internal-MCP route.
-        emitRequest(500, 'auth_401', null);
+        // Telemetry must not use auth_401 here: that reason is for caller
+        // authentication failure, and a missing HMAC secret is a deploy
+        // configuration incident (#7277).
+        emitRequest(500, 'hmac_secret_unconfigured', null);
         return new Response(
           JSON.stringify({ error: 'CONFIGURATION', detail: 'MCP_INTERNAL_HMAC_SECRET not configured' }),
           { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
@@ -1205,7 +1319,7 @@ export function createDomainGateway(
     // Cloud deployments do not set LOCAL_API_MODE=docker, and every other
     // premium route retains forceKey + entitlement enforcement below.
     const isDockerSelfHostCountryBrief =
-      request.method === 'GET' &&
+      (request.method === 'GET' || request.method === 'HEAD') &&
       pathname === COUNTRY_INTEL_BRIEF_PATH &&
       process.env.LOCAL_API_MODE === 'docker';
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
@@ -1642,48 +1756,45 @@ export function createDomainGateway(
       }
     }
 
-    // Route matching — if POST doesn't match, convert to GET for stale clients
+    // Route matching — if POST doesn't match, convert to GET for stale clients.
+    // Strict compatibility 400s stay pending until the normal endpoint/global
+    // limiter path runs so malformed or nested bodies still consume the GET
+    // route's abuse budget. The pending response is returned before
+    // direct-LLM quota and handler dispatch.
     let matchedHandler = router.match(request);
+    let pendingPostToGetCompatError: Response | null = null;
     if (!matchedHandler && request.method === 'POST') {
       if (isPostToGetCompatibleBodySize(request.headers)) {
         const url = new URL(request.url);
-        let oversizedKey: string | null = null;
-        try {
-          const bodyText = await request.clone().text();
-          if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
-            emitRequest(400, 'malformed_request', null);
-            return new Response(JSON.stringify({ error: 'malformed_request' }), {
+        const getProbe = new Request(url.toString(), { method: 'GET', headers: request.headers });
+        const getProbeHandler = router.match(getProbe);
+        if (getProbeHandler) {
+          let compatErrorBody: Record<string, unknown> | null = null;
+          let compatFields: PostToGetCompatField[] = [];
+          try {
+            const parsed = parsePostToGetCompatBody(await request.clone().text());
+            if (parsed.status === 'ok') {
+              compatFields = parsed.fields;
+            } else {
+              compatErrorBody = postToGetCompatErrorBody(parsed);
+            }
+          } catch {
+            compatErrorBody = { error: 'malformed_request' };
+          }
+          if (compatErrorBody) {
+            pendingPostToGetCompatError = new Response(JSON.stringify(compatErrorBody), {
               status: 400,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
             });
+            matchedHandler = getProbeHandler;
+            request = getProbe;
+          } else {
+            applyPostToGetCompatFields(url.searchParams, compatFields);
+            const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+            matchedHandler = router.match(getReq);
+            if (matchedHandler) request = getReq;
           }
-          const body = JSON.parse(bodyText);
-          const isScalar = (x: unknown): x is string | number | boolean =>
-            typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean';
-          for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
-            if (Array.isArray(v)) {
-              if (v.length > POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY) {
-                oversizedKey = k;
-                break;
-              }
-              v.forEach((item) => { if (isScalar(item)) url.searchParams.append(k, String(item)); });
-            } else if (isScalar(v)) url.searchParams.set(k, String(v));
-          }
-        } catch { /* non-JSON body — preserve legacy POST→GET fallback */ }
-        if (oversizedKey !== null) {
-          emitRequest(400, 'malformed_request', null);
-          return new Response(JSON.stringify({
-            error: 'Too many values for POST compatibility parameter',
-            parameter: oversizedKey,
-            maxValues: POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY,
-          }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
-          });
         }
-        const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
-        matchedHandler = router.match(getReq);
-        if (matchedHandler) request = getReq;
       }
     }
     if (!matchedHandler) {
@@ -1925,6 +2036,11 @@ export function createDomainGateway(
       }
     }
 
+    if (pendingPostToGetCompatError) {
+      emitRequest(400, 'malformed_request', null);
+      return pendingPostToGetCompatError;
+    }
+
     if (requiresDirectLlmQuota && !isEnterpriseAuth) {
       // The Docker principal is deliberately derived from nginx's trusted
       // X-Real-IP value (docker/nginx.conf stamps $remote_addr), not from the
@@ -2064,7 +2180,7 @@ export function createDomainGateway(
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;
-    if (response.status === 200 && request.method === 'GET' && response.body) {
+    if (response.status === 200 && (request.method === 'GET' || request.method === 'HEAD') && response.body) {
       const bodyBytes = await response.arrayBuffer();
 
       const bodyStr = new TextDecoder().decode(bodyBytes);
@@ -2189,7 +2305,7 @@ export function createDomainGateway(
       });
     }
 
-    if (response.status === 200 && request.method === 'GET') {
+    if (response.status === 200 && (request.method === 'GET' || request.method === 'HEAD')) {
       if (mergedHeaders.get('X-No-Cache')) {
         mergedHeaders.set('Cache-Control', 'no-store');
       }
@@ -2236,5 +2352,10 @@ export function createDomainGateway(
       statusText: response.statusText,
       headers: mergedHeaders,
     });
+  }
+
+  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+    const response = await dispatch(originalRequest, ctx);
+    return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
 }

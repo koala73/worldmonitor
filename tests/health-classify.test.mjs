@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
+import { isOnDemandProblem } from '../scripts/check-seed-freshness.mjs';
 import { BOOTSTRAP_KEY as AVIATION_BOOTSTRAP_KEY, BOOTSTRAP_META_KEY as AVIATION_BOOTSTRAP_META_KEY } from '../scripts/seed-aviation.mjs';
 
 const {
@@ -40,12 +41,16 @@ const ONE_MIN_MS = 60_000;
 //   errors:     { redisDataKey -> errMsg }
 //   metaValues: { seedMetaKey  -> raw JSON string }
 //   metaErrors: { seedMetaKey  -> errMsg }
-function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {} } = {}) {
+function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, activationStates = null } = {}) {
   return {
     keyStrens: new Map(Object.entries(strens)),
     keyErrors: new Map(Object.entries(errors)),
     keyMetaValues: new Map(Object.entries(metaValues).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])),
     keyMetaErrors: new Map(Object.entries(metaErrors)),
+    // Three-valued, exactly like readExistsFlags: true = marker present,
+    // false = marker READ and absent (positive proof of pre-activation),
+    // key missing = unknown.
+    ...(activationStates ? { activationStates: new Map(Object.entries(activationStates)) } : {}),
     now: NOW,
   };
 }
@@ -2191,4 +2196,102 @@ test('china coverage: UNAVAILABLE is never debounced', () => {
     entries: [{ id: 'market.china-stock-connect', launchStatus: 'launched', status: 'unavailable', reasonCodes: [] }],
   }));
   assert.equal(projected.status, 'CHINA_UNAVAILABLE');
+});
+
+
+// ── fully unobserved on-demand adapters are dormant (imdCycloneMarine) ──────
+// imdCycloneMarine sits in BOTH ON_DEMAND_KEYS and EMPTY_DATA_OK_KEYS. The
+// EMPTY_DATA_OK arm is tested first and resolves to
+// `seedStale === true ? 'STALE_SEED' : 'OK'`; readSeedMeta initialises
+// seedStale=true and only overwrites it from a real fetchedAt. The narrow
+// pre-activation grace applies only when data and readable metadata are both
+// absent; marker absence alone can result from a failed marker write or a
+// restore and cannot override publication evidence.
+
+const IMD_MARKER_ABSENT = { imdCycloneMarine: false };
+
+test('classifyKey: an unobserved on-demand adapter reads EMPTY_ON_DEMAND, not STALE_SEED', () => {
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: IMD_MARKER_ABSENT }), // no data key, no seed-meta
+  );
+  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.ok(isOnDemandProblem({ status: entry.status, onDemand: true }),
+    'the freshness monitor must excuse it — that is the point of the change');
+});
+
+test('classifyKey: marker absence does not excuse an absent payload with stale seed metadata', () => {
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({
+      metaValues: {
+        [SEED_META.imdCycloneMarine.key]: seedMeta({ fetchedAt: NOW - 46 * ONE_MIN_MS, recordCount: 0 }),
+      },
+      activationStates: IMD_MARKER_ABSENT,
+    }),
+  );
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.ok(!isOnDemandProblem({ status: entry.status, onDemand: true }));
+});
+
+test('classifyKey: marker absence preserves normal fresh and stale zero-record outcomes', () => {
+  const classifyZeroRecord = (fetchedAt) => classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.imdCycloneMarine]: 64 },
+      metaValues: { [SEED_META.imdCycloneMarine.key]: seedMeta({ fetchedAt, recordCount: 0 }) },
+      activationStates: IMD_MARKER_ABSENT,
+    }),
+  );
+
+  assert.equal(classifyZeroRecord(NOW - ONE_MIN_MS).status, 'OK');
+  assert.equal(classifyZeroRecord(NOW - 46 * ONE_MIN_MS).status, 'STALE_SEED');
+});
+
+test('classifyKey: once ACTIVATED, the same adapter is strict again', () => {
+  // The regression this guards: softening a key that HAS published and then
+  // died would hide a real outage behind a dormancy excuse.
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: { imdCycloneMarine: true } }),
+  );
+  assert.equal(entry.status, 'STALE_SEED', 'an activated adapter that goes absent is stale, as before');
+  assert.ok(
+    !isOnDemandProblem({ status: entry.status, onDemand: true }),
+    'and the freshness monitor must NOT excuse it — that is the outage this change must not hide',
+  );
+});
+
+test('classifyKey: an UNREADABLE activation marker earns nothing (fails closed)', () => {
+  // readExistsFlags leaves unknown entries OUT of the map, so `get()` is
+  // undefined — never false. Grace requires positive proof (#6095).
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: {} }),
+  );
+  assert.equal(entry.status, 'STALE_SEED', 'unknown activation state keeps the pre-fix verdict');
+});
+
+test('classifyKey: a key with no activation marker is untouched by the change', () => {
+  // newsThreatSummary is in both sets too, but configures no marker — so it is
+  // permanently `unknown` and MUST keep EMPTY_DATA_OK_KEYS' behaviour. This is
+  // what stops the reorder from silencing producers that run and then stop.
+  const entry = classifyKey(
+    'newsThreatSummary',
+    STANDALONE_KEYS.newsThreatSummary,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: IMD_MARKER_ABSENT }),
+  );
+  assert.equal(entry.status, 'STALE_SEED');
 });

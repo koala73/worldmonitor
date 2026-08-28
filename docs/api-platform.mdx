@@ -141,7 +141,7 @@ Geo-IP echo: returns `{ "country": "<ISO2>" }` derived from the CDN's country he
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
-Reverse geocodes a lat/lon to the nearest country + city via OpenStreetMap Nominatim. Results are cached on a 0.1-degree grid for seven days, and the route is limited to 60 req/min/IP.
+Reverse geocodes a lat/lon to the nearest country + city via OpenStreetMap Nominatim. Results are cached on a 0.001-degree grid for seven days, and the route is limited to 60 req/min/IP.
 
 ## Account & session helpers
 
