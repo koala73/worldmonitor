@@ -9,7 +9,7 @@
  * code for one domain per function, cutting cold-start cost by ~20×.
  */
 
-import { createRouter, type RouteDescriptor } from './router';
+import { createRouter, toHeadResponse, type RouteDescriptor } from './router';
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
@@ -635,9 +635,13 @@ const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
 
 const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
 
+function methodForGetEquivalentPolicy(method: string): string {
+  return method === 'HEAD' ? 'GET' : method;
+}
+
 async function shouldReserveGatewayDirectLlmQuota(request: Request, pathname: string): Promise<boolean> {
   if (!DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(pathname)) return false;
-  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== request.method) return false;
+  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== methodForGetEquivalentPolicy(request.method)) return false;
   if (pathname !== '/api/news/v1/summarize-article') return true;
 
   const contentLength = Number(request.headers.get('Content-Length') ?? '0');
@@ -746,7 +750,7 @@ export function createDomainGateway(
   assertProMcpGatewayHmacConfig();
   const router = createRouter(routes);
 
-  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+  async function dispatch(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
     const originalPathname = new URL(originalRequest.url).pathname;
 
     // Vercel resolves versioned API paths such as
@@ -1208,7 +1212,7 @@ export function createDomainGateway(
     // Cloud deployments do not set LOCAL_API_MODE=docker, and every other
     // premium route retains forceKey + entitlement enforcement below.
     const isDockerSelfHostCountryBrief =
-      request.method === 'GET' &&
+      (request.method === 'GET' || request.method === 'HEAD') &&
       pathname === COUNTRY_INTEL_BRIEF_PATH &&
       process.env.LOCAL_API_MODE === 'docker';
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
@@ -2067,7 +2071,7 @@ export function createDomainGateway(
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;
-    if (response.status === 200 && request.method === 'GET' && response.body) {
+    if (response.status === 200 && (request.method === 'GET' || request.method === 'HEAD') && response.body) {
       const bodyBytes = await response.arrayBuffer();
 
       const bodyStr = new TextDecoder().decode(bodyBytes);
@@ -2192,7 +2196,7 @@ export function createDomainGateway(
       });
     }
 
-    if (response.status === 200 && request.method === 'GET') {
+    if (response.status === 200 && (request.method === 'GET' || request.method === 'HEAD')) {
       if (mergedHeaders.get('X-No-Cache')) {
         mergedHeaders.set('Cache-Control', 'no-store');
       }
@@ -2239,5 +2243,10 @@ export function createDomainGateway(
       statusText: response.statusText,
       headers: mergedHeaders,
     });
+  }
+
+  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+    const response = await dispatch(originalRequest, ctx);
+    return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
 }

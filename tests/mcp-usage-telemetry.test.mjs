@@ -12,6 +12,10 @@ import {
   callBody,
 } from './helpers/mcp-pro-deps.mjs';
 
+function resourceReadBody(uri = 'worldmonitor://countries/de/risk', id = 100) {
+  return { jsonrpc: '2.0', id, method: 'resources/read', params: { uri } };
+}
+
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
@@ -199,6 +203,73 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps, ctx);
     await settle();
     assert.equal(events.length, 0);
+  });
+
+  it('resources/read mid-call billing 503 classifies as billing_verification_503, not rate_limit_degraded', async () => {
+    // #7269: resources/read used to drop X-Billing-Verification, so the handler
+    // classified 503 as dispatch → rate_limit_degraded. The marker must reach
+    // the outer classifier so Axiom records billing_verification_503.
+    const { deps } = makeProDeps();
+    const events = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('axiom.co')) {
+        for (const ev of JSON.parse(init.body)) events.push(ev);
+        return new Response('{}', { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({ error: 'Unable to verify API access', code: 'entitlement_verification_unavailable' }),
+        {
+          status: 503,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'Retry-After': '5',
+            'X-Billing-Verification': 'entitlement_verification_unavailable',
+          },
+        },
+      );
+    };
+    const { ctx, settle } = makeCtx();
+    const res = await mcpHandler(proReq('POST', resourceReadBody()), deps, ctx);
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].status, 503);
+    assert.equal(events[0].reason, 'billing_verification_503');
+  });
+
+  it('resources/read mid-call confirmed-lapse 403 classifies as billing/tier_403', async () => {
+    // #7269: without the billing marker, a 403 is recorded as an ordinary
+    // precheck tier_403. The phase is still 'billing' so incidents stay
+    // distinguishable from status-only precheck denials.
+    const { deps } = makeProDeps();
+    const events = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('axiom.co')) {
+        for (const ev of JSON.parse(init.body)) events.push(ev);
+        return new Response('{}', { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }),
+        {
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'X-Billing-Verification': 'subscription_lapsed',
+          },
+        },
+      );
+    };
+    const { ctx, settle } = makeCtx();
+    const res = await mcpHandler(proReq('POST', resourceReadBody()), deps, ctx);
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].status, 403);
+    assert.equal(events[0].reason, 'tier_403');
   });
 
   it('emission failure never breaks the response (Axiom down)', async () => {
