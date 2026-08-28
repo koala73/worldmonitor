@@ -38,6 +38,9 @@ import {
   classifyInsightsSynthesisFailure,
   composeInsightsSynthesis,
   resolveInsightsSynthesis,
+  insightsSynthesisSignature,
+  shouldSkipInsightsSynthesis,
+  formatInsightsBreakerOpenWarning,
 } from './_insights-synthesis-diagnostics.mjs';
 export {
   INSIGHTS_COMPOSER_THREW,
@@ -198,6 +201,8 @@ export function buildInsightsFreshnessMetaPatch({
   previousMeta,
   outcome,
   failureCode = null,
+  failureDetail = null,
+  storiesSignature = null,
   nowMs = Date.now(),
   servedGeneratedAt = null,
   briefEligibleClusters = null,
@@ -213,13 +218,41 @@ export function buildInsightsFreshnessMetaPatch({
   const normalizedFailureCode = failureCode == null ? null : normalizeInsightsFailureCode(failureCode);
   const eligibleClusters = normalizeBriefEligibleClusters(briefEligibleClusters);
 
+  // Bounded breaker inputs (see shouldSkipInsightsSynthesis): what failed and
+  // against which story set. Cleared on publish so a stale pair can never
+  // suppress a later synthesis of a genuinely different run.
+  const boundedDetail = typeof failureDetail === 'string' && failureDetail.length > 0
+    ? failureDetail.replace(/\s+/g, ' ').trim().slice(0, 80)
+    : null;
+  const boundedSignature = typeof storiesSignature === 'string' && storiesSignature.length > 0
+    ? storiesSignature.slice(0, 16)
+    : null;
+  // Per-signature repeat counter (#7255 review). consecutiveFailures counts
+  // every degraded run producer-wide, so provider noise inflated it past the
+  // breaker threshold before a gate failure ever repeated. This counter
+  // increments only while the (code, detail, signature) triple repeats
+  // EXACTLY, and resets to 1 on any change.
+  const previousSameSignature = Number.isInteger(previous.sameSignatureFailures) && previous.sameSignatureFailures > 0
+    ? previous.sameSignatureFailures
+    : 0;
+  const failureCodeForMeta = normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+  const repeatsPrevious = previousSameSignature > 0 || previous.lastSynthesisFailureCode
+    ? failureCodeForMeta === previous.lastSynthesisFailureCode
+      && (boundedDetail ?? null) === (previous.lastSynthesisFailureDetail ?? null)
+      && boundedSignature !== null
+      && boundedSignature === (previous.failedStoriesSignature ?? null)
+    : false;
+
   if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
     return {
       lastAttemptAt: now,
       lastSuccessAt: now,
       servedGeneratedAt: servedAt,
       consecutiveFailures: 0,
+      sameSignatureFailures: 0,
       lastSynthesisFailureCode: normalizedFailureCode,
+      lastSynthesisFailureDetail: null,
+      failedStoriesSignature: null,
       briefEligibleClusters: eligibleClusters,
     };
   }
@@ -229,7 +262,12 @@ export function buildInsightsFreshnessMetaPatch({
     lastSuccessAt: Number.isFinite(previous.lastSuccessAt) ? previous.lastSuccessAt : null,
     servedGeneratedAt: servedAt,
     consecutiveFailures: Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
-    lastSynthesisFailureCode: normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    sameSignatureFailures: repeatsPrevious
+      ? Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousSameSignature + 1)
+      : 1,
+    lastSynthesisFailureCode: failureCodeForMeta,
+    lastSynthesisFailureDetail: boundedDetail,
+    failedStoriesSignature: boundedSignature,
     briefEligibleClusters: eligibleClusters,
   };
 }
@@ -933,10 +971,27 @@ async function fetchInsights() {
   // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
   // otherwise two full 60s budgets could outlast the 120s seed lock.
   const llmRunStartedAtMs = Date.now();
-  const synthesisResult = hasBriefCluster
+  // Repeat breaker: same gate failure, same story set, three cycles running —
+  // a fourth identical paid call cannot succeed where three did not, and the
+  // resample/repair machinery has already had its chance on each. Re-arms the
+  // moment the story set (and therefore the prompt) changes.
+  const previousFreshnessMeta = await readExistingSeedMeta('news', 'insights');
+  // The signature hashes the exact prompts callLLM is about to send — computed
+  // here, passed there, one source of truth.
+  const synthesisSystem = synthesisSystemPrompt(new Date().toISOString().split('T')[0]);
+  const synthesisUser = synthesisUserPrompt(topStories);
+  const storiesSignature = insightsSynthesisSignature(synthesisSystem, synthesisUser);
+  const synthesisBreakerOpen = hasBriefCluster && shouldSkipInsightsSynthesis({
+    previousMeta: previousFreshnessMeta,
+    synthesisSignature: storiesSignature,
+  });
+  if (synthesisBreakerOpen) {
+    console.warn(formatInsightsBreakerOpenWarning(previousFreshnessMeta));
+  }
+  const synthesisResult = hasBriefCluster && !synthesisBreakerOpen
     ? await callLLM(null, {
-        systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
-        userPrompt: synthesisUserPrompt(topStories),
+        systemPrompt: synthesisSystem,
+        userPrompt: synthesisUser,
         maxTokens: 900,
         // A model whose output trips the editorial gates must not strand the
         // run. callLLM resamples this model once before demoting to a weaker
@@ -947,14 +1002,34 @@ async function fetchInsights() {
         rejectionFeedback: () => synthesisRejectionFeedback(lastRejection()),
       })
     : null;
-  const { composed, failureCode, failureDetail } = resolveInsightsSynthesis({
-    synthesisResult,
-    topStories,
-    ...synthesisComposerOptions,
-  });
+  let breakerCarriedDetail = null;
+  const { composed, failureCode, failureDetail } = synthesisBreakerOpen
+    ? { composed: null, failureCode: null, failureDetail: null }
+    : resolveInsightsSynthesis({
+      synthesisResult,
+      topStories,
+      ...synthesisComposerOptions,
+    });
   synthesisFailureCode = failureCode;
 
-  if (composed) {
+  if (synthesisBreakerOpen) {
+    // Preserve the TRUE cause. Classifying this run's null synthesisResult
+    // would report PROVIDER — but no provider was asked; the standing failure
+    // is whatever kept failing before the breaker opened. L2 is skipped as
+    // well: it is a second paid call, and the LKG it would lose to is already
+    // being served.
+    synthesisFailureCode = normalizeInsightsFailureCode(previousFreshnessMeta?.lastSynthesisFailureCode)
+      ?? INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+    status = 'degraded';
+    // Carry the standing detail too: a skipped run repeats the previous
+    // failure identically, and the per-signature counter downstream matches on
+    // (code, detail, signature) — a null detail here would read as a CHANGED
+    // failure, reset the counter, and flap the breaker open/closed every other
+    // run.
+    breakerCarriedDetail = typeof previousFreshnessMeta?.lastSynthesisFailureDetail === 'string'
+      ? previousFreshnessMeta.lastSynthesisFailureDetail
+      : null;
+  } else if (composed) {
     worldBrief = composed.lead;
     briefStoryLines = composed.lines;
     worldBriefSources = composed.sources;
@@ -1108,6 +1183,8 @@ async function fetchInsights() {
         {
           outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
           failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+          failureDetail: breakerCarriedDetail ?? failureDetail,
+          storiesSignature,
           briefEligibleClusters,
         },
       );
@@ -1117,6 +1194,8 @@ async function fetchInsights() {
   return decorateInsightsRun(payload, {
     outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
     failureCode: synthesisFailureCode,
+    failureDetail: breakerCarriedDetail ?? failureDetail,
+    storiesSignature,
     briefEligibleClusters,
   });
 }
@@ -1147,6 +1226,8 @@ export function insightsFreshnessPatchArgs(data, outcome, previousMeta, nowMs = 
     previousMeta,
     outcome,
     failureCode: runMeta?.failureCode,
+    failureDetail: runMeta?.failureDetail ?? null,
+    storiesSignature: runMeta?.storiesSignature ?? null,
     nowMs,
     servedGeneratedAt: data?.generatedAt,
     briefEligibleClusters: runMeta?.briefEligibleClusters ?? null,

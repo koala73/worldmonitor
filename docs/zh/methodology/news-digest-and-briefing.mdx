@@ -371,7 +371,7 @@ URL、发布者或发布时间。Web 简报界面和 MCP 简报工具从用作�
 不同：`scripts/regional-snapshot/weekly-brief.mjs`
 首先用 `deepseek/deepseek-v4-flash` 尝试 OpenRouter，然后依次尝试固定的免费
 OpenRouter 模型 `google/gemma-4-26b-a4b-it:free` 和
-`openai/gpt-oss-20b:free`，最后回退到 Groq `openai/gpt-oss-20b`。所有提供商都使用温度
+`minimax/minimax-m3:free`，最后回退到 Groq `openai/gpt-oss-20b`。所有提供商都使用温度
 `0.3`，因为其输出是用于区域快照的结构化每周 JSON，而非按用户的摘要
 文稿。摘要提示要求指明行为者/事件导语，禁止诸如 "the global stage" 的
 泛泛编辑用语和诸如 "this comes as" 或 "meanwhile" 的弱衔接短语，在导语

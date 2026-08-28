@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 
 import {
   loadEnvFile,
+  PUBLISH_BLOCKED_EXIT_CODE,
   CHROME_UA,
   getRedisCredentials,
   acquireLockSafely,
@@ -587,7 +588,11 @@ async function main() {
       } else {
         console.warn('  COVERAGE GATE: no last-good snapshot exists to preserve');
       }
-      return;
+      // #6396: the gate refused to publish, so exit 0 would make the bundle
+      // report OK for a section whose seed keys were not written. Signal the
+      // dedicated outcome; main()'s finally still releases the lock on this
+      // return path.
+      return { publishBlocked: true };
     }
 
     console.log(chinaCoverage.ok
@@ -643,7 +648,9 @@ async function main() {
 
 const isMain = process.argv[1]?.endsWith('seed-jodi-oil.mjs');
 if (isMain) {
-  main().catch(err => {
+  main().then((outcome) => {
+    if (outcome?.publishBlocked) process.exit(PUBLISH_BLOCKED_EXIT_CODE);
+  }).catch(err => {
     console.error(err);
     process.exit(1);
   });

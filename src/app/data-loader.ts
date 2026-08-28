@@ -921,7 +921,17 @@ export class DataLoaderManager implements AppModule {
         const forceAll = this.loadAllDataQueuedForceAll;
         this.loadAllDataRerunRequested = false;
         this.loadAllDataQueuedForceAll = false;
-        await this.runLoadAllData(forceAll);
+        // Opt-in only (no-op unless __wmLcpDebug is installed), so this costs
+        // one property read on the ordinary path. The start/end pair is the
+        // only direct witness that a fan-out actually ran and drained: request
+        // counters cannot distinguish a repeat pass from a service retry
+        // (#7045 U5 review, #7212).
+        markLcpDebug('wm:data:load-all-start', { forceAll });
+        try {
+          await this.runLoadAllData(forceAll);
+        } finally {
+          markLcpDebug('wm:data:load-all-end', { forceAll });
+        }
       }
     } finally {
       this.loadAllDataPromise = null;
@@ -931,13 +941,6 @@ export class DataLoaderManager implements AppModule {
   }
 
   private async runLoadAllData(forceAll: boolean): Promise<void> {
-    // Opt-in only (no-op unless __wmLcpDebug is installed), so this costs one
-    // property read on the ordinary path. It is the only direct witness that a
-    // fan-out actually RAN: e2e/bootstrap-hydration-request-budget.spec.ts's
-    // zero-refetch assertions all presuppose a second pass, and a request
-    // counter cannot distinguish that second pass from a service retry (#7045
-    // U5 review).
-    markLcpDebug('wm:data:load-all-start', { forceAll });
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
