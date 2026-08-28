@@ -66,10 +66,18 @@ function checkAuth(req) {
 const ALLOWED_COMMANDS = new Set([
   'GET', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
   'TTL', 'EXPIRE', 'PEXPIRE', 'EXISTS', 'TYPE',
-  'HGET', 'HSET', 'HDEL', 'HGETALL', 'HMGET', 'HMSET', 'HKEYS', 'HVALS', 'HEXISTS', 'HLEN',
+  'HGET', 'HSET', 'HSETNX', 'HINCRBY', 'HDEL', 'HGETALL', 'HMGET', 'HMSET', 'HKEYS', 'HVALS', 'HEXISTS', 'HLEN',
   'LPUSH', 'RPUSH', 'LPOP', 'RPOP', 'LRANGE', 'LLEN', 'LTRIM', 'LREM',
   'SADD', 'SREM', 'SMEMBERS', 'SISMEMBER', 'SCARD',
-  'ZADD', 'ZREM', 'ZRANGE', 'ZRANGEBYSCORE', 'ZREVRANGE', 'ZSCORE', 'ZCARD', 'ZRANDMEMBER',
+  // ZREMRANGEBY* are the retention trims (#7087 accumulator + forecast-evidence
+  // prune, resilience 30-day history trim). Without them a self-hosted install
+  // answers the prune with a per-command error inside an HTTP 200 pipeline, so
+  // the caller only sees `*_confirmed=false` and the ZSET grows without bound.
+  'ZADD', 'ZREM', 'ZRANGE', 'ZRANGEBYSCORE', 'ZREMRANGEBYSCORE', 'ZREMRANGEBYRANK',
+  'ZREVRANGE', 'ZREVRANGEBYSCORE', 'ZSCORE', 'ZCARD', 'ZRANDMEMBER',
+  // COPY is key-scoped (replay-digest-cooldown snapshots one key to another);
+  // it reaches no state the already-allowed GET+SET pair cannot.
+  'COPY',
   'GEOADD', 'GEOSEARCH', 'GEOPOS', 'GEODIST',
   'INCR', 'DECR', 'INCRBY', 'DECRBY',
   'PING', 'ECHO', 'INFO', 'DBSIZE',
@@ -222,15 +230,34 @@ function isAllowedEval(args) {
   return args.length >= 2 && ALLOWED_EVAL_SCRIPTS.has(String(args[1]));
 }
 
-async function runCommand(args) {
-  const cmd = args[0].toUpperCase();
+// THE authorization decision, in one place. /multi-exec used to carry its own
+// `ALLOWED_COMMANDS.has(cmd)` copy with no pinned-script branch, so membership
+// in that Set granted strictly more authority there than here: anything added
+// to the Set — including EVAL — would have run unpinned inside a MULTI. Two
+// copies of a security gate drift; one does not. Every request path must call
+// this and nothing else.
+//
+// It also logs the rejection: /pipeline reports a blocked command as a
+// per-entry {error} inside an HTTP 200 (Upstash wire compatibility, so the
+// status cannot change), which means callers branching on `response.ok` see
+// nothing at all. Server-side stderr is the operator's only signal, and its
+// absence is why the HSETNX/HINCRBY gap survived unnoticed (#6937).
+function assertCommandAllowed(args) {
+  const cmd = String(args[0]).toUpperCase();
   if (cmd === 'EVAL') {
     if (!isAllowedEval(args)) {
+      console.error('Command not allowed: EVAL (script not in the pinned allowlist)');
       throw new Error('Command not allowed: EVAL (script not in the pinned allowlist)');
     }
   } else if (!ALLOWED_COMMANDS.has(cmd)) {
+    console.error(`Command not allowed: ${cmd}`);
     throw new Error(`Command not allowed: ${cmd}`);
   }
+  return cmd;
+}
+
+async function runCommand(args) {
+  const cmd = assertCommandAllowed(args);
   const cmdArgs = args.slice(1);
   return client.sendCommand([cmd, ...cmdArgs.map(String)]);
 }
@@ -445,10 +472,11 @@ const server = http.createServer(async (req, res) => {
       const commands = JSON.parse(await readBody(req));
       const multi = client.multi();
       for (const cmd of commands) {
-        const cmdName = cmd[0].toUpperCase();
-        if (!ALLOWED_COMMANDS.has(cmdName)) {
+        try {
+          assertCommandAllowed(cmd);
+        } catch (err) {
           res.writeHead(403);
-          res.end(JSON.stringify({ error: `Command not allowed: ${cmdName}` }));
+          res.end(JSON.stringify({ error: err.message }));
           return;
         }
         multi.sendCommand(cmd.map(String));
