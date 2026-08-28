@@ -233,13 +233,16 @@ function summarizeSkill(scored, excludeSet) {
 
 /**
  * Judged-lane health (#7068). Reports the acceptance metrics the judge lane is
- * measured on — first-attempt seal rate, resolved-within-SLA rate, judged VOID
- * by reason, attempts per resolved entry — plus the attempt-class aggregate
- * rolled up from the per-attempt lifecycle records the seeder persists.
+ * measured on — first-attempt seal rate, scored-within-SLA rate, judged VOID by
+ * reason, attempts per resolved entry — plus the attempt-class aggregate rolled
+ * up from the per-attempt lifecycle records the seeder persists.
  *
- * VOID-by-reason sits next to the SLA rate on purpose: a lane that improves
- * `resolvedWithinSlaRate` by sealing entries early as VOID has not improved,
- * and both numbers are needed to see that.
+ * Every rate here is built so that it cannot be improved by failing faster or
+ * by having nothing to measure: `scoredWithinSlaRate` counts only scored
+ * resolutions while keeping VOIDs in its denominator, `voidWithinSla` publishes
+ * the compensating failure-state term beside it, and the attempt metrics name
+ * their own denominator (`instrumentedResolved`) so 0 reads as "not yet
+ * measurable" rather than as a perfect score.
  */
 function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {}) {
   const slaMs = Number.isFinite(options.judgedSlaMs) ? Math.max(0, options.judgedSlaMs) : DEFAULT_JUDGED_SLA_MS;
