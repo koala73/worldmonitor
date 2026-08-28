@@ -176,6 +176,70 @@ describe('insights-loader', () => {
       assert.equal(result, null);
     });
 
+    it('REGRESSION: concurrent callers share one in-flight request (#7290)', async () => {
+      // Three components call fetchServerInsights() independently:
+      // ThreatTimelinePanel:55, InsightsPanel:278, ProActivationInterstitial:1172.
+      // `cached` is only assigned after the response parses, so before #7290
+      // every caller arriving inside the flight window passed the freshness
+      // guard and issued its own request. DebugBear analysis 86622879 caught
+      // four 200s for the same 11,382-byte body, two of them 1 ms apart.
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      globalThis.fetch = async () => {
+        fetchCount++;
+        await gate;
+        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
+      };
+
+      const flights = [fetchServerInsights(), fetchServerInsights(), fetchServerInsights()];
+      release();
+      const results = await Promise.all(flights);
+
+      assert.equal(fetchCount, 1, 'concurrent callers must share one network request');
+      for (const result of results) {
+        assert.ok(result, 'every concurrent caller resolves with the payload');
+        assert.equal(result?.worldBrief, 'Test brief');
+      }
+    });
+
+    it('a failed flight does not latch — a later call retries (#7290)', async () => {
+      // The lock must be an in-flight lock, not a negative result cache.
+      // Latching here would permanently strand the panel that #4487 added the
+      // on-demand path to recover.
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount++;
+        if (fetchCount === 1) return new Response('upstream down', { status: 503 });
+        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
+      };
+
+      assert.equal(await fetchServerInsights(), null, 'first flight fails');
+      const recovered = await fetchServerInsights();
+      assert.ok(recovered, 'second call retries rather than replaying the failure');
+      assert.equal(fetchCount, 2);
+    });
+
+    it('a rejected payload does not latch — a later call retries (#7290)', async () => {
+      // A 200 that fails validation is the drain-once hazard the loader's own
+      // doc comment describes; it must not be cached as either a success or a
+      // permanent failure.
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount++;
+        const body = fetchCount === 1 ? { ...valid, topStories: [] } : valid;
+        return new Response(JSON.stringify({ data: { insights: body } }), { status: 200 });
+      };
+
+      assert.equal(await fetchServerInsights(), null, 'invalid payload rejected');
+      const recovered = await fetchServerInsights();
+      assert.ok(recovered, 'a later call refetches');
+      assert.equal(fetchCount, 2);
+    });
+
     it('returns null when payload validation fails (stale generatedAt)', async () => {
       const stale = { ...makeValidInsights(), generatedAt: new Date(Date.now() - MAX_AGE_MS - 60_000).toISOString() };
       globalThis.fetch = async () =>

@@ -59,6 +59,8 @@ export interface ServerInsights {
 }
 
 let cached: ServerInsights | null = null;
+/** Shared in-flight request, cleared on settle. See fetchServerInsights (#7290). */
+let inFlight: Promise<ServerInsights | null> | null = null;
 // Server cron interval: scripts/seed-insights.mjs runs every 30 min
 // (CACHE_TTL=10800s/3h, maxStaleMin: 30). The previous 15-min freshness gate
 // was strictly less than the cron interval, so the panel spent ~50% of every
@@ -108,6 +110,22 @@ export function getServerInsights(): ServerInsights | null {
  */
 export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsights | null> {
   if (cached && isFresh(cached)) return cached;
+  // In-flight lock, not a result cache (#7290). `cached` is only assigned once
+  // the response has parsed and validated, so without this every caller landing
+  // inside the flight window passed the guard above and issued its own request.
+  // Three components call this independently — ThreatTimelinePanel,
+  // InsightsPanel, ProActivationInterstitial — and DebugBear analysis 86622879
+  // caught four 200s for the same 11,382-byte body, two of them 1 ms apart, for
+  // a key that already rides the FAST bootstrap payload.
+  //
+  // The lock must clear on EVERY exit, success or not: latching a failure here
+  // would permanently strand the panel this on-demand path exists to recover.
+  if (inFlight) return inFlight;
+  inFlight = requestServerInsights(timeoutMs).finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+async function requestServerInsights(timeoutMs: number): Promise<ServerInsights | null> {
   try {
     const resp = await fetch(toApiUrl('/api/bootstrap?keys=insights'), {
       signal: AbortSignal.timeout(timeoutMs),
@@ -129,4 +147,5 @@ export function setServerInsights(data: ServerInsights): void {
 /** Test-only: reset module-local cache so suites can exercise the drain-once behavior. */
 export function __resetServerInsightsCacheForTests(): void {
   cached = null;
+  inFlight = null;
 }

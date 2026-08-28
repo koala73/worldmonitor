@@ -654,6 +654,17 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       ).toBeGreaterThan(0);
     }
 
+    // ...but "available" is not "unbounded". `toBeGreaterThan(0)` above is
+    // equally satisfied by the four duplicate `?keys=insights` 200s DebugBear
+    // caught in analysis 86622879 — two of them 1 ms apart, before
+    // insights-loader gained its in-flight lock (#7290). Both consumers above
+    // (the mounted panel and the repeat consumer) demand insights on this path,
+    // so one shared flight is the whole budget.
+    expect(
+      log.counts.insights ?? 0,
+      'concurrent insights consumers must share one on-demand request (#7290)',
+    ).toBe(1);
+
     // The abort must not cost the slow tier its reuse contract.
     for (const dataset of HYDRATION_DATASETS.filter((entry) => entry.tier === 'slow')) {
       expect(
