@@ -1824,6 +1824,11 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
       const resp = await tokenHandler(makeReq(grant, params), deps);
       assert.equal(resp.status, status, `${grant} must remain fail-open (not 503)`);
       assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded', `${grant} must carry the degraded marker`);
+      assert.match(
+        resp.headers.get('Access-Control-Expose-Headers') ?? '',
+        /\bX-RateLimit-Mode\b/,
+        `${grant} must expose X-RateLimit-Mode so cross-origin JS can read the marker`,
+      );
       assert.notEqual(resp.status, 429);
     }
 

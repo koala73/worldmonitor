@@ -113,7 +113,7 @@ client_secret=<enterprise API key>
 
 Validates the `client_secret` against the deployment's operator key allowlist and returns a bearer token with `scope: "mcp"` and the standard 3600 s TTL. Not available for dashboard `wm_…` keys — those are sent directly as `X-WorldMonitor-Key` instead.
 
-**Rate limit**: 10 token requests / minute. The limiter is keyed by `client_secret` hash for `client_credentials`, by `client_id` when present (`authorization_code` and `refresh_token`), and falls back to caller IP only when neither identifier is available. All three grant types fail open when the limiter is unconfigured or throws; the response then carries `X-RateLimit-Mode: degraded` so operators can tell that traffic apart from healthy limiter grants. A Redis storage outage still fails token persistence closed.
+**Rate limit**: 10 token requests / minute. The limiter is keyed by `client_secret` hash for `client_credentials`, by `client_id` when present (`authorization_code` and `refresh_token`), and falls back to caller IP only when neither identifier is available. All three grant types fail open when the limiter is unconfigured or throws; the response then carries `X-RateLimit-Mode: degraded` (listed in `Access-Control-Expose-Headers`) so operators and cross-origin clients can tell that traffic apart from healthy limiter grants. A Redis storage outage still fails token persistence closed.
 
 **Token TTLs**:
 
