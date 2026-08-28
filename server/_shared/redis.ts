@@ -297,6 +297,8 @@ export async function setCachedJsonIfAbsent(key: string, value: unknown, ttlSeco
     }
     return data?.result === 'OK';
   } catch (err) {
+    // sentry-coverage-ok: callers read back the persisted winner and fail
+    // closed when first-writer publication cannot be confirmed.
     console.warn('[redis] setCachedJsonIfAbsent failed:', errMsg(err));
     return false;
   }
