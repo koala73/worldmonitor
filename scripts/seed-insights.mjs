@@ -898,6 +898,11 @@ async function fetchInsights() {
     if (composed.strippedCitations > 0) {
       console.warn(`  [brief_citation ENFORCE] stripped ${composed.strippedCitations} out-of-range citation(s)`);
     }
+    if (composed.droppedLeadSentences > 0) {
+      // Bounded vocabulary only — the detail may quote model output, and this
+      // line reaches Railway logs, so name the gate, not the text.
+      console.warn(`  [brief_repair ${BRIEF_VALIDATOR_MODE.toUpperCase()}] dropped ${composed.droppedLeadSentences} lead sentence(s) (first: ${composed.droppedLeadRejection}) — published the surviving lead`);
+    }
     if (composed.hallucinatedLines > 0) {
       console.warn(`  [brief_hallucination ${BRIEF_VALIDATOR_MODE.toUpperCase()}] ${composed.hallucinatedLines}/${topStories.length} synthesis lines flagged`);
     }
