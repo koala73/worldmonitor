@@ -1038,7 +1038,10 @@ export function createDomainGateway(
         // CONFIGURATION so operators see it; legacy wm_ key path is
         // unaffected because we only enter this branch when the caller
         // explicitly tried to use the internal-MCP route.
-        emitRequest(500, 'auth_401', null);
+        // Telemetry must not use auth_401 here: that reason is for caller
+        // authentication failure, and a missing HMAC secret is a deploy
+        // configuration incident (#7277).
+        emitRequest(500, 'hmac_secret_unconfigured', null);
         return new Response(
           JSON.stringify({ error: 'CONFIGURATION', detail: 'MCP_INTERNAL_HMAC_SECRET not configured' }),
           { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },

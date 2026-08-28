@@ -120,7 +120,13 @@ export async function searchImagery(
   const weekAgo = new Date(nowHour.getTime() - 7 * 24 * 60 * 60 * 1000);
   const defaultDatetime = `${weekAgo.toISOString().split('.')[0]}Z/${nowHour.toISOString().split('.')[0]}Z`;
   const datetime = req.datetime || defaultDatetime;
-  const key = cacheKey(snappedBbox, datetime, req.source, limit);
+  // Normalise once, before BOTH uses: collections are matched lowercased
+  // below, so a raw req.source in the key split the cache by casing —
+  // sentinel-2 / Sentinel-2 / SENTINEL-2 were three entries holding the same
+  // payload and three STAC round-trips (#7209). Every other key input is
+  // already normalised (bbox snapped, limit clamped, datetime defaulted).
+  const source = (req.source ?? '').trim().toLowerCase();
+  const key = cacheKey(snappedBbox, datetime, source, limit);
 
   try {
     const result = await cachedFetchJsonWithMeta<{ scenes: ImageryScene[]; totalResults: number }>(
@@ -134,13 +140,12 @@ export async function searchImagery(
           'sentinel-2': ['sentinel-2-l2a'],
         };
         let collections = COLLECTIONS;
-        if (req.source) {
-          const src = req.source.toLowerCase();
-          const legacy = LEGACY_SOURCE_MAP[src];
+        if (source) {
+          const legacy = LEGACY_SOURCE_MAP[source];
           if (legacy) {
             collections = legacy;
           } else {
-            const matched = COLLECTIONS.filter(c => c.toLowerCase().includes(src));
+            const matched = COLLECTIONS.filter(c => c.toLowerCase().includes(source));
             if (matched.length > 0) collections = matched;
           }
         }

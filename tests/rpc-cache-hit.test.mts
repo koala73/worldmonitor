@@ -159,6 +159,24 @@ describe('RPC cache-hit reporting', { concurrency: 1 }, () => {
     assert.equal(calls.stac, 1, 'the repeat must use the cached STAC result');
   });
 
+  it('serves requests differing only in source casing from one cache entry (#7209)', async () => {
+    const calls = installFetchMock();
+    const base = {
+      bbox: '0,0,1,1',
+      datetime: '2026-07-25T00:00:00Z/2026-08-01T00:00:00Z',
+      limit: 5,
+    };
+
+    const cold = await searchImagery({} as never, { ...base, source: 'sentinel-2' });
+    const upper = await searchImagery({} as never, { ...base, source: 'SENTINEL-2' });
+    const padded = await searchImagery({} as never, { ...base, source: ' Sentinel-2 ' });
+
+    assert.equal(cold.cacheHit, false);
+    assert.equal(upper.cacheHit, true, 'casing is meaningless to the handler and must not split the cache');
+    assert.equal(padded.cacheHit, true, 'stray whitespace must not split the cache either');
+    assert.equal(calls.stac, 1, 'one STAC round-trip for all three spellings');
+  });
+
   it('reports a cached imagery failure as a hit without retrying STAC', async () => {
     const calls = installFetchMock({ stac: 'network-error' });
     const request = {

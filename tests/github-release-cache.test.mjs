@@ -92,3 +92,29 @@ test('an unconfigured Redis still serves the release', async (t) => {
   assert.equal(result.tag_name, 'v2.4.0');
   assert.equal(githubCalls.length, 1);
 });
+
+test('a hanging GitHub upstream degrades to null instead of holding the function (#7211)', async (t) => {
+  t.after(restoreEnvironment);
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.startsWith('https://redis.example.test/get/')) {
+      return new Response(JSON.stringify({ result: null }), { status: 200 });
+    }
+    if (url.startsWith('https://api.github.com/')) {
+      assert.ok(init?.signal instanceof AbortSignal, 'the GitHub fetch must carry an abort signal');
+      // Hang until the handler's own timeout aborts us — the exact stall the
+      // signal exists to bound.
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(init.signal.reason));
+      });
+    }
+    throw new Error(`unexpected request: ${url}`);
+  };
+
+  const { fetchLatestRelease } = await import(`../api/_github-release.js?t=${Date.now()}`);
+  const release = await fetchLatestRelease('WorldMonitor-Test', 50);
+  assert.equal(release, null, 'the degraded path is null, which both public callers already handle');
+});
