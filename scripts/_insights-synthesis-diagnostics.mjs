@@ -89,6 +89,25 @@ export function shouldSkipInsightsSynthesis({
   return previous.failedStoriesSignature === synthesisSignature;
 }
 
+// Operator-facing warning for an open breaker. Uses sameSignatureFailures —
+// the count that actually armed the skip — never producer-wide
+// consecutiveFailures, which provider noise can inflate past the threshold
+// while only three matching prompt/failure repeats opened the breaker
+// (#7255 review).
+export function formatInsightsBreakerOpenWarning(previousMeta) {
+  const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : {};
+  const code = typeof previous.lastSynthesisFailureCode === 'string'
+    && previous.lastSynthesisFailureCode.length > 0
+    ? previous.lastSynthesisFailureCode
+    : 'unknown';
+  const repeats = Number.isInteger(previous.sameSignatureFailures) && previous.sameSignatureFailures > 0
+    ? previous.sameSignatureFailures
+    : 0;
+  return `  [brief_synthesis] breaker open: ${code} `
+    + `x${repeats} on an unchanged story set — `
+    + 'skipping synthesis spend until the stories change';
+}
+
 // This map refines only the final gate stage. Missing-cluster and parse
 // failures are classified by the earlier stage checks below.
 const INSIGHTS_GATE_REASON_CODES = new Map([

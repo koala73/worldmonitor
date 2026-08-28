@@ -15,6 +15,7 @@ import {
   INSIGHTS_SYNTHESIS_FAILURE_CODES,
   classifyInsightsSynthesisFailure,
   composeInsightsSynthesis,
+  formatInsightsBreakerOpenWarning,
   insightsSynthesisSignature,
   resolveInsightsSynthesis,
   shouldSkipInsightsSynthesis,
@@ -663,6 +664,19 @@ test('the breaker opens on the per-signature counter, never the producer-wide on
   );
   assert.equal(shouldSkipInsightsSynthesis({ previousMeta: null, synthesisSignature: sig }), false);
   assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), synthesisSignature: null }), false);
+
+  // Inflated wide counter: operator-facing log must report the three matching
+  // repeats that armed the breaker, not consecutiveFailures after provider noise.
+  const warning = formatInsightsBreakerOpenWarning(meta({
+    consecutiveFailures: 10,
+    sameSignatureFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE,
+  }));
+  assert.match(warning, /INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN x3 /);
+  assert.equal(
+    warning.includes('x10'),
+    false,
+    'an open breaker must not report the noise-inflated wide counter',
+  );
 });
 
 test('the per-signature counter increments only on an EXACT repeat and resets on any change', () => {

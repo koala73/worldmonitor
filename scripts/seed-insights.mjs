@@ -39,6 +39,7 @@ import {
   resolveInsightsSynthesis,
   insightsSynthesisSignature,
   shouldSkipInsightsSynthesis,
+  formatInsightsBreakerOpenWarning,
 } from './_insights-synthesis-diagnostics.mjs';
 export {
   INSIGHTS_COMPOSER_THREW,
@@ -923,11 +924,7 @@ async function fetchInsights() {
     synthesisSignature: storiesSignature,
   });
   if (synthesisBreakerOpen) {
-    console.warn(
-      `  [brief_synthesis] breaker open: ${previousFreshnessMeta?.lastSynthesisFailureCode} `
-      + `x${previousFreshnessMeta?.sameSignatureFailures} on an unchanged story set — `
-      + 'skipping synthesis spend until the stories change',
-    );
+    console.warn(formatInsightsBreakerOpenWarning(previousFreshnessMeta));
   }
   const synthesisResult = hasBriefCluster && !synthesisBreakerOpen
     ? await callLLM(null, {
