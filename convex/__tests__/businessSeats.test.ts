@@ -277,6 +277,12 @@ describe("payments businessSeats inviteSeats", () => {
   });
 
   test("cross-domain corporate invitee is allowed for API Business", async () => {
+    // inviteSeats schedules sendBusinessInviteEmail via runAfter(0). Drain it
+    // on fake timers: a real-timer leak patches the previous DatabaseFake
+    // after later tests replace global.Convex, which convex-test reports as
+    // "Write outside of transaction …;_scheduled_functions".
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     const t = convexTest(schema, modules);
     await seedBusinessSubscription(t, {
       dodoSubscriptionId: "sub_business_003",
@@ -292,6 +298,8 @@ describe("payments businessSeats inviteSeats", () => {
     expect(result.invited).toEqual([
       expect.objectContaining({ email: "client@other.com", status: "created" }),
     ]);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
   });
 
   test("free-domain owner → OWNER_DOMAIN_NOT_CORPORATE", async () => {
