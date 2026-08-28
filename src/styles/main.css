@@ -1588,6 +1588,9 @@ canvas,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* The digest coverage row (#7085) joins as a full-width flex child and
+     wraps onto its own line; the brand/nav/copy children still fit one row. */
+  flex-wrap: wrap;
   padding: 12px 20px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -1645,6 +1648,20 @@ canvas,
   color: var(--text-dim);
 }
 
+/* #7085: digest coverage status row, mounted into the site footer by
+   StatusPanel. Text-only state disclosure — same muted mono treatment as the
+   footer copy, which already clears WCAG AA on this surface. */
+.site-footer .status-panel-container {
+  flex-basis: 100%;
+  order: 10;
+}
+.digest-coverage-row {
+  font-family: var(--font-mono, monospace);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  padding-top: 6px;
+}
+
 /* Mobile application navigation is injected with the hydrated shell but stays
    out of desktop layout entirely. */
 .mobile-tab-bar {
@@ -1652,8 +1669,24 @@ canvas,
 }
 
 @media (max-width: 768px) {
+  /* #7085: display:none on the whole footer removed the digest coverage row's
+     live region from the mobile accessibility tree (PR #7267 review). Keep the
+     footer in flow but collapse it: brand/nav/copy stay hidden, so it renders
+     zero-height until the coverage row mounts, then only the row shows. */
   .site-footer {
+    padding: 0;
+    border-top: none;
+  }
+
+  .site-footer > :not(.status-panel-container) {
     display: none;
+  }
+
+  .site-footer .status-panel-container {
+    border-top: 1px solid var(--border);
+    /* Clear the fixed mobile tab bar (58px + safe area) so the row's text is
+       reachable at full scroll, matching the .cached-mode-banner offset. */
+    padding: 8px 12px calc(8px + 58px + env(safe-area-inset-bottom, 0px));
   }
 
   .mobile-tab-bar {

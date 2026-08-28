@@ -218,6 +218,7 @@ describe('durable last-good wiring (#7084)', () => {
       'export function isRedisConfigured() { return s.redisConfigured !== false; }',
       'export async function runRedisPipeline(c) { s.pipelineCalls.push(c); return s.pipeline(c); }',
       'export async function runRedisTransaction(c) { s.transactionCalls.push(c); return s.transaction(c); }',
+      'export const REDIS_PIPELINE_TIMEOUT_MS = 5000;',
     ].join('\n');
     const result = await build({
       stdin: {

@@ -959,11 +959,16 @@ async function fetchInsights() {
   }
   // The acceptance gate is the composer itself (#6001), so the chain can never
   // accept output the composer would later reject.
+  // One read drives BOTH the prompt and the gate: symmetry between what the
+  // model sees and what grounds it is the whole point of the flag, and two
+  // separate reads could drift.
+  const promptMemberTitlesEnabled = process.env.INSIGHTS_PROMPT_MEMBER_TITLES === '1';
   const synthesisComposerOptions = {
     briefCluster,
     validatorMode: BRIEF_VALIDATOR_MODE,
     sanitizeTitle,
     sourceFromStory: briefSourceFromStory,
+    promptScopedMembers: promptMemberTitlesEnabled,
   };
   const { accept: composeFromText, lastRejection } = createSynthesisAcceptor(topStories, synthesisComposerOptions);
 
@@ -979,7 +984,9 @@ async function fetchInsights() {
   // The signature hashes the exact prompts callLLM is about to send — computed
   // here, passed there, one source of truth.
   const synthesisSystem = synthesisSystemPrompt(new Date().toISOString().split('T')[0]);
-  const synthesisUser = synthesisUserPrompt(topStories);
+  const synthesisUser = synthesisUserPrompt(topStories, {
+    includeMemberTitles: promptMemberTitlesEnabled,
+  });
   const storiesSignature = insightsSynthesisSignature(synthesisSystem, synthesisUser);
   const synthesisBreakerOpen = hasBriefCluster && shouldSkipInsightsSynthesis({
     previousMeta: previousFreshnessMeta,
