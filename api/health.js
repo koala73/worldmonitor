@@ -2142,23 +2142,6 @@ function classifyKey(name, redisKey, opts, ctx) {
   // takes the opposite policy on the same unknown state.
   const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
     && ctx.activationStates?.get(name) !== true;
-  // POSITIVE proof that this adapter has never published: its durable marker
-  // was READ and came back absent (readExistsFlags is three-valued — `false`
-  // means read-and-absent, a missing entry means unknown). Unknown earns
-  // nothing here, matching the #6095 rule the content-freshness grace follows.
-  //
-  // Why this exists (2026-08-28): a key in BOTH ON_DEMAND_KEYS and
-  // EMPTY_DATA_OK_KEYS could never reach the on-demand arm of the absent
-  // branch, because the EMPTY_DATA_OK arm is tested first and resolves to
-  // `seedStale === true ? 'STALE_SEED' : 'OK'`. readSeedMeta initialises
-  // `seedStale = true` and only overwrites it from a real `fetchedAt`, so an
-  // adapter that has NEVER run — no data key, no seed-meta, no credential —
-  // read as STALE_SEED: "the seeder stopped", about a seeder that was never
-  // provisioned. imdCycloneMarine (IMD_API_KEY absent, Railway cron unbuilt,
-  // #7005) alarmed exactly that way while every guard meant to cover it —
-  // ON_DEMAND_KEYS, the activation marker, allowOnDemand on STANDALONE_KEYS —
-  // was correctly configured and simply unreachable.
-  const neverActivated = isOnDemand && ctx.activationStates?.get(name) === false;
   // Unlike ON_DEMAND, runtime rollout windows need no per-registry opt-in
   // (`allowOnDemand`): each window is bounded by a deployment-relative deadline
   // supplied through ctx.rolloutPendingUntilMs and revoked by a durable marker.
@@ -2222,6 +2205,14 @@ function classifyKey(name, redisKey, opts, ctx) {
     resilienceCacheState,
     failedDatasets,
   } = meta;
+  // A missing marker can result from a swallowed marker write or Redis
+  // restore, so it is not enough to establish pre-activation by itself. Grant
+  // the on-demand grace only when the marker was read absent and neither the
+  // current payload nor readable seed metadata shows a prior publication.
+  const isPreActivationOnDemand = isOnDemand
+    && !hasData
+    && !hasMeta
+    && ctx.activationStates?.get(name) === false;
   const rankableRecordCount = name === 'educationAttainment' && Object.hasOwn(ctx, 'educationPayloadRankableCount')
     ? ctx.educationPayloadRankableCount
     : metaRankableCount;
@@ -2320,13 +2311,9 @@ function classifyKey(name, redisKey, opts, ctx) {
     // warn on that path while the sibling `sourceState` path (where staleness
     // IS measured) correctly reported EMPTY. One physical state, two verdicts.
     else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && (seedStale !== true || fault)) absent = 'EMPTY';
-    // Ahead of EMPTY_DATA_OK_KEYS on purpose, and ONLY on positive proof: an
-    // adapter that has demonstrably never published has no seed to be stale.
-    // Keys without an activation marker are `unknown`, never `false`, so they
-    // keep their existing verdict — this arm cannot silence a producer that
-    // has run and then stopped, which is what EMPTY_DATA_OK_KEYS' STALE_SEED
-    // is for.
-    else if (neverActivated) absent = 'EMPTY_ON_DEMAND';
+    // Ahead of EMPTY_DATA_OK_KEYS only when no readable publication evidence
+    // exists. Marker absence alone never overrides normal data/meta semantics.
+    else if (isPreActivationOnDemand) absent = 'EMPTY_ON_DEMAND';
     else if (EMPTY_DATA_OK_KEYS.has(name)) absent = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) absent = 'EMPTY_ON_DEMAND';
     // Deliberately the ONLY branch rollout softening touches: an absent data
@@ -2361,10 +2348,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   else if (records === 0) {
     // hasData is true in this branch, so cascade can never apply (isCascadeCovered
     // short-circuits when hasData=true). Cascade only shields wholly absent keys.
-    // Same precedence as the absent branch above: a proven-never-activated
-    // adapter that published a zero-record placeholder is dormant, not stale.
-    if (neverActivated) status = 'EMPTY_ON_DEMAND';
-    else if (ZERO_RECORD_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
+    if (ZERO_RECORD_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY_DATA';
   } else if (seedStale === true) status = 'STALE_SEED';

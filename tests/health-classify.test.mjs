@@ -2199,20 +2199,18 @@ test('china coverage: UNAVAILABLE is never debounced', () => {
 });
 
 
-// ── never-activated adapters are dormant, not stale (imdCycloneMarine) ──────
+// ── fully unobserved on-demand adapters are dormant (imdCycloneMarine) ──────
 // imdCycloneMarine sits in BOTH ON_DEMAND_KEYS and EMPTY_DATA_OK_KEYS. The
 // EMPTY_DATA_OK arm is tested first and resolves to
 // `seedStale === true ? 'STALE_SEED' : 'OK'`; readSeedMeta initialises
-// seedStale=true and only overwrites it from a real fetchedAt. So an adapter
-// with NO data key, NO seed-meta and no credential read STALE_SEED — "the
-// seeder stopped" about a seeder never provisioned (IMD_API_KEY absent,
-// Railway cron unbuilt, #7005) — and the freshness monitor alarmed on it,
-// because its on-demand excuse list covers only EMPTY/EMPTY_DATA/
-// EMPTY_ON_DEMAND, never STALE_SEED.
+// seedStale=true and only overwrites it from a real fetchedAt. The narrow
+// pre-activation grace applies only when data and readable metadata are both
+// absent; marker absence alone can result from a failed marker write or a
+// restore and cannot override publication evidence.
 
 const IMD_MARKER_ABSENT = { imdCycloneMarine: false };
 
-test('classifyKey: a never-activated on-demand adapter reads EMPTY_ON_DEMAND, not STALE_SEED', () => {
+test('classifyKey: an unobserved on-demand adapter reads EMPTY_ON_DEMAND, not STALE_SEED', () => {
   const entry = classifyKey(
     'imdCycloneMarine',
     STANDALONE_KEYS.imdCycloneMarine,
@@ -2225,18 +2223,36 @@ test('classifyKey: a never-activated on-demand adapter reads EMPTY_ON_DEMAND, no
     'the freshness monitor must excuse it — that is the point of the change');
 });
 
-test('classifyKey: a zero-record placeholder from a never-activated adapter is also dormant', () => {
+test('classifyKey: marker absence does not excuse an absent payload with stale seed metadata', () => {
   const entry = classifyKey(
     'imdCycloneMarine',
     STANDALONE_KEYS.imdCycloneMarine,
     { allowOnDemand: true },
     makeCtx({
-      strens: { [STANDALONE_KEYS.imdCycloneMarine]: 64 },
-      metaValues: { [SEED_META.imdCycloneMarine.key]: seedMeta({ recordCount: 0 }) },
+      metaValues: {
+        [SEED_META.imdCycloneMarine.key]: seedMeta({ fetchedAt: NOW - 46 * ONE_MIN_MS, recordCount: 0 }),
+      },
       activationStates: IMD_MARKER_ABSENT,
     }),
   );
-  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.ok(!isOnDemandProblem({ status: entry.status, onDemand: true }));
+});
+
+test('classifyKey: marker absence preserves normal fresh and stale zero-record outcomes', () => {
+  const classifyZeroRecord = (fetchedAt) => classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.imdCycloneMarine]: 64 },
+      metaValues: { [SEED_META.imdCycloneMarine.key]: seedMeta({ fetchedAt, recordCount: 0 }) },
+      activationStates: IMD_MARKER_ABSENT,
+    }),
+  );
+
+  assert.equal(classifyZeroRecord(NOW - ONE_MIN_MS).status, 'OK');
+  assert.equal(classifyZeroRecord(NOW - 46 * ONE_MIN_MS).status, 'STALE_SEED');
 });
 
 test('classifyKey: once ACTIVATED, the same adapter is strict again', () => {
