@@ -379,10 +379,14 @@ export default {
     }
 
     // `?tier=<fast|slow>&public=1` is answered by api/bootstrap.js with the public shape, so the
-    // edge reproduces it on BOTH paths (#7308). One shape for one URL: the KV-served bytes and the
-    // origin fallback answer the same request, and a response whose CORS/caching shape depends on
-    // which path happened to win the hedge is the harder thing to reason about, not the safer one.
-    // A fixed bag rather than a status-dependent builder — public is public at every status here.
+    // edge reproduces it on BOTH paths (#7308). One CORS shape for one URL: the KV-served bytes and
+    // the origin fallback answer the same request, and a response whose CORS shape depends on which
+    // path won the hedge is the harder thing to reason about, not the safer one. A fixed bag rather
+    // than a status-dependent builder — public is public at every status here.
+    //
+    // Scoped to CORS on purpose. The browser CACHE directive still differs by path (KV `no-store`,
+    // origin `TIER_CACHE[tier]`) and that is deliberate, for reasons that belong to the KV path
+    // rather than this one — see kv-serve.js#serveFromKv. Do not read this as a caching invariant.
     const publicTier = bootstrapTierFromPublicRequest(request, url);
     const publicBootstrapShape = publicTier !== null && (!origin || isAllowedOrigin(origin));
     const corsPolicy = publicBootstrapShape

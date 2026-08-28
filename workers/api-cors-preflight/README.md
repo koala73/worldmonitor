@@ -58,9 +58,10 @@ npm run deploy
 cd workers/api-cors-preflight && npm test
 
 # Live smoke test against prod. Gated by env var so it doesn't run in PR gates
-# (false positives during deploys). Run this AFTER a Worker deploy: it is the
-# only guard that reads the bytes users receive, including the KV-served
-# bootstrap tiers that never reach api/bootstrap.js.
+# (false positives during deploys). CI already runs it after every Worker deploy
+# (the live-smoke job); run it by hand to check the currently-deployed Worker.
+# It is the only guard that reads the bytes users receive, including the
+# KV-served bootstrap tiers that never reach api/bootstrap.js.
 LIVE_SMOKE=1 tsx --test tests/cors-preflight-live.test.mjs
 ```
 
@@ -108,11 +109,16 @@ Two deliberate carve-outs inside the exception:
   `src/kv-serve.js#serveFromKv`. The origin fallback for the same URL does sit
   behind Vercel's CDN and keeps its `CDN-Cache-Control` shield untouched.
 
+Note the second carve-out means the browser cache directive for one URL differs
+by which path answered (`no-store` from KV, `TIER_CACHE[tier]` from the origin).
+The CORS shape is unified; caching deliberately is not.
+
 `tests/cors-preflight-live.test.mjs` asserts all of this against a **deployed**
-URL. The handler-level guard in `api/bootstrap-auth.test.mjs` cannot: it calls
-`handler()` directly, so it never sees what the edge does to the bytes
-afterwards. Both read the same assertions from
-`tests/helpers/public-bootstrap-contract.mjs`.
+URL, and the `live-smoke` job in `.github/workflows/deploy-worker.yml` runs it
+automatically after every Worker deploy. The handler-level guard in
+`api/bootstrap-auth.test.mjs` cannot: it calls `handler()` directly, so it never
+sees what the edge does to the bytes afterwards. Both read the same assertions
+from `tests/helpers/public-bootstrap-contract.mjs`.
 
 ## Related learning
 
