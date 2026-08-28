@@ -44,14 +44,11 @@ tags: [status-panel, digest-coverage, detached-dom, accessibility, aria-live, mo
 
 ## Solution
 
-**The fix is pending.** Issue #7085 has been reopened at P1 on 2026-08-28; nothing has been implemented yet. What is *complete and verified* is the diagnosis: the element is provably unreachable at `origin/main` as of this writing, established by three greps against source and corroborated by a live-browser accessibility-tree probe (session history).
+**The fix ships with this doc in PR #7267** (issue #7085 stays open for its post-deploy gates: live browser verification and the MCP proof). The diagnosis was verified first: the element was provably unreachable at `origin/main` pre-fix, established by three greps against source and corroborated by a live-browser accessibility-tree probe (session history).
 
-The required fix has two parts, and neither is optional:
+The fix has two parts, and neither is optional:
 
-**1. Give the coverage row a real home in the document.** Either:
-
-- *Mount the panel.* Attach `statusPanel.getElement()` to a live dashboard region at construction time in `setupStatusPanel()` (`src/app/event-handlers.ts:1660-1669`), or register the panel into `this.ctx.panels` so the existing `src/app/panel-layout.ts` mounting path picks it up. If the panel is mounted, `src/components/StatusPanel.ts:88` must stop replacing the base-class element (or the replacement must happen before anything captures a reference), and the component needs real styling — `status-panel-container` has no CSS today.
-- *Or render the row somewhere already mounted.* Drop the append at `src/components/StatusPanel.ts:125` and emit the coverage line into an existing, visible status/footer region instead. This is the smaller change and does not resurrect a component whose rendering was deliberately removed; `StatusPanel` then stays honestly a data sink, and the #7085 UI lands where users actually look.
+**1. Give the coverage row a real home in the document.** The shipped shape (PR #7267): `updateDigestCoverage()` self-mounts the panel element into the always-present `footer.site-footer` on first update, guarded by `isConnected` so it no-ops if anything else ever mounts the panel and self-heals if the footer is re-rendered. The site footer is what #7085 itself asked for ("a compact dashboard footer or status row"), it exists from layout Phase 1 — long before the first digest load — and a document without one (a non-dashboard page, a bare test) leaves the row detached rather than throwing. The alternative considered and rejected: mounting from `setupStatusPanel()` in `event-handlers.ts`, which matches the sibling `setup*()` convention but is untestable there (nothing constructs `EventHandlerManager` in tests — its only test is a source-grep, the toothless wiring-guard shape).
 
 **2. Lock it with an assertion that requires the document.** A test that reads the element out of the component under test cannot distinguish mounted from detached. The regression test must start from `document`:
 
