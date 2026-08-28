@@ -269,14 +269,29 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
     voidByReason[reason] = (voidByReason[reason] || 0) + 1;
   }
 
-  const sealedFirstAttempt = judgedResolved.filter((entry) => attemptCount(entry) <= 1).length;
-  const withinSla = judgedResolved.filter((entry) => {
+  // The acceptance metric is SCORED-within-SLA, not resolved-within-SLA: a lane
+  // that seals everything as VOID on day one resolves 100% within SLA while
+  // resolving nothing. VOIDs stay in the denominator so they depress the rate,
+  // and `voidWithinSla` sits beside it so the compensating failure-state
+  // increase the acceptance criteria warn about is visible rather than hidden.
+  const withinSla = (entry) => {
     const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
     const resolvedAt = Number(entry?.resolvedAt);
     if (!Number.isFinite(deadline) || !Number.isFinite(resolvedAt)) return false;
     return resolvedAt - deadline <= slaMs;
-  }).length;
-  const totalAttempts = judgedResolved.reduce((sum, entry) => sum + attemptCount(entry), 0);
+  };
+  const scoredWithinSla = judgedResolved.filter((entry) => isScoredEntry(entry) && withinSla(entry)).length;
+  const voidWithinSla = judgedResolved.filter((entry) => entry?.outcome === 'VOID' && withinSla(entry)).length;
+
+  // Attempt metrics are derived only from entries carrying an attempt log.
+  // Before this instrumentation `judgeAttempts` counted failed attempts only —
+  // the sealing attempt was never recorded — so a legacy entry that failed once
+  // and then sealed reads as a first-attempt seal. Mixing the two accounting
+  // regimes inside one 180-day window would silently flatter both numbers.
+  const instrumented = judgedResolved.filter((entry) => Array.isArray(entry?.judgeAttemptLog) && entry.judgeAttemptLog.length);
+  const sealedFirstAttempt = instrumented.filter((entry) => attemptCount(entry) === 1).length;
+  const totalAttempts = instrumented.reduce((sum, entry) => sum + attemptCount(entry), 0);
+
   const pendingPastDeadline = pendingJudge.filter((entry) => {
     const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
     return Number.isFinite(deadline) && nowMs >= deadline;
@@ -290,9 +305,14 @@ function summarizeJudgedLane(entries, resolved, pendingJudge, nowMs, options = {
     scored: judgedResolved.filter(isScoredEntry).length,
     void: judgedResolved.filter((entry) => entry?.outcome === 'VOID').length,
     voidByReason,
-    firstAttemptSealRate: judgedResolved.length ? round(sealedFirstAttempt / judgedResolved.length) : 0,
-    resolvedWithinSlaRate: judgedResolved.length ? round(withinSla / judgedResolved.length) : 0,
-    attemptsPerResolvedEntry: judgedResolved.length ? round(totalAttempts / judgedResolved.length) : 0,
+    scoredWithinSla,
+    voidWithinSla,
+    scoredWithinSlaRate: judgedResolved.length ? round(scoredWithinSla / judgedResolved.length) : 0,
+    // Denominator for the two attempt metrics below — 0 means they are not yet
+    // measurable, not that the lane seals on the first attempt.
+    instrumentedResolved: instrumented.length,
+    firstAttemptSealRate: instrumented.length ? round(sealedFirstAttempt / instrumented.length) : 0,
+    attemptsPerResolvedEntry: instrumented.length ? round(totalAttempts / instrumented.length) : 0,
     attemptRecords,
     attemptClasses: byClass,
     attemptStages: byStage,
@@ -307,9 +327,9 @@ function isJudgedEntry(entry) {
 function attemptCount(entry) {
   const attempts = Number(entry?.judgeAttempts);
   if (Number.isFinite(attempts) && attempts > 0) return Math.floor(attempts);
-  // A judged entry always cost at least the attempt that sealed it, even when
-  // it sealed before any counter was written.
-  return 1;
+  // Only reached for an instrumented entry, which always logged the attempt
+  // that sealed it.
+  return entry.judgeAttemptLog.length;
 }
 
 function summarizeGroups(scored, resolved, key, label) {

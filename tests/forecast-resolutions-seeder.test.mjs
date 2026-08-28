@@ -2115,15 +2115,54 @@ describe('judged attempt lifecycle instrumentation (#7068)', () => {
 
     assert.equal(lane.resolved, 1);
     assert.equal(lane.scored, 1);
+    assert.equal(lane.instrumentedResolved, 1);
     assert.equal(lane.firstAttemptSealRate, 1);
     assert.equal(lane.attemptsPerResolvedEntry, 1);
-    assert.equal(lane.resolvedWithinSlaRate, 1);
+    assert.equal(lane.scoredWithinSlaRate, 1);
     assert.deepEqual(lane.voidByReason, {});
 
     const voided = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: agreeingJudges('VOID') });
     assert.equal(voided.scorecard.judgedLane.void, 1);
     assert.equal(voided.scorecard.judgedLane.voidByReason.all_judges_void, 1);
     assert.equal(voided.scorecard.judgedLane.scored, 0, 'an early VOID must not read as a scored resolution');
+  });
+
+  it('an instant VOID drives the SLA rate to zero, not one', async () => {
+    const nowMs = T_DEADLINE + 2;
+    // The acceptance criteria forbid a renamed/early VOID satisfying them, so
+    // the SLA metric must count SCORED resolutions — a lane that voids
+    // everything immediately is maximally fast and maximally useless.
+    const voided = await runCycle(coveredArchive(nowMs), nowMs, { judgeModels: agreeingJudges('VOID') });
+    const lane = voided.scorecard.judgedLane;
+
+    assert.equal(lane.resolved, 1);
+    assert.equal(lane.scoredWithinSla, 0);
+    assert.equal(lane.scoredWithinSlaRate, 0, 'voiding everything must not report a perfect SLA rate');
+    assert.equal(lane.voidWithinSla, 1, 'the compensating failure-state increase is visible beside the rate');
+  });
+
+  it('excludes pre-instrumentation entries from the attempt metrics', () => {
+    // A legacy entry sealed before this instrumentation counted only its FAILED
+    // attempts in judgeAttempts, so judgeAttempts===1 there means "failed once
+    // then sealed" — two attempts. Counting it would report a first-attempt
+    // seal that never happened.
+    const legacy = {
+      id: 'fc-legacy',
+      status: 'resolved',
+      outcome: 'YES',
+      probability: 0.7,
+      deadline: T_DEADLINE,
+      resolvedAt: T_DEADLINE + 1,
+      spec: { kind: 'judged', deadline: T_DEADLINE },
+      judgeAttempts: 1,
+      evidence: { kind: 'judged', reason: 'dual_model_agreement' },
+    };
+    const lane = computeScorecard({ [`fc-legacy@${T_DEADLINE}`]: legacy }, T_DEADLINE + DAY_MS).judgedLane;
+
+    assert.equal(lane.resolved, 1, 'the legacy entry still counts as resolved');
+    assert.equal(lane.instrumentedResolved, 0);
+    assert.equal(lane.firstAttemptSealRate, 0, 'not measurable is reported as 0, never as a perfect score');
+    assert.equal(lane.attemptsPerResolvedEntry, 0);
   });
 });
 
