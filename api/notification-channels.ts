@@ -545,7 +545,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         const { channelType, email, webhookEnvelope, webhookLabel } = body;
         if (!channelType) return finish(json({ error: 'channelType required' }, 400, corsHeaders));
 
-        if (webhookEnvelope) {
+        // Same predicate as the persist guard below (#7207): these two
+        // conditions guarded the same variable with different tests
+        // (truthiness here, definedness below), so webhookEnvelope: ''
+        // skipped validation entirely and was encrypted + stored as a junk
+        // channel config. The validator rejects empty/blank itself, so the
+        // gap value now 400s instead of persisting.
+        if (webhookEnvelope !== undefined) {
           try {
             await assertNotificationWebhookRegistrationUrlSafe(webhookEnvelope);
           } catch (error) {

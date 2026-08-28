@@ -530,6 +530,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Purchase-order billing",
       "SAML SSO, SCIM",
       "Custom security and privacy settings",
+      "Fully white-labeled — with or without revenue sharing",
     ],
     selfServe: false,
     highlighted: false,

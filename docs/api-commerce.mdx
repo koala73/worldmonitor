@@ -32,7 +32,7 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 ### `GET /api/product-catalog`
 
-Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v2` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to the generated `FALLBACK_PRICES` in `_product-catalog.generated.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
+Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v3` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to the generated `FALLBACK_PRICES` in `_product-catalog.generated.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
 
 **Response** (tiers ordered `free`, `pro`, `pro_business`, `api_starter`, `api_business`, `enterprise`):
 

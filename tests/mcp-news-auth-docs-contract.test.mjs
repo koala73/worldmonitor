@@ -179,7 +179,10 @@ describe('MCP news/auth public contract', () => {
       { worldBrief: 'Degraded but non-empty', status: 'degraded' },
       { status: 'unknown' },
       { status: undefined },
-      { generatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+      // A merely-OLD snapshot is deliberately absent from this list: it is now
+      // served as last-known-good with stale:true rather than failing
+      // (WORLDMONITOR-YJ), asserted in the sibling case below. An UNPARSEABLE
+      // timestamp stays — that is corruption, not age.
       { generatedAt: 'not-a-timestamp' },
       { topStories: [], generatedAt: new Date().toISOString() },
       { worldBriefSources: [], generatedAt: new Date().toISOString() },
@@ -199,6 +202,21 @@ describe('MCP news/auth public contract', () => {
           && /world brief unavailable/i.test(error.message),
       );
     }
+  });
+
+  it('serves an old-but-intact snapshot as flagged last-known-good (WORLDMONITOR-YJ)', () => {
+    // The counterpart to the entry removed from rejectedPayloads above. Keeps
+    // this contract suite covering staleness rather than losing the case: the
+    // producer preserves LKG when synthesis fails, so refusing it 60 minutes
+    // later handed Pro callers an error while a complete brief sat in Redis
+    // for another two hours.
+    return captureRpcFetches('get_world_brief', {}, {
+      insights: { generatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+    }).then(({ result }) => {
+      assert.ok(result?.brief, `expected a served brief, got ${JSON.stringify(result).slice(0, 200)}`);
+      assert.equal(result.stale, true, 'must be flagged stale');
+      assert.ok(result.ageMinutes >= 118, `ageMinutes should be ~120, got ${result.ageMinutes}`);
+    });
   });
 
   it('preserves producer citation indexes when one source has no usable URL', async () => {
