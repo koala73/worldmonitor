@@ -1749,13 +1749,19 @@ export function createDomainGateway(
       }
     }
 
-    // Route matching — if POST doesn't match, convert to GET for stale clients
+    // Route matching — if POST doesn't match, convert to GET for stale clients.
+    // Strict compatibility 400s stay pending until the normal endpoint/global
+    // limiter path runs so malformed or nested bodies still consume the GET
+    // route's abuse budget. The pending response is returned before
+    // direct-LLM quota and handler dispatch.
     let matchedHandler = router.match(request);
+    let pendingPostToGetCompatError: Response | null = null;
     if (!matchedHandler && request.method === 'POST') {
       if (isPostToGetCompatibleBodySize(request.headers)) {
         const url = new URL(request.url);
         const getProbe = new Request(url.toString(), { method: 'GET', headers: request.headers });
-        if (router.match(getProbe)) {
+        const probeHandler = router.match(getProbe);
+        if (probeHandler) {
           let bodyText: string;
           try {
             bodyText = await request.clone().text();
@@ -1768,16 +1774,18 @@ export function createDomainGateway(
           }
           const parsed = parsePostToGetCompatBody(bodyText);
           if (parsed.status !== 'ok') {
-            emitRequest(400, 'malformed_request', null);
-            return new Response(JSON.stringify(postToGetCompatErrorBody(parsed)), {
+            pendingPostToGetCompatError = new Response(JSON.stringify(postToGetCompatErrorBody(parsed)), {
               status: 400,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
             });
+            matchedHandler = probeHandler;
+            request = getProbe;
+          } else {
+            applyPostToGetCompatFields(url.searchParams, parsed.fields);
+            const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+            matchedHandler = router.match(getReq);
+            if (matchedHandler) request = getReq;
           }
-          applyPostToGetCompatFields(url.searchParams, parsed.fields);
-          const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
-          matchedHandler = router.match(getReq);
-          if (matchedHandler) request = getReq;
         }
       }
     }
@@ -2018,6 +2026,11 @@ export function createDomainGateway(
           return rateLimitResponse;
         }
       }
+    }
+
+    if (pendingPostToGetCompatError) {
+      emitRequest(400, 'malformed_request', null);
+      return pendingPostToGetCompatError;
     }
 
     if (requiresDirectLlmQuota && !isEnterpriseAuth) {
