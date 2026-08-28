@@ -6,9 +6,8 @@
  * relay scripts are runtime side-effect modules with no exports — the same
  * pattern used by tests/notification-relay-effective-sensitivity.test.mjs.
  *
- * The actual VTEC parser (deriveWeatherCoalesceKey in ais-relay.cjs) is
- * exercised here too via a minimal re-implementation extracted from the
- * source. If the source diverges, this test will fail and force an update.
+ * The actual VTEC parser (deriveWeatherCoalesceKey in _weather-alert-select.mjs)
+ * is imported and exercised directly.
  *
  * See docs/archive/plans/forbid-realtime-all-events.md "Out of scope: Slot B".
  *
@@ -22,6 +21,8 @@ import { createRequire } from 'node:module';
 import Module from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { deriveWeatherCoalesceKey } from '../scripts/_weather-alert-select.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -385,14 +386,7 @@ describe('seed-aviation publishNotificationEvent — Slot B publisher dedup', ()
 });
 
 describe('ais-relay deriveWeatherCoalesceKey — VTEC parser', () => {
-  // Mini re-implementation that mirrors the source. If the parser shape changes,
-  // both this test fixture and the source need updating in lockstep.
-  function deriveWeatherCoalesceKey(vtec) {
-    if (typeof vtec !== 'string') return undefined;
-    const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
-    if (!m) return undefined;
-    return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
-  }
+  // Parser lives in _weather-alert-select.mjs (imported above).
 
   it('parses a typical NEW Severe Thunderstorm Warning VTEC into a stable family key', () => {
     const vtec = '/O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/';
@@ -491,38 +485,52 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
     );
   });
 
-  it('selects 3 DISTINCT families before slicing — distinct families never lost (PR #3467 review P1)', () => {
-    // Without this: if the first 3 raw alerts are 3 adjacent zones of one VTEC
-    // family, publisher dedup collapses them to 1 notification AND a 4th
-    // genuinely-distinct family at index 3+ is never considered. Net silent
-    // loss of legit events. Fix: dedupe BY family key FIRST, then take top 3.
+  it('selects DISTINCT families via selectWeatherNotifyAlerts — never a global top-3 slice (PR #3467 / #7243)', () => {
+    // Without country floors: if nine CH Extreme lead the severity list, a
+    // global top-3 of distinct families starves every other country's
+    // subscribers (issue #7243). Family dedupe still happens first inside
+    // selectWeatherNotifyAlerts (PR #3467 VTEC-zone collapse).
     assert.match(
       aisRelaySrc,
-      /seenFamilyKeys\s*=\s*new Set\(\)/,
-      'publisher must build a Set of seen family keys before publishing',
+      /selectWeatherNotifyAlerts\(alerts\)/,
+      'publisher must select notify candidates via selectWeatherNotifyAlerts',
     );
     assert.match(
       aisRelaySrc,
       /distinctFamilyAlerts/,
-      'publisher must accumulate distinct-family alerts (not raw .slice(0, 3))',
+      'publisher must publish the selectWeatherNotifyAlerts result',
     );
-    // The naive `for (const a of highSeverityAlerts.slice(0, 3))` ordering is the bug; assert it's gone.
     assert.doesNotMatch(
       aisRelaySrc,
       /for\s*\(const\s+a\s+of\s+highSeverityAlerts\.slice\(0,\s*3\)\)/,
       'publisher must NOT iterate highSeverityAlerts.slice(0, 3) directly — that loses distinct families',
+    );
+    assert.doesNotMatch(
+      aisRelaySrc,
+      /distinctFamilyAlerts\.length\s*>=\s*3/,
+      'publisher must not hard-cap at a global top-3 after multi-country weather',
     );
     // Family-key fallback uses source + a stable per-alert identity so VTEC-less
     // NWS/ECCC/SWIC alerts still dedupe against themselves without colliding
     // across authorities. A hardcoded `nws:fallback:` prefix would swallow SWIC
     // rows into an NWS family when ids overlap.
     assert.match(
-      aisRelaySrc,
-      /deriveWeatherCoalesceKey\(a\.vtec\)\s*\n?\s*\?\?\s*`\$\{a\.source \|\| 'weather'\}:\$\{a\.id/,
+      weatherSelectSrc,
+      /deriveWeatherCoalesceKey\(alert\?\.vtec\)\s*\n?\s*\?\?\s*`\$\{alert\?\.source \|\| 'weather'\}:\$\{alert\?\.id/,
       'family-key fallback must include source plus a stable per-alert identity (id || headline || event)',
     );
+    assert.match(
+      weatherSelectSrc,
+      /WEATHER_NOTIFY_MAX_PER_TICK\s*=\s*\d+/,
+      'notify fan-out must declare an explicit per-tick cap next to the constant',
+    );
+    assert.match(
+      weatherSelectSrc,
+      /WEATHER_NOTIFY_PER_COUNTRY_FLOOR\s*=\s*\d+/,
+      'notify fan-out must declare a per-country floor so one country cannot starve others',
+    );
     assert.doesNotMatch(
-      aisRelaySrc,
+      weatherSelectSrc,
       /nws:fallback:/,
       'family-key fallback must not hardcode an NWS prefix on the shared weather:alerts:v1 path',
     );

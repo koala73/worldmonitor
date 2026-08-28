@@ -16,9 +16,12 @@ import {
   SWIC_MEMBERS_URL,
   SWIC_SOURCE_DECISION,
   WEATHER_ALERTS_SOURCE_VERSION,
+  WEATHER_NOTIFY_MAX_PER_TICK,
+  WEATHER_NOTIFY_PER_COUNTRY_FLOOR,
   calculateCentroid,
   carryFailedWeatherAlertSources,
   countryCodeFromSwicUrl,
+  deriveWeatherCoalesceKey,
   eligibleAlertCount,
   extractCoordinates,
   extractRings,
@@ -33,9 +36,11 @@ import {
   selectAlerts,
   selectEcccAlerts,
   selectSwicAlerts,
+  selectWeatherNotifyAlerts,
   validateSelectedAlerts,
   weatherAlertsAfterPublish,
   weatherAlertNotifyCountryCode,
+  weatherAlertNotifyFamilyKey,
   weatherAlertNotifyLocation,
   weatherAlertNotifySource,
 } from '../scripts/_weather-alert-select.mjs';
@@ -763,6 +768,189 @@ describe('WMO SWIC adapter on weather:alerts:v1', () => {
     );
   });
 
+  it('wires selectWeatherNotifyAlerts into the ais-relay weather publisher', () => {
+    assert.match(
+      AIS_RELAY_SOURCE,
+      /selectWeatherNotifyAlerts/,
+      'ais-relay must import and call selectWeatherNotifyAlerts for weather_alert fan-out',
+    );
+    assert.match(
+      AIS_RELAY_SOURCE,
+      /distinctFamilyAlerts\s*=\s*selectWeatherNotifyAlerts\(alerts\)/,
+    );
+    assert.doesNotMatch(
+      AIS_RELAY_SOURCE,
+      /distinctFamilyAlerts\.length\s*>=\s*3/,
+      'publisher must not hard-cap at a global top-3 after multi-country weather',
+    );
+  });
+});
+
+/**
+ * Pre-#7243 publisher: global top-3 distinct families by severity order.
+ * Kept here to prove the 2026-08-28 CH-heavy shape starves CA/US — the
+ * acceptance criterion that the regression went red against that behavior.
+ */
+function legacyGlobalTop3DistinctFamilies(alerts) {
+  const high = alerts.filter((a) => a.severity === 'Extreme' || a.severity === 'Severe');
+  const seen = new Set();
+  const out = [];
+  for (const a of high) {
+    const familyKey = weatherAlertNotifyFamilyKey(a);
+    if (seen.has(familyKey)) continue;
+    seen.add(familyKey);
+    out.push(a);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+/** Production-shaped fixture from issue #7243 (2026-08-28 bootstrap sample). */
+function chStarvesCaUsFixture() {
+  const alerts = [];
+  for (let i = 0; i < 9; i += 1) {
+    alerts.push({
+      id: `swic-ch-extreme-${i}`,
+      source: 'swic',
+      countryCode: 'CH',
+      severity: 'Extreme',
+      headline: 'Violent thunderstorm',
+      event: 'Violent thunderstorm',
+    });
+  }
+  alerts.push({
+    id: 'eccc-ca-severe-1',
+    source: 'eccc',
+    countryCode: 'CA',
+    severity: 'Severe',
+    headline: 'Severe thunderstorm warning',
+    event: 'Thunderstorm',
+  });
+  alerts.push({
+    id: 'nws-us-severe-1',
+    source: 'nws',
+    countryCode: 'US',
+    severity: 'Severe',
+    headline: 'Severe Thunderstorm Warning',
+    event: 'Severe Thunderstorm Warning',
+    vtec: '/O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/',
+  });
+  return alerts;
+}
+
+describe('selectWeatherNotifyAlerts — per-country fan-out (#7243)', () => {
+  it('characterizes legacy global top-3 starvation on the 2026-08-28 shape', () => {
+    const legacy = legacyGlobalTop3DistinctFamilies(chStarvesCaUsFixture());
+    assert.deepEqual(
+      [...new Set(legacy.map((a) => a.countryCode))],
+      ['CH'],
+      'pre-fix global top-3 must publish only CH — this is the red baseline',
+    );
+    assert.equal(legacy.length, 3);
+  });
+
+  it('still notifies CA and US when nine CH Extreme lead the severity list', () => {
+    const selected = selectWeatherNotifyAlerts(chStarvesCaUsFixture());
+    const countries = new Set(selected.map((a) => a.countryCode));
+    assert.ok(countries.has('CH'), 'CH Extreme must still get a floor slot');
+    assert.ok(countries.has('CA'), 'CA Severe must not be starved by CH Extreme stack');
+    assert.ok(countries.has('US'), 'US Severe must not be starved by CH Extreme stack');
+  });
+
+  it('collapses VTEC-duplicate zones before applying the country floor', () => {
+    const alerts = [
+      {
+        id: 'zone-a',
+        source: 'nws',
+        countryCode: 'US',
+        severity: 'Extreme',
+        vtec: '/O.NEW.KSGF.TO.W.0001.250427T1257Z-250427T1330Z/',
+        headline: 'Tornado Warning zone A',
+      },
+      {
+        id: 'zone-b',
+        source: 'nws',
+        countryCode: 'US',
+        severity: 'Extreme',
+        vtec: '/O.CON.KSGF.TO.W.0001.250427T1257Z-250427T1330Z/',
+        headline: 'Tornado Warning zone B',
+      },
+      {
+        id: 'ca-1',
+        source: 'eccc',
+        countryCode: 'CA',
+        severity: 'Severe',
+        headline: 'CA severe',
+      },
+    ];
+    const selected = selectWeatherNotifyAlerts(alerts);
+    assert.equal(
+      selected.filter((a) => a.countryCode === 'US').length,
+      1,
+      'adjacent-zone VTEC duplicates must count as one family',
+    );
+    assert.ok(selected.some((a) => a.countryCode === 'CA'));
+  });
+
+  it('bounds per-tick volume at WEATHER_NOTIFY_MAX_PER_TICK', () => {
+    const alerts = [];
+    for (let i = 0; i < WEATHER_NOTIFY_MAX_PER_TICK + 5; i += 1) {
+      const cc = String.fromCharCode(65 + (i % 26)) + String.fromCharCode(65 + Math.floor(i / 26));
+      alerts.push({
+        id: `alert-${i}`,
+        source: 'swic',
+        countryCode: cc,
+        severity: 'Extreme',
+        headline: `Storm ${i}`,
+      });
+    }
+    const selected = selectWeatherNotifyAlerts(alerts);
+    assert.equal(selected.length, WEATHER_NOTIFY_MAX_PER_TICK);
+    assert.equal(WEATHER_NOTIFY_PER_COUNTRY_FLOOR, 1);
+    assert.ok(WEATHER_NOTIFY_MAX_PER_TICK >= 3);
+  });
+
+  it('prefers Extreme-country floors when country count exceeds the cap', () => {
+    const alerts = [];
+    for (let i = 0; i < WEATHER_NOTIFY_MAX_PER_TICK; i += 1) {
+      // Valid ISO2-shaped codes so weatherAlertNotifyCountryCode keeps them distinct.
+      const countryCode = String.fromCharCode(65 + i) + 'X';
+      alerts.push({
+        id: `extreme-${i}`,
+        source: 'swic',
+        countryCode,
+        severity: 'Extreme',
+        headline: `Extreme ${i}`,
+      });
+    }
+    alerts.push({
+      id: 'severe-only',
+      source: 'swic',
+      countryCode: 'ZZ',
+      severity: 'Severe',
+      headline: 'Severe only country',
+    });
+    const selected = selectWeatherNotifyAlerts(alerts);
+    assert.equal(selected.length, WEATHER_NOTIFY_MAX_PER_TICK);
+    assert.ok(
+      !selected.some((a) => a.countryCode === 'ZZ'),
+      'Severe-only country loses its floor when Extreme countries already fill the cap',
+    );
+  });
+
+  it('exports deriveWeatherCoalesceKey with the VTEC family contract', () => {
+    assert.equal(
+      deriveWeatherCoalesceKey('/O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/'),
+      'nws:KSGF.SV.W.0034',
+    );
+    assert.equal(
+      weatherAlertNotifyFamilyKey({ source: 'swic', id: 'abc', headline: 'x' }),
+      'swic:abc',
+    );
+  });
+});
+
+describe('weather alert selection (continued wiring)', () => {
   it('pins the SWIC host, rejects redirects, and caps response bytes', async () => {
     await assert.rejects(
       fetchApprovedWeatherJson('https://example.test/wmo_all.json', {

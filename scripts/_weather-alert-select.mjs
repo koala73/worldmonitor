@@ -215,6 +215,140 @@ export function weatherAlertNotifyCountryCode(alert) {
   return /^[A-Z]{2}$/.test(code) ? code : undefined;
 }
 
+/**
+ * NWS VTEC → stable event-family key for coalesce/dedup.
+ *
+ * NWS VTEC format (https://www.weather.gov/vtec/):
+ *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
+ *    │  │   │   │  │  │
+ *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
+ *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
+ *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
+ *    │  │   └──────────── forecast office (4-letter ICAO)
+ *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
+ *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
+ *
+ * The (office, phenomenon, significance, eventID) tuple identifies one logical
+ * event across adjacent zones. Action is dropped so NEW+CON+CAN collapse.
+ * Returns e.g. "nws:KSGF.SV.W.0034", or undefined when VTEC is missing/malformed.
+ */
+export function deriveWeatherCoalesceKey(vtec) {
+  if (typeof vtec !== 'string') return undefined;
+  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
+  if (!m) return undefined;
+  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
+}
+
+/**
+ * Distinct-family identity for notify selection. Prefer VTEC coalesce key;
+ * fall back to source + stable per-alert identity so VTEC-less SWIC/ECCC
+ * rows dedupe against themselves without colliding across authorities.
+ */
+export function weatherAlertNotifyFamilyKey(alert) {
+  return deriveWeatherCoalesceKey(alert?.vtec)
+    ?? `${alert?.source || 'weather'}:${alert?.id || alert?.headline || alert?.event || ''}`;
+}
+
+// Per-country floor so one country's Extreme stack cannot consume the whole
+// weather_alert publish budget (issue #7243). Payload merge already floors
+// per source (PER_SOURCE_FLOOR); this is the notification-layer twin.
+// Remaining slots fill by severity. Cap bounds publisher volume per 15-min
+// tick — raise when CAP coverage grows past this (each new national source
+// increases how many countries can compete for a floor). publishNotificationEvent
+// dedup (1800s) already suppresses re-notify of the same family across ticks.
+export const WEATHER_NOTIFY_PER_COUNTRY_FLOOR = 1;
+export const WEATHER_NOTIFY_MAX_PER_TICK = 12;
+
+/**
+ * Choose which Extreme/Severe alerts to publish this tick.
+ *
+ * 1. Collapse to distinct families (VTEC / source:id).
+ * 2. Floor: top `perCountryFloor` families per country (countries ordered by
+ *    their best family's severity so Extreme countries keep a slot when the
+ *    country count exceeds `maxPerTick`).
+ * 3. Fill leftover slots by severity up to `maxPerTick`.
+ *
+ * Input should be the severity-sorted merged payload (mergeAlertSources output).
+ */
+export function selectWeatherNotifyAlerts(
+  alerts,
+  {
+    perCountryFloor = WEATHER_NOTIFY_PER_COUNTRY_FLOOR,
+    maxPerTick = WEATHER_NOTIFY_MAX_PER_TICK,
+  } = {},
+) {
+  const floor = Number.isFinite(perCountryFloor) && perCountryFloor > 0
+    ? Math.floor(perCountryFloor)
+    : WEATHER_NOTIFY_PER_COUNTRY_FLOOR;
+  const cap = Number.isFinite(maxPerTick) && maxPerTick > 0
+    ? Math.floor(maxPerTick)
+    : WEATHER_NOTIFY_MAX_PER_TICK;
+
+  const high = (Array.isArray(alerts) ? alerts : [])
+    .filter((a) => a && (a.severity === 'Extreme' || a.severity === 'Severe'));
+
+  const seenFamilyKeys = new Set();
+  const distinct = [];
+  for (const a of high) {
+    const familyKey = weatherAlertNotifyFamilyKey(a);
+    if (seenFamilyKeys.has(familyKey)) continue;
+    seenFamilyKeys.add(familyKey);
+    distinct.push(a);
+  }
+
+  const byCountry = new Map();
+  for (const a of distinct) {
+    const cc = weatherAlertNotifyCountryCode(a) || '';
+    let list = byCountry.get(cc);
+    if (!list) {
+      list = [];
+      byCountry.set(cc, list);
+    }
+    list.push(a);
+  }
+
+  const countryOrder = [...byCountry.keys()].sort((ca, cb) => {
+    const bestA = byCountry.get(ca)[0];
+    const bestB = byCountry.get(cb)[0];
+    const rankDiff = severityRank(bestA.severity) - severityRank(bestB.severity);
+    if (rankDiff !== 0) return rankDiff;
+    return distinct.indexOf(bestA) - distinct.indexOf(bestB);
+  });
+
+  const selected = [];
+  const selectedKeys = new Set();
+  const leftover = [];
+
+  for (const cc of countryOrder) {
+    if (selected.length >= cap) break;
+    const list = byCountry.get(cc);
+    const take = list.slice(0, floor);
+    for (const a of take) {
+      if (selected.length >= cap) break;
+      const key = weatherAlertNotifyFamilyKey(a);
+      selected.push(a);
+      selectedKeys.add(key);
+    }
+    leftover.push(...list.slice(floor));
+  }
+
+  leftover.sort((a, b) => {
+    const rankDiff = severityRank(a.severity) - severityRank(b.severity);
+    if (rankDiff !== 0) return rankDiff;
+    return distinct.indexOf(a) - distinct.indexOf(b);
+  });
+
+  for (const a of leftover) {
+    if (selected.length >= cap) break;
+    const key = weatherAlertNotifyFamilyKey(a);
+    if (selectedKeys.has(key)) continue;
+    selected.push(a);
+    selectedKeys.add(key);
+  }
+
+  return selected;
+}
+
 // NWS severity vocabulary, most dangerous first. Anything outside this list —
 // including a literal 'Unknown' and an absent severity property — is ineligible.
 const SEVERITY_RANK = Object.freeze({ Extreme: 0, Severe: 1, Moderate: 2, Minor: 3 });
