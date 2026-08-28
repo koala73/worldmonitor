@@ -374,10 +374,14 @@ describe("webhook processWebhookEvent", () => {
         payload_type: "Refund",
         payment_id: "pay_refund_001",
         subscription_id: "sub_test_001",
-        total_amount: 1999,
+        total_amount: "1999",
       }),
       BASE_TIMESTAMP + 300000,
     );
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(1999);
 
     const refundAlerts = errorSpy.mock.calls
       .map((call) => String(call[0]))
@@ -2809,6 +2813,19 @@ describe("webhook processWebhookEvent", () => {
     expect(events).toHaveLength(1);
     expect(events[0].amount).toBe(1999);
     expect(events[0].status).toBe("succeeded");
+  });
+
+  test("payment.succeeded with a non-numeric total_amount persists 0 and warns", async () => {
+    const t = convexTest(schema, modules);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const payload = makePaymentPayload("payment.succeeded", { total_amount: "not-an-amount" });
+    await processEvent(t, "wh_payment_invalid_amount", "payment.succeeded", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[coerceAmount] non-numeric amount"));
   });
 
   test("out-of-order events are rejected", async () => {
