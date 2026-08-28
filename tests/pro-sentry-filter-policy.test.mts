@@ -492,3 +492,88 @@ describe('policy wiring', () => {
     assert.deepEqual(offenders, []);
   });
 });
+
+// ─── WORLDMONITOR-107: wallet-extension JSON-RPC rejection ────────────────────
+//
+// `{code: -32603, message: "Internal JSON-RPC error."}` rejected into
+// `onunhandledrejection` on `https://www.worldmonitor.app/`. Sentry has no
+// Error to work with, so it synthesises
+// `UnhandledRejection: Object captured as promise rejection with keys: code, message`
+// with `stacktrace: null` and stores the object at `extra.__serialized__`.
+//
+// The dashboard has dropped this shape since #4005 via a bare
+// `/^Object captured as promise rejection with keys:/` in `ignoreErrors`. The
+// marketing bundle runs a separate client, which is the same gap that let
+// WORLDMONITOR-15/-102/-108/-10N/-10T through — but the dashboard's wording-only
+// entry is NOT safe to copy here: this React bundle can itself reject with a
+// plain object, and a synthetic rejection has no stack, so `!hasFirstParty`
+// cannot tell ours from an extension's.
+//
+// The JSON-RPC reserved error range is the discriminator instead, and it is
+// structural rather than a wording heuristic: `pro-test/src` holds no JSON-RPC
+// client at all (it speaks REST to our API and to Clerk), so a payload carrying
+// a −32768..−32000 `code` can only come from an injected EIP-1193 wallet
+// provider. Same design as THIRD_PARTY_SDK_LOAD_ACTIONS above — name the thing
+// that proves third-party origin, don't pattern-match the prose.
+describe('marketing beforeSend — wallet JSON-RPC rejection (WORLDMONITOR-107)', () => {
+  const rejection = (code: unknown): PolicyEvent => ({
+    exception: {
+      values: [{
+        type: 'UnhandledRejection',
+        value: 'Object captured as promise rejection with keys: code, message',
+      }],
+    },
+    extra: { __serialized__: { code, message: 'Internal JSON-RPC error.' } },
+  });
+
+  it('drops the verbatim production event', () => {
+    assert.equal(marketingBeforeSend(rejection(-32603)), null);
+  });
+
+  it('drops the rest of the JSON-RPC reserved range', () => {
+    // -32000 (server error) and -32700 (parse error) bound the reserved block;
+    // wallets use several of them (4001 user-rejected is NOT in this range and
+    // is deliberately left reporting).
+    for (const code of [-32000, -32700, -32768]) {
+      assert.equal(marketingBeforeSend(rejection(code)), null, `code ${code}`);
+    }
+  });
+
+  it('KEEPS a plain-object rejection whose code is outside the reserved range', () => {
+    // Positive control: our own bundle rejecting with `{code, message}` — an
+    // HTTP status, an app error code, EIP-1193's own 4001 — must still report.
+    for (const code of [500, 4001, -1, 0]) {
+      assert.ok(marketingBeforeSend(rejection(code)) !== null, `code ${code}`);
+    }
+  });
+
+  it('KEEPS the rejection when no serialized code is present at all', () => {
+    // Absence of evidence is not evidence of an extension.
+    assert.ok(marketingBeforeSend(rejection(undefined)) !== null);
+    assert.ok(marketingBeforeSend(rejection('-32603')) !== null, 'string code is not proof');
+    assert.ok(marketingBeforeSend({
+      exception: { values: [{ type: 'UnhandledRejection', value: 'Object captured as promise rejection with keys: code, message' }] },
+    }) !== null, 'no extra at all');
+  });
+
+  it('KEEPS an unrelated message even with a reserved-range code', () => {
+    // The rule needs BOTH halves; a real first-party error that happens to
+    // carry a JSON-RPC-shaped code must not be swallowed by the range alone.
+    assert.ok(marketingBeforeSend({
+      exception: { values: [{ type: 'TypeError', value: 'Cannot read properties of undefined (reading "plan")' }] },
+      extra: { __serialized__: { code: -32603, message: 'Internal JSON-RPC error.' } },
+    }) !== null);
+  });
+
+  it('pins the marketing bundle as JSON-RPC-free, which is what licenses the rule', () => {
+    // If a JSON-RPC client is ever added to this surface, the reserved-range
+    // discriminator stops proving third-party origin and this suppression must
+    // be re-derived. Fails loudly instead of silently widening.
+    const files = readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('sentry-filter-policy'))
+      .map((f) => readFileSync(resolve(root, 'pro-test/src', f), 'utf-8'))
+      .join('\n');
+    assert.ok(!/jsonrpc|JSON-RPC|json_rpc/i.test(files),
+      'a JSON-RPC client on the marketing surface invalidates the WORLDMONITOR-107 rule');
+  });
+});

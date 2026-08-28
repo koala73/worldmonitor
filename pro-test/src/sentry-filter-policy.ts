@@ -38,6 +38,13 @@ interface PolicyException {
 export interface PolicyEvent {
   exception?: { values?: PolicyException[] };
   tags?: Record<string, string | number | boolean | undefined>;
+  /**
+   * Where Sentry parks the rejected value when a promise rejects with a
+   * non-Error: `eventFromUnknownInput` synthesises the exception and copies the
+   * original object to `extra.__serialized__`. It is the only surviving
+   * evidence of what actually rejected, because such an event carries no stack.
+   */
+  extra?: { __serialized__?: Record<string, unknown> };
 }
 
 const SAFE_MARKETING_PATH = /^\/(?:pro\/?)?$/;
@@ -202,6 +209,21 @@ const PARSE_FAILURE = /^(?:Unexpected token|Unexpected identifier|Invalid or une
 const THIRD_PARTY_SDK_LOAD_ACTIONS = new Set(['load-clerk', 'load-clerk-for-nav', 'open-sign-in']);
 
 /**
+ * Sentry's synthetic message for a promise that rejected with a plain object.
+ * There is no Error, so the event carries `stacktrace: null` — which is why the
+ * `!hasFirstParty` gate every other rule leans on is useless here: OUR plain
+ * object and an extension's both arrive frameless.
+ */
+const PLAIN_OBJECT_REJECTION = /^Object captured as promise rejection with keys:/;
+/**
+ * JSON-RPC 2.0's reserved error block (§5.1). An injected EIP-1193 wallet
+ * provider (MetaMask et al.) rejects with `{code: -32603, message: "Internal
+ * JSON-RPC error."}` straight into `onunhandledrejection`.
+ */
+const JSON_RPC_RESERVED_MIN = -32768;
+const JSON_RPC_RESERVED_MAX = -32000;
+
+/**
  * Stack-gated suppressors for messages that our own minified bundle COULD
  * produce, so they must not go in `MARKETING_IGNORE_ERRORS` (which matches on
  * message text alone, with no access to frames).
@@ -291,6 +313,37 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       && PARSE_FAILURE.test(msg)
       && typeof action === 'string'
       && THIRD_PARTY_SDK_LOAD_ACTIONS.has(action)) return null;
+
+  // A browser wallet extension rejecting an EIP-1193 call into the page's
+  // `onunhandledrejection`. The dashboard has dropped this shape since #4005
+  // with a bare `/^Object captured as promise rejection with keys:/` in
+  // `ignoreErrors`; the marketing bundle runs a separate client, which is the
+  // same gap that let WORLDMONITOR-15/-102/-108/-10N/-10T through
+  // (WORLDMONITOR-107).
+  //
+  // The dashboard's wording-only entry is NOT safe to copy here. This React
+  // bundle can itself reject with a plain object, and a synthetic rejection has
+  // no stack, so `!hasFirstParty` — load-bearing for every rule above — cannot
+  // separate ours from an extension's. The JSON-RPC reserved code range is the
+  // discriminator instead, and it is structural rather than a wording
+  // heuristic: `pro-test/src` contains no JSON-RPC client at all (it speaks
+  // REST to our API and to Clerk), so a `-32768..-32000` code can only have
+  // come from an injected provider. Same shape of argument as
+  // THIRD_PARTY_SDK_LOAD_ACTIONS above — name what proves third-party origin
+  // rather than pattern-matching prose — and
+  // `tests/pro-sentry-filter-policy.test.mts` fails if a JSON-RPC client is
+  // ever added to this surface, rather than letting the rule silently widen.
+  //
+  // Deliberately narrow: EIP-1193's own `4001` (user rejected the request) is
+  // outside the reserved range and keeps reporting, as does any `{code,
+  // message}` our own code rejects with.
+  const rejected = event.extra?.__serialized__;
+  const rejectedCode = rejected?.code;
+  if (PLAIN_OBJECT_REJECTION.test(msg)
+      && typeof rejectedCode === 'number'
+      && Number.isInteger(rejectedCode)
+      && rejectedCode >= JSON_RPC_RESERVED_MIN
+      && rejectedCode <= JSON_RPC_RESERVED_MAX) return null;
 
   return event;
 }
