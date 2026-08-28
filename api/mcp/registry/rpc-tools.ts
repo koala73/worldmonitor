@@ -22,6 +22,7 @@ import { McpSourceUnavailableError } from '../source-unavailable';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import {
   collectInsightSources,
+  INSIGHTS_MAX_SERVEABLE_AGE_MS,
   insightsSnapshotRejection,
   normalizeInsightSource,
 } from '../../../shared/insights-snapshot.js';
@@ -273,8 +274,15 @@ function projectSeededWorldBrief(raw: unknown, nowMs = Date.now()): SeededWorldB
   // brief sat in Redis for another two hours (the key's TTL is 3h; the gate is
   // 1h). Measured 2026-08-28 during WORLDMONITOR-YJ: 10362s of TTL remaining
   // against a 60-minute gate. An hour-old world brief, clearly labelled, beats
-  // an error an agent can do nothing with — and the 3h TTL, not this code, is
-  // what bounds how old "stale" can ever get.
+  // an error an agent can do nothing with.
+  //
+  // The ceiling is enforced BELOW, against `generatedAt`. The producer's TTL
+  // cannot be borrowed as one: its LKG paths re-issue `EXPIRE key 10800` every
+  // failed run, so the key slides forward indefinitely while `generatedAt`
+  // stands still (INSIGHTS_MAX_SERVEABLE_AGE_MS carries the full chain). An
+  // earlier draft of this change claimed the TTL bounded staleness; it does
+  // not, and a multi-day outage would have served a multi-day-old brief
+  // flagged merely `stale: true`.
   //
   // Every OTHER reason still fails closed, because each means the payload is
   // absent or broken rather than merely old: no stories, no brief text, a
@@ -303,7 +311,13 @@ function projectSeededWorldBrief(raw: unknown, nowMs = Date.now()): SeededWorldB
   // missing, unparseable, or future `generatedAt`, so the only survivors parse
   // to a finite past instant. Floored at 0 so clock skew cannot report a
   // negative age.
-  const ageMinutes = Math.max(0, Math.round((nowMs - Date.parse(generatedAt)) / 60_000));
+  const ageMs = nowMs - Date.parse(generatedAt);
+  const ageMinutes = Math.max(0, Math.round(ageMs / 60_000));
+  // Past the ceiling there is no longer a defensible reading of "old but
+  // useful", so fall back to failing closed. Reported under its OWN reason:
+  // WORLDMONITOR-YJ exists to name which gate fired, and "briefly stale,
+  // served" versus "so old we gave up" need different operator responses.
+  if (stale && ageMs >= INSIGHTS_MAX_SERVEABLE_AGE_MS) return { reason: 'stale-beyond-limit' };
 
   const headlines: string[] = [];
   const storyCorroboration: McpWorldBriefStory[] = [];
@@ -1028,7 +1042,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_world_brief',
     _outputBudgetBytes: 65536,
-    description: 'Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, and the outlet names themselves. Legacy snapshots omit corroboration fields they did not publish. When the seeder has not published inside the 60-minute freshness window the last-known-good snapshot is served rather than failing, flagged by stale:true with ageMinutes — the content is unchanged and still fully gated, so weigh its age rather than discarding it. A snapshot that is absent or broken, rather than merely old, still reports the source as unavailable.',
+    description: 'Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, and the outlet names themselves. Legacy snapshots omit corroboration fields they did not publish. When the seeder has not published inside the 60-minute freshness window the last-known-good snapshot is served rather than failing, flagged by stale:true with ageMinutes — the content is unchanged and still fully gated, so weigh its age rather than discarding it. Serving is capped at 3h old; past that, and for a snapshot that is absent or broken rather than merely old, the source is reported unavailable.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1066,7 +1080,7 @@ export const RPC_TOOLS: ToolDef[] = [
         model: { type: 'string', description: 'LLM model used by the insights seeder.' },
         generatedAt: { type: ['string', 'number', 'null'] },
         stale: { type: 'boolean', description: 'True when the snapshot is older than the 60-minute freshness gate and is being served as last-known-good because the seeder has not published since. Always present, on fresh responses too. The content is unchanged and still fully gated — only its age is in question — so weigh it for time-sensitive decisions rather than discarding it.' },
-        ageMinutes: { type: 'number', description: 'Whole minutes between generatedAt and the response. Always present. Bounded in practice by the snapshot key TTL (3h), after which the tool reports the source unavailable instead.' },
+        ageMinutes: { type: 'number', description: 'Whole minutes between generatedAt and the response. Always present. Capped at 3h: past that the tool reports the source unavailable rather than serving it. The cap is enforced against generatedAt, NOT the Redis TTL, which the producer re-extends on every failed run and so never expires during an outage.' },
         sources: {
           type: 'array',
           description: 'Producer citation records in original order; empty URLs are retained as fallbacks so citation indexes cannot shift.',

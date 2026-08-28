@@ -207,3 +207,60 @@ describe('get_world_brief serves stale LKG instead of failing (WORLDMONITOR-YJ)'
     assert.ok(/unavailable/i.test(surfaced), `got ${surfaced.slice(0, 200)}`);
   });
 });
+
+// ─── Review follow-up: the Redis TTL is NOT a bound (PR #7271) ────────────────
+//
+// The first version of this change claimed the 3h key TTL bounded how old a
+// served snapshot could get. It does not, and two reviewers caught it. The
+// seeder's LKG path calls `preserveExistingKeys()` on both the fetch-failure
+// (`scripts/_seed-utils.mjs:2303`) and validation-skip (`:2450`) branches; that
+// resolves the canonical key through `defaultPreservationKeys` (`:2183-2188`)
+// into `extendExistingTtl(keys, 10800)` (`:2199, 2209`), which issues
+// `EXPIRE <key> 10800` (`:1133`) — a full TTL RESET, not a decrement.
+//
+// So every failed run slides the key another three hours forward while
+// `generatedAt` never advances. A multi-day outage would have served a
+// multi-day-old brief flagged merely `stale: true`. The consumer therefore has
+// to carry its own ceiling; the producer's TTL cannot be borrowed as one.
+describe('stale serving is capped independently of the sliding Redis TTL', () => {
+  it('fails closed once the snapshot is older than the serving ceiling', async () => {
+    // 4h: past the 3h ceiling, but trivially reachable when the seeder keeps
+    // renewing the TTL every failed run.
+    stubInsights(insightsPayload({ generatedAt: minutesAgo(4 * 60) }));
+
+    const rpc = await callWorldBriefRpc();
+    const surfaced = rpc.error ? JSON.stringify(rpc.error) : (rpc.result?.content?.[0]?.text ?? '');
+    assert.ok(/unavailable/i.test(surfaced), `must fail closed, got ${surfaced.slice(0, 200)}`);
+  });
+
+  it('still serves just inside the ceiling', async () => {
+    // Boundary control: proves the cap is a real edge and not a blanket
+    // re-tightening that would undo the whole point of the change.
+    stubInsights(insightsPayload({ generatedAt: minutesAgo(3 * 60 - 5) }));
+
+    const payload = await callWorldBrief();
+
+    assert.ok(payload.brief, 'a 2h55m brief is still worth serving');
+    assert.equal(payload.stale, true);
+  });
+
+  it('names the ceiling separately from ordinary staleness for operators', async () => {
+    // WORLDMONITOR-YJ exists to name WHICH gate fired. "Briefly stale, served"
+    // and "so old we gave up" need different operator responses, so they must
+    // not collapse into the same reason string.
+    const warned = [];
+    const originalWarnLocal = console.warn;
+    console.warn = (...args) => warned.push(args);
+    try {
+      stubInsights(insightsPayload({ generatedAt: minutesAgo(5 * 60) }));
+      await callWorldBriefRpc();
+    } finally {
+      console.warn = originalWarnLocal;
+    }
+    const reasoned = warned.flat().find(
+      (arg) => arg instanceof Error && /world brief unavailable/i.test(arg.message),
+    );
+    assert.ok(reasoned, 'expected an operator-facing warning');
+    assert.match(reasoned.message, /stale-beyond-limit/, `got ${reasoned.message}`);
+  });
+});
