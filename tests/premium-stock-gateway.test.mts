@@ -532,14 +532,107 @@ describe('POST-to-GET compatibility hardening', () => {
     assert.equal(oversized.status, 405);
   });
 
-  it('preserves malformed JSON compatibility by falling back to matching GET without query params', async () => {
+  it('rejects malformed JSON instead of falling back to an unfiltered GET', async () => {
     const { handler, seenUrl } = makePublicMarketHandler();
     const body = '{not json';
 
     const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
 
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'Invalid JSON body for POST compatibility' });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('rejects a JSON array body instead of encoding index keys as query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify(['AAPL', 'MSFT']);
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'Unsupported POST compatibility body' });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('rejects object values without applying sibling scalars', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      symbols: ['AAPL'],
+      filter: { sector: 'tech' },
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Unsupported value for POST compatibility parameter',
+      parameter: 'filter',
+    });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('rejects non-scalar array members without applying sibling scalars', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      includeExtended: true,
+      symbols: ['AAPL', { nested: true }],
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Unsupported value for POST compatibility parameter',
+      parameter: 'symbols',
+    });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('rejects null values without applying sibling scalars', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      includeExtended: true,
+      symbols: null,
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Unsupported value for POST compatibility parameter',
+      parameter: 'symbols',
+    });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('converts empty POST bodies to GET without query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+
+    const res = await handler(compatPost('', { 'Content-Length': '0' }));
+
     assert.equal(res.status, 200);
     assert.equal(seenUrl()?.search, '');
+  });
+
+  it('converts whitespace-only POST bodies to GET without query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = ' \n\t ';
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 200);
+    assert.equal(seenUrl()?.search, '');
+  });
+
+  it('rejects a JSON null body', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = 'null';
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'Unsupported POST compatibility body' });
+    assert.equal(seenUrl(), null);
   });
 });
 

@@ -55,6 +55,7 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](ht
 
 ### Fixed
 
+- **Gateway POST→GET compatibility no longer drops nested body fields** (#7276). The legacy unmatched-POST fallback used to copy only scalars and scalar array members into query parameters and ignore the rest, so a stale client could get a successful unfiltered GET while believing its object filters were applied. Mixed, nested, or non-object JSON bodies now return HTTP 400 without a partial translation. Malformed JSON also returns 400 (`Invalid JSON body for POST compatibility`). Empty or whitespace-only bodies still convert to GET with no extra query parameters. The existing 1 MB body cap and 200-values-per-key cap are unchanged.
 - Trade Policy panel WTO gate changed from panel-wide to per-tab, so Revenue tab works on desktop without WTO API key (#1663)
 - Conflict-intel seed succeeds without ACLED credentials by accepting empty events when humanitarian/PizzINT data is available (#1651)
 - Seed-forecasts crash from top-level `@aws-sdk/client-s3` import resolved with lazy dynamic import (#1654)
