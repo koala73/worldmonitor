@@ -394,6 +394,128 @@ export function mergeAlertSources(parts = {}, { totalLimit = MAX_ALERTS, perSour
   return sortBySeverityThenStable(kept).slice(0, totalLimit);
 }
 
+/**
+ * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
+ *
+ * NWS VTEC format (https://www.weather.gov/vtec/):
+ *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
+ *    │  │   │   │  │  │
+ *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
+ *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
+ *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
+ *    │  │   └──────────── forecast office (4-letter ICAO)
+ *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
+ *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
+ *
+ * The (office, phenomenon, significance, eventID) tuple identifies one logical
+ * event across adjacent zones — exactly what we want to coalesce. We drop the
+ * action so NEW + CON + CAN bulletins for the same event also collapse.
+ *
+ * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
+ * VTEC string is missing or malformed.
+ *
+ * Lives here rather than in ais-relay.cjs so the notification selection below
+ * (and its tests) can call the REAL parser instead of a copy.
+ */
+export function deriveWeatherCoalesceKey(vtec) {
+  if (typeof vtec !== 'string') return undefined;
+  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
+  if (!m) return undefined;
+  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
+}
+
+/**
+ * Notification family identity for one alert: the VTEC-derived coalesce key
+ * when the source publishes VTEC, else a stable per-alert identity prefixed by
+ * source so a VTEC-less ECCC/SWIC id cannot collide with an NWS one.
+ */
+export function weatherAlertFamilyKey(alert) {
+  return deriveWeatherCoalesceKey(alert?.vtec)
+    ?? `${alert?.source || 'weather'}:${alert?.id || alert?.headline || alert?.event || ''}`;
+}
+
+export const WEATHER_NOTIFY_HIGH_SEVERITIES = Object.freeze(['Extreme', 'Severe']);
+
+// Notification slots are PER COUNTRY, not global. The original cap was 3 and
+// global, which was the same thing when NWS was the only source: "top 3 by
+// severity" and "top 3 for the only audience" coincided. They stopped
+// coinciding at the second source. 3 is kept as the per-audience budget, so a
+// subscriber scoped to any one country sees the same volume as before.
+export const WEATHER_NOTIFY_SLOTS_PER_COUNTRY = 3;
+// Hard ceiling on one tick's publishes, so the fan-out below cannot become
+// unbounded as sources are added under #6271. Pinned to MAX_ALERTS because that
+// is already the arithmetic maximum — the payload holds at most MAX_ALERTS
+// alerts and each publishes at most once — so this bound holds no matter how
+// many countries or sources appear, and never re-breaks the per-country
+// guarantee by biting before every country has been served. Round-robin fill
+// (below) spends it breadth-first, so if it ever did bite it would only cost
+// depth slots, never a country's first slot (#7243).
+export const WEATHER_NOTIFY_MAX_PER_TICK = MAX_ALERTS;
+
+// Alerts whose countryCode is missing/unusable reach only rules with no
+// country scope (see isPermissiveUnattributedEvent in notification-relay.cjs),
+// so they are a distinct audience and get their own bucket rather than
+// competing for a real country's slots.
+const UNATTRIBUTED_NOTIFY_BUCKET = Symbol('unattributed');
+
+/**
+ * Pick the alerts one weather seed tick publishes as weather_alert
+ * notifications.
+ *
+ * Two rules, both about not silently dropping an audience:
+ *
+ * 1. Distinct FAMILIES only. A naive `slice(0, N)` over the raw list loses
+ *    events, because three adjacent-zone bulletins for one VTEC family
+ *    collapse to a single notification at the publisher while a fourth
+ *    genuinely distinct family at index 3+ is never considered (PR #3467
+ *    review, Slot B).
+ *
+ * 2. Slots are partitioned PER COUNTRY, then filled round-robin. A globally
+ *    severity-sorted budget can be spent entirely inside one country — on
+ *    2026-08-28 nine VTEC-less SWIC Swiss thunderstorms (nine distinct
+ *    families) led the sort and took every slot, and
+ *    `eventMatchesCountryScope` then dropped the tick for every CA- and
+ *    US-scoped rule despite 15 active alerts each in the same payload. This
+ *    is the notification-layer counterpart of the PER_SOURCE_FLOOR that
+ *    mergeAlertSources applies to the payload (#6627, #7243).
+ *
+ * Round-robin — every country's slot 1 before any country's slot 2 — rather
+ * than "one per country, then fill the remainder by severity": a severity fill
+ * would hand the surplus straight back to the country that already leads the
+ * sort, which is both the original starvation and nine notifications for one
+ * Swiss subscriber.
+ */
+export function selectWeatherNotificationAlerts(alerts, {
+  slotsPerCountry = WEATHER_NOTIFY_SLOTS_PER_COUNTRY,
+  maxPerTick = WEATHER_NOTIFY_MAX_PER_TICK,
+} = {}) {
+  const highSeverity = (Array.isArray(alerts) ? alerts : [])
+    .filter((a) => WEATHER_NOTIFY_HIGH_SEVERITIES.includes(a?.severity));
+
+  // Insertion order of the Map is severity order, so round-robin visits the
+  // most severe country first on every pass — deterministic and stable.
+  const byCountry = new Map();
+  const seenFamilyKeys = new Set();
+  for (const alert of sortBySeverityThenStable(highSeverity)) {
+    const familyKey = weatherAlertFamilyKey(alert);
+    if (seenFamilyKeys.has(familyKey)) continue;
+    seenFamilyKeys.add(familyKey);
+    const bucket = weatherAlertNotifyCountryCode(alert) ?? UNATTRIBUTED_NOTIFY_BUCKET;
+    const existing = byCountry.get(bucket);
+    if (existing) existing.push(alert);
+    else byCountry.set(bucket, [alert]);
+  }
+
+  const selected = [];
+  for (let slot = 0; slot < slotsPerCountry && selected.length < maxPerTick; slot += 1) {
+    for (const queue of byCountry.values()) {
+      if (selected.length >= maxPerTick) break;
+      if (slot < queue.length) selected.push(queue[slot]);
+    }
+  }
+  return sortBySeverityThenStable(selected);
+}
+
 export function carryFailedWeatherAlertSources(previousAlerts, failedSources = []) {
   const alerts = Array.isArray(previousAlerts) ? previousAlerts : [];
   const failed = new Set(
