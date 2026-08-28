@@ -9,7 +9,7 @@ export const CANADA_ALERTS_CUTOVER_FALLBACK_KEYS = Object.freeze([
 /**
  * Extra Redis keys origin and the publisher must read so a missing
  * `alerts:canada:v1` can still hydrate `canadaAlerts` during the #6659 cutover.
- * Keep in lockstep with `shared/canada-alerts-cutover.js`.
+ * Keep in lockstep with `api/_canada-alerts-cutover.js`.
  */
 export function extraCanadaAlertsCutoverReadKeys(keys, primaryKey) {
   if (!primaryKey || !keys.includes(primaryKey)) return [];

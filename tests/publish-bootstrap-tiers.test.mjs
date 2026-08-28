@@ -10,6 +10,11 @@ import {
   publishBootstrapTier,
   runPublisherLoop,
 } from '../scripts/publish-bootstrap-tiers.mjs';
+import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
+import {
+  CANADA_ALERTS_LEGACY_KEY,
+  CANADA_ALERTS_SIBLING_KEY,
+} from '../shared/canada-alerts-cutover.js';
 
 const execFileAsync = promisify(execFile);
 const TEST_ENV = {
@@ -113,6 +118,96 @@ describe('bootstrap tier payload assembly', () => {
       );
     });
   }
+});
+
+describe('canadaAlerts cutover fallback in published envelopes', () => {
+  const PRIMARY_KEY = BOOTSTRAP_CACHE_KEYS.canadaAlerts;
+  const registry = { canadaAlerts: PRIMARY_KEY, earthquakes: 'eq:key' };
+  const sibling = { alerts: [{ id: 'ab-sibling', province: 'AB' }] };
+  const legacy = { alerts: [{ id: 'ab-legacy', province: 'AB' }] };
+  const aggregate = { alerts: [{ id: 'bc-alert', province: 'BC' }] };
+  const quake = { mag: 4.1 };
+
+  function canadaPipeline(values) {
+    return async (_url, init) => {
+      const commands = JSON.parse(init.body);
+      assert.deepEqual(commands, [
+        ['GET', PRIMARY_KEY],
+        ['GET', 'eq:key'],
+        ['GET', CANADA_ALERTS_SIBLING_KEY],
+        ['GET', CANADA_ALERTS_LEGACY_KEY],
+      ]);
+      return pipelineResponse(commands.map(([, key]) => (
+        Object.hasOwn(values, key) ? raw(values[key]) : { result: null }
+      )));
+    };
+  }
+
+  it('does not append cutover keys when canadaAlerts is not in the registry', async () => {
+    const fetchFn = async (_url, init) => {
+      assert.deepEqual(JSON.parse(init.body), [['GET', 'eq:key']]);
+      return pipelineResponse([raw(quake)]);
+    };
+    const payload = await assembleBootstrapTierPayload(
+      { earthquakes: 'eq:key' },
+      { env: TEST_ENV, fetchFn },
+    );
+    assert.deepEqual(payload, { data: { earthquakes: quake }, missing: [] });
+  });
+
+  it('keeps the aggregate authoritative when both cutover keys exist', async () => {
+    const payload = await assembleBootstrapTierPayload(registry, {
+      env: TEST_ENV,
+      fetchFn: canadaPipeline({
+        [PRIMARY_KEY]: aggregate,
+        'eq:key': quake,
+        [CANADA_ALERTS_SIBLING_KEY]: sibling,
+        [CANADA_ALERTS_LEGACY_KEY]: legacy,
+      }),
+    });
+    assert.deepEqual(payload.data.canadaAlerts, aggregate);
+    assert.deepEqual(payload.data.earthquakes, quake);
+    assert.equal(payload.missing.includes('canadaAlerts'), false);
+  });
+
+  it('prefers the Alberta sibling when the aggregate is missing', async () => {
+    const payload = await assembleBootstrapTierPayload(registry, {
+      env: TEST_ENV,
+      fetchFn: canadaPipeline({
+        'eq:key': quake,
+        [CANADA_ALERTS_SIBLING_KEY]: sibling,
+        [CANADA_ALERTS_LEGACY_KEY]: legacy,
+      }),
+    });
+    assert.deepEqual(payload.data.canadaAlerts, sibling);
+    assert.equal(payload.missing.includes('canadaAlerts'), false);
+  });
+
+  it('uses the abandoned legacy key when only it remains', async () => {
+    const payload = await assembleBootstrapTierPayload(registry, {
+      env: TEST_ENV,
+      fetchFn: canadaPipeline({
+        'eq:key': quake,
+        [CANADA_ALERTS_LEGACY_KEY]: legacy,
+      }),
+    });
+    assert.deepEqual(payload.data.canadaAlerts, legacy);
+    assert.equal(payload.missing.includes('canadaAlerts'), false);
+  });
+
+  it('does not resurrect Alberta data when the union is an empty payload', async () => {
+    const emptyUnion = { alerts: [] };
+    const payload = await assembleBootstrapTierPayload(registry, {
+      env: TEST_ENV,
+      fetchFn: canadaPipeline({
+        [PRIMARY_KEY]: emptyUnion,
+        'eq:key': quake,
+        [CANADA_ALERTS_SIBLING_KEY]: sibling,
+        [CANADA_ALERTS_LEGACY_KEY]: legacy,
+      }),
+    });
+    assert.deepEqual(payload.data.canadaAlerts, emptyUnion);
+  });
 });
 
 describe('publishBootstrapTier', () => {
@@ -234,7 +329,27 @@ describe('publisher deployment boundaries', () => {
   it('imports the canonical shared registry without crossing into api, src, or server', async () => {
     const source = await readFile(new URL('../scripts/publish-bootstrap-tiers.mjs', import.meta.url), 'utf8');
     assert.match(source, /from '\.\.\/shared\/bootstrap-tier-keys\.js'/);
+    assert.match(source, /from '\.\.\/shared\/canada-alerts-cutover\.js'/);
     assert.doesNotMatch(source, /from ['"]\.\.\/(?:api|src|server)\//);
+  });
+
+  it('keeps canadaAlerts cutover helpers in lockstep with origin', async () => {
+    const origin = await import('../api/_canada-alerts-cutover.js');
+    const publisher = await import('../shared/canada-alerts-cutover.js');
+    const primary = 'alerts:canada:v1';
+    assert.deepEqual(
+      [...publisher.CANADA_ALERTS_CUTOVER_FALLBACK_KEYS],
+      [...origin.CANADA_ALERTS_CUTOVER_FALLBACK_KEYS],
+    );
+    assert.deepEqual(
+      publisher.extraCanadaAlertsCutoverReadKeys([primary], primary),
+      origin.extraCanadaAlertsCutoverReadKeys([primary], primary),
+    );
+    const lookup = new Map([[origin.CANADA_ALERTS_SIBLING_KEY, { ok: true }]]);
+    assert.deepEqual(
+      publisher.canadaAlertsCutoverFallbackValue(lookup),
+      origin.canadaAlertsCutoverFallbackValue(lookup),
+    );
   });
 
   it('exits nonzero for an unknown one-shot tier before touching infrastructure', async () => {
