@@ -212,6 +212,37 @@ describe('insights-loader', () => {
       assert.equal(third, first);
     });
 
+    it('keeps a longer coalesced caller alive when a preview times out first (#7290)', async () => {
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      globalThis.fetch = async (_url, init = {}) => {
+        fetchCount += 1;
+        const signal = init?.signal;
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 80);
+          const abort = () => {
+            clearTimeout(timer);
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          };
+          if (signal?.aborted) {
+            abort();
+            return;
+          }
+          signal?.addEventListener('abort', abort, { once: true });
+        });
+        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
+      };
+
+      const preview = fetchServerInsights(10);
+      const panel = fetchServerInsights(250);
+      const [previewResult, panelResult] = await Promise.all([preview, panel]);
+      assert.equal(previewResult, null, 'short preview caller should keep its own timeout');
+      assert.equal(panelResult?.worldBrief, 'Test brief', 'longer panel caller should still recover');
+      assert.equal(fetchCount, 1, 'callers with different timeouts still share one network request');
+    });
+
     it('does not latch a settled network failure — a later call retries (#7290)', async () => {
       let fetchCount = 0;
       globalThis.fetch = async () => {

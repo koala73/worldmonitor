@@ -58,8 +58,15 @@ export interface ServerInsights {
   };
 }
 
+interface InFlightInsightsFetch {
+  promise: Promise<ServerInsights | null>;
+  controller: AbortController;
+  abortAtMs: number;
+  abortTimer: ReturnType<typeof setTimeout> | null;
+}
+
 let cached: ServerInsights | null = null;
-let inFlight: Promise<ServerInsights | null> | null = null;
+let inFlight: InFlightInsightsFetch | null = null;
 /**
  * True once this page drained a hydrated insights payload that failed
  * validation. Empty slots (`undefined` from production `getHydratedData`,
@@ -86,6 +93,39 @@ function isFresh(data: ServerInsights): boolean {
 
 function validateInsights(raw: unknown): ServerInsights | null {
   return isAcceptedInsightsSnapshot(raw) ? raw as ServerInsights : null;
+}
+
+function normalizedTimeout(timeoutMs: number): number {
+  return Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 0;
+}
+
+function extendAbortBudget(request: InFlightInsightsFetch, timeoutMs: number): void {
+  const nextAbortAtMs = Date.now() + normalizedTimeout(timeoutMs);
+  if (request.abortTimer && nextAbortAtMs <= request.abortAtMs) return;
+  request.abortAtMs = nextAbortAtMs;
+  if (request.abortTimer) clearTimeout(request.abortTimer);
+  request.abortTimer = setTimeout(
+    () => request.controller.abort(),
+    Math.max(0, request.abortAtMs - Date.now()),
+  );
+}
+
+function withCallerTimeout(
+  promise: Promise<ServerInsights | null>,
+  timeoutMs: number,
+): Promise<ServerInsights | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (value: ServerInsights | null): void => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(value);
+    };
+    timer = setTimeout(() => finish(null), normalizedTimeout(timeoutMs));
+    promise.then(finish, () => finish(null));
+  });
 }
 
 function consumeHydration(): ServerInsights | null {
@@ -135,25 +175,38 @@ export function getServerInsights(): ServerInsights | null {
 export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsights | null> {
   const hydrated = getServerInsights();
   if (hydrated) return hydrated;
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    extendAbortBudget(inFlight, timeoutMs);
+    return withCallerTimeout(inFlight.promise, timeoutMs);
+  }
 
-  inFlight = (async () => {
+  const controller = new AbortController();
+  const request: InFlightInsightsFetch = {
+    promise: Promise.resolve(null),
+    controller,
+    abortAtMs: 0,
+    abortTimer: null,
+  };
+  extendAbortBudget(request, timeoutMs);
+  request.promise = (async () => {
     try {
       const resp = await fetch(toApiUrl('/api/bootstrap?keys=insights'), {
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: controller.signal,
       });
       if (!resp.ok) return null;
       const payload = (await resp.json()) as { data?: { insights?: unknown } };
       const data = validateInsights(payload.data?.insights);
-      if (data) cached = data;
+      if (data && inFlight === request) cached = data;
       return data;
     } catch {
       return null;
     } finally {
-      inFlight = null;
+      if (request.abortTimer) clearTimeout(request.abortTimer);
+      if (inFlight === request) inFlight = null;
     }
   })();
-  return inFlight;
+  inFlight = request;
+  return withCallerTimeout(request.promise, timeoutMs);
 }
 
 export function setServerInsights(data: ServerInsights): void {
@@ -164,6 +217,8 @@ export function setServerInsights(data: ServerInsights): void {
 /** Test-only: reset module-local cache so suites can exercise the drain-once behavior. */
 export function __resetServerInsightsCacheForTests(): void {
   cached = null;
+  inFlight?.controller.abort();
+  if (inFlight?.abortTimer) clearTimeout(inFlight.abortTimer);
   inFlight = null;
   rejectedHydration = false;
 }
