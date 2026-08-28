@@ -2,7 +2,7 @@
 //
 // The route reaches Nominatim, whose usage policy is the strictest in our
 // stack and whose enforcement is an egress-IP ban. It shares an Upstash-backed
-// 0.1-degree grid with the gateway RPC and caches normalized empty results, so
+// 0.001-degree grid with the gateway RPC and caches normalized empty results, so
 // repeated ocean and Antarctic lookups do not remain provider passthrough.
 
 import { afterEach, beforeEach, test } from 'node:test';
@@ -176,7 +176,7 @@ test('normalizes an RPC-shaped shared cache hit in the same preview namespace', 
   });
   assert.equal(nominatimCalls(calls).length, 0, 'a shared cache hit must not reach Nominatim');
   assert.ok(
-    calls.some((call) => call.url === 'https://fake-upstash.example/get/preview%3Adeadbeef%3Ageocode%3A40.7%2C-74.0'),
+    calls.some((call) => call.url === 'https://fake-upstash.example/get/preview%3Adeadbeef%3Ageocode%3A40.700%2C-74.000'),
     'the edge route must read the same deployment-prefixed key as the gateway RPC',
   );
 });
@@ -214,17 +214,101 @@ test('caches ocean and Antarctic results too — a sweep of empty cells must not
   }).find((entries) => Array.isArray(entries)
     && entries.some((entry) => Array.isArray(entry)
       && String(entry[0]).toLowerCase() === 'set'
-      && entry[1] === 'geocode:0.0,-150.0'));
-  assert.ok(cacheWrite, 'the cache write must target the shared geocode:0.0,-150.0 key');
+      && entry[1] === 'geocode:0.000,-150.000'));
+  assert.ok(cacheWrite, 'the cache write must target the shared geocode:0.000,-150.000 key');
   const setCommand = cacheWrite.find((entry) => Array.isArray(entry)
     && String(entry[0]).toLowerCase() === 'set');
   assert.deepEqual(setCommand, [
     'SET',
-    'geocode:0.0,-150.0',
+    'geocode:0.000,-150.000',
     JSON.stringify({ country: '', code: '', displayName: '', error: '' }),
     'EX',
     '604800',
   ]);
+});
+
+test('does not reuse a 0.1-degree cache cell across a country border (#7279)', async () => {
+  // Same US/Canada pair as tests/reverse-geocode-cache-contract.test.mts: both
+  // round to geocode:49.0,-97.0 under toFixed(1), but Nominatim at zoom=3
+  // returns different countries. The edge route must keep the same key/value
+  // contract as the gateway RPC.
+  process.env.VERCEL_ENV = 'preview';
+  process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeefcafebabe';
+
+  const store = new Map();
+  const nominatimUrls = [];
+  spyFetch((url, init) => {
+    if (url.includes('/get/')) {
+      const encoded = url.slice(url.indexOf('/get/') + '/get/'.length);
+      const key = decodeURIComponent(encoded);
+      const value = store.get(key);
+      return new Response(JSON.stringify({ result: value ?? null }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('/pipeline')) {
+      const commands = JSON.parse(String(init.body));
+      const writes = commands.filter((command) => (
+        Array.isArray(command) && String(command[0]).toLowerCase() === 'set'
+      ));
+      if (writes.length > 0) {
+        for (const command of writes) store.set(command[1], command[2]);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+    if (url.includes('fake-upstash')) return upstashReply(59, 60);
+    nominatimUrls.push(url);
+    const parsed = new URL(url);
+    const lat = Number(parsed.searchParams.get('lat'));
+    if (lat >= 49) {
+      return new Response(JSON.stringify({
+        address: { country: 'Canada', country_code: 'ca' },
+        display_name: 'Manitoba, Canada',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      address: { country: 'United States', country_code: 'us' },
+      display_name: 'North Dakota, United States',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+
+  const first = makeCtx();
+  const us = await handler(makeRequest('lat=48.96&lon=-97.04', uniqueCallerIp()), first.ctx);
+  await Promise.all(first.waited);
+  const second = makeCtx();
+  const canada = await handler(makeRequest('lat=49.04&lon=-97.04', uniqueCallerIp()), second.ctx);
+  await Promise.all(second.waited);
+
+  assert.equal(us.status, 200);
+  assert.deepEqual(await us.json(), {
+    country: 'United States',
+    code: 'US',
+    displayName: 'North Dakota, United States',
+    error: '',
+  });
+  assert.equal(canada.status, 200);
+  assert.deepEqual(await canada.json(), {
+    country: 'Canada',
+    code: 'CA',
+    displayName: 'Manitoba, Canada',
+    error: '',
+  });
+  assert.equal(nominatimUrls.length, 2, 'each side of the border must miss independently');
+  assert.equal(store.has('preview:deadbeef:geocode:49.0,-97.0'), false);
+  assert.equal(store.get('preview:deadbeef:geocode:48.960,-97.040'), JSON.stringify({
+    country: 'United States',
+    code: 'US',
+    displayName: 'North Dakota, United States',
+    error: '',
+  }));
+  assert.equal(store.get('preview:deadbeef:geocode:49.040,-97.040'), JSON.stringify({
+    country: 'Canada',
+    code: 'CA',
+    displayName: 'Manitoba, Canada',
+    error: '',
+  }));
 });
 
 test('stays available when Upstash is unconfigured', async () => {

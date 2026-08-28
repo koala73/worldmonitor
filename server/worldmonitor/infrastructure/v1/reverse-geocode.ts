@@ -5,6 +5,7 @@ import type {
   ReverseGeocodeResponse,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { geocodeCacheKey } from '../../../../shared/geocode-cache-key.js';
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/reverse';
 const CHROME_UA = 'WorldMonitor/2.0 (https://worldmonitor.app)';
@@ -60,7 +61,7 @@ export const reverseGeocode: InfrastructureServiceHandler['reverseGeocode'] = as
     };
   }
 
-  const cacheKey = `geocode:${lat.toFixed(1)},${lon.toFixed(1)}`;
+  const cacheKey = geocodeCacheKey(lat, lon);
 
   const cached = await getCachedJson(cacheKey);
   if (cached && typeof cached === 'object') {

@@ -487,7 +487,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // live-page HTML scrape of youtube.com, so it takes the same 30/min
   // provider-proxy budget as the batch fan-out routes above.
   '/api/youtube/live': { limit: 30, window: '60 s' },
-  // reverse-geocode: already Upstash-cached on a 0.1-degree grid and memoized
+  // reverse-geocode: already Upstash-cached on a 0.001-degree grid and memoized
   // per cell in the browser (src/utils/reverse-geocode.ts), so 60/min is a
   // floor against scripted coordinate sweeps rather than a throttle on real
   // map use. Nominatim's usage policy is the strictest in our stack and is
@@ -500,7 +500,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // scripted sweeps, not a throttle on real map use. (#6234, #6432)
   '/api/reverse-geocode': { limit: 60, window: '60 s' },
   // Gateway reverse-geocode RPC (#6432): the second Nominatim caller. Same
-  // provider, same shared 0.1-degree grid cache, same egress IPs — must carry
+  // provider, same shared 0.001-degree grid cache, same egress IPs — must carry
   // the same 60/min budget as the legacy edge route, and it now does. Both are
   // per-IP budgets, so they bound any one caller but do not cap aggregate
   // egress to Nominatim (60/min from a single IP is Nominatim's whole

@@ -3,6 +3,7 @@ import { jsonResponse } from './_json-response.js';
 import { checkRateLimit } from './_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash, setCachedData } from './_upstash-json.js';
+import { geocodeCacheKey } from '../shared/geocode-cache-key.js';
 
 export const config = { runtime: 'edge' };
 
@@ -67,7 +68,7 @@ export default async function handler(req, ctx) {
     return jsonResponse({ error: 'valid lat (-90..90) and lon (-180..180) required' }, 400, cors);
   }
 
-  const cacheKey = `${getCacheKeyPrefix()}geocode:${latN.toFixed(1)},${lonN.toFixed(1)}`;
+  const cacheKey = `${getCacheKeyPrefix()}${geocodeCacheKey(latN, lonN)}`;
 
   const cached = normalizeCacheEntry(await readJsonFromUpstash(cacheKey, 1500));
   if (cached) {
@@ -104,7 +105,7 @@ export default async function handler(req, ctx) {
     // Antarctic cells must populate the shared geocode: cache, and a sweep of
     // those cells is currently 100% Nominatim passthrough. The entry uses the
     // RPC's exact shape ({country, code, displayName, error} as strings) —
-    // both handlers read the same deployment-scoped 0.1-degree grid namespace
+    // both handlers read the same deployment-scoped 0.001-degree grid namespace
     // (`geocode:lat,lon`, 604800 s TTL), so either may serve the other and a
     // normalized `''` is indistinguishable from an ocean lookup either way.
     // (#6432)
