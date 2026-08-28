@@ -13,10 +13,10 @@
 // is a fixed allowlist — never a request, user, credential, or header field.
 
 import { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
-import { KV_ENVELOPE_SCHEMA_VERSION } from './kv-envelope-schema.js';
+import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION } from '../../../shared/bootstrap-tier-envelope.js';
 import { isBootstrapKvServingTier } from './kv-serve-mode.js';
 
-export { KV_ENVELOPE_SCHEMA_VERSION } from './kv-envelope-schema.js';
+export { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION } from '../../../shared/bootstrap-tier-envelope.js';
 
 export { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
 
@@ -48,7 +48,7 @@ export function classifyKvEnvelope(tier, raw, now) {
     return { outcome: 'fallback', reason: 'invalid' };
   }
   if (!isPlainObject(envelope)
-    || envelope.schemaVersion !== KV_ENVELOPE_SCHEMA_VERSION
+    || envelope.schemaVersion !== BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION
     || envelope.tier !== tier
     || !Number.isFinite(envelope.generatedAt)
     || !Number.isInteger(envelope.generatedAt)
@@ -56,6 +56,8 @@ export function classifyKvEnvelope(tier, raw, now) {
     || !isPlainObject(envelope.payload)
     || !isPlainObject(envelope.payload.data)
     || !Array.isArray(envelope.payload.missing)) {
+    // Unversioned legacy envelopes are invalid: the publisher is a separate Railway
+    // deploy, so Stage 2 must not serve a pre-canadaAlerts-fallback payload (#7291).
     return { outcome: 'fallback', reason: 'invalid' };
   }
   if (now - envelope.generatedAt > TIER_MAX_AGE_MS[tier]) return { outcome: 'fallback', reason: 'stale' };

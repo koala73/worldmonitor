@@ -11,7 +11,7 @@ import {
   runPublisherLoop,
 } from '../scripts/publish-bootstrap-tiers.mjs';
 import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
-import { KV_ENVELOPE_SCHEMA_VERSION } from '../workers/api-cors-preflight/src/kv-envelope-schema.js';
+import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION } from '../shared/bootstrap-tier-envelope.js';
 import {
   CANADA_ALERTS_LEGACY_KEY,
   CANADA_ALERTS_SIBLING_KEY,
@@ -246,7 +246,7 @@ describe('publishBootstrapTier', () => {
     assert.equal(writes.length, 1);
     assert.equal(writes[0][1], 'fast.json');
     assert.deepEqual(writes[0][2], {
-      schemaVersion: KV_ENVELOPE_SCHEMA_VERSION,
+      schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION,
       generatedAt: 1_721_000_000_000,
       tier: 'fast',
       payload: { data: { example: { answer: 42 } }, missing: [] },
@@ -426,7 +426,17 @@ describe('publisher deployment boundaries', () => {
     const source = await readFile(new URL('../scripts/publish-bootstrap-tiers.mjs', import.meta.url), 'utf8');
     assert.match(source, /from '\.\.\/shared\/bootstrap-tier-keys\.js'/);
     assert.match(source, /from '\.\.\/shared\/canada-alerts-cutover\.js'/);
-    assert.doesNotMatch(source, /from ['"]\.\.\/(?:api|src|server)\//);
+    assert.match(source, /from '\.\.\/shared\/bootstrap-tier-envelope\.js'/);
+    assert.doesNotMatch(source, /from ['"]\.\.\/(?:api|src|server|workers)\//);
+  });
+
+  it('publisher and Worker share one envelope schema version', async () => {
+    const shared = await import('../shared/bootstrap-tier-envelope.js');
+    const shadow = await readFile(new URL('../workers/api-cors-preflight/src/kv-shadow.js', import.meta.url), 'utf8');
+    const publisher = await readFile(new URL('../scripts/publish-bootstrap-tiers.mjs', import.meta.url), 'utf8');
+    assert.equal(shared.BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION, 1);
+    assert.match(publisher, /from '\.\.\/shared\/bootstrap-tier-envelope\.js'/);
+    assert.match(shadow, /from '\.\.\/\.\.\/\.\.\/shared\/bootstrap-tier-envelope\.js'/);
   });
 
   it('keeps canadaAlerts cutover helpers in lockstep with origin', async () => {

@@ -33,6 +33,8 @@ id = "40d42ec8064b4813ac87e61b43fb697f"
 #   "slow"      = serve the slow tier only (stage 1; kill-switch to keep slow on KV).
 #   "all"       = serve both public tiers.   <-- CURRENT (stage 2)
 # Any miss/stale/invalid/error/timeout falls through to the Vercel/Redis origin (strictly additive).
+# Serving also requires envelope schemaVersion=1 (shared/bootstrap-tier-envelope.js). A Worker
+# that deploys before the publisher writes that field falls through on legacy envelopes.
 # Kill-switch = set back to "off" (or "slow") and redeploy. Once "all" is proven, flip
 # BOOTSTRAP_KV_SHADOW to "0".
 #

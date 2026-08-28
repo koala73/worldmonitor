@@ -11,7 +11,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import worker from './src/index.js';
-import { KV_ENVELOPE_SCHEMA_VERSION, TIER_MAX_AGE_MS } from './src/kv-shadow.js';
+import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION, TIER_MAX_AGE_MS } from './src/kv-shadow.js';
 
 const FAST_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1';
 const SLOW_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1';
@@ -19,7 +19,7 @@ const SLOW_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1'
 const payloadFor = (tier) => ({ data: { [`${tier}-key`]: { v: 1 } }, missing: [`${tier}-missing`] });
 const envelopeFor = (tier, ageMs = 0) =>
   JSON.stringify({
-    schemaVersion: KV_ENVELOPE_SCHEMA_VERSION,
+    schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION,
     tier,
     generatedAt: Date.now() - ageMs,
     payload: payloadFor(tier),
@@ -114,7 +114,7 @@ test('every KV failure mode falls through to origin (never a served 5xx)', async
   const cases = [
     ['miss', async () => null],
     ['invalid', async () => '{not json'],
-    ['wrong-tier', async () => JSON.stringify({ schemaVersion: KV_ENVELOPE_SCHEMA_VERSION, tier: 'slow', generatedAt: Date.now(), payload: payloadFor('slow') })],
+    ['wrong-tier', async () => JSON.stringify({ schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION, tier: 'slow', generatedAt: Date.now(), payload: payloadFor('slow') })],
     ['legacy-unversioned', async () => JSON.stringify({ tier: 'fast', generatedAt: Date.now(), payload: payloadFor('fast') })],
     ['stale', async (tier) => envelopeFor(tier, TIER_MAX_AGE_MS.fast + 60_000)],
     ['read-error', async () => { throw new Error('kv down'); }],

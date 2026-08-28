@@ -10,6 +10,7 @@ import {
   canadaAlertsCutoverFallbackValue,
   extraCanadaAlertsCutoverReadKeys,
 } from '../shared/canada-alerts-cutover.js';
+import { buildBootstrapTierEnvelope } from '../shared/bootstrap-tier-envelope.js';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { evaluatePublishedBootstrapVolume } from './_bootstrap-payload-budget.mjs';
 import { compactNaturalEventsDashboardPayload } from './_natural-events-dashboard.mjs';
@@ -23,7 +24,6 @@ import {
   putKvJsonValue,
   resolveKvStorageConfig,
 } from './_kv-storage.mjs';
-import { KV_ENVELOPE_SCHEMA_VERSION } from '../workers/api-cors-preflight/src/kv-envelope-schema.js';
 
 const NEG_SENTINEL = '__WM_NEG__';
 const REDIS_PIPELINE_TIMEOUT_MS = 30_000;
@@ -266,7 +266,7 @@ export async function publishBootstrapTier(tier, options = {}) {
   if (!storage) throw new Error('Bootstrap publisher R2 credentials are missing');
 
   const generatedAt = (options.now ?? Date.now)();
-  const envelope = { schemaVersion: KV_ENVELOPE_SCHEMA_VERSION, generatedAt, tier, payload };
+  const envelope = buildBootstrapTierEnvelope({ generatedAt, tier, payload });
   const putObject = options.putObject ?? putR2JsonObject;
   const write = await putObject(storage, `${tier}.json`, envelope, {
     tier,
