@@ -3798,8 +3798,8 @@ describe('api/mcp.ts — U7 Pro-path', () => {
   it('F4: post-DECR-failure overshoot → next request clamps counter back via DECR sweep', async () => {
     // Models the failure mode: counter is pinned at 100 (50 + 50 leaked
     // overshoot from prior DECR failures). Without F4 the user 429s for
-    // the rest of the UTC day. With F4 the next rejection-path probe
-    // sees newCount > limit + 1 and DECR-sweeps the overshoot.
+    // the rest of the UTC day. With F4 the next rejection-path EVAL
+    // owner-rolls-back and clamps residue back to the limit.
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 100 } });
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';

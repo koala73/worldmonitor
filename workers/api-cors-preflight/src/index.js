@@ -41,7 +41,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
-const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -301,11 +301,12 @@ export default {
     // origin is fetched at most once.
     const fetchOrigin = () => passThroughToOrigin(request, url, corsForStatus);
 
-    // KV serving (U-K4, #5338): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE on, serve
-    // the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged against
-    // origin and any non-servable outcome uses the origin response — strictly additive (KTD3), so
-    // the worst case is today's behaviour. Returns null for non-servable requests (flag off, not a
-    // bootstrap GET), which then run the normal pass-through. Inert until the flag is flipped.
+    // KV serving (U-K4, #5338 / #7291): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE
+    // on, serve the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged
+    // against origin and any non-servable outcome uses the origin response — strictly additive
+    // (KTD3), so the worst case is origin pass-through. Returns null for non-servable requests
+    // (flag off, not a bootstrap GET), which then run the normal pass-through. Production is
+    // BOOTSTRAP_KV_SERVE="all"; "slow" and "off" remain kill-switches.
     const bootstrapKv = await maybeServeBootstrapFromKv(request, url, env, ctx, buildCorsHeaders(origin), fetchOrigin);
     if (bootstrapKv) return bootstrapKv;
 

@@ -25,8 +25,12 @@ import {
   bootstrapTierKeyNames,
   resolveBootstrapRegistry,
 } from './_bootstrap-tier-keys.js';
+import { compactNaturalEventsDashboardPayload } from './_natural-events-dashboard.js';
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
-import { CANADA_ALERTS_CUTOVER_FALLBACK_KEYS } from './_canada-alerts-cutover.js';
+import {
+  canadaAlertsCutoverFallbackValue,
+  extraCanadaAlertsCutoverReadKeys,
+} from './_canada-alerts-cutover.js';
 import {
   BOOTSTRAP_R2_PROBE_CEILING_MS,
   readBootstrapTierObject,
@@ -70,17 +74,8 @@ export function stripXFeedRestrictedFields(value) {
 }
 
 function bootstrapRedisReadKeys(keys) {
-  if (!keys.includes(BOOTSTRAP_CACHE_KEYS.canadaAlerts)) return keys;
-  const extra = CANADA_ALERTS_CUTOVER_FALLBACK_KEYS.filter((key) => !keys.includes(key));
+  const extra = extraCanadaAlertsCutoverReadKeys(keys, BOOTSTRAP_CACHE_KEYS.canadaAlerts);
   return extra.length > 0 ? [...keys, ...extra] : keys;
-}
-
-function canadaAlertsCutoverFallbackValue(cached) {
-  for (const key of CANADA_ALERTS_CUTOVER_FALLBACK_KEYS) {
-    const fallback = cached.get(key);
-    if (fallback !== undefined) return fallback;
-  }
-  return undefined;
 }
 
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
@@ -362,6 +357,7 @@ function hasBootstrapCredentialCookie(req) {
 
 const NEG_SENTINEL = '__WM_NEG__';
 export const compactWildfireBootstrapPayload = compactWildfireDashboardPayload;
+export { compactNaturalEventsDashboardPayload };
 
 async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
   const result = new Map();
@@ -675,6 +671,7 @@ export default async function handler(req, ctx) {
         responseValue = stripXFeedRestrictedFields(val);
       }
       if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
+      if (names[i] === 'naturalEvents') responseValue = compactNaturalEventsDashboardPayload(responseValue);
       data[names[i]] = responseValue;
     } else {
       missing.push(names[i]);

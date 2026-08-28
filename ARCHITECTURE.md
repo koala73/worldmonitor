@@ -149,7 +149,7 @@ Edge functions are bundled per file: each deployed function may not pull in unre
 4. API key validation
 5. Rate limiting (endpoint-specific, then global fallback)
 6. Route matching (static Map lookup, then dynamic `{param}` scan)
-7. POST-to-GET compatibility (for stale clients)
+7. POST-to-GET compatibility (for stale clients). Unmatched POSTs with a trusted `Content-Length` under 1 MB may be retried as GET when a GET handler exists for the path. The body is all-or-nothing: JSON objects of scalars and scalar arrays become query parameters; object values, nested/non-scalar array members, non-object JSON, malformed JSON, and unread bodies return 400 without applying a partial translation. Empty or whitespace-only bodies still fall through to GET with no extra query parameters. Unknown paths still 404/405. Array expansion remains capped at 200 values per key.
 8. Handler execution with error boundary
 9. ETag generation (FNV-1a hash) + 304 Not Modified
 10. Cache header application

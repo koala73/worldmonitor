@@ -85,6 +85,11 @@ describe('cors helper', () => {
       /(?:^|,\s*)X-RateLimit-Reset(?:,|$)/,
       'browser clients must be able to read rate-limit reset timestamps',
     );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Mode(?:,|$)/,
+      'browser clients must be able to read limiter degradation (X-RateLimit-Mode)',
+    );
   });
 
   it('propagates exceptions (caller must wrap in fail-closed try/catch)', () => {
@@ -174,6 +179,24 @@ describe('X-Billing-Verification is readable cross-origin (#5622)', () => {
       // The two travel together on a retryable denial; exposing one without the
       // other leaves the client knowing it should retry but not when.
       assert.ok(exposedHeaders(build()).includes('Retry-After'), `${label} must expose Retry-After`);
+    });
+  }
+});
+
+/**
+ * #7270: oauth/token, wm-session, and the gateway set `X-RateLimit-Mode: degraded`
+ * when the Upstash limiter is unconfigured or throws. The Limit/Remaining/Reset
+ * triplet was already exposed; Mode was not, so a cross-origin browser or
+ * desktop-webview client saw `response.headers.get('X-RateLimit-Mode') === null`.
+ */
+describe('X-RateLimit-Mode is readable cross-origin (#7270)', () => {
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} exposes X-RateLimit-Mode`, () => {
+      assert.ok(
+        exposedHeaders(build()).includes('X-RateLimit-Mode'),
+        `${label} must expose X-RateLimit-Mode so clients can tell fail-open limiter `
+        + 'degradation from a healthy grant without parsing the body',
+      );
     });
   }
 });

@@ -686,13 +686,20 @@ function sebufApiPlugin(): Plugin {
           // Execute handler
           const response = await matchedHandler(webRequest);
 
-          // Write response
+          // Write response. HEAD is GET without a payload (#7275).
           res.statusCode = response.status;
           response.headers.forEach((value, key) => {
             res.setHeader(key, value);
           });
           for (const [key, value] of Object.entries(corsHeaders)) {
             res.setHeader(key, value);
+          }
+          if (req.method === 'HEAD') {
+            if (response.body) {
+              try { void response.body.cancel(); } catch { /* already consumed */ }
+            }
+            res.end();
+            return;
           }
           res.end(await response.text());
         } catch (err) {

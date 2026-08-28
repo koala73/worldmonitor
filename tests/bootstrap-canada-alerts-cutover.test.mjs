@@ -112,3 +112,19 @@ test('public canadaAlerts does not resurrect Alberta data when the union is an e
   assert.equal(response.status, 200);
   assert.deepEqual(body.data.canadaAlerts, emptyUnion);
 });
+
+test('public canadaAlerts stays missing when a present aggregate unwraps to undefined', async () => {
+  const alberta = { alerts: [{ id: 'ab-alert', province: 'AB' }] };
+  installRedis(new Map([
+    [PRIMARY_KEY, { _seed: { fetchedAt: 1 } }],
+    [SIBLING_KEY, alberta],
+    [LEGACY_KEY, alberta],
+  ]));
+
+  const response = await handler(makePublicFastRequest());
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(Object.hasOwn(body.data, 'canadaAlerts'), false);
+  assert.ok(body.missing.includes('canadaAlerts'));
+});

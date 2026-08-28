@@ -454,6 +454,30 @@ describe('premium gateway API key enforcement', () => {
 });
 
 describe('POST-to-GET compatibility hardening', () => {
+  async function captureRedisCalls(run: () => Promise<Response>) {
+    const delegateFetch = globalThis.fetch;
+    const redisCalls: Array<{ url: string; body: string }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL || '')) {
+        redisCalls.push({
+          url,
+          body: typeof init?.body === 'string' ? init.body : '',
+        });
+      }
+      return delegateFetch(input, init);
+    }) as typeof fetch;
+    try {
+      return { response: await run(), redisCalls };
+    } finally {
+      globalThis.fetch = delegateFetch;
+    }
+  }
+
   function makePublicMarketHandler() {
     let seenUrl: URL | null = null;
     const handler = createDomainGateway([
@@ -532,14 +556,165 @@ describe('POST-to-GET compatibility hardening', () => {
     assert.equal(oversized.status, 405);
   });
 
-  it('preserves malformed JSON compatibility by falling back to matching GET without query params', async () => {
+  it('rejects malformed JSON instead of falling back to an unfiltered GET', async () => {
     const { handler, seenUrl } = makePublicMarketHandler();
     const body = '{not json';
+
+    const { response: res, redisCalls } = await captureRedisCalls(
+      () => handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) })),
+    );
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'Invalid JSON body for POST compatibility' });
+    assert.equal(seenUrl(), null);
+    assert.ok(
+      redisCalls.some(({ body }) => body.includes('rl:ep') && body.includes('/api/market/v1/list-market-quotes')),
+      'malformed compatibility requests must traverse endpoint abuse limiting',
+    );
+  });
+
+  it('rejects a JSON array body instead of encoding index keys as query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify(['AAPL', 'MSFT']);
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'Unsupported POST compatibility body' });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('rejects object values without applying sibling scalars', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      symbols: ['AAPL'],
+      filter: { sector: 'tech' },
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Unsupported value for POST compatibility parameter',
+      parameter: 'filter',
+    });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('rejects non-scalar array members without applying sibling scalars', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      includeExtended: true,
+      symbols: ['AAPL', { nested: true }],
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Unsupported value for POST compatibility parameter',
+      parameter: 'symbols',
+    });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('rejects null values without applying sibling scalars', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      includeExtended: true,
+      symbols: null,
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Unsupported value for POST compatibility parameter',
+      parameter: 'symbols',
+    });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('converts empty POST bodies to GET without query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+
+    const res = await handler(compatPost('', { 'Content-Length': '0' }));
+
+    assert.equal(res.status, 200);
+    assert.equal(seenUrl()?.search, '');
+  });
+
+  it('converts whitespace-only POST bodies to GET without query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = ' \n\t ';
 
     const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
 
     assert.equal(res.status, 200);
     assert.equal(seenUrl()?.search, '');
+  });
+
+  it('rejects a JSON null body', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = 'null';
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'Unsupported POST compatibility body' });
+    assert.equal(seenUrl(), null);
+  });
+
+  it('does not reject an unsupported body when no GET fallback route exists', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ filter: { nested: true } });
+
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/does-not-exist', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+        'Content-Type': 'application/json',
+        'Content-Length': String(Buffer.byteLength(body)),
+      },
+      body,
+    }));
+
+    assert.equal(res.status, 404);
+    assert.equal(seenUrl(), null);
+  });
+
+  it('returns 400 when the POST compatibility body cannot be read', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['AAPL'] });
+    const req = compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) });
+    req.clone = () => ({
+      text: async () => {
+        throw new Error('stream reset');
+      },
+    }) as Request;
+
+    const { response: res, redisCalls } = await captureRedisCalls(() => handler(req));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'malformed_request' });
+    assert.equal(seenUrl(), null);
+    assert.ok(
+      redisCalls.some(({ body }) => body.includes('rl:ep') && body.includes('/api/market/v1/list-market-quotes')),
+      'unreadable compatibility requests must traverse endpoint abuse limiting',
+    );
+  });
+
+  it('enforces the actual-byte backstop when Content-Length understates a multibyte body', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['é'.repeat(524_288)] });
+    assert.ok(Buffer.byteLength(body) >= 1_048_576);
+
+    const res = await handler(compatPost(body, { 'Content-Length': '128' }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'malformed_request' });
+    assert.equal(seenUrl(), null);
   });
 });
 

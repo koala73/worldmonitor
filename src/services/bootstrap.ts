@@ -655,6 +655,10 @@ export const __testing__ = {
       },
     };
   },
+  /** Test-only: drop values into the consume-once hydration cache. */
+  seedHydrationCacheForTests(data: Record<string, unknown>): void {
+    populateCache(data, () => true);
+  },
   getBootstrapGeneration(): number {
     return bootstrapGeneration;
   },
