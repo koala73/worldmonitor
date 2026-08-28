@@ -1523,6 +1523,67 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     }
   });
 
+  it('resources/read forwards a mid-call billing 503 (X-Billing-Verification + Retry-After + no-store)', async () => {
+    // #7269: buildResourceResponse used to copy only Retry-After when
+    // re-emitting dispatcher errors, so a mid-call unverified billing denial
+    // lost its marker and the outer handler classified it as dispatch/rate-limit
+    // degradation. Parity with tools/call (mcp.test.mjs mid-call 503).
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Renewal verification pending', code: 'renewal_verification_pending' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '21',
+          'X-Billing-Verification': 'renewal_verification_pending',
+        },
+      },
+    );
+    const res = await mcpHandler(
+      proReq('POST', readBody('worldmonitor://countries/de/risk')),
+      deps,
+    );
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Retry-After'), '21');
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(body.error?.data?.code, 'renewal_verification_pending');
+    assert.equal(body.id, 100);
+  });
+
+  it('resources/read forwards a mid-call confirmed-lapse 403 (X-Billing-Verification + no-store)', async () => {
+    // #7269: a gateway-backed subscription_lapsed 403 must keep the billing
+    // marker so the handler classifies it as billing/tier_403, not an ordinary
+    // precheck denial. Parity with tools/call (mcp.test.mjs mid-call 403).
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }),
+      {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Billing-Verification': 'subscription_lapsed',
+        },
+      },
+    );
+    const res = await mcpHandler(
+      proReq('POST', readBody('worldmonitor://countries/de/risk')),
+      deps,
+    );
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'subscription_lapsed');
+    assert.equal(body.id, 100);
+  });
+
   it('_budget_exceeded soft envelope from country-risk RPC passes through unchanged (no freshness merge)', async () => {
     // Greptile P2 regression guard. When the RPC return exceeds the
     // 256 KB budget, dispatchToolsCall emits a 200 with

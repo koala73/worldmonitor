@@ -56,6 +56,7 @@ let lastHandlerRequest = null;
 // Map<key, expiryMs> — models Redis EX-based expiry so tests can exercise
 // TTL-vs-acceptance-window interactions, not just presence/absence.
 let replayCacheKeys = new Map();
+let axiomEvents = [];
 
 function makeGateway() {
   return createDomainGateway([
@@ -165,6 +166,11 @@ function installFetchStub(opts = {}) {
       const ent = overrideEntitlement ? overrideEntitlement(body.userId) : entitlementForUser(body.userId);
       return new Response(JSON.stringify(ent), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
+    if (typeof url === 'string' && url.includes('api.axiom.co')) {
+      const body = init?.body ? JSON.parse(String(init.body)) : [];
+      for (const ev of body) axiomEvents.push(ev);
+      return new Response('{}', { status: 200 });
+    }
     // Anything else — fail loudly so tests can't silently depend on the network.
     throw new Error(`unexpected fetch in test: ${url}`);
   };
@@ -182,9 +188,28 @@ function disableRedisForLegacyGatewayCheck() {
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
 }
 
+function makeRecordingCtx() {
+  const pending = [];
+  const ctx = { waitUntil: (p) => { pending.push(p); } };
+  async function settled() {
+    let prev = -1;
+    while (pending.length !== prev) {
+      prev = pending.length;
+      await Promise.allSettled(pending.slice(0, prev));
+    }
+  }
+  return { ctx, settled };
+}
+
+function enableGatewayTelemetry() {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'test-token';
+}
+
 beforeEach(() => {
   lastHandlerRequest = null;
   replayCacheKeys = new Map();
+  axiomEvents = [];
   process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
   process.env.CONVEX_SITE_URL = CONVEX_SITE;
   process.env.CONVEX_SERVER_SHARED_SECRET = CONVEX_SECRET;
@@ -800,6 +825,66 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
       const j = await res.json().catch(() => ({}));
       assert.notEqual(j.error, 'CONFIGURATION', 'no CONFIGURATION error on legacy path');
     }
+  });
+});
+
+// ===========================================================================
+// TELEMETRY — missing HMAC config vs malformed signature (#7277)
+// ===========================================================================
+describe('gateway internal-MCP — usage telemetry reasons', () => {
+  it('missing MCP_INTERNAL_HMAC_SECRET emits hmac_secret_unconfigured, not auth_401', async () => {
+    delete process.env.MCP_PRO_GRANT_HMAC_SECRET;
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    enableGatewayTelemetry();
+    const handler = makeGateway();
+    const recorder = makeRecordingCtx();
+    const req = new Request('https://example.test/api/news/v1/summarize-article', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: '1700000000.AAAA',
+        [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req, recorder.ctx);
+    assert.equal(res.status, 500);
+    assert.deepEqual(await res.json(), {
+      error: 'CONFIGURATION',
+      detail: 'MCP_INTERNAL_HMAC_SECRET not configured',
+    });
+    await recorder.settled();
+    assert.equal(axiomEvents.length, 1, 'exactly one request event');
+    assert.equal(axiomEvents[0].status, 500);
+    assert.equal(axiomEvents[0].reason, 'hmac_secret_unconfigured');
+    assert.notEqual(axiomEvents[0].reason, 'auth_401');
+    assert.equal(
+      JSON.stringify(axiomEvents[0]).includes(HMAC_SECRET),
+      false,
+      'telemetry must not include the HMAC secret',
+    );
+  });
+
+  it('malformed signature still emits auth_401', async () => {
+    enableGatewayTelemetry();
+    const handler = makeGateway();
+    const recorder = makeRecordingCtx();
+    const req = new Request('https://example.test/api/news/v1/summarize-article', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: 'notanumber.AAAA',
+        [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req, recorder.ctx);
+    assert.equal(res.status, 401);
+    assert.deepEqual(await res.json(), { error: 'invalid_internal_mcp_signature' });
+    await recorder.settled();
+    assert.equal(axiomEvents.length, 1, 'exactly one request event');
+    assert.equal(axiomEvents[0].status, 401);
+    assert.equal(axiomEvents[0].reason, 'auth_401');
   });
 });
 
