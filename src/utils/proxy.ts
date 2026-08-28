@@ -76,6 +76,23 @@ function shouldPersistResponse(url: string): boolean {
   return url.startsWith('/api/');
 }
 
+function requestPathname(url: string): string {
+  if (url.startsWith('/')) return url.split('?')[0] ?? url;
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return '';
+  }
+}
+
+// /api/fwdstart is a public wildcard-CORS feed. The session interceptor
+// defaults credentials to 'include'; browsers then reject ACAO: *.
+function proxyFetchInit(url: string, init: RequestInit = {}): RequestInit {
+  return requestPathname(url) === '/api/fwdstart'
+    ? { ...init, credentials: 'omit' }
+    : init;
+}
+
 function buildResponseCacheKey(url: string): string {
   return `${RESPONSE_CACHE_PREFIX}${url}`;
 }
@@ -129,7 +146,7 @@ function isPersistedResponseFresh(
 }
 
 async function fetchAndPersist(url: string): Promise<Response> {
-  const response = await fetch(proxyUrl(url), { cache: 'no-store' });
+  const response = await fetch(proxyUrl(url), proxyFetchInit(url, { cache: 'no-store' }));
   if (response.ok && shouldPersistResponse(url) && !hasNoStoreCacheDirective(response.headers)) {
     try {
       const body = await response.clone().text();
@@ -143,7 +160,7 @@ async function fetchAndPersist(url: string): Promise<Response> {
 
 export async function fetchWithProxy(url: string): Promise<Response> {
   if (!shouldPersistResponse(url)) {
-    return fetch(proxyUrl(url));
+    return fetch(proxyUrl(url), proxyFetchInit(url));
   }
 
   const cacheKey = buildResponseCacheKey(url);

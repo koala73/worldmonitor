@@ -27,13 +27,13 @@ Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP �
 
 | Plan | Per-minute (burst) | Daily included | Beyond the daily allowance |
 |------|--------------------|----------------|----------------------------|
-| **API Starter** | **60** / 60 s | **1,000** / UTC day | metered — hard stop at 10,000 / day |
-| **API Business** | **300** / 60 s | **10,000** / UTC day | metered — hard stop at 100,000 / day |
+| **API Starter** | **60** / 60 s | **1,000** / UTC day | **429** — the sold allowance is the hard limit |
+| **API Business** | **300** / 60 s | **10,000** / UTC day | **429** — the sold allowance is the hard limit |
 | **Enterprise** | **1,000** / 60 s | unlimited | — |
 
 - **Per-minute** is a hard burst limit — exceeding it returns 429 immediately.
-- **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are **metered, not rejected** — usage-based overage billing is rolling out. Until then a safety ceiling (10× the included allowance) caps runaway usage with a 429.
-- The per-minute burst, daily allowance, and ceiling are all **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently.)
+- **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are rejected with **429** — the sold plan limit is authoritative, with no overage headroom. Usage is metered against the same counter that enforces, so the Settings notice and the 429 agree.
+- The per-minute burst and daily allowance are both **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently.)
 - Need a higher limit? **Contact support** to raise your plan's allowance.
 
 ## Dashboard AI quota
@@ -53,17 +53,29 @@ Free and signed-out dashboard users keep the normal keyword/cache fallback for f
 
 Signed-out callers are rejected outright, and Pro-gated AI routes deny free accounts before any spend. Separately from these plan allowances, a small non-plan safety floor of **50 requests/day** applies to any caller whose paid entitlement cannot be confirmed at request time — a lapsed subscription, or a transient entitlement-lookup outage. It exists so an outage degrades gracefully instead of rejecting paying customers; it is not an allowance any plan includes, and it is never larger than the smallest paid allowance.
 
+## Stock backtest provider-work quota
+
+`GET /api/market/v1/backtest-stock` is not LLM-backed. On a cache miss it fetches Yahoo Finance history for a caller-chosen symbol, so it must not share `llm:direct-usage` or `dashboardAiCallsPerDay`. Independently of the **60 requests / 60 s** route policy:
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per authenticated user | **200** uncached Yahoo-history fetches | UTC day |
+
+The 200 ceiling is four full 50-symbol Pro watchlist hydrations. Cached repeats and invalid symbols do not consume the budget. Exceeding it returns **429** with `Retry-After` until the next **00:00 UTC**. If the quota store cannot prove a reservation, the route **fails closed** with **503** rather than fetching Yahoo.
+
 ## OAuth endpoints
 
 | Endpoint | Limit | Window | Scope |
 |----------|-------|--------|-------|
 | `POST /api/oauth/register` | 5 | 60 s | Per IP |
-| `GET /api/oauth/authorize` | 10 | 60 s | Per IP |
+| `POST /api/oauth/authorize` (consent submit) | 10 | 60 s | Per IP |
 | `POST /api/oauth/token` | 10 | 60 s | Per credential / client / IP fallback |
 
 Matches the implementations in `api/oauth/register.js`, `api/oauth/authorize.js`, and `api/oauth/token.ts`.
 
 For `/api/oauth/token`, the limiter key is `client_secret` hash for `client_credentials`, then `client_id` when present, and only falls back to caller IP when neither credential identifier is available.
+
+All three grant types (`authorization_code`, `refresh_token`, `client_credentials`) **fail open** when the Upstash limiter is unconfigured or throws. Token persistence still fails closed when Redis storage is down; a limiter-only 503 would abort MCP client handshakes during an SDK timeout even when the pipeline path still works. `client_credentials` keeps the operator env-key allowlist as a second gate. Degradation is observable: a bounded/deduplicated `[rate-limit] redis-error` log and Sentry capture, `X-RateLimit-Mode: degraded` on the response (listed in `Access-Control-Expose-Headers` so cross-origin JS can read it), and a usage `reason` of `rate_limit_degraded`. Genuine budget exhaustion remains HTTP **429** `rate_limit_exceeded`.
 
 Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
 
@@ -78,7 +90,7 @@ Routes that fetch a third-party host on our behalf carry their own per-IP budget
 | `GET /api/reverse-geocode` | 60 | 60 s | Per IP |
 | `GET /api/infrastructure/v1/reverse-geocode` | 60 | 60 s | Per IP |
 
-The two edge handlers (`/api/skills/fetch-agentskills`, `/api/youtube/live`) enforce their budgets in-handler via `checkScopedRateLimit`/`checkRateLimit`; `/api/reverse-geocode` mirrors its budget as a literal constant per `api/*.js` constraints. `/api/infrastructure/v1/reverse-geocode` is a gateway RPC, so the gateway enforces it via `checkEndpointRateLimit` (fail-closed on Redis outage). Both reverse-geocode routes reach Nominatim, whose usage policy is the strictest of any provider in the stack and whose enforcement is an egress-IP ban — treat those budgets as a ceiling rather than a target; a global (aggregate) companion budget is still required and is not implemented by this change.
+The two edge handlers (`/api/skills/fetch-agentskills`, `/api/youtube/live`) enforce their budgets in-handler via `checkScopedRateLimit`/`checkRateLimit`; `/api/reverse-geocode` mirrors its per-IP budget as a literal constant per `api/*.js` constraints. `/api/infrastructure/v1/reverse-geocode` is a gateway RPC, so the gateway enforces its per-IP budget through `checkEndpointRateLimit` (fail-closed on Redis outage). After a shared-cache miss, both reverse-geocode handlers also use one fail-closed provider-wide Redis bucket capped at 1 request per second before they call Nominatim; cache hits do not consume that aggregate budget.
 
 ## Write endpoints
 
@@ -95,7 +107,7 @@ Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/a
 
 These mostly use the default public API limit. Cache headers vary by endpoint:
 
-- `GET /api/bootstrap` — only the explicitly-marked `?...&public=1` URLs are shared-cacheable. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which every key published more often than that shield does: `chinaDecisionSignals` (browser `max-age=60`, CDN `s-maxage=900`), `canadaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `albertaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `manitobaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `marketCorrelationSeries` (browser `max-age=60`, CDN `s-maxage=900`) and `bcOpen511` (browser `max-age=60`, CDN `s-maxage=1800`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Every other shape — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers, so a credentialed URL can never be answered from a shared cache. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
+- `GET /api/bootstrap` — only the explicitly-marked `?...&public=1` URLs are shared-cacheable. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which every key published more often than that shield does: `correlationCards` (browser `max-age=60`, CDN `s-maxage=300`), `chinaDecisionSignals` (browser `max-age=60`, CDN `s-maxage=900`), `canadaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `albertaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `manitobaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `marketCorrelationSeries` (browser `max-age=60`, CDN `s-maxage=900`), `imdCycloneMarine` (browser `max-age=60`, CDN `s-maxage=900`), `bcOpen511` (browser `max-age=60`, CDN `s-maxage=1800`), `flightDelays` (browser `max-age=60`, CDN `s-maxage=1800`), and `forecasts` (browser `max-age=300`, CDN `s-maxage=3600`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Every other shape — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers, so a credentialed URL can never be answered from a shared cache. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
 - `GET /api/health` — `private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`.
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`.
 
@@ -150,6 +162,7 @@ API and MCP plan caps are tracked against the product catalog limits that ship w
 |------|--------------------|--------------------|-----------------|--------------------|
 | Free | 0 | 0 | 0 | 0 |
 | Pro | 0 | 0 | 50 | 60 |
+| Pro Business | 0 | 0 | 250 | 60 |
 | API Starter | 1,000 | 60 | 1,000 | 60 |
 | API Business | 10,000 | 300 | 10,000 | 300 |
 | Enterprise | Unlimited | 1,000 | Unlimited | 1,000 |

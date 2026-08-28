@@ -28,6 +28,7 @@ export {
   hasReviewedSourceType,
   isStateAffiliatedSource,
 } from '../../shared/source-provenance';
+export { resolveTelegramSourceName } from '../../shared/telegram-channel-trust';
 export { computeCredibilityScore } from '../../shared/news-credibility.js';
 export type {
   PropagandaRisk,
@@ -491,6 +492,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'The Diplomat', url: rss('https://thediplomat.com/feed/') },
     { name: 'South China Morning Post', url: railwayRss('https://www.scmp.com/rss/91/feed/') },
     { name: 'Reuters Asia', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(China+OR+Japan+OR+Taiwan+OR+Korea)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Reuters India', url: rss('https://news.google.com/rss/search?q=site:reuters.com+India+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Xinhua', url: rss('https://news.google.com/rss/search?q=site:xinhuanet.com+OR+Xinhua+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Japan Today', url: rss('https://japantoday.com/feed/atom') },
     { name: 'Nikkei Asia', url: rss('https://news.google.com/rss/search?q=site:asia.nikkei.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
@@ -543,6 +545,10 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Pajhwok Afghan News', url: rss('https://news.google.com/rss/search?q=site%3Apajhwok.com%20Afghanistan%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The Daily Star', url: rss('https://news.google.com/rss/search?q=site%3Athedailystar.net%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Dhaka Tribune', url: rss('https://news.google.com/rss/search?q=site%3Adhakatribune.com%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
+    // New opt-in feeds stay at the end of the category. The free source cap
+    // consumes declaration order, so inserting earlier can evict an existing
+    // source from persisted free-user selections.
+    { name: 'Times of India', url: rss('https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms'), lang: 'en' },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -1581,7 +1587,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
     'Daily Nation', 'The Guardian Post',
   ],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo', 'HaitiLibre English', 'Caracas Chronicles', 'Havana Times'],
-asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
+  asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Reuters India', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
     ...CENTRAL_ASIA_EN_DEFAULT_SOURCES,
     ...INDO_PACIFIC_EN_DEFAULT_SOURCES,
     'Amu TV', 'The Daily Star',

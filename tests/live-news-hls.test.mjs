@@ -10,6 +10,7 @@ const root = resolve(__dirname, '..');
 const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 
 const liveNewsSrc = readSrc('src/components/LiveNewsPanel.ts');
+const liveWebcamsSrc = readSrc('src/components/LiveWebcamsPanel.ts');
 const liveNewsSvc = readSrc('src/services/live-news.ts');
 const youtubeApi = readSrc('api/youtube/live.js');
 const sidecarSrc = readSrc('src-tauri/sidecar/local-api-server.mjs');
@@ -409,8 +410,16 @@ describe('sidecar youtube-embed endpoint', () => {
       sidecarSrc.indexOf('/api/youtube-embed'),
       sidecarSrc.indexOf('Global auth gate'),
     );
-    assert.match(embedSection, /postMessage\(\{type:'yt-ready'\}/,
-      'Must send yt-ready message to parent window');
+    assert.match(embedSection, /postToParent\(\{type:'yt-ready'\}/,
+      'Must route yt-ready through the origin-checked parent bridge');
+  });
+
+  it('passes the desktop webcam parent origin to the sidecar bridge', () => {
+    assert.match(
+      liveWebcamsSrc,
+      /params\.set\('parentOrigin',\s*window\.location\.origin\)/,
+      'LiveWebcamsPanel must identify its parent origin to the sidecar bridge',
+    );
   });
 });
 

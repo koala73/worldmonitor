@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mkdtempSync,
+  
   mkdirSync,
   writeFileSync,
 } from 'node:fs';
@@ -20,8 +20,9 @@ import {
   runAgentPreflight,
   supportedNode,
 } from '../scripts/agent-preflight.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
-const makeRoot = () => mkdtempSync(join(tmpdir(), 'wm-agent-preflight-'));
+const makeRoot = () => createTempDir('wm-agent-preflight-');
 const currentMajor = process.versions.node.split('.')[0];
 const headOid = 'a'.repeat(40);
 

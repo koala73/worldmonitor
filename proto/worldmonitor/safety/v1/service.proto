@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.safety.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/safety/v1/toronto_safety.proto";
+
+// SafetyService exposes bounded public-safety datasets with explicit semantics.
+service SafetyService {
+  option (sebuf.http.service_config) = {base_path: "/api/safety/v1"};
+
+  // Returns one bounded Toronto Police Service dataset with source, semantics, and freshness metadata.
+  rpc GetTorontoSafety(GetTorontoSafetyRequest) returns (GetTorontoSafetyResponse) {
+    option (sebuf.http.config) = {path: "/get-toronto-safety", method: HTTP_METHOD_GET};
+  }
+}

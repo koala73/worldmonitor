@@ -238,7 +238,7 @@ test('public algorithms docs describe tracked leader names without overclaiming 
   assert.doesNotMatch(algorithmsDoc, /16 compound terms for world leaders/);
 });
 
-test('public data-source docs disclose Telegram source-bias metadata limits', () => {
+test('public data-source docs disclose Telegram source-bias metadata', () => {
   const telegramConfig = JSON.parse(readRepo('data/telegram-channels.json')) as {
     channels?: Record<string, Array<Record<string, unknown>>>;
   };
@@ -260,6 +260,43 @@ test('public data-source docs disclose Telegram source-bias metadata limits', ()
 
   assert.match(dataSourcesDoc, /official, state-affiliated, partisan, and belligerent-party channels/);
   assert.match(dataSourcesDoc, /raw OSINT leads, not endorsed truth/);
-  assert.match(dataSourcesDoc, /operational `tier`, `topic`, and `region` metadata/);
-  assert.match(dataSourcesDoc, /do not currently carry the RSS `stateAffiliation` or propaganda-risk fields/);
+  assert.match(dataSourcesDoc, /additive `TELEGRAM_SOURCE_TIERS` overlay/);
+  assert.match(dataSourcesDoc, /honest mapping from the private operational `tier`/);
+  assert.match(dataSourcesDoc, /cannot leave stale tier keys in the RSS registry/);
+  assert.match(dataSourcesDoc, /anonymous OSINT aggregators stay specialty or aggregator tier/);
+});
+test('public algorithms docs describe flow_drop the way the detector actually works', () => {
+  // #6422: the cross-stream table described `flow_drop` as "ETF flow estimates
+  // reverse direction while price continues - Smart money divergence". The
+  // detector reads no ETF data and no price series at all: detectPipelineFlowDrops
+  // lowercases a cluster's headlines and requires a PIPELINE_KEYWORDS hit and a
+  // FLOW_DROP_KEYWORDS hit within the same cluster. Two other surfaces already
+  // described it correctly - docs/signal-intelligence.mdx and the SIGNAL_CONTEXT
+  // copy in src/utils/analysis-constants.ts - which is what makes the algorithms
+  // row an outlier rather than a difference of emphasis.
+  const detector = readRepo('src/services/analysis-core.ts');
+  assert.match(detector, /const hasPipeline = titles\.some\(title => includesKeyword\(title, PIPELINE_KEYWORDS\)\)/);
+  assert.match(detector, /const hasFlowDrop = titles\.some\(title => includesKeyword\(title, FLOW_DROP_KEYWORDS\)\)/);
+  assert.doesNotMatch(detector, /ETF/);
+
+  for (const path of ['docs/algorithms.mdx', 'docs/zh/algorithms.mdx'] as const) {
+    const row = readRepo(path)
+      .split('\n')
+      .find((line) => line.startsWith('| `flow_drop`'));
+    assert.ok(row, `${path} must keep a signal table row for flow_drop`);
+    assert.doesNotMatch(
+      row,
+      /ETF/,
+      `${path} still describes flow_drop as an ETF-flow signal; detectPipelineFlowDrops reads none`,
+    );
+  }
+
+  assert.match(
+    readRepo('docs/algorithms.mdx'),
+    /\| `flow_drop`\s+\| Headlines carry both a pipeline keyword and a flow-disruption keyword/,
+  );
+  assert.match(
+    readRepo('docs/zh/algorithms.mdx'),
+    /\| `flow_drop`\s+\| 标题同时包含管道关键词和流量中断关键词/,
+  );
 });

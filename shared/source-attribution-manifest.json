@@ -860,6 +860,23 @@
       ]
     },
     {
+      "host": "api.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. World Monitor public-display and redistribution rights are validated.",
+      "attribution": "Data source: India Meteorological Department. Link https://api.imd.gov.in/public/api_reference.html and the official product page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
+        },
+        {
+          "path": "src/app/data-loader.ts"
+        }
+      ]
+    },
+    {
       "host": "api.imf.org",
       "provider": "api.imf.org",
       "kind": "structured",
@@ -1330,6 +1347,9 @@
           "path": "api/mcp/downstream.ts"
         },
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {
@@ -1416,6 +1436,12 @@
       "references": [
         {
           "path": "scripts/lib/company-monitoring-x-provider.mjs"
+        },
+        {
+          "path": "scripts/lib/x-news-accounts.cjs"
+        },
+        {
+          "path": "scripts/verify-x-accounts.mjs"
         }
       ]
     },
@@ -2770,6 +2796,20 @@
       ]
     },
     {
+      "host": "data.tps.ca",
+      "provider": "Toronto Police Service Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.",
+      "attribution": "Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.uspto.gov",
       "provider": "USPTO Open Data Portal",
       "kind": "structured",
@@ -3212,6 +3252,9 @@
       "attribution": "Credit earthquake.usgs.gov and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
         {
           "path": "scripts/seed-earthquakes.mjs"
         }
@@ -3866,7 +3909,7 @@
     },
     {
       "host": "feeds.bbci.co.uk",
-      "provider": "feeds.bbci.co.uk",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -3930,7 +3973,8 @@
         {
           "path": "src/config/variants/tech.ts"
         }
-      ]
+      ],
+      "role": "transport"
     },
     {
       "host": "feeds.finra.org",
@@ -4612,6 +4656,21 @@
       ]
     },
     {
+      "host": "gtaupdate.com",
+      "provider": "GTA Update",
+      "kind": "structured",
+      "observed": true,
+      "license": "Reuse permission held by WorldMonitor, as confirmed by the repository owner on 2026-08-21. The private grant is not stored in this public repository. Production activation remains separately blocked on official TPS/TFS upstream provenance and the safety, cadence, capacity, and product acceptance gates in issue #7012.",
+      "attribution": "GTA Update (unofficial third-party TPS/TFS dispatch mirror; not official, not verified, entertainment-only per publisher). Used with permission. Production disabled pending upstream provenance and product activation. https://gtaupdate.com/about.php",
+      "status": "reviewed",
+      "catalogActive": false,
+      "references": [
+        {
+          "path": "scripts/lib/gta-update.mjs"
+        }
+      ]
+    },
+    {
       "host": "gtfsrt.ttc.ca",
       "provider": "Toronto Transit Commission (TTC) GTFS-RT",
       "kind": "structured",
@@ -4965,15 +5024,10 @@
       "host": "insideclimatenews.org",
       "provider": "insideclimatenews.org",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit insideclimatenews.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-climate-news.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "insightcrime.org",
@@ -5811,6 +5865,20 @@
       ]
     },
     {
+      "host": "mausam.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official IMD visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department. Link the official marine/coastal bulletin page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
+        }
+      ]
+    },
+    {
       "host": "mcp.linear.app",
       "provider": "Linear MCP",
       "kind": "structured",
@@ -6232,6 +6300,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/source-catalog-identity.mjs"
+        },
+        {
           "path": "scripts/validate-rss-feeds.mjs"
         },
         {
@@ -6249,7 +6320,8 @@
         {
           "path": "src/config/variants/tech.ts"
         }
-      ]
+      ],
+      "role": "transport"
     },
     {
       "host": "news.mit.edu",
@@ -6964,6 +7036,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/_bet-templates-markets.mjs"
         },
         {
@@ -7575,6 +7650,20 @@
       ]
     },
     {
+      "host": "rsmcnewdelhi.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official RSMC New Delhi visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department / RSMC New Delhi. Link https://rsmcnewdelhi.imd.gov.in/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
+        }
+      ]
+    },
+    {
       "host": "rss.art19.com",
       "provider": "rss.art19.com",
       "kind": "feed",
@@ -7992,6 +8081,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
           "path": "src/config/feeds.ts"
         }
       ]
@@ -8007,6 +8099,23 @@
       "references": [
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
+        }
+      ]
+    },
+    {
+      "host": "services.arcgis.com",
+      "provider": "Toronto Police Service",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence – Ontario as published on the TPS Calls for Service Experience item a22f5295933e48a5b0a4c90cd3c4cae1 (licenseInfo), plus TPS Public Safety Data Portal terms on that item: no identification of individuals, no TPS marks. Layer C4S_Public_NoGO is the privacy-filtered public Calls-for-Service map (refresh ~20 min). Not Major Crime Indicators / YTD.",
+      "attribution": "Toronto Police Service, Calls for Service. Contains information licensed under the Open Government Licence – Ontario.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/toronto-official-cad.mjs"
+        },
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
         }
       ]
     },
@@ -9184,6 +9293,23 @@
       ]
     },
     {
+      "host": "timesofindia.indiatimes.com",
+      "provider": "Times of India",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Times of India and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "tools.cdc.gov",
       "provider": "tools.cdc.gov",
       "kind": "structured",
@@ -9843,6 +9969,9 @@
           "path": "api/fwdstart.js"
         },
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "api/not-found.ts"
         },
         {
@@ -9889,6 +10018,9 @@
         },
         {
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"
+        },
+        {
+          "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
           "path": "scripts/mcp-live-smoke.mjs"
@@ -10435,7 +10567,7 @@
     },
     {
       "host": "www.bbc.com",
-      "provider": "www.bbc.com",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -13028,15 +13160,12 @@
     {
       "host": "www.sequoiacap.com",
       "provider": "www.sequoiacap.com",
-      "kind": "feed+structured",
+      "kind": "structured",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.sequoiacap.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
         {
           "path": "src/config/variants/tech.ts"
         }
@@ -13606,6 +13735,34 @@
       ]
     },
     {
+      "host": "www.toronto.ca",
+      "provider": "Toronto Fire Services",
+      "kind": "structured",
+      "observed": true,
+      "license": "Direct permission: World Monitor's owner confirmed on 2026-08-21 that World Monitor holds redistribution and public-display rights for the Toronto Fire Services live CAD XML. This does not claim that the feed is licensed under the City of Toronto Open Government Licence: no data-bound CKAN package was found for toronto-fire-active-incidents or livecad.xml. City of Toronto copyright and the source-specific permission still apply. Not the historical fire-incidents CKAN datasets.",
+      "attribution": "Toronto Fire Services, Active Incidents (CAD). https://www.toronto.ca/community-people/public-safety-alerts/alerts-notifications/toronto-fire-active-incidents/",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/toronto-official-cad.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.tps.ca",
+      "provider": "Toronto Police Service Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.",
+      "attribution": "Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.tvanouvelles.ca",
       "provider": "www.tvanouvelles.ca",
       "kind": "feed",
@@ -13824,6 +13981,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "server/worldmonitor/webcam/v1/get-webcam-image.ts"
         },
         {
@@ -13875,10 +14035,16 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/_cors.js"
+        },
+        {
           "path": "api/a2a.ts"
         },
         {
           "path": "api/ask.ts"
+        },
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "api/not-found.ts"
@@ -14294,6 +14460,47 @@
       "license": "Not applicable: no live fetch is present in this checkout",
       "attribution": "Excluded from the live-provider count: issue audit named Digitraffic, but no current source call was found.",
       "status": "excluded"
+    }
+  ],
+  "logicalProviders": [
+    {
+      "provider": "Fast Company",
+      "feedLabels": [
+        "Fast Company"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "US",
+      "coveredCountries": []
+    },
+    {
+      "provider": "NDTV",
+      "feedLabels": [
+        "NDTV",
+        "NDTV India"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "IN",
+      "coveredCountries": [
+        "IN"
+      ]
+    },
+    {
+      "provider": "The Hacker News",
+      "feedLabels": [
+        "The Hacker News"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "IN",
+      "coveredCountries": []
     }
   ]
 }

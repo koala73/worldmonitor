@@ -109,7 +109,7 @@ function renderSparkChart(weeks: WeekData[]): string {
 
   return `<div style="margin:8px 0">
     <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">52-Week Spread History</div>
-    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="AAII 52-week bull-bear spread history" style="display:block">
       ${bars}
       ${zeroLine}
       ${contrarianLine}

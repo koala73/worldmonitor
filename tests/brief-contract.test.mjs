@@ -265,7 +265,7 @@ describe('brief-contract wiring (source-textual)', () => {
 
 // ── #4928 review-round additions ───────────────────────────────────────────
 
-import { composeSynthesizedBrief } from '../scripts/_insights-brief.mjs';
+import { BRIEF_REJECTIONS, composeSynthesizedBrief } from '../scripts/_insights-brief.mjs';
 
 describe('composeSynthesizedBrief (functional L1 coverage, #4928 review)', () => {
   const CORROBORATED = [
@@ -389,7 +389,11 @@ describe('citation-scoped composer gates (#4928 external review)', () => {
   ];
   const passOpts = { validatorMode: 'enforce', sourceFromStory: (s) => ({ title: s.primaryTitle, source: s.primarySource, url: s.primaryLink }) };
 
-  it('REGRESSION: a lead sentence attributing story-2 facts to [1] is rejected (misattribution)', () => {
+  it('REGRESSION: a lead sentence attributing story-2 facts to [1] is dropped (misattribution)', () => {
+    // Repair policy (2026-08-28): the misattributed sentence must never reach a
+    // reader. The cited Iran sentence passed every gate, so it still publishes —
+    // the #4928 property is "Turkey facts bound to [1] do not ship", not
+    // "the whole brief is discarded".
     const misattributed = JSON.stringify({
       lead: 'Turkey hikes interest rates to 50% in a dramatic move [1]. Iran threatens the Strait of Hormuz [1].',
       lines: [
@@ -397,11 +401,16 @@ describe('citation-scoped composer gates (#4928 external review)', () => {
         { n: 2, text: 'Turkey raises interest rates to 50% [2].' },
       ],
     });
-    assert.equal(composeSynthesizedBrief(misattributed, STORIES2, passOpts), null,
-      'Turkey facts cited to [1] (Iran) must fail citation-scoped validation');
+    const out = composeSynthesizedBrief(misattributed, STORIES2, passOpts);
+    assert.notEqual(out, null, 'the grounded Iran sentence still publishes');
+    assert.ok(!out.lead.includes('Turkey'), 'Turkey facts cited to [1] never ship');
+    assert.match(out.lead, /Iran threatens the Strait of Hormuz \[1\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'turkey');
   });
 
-  it('REGRESSION: an uncited lead sentence rejects the synthesis (every claim cited)', () => {
+  it('REGRESSION: an uncited lead sentence is dropped (every claim cited)', () => {
     const uncited = JSON.stringify({
       lead: 'Iran threatens the Strait of Hormuz [1]. Markets everywhere are nervous about what comes next.',
       lines: [
@@ -409,7 +418,12 @@ describe('citation-scoped composer gates (#4928 external review)', () => {
         { n: 2, text: 'Turkey raises interest rates to 50% [2].' },
       ],
     });
-    assert.equal(composeSynthesizedBrief(uncited, STORIES2, passOpts), null);
+    const out = composeSynthesizedBrief(uncited, STORIES2, passOpts);
+    assert.notEqual(out, null, 'the cited sentence still publishes');
+    assert.ok(!out.lead.includes('Markets everywhere'), 'the uncited sentence never publishes');
+    assert.match(out.lead, /Iran threatens the Strait of Hormuz \[1\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   it('REGRESSION: a line carrying the WRONG in-range citation is rewritten to its own [n]', () => {
@@ -507,16 +521,26 @@ describe('fragmented-cluster leads (#6001)', () => {
 
   const DOHA = 'Israel and Hamas resumed indirect talks in Doha [2].';
 
-  it('rejects the merged Kyiv claim when it cites only one of the two slots', () => {
-    // The exact production rejection: nouns ["kyiv"], cited [3]. "Kyiv" is
+  it('drops the merged Kyiv claim when it cites only one of the two slots', () => {
+    // The exact production drop: nouns ["kyiv"], cited [3]. "Kyiv" is
     // absent from story 3 ("Ukrainian capital") and present only in story 7.
+    // The Doha sentence is independently grounded, so the brief survives.
     const out = compose(`Russia struck Kyiv with missiles and drones, killing at least 9 [3]. ${DOHA}`);
-    assert.equal(out, null, 'a fact drawn from an uncited sibling must not ship');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('Kyiv'), 'a fact drawn from an uncited sibling must not ship');
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'kyiv');
   });
 
-  it('rejects a sibling-only numeric fact when proper nouns are grounded', () => {
+  it('drops a sibling-only numeric fact when proper nouns are grounded', () => {
     const out = compose(`Russia struck the Ukrainian capital, killing nine [3]. ${DOHA}`);
-    assert.equal(out, null, 'a casualty count drawn from an uncited sibling must not ship');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('nine'), 'a casualty count drawn from an uncited sibling must not ship');
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
   });
 
   it('accepts a sibling numeric fact once both fragments are cited', () => {
@@ -530,19 +554,37 @@ describe('fragmented-cluster leads (#6001)', () => {
     assert.match(out.lead, /\[3\]\[7\]/, 'both citations survive verification');
   });
 
-  it('still rejects a claim whose facts come from an UNCITED story (#4928)', () => {
+  it('still drops a claim whose facts come from an UNCITED story (#4928)', () => {
     // The misattribution #4928 exists to stop. Chile is genuinely IN the
     // corpus (story 4), so corpus-wide grounding would wave this through —
     // but the claim binds to [6] (Venezuela). Citation-scoped grounding is
-    // the only thing that catches it, and #6001 must not relax it.
+    // the only thing that catches it, and #6001 must not relax it. The
+    // property is that Chile never publishes, not that Doha is discarded too.
     const out = compose(`A magnitude 6.8 earthquake struck northern Chile [6]. ${DOHA}`);
-    assert.equal(out, null, '#4928 misattribution protection must survive #6001');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('Chile'), '#4928 misattribution protection must survive #6001');
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'chile');
   });
 
-  it('rejects an invented proper noun even when every slot is cited', () => {
+  it('drops an invented proper noun even when every slot is cited', () => {
     const allCited = STORIES6001.map((_, i) => `[${i + 1}]`).join('');
     const out = compose(`Belarus opened a second front against Latvia ${allCited}. ${DOHA}`);
-    assert.equal(out, null, 'citing everything must not launder a hallucination');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('Belarus'), 'citing everything must not launder a hallucination');
+    assert.ok(!out.lead.includes('Latvia'));
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'belarus');
+  });
+
+  it('still rejects the whole brief when every lead sentence fails', () => {
+    // Total-failure classification is unchanged: no survivors → null. The
+    // single-sentence Macron hallucination above this suite also stays a
+    // whole-brief reject — only a neighbour that passed every gate publishes.
+    const out = compose('Belarus opened a second front against Latvia [1]. Markets may react next week.');
+    assert.equal(out, null, 'no surviving sentence must still reject the synthesis');
   });
 
   it('system prompt tells the model to cite EVERY story a claim draws from', () => {

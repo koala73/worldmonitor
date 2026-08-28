@@ -12,4 +12,5 @@ export function adoptExistingCanonical(
   memberTitleHashes: string[] | undefined,
   defaultHash: string,
   aliasTargetByHash: Map<string, string> | Record<string, string> | undefined,
+  trackFirstSeenByHash?: Map<string, number> | Record<string, number> | undefined,
 ): string;

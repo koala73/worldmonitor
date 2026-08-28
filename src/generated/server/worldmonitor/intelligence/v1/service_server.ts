@@ -279,6 +279,33 @@ export interface TelegramMessage {
   topic: string;
 }
 
+export interface ListXFeedRequest {
+  limit: number;
+  topic: string;
+  account: string;
+}
+
+export interface ListXFeedResponse {
+  enabled: boolean;
+  posts: XFeedItem[];
+  count: number;
+  error: string;
+}
+
+export interface XFeedItem {
+  id: string;
+  accountId: string;
+  accountName: string;
+  handle: string;
+  topic: string;
+  timestampMs: number;
+  permalink: string;
+  facts: string[];
+  hasMedia: boolean;
+  lang: string;
+  contentState: string;
+}
+
 export interface GetCompanyEnrichmentRequest {
   /** @deprecated */
   domain: string;
@@ -1106,6 +1133,7 @@ export interface IntelligenceServiceHandler {
   listGpsInterference(ctx: ServerContext, req: ListGpsInterferenceRequest): Promise<ListGpsInterferenceResponse>;
   listOrefAlerts(ctx: ServerContext, req: ListOrefAlertsRequest): Promise<ListOrefAlertsResponse>;
   listTelegramFeed(ctx: ServerContext, req: ListTelegramFeedRequest): Promise<ListTelegramFeedResponse>;
+  listXFeed(ctx: ServerContext, req: ListXFeedRequest): Promise<ListXFeedResponse>;
   getCompanyEnrichment(ctx: ServerContext, req: GetCompanyEnrichmentRequest): Promise<GetCompanyEnrichmentResponse>;
   listCompanySignals(ctx: ServerContext, req: ListCompanySignalsRequest): Promise<ListCompanySignalsResponse>;
   searchSecFilings(ctx: ServerContext, req: SearchSecFilingsRequest): Promise<SearchSecFilingsResponse>;
@@ -1635,6 +1663,55 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.listTelegramFeed(ctx, body);
           return new Response(JSON.stringify(result as ListTelegramFeedResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-x-feed",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListXFeedRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+            topic: params.get("topic") ?? "",
+            account: params.get("account") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listXFeed", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listXFeed(ctx, body);
+          return new Response(JSON.stringify(result as ListXFeedResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
@@ -7,6 +8,7 @@ import {
   adaptiveExpectedCalibrationError,
   asNumber,
   asObject,
+  canonicalJson,
   evaluateAdmissionMetric,
   evaluateAdmissionQuality,
   evaluateBaseRate,
@@ -37,6 +39,8 @@ const protocolPath = new URL('protocol.json', fixtureDirectory);
 const protocol = JSON.parse(readFileSync(protocolPath, 'utf8')) as JsonObject;
 
 const APPROVED_THRESHOLD_DIGEST = '29ce1d431086f3b7a9a955776f0c2c009d87c809f810f32f8b10aef53f8ecfc2';
+const APPROVED_BASE_RATE_AUDIT_DIGEST = 'b0c32244293f9231723572ba22bc9f42703ef798e29b94fdb0d930983c17092b';
+const APPROVED_REDISCOVERY_AUDIT_DIGEST = 'b376056a7f3ebecf95d74ff22a67ea709c34f1961872ae7786e8846687c69717';
 
 // The engine takes the approved digest as an argument so this literal can stay outside it. Every
 // call site below goes through this wrapper, which supplies the one approved anchor.
@@ -82,9 +86,135 @@ const BOOTSTRAP_ITERATIONS = 10_000;
 const BOOTSTRAP_SEED = 6003;
 const BOOTSTRAP_ORDER_STATISTIC = 'ceil_confidence_times_iterations_minus_one';
 
+const STAGE0_AGGREGATE_ROOT_KEYS = new Set([
+  'protocolVersion',
+  'recordedAt',
+  'classification',
+  'eligibleForViabilityDecision',
+  'baseRate',
+  'rediscovery',
+]);
+const BASE_RATE_AGGREGATE_KEYS = new Set([
+  'attemptId',
+  'queryVersion',
+  'declaredYear',
+  'companyYears',
+  'newsHitCompanyYears',
+  'usCount',
+  'gbCount',
+  'firstSaleDateWindowFailures',
+  'unavailableCount',
+  'privateSelectionManifestSha256',
+  'privateEvidenceSha256',
+  'aggregateEvidenceSha256',
+  'opaqueIds',
+]);
+const REDISCOVERY_AGGREGATE_KEYS = new Set([
+  'attemptId',
+  'queryVersion',
+  'declaredYear',
+  'pairCount',
+  'rediscoveredCount',
+  'usCount',
+  'gbCount',
+  'firstSaleDateWindowFailures',
+  'unavailableCount',
+  'privatePairManifestSha256',
+  'privateEvidenceSha256',
+  'aggregateEvidenceSha256',
+  'opaqueIds',
+]);
+const BASE_RATE_OPAQUE_ID = /^cm_companyyear_[a-f0-9]{12}$/;
+const REDISCOVERY_OPAQUE_ID = /^cm_pair_[a-f0-9]{12}$/;
+
+function assertExactKeys(candidate: JsonObject, expected: Set<string>, label: string): void {
+  assert.deepEqual(Object.keys(candidate).sort(), [...expected].sort(), `${label} field set`);
+}
+
+function assertOpaqueIds(
+  value: unknown,
+  expectedCount: number,
+  pattern: RegExp,
+  label: string,
+): void {
+  assert.ok(Array.isArray(value), `${label} must be an array`);
+  assert.equal(value.length, expectedCount, `${label} length`);
+  const ids = value.map((id) => {
+    assert.equal(typeof id, 'string', `${label} value must be a string`);
+    assert.match(id, pattern, `${label} value`);
+    return id;
+  });
+  assert.equal(new Set(ids).size, expectedCount, `${label} values must be unique`);
+}
+
+function auditDigest(candidate: JsonObject): string {
+  return createHash('sha256')
+    .update(`${canonicalJson(withoutKey(candidate, 'aggregateEvidenceSha256'))}\n`)
+    .digest('hex');
+}
+
+function validateStage0Aggregates(candidate: JsonObject): void {
+  assertExactKeys(candidate, STAGE0_AGGREGATE_ROOT_KEYS, 'stage0-aggregates');
+  assert.equal(candidate.protocolVersion, 'cm_eval_v1');
+  assert.equal(candidate.recordedAt, '2026-08-18T13:03:05.000Z');
+  assert.equal(candidate.classification, 'inadmissible_audit_only');
+  assert.equal(candidate.eligibleForViabilityDecision, false);
+
+  const baseRate = asObject(candidate.baseRate, 'stage0-aggregates.baseRate');
+  const rediscovery = asObject(candidate.rediscovery, 'stage0-aggregates.rediscovery');
+  assertExactKeys(baseRate, BASE_RATE_AGGREGATE_KEYS, 'stage0-aggregates.baseRate');
+  assertExactKeys(rediscovery, REDISCOVERY_AGGREGATE_KEYS, 'stage0-aggregates.rediscovery');
+
+  assert.equal(baseRate.attemptId, 'cm_base_rate_attempt_20260818');
+  assert.equal(baseRate.queryVersion, 'cm_base_rate_query_v1_google_news_rss');
+  assert.equal(baseRate.declaredYear, 2024);
+  assert.equal(baseRate.companyYears, 150);
+  assert.equal(baseRate.newsHitCompanyYears, 35);
+  assert.equal(baseRate.usCount, 100);
+  assert.equal(baseRate.gbCount, 50);
+  assert.equal(baseRate.firstSaleDateWindowFailures, 0);
+  assert.equal(baseRate.unavailableCount, 0);
+  assert.equal(
+    asNumber(baseRate.usCount, 'baseRate.usCount') + asNumber(baseRate.gbCount, 'baseRate.gbCount'),
+    baseRate.companyYears,
+  );
+  assertOpaqueIds(baseRate.opaqueIds, 150, BASE_RATE_OPAQUE_ID, 'baseRate.opaqueIds');
+  assert.ok(isEvidenceDigest(baseRate.privateSelectionManifestSha256));
+  assert.ok(isEvidenceDigest(baseRate.privateEvidenceSha256));
+  assert.ok(isEvidenceDigest(baseRate.aggregateEvidenceSha256));
+  assert.equal(baseRate.aggregateEvidenceSha256, APPROVED_BASE_RATE_AUDIT_DIGEST);
+  assert.equal(auditDigest(baseRate), baseRate.aggregateEvidenceSha256);
+
+  assert.equal(rediscovery.attemptId, 'cm_rediscovery_attempt_20260818');
+  assert.equal(rediscovery.queryVersion, 'cm_rediscovery_query_v1_google_news_rss');
+  assert.equal(rediscovery.declaredYear, 2025);
+  assert.equal(rediscovery.pairCount, 100);
+  assert.equal(rediscovery.rediscoveredCount, 15);
+  assert.equal(rediscovery.usCount, 75);
+  assert.equal(rediscovery.gbCount, 25);
+  assert.equal(rediscovery.firstSaleDateWindowFailures, 0);
+  assert.equal(rediscovery.unavailableCount, 0);
+  assert.equal(
+    asNumber(rediscovery.usCount, 'rediscovery.usCount')
+      + asNumber(rediscovery.gbCount, 'rediscovery.gbCount'),
+    rediscovery.pairCount,
+  );
+  assertOpaqueIds(rediscovery.opaqueIds, 100, REDISCOVERY_OPAQUE_ID, 'rediscovery.opaqueIds');
+  assert.ok(isEvidenceDigest(rediscovery.privatePairManifestSha256));
+  assert.ok(isEvidenceDigest(rediscovery.privateEvidenceSha256));
+  assert.ok(isEvidenceDigest(rediscovery.aggregateEvidenceSha256));
+  assert.equal(rediscovery.aggregateEvidenceSha256, APPROVED_REDISCOVERY_AUDIT_DIGEST);
+  assert.equal(auditDigest(rediscovery), rediscovery.aggregateEvidenceSha256);
+}
+
 const FIXTURE_VALIDATORS: Record<string, (candidate: JsonObject) => void> = {
   'protocol.json': validateProtocolFixture,
+  'stage0-aggregates.json': validateStage0Aggregates,
 };
+
+function validateFixtureInventory(fileNames: string[]): void {
+  assert.deepEqual([...fileNames].sort(), Object.keys(FIXTURE_VALIDATORS).sort());
+}
 
 function completeSyntheticUsefulness(candidate: JsonObject): void {
   const directions = ['positive', 'negative', 'mixed'];
@@ -225,10 +355,8 @@ function makePassingSyntheticCandidate(): JsonObject {
 
 describe('Company Monitoring U0 evaluation contract', () => {
   it('requires every committed JSON fixture to have a deliberate schema validator', () => {
-    const fixtureFiles = readdirSync(fixtureDirectory)
-      .filter((fileName) => fileName.endsWith('.json'))
-      .sort();
-    assert.deepEqual(fixtureFiles, Object.keys(FIXTURE_VALIDATORS).sort());
+    const fixtureFiles = readdirSync(fixtureDirectory).sort();
+    validateFixtureInventory(fixtureFiles);
     for (const fileName of fixtureFiles) {
       const candidate = JSON.parse(readFileSync(new URL(fileName, fixtureDirectory), 'utf8')) as JsonObject;
       const validator = FIXTURE_VALIDATORS[fileName];
@@ -237,11 +365,138 @@ describe('Company Monitoring U0 evaluation contract', () => {
     }
   });
 
+  it('rejects unregistered evidence files regardless of extension or nesting', () => {
+    const registered = Object.keys(FIXTURE_VALIDATORS);
+    assert.doesNotThrow(() => validateFixtureInventory(registered));
+    assert.throws(() => validateFixtureInventory([...registered, 'private-evidence.csv']));
+    assert.throws(() => validateFixtureInventory([...registered, 'raw/provider-response.txt']));
+  });
+
+  it('rejects aggregate mutations that would weaken admissibility or privacy', () => {
+    const aggregates = JSON.parse(
+      readFileSync(new URL('stage0-aggregates.json', fixtureDirectory), 'utf8'),
+    ) as JsonObject;
+    const cases: [string, (candidate: JsonObject) => void][] = [
+      ['unknown identity field', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').companyIdentity = 'acme_holdings';
+      }],
+      ['literal-pinned key smuggling', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').approverName = 'https://secret.example';
+      }],
+      ['scalar opaque IDs', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').opaqueIds = 'x'.repeat(150);
+      }],
+      ['duplicate opaque IDs', (candidate) => {
+        const baseRate = asObject(candidate.baseRate, 'baseRate');
+        baseRate.opaqueIds = Array.from({ length: 150 }, () => 'cm_companyyear_000000000001');
+      }],
+      ['wrong opaque ID prefix', (candidate) => {
+        const baseRate = asObject(candidate.baseRate, 'baseRate');
+        baseRate.opaqueIds = Array.from(
+          { length: 150 },
+          (_, index) => `cm_pair_${index.toString(16).padStart(12, '0')}`,
+        );
+      }],
+      ['date-window failure', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').firstSaleDateWindowFailures = 1;
+      }],
+      ['unavailable query', (candidate) => {
+        asObject(candidate.rediscovery, 'rediscovery').unavailableCount = 1;
+      }],
+      ['country-total mismatch', (candidate) => {
+        asObject(candidate.rediscovery, 'rediscovery').usCount = 74;
+      }],
+      ['query-version drift', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').queryVersion = 'cm_base_rate_query_v2';
+      }],
+      ['declared-year drift', (candidate) => {
+        asObject(candidate.rediscovery, 'rediscovery').declaredYear = 2024;
+      }],
+      ['base-rate private evidence and audit digest rewrite', (candidate) => {
+        const baseRate = asObject(candidate.baseRate, 'baseRate');
+        baseRate.privateEvidenceSha256 = 'f'.repeat(64);
+        baseRate.aggregateEvidenceSha256 = auditDigest(baseRate);
+      }],
+      ['rediscovery private evidence and audit digest rewrite', (candidate) => {
+        const rediscovery = asObject(candidate.rediscovery, 'rediscovery');
+        rediscovery.privateEvidenceSha256 = 'f'.repeat(64);
+        rediscovery.aggregateEvidenceSha256 = auditDigest(rediscovery);
+      }],
+    ];
+    for (const [label, mutate] of cases) {
+      const candidate = structuredClone(aggregates);
+      mutate(candidate);
+      assert.throws(() => validateStage0Aggregates(candidate), label);
+    }
+  });
+
   it('binds the frozen projection and approval to an independent digest literal', () => {
     const approval = asObject(protocol.approval, 'approval');
     assert.equal(thresholdDigest(protocol), APPROVED_THRESHOLD_DIGEST);
     assert.equal(approval.approvedThresholdsSha256, APPROVED_THRESHOLD_DIGEST);
     assert.notEqual(APPROVED_THRESHOLD_DIGEST, '0'.repeat(64));
+  });
+
+  it('keeps the inadmissible measurements outside the frozen decision record', () => {
+    const baseResult = asObject(asObject(protocol.baseRate, 'baseRate').result, 'baseRate.result');
+    const rediscoveryResult = asObject(
+      asObject(protocol.rediscovery, 'rediscovery').result,
+      'rediscovery.result',
+    );
+    assert.equal(protocol.firstScoredRunStartedAt, null);
+    assert.deepEqual(baseResult, {
+      status: 'not_run',
+      companyYears: 0,
+      materialEventCount: 0,
+      pointEstimate: null,
+      lowerBound: null,
+      privateSelectionManifestSha256: null,
+      aggregateEvidenceSha256: null,
+    });
+    assert.deepEqual(rediscoveryResult, {
+      status: 'not_run',
+      pairCount: 0,
+      rediscoveredCount: 0,
+      pointEstimate: null,
+      lowerBound: null,
+      privatePairManifestSha256: null,
+      aggregateEvidenceSha256: null,
+    });
+    assert.deepEqual(evaluateBaseRate(protocol), { pass: false, reasons: ['base_rate_not_complete'] });
+    assert.deepEqual(evaluateRediscovery(protocol), {
+      pass: false,
+      reasons: ['rediscovery_not_complete'],
+    });
+
+    const aggregates = JSON.parse(
+      readFileSync(new URL('stage0-aggregates.json', fixtureDirectory), 'utf8'),
+    ) as JsonObject;
+    assert.equal(aggregates.classification, 'inadmissible_audit_only');
+    assert.equal(aggregates.eligibleForViabilityDecision, false);
+    const baseAggregate = asObject(aggregates.baseRate, 'stage0-aggregates.baseRate');
+    const rediscoveryAggregate = asObject(aggregates.rediscovery, 'stage0-aggregates.rediscovery');
+    assert.equal(baseAggregate.attemptId, 'cm_base_rate_attempt_20260818');
+    assert.equal(baseAggregate.companyYears, 150);
+    assert.equal(baseAggregate.newsHitCompanyYears, 35);
+    assert.equal(rediscoveryAggregate.attemptId, 'cm_rediscovery_attempt_20260818');
+    assert.equal(rediscoveryAggregate.pairCount, 100);
+    assert.equal(rediscoveryAggregate.rediscoveredCount, 15);
+    assert.ok(isEvidenceDigest(baseAggregate.privateSelectionManifestSha256));
+    assert.ok(isEvidenceDigest(baseAggregate.privateEvidenceSha256));
+    assert.ok(isEvidenceDigest(rediscoveryAggregate.privatePairManifestSha256));
+    assert.ok(isEvidenceDigest(rediscoveryAggregate.privateEvidenceSha256));
+    const auditSha = (value: JsonObject) => createHash('sha256')
+      .update(`${canonicalJson(withoutKey(value, 'aggregateEvidenceSha256'))}\n`)
+      .digest('hex');
+    assert.equal(auditSha(baseAggregate), baseAggregate.aggregateEvidenceSha256);
+    assert.equal(auditSha(rediscoveryAggregate), rediscoveryAggregate.aggregateEvidenceSha256);
+
+    const changedQuery = structuredClone(baseAggregate);
+    changedQuery.queryVersion = 'cm_base_rate_query_v2';
+    assert.notEqual(auditSha(changedQuery), baseAggregate.aggregateEvidenceSha256);
+    const changedYear = structuredClone(rediscoveryAggregate);
+    changedYear.declaredYear = 2024;
+    assert.notEqual(auditSha(changedYear), rediscoveryAggregate.aggregateEvidenceSha256);
   });
 
   it('recomputes the committed Stage 0 stop decision and preserves the dark-only boundary', () => {

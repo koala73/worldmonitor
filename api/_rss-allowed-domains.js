@@ -203,6 +203,7 @@ export default [
   "thesentry.org",
   "thetyee.ca",
   "timesca.com",
+  "timesofindia.indiatimes.com",
   "tools.cdc.gov",
   "travel.state.gov",
   "trumpstruth.org",

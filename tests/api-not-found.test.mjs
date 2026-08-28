@@ -35,4 +35,26 @@ describe('api/not-found.ts — structured JSON 404 for unmatched /api/* paths', 
     const res = handler(new Request(`${URL_BASE}/api/x`, { method: 'GET' }));
     assert.match(res.headers.get('cache-control') ?? '', /no-store/);
   });
+
+  it('answers GET /api/*.md as heading-led markdown, not JSON 404', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      const url = String(input);
+      assert.match(url, /\/api\/health$/);
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    try {
+      const res = await handler(new Request(`${URL_BASE}/api/health.md`, { method: 'GET' }));
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('content-type') ?? '', /text\/markdown/);
+      const body = await res.text();
+      assert.match(body, /^# /m);
+      assert.doesNotMatch(body, /<html/i);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

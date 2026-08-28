@@ -26,7 +26,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          # Specialized jobs (desktop-rust, umami, digest, …) are path-filtered
+          # on PRs. Do the same on push to main. Forcing them true here used to
+          # compile the Tauri crate and rebuild Umami images on every merge —
+          # weather, news, embed — which is not a desktop or analytics gate.
+          # Fail open (run everything) only when we cannot see the file list:
+          # a zero parent SHA, a compare error, or GitHub's 300-file cap.
+          emit_all_true() {
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "digest=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
@@ -34,10 +40,31 @@ jobs:
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
             echo "desktop_config=true" >> "$GITHUB_OUTPUT"
             echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          }
+          ZERO=0000000000000000000000000000000000000000
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ]; then
+              echo "No usable parent SHA; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if ! FILES=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}" \
+              --jq '.files[]?.filename'); then
+              echo "Compare API failed; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            FILE_COUNT=$(printf '%s\n' "$FILES" | grep -c . || true)
+            if [ "$FILE_COUNT" -ge 300 ]; then
+              echo "Compare listing is truncated at 300 files; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+          else
+            FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+              --paginate --jq '.[].filename')
           fi
-          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-            --paginate --jq '.[].filename')
           CODE=$(echo "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             # Committed resilience acceptance artifacts are docs-path data that
@@ -98,7 +125,9 @@ jobs:
           echo "validation=$( [ "$VALIDATION" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # Umami's database race cannot be covered by the normal no-Docker
           # unit suite. Run a real PostgreSQL gate only when its managed image,
-          # migration, patch, focused tests, or this workflow changes.
+          # migration, patch, or focused tests change. Do not trigger on every
+          # Test workflow edit: unit already pins the job shape, and rebuilding
+          # two Umami images is the cost that made this look like a per-PR tax.
           UMAMI=$(echo "$FILES" | awk '
             /^\.dockerignore$/ { count++ }
             /^Dockerfile\.umami$/ { count++ }
@@ -106,7 +135,6 @@ jobs:
             /^docker\/umami\// { count++ }
             /^scripts\/umami-retention\.sql$/ { count++ }
             /^tests\/umami-(runtime-remediation\.test|postgres-integration|runtime-write-probe)\.mjs$/ { count++ }
-            /^\.github\/workflows\/test\.yml$/ { count++ }
             END { print count + 0 }
           ')
           echo "umami=$( [ "$UMAMI" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
@@ -145,10 +173,13 @@ jobs:
             END { print count + 0 }
           ')
           echo "desktop_config=$( [ "$DESKTOP_CONFIG" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Compile the Tauri crate only when the crate itself changes.
+          # Workflow edits are covered by desktop-config (cheap) and by the
+          # unit contract that pins this job's shape — they must not pay
+          # cargo test --locked (45 min budget) the way test.yml used to.
           DESKTOP_RUST=$(echo "$FILES" | awk '
             /^src-tauri\/sidecar\// { next }
-            /^src-tauri\// { count++; next }
-            /^\.github\/workflows\/test\.yml$/ { count++ }
+            /^src-tauri\// { count++ }
             END { print count + 0 }
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
@@ -210,8 +241,35 @@ jobs:
           python3 scripts/convert-zh-tw.py --check
       - name: Enforce health-probe cutovers
         env:
-          HEALTH_PROBE_CUTOVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: node --import tsx scripts/check-health-probe-cutovers.mts "$HEALTH_PROBE_CUTOVER_BASE"
+          # NOT github.event.pull_request.base.sha. GitHub pins that SHA when the
+          # PR is opened and never advances it as main moves, but actions/checkout
+          # builds refs/pull/N/merge — this PR merged onto main's CURRENT tip. So
+          # the pinned SHA diffs today's tree against a base that can be weeks old,
+          # and every probe added to main after the PR opened reads as brand-new
+          # on every run, re-litigating a cutover the PR never touched. That stays
+          # invisible until the probe's acknowledgement is legitimately pruned —
+          # then the PR fails outright demanding an entry nobody should restore,
+          # owned by an issue that is already closed (#7021 on tpsMci/#7035).
+          #
+          # The merge commit's FIRST parent is the base tip this tree was merged
+          # onto, so it tracks what is actually under test. The pre-push hook
+          # compares against origin/main for the same reason.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            if git rev-parse --verify --quiet HEAD^2 >/dev/null 2>&1; then
+              base="$(git rev-parse HEAD^1)"
+            else
+              # Unmergeable PR: checkout fell back to the head commit, whose
+              # first parent is the PR's own history, not the base branch.
+              base="origin/$BASE_REF"
+            fi
+          else
+            base="$PUSH_BEFORE"
+          fi
+          echo "health-probe cutover base: $base"
+          node --import tsx scripts/check-health-probe-cutovers.mts "$base"
       - name: OpenAPI bundle capacity (#6558)
         # The <= 950,000-byte scanner guard lives in
         # tests/openapi-json-dedup.test.mjs and stays the gate. This step
@@ -253,6 +311,17 @@ jobs:
         run: npm run build:pro
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
+      - name: Client bundle size budget (#7111, #7119)
+        # The dashboard JS payload grew +151 KB in five weeks with no CI
+        # signal. Compares the build above against the committed snapshots in
+        # scripts/shared/bundle-budgets*.json; on an intended size change run
+        # the matching `npm run bundle:budgets*` command against the same build
+        # and commit the diff. Ordered before the suite so a budget breach costs
+        # seconds, not the full test:data run.
+        run: |
+          npm run bundle:check
+          npm run bundle:check:pro
+          npm run bundle:check:embed
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
       - name: Edge function bundle check
         # Shared checker with caller-specific profiles. Tracked files are the
@@ -551,14 +620,34 @@ jobs:
       - name: Repair Playwright install after OS-deps timeout
         if: steps.playwright-cache.outputs.cache-hit == 'true' && steps.playwright-install-deps.outcome == 'failure'
         timeout-minutes: 10
-        run: npx playwright install --with-deps chromium
+        run: |
+          set -euo pipefail
+          # Run 32161039934: GHA timed out install-deps after 8m, but apt-get
+          # (pid 2500) still held /var/lib/apt/lists/lock. The immediate
+          # --with-deps fallback then exited 100 on that lock.
+          sudo pkill -9 -f 'playwright install-deps' || true
+          sudo pkill -9 apt-get || true
+          for _ in $(seq 1 20); do
+            if command -v fuser >/dev/null 2>&1 \
+              && sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+              sleep 1
+              continue
+            fi
+            sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
+            break
+          done
+          sudo dpkg --configure -a || true
+          npx playwright install --with-deps chromium
       # One invocation for all three smoke specs: each `playwright test` run
       # boots its own vite dev server (reuseExistingServer is false), so three
       # separate steps paid three boots; the specs are independent and share
-      # VITE_VARIANT=full. The set includes the news-budget guard (#5376) —
-      # named explicitly because nothing in CI runs the e2e/ glob, and a
-      # regression guard no job invokes reports green while the regression
-      # ships.
+      # VITE_VARIANT=full. The set includes the news-budget guard (#5376), both
+      # bootstrap request-budget guards (#7046 energy on-demand, #7045 U5
+      # hydration reuse) and the SVG overlay marker budget (#7112/#7134/#7145,
+      # which pins that a drag costs O(1) overlay rebuilds rather than one per
+      # pointer event) — named explicitly because nothing in CI runs the e2e/
+      # glob, and a regression guard no job invokes reports green while the
+      # regression ships.
       - run: npm run test:e2e:ci-smoke
       # playwright.config.ts already retains a trace, a video and a screenshot
       # for every failed test (retain-on-failure) — but nothing collected them,
@@ -631,9 +720,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The focused suite is already inside `unit` / test:data. This job exists
+  # only for validation-docs PRs that skip `unit` (docs/ is carved out of
+  # `code`). Running it on every code PR paid a second npm ci for the same
+  # files.
   resilience-validation-smoke:
     needs: changes
-    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.validation == 'true'
+    if: needs.changes.outputs.validation == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

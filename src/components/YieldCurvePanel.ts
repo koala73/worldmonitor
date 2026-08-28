@@ -155,7 +155,7 @@ function renderChart(current: YieldPoint[], prior: YieldPoint[], ecbRates: Recor
   const ecbDots = ecbRates ? buildEcbCircles(ecbRates, yMin, yMax) : '';
 
   return `
-    <svg viewBox="0 0 ${SVG_W} ${SVG_H}" width="100%" style="display:block;overflow:visible">
+    <svg viewBox="0 0 ${SVG_W} ${SVG_H}" width="100%" role="img" aria-label="Treasury yield curve by maturity" style="display:block;overflow:visible">
       ${buildYAxisLabels(yMin, yMax)}
       ${buildXAxisLabels(current.length)}
       ${priorLine}
@@ -167,7 +167,7 @@ function renderChart(current: YieldPoint[], prior: YieldPoint[], ecbRates: Recor
 }
 
 function renderTable(points: YieldPoint[]): string {
-  const headers = points.map(p => `<th style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text-dim);padding:4px 6px;text-align:center">${escapeHtml(p.tenor)}</th>`).join('');
+  const headers = points.map(p => `<th scope="col" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text-dim);padding:4px 6px;text-align:center">${escapeHtml(p.tenor)}</th>`).join('');
   const cells = points.map(p => {
     const val = p.value !== null ? `${p.value.toFixed(2)}%` : 'N/A';
     return `<td style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text);padding:4px 6px;text-align:center">${escapeHtml(val)}</td>`;
@@ -199,7 +199,7 @@ function miniRateSparkline(obs: RateObs[], color: string, w = 80, h = 22): strin
     const y = h - ((v - min) / range) * (h - 2) - 1;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
-  return `<svg width="${w}" height="${h}" style="display:inline-block;vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${escapeHtml(color)}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return `<svg width="${w}" height="${h}" aria-hidden="true" style="display:inline-block;vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${escapeHtml(color)}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 function renderRatesTab(rows: RateRow[]): string {

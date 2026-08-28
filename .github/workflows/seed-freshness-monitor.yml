@@ -13,8 +13,8 @@ concurrency:
 
 permissions:
   contents: read
-  # Per-source statuses keep an unchanged incident machine-visible without
-  # making every scheduled observation look like a new failed run.
+  # Per-source statuses live on a historical operational anchor. They never
+  # become part of the deployable main revision's check suite.
   statuses: write
 
 jobs:
@@ -103,7 +103,7 @@ jobs:
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         # The probe remains strict and exits non-zero for every active problem.
         # The next step decides whether that problem is a new transition or the
-        # same durable incident already attached to a first-parent revision.
+        # same durable incident already attached to the operational anchor.
         continue-on-error: true
         run: node scripts/check-seed-freshness.mjs --json-output "$RUNNER_TEMP/seed-freshness-observation.json"
 
@@ -113,6 +113,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SEED_ACCEPTANCE_SHA: ${{ steps.gate.outputs.sha || github.sha }}
           SEED_ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          # PR #6876 introduced the transition publisher. Its historical merge
+          # commit is an ancestor of every supported monitored revision and is
+          # never a future deployment candidate.
+          SEED_STATUS_SHA: b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3
           SEED_STATUS_WRITER_LOGIN: github-actions[bot]
         run: |
           # During the first post-merge race, the newest gated ancestor can
@@ -126,6 +130,13 @@ jobs:
             echo "Transition publisher is not active on gated revision $SEED_ACCEPTANCE_SHA; waiting for a gated activation revision."
             exit 0
           fi
+          status_args=()
+          if grep -q -- "'status-sha':" scripts/update-seed-health-statuses.mjs; then
+            status_args=(--status-sha "$SEED_STATUS_SHA")
+          else
+            echo "Gated revision $SEED_ACCEPTANCE_SHA predates anchored statuses; using its compatible transition publisher until the activation revision is gated."
+          fi
           node scripts/update-seed-health-statuses.mjs \
             --sha "$SEED_ACCEPTANCE_SHA" \
+            "${status_args[@]}" \
             --report "$RUNNER_TEMP/seed-freshness-observation.json"

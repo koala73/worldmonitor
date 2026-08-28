@@ -895,7 +895,10 @@ export default defineSchema({
     .index("by_normalized_email", ["normalizedEmail"]),
 
   // Canonical per-Clerk-user record. Populated on first authenticated session
-  // by client → `users:ensureRecord` (see convex/users.ts). Distinct from
+  // by client → `users:ensureRecord` (see convex/users.ts), and server-side at
+  // checkout start by `users:recordTermsAcceptance` — which INSERTS when no row
+  // exists, because a /pro buyer may never have run ensureRecord (pro-test has
+  // no Convex client). Distinct from
   // `customers` (which is paid-only, populated by Dodo subscription webhook):
   // `users` covers EVERY Clerk-authenticated user, free or paid. Holds
   // operational properties used for product personalization and broadcast
@@ -918,6 +921,24 @@ export default defineSchema({
     country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
     firstSeenAt: v.number(),
     lastSeenAt: v.number(),
+    // Terms-of-service assent (#6976). Written at the two moments the user is
+    // actually shown the documents: account creation, and checkout start (the
+    // assent line sits immediately above every CTA). Both write the version
+    // read from `shared/legal.ts` server-side, so no client can record a
+    // version that was never in effect, and every recorded version resolves to
+    // an archived snapshot under docs/legal/.
+    //
+    // OPTIONAL, and deliberately not backfilled: users who predate #6976 were
+    // never shown an assent surface, and claiming otherwise would be worse than
+    // an empty column. They fill in on their next checkout.
+    termsAcceptedAt: v.optional(v.number()),
+    termsVersion: v.optional(v.string()), // ISO date, e.g. "2026-08-20"
+    // Set once, never overwritten (#6983). `termsAcceptedAt` moves to the
+    // newest acceptance, so without this the date of the acceptance that
+    // actually formed the agreement is destroyed by the first version bump —
+    // and it cannot be reconstructed afterwards. The bump in #6983
+    // (2026-07-27 → 2026-08-20) is the first one that would have done it.
+    termsFirstAcceptedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])
@@ -1596,13 +1617,14 @@ export default defineSchema({
     .index("by_userId_revokedAt_createdAt", ["userId", "revokedAt", "createdAt"]),
 
   // API Business domain-gated Pro-seat invites (#4634/#4635). One row per seat
-  // invite issued by an active `api_business` owner to a same-corporate-domain
-  // teammate. The grant is an explicit, revocable object keyed to the owner's
+  // invite issued by an active `api_business` owner to a corporate-email
+  // invitee. The grant is an explicit, revocable object keyed to the owner's
   // Business `dodoSubscriptionId` (KTD1) — NOT a fake subscription — so
   // `pickBestCoveringSub` stays clean. An `accepted` grant under a covering
   // Business sub resolves the invitee to Pro (U5); when the Business sub stops
   // covering, its grants flip to `revoked` and each invitee recomputes down (U6).
-  // `inviteeEmail`/`domain` are stored lowercased for exact same-domain checks.
+  // `inviteeEmail` and the owner `domain` are stored lowercased for stable comparisons
+  // and reporting.
   businessProGrants: defineTable({
     businessSubscriptionId: v.string(),
     ownerUserId: v.string(),

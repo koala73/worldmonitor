@@ -1,9 +1,10 @@
 # Company Monitoring provider policy and 500-company cost package
 
 - Frozen package review date: 2026-08-05
-- Live source refresh: 2026-08-16
+- Live source refresh: 2026-08-18
 - Protocol: `cm_eval_v1`
 - Runtime decision: **blocked**
+- Stage 0 machine verdict: **STOP** (empirical results remain `not_run`)
 
 This review freezes the policy and price inputs used by the Company Monitoring
 Stage 0 decision. It is not legal advice or a durable provider guarantee. Provider
@@ -41,7 +42,17 @@ content-handling controls below.
   100 Posts per request; full-archive search is a separate pay-per-use or
   Enterprise surface.
 - Current pay-per-use pricing is $0.005 per Post read and $0.010 per User read.
-  Pay-per-use plans have a two-million-Post monthly read cap.
+  Pay-per-use plans have a two-million-Post monthly read cap. The $200/month
+  console spend cap was confirmed 2026-08-18 (#6653). One Bearer covers Track A
+  and Track B.
+- X post text is R4: panels may show API-fresh posts or official embeds;
+  alerts, MCP, and embed partners get derived facts plus permalink only, never
+  tweet bodies. Default storage remains `metadata_only`. 24-hour
+  deletion/tombstone compliance is required. Scraping is prohibited.
+- Track A budget is about $115/month of that cap. Track B bring-up is 50
+  companies at a 2-hourly cadence, about $60/month. The 500-company entitlement
+  in the frozen cost package is unchanged committed scope and is not this
+  bring-up portfolio.
 - X requires the declared use case to remain current. Its agreement requires an
   Enterprise plan when use grows beyond commercial prototyping, initial
   integration, or a limited number of end users. API credentials and purchased
@@ -123,6 +134,15 @@ also states that account-level ZDR disables response caching, while per-request
 per-request routing constraint, but it does not prove the external account-level
 ZDR and logging settings. Current price or account-control evidence must use a
 new reviewed package; it cannot rewrite `cm_eval_v1` after scoring.
+
+The 2026-08-18 refresh folds #6653 X facts into this package without rewriting
+the frozen 500-company arithmetic. Console spend cap $200/month is confirmed.
+The inadmissible 2026-08-18 audit did not flip `paidRuntimeApproved`, any
+`COMPANY_MONITORING_ROLLOUT_FLAGS` value, or the frozen economics object. Local
+`EXA_API_KEYS` and `X_BEARER_TOKEN` were missing in the measurement worktree; X
+Bearer remains on Railway `company-monitoring-worker`. The audit used SEC Form D
+(reference / selection) and Google News RSS (news search), not Exa or X product
+runtime. It is not acceptance evidence for `cm_eval_v1`.
 
 ## Production-shaped monthly model
 

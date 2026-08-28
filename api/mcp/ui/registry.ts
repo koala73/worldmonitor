@@ -76,7 +76,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: COUNTRY_RISK_UI_URI,
     name: 'Country Risk (interactive)',
     description:
-      'Interactive in-conversation app shell for get_country_risk: renders the Composite Instability Index (CII 0-100), the unrest/conflict/security/news component breakdown, travel-advisory level, and sanctions exposure. Linked from the get_country_risk tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_country_risk: renders the Composite Instability Index (cii.combinedScore, 0-100), its four contributing components labelled by meaning (domestic unrest, armed conflict, security and mobility, information environment), the government travel-advisory level, OFAC sanctions exposure, and score trend. Shows an explicit degraded banner when upstreamUnavailable is set, so an outage cannot read as a calm country. Linked from the get_country_risk tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: COUNTRY_RISK_APP_HTML,

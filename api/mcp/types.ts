@@ -164,6 +164,18 @@ export interface FreshnessCheck {
   key: string;
   maxStaleMin: number;
   minRecordCount?: number;
+  // When true, `stale` additionally reflects the seed-meta content-age trio
+  // (newestItemAt / oldestItemAt / maxContentAgeMin) via the shared assessor
+  // in api/_content-age.js — the same rule api/health.js classifyKey applies,
+  // so the two surfaces cannot answer differently for one key (#7141).
+  //
+  // Opt-in is declared HERE, on the check, not inferred from the presence of
+  // maxContentAgeMin on the stored seed-meta. Many seeders already stamp that
+  // field, so inferring from it would silently enroll ~14 unrelated keys whose
+  // tools never declared a content-age contract and have no test coverage for
+  // one. Enrolling a new key is therefore a deliberate, reviewable edit here,
+  // matching how minRecordCount and requireContentFreshness already opt in.
+  honorContentAge?: boolean;
   // When set, `stale` additionally reflects the producer's own per-entity
   // observations, re-aged against read time. Mirrors the health check of the
   // same name so the two surfaces cannot answer differently for one key.

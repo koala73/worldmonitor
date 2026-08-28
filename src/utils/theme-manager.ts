@@ -115,8 +115,10 @@ export function applyStoredTheme(): void {
   } else if (hasExplicitPreference) {
     effective = raw as Theme;
   } else {
-    // No stored preference: happy defaults to light, others to dark
-    effective = variant === 'happy' ? 'light' : DEFAULT_THEME;
+    // No stored preference: match index.html prepaint and stored `'auto'`.
+    // Happy stays light; every other variant follows prefers-color-scheme
+    // instead of snapping first-visit light OS users back to DEFAULT_THEME (dark).
+    effective = variant === 'happy' ? 'light' : resolveAutoTheme();
   }
 
   document.documentElement.dataset.theme = effective;

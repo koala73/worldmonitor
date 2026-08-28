@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
+  MAX_BODY_LEN,
   buildArticlePrompts,
   getProviderCredentials,
   getCacheKey,
@@ -81,7 +82,6 @@ export async function summarizeArticle(
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
-  const MAX_BODY_LEN = 400;
 
   // Bounded raw headlines — used for cache key so browser/server keys agree.
   // Only structural patterns stripped (delimiters, control chars); semantic

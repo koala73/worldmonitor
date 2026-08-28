@@ -46,6 +46,7 @@ import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import { toApiUrl } from '@/services/runtime';
+import { raceWebMcpAbort, throwIfWebMcpAborted } from '@/services/webmcp';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import {
@@ -93,9 +94,33 @@ type CountryIntelBriefResult = {
   cached?: boolean;
 };
 
+type PendingCountryBriefRequest = {
+  token: number;
+  owner: 'human' | 'agent';
+};
+
+type CountryBriefOpenOptions = {
+  maximize?: boolean;
+  trackAnalytics?: boolean;
+  /** Acknowledges that the requested country page is visibly presented. */
+  onPresented?: () => void;
+  /** Cancels an agent-owned open before it presents visible UI. */
+  signal?: AbortSignal;
+  /**
+   * Who initiated this open, for request arbitration only. An agent open never
+   * evicts a pending human one (see claimBriefRequest). Callers that omit it
+   * fall back to the AbortSignal heuristic, which no longer holds on its own:
+   * no shipping browser supplies a target-side signal to WebMCP tools, so an
+   * agent path without a signal must state its ownership explicitly.
+   */
+  owner?: 'agent' | 'human';
+};
+
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
+  private pendingBriefRequest: PendingCountryBriefRequest | null = null;
+  private visibleBriefOwner: PendingCountryBriefRequest['owner'] | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
   private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
   // Re-fire PRO-gated country sections on false→true entitlement transition.
@@ -142,6 +167,8 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.briefRequestToken++;
+    this.pendingBriefRequest = null;
     if (this._fwDebounce) { clearTimeout(this._fwDebounce); this._fwDebounce = null; }
     this.ctx.countryTimeline?.destroy();
     this.ctx.countryTimeline = null;
@@ -157,6 +184,36 @@ export class CountryIntelManager implements AppModule {
     console.error('[CountryBrief] Failed to open country brief:', err);
     this.ctx.map?.setRenderPaused(false);
     this.showToast('Country brief failed to open. Please try again.');
+  }
+
+  private claimBriefRequest(owner: PendingCountryBriefRequest['owner']): PendingCountryBriefRequest | null {
+    const pendingRequest = this.pendingBriefRequest;
+    if (
+      owner === 'agent'
+      && (
+        (
+          pendingRequest?.owner === 'human'
+          && pendingRequest.token === this.briefRequestToken
+        )
+        || (
+          this.visibleBriefOwner === 'human'
+          && this.hasVisibleRealCountryBrief()
+        )
+      )
+    ) {
+      return null;
+    }
+    const request = { token: ++this.briefRequestToken, owner };
+    this.pendingBriefRequest = request;
+    return request;
+  }
+
+  private clearBriefRequest(request: PendingCountryBriefRequest): void {
+    if (this.pendingBriefRequest === request) this.pendingBriefRequest = null;
+  }
+
+  private isCurrentBriefRequest(request: PendingCountryBriefRequest): boolean {
+    return request.token === this.briefRequestToken;
   }
 
   private async setupCountryIntel(): Promise<void> {
@@ -257,55 +314,76 @@ export class CountryIntelManager implements AppModule {
   }
 
   async openCountryBrief(lat: number, lon: number): Promise<void> {
-    if (!(await this.ensureCountryBriefPage())) return;
-    const page = this.ctx.countryBriefPage;
-    if (!page) return;
-    const token = ++this.briefRequestToken;
-    page.showLoading();
-    this.ctx.map?.setRenderPaused(true);
+    const request = this.claimBriefRequest('human');
+    if (!request) return;
+    try {
+      if (!(await this.ensureCountryBriefPage())) return;
+      if (!this.isCurrentBriefRequest(request) || this.ctx.isDestroyed) return;
+      const page = this.ctx.countryBriefPage;
+      if (!page) return;
+      page.showLoading();
+      this.ctx.map?.setRenderPaused(true);
 
-    const localGeo = getCountryAtCoordinates(lat, lon);
-    if (localGeo) {
-      if (token !== this.briefRequestToken) return;
-      await this.openCountryBriefByCode(localGeo.code, localGeo.name);
-      return;
+      const localGeo = getCountryAtCoordinates(lat, lon);
+      if (localGeo) {
+        if (!this.isCurrentBriefRequest(request)) return;
+        await this.openCountryBriefByCodeForRequest(localGeo.code, localGeo.name, undefined, request, true);
+        return;
+      }
+
+      const geo = await reverseGeocode(lat, lon);
+      if (!this.isCurrentBriefRequest(request)) return;
+      if (!geo) {
+        page.hide();
+        this.ctx.map?.setRenderPaused(false);
+        return;
+      }
+
+      await this.openCountryBriefByCodeForRequest(geo.code, geo.country, undefined, request, true);
+    } finally {
+      this.clearBriefRequest(request);
     }
-
-    const geo = await reverseGeocode(lat, lon);
-    if (token !== this.briefRequestToken) return;
-    if (!geo) {
-      page.hide();
-      this.ctx.map?.setRenderPaused(false);
-      return;
-    }
-
-    await this.openCountryBriefByCode(geo.code, geo.country);
   }
 
   async openCountryBriefByCode(
     code: string,
     country: string,
-    opts?: {
-      maximize?: boolean;
-      trackAnalytics?: boolean;
-      /** Acknowledges that the requested country page is visibly presented. */
-      onPresented?: () => void;
-    },
+    opts?: CountryBriefOpenOptions,
   ): Promise<void> {
-    const token = ++this.briefRequestToken;
+    throwIfWebMcpAborted(opts?.signal);
+    const requestOwner = opts?.owner ?? (opts?.signal ? 'agent' : 'human');
+    const request = this.claimBriefRequest(requestOwner);
+    if (!request) return;
+    await this.openCountryBriefByCodeForRequest(code, country, opts, request);
+  }
+
+  private async openCountryBriefByCodeForRequest(
+    code: string,
+    country: string,
+    opts: CountryBriefOpenOptions | undefined,
+    request: PendingCountryBriefRequest,
+    loadingAlreadyShown = false,
+  ): Promise<void> {
+    const token = request.token;
     let pageShown = false;
-    let showedLoading = false;
+    let showedLoading = loadingAlreadyShown;
 
     try {
+      throwIfWebMcpAborted(opts?.signal);
       if (!(await this.ensureCountryBriefPage())) return;
+      throwIfWebMcpAborted(opts?.signal);
       if (token !== this.briefRequestToken || this.ctx.isDestroyed) return;
       const page = this.ctx.countryBriefPage;
       if (!page) return;
-      if (!this.hasVisibleRealCountryBrief() || page.getCode() !== code) {
-        page.showLoading();
+      const hasVisibleBrief = this.hasVisibleRealCountryBrief();
+      // An agent open must not replace visible state while it works. Ownership
+      // is explicit because shipping WebMCP browsers omit the target signal.
+      const preserveVisibleBrief = request.owner === 'agent' && hasVisibleBrief;
+      if (!preserveVisibleBrief && (!hasVisibleBrief || page.getCode() !== code)) {
+        if (!showedLoading) page.showLoading();
         showedLoading = true;
       }
-      this.ctx.map?.setRenderPaused(true);
+      if (!loadingAlreadyShown) this.ctx.map?.setRenderPaused(true);
       if (opts?.trackAnalytics !== false) trackCountryBriefOpened(code);
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
@@ -315,11 +393,17 @@ export class CountryIntelManager implements AppModule {
       const scoreCode = normalizeCiiCountryCode(code);
       const score = getCachedCountryScore(scoreCode);
 
-      const signals = await this.getCountrySignals(code, country);
+      const signals = await raceWebMcpAbort(
+        this.getCountrySignals(code, country),
+        opts?.signal,
+      );
+      throwIfWebMcpAborted(opts?.signal);
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
       page.show(country, code, score, signals);
       pageShown = true;
+      this.visibleBriefOwner = request.owner;
+      this.clearBriefRequest(request);
       // Agent selection needs to acknowledge the visible UI transition, not
       // wait for the slower background intelligence/LLM enrichment below.
       // Keep the callback observational so a consumer cannot break the human
@@ -408,7 +492,7 @@ export class CountryIntelManager implements AppModule {
       page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
       const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
-      const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
+      const stockPromise = marketClient.getCountryStockIndex({ countryCode: code.toUpperCase() })
         .then((resp) => ({
           available: resp.available,
           code: resp.code,
@@ -496,7 +580,7 @@ export class CountryIntelManager implements AppModule {
             this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(null);
           }
         });
-      intelClient.getCountryFacts({ countryCode: code })
+      intelClient.getCountryFacts({ countryCode: code.toUpperCase() })
         .then((facts) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           this.ctx.countryBriefPage.updateCountryFacts?.({
@@ -521,7 +605,7 @@ export class CountryIntelManager implements AppModule {
           });
         });
 
-      intelClient.getCountryEnergyProfile({ countryCode: code })
+      intelClient.getCountryEnergyProfile({ countryCode: code.toUpperCase() })
         .then((profile) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           this.ctx.countryBriefPage.updateEnergyProfile?.({
@@ -610,7 +694,7 @@ export class CountryIntelManager implements AppModule {
           });
         });
 
-      intelClient.getCountryPortActivity({ countryCode: code })
+      intelClient.getCountryPortActivity({ countryCode: code.toUpperCase() })
         .then((activity) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           this.ctx.countryBriefPage.updateMaritimeActivity?.({
@@ -820,6 +904,23 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'Failed to generate brief' });
       }
     } catch (err) {
+      if (
+        opts?.signal?.aborted
+        || (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError')
+      ) {
+        const activePage = this.ctx.countryBriefPage;
+        const activeCode = activePage?.getCode();
+        if (
+          token === this.briefRequestToken
+          && showedLoading
+          && activePage?.isVisible()
+          && (activeCode === '__loading__' || activeCode === '__error__')
+        ) {
+          activePage.hide();
+        }
+        throwIfWebMcpAborted(opts?.signal);
+        throw err;
+      }
       if (token !== this.briefRequestToken) {
         console.warn('[CountryBrief] Superseded country brief open failed after it was stale:', err);
         return;
@@ -833,6 +934,7 @@ export class CountryIntelManager implements AppModule {
         this.showToast('Country brief failed to open. Please try again.');
       }
     } finally {
+      this.clearBriefRequest(request);
       if (!pageShown && token === this.briefRequestToken && !this.hasVisibleRealCountryBrief()) {
         this.ctx.map?.setRenderPaused(false);
       }
@@ -874,7 +976,7 @@ export class CountryIntelManager implements AppModule {
       if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateNationalDebt?.(null);
     });
 
-    intelClientPro.getCountryRisk({ countryCode: code }).then(resp => {
+    intelClientPro.getCountryRisk({ countryCode: code.toUpperCase() }).then(resp => {
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
       this.ctx.countryBriefPage.updateSanctionsPressure?.(resp.sanctionsCount > 0 ? {
         entryCount: resp.sanctionsCount,

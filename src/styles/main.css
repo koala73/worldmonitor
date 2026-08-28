@@ -22,9 +22,9 @@
   --text: #e8e8e8;
   --text-secondary: #ccc;
   --text-dim: #888;
-  --text-muted: #666;
-  --text-faint: #555;
-  --text-ghost: #444;
+  --text-muted: #838383; /* was #666 (3.2:1 on --surface); AA 4.9:1 */
+  --text-faint: #7f7f7f; /* was #555 (2.5:1); AA 4.6:1 */
+  --text-ghost: #666; /* was #444 (1.9:1); 3.2:1 — decorative/large text only, never body copy */
   --accent: #fff;
 
   /* Overlays & shadows */
@@ -169,10 +169,9 @@
   --text: #1a1a1a;
   --text-secondary: #333;
   --text-dim: #6b6b6b;
-  --text-muted: #767676;
-  /* WCAG AA: 4.54:1 vs #f8f9fa */
-  --text-faint: #aaa;
-  --text-ghost: #bbb;
+  --text-muted: #6f6f6f; /* was #767676 (4.3:1 vs --bg); AA 4.8:1 */
+  --text-faint: #727272; /* was #aaa (2.2:1); AA 4.6:1 */
+  --text-ghost: #8e8e8e; /* was #bbb (1.8:1); 3.1:1 — decorative/large text only, never body copy */
   --accent: #111111;
 
   /* Overlays & shadows */
@@ -1589,6 +1588,9 @@ canvas,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* The digest coverage row (#7085) joins as a full-width flex child and
+     wraps onto its own line; the brand/nav/copy children still fit one row. */
+  flex-wrap: wrap;
   padding: 12px 20px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -1646,6 +1648,20 @@ canvas,
   color: var(--text-dim);
 }
 
+/* #7085: digest coverage status row, mounted into the site footer by
+   StatusPanel. Text-only state disclosure — same muted mono treatment as the
+   footer copy, which already clears WCAG AA on this surface. */
+.site-footer .status-panel-container {
+  flex-basis: 100%;
+  order: 10;
+}
+.digest-coverage-row {
+  font-family: var(--font-mono, monospace);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  padding-top: 6px;
+}
+
 /* Mobile application navigation is injected with the hydrated shell but stays
    out of desktop layout entirely. */
 .mobile-tab-bar {
@@ -1653,8 +1669,24 @@ canvas,
 }
 
 @media (max-width: 768px) {
+  /* #7085: display:none on the whole footer removed the digest coverage row's
+     live region from the mobile accessibility tree (PR #7267 review). Keep the
+     footer in flow but collapse it: brand/nav/copy stay hidden, so it renders
+     zero-height until the coverage row mounts, then only the row shows. */
   .site-footer {
+    padding: 0;
+    border-top: none;
+  }
+
+  .site-footer > :not(.status-panel-container) {
     display: none;
+  }
+
+  .site-footer .status-panel-container {
+    border-top: 1px solid var(--border);
+    /* Clear the fixed mobile tab bar (58px + safe area) so the row's text is
+       reachable at full scroll, matching the .cached-mode-banner offset. */
+    padding: 8px 12px calc(8px + 58px + env(safe-area-inset-bottom, 0px));
   }
 
   .mobile-tab-bar {
@@ -1977,6 +2009,53 @@ body.panel-resize-active iframe {
   flex-shrink: 0;
   position: relative;
   transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Keyboard reorder affordance (see makeDraggable): invisible until keyboard
+   focus reaches it, so pointer users see no change in the header. */
+.panel-move-btn {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.panel-move-btn:focus-visible {
+  width: auto;
+  height: auto;
+  padding: 2px 6px;
+  overflow: visible;
+  clip-path: none;
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  z-index: 3;
+}
+
+/* The resize strips are keyboard-focusable separators (arrow keys resize);
+   show where focus is when it lands on one. */
+.panel-resize-handle:focus-visible,
+.panel-col-resize-handle:focus-visible,
+.map-resize-handle:focus-visible,
+.map-width-resize-handle:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+/* Disclosure cards/rows and sortable headers made keyboard-operable (#7023). */
+.trade-restriction-header:focus-visible,
+.chain-node:focus-visible,
+.watchlist-row:focus-visible,
+.watchlist-th-sortable:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 
 .panel-header-error {
@@ -4180,6 +4259,18 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted, #888);
   margin-bottom: 6px;
+}
+
+.deckgl-webcam-popup-link {
+  display: block;
+  margin: 4px 0;
+  color: var(--accent, #00d4ff);
+  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
+  text-decoration: none;
+}
+
+.deckgl-webcam-popup-link:hover {
+  text-decoration: underline;
 }
 
 /* News Items */
@@ -12228,11 +12319,13 @@ a.prediction-link:hover {
   margin-left: 6px;
 }
 
-.trade-tariff-gap-positive {
+/* Named by direction vs baseline, not numeric sign: 'positive' colored orange
+   while .change-positive is green read as an inverted convention (#7023). */
+.trade-tariff-gap-above {
   color: var(--orange, #ffab40);
 }
 
-.trade-tariff-gap-negative {
+.trade-tariff-gap-below {
   color: var(--green, #69f0ae);
 }
 
@@ -13645,6 +13738,30 @@ a.prediction-link:hover {
  * "shown/total" for layers the globe's marker budget is trimming (#5368).
  * Muted and right-aligned: it reports a limit, it is not a call to action.
  */
+/* #7112: the marker-budget disclosure for maps with no layer-toggle rail —
+   `chrome: false` embeds. The per-layer `shown/total` badge needs a toggle row to
+   sit on; this states the same fact for the whole overlay when no row exists.
+   Informational only: pointer-events stay on so the title tooltip works, but it
+   is not a control and must not read as one. */
+.map-truncation-summary {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  z-index: 60;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+  /* Theme tokens, not hardcoded colours: an embed inherits the host page's
+     theme and a fixed white would vanish on the light one. */
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  cursor: help;
+  pointer-events: auto;
+}
+
 .layer-truncation-count {
   margin-left: auto;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
@@ -14287,7 +14404,7 @@ a.prediction-link:hover {
   padding: 8px 16px;
   border-top: 1px solid var(--overlay-medium);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost);
+  color: var(--text-faint);
 }
 
 .pizzint-footer a {
@@ -14489,7 +14606,7 @@ a.prediction-link:hover {
 
 .mobile-menu-footer-links a {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost);
+  color: var(--text-faint);
   text-decoration: none;
   letter-spacing: 0.02em;
 }
@@ -14501,7 +14618,7 @@ a.prediction-link:hover {
 .mobile-menu-version {
   padding: 4px 20px 16px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost);
+  color: var(--text-faint);
 }
 
 .region-sheet-backdrop {
@@ -16774,7 +16891,7 @@ a.prediction-link:hover {
 }
 
 .signal-sources-label {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -16782,7 +16899,7 @@ a.prediction-link:hover {
 }
 
 .signal-source-chip {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   padding: 2px 6px;
   background: rgba(0, 170, 255, 0.15);
   color: var(--accent);
@@ -16803,7 +16920,7 @@ a.prediction-link:hover {
 }
 
 .signal-articles-header {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -19982,7 +20099,8 @@ a.prediction-link:hover {
 }
 
 .unified-settings-preset-chip:focus-visible {
-  outline: none;
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
 }
 
 /* Unified settings selects */
@@ -22836,7 +22954,7 @@ body.has-breaking-alert .panels-grid {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-ghost);
+  color: var(--text-faint);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -23099,7 +23217,7 @@ body.has-breaking-alert .panels-grid {
 
 .cw-dismiss {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-ghost, #444);
+  color: var(--text-faint, #555);
   cursor: pointer;
   background: none;
   border: none;
@@ -23122,6 +23240,7 @@ body.has-breaking-alert .panels-grid {
   z-index: 10;
   transition: background 0.15s ease;
   flex-shrink: 0;
+  touch-action: none;
 }
 
 .map-width-resize-handle::after {
@@ -23149,13 +23268,46 @@ body.map-width-resizing {
   user-select: none;
 }
 
-@media (min-width: 1600px) {
+/* The map-side toggle only means something in the split layout. */
+.map-side-btn {
+  display: none;
+}
+
+/* In a narrow map column the absolutely-centered clock overlaps the header
+   actions; the width-resize handler toggles this class. */
+.map-section.map-col-narrow .header-clock {
+  display: none;
+}
+
+/* 900px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
+   threshold for web and desktop since #6417 (the Tauri window minimum width
+   keeps the desktop app above it, so this block covers both). The map track
+   pins both pixel floors: 220px = MAP_COL_MIN_PX and 306px = PANELS_COL_MIN_PX
+   + MAP_COL_DIVIDER_PX. tests/responsive-zone-listener.test.mjs pins the
+   alignment. */
+@media (min-width: 900px) {
   .main-content {
     display: grid;
-    grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
+    grid-template-columns: min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px)) 6px 1fr;
     grid-template-rows: 1fr auto;
     gap: 4px 0;
     overflow: hidden;
+  }
+
+  .main-content.map-right:not(.map-hidden) {
+    grid-template-columns: 1fr 6px min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px));
+  }
+
+  .main-content.map-right .map-section {
+    grid-column: 3;
+  }
+
+  .main-content.map-right .panels-grid {
+    grid-column: 1;
+  }
+
+  .map-side-btn {
+    display: inline-flex;
   }
 
   .map-width-resize-handle {
@@ -23239,76 +23391,6 @@ body.map-width-resizing {
   }
 }
 
-/* Desktop app grid layout (active at any width >= 900px via JS class) */
-.main-content.desktop-grid {
-  display: grid;
-  grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
-  grid-template-rows: 1fr auto;
-  gap: 4px 0;
-  overflow: hidden;
-}
-
-.main-content.desktop-grid .map-width-resize-handle {
-  display: flex;
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.main-content.desktop-grid.map-hidden {
-  grid-template-columns: 1fr;
-}
-
-.main-content.desktop-grid.map-hidden .panels-grid {
-  grid-column: 1;
-}
-
-.main-content.desktop-grid.map-hidden .map-width-resize-handle {
-  display: none;
-}
-
-.main-content.desktop-grid .map-section {
-  grid-column: 1;
-  grid-row: 1;
-  height: 100% !important;
-  min-height: 0;
-  max-height: none;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border-bottom: none;
-}
-
-.main-content.desktop-grid .panels-grid {
-  grid-column: 3;
-  grid-row: 1;
-  min-height: 0;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
-  align-content: start;
-  overflow-y: auto;
-}
-
-.main-content.desktop-grid .map-resize-handle {
-  position: relative;
-  bottom: auto;
-  left: auto;
-  right: auto;
-  height: 12px;
-  background: var(--border-subtle);
-  margin: 0;
-  cursor: ns-resize;
-  display: flex;
-}
-
-.main-content.desktop-grid .map-resize-handle:hover {
-  background: var(--accent);
-}
-
-.main-content.desktop-grid .map-bottom-grid:empty {
-  border-top: none;
-  padding: 0;
-}
-
 /* ==========================================================================
    Telegram Intel Panel
    ========================================================================== */
@@ -23354,6 +23436,13 @@ body.map-width-resizing {
   gap: 6px;
   flex: 1;
   overflow: hidden;
+}
+
+.telegram-intel-channel-wrapper .propaganda-badge,
+.telegram-intel-channel-wrapper .tier-badge {
+  flex-shrink: 0;
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .telegram-intel-channel {
@@ -23459,6 +23548,109 @@ body.map-width-resizing {
 }
 
 .telegram-follow-btn:hover {
+  background: var(--accent-dim);
+  color: var(--bg);
+}
+
+/* ==========================================================================
+   X News Accounts Panel (#6654)
+   ========================================================================== */
+
+.x-intel-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.x-intel-degraded {
+  margin: 6px 8px;
+  padding: 6px 8px;
+  border: 1px solid rgb(245 158 11 / 35%);
+  border-radius: 4px;
+  color: var(--color-warning, #f59e0b);
+  background: rgb(245 158 11 / 8%);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.x-intel-item {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--surface);
+  transition: background 0.15s ease, border-left-color 0.15s ease;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.x-intel-item.is-live {
+  background: rgba(0, 255, 127, 0.02);
+  border-left-color: var(--green);
+}
+
+.x-intel-item:hover {
+  background: var(--overlay-light);
+}
+
+.x-intel-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.x-intel-account-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.x-intel-account {
+  font-weight: 600;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.x-intel-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.x-intel-topic {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.x-intel-time {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.x-intel-text {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.x-intel-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.x-intel-follow-btn {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.x-intel-follow-btn:hover {
   background: var(--accent-dim);
   color: var(--bg);
 }
@@ -25998,6 +26190,56 @@ body.map-width-resizing {
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
 
+/* -- Legal links + pre-payment assent (#6976) -- */
+/* The dashboard had no path to the Terms at all, and every upgrade CTA jumped
+   straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
+   terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
+
+.legal-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border-color, #30363d);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  /* Sticky to the bottom of the scrolling modal: the Settings tab is long
+     enough that a row parked at the end of the scroll would be several
+     screens down, which is not "one click from the dashboard". -20px cancels
+     .modal's own bottom padding so it pins flush to the edge. */
+  position: sticky;
+  bottom: -20px;
+  z-index: 1;
+  margin-top: 8px;
+  background: var(--surface);
+}
+
+.legal-links-item {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.legal-links-item:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.checkout-consent {
+  margin: 0 0 8px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.checkout-consent-link {
+  color: var(--text-dim);
+  text-decoration: underline;
+}
+
+.checkout-consent-link:hover {
+  color: var(--text);
+}
+
 .upgrade-pro-status-line {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -26230,6 +26472,15 @@ body.map-width-resizing {
   justify-content: flex-end;
   gap: 6px;
   flex: 0 0 auto;
+}
+
+/* The checkout-consent line (#6976) is a full-width row inside the action
+   column so the assent reads above the CTA it belongs to, rather than becoming
+   a third column in the notice's space-between row. */
+.api-plan-limit-notice-actions .checkout-consent {
+  flex: 1 0 100%;
+  margin: 0 0 2px;
+  text-align: right;
 }
 
 .api-plan-limit-notice-actions .btn {
@@ -27671,6 +27922,50 @@ body.map-width-resizing {
   animation: none;
 }
 
+/* ── Accessibility: motion & focus visibility (#6573) ─────────────────── */
+
+/* Honor the OS-level reduced-motion preference globally. Individual guards
+   exist for a handful of selectors above, but ~80 infinite animations and
+   ~325 transitions ran unconditionally. Durations collapse to near-zero
+   (rather than `animation: none`) so animationend/transitionend listeners
+   still fire and will-change cleanups keep working. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus rings for controls whose base rules declare `outline: none` (or
+   swap only border-color on :focus, below the 3:1 non-text contrast bar)
+   without a :focus-visible replacement. Keyboard-only — :focus-visible
+   leaves mouse focus styling as designed. */
+.region-select:focus-visible,
+.focus-select:focus-visible,
+.playback-slider:focus-visible,
+.search-input:focus-visible,
+.embed-snippet-textarea:focus-visible,
+.sources-search input:focus-visible,
+.panels-search input:focus-visible,
+.mcp-input:focus-visible,
+.cp-world-filter:focus-visible,
+.chat-analyst-input:focus-visible,
+.us-notif-slack-input:focus-visible,
+.live-news-manage-search-input:focus-visible,
+.deckgl-layer-toggles .layer-search:focus-visible,
+.fw-import-input:focus-visible,
+.fw-import-textarea:focus-visible,
+.auth-profile-input:focus-visible,
+.debt-search:focus-visible,
+.api-keys-name-input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
 .stock-research-overlay {
   position: fixed;
   inset: 0;
@@ -27723,4 +28018,44 @@ body.map-width-resizing {
   display: block;
   color: var(--text-dim, #9a9589);
   font-size: 12px;
+}
+
+/* Windows High Contrast / forced-colors (#7023): backgrounds are stripped by
+   the UA, which erased the color-only severity dots and flattened status
+   badges. Borders survive forced colors; the dot additionally opts out of
+   adjustment so its severity hue (now also exposed via aria-label) remains. */
+@media (forced-colors: active) {
+  .panel-severity-dot {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+
+  .panel-data-badge,
+  .pizzint-location-status,
+  .panel-count {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* Keyboard-activatable drill-in rows (#7023): visible focus for the
+   role="button" cards and tabindex'd table rows wired via bindActivationKeys. */
+.geo-hub-item:focus-visible,
+.tech-hub-item:focus-visible,
+.te-card:focus-visible,
+.fdi-row:focus-visible,
+.risk-item-clickable:focus-visible,
+.risk-alert-clickable:focus-visible,
+.posture-theater:focus-visible,
+.finding-item:focus-visible,
+.cii-name:focus-visible,
+.climate-row:focus-visible,
+.ucdp-row:focus-visible,
+.disp-row:focus-visible,
+.radiation-row:focus-visible,
+.fs-row:focus-visible,
+.pp-row:focus-visible,
+.sf-row:focus-visible,
+.ed-row:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }

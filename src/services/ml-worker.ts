@@ -15,6 +15,20 @@ interface PendingRequest<T> {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+export interface MLWorkerManagerOptions {
+  readyTimeoutMs?: number;
+  recoveryBaseDelayMs?: number;
+  recoveryStableMs?: number;
+  recoveryMaxAttempts?: number;
+  modelRestoreMaxAttempts?: number;
+}
+
+interface WorkerStartup {
+  generation: number;
+  timeout: ReturnType<typeof setTimeout>;
+  resolve: (ready: boolean) => void;
+}
+
 interface NEREntity {
   text: string;
   type: string;
@@ -54,63 +68,137 @@ type WorkerResult =
   | { type: 'reset-complete' }
   | { type: 'error'; id?: string; error: string };
 
-class MLWorkerManager {
+export class MLWorkerManager {
   private worker: Worker | null = null;
   private pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
   private requestIdCounter = 0;
   private isReady = false;
+  private enabled = false;
+  private initPromise: Promise<boolean> | null = null;
+  private recoveryScheduled = false;
+  private recoveryBlocked = false;
+  private recoveryAttempts = 0;
+  private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private recoveryResetTimer: ReturnType<typeof setTimeout> | null = null;
+  private recoveryPromise: Promise<boolean> | null = null;
+  private recoveryResolve: ((recovered: boolean) => void) | null = null;
+  private lifecycleGeneration = 0;
+  private workerGeneration = 0;
+  private startup: WorkerStartup | null = null;
   private capabilities: MLCapabilities | null = null;
   private loadedModels = new Set<string>();
-  private readyResolve: (() => void) | null = null;
+  private desiredModels = new Set<string>();
+  private pendingModelUnloads = new Map<string, Promise<boolean>>();
   private modelProgressCallbacks: Map<string, (progress: number) => void> = new Map();
 
-  private static readonly READY_TIMEOUT_MS = 10000;
+  private readonly readyTimeoutMs: number;
+  private readonly recoveryBaseDelayMs: number;
+  private readonly recoveryStableMs: number;
+  private readonly recoveryMaxAttempts: number;
+  private readonly modelRestoreMaxAttempts: number;
+
+  constructor(options: MLWorkerManagerOptions = {}) {
+    this.readyTimeoutMs = options.readyTimeoutMs ?? 10_000;
+    this.recoveryBaseDelayMs = options.recoveryBaseDelayMs ?? 1_000;
+    this.recoveryStableMs = options.recoveryStableMs ?? 30_000;
+    this.recoveryMaxAttempts = options.recoveryMaxAttempts ?? 3;
+    this.modelRestoreMaxAttempts = options.modelRestoreMaxAttempts ?? 2;
+  }
 
   /**
    * Initialize the ML worker. Returns false if ML is not supported.
    */
   async init(): Promise<boolean> {
-    if (this.isReady) return true;
+    if (!this.enabled || this.recoveryBlocked) {
+      this.clearRecoveryTimer();
+      this.recoveryAttempts = 0;
+      this.recoveryBlocked = false;
+    }
+    this.enabled = true;
+    return this.ensureReady();
+  }
 
-    // Detect capabilities
-    this.capabilities = await detectMLCapabilities();
+  private async ensureReady(): Promise<boolean> {
+    if (!this.enabled || this.recoveryBlocked) return false;
+    if (this.recoveryPromise) {
+      if (!await this.recoveryPromise) return false;
+    }
+    return this.ensureReadyNow();
+  }
 
-    if (!this.capabilities.isSupported) {
+  private async ensureReadyNow(): Promise<boolean> {
+    while (this.enabled && !this.recoveryBlocked) {
+      if (this.isReady && this.hasRestoredDesiredModels()) return true;
+
+      const initialization = this.initPromise
+        ?? this.initializeAndRestore(this.lifecycleGeneration);
+      this.initPromise = initialization;
+      try {
+        if (!await initialization) return false;
+      } finally {
+        if (this.initPromise === initialization) this.initPromise = null;
+      }
+    }
+    return false;
+  }
+
+  private async initializeAndRestore(lifecycleGeneration: number): Promise<boolean> {
+    this.capabilities ??= await detectMLCapabilities();
+
+    if (
+      lifecycleGeneration !== this.lifecycleGeneration
+      || !this.enabled
+      || !this.capabilities.isSupported
+    ) {
       return false;
     }
 
-    return this.initWorker();
+    if (!await this.initWorker()) return false;
+    if (lifecycleGeneration !== this.lifecycleGeneration || !this.enabled) return false;
+
+    return this.restoreDesiredModels();
   }
 
   private initWorker(): Promise<boolean> {
     if (this.worker) return Promise.resolve(this.isReady);
 
     return new Promise((resolve) => {
-      const readyTimeout = setTimeout(() => {
-        if (!this.isReady) {
-          console.error('[MLWorker] Worker failed to become ready');
-          this.cleanup();
-          resolve(false);
+      const generation = ++this.workerGeneration;
+      let settled = false;
+      const finishStartup = (ready: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (this.startup?.generation === generation) {
+          clearTimeout(this.startup.timeout);
+          this.startup = null;
         }
-      }, MLWorkerManager.READY_TIMEOUT_MS);
+        resolve(ready);
+      };
+      const readyTimeout = setTimeout(() => {
+        if (this.startup?.generation === generation && !this.isReady) {
+          console.error('[MLWorker] Worker failed to become ready');
+          this.cleanup(false, new Error('ML Worker failed to become ready'));
+        }
+      }, this.readyTimeoutMs);
+      this.startup = { generation, timeout: readyTimeout, resolve: finishStartup };
 
+      let worker: Worker;
       try {
-        this.worker = new MLWorkerClass();
+        worker = new MLWorkerClass();
+        this.worker = worker;
       } catch (error) {
         console.error('[MLWorker] Failed to create worker:', error);
-        this.cleanup();
-        resolve(false);
+        this.cleanup(false, new Error('ML Worker failed to start'));
         return;
       }
 
-      this.worker.onmessage = (event: MessageEvent<WorkerResult>) => {
+      worker.onmessage = (event: MessageEvent<WorkerResult>) => {
+        if (generation !== this.workerGeneration || worker !== this.worker) return;
         const data = event.data;
 
         if (data.type === 'worker-ready') {
           this.isReady = true;
-          clearTimeout(readyTimeout);
-          this.readyResolve?.();
-          resolve(true);
+          finishStartup(true);
           return;
         }
 
@@ -122,7 +210,12 @@ class MLWorkerManager {
 
         // Unsolicited model-loaded notification (implicit load inside summarize/sentiment/etc.)
         if (data.type === 'model-loaded' && !('id' in data && data.id)) {
-          this.loadedModels.add(data.modelId);
+          this.acceptModelLoaded(data.modelId);
+          return;
+        }
+
+        if (data.type === 'reset-complete') {
+          this.loadedModels.clear();
           return;
         }
 
@@ -145,11 +238,12 @@ class MLWorkerManager {
             this.pendingRequests.delete(data.id);
 
             if (data.type === 'model-loaded') {
-              this.loadedModels.add(data.modelId);
-              pending.resolve(true);
+              pending.resolve(this.acceptModelLoaded(data.modelId));
             } else if (data.type === 'model-unloaded') {
               this.loadedModels.delete(data.modelId);
-              pending.resolve(true);
+              const shouldRemainUnloaded = !this.desiredModels.has(data.modelId);
+              pending.resolve(shouldRemainUnloaded);
+              if (!shouldRemainUnloaded) void this.ensureReady();
             } else if (data.type === 'embed-result') {
               pending.resolve(data.embeddings);
             } else if (data.type === 'summarize-result') {
@@ -175,33 +269,183 @@ class MLWorkerManager {
         }
       };
 
-      this.worker.onerror = (error) => {
+      worker.onerror = (error) => {
+        if (generation !== this.workerGeneration || worker !== this.worker) return;
         console.error('[MLWorker] Error:', error);
 
         if (!this.isReady) {
-          clearTimeout(readyTimeout);
-          this.cleanup();
-          resolve(false);
+          this.cleanup(false, new Error(`Worker error: ${error.message}`));
           return;
         }
 
-        for (const [id, pending] of this.pendingRequests) {
-          clearTimeout(pending.timeout);
-          pending.reject(new Error(`Worker error: ${error.message}`));
-          this.pendingRequests.delete(id);
-        }
+        this.cleanup(false, new Error(`Worker error: ${error.message}`));
+        this.scheduleRecovery();
       };
     });
   }
 
-  private cleanup(): void {
+  private hasRestoredDesiredModels(): boolean {
+    return Array.from(this.desiredModels).every(modelId => this.loadedModels.has(modelId));
+  }
+
+  private async restoreDesiredModels(): Promise<boolean> {
+    while (this.isReady) {
+      const unrestoredModels = Array.from(this.desiredModels)
+        .filter(modelId => !this.loadedModels.has(modelId));
+      if (unrestoredModels.length === 0) return true;
+
+      for (const modelId of unrestoredModels) {
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < this.modelRestoreMaxAttempts; attempt += 1) {
+          if (!this.desiredModels.has(modelId)) break;
+          try {
+            const restored = await this.request<boolean>(
+              'load-model',
+              { modelId },
+              ML_THRESHOLDS.modelLoadTimeoutMs,
+            );
+            if (restored && this.loadedModels.has(modelId)) break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        if (this.desiredModels.has(modelId) && !this.loadedModels.has(modelId)) {
+          console.error(`[MLWorker] Failed to restore model ${modelId}:`, lastError);
+          return false;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private acceptModelLoaded(modelId: string): boolean {
+    if (this.desiredModels.has(modelId)) {
+      this.loadedModels.add(modelId);
+      return true;
+    }
+
+    this.loadedModels.delete(modelId);
+    void this.requestModelUnload(modelId).catch(() => {
+      // The desired state is already unloaded. A failed best-effort unload is
+      // harmless because the worker will be discarded on its next failure.
+    });
+    return false;
+  }
+
+  private scheduleRecovery(): void {
+    if (!this.enabled || this.recoveryScheduled || this.recoveryBlocked) return;
+    if (this.recoveryAttempts >= this.recoveryMaxAttempts) {
+      this.recoveryBlocked = true;
+      console.error('[MLWorker] Automatic recovery stopped after repeated failures');
+      return;
+    }
+
+    this.recoveryAttempts += 1;
+    this.recoveryScheduled = true;
+    const recoveryGeneration = this.lifecycleGeneration;
+    let resolveAttempt: (recovered: boolean) => void = () => {};
+    const recoveryPromise = new Promise<boolean>((resolve) => {
+      resolveAttempt = resolve;
+    });
+    this.recoveryPromise = recoveryPromise;
+    this.recoveryResolve = resolveAttempt;
+    const delay = this.recoveryBaseDelayMs * (2 ** (this.recoveryAttempts - 1));
+    this.recoveryTimer = setTimeout(() => {
+      this.recoveryTimer = null;
+      const currentInitialization = this.initPromise;
+      void (async () => {
+        let recovered = false;
+        try {
+          await currentInitialization?.catch(() => false);
+          if (this.enabled && recoveryGeneration === this.lifecycleGeneration) {
+            recovered = this.isReady && this.hasRestoredDesiredModels()
+              ? true
+              : await this.ensureReadyNow().catch(() => false);
+          }
+        } finally {
+          const isStaleRecovery =
+            recoveryGeneration !== this.lifecycleGeneration
+            || this.recoveryPromise !== recoveryPromise;
+          if (isStaleRecovery) {
+            resolveAttempt(false);
+          } else {
+            this.recoveryScheduled = false;
+            this.recoveryPromise = null;
+            this.recoveryResolve = null;
+            resolveAttempt(recovered);
+            if (recovered) {
+              this.scheduleRecoveryBudgetReset();
+            } else if (this.enabled) {
+              this.scheduleRecovery();
+            }
+          }
+        }
+      })();
+    }, delay);
+    this.recoveryTimer.unref?.();
+  }
+
+  private scheduleRecoveryBudgetReset(): void {
+    if (this.recoveryResetTimer) clearTimeout(this.recoveryResetTimer);
+    this.recoveryResetTimer = setTimeout(() => {
+      this.recoveryResetTimer = null;
+      if (this.enabled && this.isReady && this.hasRestoredDesiredModels()) {
+        this.recoveryAttempts = 0;
+        this.recoveryBlocked = false;
+      }
+    }, this.recoveryStableMs);
+    this.recoveryResetTimer.unref?.();
+  }
+
+  private clearRecoveryTimer(): void {
+    if (this.recoveryTimer) {
+      clearTimeout(this.recoveryTimer);
+      this.recoveryTimer = null;
+    }
+    if (this.recoveryResetTimer) {
+      clearTimeout(this.recoveryResetTimer);
+      this.recoveryResetTimer = null;
+    }
+    this.recoveryScheduled = false;
+    this.recoveryPromise = null;
+    const resolveRecovery = this.recoveryResolve;
+    this.recoveryResolve = null;
+    resolveRecovery?.(false);
+  }
+
+  private cancelStartup(): void {
+    const startup = this.startup;
+    if (!startup) return;
+    clearTimeout(startup.timeout);
+    this.startup = null;
+    startup.resolve(false);
+  }
+
+  private cleanup(clearDesiredModels = false, pendingError = new Error('ML Worker stopped')): void {
+    this.workerGeneration += 1;
+    this.cancelStartup();
+    if (this.recoveryResetTimer) {
+      clearTimeout(this.recoveryResetTimer);
+      this.recoveryResetTimer = null;
+    }
+    for (const [id, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeout);
+      pending.reject(pendingError);
+      this.pendingRequests.delete(id);
+    }
     if (this.worker) {
+      this.worker.onmessage = null;
+      this.worker.onerror = null;
       this.worker.terminate();
       this.worker = null;
     }
     this.isReady = false;
-    this.pendingRequests.clear();
     this.loadedModels.clear();
+    this.pendingModelUnloads.clear();
+    this.modelProgressCallbacks.clear();
+    if (clearDesiredModels) this.desiredModels.clear();
   }
 
   private generateRequestId(): string {
@@ -235,6 +479,20 @@ class MLWorkerManager {
     });
   }
 
+  private requestModelUnload(modelId: string): Promise<boolean> {
+    const pending = this.pendingModelUnloads.get(modelId);
+    if (pending) return pending;
+
+    const unload = this.request<boolean>('unload-model', { modelId });
+    const tracked = unload.finally(() => {
+      if (this.pendingModelUnloads.get(modelId) === tracked) {
+        this.pendingModelUnloads.delete(modelId);
+      }
+    });
+    this.pendingModelUnloads.set(modelId, tracked);
+    return tracked;
+  }
+
   /**
    * Load a model by ID
    */
@@ -242,19 +500,13 @@ class MLWorkerManager {
     modelId: string,
     onProgress?: (progress: number) => void
   ): Promise<boolean> {
-    if (!this.isReady) return false;
-    if (this.loadedModels.has(modelId)) return true;
-
+    this.desiredModels.add(modelId);
     if (onProgress) {
       this.modelProgressCallbacks.set(modelId, onProgress);
     }
 
     try {
-      return await this.request<boolean>(
-        'load-model',
-        { modelId },
-        ML_THRESHOLDS.modelLoadTimeoutMs
-      );
+      return await this.ensureReady() && this.loadedModels.has(modelId);
     } finally {
       this.modelProgressCallbacks.delete(modelId);
     }
@@ -264,11 +516,11 @@ class MLWorkerManager {
    * Unload a model to free memory
    */
   async unloadModel(modelId: string): Promise<boolean> {
-    if (!this.isReady || !this.loadedModels.has(modelId)) return false;
+    const wasDesired = this.desiredModels.delete(modelId);
+    if (!this.isReady || !this.loadedModels.has(modelId)) return wasDesired;
     try {
-      return await this.request<boolean>('unload-model', { modelId });
+      return await this.requestModelUnload(modelId);
     } catch {
-      this.loadedModels.delete(modelId);
       return false;
     }
   }
@@ -279,7 +531,7 @@ class MLWorkerManager {
   async unloadOptionalModels(): Promise<void> {
     const optionalModels = MODEL_CONFIGS.filter(m => !m.required);
     for (const model of optionalModels) {
-      if (this.loadedModels.has(model.id)) {
+      if (this.loadedModels.has(model.id) || this.desiredModels.has(model.id)) {
         await this.unloadModel(model.id);
       }
     }
@@ -289,7 +541,8 @@ class MLWorkerManager {
    * Generate embeddings for texts
    */
   async embedTexts(texts: string[]): Promise<number[][]> {
-    if (!this.isReady) throw new Error('ML Worker not ready');
+    this.desiredModels.add('embeddings');
+    if (!await this.ensureReady()) throw new Error('ML Worker not ready');
     return this.request<number[][]>('embed', { texts });
   }
 
@@ -297,7 +550,8 @@ class MLWorkerManager {
    * Generate summaries for texts
    */
   async summarize(texts: string[], modelId?: string): Promise<string[]> {
-    if (!this.isReady) throw new Error('ML Worker not ready');
+    this.desiredModels.add(modelId ?? 'summarization');
+    if (!await this.ensureReady()) throw new Error('ML Worker not ready');
     return this.request<string[]>('summarize', { texts, ...(modelId && { modelId }) });
   }
 
@@ -305,7 +559,8 @@ class MLWorkerManager {
    * Classify sentiment for texts
    */
   async classifySentiment(texts: string[]): Promise<SentimentResult[]> {
-    if (!this.isReady) throw new Error('ML Worker not ready');
+    this.desiredModels.add('sentiment');
+    if (!await this.ensureReady()) throw new Error('ML Worker not ready');
     return this.request<SentimentResult[]>('classify-sentiment', { texts });
   }
 
@@ -313,7 +568,8 @@ class MLWorkerManager {
    * Extract named entities from texts
    */
   async extractEntities(texts: string[]): Promise<NEREntity[][]> {
-    if (!this.isReady) throw new Error('ML Worker not ready');
+    this.desiredModels.add('ner');
+    if (!await this.ensureReady()) throw new Error('ML Worker not ready');
     return this.request<NEREntity[][]>('extract-entities', { texts });
   }
 
@@ -324,7 +580,7 @@ class MLWorkerManager {
     embeddings: number[][],
     threshold = ML_THRESHOLDS.semanticClusterThreshold
   ): Promise<number[][]> {
-    if (!this.isReady) throw new Error('ML Worker not ready');
+    if (!await this.ensureReady()) throw new Error('ML Worker not ready');
     return this.request<number[][]>('cluster-semantic', { embeddings, threshold });
   }
 
@@ -345,7 +601,8 @@ class MLWorkerManager {
   async vectorStoreIngest(
     items: Array<{ text: string; pubDate: number; source: string; url: string; tags?: string[] }>
   ): Promise<number> {
-    if (!this.isReady) return 0;
+    this.desiredModels.add('embeddings');
+    if (!await this.ensureReady()) return 0;
     return this.request<number>('vector-store-ingest', { items });
   }
 
@@ -354,22 +611,22 @@ class MLWorkerManager {
     topK = 5,
     minScore = 0.3,
   ): Promise<VectorSearchResult[]> {
-    if (!this.isReady || !this.loadedModels.has('embeddings')) return [];
+    if (!await this.ensureReady() || !this.loadedModels.has('embeddings')) return [];
     return this.request<VectorSearchResult[]>('vector-store-search', { queries, topK, minScore });
   }
 
   async vectorStoreCount(): Promise<number> {
-    if (!this.isReady) return 0;
+    if (!await this.ensureReady()) return 0;
     return this.request<number>('vector-store-count', {});
   }
 
   async vectorStoreReset(): Promise<boolean> {
-    if (!this.isReady) return false;
+    if (!await this.ensureReady()) return false;
     return this.request<boolean>('vector-store-reset', {});
   }
 
   async getStatus(): Promise<string[]> {
-    if (!this.isReady) return [];
+    if (!await this.ensureReady()) return [];
     return this.request<string[]>('status', {});
   }
 
@@ -377,9 +634,9 @@ class MLWorkerManager {
    * Reset the worker (unload all models)
    */
   reset(): void {
+    this.desiredModels.clear();
     if (this.worker) {
       this.worker.postMessage({ type: 'reset' });
-      this.loadedModels.clear();
     }
   }
 
@@ -387,14 +644,24 @@ class MLWorkerManager {
    * Terminate the worker completely
    */
   terminate(): void {
-    this.cleanup();
+    this.enabled = false;
+    this.lifecycleGeneration += 1;
+    this.clearRecoveryTimer();
+    this.cleanup(true, new Error('ML Worker terminated'));
+    this.initPromise = null;
+    this.recoveryAttempts = 0;
+    this.recoveryBlocked = false;
   }
 
   /**
    * Check if ML features are available
    */
   get isAvailable(): boolean {
-    return this.isReady && (this.capabilities?.isSupported ?? false);
+    return this.enabled
+      && !this.recoveryBlocked
+      && this.isReady
+      && this.hasRestoredDesiredModels()
+      && (this.capabilities?.isSupported ?? false);
   }
 
   /**

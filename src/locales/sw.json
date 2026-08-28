@@ -142,9 +142,6 @@
     "china": {
       "title": "Picha ya Nchi ya China",
       "description": "Taarifa za sasa za uchumi mkuu, masoko, biashara, nishati na upatikanaji wa uendeshaji kutoka mikataba ya data ya umma iliyopo.",
-      "macroPolicy": "Macro & Policy",
-      "marketCredit": "Market & Credit",
-      "tradeSupply": "Trade & Supply Chain",
       "energy": "Nishati",
       "availability": "Hatari na Anga",
       "observed": "Kufikia:",
@@ -156,8 +153,6 @@
       "gasDemand": "Mahitaji ya gesi",
       "energyMix": "Mchanganyiko wa umeme",
       "coal": "Makaa ya mawe",
-      "aviationAvailability": "Aviation availability",
-      "hazardAvailability": "Hazard availability",
       "noMajorDisruptions": "Hakuna usumbufu mkubwa ulioripotiwa",
       "activeDisruptions_one": "{{count}} usumbufu unaoendelea",
       "activeDisruptions_other": "{{count}} usumbufu unaoendelea",
@@ -169,11 +164,6 @@
       "ccfiSource": "Soko la Kubadilishana la Usafirishaji la Shanghai",
       "comtradeSource": "Mtoa taarifa wa UN Comtrade 156",
       "sourceUnavailable": "Chanzo hakipatikani",
-      "macroUnavailable": "Macro and policy data are currently unavailable.",
-      "marketUnavailable": "Market and credit data are currently unavailable.",
-      "tradeUnavailable": "Trade and supply-chain data are currently unavailable.",
-      "energyUnavailable": "Energy data are currently unavailable.",
-      "availabilityUnavailable": "Hazard and aviation availability data are currently unavailable.",
       "status": {
         "loading": "Inapakia",
         "available": "Inapatikana",
@@ -448,6 +438,7 @@
     "securityAdvisories": "Ushauri wa Usalama",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegraph ya Intel",
+    "xIntel": "X News Accounts",
     "startups": "Anza na VC",
     "vcblogs": "Maarifa na Insha za VC",
     "regionalStartups": "Habari za Kuanzishwa Ulimwenguni",
@@ -608,6 +599,8 @@
       "recent": "Utafutaji wa Hivi Karibuni",
       "empty": "Tafuta data au endesha amri",
       "noResults": "Hakuna matokeo",
+      "resultAnnouncement_one": "{{count}} tokeo la {{query}}",
+      "resultAnnouncement_other": "{{count}} matokeo ya {{query}}",
       "commands": "Amri",
       "results": "Matokeo",
       "addPanel": "Ongeza",
@@ -1914,6 +1907,21 @@
       "filterGeopolitics": "Siasa za kijiografia",
       "filterCyber": "Cyber"
     },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
     "investments": {
       "infoTooltip": "Hifadhidata ya Saudi Arabia na uwekezaji wa kigeni wa moja kwa moja wa UAE katika miundombinu muhimu ya kimataifa. Bofya safu mlalo ili kuruka kwenye uwekezaji kwenye ramani.",
       "searchPlaceholder": "Tafuta mali, nchi, huluki...",
@@ -3067,7 +3075,11 @@
       "heading": "KICHWA",
       "hexCode": "MSIMBO WA HEX",
       "squawk": "SQUAWK",
-      "attribution": "Chanzo: Mtandao wa OpenSky"
+      "attribution": "Chanzo: Mtandao wa OpenSky",
+      "climbRate": "KASI YA KUPAA",
+      "manufacturer": "MTENGENEZAJI",
+      "owner": "MMILIKI",
+      "builtYear": "MWAKA WA UJENZI"
     },
     "militaryVessel": {
       "aisDark": "AIS GIZA",
@@ -3112,7 +3124,8 @@
       "moreVessels": "+{{count}} vyombo zaidi",
       "vesselsCount": "{{count}} VYOMBO",
       "vessels": "VYOMBO",
-      "trackedVessels": "VYOMBO VILIVYOFUATILIWA"
+      "trackedVessels": "VYOMBO VILIVYOFUATILIWA",
+      "showLess": "Onyesha kidogo"
     },
     "naturalEvent": {
       "closed": "IMEFUNGWA",
@@ -3406,7 +3419,9 @@
     "fontFamily": "Familia ya Fonti",
     "fontFamilyDesc": "Nafasi moja kwa mwonekano wa kiufundi, chaguomsingi ya mfumo kwa usomaji rahisi.",
     "fontMono": "Nafasi moja",
-    "fontSystem": "Chaguomsingi ya Mfumo"
+    "fontSystem": "Chaguomsingi ya Mfumo",
+    "panelFontScale": "Ukubwa wa maandishi",
+    "followGlobalFontScale": "Tumia kiwango cha ulimwengu"
   },
   "premium": {
     "pro": "PRO",
@@ -3419,7 +3434,9 @@
       "orefSirens1": "Arifa za wakati halisi za kombora na roketi za Israeli",
       "orefSirens2": "Ramani ya eneo la king'ora na uainishaji wa vitisho",
       "telegramIntel1": "Vituo vya Telegramu vilivyoratibiwa vya OSINT",
-      "telegramIntel2": "Mizozo ya wakati halisi na masasisho ya kijiografia na kisiasa"
+      "telegramIntel2": "Mizozo ya wakati halisi na masasisho ya kijiografia na kisiasa",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "contextMenu": {

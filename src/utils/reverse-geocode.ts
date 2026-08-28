@@ -1,4 +1,5 @@
 import { toApiUrl } from '@/services/runtime';
+import { geocodeCacheCell } from '../../shared/geocode-cache-key.js';
 
 export interface GeoResult {
   country: string;
@@ -8,14 +9,14 @@ export interface GeoResult {
 
 const cache = new Map<string, GeoResult | null>();
 
-function cacheKey(lat: number, lon: number): string {
-  return `${lat.toFixed(1)},${lon.toFixed(1)}`;
+export function __resetReverseGeocodeCacheForTests(): void {
+  cache.clear();
 }
 
 const TIMEOUT_MS = 8000;
 
 export async function reverseGeocode(lat: number, lon: number, signal?: AbortSignal): Promise<GeoResult | null> {
-  const key = cacheKey(lat, lon);
+  const key = geocodeCacheCell(lat, lon);
   if (cache.has(key)) return cache.get(key) ?? null;
 
   const controller = new AbortController();
@@ -25,12 +26,13 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
 
   try {
     const res = await fetch(toApiUrl(`/api/reverse-geocode?lat=${lat}&lon=${lon}`), {
+      credentials: 'omit',
       signal: controller.signal,
     });
     if (!res.ok) {
       // Never memoize a retryable status. `cache` has no TTL and is consulted
       // before every fetch, so caching a 429 (the route is rate-limited since
-      // #6234) or a 503 would mark this 0.1-degree cell "no country here" for
+      // #6234) or a 503 would mark this 0.001-degree cell "no country here" for
       // the rest of the page session — a transient throttle turned permanent.
       // Genuine negative results still cache exactly as before. (#6412 review)
       if (res.status !== 429 && res.status !== 503) cache.set(key, null);

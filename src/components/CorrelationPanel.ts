@@ -3,14 +3,34 @@ import { t } from '@/services/i18n';
 import type { ConvergenceCard, CorrelationDomain } from '@/services/correlation-engine';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { readableTextColor } from '@/utils/contrast';
-import { getHydratedData } from '@/services/bootstrap';
+import { ensureHydrated, getHydratedData, waitForBootstrapSlowTier } from '@/services/bootstrap';
 
 let correlationBootstrap: Record<string, ConvergenceCard[]> | null | undefined;
-function getCorrelationBootstrap(): Record<string, ConvergenceCard[]> | null {
+let correlationBootstrapPromise: Promise<Record<string, ConvergenceCard[]> | null> | null = null;
+
+function getTierCorrelationBootstrap(): Record<string, ConvergenceCard[]> | null {
   if (correlationBootstrap === undefined) {
     correlationBootstrap = (getHydratedData('correlationCards') as Record<string, ConvergenceCard[]>) ?? null;
   }
   return correlationBootstrap;
+}
+
+function loadCorrelationBootstrap(): Promise<Record<string, ConvergenceCard[]> | null> {
+  const tierValue = getTierCorrelationBootstrap();
+  if (tierValue) return Promise.resolve(tierValue);
+  correlationBootstrapPromise ??= waitForBootstrapSlowTier()
+    .then(() => getHydratedData('correlationCards') ?? ensureHydrated('correlationCards'))
+    .then((value) => {
+      correlationBootstrap = (value as Record<string, ConvergenceCard[]> | undefined) ?? null;
+      if (correlationBootstrap === null) correlationBootstrapPromise = null;
+      return correlationBootstrap;
+    })
+    .catch(() => {
+      correlationBootstrap = null;
+      correlationBootstrapPromise = null;
+      return null;
+    });
+  return correlationBootstrapPromise;
 }
 
 // Score-badge BACKGROUND colors. Badge text color is chosen per-background via
@@ -42,13 +62,14 @@ export class CorrelationPanel extends Panel {
     super({ id, title, showCount: true, infoTooltip });
     this.domain = domain;
 
-    const bootstrap = getCorrelationBootstrap();
+    const bootstrap = getTierCorrelationBootstrap();
     const cards = bootstrap?.[domain] ?? null;
     if (cards && cards.length > 0) {
       this.cards = cards;
       this.requestRender();
     } else {
       this.showLoading(t('components.correlation.loading'));
+      this.observeNearViewport(() => this.loadBootstrapCards(), 400);
     }
 
     this.boundUpdateHandler = ((e: CustomEvent) => {
@@ -75,6 +96,19 @@ export class CorrelationPanel extends Panel {
 
   protected renderSupplement(): HTMLElement | null {
     return null;
+  }
+
+  private loadBootstrapCards(): void {
+    void loadCorrelationBootstrap().then((onDemand) => {
+      if (this.correlationDestroyed || this.hasLiveData) return;
+      const onDemandCards = onDemand?.[this.domain];
+      if (onDemandCards?.length) {
+        this.cards = onDemandCards;
+        this.requestRender();
+        return;
+      }
+      this.showError(t('common.failedToLoad'), () => this.loadBootstrapCards());
+    });
   }
 
   private pendingRender = false;

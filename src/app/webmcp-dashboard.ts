@@ -1,6 +1,8 @@
 import type { AppContext } from './app-context';
 import {
   DashboardBindingError,
+  raceWebMcpAbort,
+  throwIfWebMcpAborted,
   type DashboardActionResult,
   type DashboardContextSnapshot,
 } from '@/services/webmcp';
@@ -13,6 +15,12 @@ const APP_DESTROYED_RESULT: DashboardActionResult = {
   message: 'Dashboard is no longer available.',
   targets: [],
 };
+
+// Tools are intentionally discoverable before Phase 4 finishes. Production
+// cold boots have exceeded the former 10-second bound, so keep this separate
+// from shorter renderer/action waits and large enough for the supported
+// pre-ready invocation contract while still failing a genuinely stuck boot.
+export const WEBMCP_UI_READY_TIMEOUT_MS = 30_000;
 
 function interruptedViewportResult(
   result: DashboardActionResult,
@@ -71,25 +79,41 @@ export async function waitForWebMcpUiReady(
   appDestroyed: Promise<void>,
   timeoutMs: number,
   target = 'UI',
+  signal?: AbortSignal,
 ): Promise<void> {
+  throwIfWebMcpAborted(signal);
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let rejectAbort: ((error: unknown) => void) | null = null;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
       () => reject(new Error(`${target} did not initialise within ${timeoutMs}ms`)),
       timeoutMs,
     );
   });
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = reject;
+  });
+  const handleAbort = (): void => {
+    try {
+      throwIfWebMcpAborted(signal);
+    } catch (error) {
+      rejectAbort?.(error);
+    }
+  };
+  signal?.addEventListener('abort', handleAbort, { once: true });
   try {
     const outcome = await Promise.race([
       uiReady.then(() => 'ready' as const),
       appDestroyed.then(() => 'destroyed' as const),
       timeout,
+      aborted,
     ]);
     if (outcome === 'destroyed') {
       throw new Error('Dashboard is no longer available.');
     }
   } finally {
     if (timer !== null) clearTimeout(timer);
+    signal?.removeEventListener('abort', handleAbort);
   }
 }
 
@@ -97,16 +121,23 @@ export async function applyWebMcpDashboardAction(
   ctx: AppContext,
   action: unknown,
   options: AgentBusApplierOptions,
+  signal?: AbortSignal,
 ): Promise<DashboardActionResult> {
+  throwIfWebMcpAborted(signal);
   if (ctx.isDestroyed) return APP_DESTROYED_RESULT;
 
   // Keep the zod-backed agent-bus contract out of the eager dashboard entry.
   const { applyAgentBusAction } = await import('./agent-bus-applier');
+  throwIfWebMcpAborted(signal);
   if (ctx.isDestroyed) return APP_DESTROYED_RESULT;
   const result = applyAgentBusAction(ctx, action, options);
   if (result.ok && result.actionType === 'set_view' && ctx.map) {
     try {
-      await ctx.map.whenViewportSettled(result.viewportActionToken);
+      await raceWebMcpAbort(
+        ctx.map.whenViewportSettled(result.viewportActionToken),
+        signal,
+      );
+      throwIfWebMcpAborted(signal);
     } catch (error) {
       if (ctx.isDestroyed) return APP_DESTROYED_RESULT;
       if (error instanceof Error && error.name === 'ViewportTransitionError') {
@@ -121,5 +152,6 @@ export async function applyWebMcpDashboardAction(
     }
     if (ctx.isDestroyed) return APP_DESTROYED_RESULT;
   }
+  throwIfWebMcpAborted(signal);
   return result;
 }

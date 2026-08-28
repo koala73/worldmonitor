@@ -15,6 +15,7 @@ import {
 import {
   resolveChokepointId,
   isThreatConfigFresh,
+  buildChokepointSeedMeta,
   THREAT_CONFIG_LAST_REVIEWED,
 } from '../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts';
 
@@ -167,5 +168,55 @@ describe('Threat config freshness', () => {
     const reviewedAtMs = Date.parse(THREAT_CONFIG_LAST_REVIEWED);
     const oneHundredTwentyOneDaysMs = 121 * 24 * 60 * 60 * 1000;
     assert.equal(isThreatConfigFresh(reviewedAtMs + oneHundredTwentyOneDaysMs), false);
+  });
+});
+
+describe('buildChokepointSeedMeta — shortfall carry-forward', () => {
+  const SHORTFALL_AT = Date.UTC(2026, 7, 25, 13, 33);
+  const RETAIN_MS = 7 * 24 * 60 * 60 * 1000;
+  const previous = {
+    fetchedAt: SHORTFALL_AT,
+    recordCount: 11,
+    uncoveredChokepoints: ['hormuz_strait', 'bab_el_mandeb'],
+    uncoveredAt: SHORTFALL_AT,
+  };
+
+  it('records live shortfall ids and stamps uncoveredAt', () => {
+    const now = SHORTFALL_AT;
+    const meta = buildChokepointSeedMeta(11, ['hormuz_strait', 'bab_el_mandeb'], null, now);
+    assert.deepEqual(meta, {
+      fetchedAt: now,
+      recordCount: 11,
+      uncoveredChokepoints: ['hormuz_strait', 'bab_el_mandeb'],
+      uncoveredAt: now,
+    });
+  });
+
+  it('preserves the last shortfall across a healthy recovery write', () => {
+    // PortWatch recovered — uncoveredIds empty, recordCount 13 — but the
+    // operator still needs the ids that failed during the partial window.
+    const recoveredAt = SHORTFALL_AT + 5 * 60 * 60 * 1000;
+    const meta = buildChokepointSeedMeta(13, [], previous, recoveredAt, RETAIN_MS);
+    assert.equal(meta.recordCount, 13);
+    assert.equal(meta.fetchedAt, recoveredAt);
+    assert.deepEqual(meta.uncoveredChokepoints, ['hormuz_strait', 'bab_el_mandeb']);
+    assert.equal(meta.uncoveredAt, SHORTFALL_AT, 'retain clock must stay at the original shortfall');
+  });
+
+  it('drops a carried shortfall once the retain window elapses', () => {
+    const afterRetain = SHORTFALL_AT + RETAIN_MS;
+    const meta = buildChokepointSeedMeta(13, [], previous, afterRetain, RETAIN_MS);
+    assert.deepEqual(meta, { fetchedAt: afterRetain, recordCount: 13 });
+  });
+
+  it('falls back to previous.fetchedAt when uncoveredAt is absent', () => {
+    const legacy = {
+      fetchedAt: SHORTFALL_AT,
+      recordCount: 11,
+      uncoveredChokepoints: ['suez'],
+    };
+    const meta = buildChokepointSeedMeta(13, [], legacy, SHORTFALL_AT + 60_000, RETAIN_MS);
+    assert.deepEqual(meta.uncoveredChokepoints, ['suez']);
+    assert.equal(meta.uncoveredAt, SHORTFALL_AT);
   });
 });

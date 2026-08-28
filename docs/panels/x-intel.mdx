@@ -1,0 +1,47 @@
+---
+title: "X News Accounts"
+description: "Topic-tabbed curated public news-account feed from X — API-fresh posts in the first-party panel, permalink plus derived facts for MCP partners."
+---
+
+The **X News Accounts** panel (internal id `x-intel`) mirrors a product-managed set of public news accounts into the dashboard: topic-tabbed, freshness-aware, and relay-status-aware so the panel can distinguish "no recent traffic" from "relay unavailable".
+
+This is curated public news-account monitoring, not a user-configurable follow list.
+
+## What the panel shows
+
+A row of topic tabs at the top with a feed list below:
+
+- **Topic tabs** — tabs derived from `X_TOPICS` in `src/services/x-intel`. The default tab is `all`.
+- **Feed items** — `XItem[]` for the active topic, each showing account, timestamp, API-fresh post text, and a permalink.
+- **Live distinction** — items newer than 10 minutes (`LIVE_THRESHOLD_MS = 600_000`) are flagged as live.
+- **Relay state** — when the X poller isn't configured or reachable (`relayEnabled = false`), the panel indicates degraded mode rather than showing an empty list.
+
+Panel id is `x-intel`; canonical component is `src/components/XIntelPanel.ts`. Title from i18n (`panels.xIntel`); config name: "X News Accounts". Default row span is 2.
+
+## How you reach it
+
+- **Cmd+K**: type *x news* or *twitter news*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`priority: 2`). The full-variant registration layers `premium: 'locked'` on desktop (`_desktop && { premium: 'locked' as const }`), so the panel is **free on web** and **PRO-locked on desktop**. Not present in the tech, finance, commodity, or happy variants. Source: `'x-intel'` in `FULL_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+- `@/services/x-intel` — backed by `/api/x-feed`, which proxies to the Railway ais-relay poller. The poller uses the official X API `GET /2/users/:id/tweets` with `since_id` on a 5–15 minute cadence. Account coverage is product-managed rather than user-configurable.
+
+### Backed by endpoints
+
+| Surface | Endpoint | Notes |
+|---|---|---|
+| Panel relay path | `GET /api/x-feed` | First-party browser path. May include API-fresh post text. |
+| Generated service RPC / MCP | `GET /api/intelligence/v1/list-x-feed` | Permalink plus derived facts only. Post text is R4 and is not returned to embed/OEM partners. |
+
+## Refresh cadence
+
+The relay polls every 5–15 minutes. The panel refreshes on mount and on the `xIntel` interval in `src/config/variants/base.ts`.
+
+## Content policy
+
+Post text is R4. The first-party panel may show API-fresh posts. Alerts, MCP, and embed partners receive derived facts and a permalink only. Deleted posts are tombstoned and purged within 24 hours.
+
+## Tier & gating
+
+Same desktop PRO lock as Telegram Intel. Web remains free.

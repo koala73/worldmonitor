@@ -241,6 +241,30 @@ describe('computeAsset OI continuity', () => {
   });
 });
 
+describe('computeAsset volume continuity', () => {
+  it('retains the prior volume window for null and blank notionals, but appends genuine zero', () => {
+    const prev = {
+      symbol: 'BTC',
+      openInterest: 1000,
+      sparkVol: [1_000_000, 1_500_000],
+      sparkFunding: [], sparkOi: [], sparkScore: [],
+    };
+    const baseCtx = { funding: '0', openInterest: '1000', markPx: '100', oraclePx: '100' };
+
+    for (const invalidNotional of [null, '', '   ']) {
+      const out = computeAsset(META_BTC, { ...baseCtx, dayNtlVlm: invalidNotional }, prev);
+      assert.equal(out.dayNotional, null);
+      assert.deepEqual(out.sparkVol, prev.sparkVol);
+    }
+
+    for (const validZero of [0, '0']) {
+      const out = computeAsset(META_BTC, { ...baseCtx, dayNtlVlm: validZero }, prev);
+      assert.equal(out.dayNotional, 0);
+      assert.deepEqual(out.sparkVol, [...prev.sparkVol, 0]);
+    }
+  });
+});
+
 describe('volume baseline uses the MOST RECENT window (slice(-12), not slice(0,12))', () => {
   // Regression: sparkVol is newest-at-tail via shiftAndAppend. Using slice(0,12)
   // anchors the baseline to the OLDEST window forever once len >= 12 + new samples

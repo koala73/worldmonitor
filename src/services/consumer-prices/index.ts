@@ -139,7 +139,15 @@ export async function fetchConsumerPriceOverview(
   // Bootstrap hydration only valid for the default market
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesOverview') as GetConsumerPriceOverviewResponse | undefined;
-    if (hydrated?.asOf && !hydrated.upstreamUnavailable) return hydrated;
+    if (hydrated?.asOf && !hydrated.upstreamUnavailable) {
+      // The bootstrap payload IS the default-market snapshot, so warm the
+      // breaker only under the default basket's exact later cache key
+      // (#7048); other baskets keep their own fetch path.
+      if (basketSlug === DEFAULT_BASKET) {
+        overviewBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:${DEFAULT_BASKET}`);
+      }
+      return hydrated;
+    }
   }
 
   try {
@@ -176,7 +184,14 @@ export async function fetchConsumerPriceCategories(
 ): Promise<ListConsumerPriceCategoriesResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesCategories') as ListConsumerPriceCategoriesResponse | undefined;
-    if (hydrated?.categories?.length) return hydrated;
+    if (hydrated?.categories?.length) {
+      // Warm the breaker only under the default snapshot's exact later cache
+      // key (default market/basket at the default range) (#7048).
+      if (basketSlug === DEFAULT_BASKET && range === '30d') {
+        categoriesBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:${DEFAULT_BASKET}:30d`);
+      }
+      return hydrated;
+    }
   }
 
   try {
@@ -197,7 +212,14 @@ export async function fetchConsumerPriceMovers(
 ): Promise<ListConsumerPriceMoversResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesMovers') as ListConsumerPriceMoversResponse | undefined;
-    if (hydrated?.risers?.length || hydrated?.fallers?.length) return hydrated;
+    if (hydrated?.risers?.length || hydrated?.fallers?.length) {
+      // Warm the breaker only under the default snapshot's exact later cache
+      // key (default market/range, unfiltered) (#7048).
+      if (range === '30d' && !categorySlug) {
+        moversBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:30d:`);
+      }
+      return hydrated;
+    }
   }
 
   try {
@@ -217,7 +239,14 @@ export async function fetchRetailerPriceSpreads(
 ): Promise<ListRetailerPriceSpreadsResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesSpread') as ListRetailerPriceSpreadsResponse | undefined;
-    if (hydrated?.retailers?.length) return hydrated;
+    if (hydrated?.retailers?.length) {
+      // Warm the breaker only under the default snapshot's exact later cache
+      // key (default market/basket) (#7048).
+      if (basketSlug === DEFAULT_BASKET) {
+        spreadBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:${DEFAULT_BASKET}`);
+      }
+      return hydrated;
+    }
   }
 
   try {

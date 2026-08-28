@@ -101,7 +101,7 @@ export class EnergyComplexPanel extends Panel {
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">IEA Oil Stocks — Days of Cover</div>
         <table class="oil-stocks-table">
-          <thead><tr><th>#</th><th>Ctry</th><th>Days</th><th>vs 90d</th></tr></thead>
+          <thead><tr><th scope="col">#</th><th scope="col">Ctry</th><th scope="col">Days</th><th scope="col">vs 90d</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div class="oil-stocks-regional" style="margin-top:6px">
@@ -127,7 +127,7 @@ export class EnergyComplexPanel extends Panel {
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">LNG Vulnerability</div>
         <table class="oil-stocks-table">
-          <thead><tr><th>Country</th><th>LNG Share</th><th>LNG Imports</th></tr></thead>
+          <thead><tr><th scope="col">Country</th><th scope="col">LNG Share</th><th scope="col">LNG Imports</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div class="indicator-date" style="margin-top:4px">Data: ${escapeHtml(d.dataMonth)} (JODI Gas)</div>

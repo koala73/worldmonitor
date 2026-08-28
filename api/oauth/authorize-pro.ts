@@ -25,9 +25,9 @@
  *      be up to 5 minutes old; tier may have lapsed since mint. A denial here
  *      is split three ways (#5622): an unverifiable entitlement or in-flight
  *      renewal check renders a retryable 503 page (`Retry-After` +
- *      `X-Billing-Verification`), a provider-confirmed lapse renders a distinct
- *      403, and only a confirmed non-Pro row gets the "Pro Subscription
- *      Required" upsell.
+ *      `X-Billing-Verification`), provider-confirmed ended coverage continues
+ *      as a restricted free account, and only a genuinely insufficient non-free
+ *      row gets the "Pro Subscription Required" upsell.
  *   7. Calls `issueProMcpTokenForUser` to insert a Convex `mcpProTokens`
  *      row. NO `wm_` key, NO `WORLDMONITOR_VALID_KEYS` write — Pro identity
  *      lives only in Convex, the OAuth code carries the row id.

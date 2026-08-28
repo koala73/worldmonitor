@@ -10,7 +10,7 @@ use std::io::Write;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use keyring::Entry;
@@ -23,6 +23,7 @@ use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuil
 use cache_bounds::validate_cache_write_sizes;
 
 const DEFAULT_LOCAL_API_PORT: u16 = 46123;
+const SIDECAR_PORT_RECOVERY_TIMEOUT_MS: u64 = 30_000;
 const MAX_LOCAL_API_PROXY_BYTES: usize = 16 * 1024 * 1024;
 const KEYRING_SERVICE: &str = "world-monitor";
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
@@ -69,18 +70,18 @@ const SUPPORTED_SECRET_KEYS: [&str; 30] = [
 ];
 
 struct LocalApiState {
-    child: Mutex<Option<Child>>,
+    child: Arc<Mutex<Option<Child>>>,
     token: Mutex<Option<String>>,
-    port: Mutex<Option<u16>>,
+    port: Arc<Mutex<Option<u16>>>,
     http_client: reqwest::Client,
 }
 
 impl Default for LocalApiState {
     fn default() -> Self {
         Self {
-            child: Mutex::new(None),
+            child: Arc::new(Mutex::new(None)),
             token: Mutex::new(None),
-            port: Mutex::new(None),
+            port: Arc::new(Mutex::new(None)),
             http_client: reqwest::Client::builder()
                 .use_native_tls()
                 .pool_max_idle_per_host(2)
@@ -800,13 +801,24 @@ async fn open_live_channels_window_command(
     if let Some(ref url) = base_url {
         if !url.is_empty() {
             let parsed = Url::parse(url).map_err(|_| "Invalid base URL".to_string())?;
-            match parsed.scheme() {
-                "http" => match parsed.host_str() {
-                    Some("localhost") | Some("127.0.0.1") => {}
-                    _ => return Err("base_url http only allowed for localhost".to_string()),
+            // The live-channels webview holds trusted-window IPC privileges
+            // (persistent-cache read/write, port discovery, open_url), so its
+            // origin must be first-party — "any https" would hand those to a
+            // remote page if the main window is ever compromised.
+            let allowed = match parsed.scheme() {
+                "http" => matches!(parsed.host_str(), Some("localhost") | Some("127.0.0.1")),
+                "https" => match parsed.host_str() {
+                    Some(host) => {
+                        host == "worldmonitor.app" || host.ends_with(".worldmonitor.app")
+                    }
+                    None => false,
                 },
-                "https" => {}
-                _ => return Err("base_url must be http(s)".to_string()),
+                _ => false,
+            };
+            if !allowed {
+                return Err(
+                    "base_url must be worldmonitor.app (or localhost over http)".to_string(),
+                );
             }
         }
     }
@@ -967,10 +979,22 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[&settings_item, &separator, &quit_item],
     )?;
 
+    // The About box is the only place a packaged build states its licence
+    // (#6977). Both fields are set because the platforms disagree about which
+    // one they render: muda ignores `license` on macOS and `credits` on
+    // Windows and Linux, so each has to carry the licence itself for the
+    // platform that shows it. `credits` also points at the notices file the
+    // build generates into resources/, which carries the verbatim MIT/BSD/
+    // Apache texts a binary distribution has to travel with.
     let about_metadata = AboutMetadata {
         name: Some("World Monitor".into()),
         version: Some(env!("CARGO_PKG_VERSION").into()),
-        copyright: Some("\u{00a9} 2025 Elie Habib".into()),
+        copyright: Some("\u{00a9} 2024-2026 Elie Habib".into()),
+        license: Some("AGPL-3.0-only".into()),
+        credits: Some(
+            "Licensed under AGPL-3.0-only.\nThird-party notices: resources/notices/THIRD-PARTY-NOTICES.md\nSource: https://github.com/koala73/worldmonitor"
+                .into(),
+        ),
         website: Some("https://worldmonitor.app".into()),
         website_label: Some("worldmonitor.app".into()),
         ..Default::default()
@@ -1089,10 +1113,43 @@ mod sanitize_path_tests {
     use super::{
         build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
         is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
-        BUILD_TIME_SIDECAR_ENV_KEYS, DESKTOP_SHARED_SECRET_KEY, SUPPORTED_SECRET_KEYS,
+        read_port_file, watch_for_late_sidecar_port, SidecarReadinessOutcome,
+        BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, DESKTOP_SHARED_SECRET_KEY,
+        SUPPORTED_SECRET_KEYS,
     };
     use std::collections::HashMap;
-    use std::path::Path;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::{Child, Command};
+    use std::sync::{Arc, Mutex};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn delayed_sidecar_test_child() -> Child {
+        Command::new(std::env::current_exe().expect("resolve test executable"))
+            .args([
+                "--exact",
+                "sanitize_path_tests::sidecar_readiness_child_waits",
+                "--ignored",
+            ])
+            .spawn()
+            .expect("spawn test child")
+    }
+
+    fn unique_test_dir() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "worldmonitor-sidecar-readiness-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time after epoch")
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    #[ignore = "spawned as a long-lived child by the sidecar readiness test"]
+    fn sidecar_readiness_child_waits() {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
 
     #[test]
     fn strips_extended_drive_prefix() {
@@ -1184,6 +1241,47 @@ mod sanitize_path_tests {
         ] {
             assert!(!local_api_proxy_path_is_allowed(path), "{path} must be rejected");
         }
+    }
+
+    #[test]
+    fn late_port_file_is_promoted_without_default_port_fallback() {
+        let test_dir = unique_test_dir();
+        fs::create_dir_all(&test_dir).expect("create test directory");
+        let port_file = test_dir.join("sidecar.port");
+        let child = delayed_sidecar_test_child();
+        let expected_pid = child.id();
+        let child = Arc::new(Mutex::new(Some(child)));
+        let port = Arc::new(Mutex::new(None));
+
+        // This models the initial readiness miss. The port stays absent, so no
+        // bearer request can be made to DEFAULT_LOCAL_API_PORT.
+        assert_eq!(read_port_file(&port_file, 10), None);
+        assert_eq!(*port.lock().expect("lock port"), None);
+
+        let delayed_port_file = port_file.clone();
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            fs::write(delayed_port_file, "47555\n").expect("write delayed port file");
+        });
+
+        let outcome = watch_for_late_sidecar_port(
+            port_file,
+            Arc::clone(&child),
+            Arc::clone(&port),
+            expected_pid,
+            2_000,
+        );
+        writer.join().expect("join delayed port writer");
+
+        assert_eq!(outcome, SidecarReadinessOutcome::Confirmed(47555));
+        assert_eq!(*port.lock().expect("lock port"), Some(47555));
+        assert_ne!(*port.lock().expect("lock port"), Some(DEFAULT_LOCAL_API_PORT));
+
+        if let Some(mut child) = child.lock().expect("lock child").take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let _ = fs::remove_dir_all(test_dir);
     }
 }
 
@@ -1281,21 +1379,165 @@ fn resolve_node_binary(app: &AppHandle) -> Option<PathBuf> {
     common_locations.into_iter().find(|path| path.is_file())
 }
 
+fn read_confirmed_port_file(path: &Path) -> Option<u16> {
+    fs::read_to_string(path)
+        .ok()?
+        .trim()
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port > 0)
+}
+
 fn read_port_file(path: &Path, timeout_ms: u64) -> Option<u16> {
     let start = std::time::Instant::now();
     let interval = std::time::Duration::from_millis(100);
     let timeout = std::time::Duration::from_millis(timeout_ms);
     while start.elapsed() < timeout {
-        if let Ok(contents) = fs::read_to_string(path) {
-            if let Ok(port) = contents.trim().parse::<u16>() {
-                if port > 0 {
-                    return Some(port);
-                }
-            }
+        if let Some(port) = read_confirmed_port_file(path) {
+            return Some(port);
         }
         std::thread::sleep(interval);
     }
     None
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SidecarReadinessOutcome {
+    Confirmed(u16),
+    Exited,
+    Replaced,
+    TimedOut,
+}
+
+/// Promotes a port only while the child that created the port file is still
+/// alive. Holding the child lock until after the port assignment prevents a
+/// concurrent stop from leaving a stale port behind.
+fn promote_verified_sidecar_port(
+    child: &Arc<Mutex<Option<Child>>>,
+    port: &Arc<Mutex<Option<u16>>>,
+    expected_pid: u32,
+    confirmed_port: u16,
+) -> SidecarReadinessOutcome {
+    let mut child_slot = match child.lock() {
+        Ok(slot) => slot,
+        Err(_) => return SidecarReadinessOutcome::TimedOut,
+    };
+    let Some(active_child) = child_slot.as_mut() else {
+        return SidecarReadinessOutcome::Exited;
+    };
+    if active_child.id() != expected_pid {
+        return SidecarReadinessOutcome::Replaced;
+    }
+    match active_child.try_wait() {
+        Ok(None) => match port.lock() {
+            Ok(mut port_slot) => {
+                *port_slot = Some(confirmed_port);
+                SidecarReadinessOutcome::Confirmed(confirmed_port)
+            }
+            Err(_) => SidecarReadinessOutcome::TimedOut,
+        },
+        Ok(Some(_)) => {
+            *child_slot = None;
+            drop(child_slot);
+            if let Ok(mut port_slot) = port.lock() {
+                *port_slot = None;
+            }
+            SidecarReadinessOutcome::Exited
+        }
+        // Do not send the token to a port if we cannot verify the child state.
+        Err(_) => SidecarReadinessOutcome::TimedOut,
+    }
+}
+
+fn sidecar_child_outcome(
+    child: &Arc<Mutex<Option<Child>>>,
+    port: &Arc<Mutex<Option<u16>>>,
+    expected_pid: u32,
+) -> Option<SidecarReadinessOutcome> {
+    let mut child_slot = match child.lock() {
+        Ok(slot) => slot,
+        Err(_) => return Some(SidecarReadinessOutcome::TimedOut),
+    };
+    let Some(active_child) = child_slot.as_mut() else {
+        return Some(SidecarReadinessOutcome::Exited);
+    };
+    if active_child.id() != expected_pid {
+        return Some(SidecarReadinessOutcome::Replaced);
+    }
+    match active_child.try_wait() {
+        Ok(None) | Err(_) => None,
+        Ok(Some(_)) => {
+            *child_slot = None;
+            drop(child_slot);
+            if let Ok(mut port_slot) = port.lock() {
+                *port_slot = None;
+            }
+            Some(SidecarReadinessOutcome::Exited)
+        }
+    }
+}
+
+/// Waits for a late port-file write without ever selecting the configured
+/// default port. The watcher is bound to the launched child PID so an old
+/// watcher cannot promote a port after the sidecar has been stopped or replaced.
+fn watch_for_late_sidecar_port(
+    port_file: PathBuf,
+    child: Arc<Mutex<Option<Child>>>,
+    port: Arc<Mutex<Option<u16>>>,
+    expected_pid: u32,
+    timeout_ms: u64,
+) -> SidecarReadinessOutcome {
+    let start = std::time::Instant::now();
+    let interval = std::time::Duration::from_millis(100);
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+
+    while start.elapsed() < timeout {
+        if let Some(outcome) = sidecar_child_outcome(&child, &port, expected_pid) {
+            return outcome;
+        }
+        if let Some(confirmed_port) = read_confirmed_port_file(&port_file) {
+            return promote_verified_sidecar_port(&child, &port, expected_pid, confirmed_port);
+        }
+        std::thread::sleep(interval);
+    }
+
+    sidecar_child_outcome(&child, &port, expected_pid)
+        .unwrap_or(SidecarReadinessOutcome::TimedOut)
+}
+
+fn start_late_sidecar_port_watcher(
+    app: AppHandle,
+    port_file: PathBuf,
+    child: Arc<Mutex<Option<Child>>>,
+    port: Arc<Mutex<Option<u16>>>,
+    expected_pid: u32,
+) {
+    std::thread::spawn(move || {
+        match watch_for_late_sidecar_port(
+            port_file,
+            child,
+            port,
+            expected_pid,
+            SIDECAR_PORT_RECOVERY_TIMEOUT_MS,
+        ) {
+            SidecarReadinessOutcome::Confirmed(confirmed_port) => append_desktop_log(
+                &app,
+                "INFO",
+                &format!("sidecar confirmed port={confirmed_port} after initial readiness timeout"),
+            ),
+            SidecarReadinessOutcome::Exited => append_desktop_log(
+                &app,
+                "WARN",
+                "sidecar exited before reporting a verified port; a later start can retry",
+            ),
+            SidecarReadinessOutcome::Replaced => (),
+            SidecarReadinessOutcome::TimedOut => append_desktop_log(
+                &app,
+                "WARN",
+                "sidecar did not report a verified port during bounded recovery; refusing to target the default port",
+            ),
+        }
+    });
 }
 
 fn start_local_api(app: &AppHandle) -> Result<(), String> {
@@ -1304,8 +1546,16 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .child
         .lock()
         .map_err(|_| "Failed to lock local API state".to_string())?;
-    if slot.is_some() {
-        return Ok(());
+    if let Some(child) = slot.as_mut() {
+        match child.try_wait() {
+            Ok(None) | Err(_) => return Ok(()),
+            Ok(Some(_)) => {
+                *slot = None;
+                if let Ok(mut port_slot) = state.port.lock() {
+                    *port_slot = None;
+                }
+            }
+        }
     }
 
     // Clear port state for fresh start
@@ -1428,6 +1678,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to launch local API: {e}"))?;
+    let child_pid = child.id();
     append_desktop_log(
         app,
         "INFO",
@@ -1447,14 +1698,24 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             *port_slot = Some(confirmed_port);
         }
     } else {
+        // Fail CLOSED. The default port is only a guess: the sidecar moves to
+        // an ephemeral port on EADDRINUSE, and an unrelated local process may
+        // be squatting 46123. Sending LOCAL_API_TOKEN bearer traffic to an
+        // unverified listener would hand the token to whoever owns the port.
+        // Commands surface "sidecar is not ready" until the sidecar actually
+        // reports its port via the port file.
         append_desktop_log(
             app,
             "WARN",
-            "sidecar port file not found within timeout, using default",
+            "sidecar port file not found within timeout; refusing to target the default port unverified",
         );
-        if let Ok(mut port_slot) = state.port.lock() {
-            *port_slot = Some(DEFAULT_LOCAL_API_PORT);
-        }
+        start_late_sidecar_port_watcher(
+            app.clone(),
+            port_file,
+            Arc::clone(&state.child),
+            Arc::clone(&state.port),
+            child_pid,
+        );
     }
 
     Ok(())

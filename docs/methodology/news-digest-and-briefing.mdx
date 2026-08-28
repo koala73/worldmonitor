@@ -219,7 +219,20 @@ The story-track hash fields written today are:
 `firstSeen`, `lastSeen`, `mentionCount`, `currentScore`, `title`, `link`,
 `severity`, `lang`, `description`, `publishedAt`,
 `entityCorroborationCount`, `isOpinion`, `isFeelGood`,
-`isEphemeralLiveCoverage`, and `category`.
+`isEphemeralLiveCoverage`, `category`, and `anchorEligible`.
+
+`anchorEligible` is `1` only when the mention has a curated tier-1/2 source
+or corroboration from at least two independent publisher families. Canonical
+adoption ignores rows with `0` or missing legacy metadata.
+
+Corroboration uses the server-configured feed label by default. An RSS
+`<source>` name can replace that label only for an explicitly configured
+trusted aggregator (currently Google News); ordinary feed content cannot
+manufacture publisher families. Redis tracking writes use pipelines of at most
+1,000 commands. Alias rows are committed separately, one complete canonical
+group per fenced atomic transaction; an oversized group is deferred so readers
+never observe a partial alias cohort. A short Redis lease and an in-transaction
+token check prevent an older delayed digest from overwriting a newer cohort.
 
 `sourceCount` is not stored in the story-track hash for current rows.
 Distinct feed names are written to `story:sources:v1:{titleHash}` with
@@ -232,18 +245,48 @@ The title hash is a SHA-256 hash of a normalised title: lowercased, stripped
 of common publisher suffixes, stripped to Unicode letters/numbers/spaces,
 collapsed whitespace, and clipped to 120 characters.
 
-Story phase is derived from first seen time, mention count, and score trend:
+Story phase is derived from first seen time and mention count:
 
 | Phase | Rule |
 | --- | --- |
 | `breaking` | Mention count is 1. |
 | `developing` | Mention count is 2-5 and the story is under 2 hours old. |
-| `fading` | Reserved for score-history support: the feed API branch requires both `currentScore` and `peakScore` to be positive and the current score to fall below half the peak. The current digest writer still stores zero placeholders for those fields, so this branch is inert on the feed-panel story phase. |
 | `sustained` | Fallback for ongoing tracked stories. |
+| `fading` | Reserved. The feed API does not emit this phase. |
 
-The notification cron has its own read-path phase helper for digest delivery.
-There, a story with more than 24 hours of silence is treated as `fading` and
-dropped from the delayed digest/brief pool.
+The feed API does not emit `fading`. The wire enum keeps the value, and clients
+must continue to handle it, but no digest response sets it.
+
+Issue #7081 tested the rule that this phase used to promise. That rule marked a
+story as fading when its current importance score fell below half of its peak
+score. The test used frozen production evidence and gave a no-go result. There
+were three reasons:
+
+1. The rule could not run. It read `peakScore` from the `story:track:v1` hash,
+   but the peak is written to the `story:peak:v1` sorted set. The hash field has
+   no writer, so it was absent on all 14,000 sampled rows. An earlier version of
+   this page said that the writer stores zero placeholders for both scores. That
+   was correct for `peakScore` only. `currentScore` is written on each cycle and
+   was above zero on all 14,000 rows.
+2. The ratio measures article age, not traction. Importance score gives severity
+   a weight of 55% and recency a weight of 10%. A critical or high story cannot
+   fall to half of its peak unless its severity changes. An info story falls
+   below half on the recency term alone when its article becomes more than 24
+   hours old. In the sampled rows the rule fired 673 times. 670 of those rows
+   were info or low severity. None of the 679 critical or high rows fired.
+3. Fading cannot be seen at that point in the build. The phase is derived only
+   for stories that appear in the current cycle, and the record passed to the
+   deriver has a last-seen time of now. A story that is no longer covered is
+   absent from the cycle, so it never reaches the deriver.
+
+The notification cron has its own read-path phase helper for digest delivery. It
+reads the accumulator, so it can see stories that are absent from the current
+cycle. There, a story with more than 24 hours of silence is treated as `fading`
+and dropped from the delayed digest/brief pool. That helper is internal. Its
+`fading` result does not reach the feed API response.
+
+The frozen evidence is in `tests/fixtures/story-phase-fading-study.json`. Run
+`node scripts/study-story-phase-fading.mjs` to replay it.
 
 ## Digest And Brief Read Path
 
@@ -378,7 +421,7 @@ intentionally differ from those digest prose and `whyMatters` surfaces:
 `scripts/regional-snapshot/weekly-brief.mjs`
 tries OpenRouter first with `deepseek/deepseek-v4-flash`, then the fixed free
 OpenRouter models `google/gemma-4-26b-a4b-it:free` and
-`openai/gpt-oss-20b:free`, then Groq `openai/gpt-oss-20b`. It sends every
+`minimax/minimax-m3:free`, then Groq `openai/gpt-oss-20b`. It sends every
 provider temperature `0.3` because the output is structured weekly JSON for regional snapshots
 rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
@@ -1610,5 +1610,243 @@ describe('bare "Failed to fetch" is decided by host, not stack shape (WORLDMONIT
       !/panel-storage|widget-store/.test(mainSrc),
       'sentry-init.ts must not key suppression on Vite chunk names',
     );
+  });
+});
+
+// ─── WORLDMONITOR-105: extDomain extension-global ReferenceError ───────────
+//
+// A browser extension injected into the page's main world references its own
+// `extDomain` global before defining it. The production event (Chrome 151 /
+// Windows, 2026-08-19) carries three `<anonymous>:1` frames and nothing else.
+// `extDomain` appears nowhere in src/, api/, public/ or index.html, so the
+// message can never originate from our own bundle — same disposition as the
+// `mainWorldSdk`, `hackLocationFailed` and `userScripts` entries above.
+describe('ignoreErrors — extDomain extension global (WORLDMONITOR-105)', () => {
+  const PROD_MSG = 'extDomain is not defined';
+  const pattern = ignoreErrors.find(p => p instanceof RegExp && /extDomain/.test(p.source));
+
+  it('defines an extDomain ignore pattern', () => {
+    assert.ok(pattern, 'an /extDomain/ ignoreErrors pattern must exist');
+  });
+
+  it('suppresses the production "extDomain is not defined" message', () => {
+    assert.ok(isIgnored(PROD_MSG), `ignoreErrors must drop: ${PROD_MSG}`);
+  });
+
+  it('is scoped so a longer first-party identifier still surfaces', () => {
+    // The `\b...\b` anchors keep the pattern from swallowing a real
+    // `extDomainResolver is not defined` bug in our own code.
+    assert.ok(!isIgnored('extDomainResolver is not defined'),
+      'pattern must not swallow a longer identifier with the same prefix');
+    assert.ok(!isIgnored('myExtDomain is not defined'),
+      'pattern must not swallow a longer identifier with the same suffix');
+  });
+});
+
+// ─── WORLDMONITOR-106: Firefox `uncaught exception: undefined` ─────────────
+//
+// Firefox's window.onerror wording when a script throws a bare primitive
+// (`throw undefined` / `throw null`). The production event (Firefox 153 /
+// Windows, 2026-08-19) has one frame — the DOCUMENT url
+// `https://www.worldmonitor.app/#moments` at line 0 — so there is no script
+// file to attribute it to at all.
+//
+// Our bundle never throws a bare primitive: `throw undefined` / `throw null`
+// appear nowhere in src/, shared/ or api/, and every rethrow (`throw err`)
+// re-raises a caught value from a first-party frame, which would put that
+// frame on the stack and fail the `!hasFirstParty` gate. So this goes in
+// beforeSend with stack-gating rather than ignoreErrors: the wording is
+// engine-generic enough that a first-party origin must still surface.
+describe('beforeSend — Firefox bare-primitive throw (WORLDMONITOR-106)', () => {
+  const docFrame = { filename: 'https://www.worldmonitor.app/#moments', lineno: 0 };
+
+  it('suppresses "uncaught exception: undefined" with no first-party frame', () => {
+    assert.equal(
+      beforeSend(makeEvent('uncaught exception: undefined', 'Error', [docFrame])),
+      null,
+      'a bare-primitive throw with only a document-URL frame must be dropped',
+    );
+  });
+
+  it('suppresses the null variant too', () => {
+    assert.equal(
+      beforeSend(makeEvent('uncaught exception: null', 'Error', [docFrame])),
+      null,
+      'Firefox emits the same wording for `throw null`',
+    );
+  });
+
+  it('PRESERVES the same message when a first-party frame is present', () => {
+    const event = makeEvent('uncaught exception: undefined', 'Error', [
+      docFrame,
+      firstPartyFrame(),
+    ]);
+    assert.ok(
+      beforeSend(event) !== null,
+      'a first-party frame means our code rethrew it — must surface',
+    );
+  });
+
+  it('PRESERVES a thrown object, which names a real injector or a real bug', () => {
+    assert.ok(
+      beforeSend(makeEvent('uncaught exception: [object Object]', 'Error', [docFrame])) !== null,
+      'only the bare undefined/null primitives are provably not ours',
+    );
+  });
+
+  // The trailing `[^A-Za-z0-9_]|$` is what stops `throw nullValue` /
+  // `throw undefinedThing` from matching, and accepting end-of-line there is what
+  // catches an ASI-terminated `throw undefined` with no semicolon — requiring `;`
+  // would let exactly the statement this invariant exists to forbid slip past.
+  const BARE_PRIMITIVE_THROW = /throw\s+(?:undefined|null|void 0)(?:[^A-Za-z0-9_]|$)/m;
+
+  /**
+   * Source with comments removed. Load-bearing, not tidiness: the beforeSend
+   * policy EXPLAINS this rule in prose, and that prose necessarily contains the
+   * very statement being banned (`throw undefined` / `throw null`). Scanning raw
+   * text makes the explanation trip its own rule. Same reason the `.cause`
+   * invariant above strips comments before matching.
+   */
+  const stripComments = (src) => src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+
+  /** Every .ts/.mts/.tsx file under `dir`, recursively. */
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
+    return /\.(?:m?ts|tsx)$/.test(e.name) ? [full] : [];
+  });
+
+  it('the bundle never throws a bare primitive', () => {
+    // The source-level invariant the suppression rests on, asserted here so it
+    // cannot silently stop being true.
+    const offenders = [];
+    for (const rel of ['../src', '../shared', '../api']) {
+      for (const file of walk(resolve(__dirname, rel))) {
+        const code = stripComments(readFileSync(file, 'utf-8'));
+        if (BARE_PRIMITIVE_THROW.test(code)) offenders.push(file);
+      }
+    }
+    assert.deepEqual(offenders, [],
+      `bare-primitive throw found — the WORLDMONITOR-106 suppression is no longer safe:\n${offenders.join('\n')}`);
+  });
+
+  it('the invariant actually fires on the statements it forbids', () => {
+    // A source scan that matches nothing is indistinguishable from a source scan
+    // that is silently broken. Positive controls, so the test above is known to
+    // have teeth — including the semicolon-less ASI form.
+    for (const forbidden of ['throw undefined;', 'throw undefined', 'throw null;', 'throw null', 'throw void 0;']) {
+      assert.ok(BARE_PRIMITIVE_THROW.test(forbidden), `pattern must catch: ${forbidden}`);
+    }
+    for (const allowed of ['throw nullValue;', 'throw undefinedThing;', 'throw err;', 'throw new Error("x");']) {
+      assert.ok(!BARE_PRIMITIVE_THROW.test(allowed), `pattern must NOT catch: ${allowed}`);
+    }
+  });
+
+  it('the scan reaches real files, and comment-stripping is what keeps it green', () => {
+    // Two ways the invariant could pass vacuously, both closed here: a walk that
+    // returns nothing, and a scan that would fail if it did NOT strip comments.
+    const files = ['../src', '../shared', '../api'].flatMap(rel => walk(resolve(__dirname, rel)));
+    assert.ok(files.length > 100, `walk must reach the real tree, got ${files.length} files`);
+    assert.ok(files.some(f => f.endsWith('bootstrap/sentry-init.ts')), 'walk must include sentry-init.ts');
+
+    const raw = readFileSync(resolve(__dirname, '../src/bootstrap/sentry-init.ts'), 'utf-8');
+    assert.ok(BARE_PRIMITIVE_THROW.test(raw),
+      'the policy comment is expected to contain the banned statement — if it stops doing so, '
+      + 'this control no longer proves comment-stripping is load-bearing');
+    assert.ok(!BARE_PRIMITIVE_THROW.test(stripComments(raw)),
+      'stripping comments must clear it');
+  });
+});
+
+// ─── WORLDMONITOR-ZG grouping: host-attributed fetch failures must not share ──
+// ─── one issue with third-party beacons ───────────────────────────────────────
+//
+// `fetch-failure-attribution.ts` put the host in the MESSAGE, and the allowlist
+// block above uses it to decide suppression. Grouping was never updated, and
+// Sentry groups these on the stack — which the attribution module's own
+// docstring establishes is identical for every fetch failure (all frames are
+// `window.fetch` wrappers; the async boundary drops the caller).
+//
+// Measured consequence (2026-08-27 triage of WORLDMONITOR-ZG, 32 events):
+//   21 x bare `Failed to fetch`         (pre-attribution builds)
+//    8 x `api.worldmonitor.app`         (a real ~90s origin blip, 2026-08-16)
+//    3 x `motramby.com`                 (injected adware beacon, 2026-08-27)
+// all in ONE issue, titled after whichever host arrived last. The eight
+// first-party origin failures — the exact population the whole attribution
+// effort existed to surface — were invisible under an adware title.
+//
+// The split is by OWNERSHIP, not by raw host: every foreign host collapses into
+// a single `third-party` bucket so a rotating adware domain cannot explode
+// issue cardinality, while each of our own hosts keeps its own issue.
+describe('host-attributed fetch failures are fingerprinted by host (WORLDMONITOR-ZG)', () => {
+  const zgStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: 't' },
+    { filename: '/assets/widget-store-DbqgxtxV.js', lineno: 0, function: 'Pn.window.fetch' },
+    { filename: '/assets/analytics-DdK2NArM.js', lineno: 0, function: 'c' },
+  ];
+
+  it('gives a first-party origin failure its own fingerprint', () => {
+    const event = beforeSend(makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', zgStack));
+    assert.ok(event !== null, 'an origin outage must never be suppressed');
+    assert.deepEqual(event.fingerprint, ['fetch-failure', 'api.worldmonitor.app']);
+  });
+
+  it('gives the self-hosted PMTiles bucket its own fingerprint', () => {
+    // Deliberately absent from the suppression allowlist (WORLDMONITOR-NE/NF),
+    // so a basemap regression must also be readable on its own. The exact
+    // bucket, per docs/maps-and-geocoding.mdx.
+    const event = beforeSend(makeEvent('Failed to fetch (pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev)', 'TypeError', zgStack));
+    assert.ok(event !== null);
+    assert.deepEqual(event.fingerprint, ['fetch-failure', 'pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev']);
+  });
+
+  it('does not hand every Cloudflare R2 tenant a first-party group', () => {
+    // `r2.dev` is a SHARED suffix — any Cloudflare account gets a `pub-<id>.r2.dev`
+    // bucket. Matching it by suffix would give each foreign tenant its own raw-host
+    // fingerprint, reopening the unbounded cardinality the third-party bucket
+    // exists to close, and dressing an unrelated bucket up as our incident
+    // (greptile review, PR #7228).
+    const foreign = beforeSend(makeEvent('Failed to fetch (pub-0000000000000000000000000000000.r2.dev)', 'TypeError', zgStack));
+    assert.ok(foreign !== null);
+    assert.deepEqual(foreign.fingerprint, ['fetch-failure', 'third-party']);
+  });
+
+  it('collapses every foreign host into one bounded bucket', () => {
+    // Adware/tracker domains rotate. Bucketing them keeps cardinality at
+    // (our hosts + 1) instead of unbounded.
+    const adware = beforeSend(makeEvent('Failed to fetch (motramby.com)', 'TypeError', zgStack));
+    const other = beforeSend(makeEvent('Failed to fetch (a8f3c1e9.example-tracker.net)', 'TypeError', zgStack));
+    assert.ok(adware !== null && other !== null);
+    assert.deepEqual(adware.fingerprint, ['fetch-failure', 'third-party']);
+    assert.deepEqual(other.fingerprint, adware.fingerprint,
+      'two rotating foreign hosts must land in the SAME issue');
+  });
+
+  it('does not separate the first-party bucket from the third-party one by accident', () => {
+    // Positive control for the ownership predicate: a host that merely CONTAINS
+    // our domain is not ours.
+    const spoof = beforeSend(makeEvent('Failed to fetch (worldmonitor.app.evil.example)', 'TypeError', zgStack));
+    assert.ok(spoof !== null);
+    assert.deepEqual(spoof.fingerprint, ['fetch-failure', 'third-party']);
+  });
+
+  it('leaves suppression verdicts unchanged', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', zgStack)), null);
+    assert.equal(beforeSend(makeEvent('Failed to fetch (data.debugbear.com)', 'TypeError', zgStack)), null);
+  });
+
+  it('leaves events that are not host-attributed fetch failures ungrouped', () => {
+    // A still-bare `Failed to fetch` carries no host, so there is nothing
+    // honest to fingerprint on — it must keep Sentry's default grouping.
+    const bare = beforeSend(makeEvent('Failed to fetch', 'TypeError', zgStack));
+    assert.ok(bare !== null);
+    assert.equal(bare.fingerprint, undefined);
+
+    const unrelated = beforeSend(makeEvent('Something else broke', 'Error', zgStack));
+    assert.ok(unrelated !== null);
+    assert.equal(unrelated.fingerprint, undefined);
   });
 });

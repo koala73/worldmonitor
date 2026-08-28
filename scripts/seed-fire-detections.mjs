@@ -134,7 +134,14 @@ async function fetchAllRegions(apiKey) {
     console.log(`  ${source}: ${fireDetections.length} total (${fulfilled} ok, ${failed} failed)`);
   }
 
-  return { fireDetections, pagination: undefined };
+  // Surface the per-call outcome, don't just log it. Every throw above is
+  // caught inside the loop, so this function has NO rejection path: a total
+  // FIRMS outage (expired key, NASA 5xx, rate-limit block) returns exactly
+  // like a genuinely empty window. Without these counters the merge grades
+  // FIRMS 'ok' on promise settlement alone and republishes the canonical
+  // WORLDWIDE key as Canada-only, which every downstream content clock then
+  // reads as healthy. See #7141 follow-up.
+  return { fireDetections, pagination: undefined, _firmsFulfilledCalls: fulfilled, _firmsFailedCalls: failed };
 }
 
 export function declareRecords(data) {

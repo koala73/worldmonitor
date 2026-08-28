@@ -13,6 +13,7 @@ import { dataFreshness } from './data-freshness';
 import { isFeatureAvailable } from './runtime-config';
 import type { AircraftDetails, WingbitsLiveFlight } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
+import { premiumFetch } from '@/services/premium-fetch';
 
 export type { WingbitsLiveFlight };
 
@@ -50,7 +51,7 @@ export interface EnrichedAircraftInfo {
 
 // ---- Sebuf client ----
 
-const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 // Two different bounds apply, and this cap is set by the tighter one:
 //   - generated request validation rejects the call outright above 20 keys

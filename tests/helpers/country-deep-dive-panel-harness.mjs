@@ -1,9 +1,10 @@
 import { build } from 'esbuild';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createBrowserEnvironment } from './runtime-config-panel-harness.mjs';
+import { createTempDir, removeTempDir } from './temp-dir.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..', '..');
@@ -46,7 +47,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     fetchedAt: '',
     stages: [],
   });
-  const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-deep-dive-'));
+  const tempDir = createTempDir('wm-country-deep-dive-');
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
   const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
     ? `
@@ -345,7 +346,7 @@ async function loadCountryDeepDivePanel(options = {}) {
   return {
     CountryDeepDivePanel: mod.CountryDeepDivePanel,
     cleanupBundle() {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     },
   };
 }

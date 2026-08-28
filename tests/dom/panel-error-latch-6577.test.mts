@@ -275,7 +275,13 @@ describe('GdeltIntelPanel', () => {
    * (which drops the countdown but deliberately keeps the backoff), whereas the
    * cached `selectTopic` branch paints straight over a live error state. The
    * case below drives `renderArticles` directly so the pending countdown is
-   * still armed when the success write lands — the cached-topic scenario.
+   * still armed when the success write lands.
+   *
+   * The driven success is a NON-EMPTY article list. #6679 narrowed the
+   * backoff reset to proven recoveries: an empty render may be a swallowed
+   * outage (fetchGdeltArticles reports RPC failure as a resolved []), so it
+   * clears the countdown/chip but deliberately keeps the rung — pinned in
+   * tests/dom/gdelt-backoff-6679.test.mts.
    */
   it('clears the countdown and backoff when articles render', async () => {
     mockFetchTopicIntelligence.mockResolvedValue({ articles: [], fetchedAt: new Date() });
@@ -293,7 +299,9 @@ describe('GdeltIntelPanel', () => {
         await (panel as unknown as { loadActiveTopic(): Promise<void> }).loadActiveTopic();
       },
       () => {
-        (panel as unknown as { renderArticles(a: unknown[]): void }).renderArticles([]);
+        (panel as unknown as { renderArticles(a: unknown[]): void }).renderArticles([
+          { url: 'https://example.com/story', title: 'Story', source: 'example.com', date: new Date().toISOString(), tone: 0 },
+        ]);
       },
     );
 

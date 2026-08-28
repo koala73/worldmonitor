@@ -1,0 +1,40 @@
+name: Stacked Merge Guard
+
+# Required pre-merge check for stacked PRs (#7006). A child whose base is not
+# the default branch, and whose base branch's own PR is already merged, is
+# about to merge into a tombstone: GitHub auto-delete-on-merge removes the
+# parent ref before it can retarget the child, the merge still succeeds, and
+# main never sees the commits. Fail here instead of painting the PR MERGED.
+#
+# Runs on push to main as a no-op success so the deploy gate can require the
+# check-run name on both PR heads and main commits (the gate evaluates both).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [main]
+
+concurrency:
+  group: stacked-merge-guard-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  stacked-merge-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Guard stacked PR base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-stacked-merge.mjs --mode pre-merge

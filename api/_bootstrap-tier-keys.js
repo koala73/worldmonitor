@@ -72,6 +72,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   ucdpEvents: 'conflict:ucdp-events-bootstrap:v1',
   temporalAnomalies: 'temporal:anomalies:v1',
   weatherAlerts: 'weather:alerts:v1',
+  imdCycloneMarine: 'weather:imd-cyclone-marine:v1',
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
   manitobaRoads: 'infra:manitoba-511:v1',
@@ -169,9 +170,6 @@ const SLOW_KEY_NAMES = new Set([
   'pizzint',
   'oilStocksAnalysis',
   'lngVulnerability',
-  'pipelinesGas',
-  'pipelinesOil',
-  'storageFacilities',
   'fuelShortages',
   'energyCrisisPolicies',
   'aaiiSentiment',
@@ -180,9 +178,9 @@ const SLOW_KEY_NAMES = new Set([
 
 const FAST_KEY_NAMES = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints',
-  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays', 'insights', 'predictions',
+  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'insights', 'predictions',
   'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel', 'canadaAlerts',
-  'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
+  'shippingRates', 'shippingStress', 'socialVelocity',
 ]);
 
 const ON_DEMAND_KEY_NAMES = new Set([
@@ -199,6 +197,24 @@ const ON_DEMAND_KEY_NAMES = new Set([
   'electricityPrices', 'jodiOil', 'chokepointBaselines',
   'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
   'energyDisruptions',
+  // Oil/gas pipeline and storage registries. Previously slow-tier freight:
+  // every visitor downloaded ~528 KB decoded even when the map layers were
+  // off (full/happy defaults) and the panels were below the fold. Demand
+  // comes from an enabled layer or a near-viewport energy panel (#7046).
+  'pipelinesGas',
+  'pipelinesOil',
+  'storageFacilities',
+  // Flights layer ships disabled on every variant, so this never rendered
+  // from the fast payload for a default visitor.
+  'flightDelays',
+  // Premium WSB scanner — not a default-startup surface.
+  'wsbTickers',
+  // The minimum further FAST demotion needed by #7046. Both consumers are
+  // demand-gated and read the credential-less per-key URL. Putting them in
+  // SLOW would erase the energy-registry reduction; moving additional FAST
+  // keys would add default-startup requests after the 20% target is met.
+  'forecasts',
+  'correlationCards',
   // Both back the opt-in FX panel (#6199). On-demand rather than tiered
   // because that panel ships disabled by default: neither payload should ride
   // a tier every visitor downloads to render a surface almost nobody has on.
@@ -224,6 +240,10 @@ const ON_DEMAND_KEY_NAMES = new Set([
   'canadaRoads',
   'albertaRoads',
   'manitobaRoads',
+  // IMD cyclone/port/coastal/marine products (#7005). On-demand: the weather
+  // and natural layers fetch this key only when those layers are on, so it
+  // never rides a payload every visitor downloads.
+  'imdCycloneMarine',
 ]);
 
 /**

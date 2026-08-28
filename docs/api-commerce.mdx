@@ -32,7 +32,7 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 ### `GET /api/product-catalog`
 
-Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v3` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to `_product-fallback-prices.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
+Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v3` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to the generated `FALLBACK_PRICES` in `_product-catalog.generated.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
 
 **Response** (tiers ordered `free`, `pro`, `pro_business`, `api_starter`, `api_business`, `enterprise`):
 
@@ -45,7 +45,7 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
       "description": "Get started with the essentials",
       "features": ["Core dashboard panels", "..."],
       "cta": "Get Started",
-      "href": "https://worldmonitor.app",
+      "href": "https://worldmonitor.app/dashboard",
       "highlighted": false,
       "price": 0,
       "period": "forever"
@@ -91,7 +91,9 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
       "features": ["..."],
       "highlighted": false,
       "monthlyPrice": 299.99,
-      "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius"
+      "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
+      "annualPrice": 2699.99,
+      "annualProductId": "pdt_0NkHjzMhGp3m45sZLQ7BQ"
     },
     {
       "name": "Enterprise",
@@ -110,9 +112,11 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
 }
 ```
 
+The example above is truncated to the pricing-page view. The full payload also carries `product` (catalog identity), `currency`, `plans` (the per-plan entitlement records, including annual variants), and `capabilities` alongside `tiers`.
+
 Notes:
 
-- Price fields are flat on the tier. Paid tiers always expose `monthlyPrice` / `monthlyProductId`, and add `annualPrice` / `annualProductId` only when an annual variant exists — API Business is monthly-only, so those fields are absent on it. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
+- Price fields are flat on the tier. Paid tiers always expose `monthlyPrice` / `monthlyProductId`, and add `annualPrice` / `annualProductId` only when an annual variant exists. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
 - `highlightFeatures` is an optional array of license/commercial-use callouts, rendered separately from `features` on the pricing page. Tiers without a callout omit the field.
 - Prices are dollars (Dodo returns cents; the handler divides by 100). Currency is implicit USD for the published catalog.
 

@@ -133,19 +133,21 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the exact 81-service fleet accepted by the terminal production run', () => {
-    // 80 -> 81: seed-bundle-canada was provisioned after that reconciliation
-    // (service 0a4b8757, cron */5). The roster is not a baseline to be quieted —
-    // every mismatch is red — but it must list every repo-backed service, or a
-    // service whose GitHub source detaches vanishes before repository filtering
-    // and both read-only monitors report healthy. An active registry row that is
-    // absent here fails the Viewer projection audit, so the two move together.
+  it('ships the exact 82-service fleet accepted by the terminal production run', () => {
+    // 80 -> 81 -> 82: seed-bundle-canada (service 0a4b8757, cron */5) and then
+    // seed-bundle-static-ref-heavy (service 6285c37b, cron 0 4 * * *) were
+    // provisioned after that reconciliation. The roster is not a baseline to be
+    // quieted — every mismatch is red — but it must list every repo-backed
+    // service, or a service whose GitHub source detaches vanishes before
+    // repository filtering and both read-only monitors report healthy. An
+    // active registry row that is absent here fails the Viewer projection
+    // audit, so the two move together.
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 81);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 81);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 81);
+    assert.equal(fleet.length, 82);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 82);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 82);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),

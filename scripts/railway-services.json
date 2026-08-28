@@ -10,11 +10,13 @@
       "data/israeli-localities-he-en.json",
       "data/oref-threat-translations-he-en.json",
       "data/telegram-channels.json",
+      "data/x-accounts.json",
       "scripts/_climate-news-helpers.mjs",
       "scripts/_country-resolver.mjs",
       "scripts/_country-stock-index.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_ingestion-coverage.cjs",
+      "scripts/_opensky-account-cooldown.cjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
@@ -24,9 +26,13 @@
       "scripts/ais-relay.cjs",
       "scripts/docs-stats.mjs",
       "scripts/generate-inventory-facts.mjs",
+      "scripts/lib/digest-stale-gate.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/poll-generation-guard.cjs",
       "scripts/lib/usni-fleet-parser.cjs",
+      "scripts/lib/x-news-accounts.cjs",
+      "scripts/lib/x-poll-cycle.cjs",
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-chokepoint-flows.mjs",
@@ -49,7 +55,9 @@
       "scripts/shared/product-catalog.generated.json",
       "scripts/shared/rss-allowed-domains.cjs",
       "scripts/shared/rss-allowed-domains.json",
+      "scripts/shared/source-tier-policy.cjs",
       "scripts/shared/source-tiers.json",
+      "scripts/shared/x-account-source-tiers.json",
       "scripts/shared/stablecoin-classifier.cjs",
       "scripts/shared/stablecoins.json",
       "scripts/shared/stocks.json",
@@ -76,7 +84,9 @@
       "shared/product-catalog.generated.json",
       "shared/rss-allowed-domains.cjs",
       "shared/rss-allowed-domains.json",
+      "shared/source-tier-policy.cjs",
       "shared/source-tiers.json",
+      "shared/x-account-source-tiers.json",
       "shared/stablecoin-classifier.cjs",
       "shared/stablecoins.json",
       "shared/stocks.json"
@@ -230,6 +240,8 @@
       "shared/publisher-families.d.ts",
       "shared/publisher-families.js",
       "shared/stocks.json",
+      "shared/story-phase.d.ts",
+      "shared/story-phase.js",
       "shared/ticker-extract.d.ts",
       "shared/ticker-extract.js",
       "shared/url-classifier.js"
@@ -323,8 +335,16 @@
   {
     "entry": "scripts/seed-bundle-static-ref-heavy.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-bundle-static-ref-heavy",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "CLOUDFLARE_R2_ACCOUNT_ID",
+      [
+        "CLOUDFLARE_R2_TOKEN",
+        "CLOUDFLARE_API_TOKEN"
+      ]
+    ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
       "scripts/_defense-industrial-source.mjs",
@@ -357,7 +377,8 @@
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
-      "MANITOBA_511_KEY"
+      "MANITOBA_511_KEY",
+      "ALBERTA_511_KEY"
     ],
     "watchPatterns": [
       "scripts/_511-rate-limit.mjs",
@@ -367,6 +388,7 @@
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
       "scripts/lib/alberta-emergency-alert.mjs",
       "scripts/lib/bc-emergency-info.mjs",
       "scripts/lib/canada-alerts-union.mjs",
@@ -375,6 +397,7 @@
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/open511.mjs",
       "scripts/lib/provincial-511.mjs",
+      "scripts/lib/toronto-official-cad.mjs",
       "scripts/lib/toronto-road-restrictions.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
@@ -386,6 +409,8 @@
       "scripts/seed-open511.mjs",
       "scripts/seed-provincial-511.mjs",
       "scripts/seed-toronto-road-restrictions.mjs",
+      "scripts/seed-toronto-tfs.mjs",
+      "scripts/seed-toronto-tps.mjs",
       "scripts/seed-ttc-alerts.mjs",
       "scripts/seed-viarail-live.mjs",
       "scripts/viarail-live.mjs"
@@ -706,6 +731,7 @@
       "scripts/shared/china-corporate-disclosure-policy.js",
       "scripts/shared/crypto.json",
       "scripts/shared/defi-tokens.json",
+      "scripts/shared/etf-flow-provider.mjs",
       "scripts/shared/etfs.json",
       "scripts/shared/gulf.json",
       "scripts/shared/other-tokens.json",
@@ -1222,6 +1248,7 @@
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-bets-keys.mjs",
       "scripts/_forecast-dashboard.mjs",
+      "scripts/_forecast-evidence-archive.mjs",
       "scripts/_forecast-funnel.mjs",
       "scripts/_forecast-market-settlements.mjs",
       "scripts/_forecast-resolution-eval.mjs",
@@ -1230,7 +1257,6 @@
       "scripts/_fred-series.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
-      "scripts/lib/llm-model-policy.cjs",
       "scripts/_prediction-classify.mjs",
       "scripts/_prediction-scoring.mjs",
       "scripts/_proxy-utils.cjs",
@@ -1244,6 +1270,7 @@
       "scripts/data/country-codes.json",
       "scripts/data/entity-graph.json",
       "scripts/data/prediction-tags.json",
+      "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/story-track-batch-reader.mjs",
       "scripts/nixpacks.toml",
@@ -1495,6 +1522,13 @@
     "deployMode": "nixpacks-root-repo",
     "lifecycle": "planned",
     "service": "seed-weather-alerts",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-imd-cyclone-marine.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "lifecycle": "planned",
+    "service": "seed-imd-cyclone-marine",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {

@@ -319,10 +319,10 @@ export class FxPanel extends Panel {
         <table class="fx-table">
           <thead>
             <tr>
-              <th class="fx-ccy">${t('components.fx.currency')}</th>
-              <th>${t('components.fx.yoy')}</th>
-              <th>${t('components.fx.drawdown')}</th>
-              <th class="fx-window">${t('components.fx.peakToTrough')}</th>
+              <th scope="col" class="fx-ccy">${t('components.fx.currency')}</th>
+              <th scope="col">${t('components.fx.yoy')}</th>
+              <th scope="col">${t('components.fx.drawdown')}</th>
+              <th scope="col" class="fx-window">${t('components.fx.peakToTrough')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -358,9 +358,9 @@ export class FxPanel extends Panel {
           <table class="fx-table">
             <thead>
               <tr>
-                <th class="fx-ccy">${t('components.fx.currency')}</th>
-                <th>${t('components.fx.perUsd')}</th>
-                <th class="fx-inverse">${t('components.fx.usdPerUnit')}</th>
+                <th scope="col" class="fx-ccy">${t('components.fx.currency')}</th>
+                <th scope="col">${t('components.fx.perUsd')}</th>
+                <th scope="col" class="fx-inverse">${t('components.fx.usdPerUnit')}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -388,9 +388,9 @@ export class FxPanel extends Panel {
           <table class="fx-table">
             <thead>
               <tr>
-                <th class="fx-ccy">${t('components.fx.pair')}</th>
-                <th>${t('components.fx.rate')}</th>
-                <th>${t('components.fx.change1d')}</th>
+                <th scope="col" class="fx-ccy">${t('components.fx.pair')}</th>
+                <th scope="col">${t('components.fx.rate')}</th>
+                <th scope="col">${t('components.fx.change1d')}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -431,9 +431,9 @@ export class FxPanel extends Panel {
         <table class="fx-table">
           <thead>
             <tr>
-              <th class="fx-ccy">${t('components.fx.currency')}</th>
-              <th>${t('components.fx.rubPerUnit')}</th>
-              <th>${t('components.fx.change1d')}</th>
+              <th scope="col" class="fx-ccy">${t('components.fx.currency')}</th>
+              <th scope="col">${t('components.fx.rubPerUnit')}</th>
+              <th scope="col">${t('components.fx.change1d')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

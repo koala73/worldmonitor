@@ -17,6 +17,8 @@ import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
+import { isOnDemandProblem } from '../scripts/check-seed-freshness.mjs';
+import { BOOTSTRAP_KEY as AVIATION_BOOTSTRAP_KEY, BOOTSTRAP_META_KEY as AVIATION_BOOTSTRAP_META_KEY } from '../scripts/seed-aviation.mjs';
 
 const {
   classifyKey,
@@ -27,6 +29,8 @@ const {
   SEED_META,
   ON_DEMAND_KEYS,
   ZERO_RECORD_DATA_OK_KEYS,
+  EMPTY_DATA_OK_KEYS,
+  projectChinaCoverageStatus,
 } = __testing__;
 
 const NOW = 1_700_000_000_000;
@@ -37,12 +41,16 @@ const ONE_MIN_MS = 60_000;
 //   errors:     { redisDataKey -> errMsg }
 //   metaValues: { seedMetaKey  -> raw JSON string }
 //   metaErrors: { seedMetaKey  -> errMsg }
-function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {} } = {}) {
+function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, activationStates = null } = {}) {
   return {
     keyStrens: new Map(Object.entries(strens)),
     keyErrors: new Map(Object.entries(errors)),
     keyMetaValues: new Map(Object.entries(metaValues).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])),
     keyMetaErrors: new Map(Object.entries(metaErrors)),
+    // Three-valued, exactly like readExistsFlags: true = marker present,
+    // false = marker READ and absent (positive proof of pre-activation),
+    // key missing = unknown.
+    ...(activationStates ? { activationStates: new Map(Object.entries(activationStates)) } : {}),
     now: NOW,
   };
 }
@@ -2011,4 +2019,279 @@ test('overall: crit above ~3% of total → UNHEALTHY / 200', () => {
   // 5/150 = 0.033 > 0.03
   assert.deepEqual(computeOverall(5, 0, 150), { status: 'UNHEALTHY', http: 200 });
   assert.deepEqual(computeOverall(20, 2, 150), { status: 'UNHEALTHY', http: 200 });
+});
+
+// #6987. flightDelays serves the combined page-load aggregate but read its
+// record count from seed-meta:aviation:faa, which carries the FAA-ONLY count
+// (seed-aviation.mjs writes it as faa.alerts.length). On 2026-08-20 a quiet FAA
+// window published recordCount=0 while the aggregate still served 115 alerts --
+// 14 of them FAA-sourced -- and classifyKey read that zero as EMPTY_DATA,
+// blocking the seed-freshness monitor with a healthy panel.
+const classifyFlightDelays = (over = {}, strlen = 57_608) => classifyKey(
+  'flightDelays',
+  BOOTSTRAP_KEYS.flightDelays,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [BOOTSTRAP_KEYS.flightDelays]: strlen },
+    metaValues: { [SEED_META.flightDelays.key]: seedMeta(over) },
+  }),
+);
+
+test('#6987 — a quiet FAA window does not empty the aggregate flightDelays serves', () => {
+  // The exact production shape: aggregate full, FAA contributing nothing.
+  assert.equal(classifyFlightDelays({ recordCount: 115 }).status, 'OK');
+});
+
+test('#6987 — an aggregate that is genuinely empty still alarms', () => {
+  // The counterweight. Fixing the false alarm must not blind the probe: this is
+  // the state the EMPTY_DATA verdict exists for, and it must survive.
+  assert.equal(classifyFlightDelays({ recordCount: 0 }).status, 'EMPTY_DATA');
+});
+
+test('#6987 — flightDelays counts its own data key, not a contributing source', () => {
+  // The regression itself, asserted structurally so it cannot creep back via a
+  // key swap that the two behavioural tests above would still pass.
+  assert.notEqual(
+    SEED_META.flightDelays.key,
+    'seed-meta:aviation:faa',
+    'seed-meta:aviation:faa counts FAA alerts only — strictly smaller than the aggregate served',
+  );
+  // writeSeedMeta derives `seed-meta:<dataKey without :vN>`; pinning health to
+  // that derivation is what keeps the count and the payload the same population.
+  assert.equal(
+    SEED_META.flightDelays.key,
+    `seed-meta:${BOOTSTRAP_KEYS.flightDelays.replace(/:v\d+$/, '')}`,
+  );
+});
+
+test('#6987 — health and seed-aviation agree on the aggregate meta key', () => {
+  // Cross-file, against the seeder's REAL exported constants rather than a
+  // regex over its source: if the producer renames the key it writes, or health
+  // repoints, this fails instead of both sides drifting quietly.
+  assert.equal(BOOTSTRAP_KEYS.flightDelays, AVIATION_BOOTSTRAP_KEY);
+  assert.equal(SEED_META.flightDelays.key, AVIATION_BOOTSTRAP_META_KEY);
+});
+
+// The other half of #6987. faaDelays had no SEED_META entry at all, on the
+// grounds that it "shares flightDelays's meta key" — the sharing that caused the
+// bug. It now has an explicit one (ported from #6988), which must ADD staleness
+// coverage without withdrawing the quiet-window allowance that makes an empty
+// FAA feed a valid state rather than a fault.
+const classifyFaaDelays = (over = {}) => classifyKey(
+  'faaDelays',
+  STANDALONE_KEYS.faaDelays,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [STANDALONE_KEYS.faaDelays]: 13 }, // {"alerts":[]}
+    metaValues: { [SEED_META.faaDelays.key]: seedMeta(over) },
+  }),
+);
+
+test('#6987 — a quiet FAA window stays valid for the sidecar probe', () => {
+  assert.ok(
+    EMPTY_DATA_OK_KEYS.has('faaDelays'),
+    'an empty FAA feed is a normal state; withdrawing that turns quiet nights into alarms',
+  );
+  assert.equal(classifyFaaDelays({ recordCount: 0 }).status, 'OK');
+});
+
+test('#6987 — the sidecar probe gains the staleness coverage it never had', () => {
+  // The point of giving faaDelays its own entry: allowed-to-be-empty must not
+  // also mean allowed-to-stop. 200min against maxStaleMin 90.
+  assert.equal(
+    classifyFaaDelays({ recordCount: 0, fetchedAt: NOW - 200 * ONE_MIN_MS }).status,
+    'STALE_SEED',
+  );
+});
+
+test('#6987 — the two aviation probes no longer share a meta key', () => {
+  // The regression in one line: sharing let FAA's allowed-empty count decide the
+  // aggregate probe, which is not allowed to be empty.
+  assert.notEqual(SEED_META.flightDelays.key, SEED_META.faaDelays.key);
+  assert.equal(SEED_META.faaDelays.key, 'seed-meta:aviation:faa');
+});
+
+// A summary that is degraded for ONE hourly evaluation is far more often a
+// sampling miss than an outage — measured 2026-08-25, a two-minute miss on
+// market.china-stock-connect cost ~50 minutes of CHINA_DEGRADED while 13 of the
+// surrounding 16 monitor runs were clean. Requiring a second consecutive
+// observation trades one cycle of detection latency for that.
+const chinaSummary = (over = {}) => ({
+  schemaVersion: 1,
+  countryCode: 'CN',
+  status: 'degraded',
+  evaluatedAt: '2026-08-25T17:03:23.563Z',
+  // isValidChinaCoverageSummary RECOMPUTES every count from entries and rejects
+  // any mismatch, so the fixture has to be internally consistent or it is thrown
+  // out as invalid and reads CHINA_UNAVAILABLE for the wrong reason.
+  counts: { total: 1, launched: 1, planned: 0, blocked: 0, healthy: 0, degraded: 1, unavailable: 0 },
+  entries: [{
+    id: 'market.china-stock-connect',
+    launchStatus: 'launched',
+    status: 'degraded',
+    reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
+  }],
+  ...over,
+});
+
+test('china coverage: a single degraded evaluation does not alarm', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
+  assert.equal(projected.status, 'OK');
+});
+
+test('china coverage: a second consecutive degraded evaluation alarms', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 2 }));
+  assert.equal(projected.status, 'CHINA_DEGRADED');
+});
+
+test('china coverage: nonpositive streaks cannot suppress a degraded alarm', () => {
+  for (const degradedStreak of [0, -1]) {
+    const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak }));
+    assert.equal(projected.status, 'CHINA_DEGRADED', `degradedStreak=${degradedStreak}`);
+  }
+});
+
+test('china coverage: a held verdict stays visible rather than silent', () => {
+  // The counterweight to the debounce. If holding the verdict also hid the
+  // reason, a suppressed cycle would be indistinguishable from health.
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
+  assert.equal(projected.status, 'OK');
+  assert.equal(projected.chinaStatus, 'degraded', 'the summary verdict is still reported');
+  assert.equal(projected.degradedStreak, 1);
+  assert.ok(projected.problems?.some((p) => p.id === 'market.china-stock-connect'));
+});
+
+test('china coverage: a held verdict survives the compact health projection', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
+  const compact = healthResponseBody({
+    status: 'HEALTHY',
+    summary: { total: 1, ok: 1, warn: 0, crit: 0 },
+    checkedAt: '2026-08-25T17:03:23.563Z',
+    checks: { chinaCoverage: projected },
+  }, true);
+
+  assert.equal(compact.problems?.chinaCoverage?.status, 'OK');
+  assert.equal(compact.problems?.chinaCoverage?.chinaStatus, 'degraded');
+  assert.equal(compact.problems?.chinaCoverage?.degradedStreak, 1);
+  assert.ok(compact.problems?.chinaCoverage?.problems?.some(
+    (problem) => problem.id === 'market.china-stock-connect',
+  ));
+  assert.deepEqual(healthResponseBody(compact, true), compact, 'cached compact snapshots remain stable');
+});
+
+test('china coverage: a summary with no streak field alarms as before', () => {
+  // Rollout safety. Every summary written before the producer shipped the field
+  // has no streak; absent evidence must not read as evidence of health, or the
+  // rollout window would silence a genuine outage.
+  const projected = projectChinaCoverageStatus(chinaSummary());
+  assert.equal(projected.status, 'CHINA_DEGRADED');
+});
+
+test('china coverage: UNAVAILABLE is never debounced', () => {
+  // The more severe verdict, and the expensive direction to be wrong in.
+  const projected = projectChinaCoverageStatus(chinaSummary({
+    status: 'unavailable',
+    degradedStreak: 1,
+    counts: { total: 1, launched: 1, planned: 0, blocked: 0, healthy: 0, degraded: 0, unavailable: 1 },
+    entries: [{ id: 'market.china-stock-connect', launchStatus: 'launched', status: 'unavailable', reasonCodes: [] }],
+  }));
+  assert.equal(projected.status, 'CHINA_UNAVAILABLE');
+});
+
+
+// ── fully unobserved on-demand adapters are dormant (imdCycloneMarine) ──────
+// imdCycloneMarine sits in BOTH ON_DEMAND_KEYS and EMPTY_DATA_OK_KEYS. The
+// EMPTY_DATA_OK arm is tested first and resolves to
+// `seedStale === true ? 'STALE_SEED' : 'OK'`; readSeedMeta initialises
+// seedStale=true and only overwrites it from a real fetchedAt. The narrow
+// pre-activation grace applies only when data and readable metadata are both
+// absent; marker absence alone can result from a failed marker write or a
+// restore and cannot override publication evidence.
+
+const IMD_MARKER_ABSENT = { imdCycloneMarine: false };
+
+test('classifyKey: an unobserved on-demand adapter reads EMPTY_ON_DEMAND, not STALE_SEED', () => {
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: IMD_MARKER_ABSENT }), // no data key, no seed-meta
+  );
+  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.ok(isOnDemandProblem({ status: entry.status, onDemand: true }),
+    'the freshness monitor must excuse it — that is the point of the change');
+});
+
+test('classifyKey: marker absence does not excuse an absent payload with stale seed metadata', () => {
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({
+      metaValues: {
+        [SEED_META.imdCycloneMarine.key]: seedMeta({ fetchedAt: NOW - 46 * ONE_MIN_MS, recordCount: 0 }),
+      },
+      activationStates: IMD_MARKER_ABSENT,
+    }),
+  );
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.ok(!isOnDemandProblem({ status: entry.status, onDemand: true }));
+});
+
+test('classifyKey: marker absence preserves normal fresh and stale zero-record outcomes', () => {
+  const classifyZeroRecord = (fetchedAt) => classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.imdCycloneMarine]: 64 },
+      metaValues: { [SEED_META.imdCycloneMarine.key]: seedMeta({ fetchedAt, recordCount: 0 }) },
+      activationStates: IMD_MARKER_ABSENT,
+    }),
+  );
+
+  assert.equal(classifyZeroRecord(NOW - ONE_MIN_MS).status, 'OK');
+  assert.equal(classifyZeroRecord(NOW - 46 * ONE_MIN_MS).status, 'STALE_SEED');
+});
+
+test('classifyKey: once ACTIVATED, the same adapter is strict again', () => {
+  // The regression this guards: softening a key that HAS published and then
+  // died would hide a real outage behind a dormancy excuse.
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: { imdCycloneMarine: true } }),
+  );
+  assert.equal(entry.status, 'STALE_SEED', 'an activated adapter that goes absent is stale, as before');
+  assert.ok(
+    !isOnDemandProblem({ status: entry.status, onDemand: true }),
+    'and the freshness monitor must NOT excuse it — that is the outage this change must not hide',
+  );
+});
+
+test('classifyKey: an UNREADABLE activation marker earns nothing (fails closed)', () => {
+  // readExistsFlags leaves unknown entries OUT of the map, so `get()` is
+  // undefined — never false. Grace requires positive proof (#6095).
+  const entry = classifyKey(
+    'imdCycloneMarine',
+    STANDALONE_KEYS.imdCycloneMarine,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: {} }),
+  );
+  assert.equal(entry.status, 'STALE_SEED', 'unknown activation state keeps the pre-fix verdict');
+});
+
+test('classifyKey: a key with no activation marker is untouched by the change', () => {
+  // newsThreatSummary is in both sets too, but configures no marker — so it is
+  // permanently `unknown` and MUST keep EMPTY_DATA_OK_KEYS' behaviour. This is
+  // what stops the reorder from silencing producers that run and then stop.
+  const entry = classifyKey(
+    'newsThreatSummary',
+    STANDALONE_KEYS.newsThreatSummary,
+    { allowOnDemand: true },
+    makeCtx({ activationStates: IMD_MARKER_ABSENT }),
+  );
+  assert.equal(entry.status, 'STALE_SEED');
 });

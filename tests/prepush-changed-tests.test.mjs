@@ -294,6 +294,15 @@ describe('partition stays in step with the vitest DOM project', () => {
       /VITEST_MAX_THREADS must be a positive integer/,
     );
   });
+
+  test('the DOM project sets an explicit testTimeout above vitest\'s 5000ms default', () => {
+    // #6984: nobody chose 5000 — it is vitest's built-in default. Several DOM
+    // files pay a large module-graph transform to the first test, which under
+    // load lands just over 5000ms and false-reds an unrelated push. Pinning
+    // the resolved config (not the source text) is what keeps the next
+    // #6677-class file from silently inheriting the default again.
+    assert.equal(defaultConfig.testTimeout, 15_000);
+  });
 });
 
 describe('runner dispatch', () => {

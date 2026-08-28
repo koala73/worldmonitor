@@ -13,11 +13,13 @@ import type {
 import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
 import { deriveStoragePublicBadge } from '@/shared/storage-evidence';
 import {
+  ensureStorageFacilityRegistryHydrated,
   getCachedStorageFacilityRegistry,
   setCachedStorageFacilityRegistry,
   type RawStorageFacilityRegistry,
 } from '@/shared/storage-facility-registry-store';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
+import { bindActivationKeys } from '@/utils/activation';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -168,6 +170,7 @@ export class StorageFacilityMapPanel extends Panel {
   private detail: GetStorageFacilityDetailResponse | null = null;
   private detailLoading = false;
   private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
+  private usedHydrationPaint = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
     if (!id || !this.element?.isConnected) return;
@@ -191,7 +194,22 @@ export class StorageFacilityMapPanel extends Panel {
     if (typeof window !== 'undefined') {
       window.addEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
+    this.content.addEventListener('click', this.handleContentClick);
+    bindActivationKeys(this.content, '.sf-row');
   }
+
+  private handleContentClick = (e: Event): void => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest('.sf-drawer-close')) {
+      this.closeDetail();
+      return;
+    }
+    const row = target.closest<HTMLTableRowElement>('tr.sf-row');
+    if (!row || !this.content.contains(row)) return;
+    const id = row.dataset.facilityId;
+    if (id) void this.loadDetail(id);
+  };
 
   public destroy(): void {
     if (typeof window !== 'undefined') {
@@ -202,51 +220,71 @@ export class StorageFacilityMapPanel extends Panel {
 
   public async fetchData(): Promise<void> {
     try {
-      // Bootstrap lane via the shared store. Reads once across both
-      // consumers (this panel + DeckGLMap storage layer); returns the
-      // cached value on subsequent calls instead of draining bootstrap.
-      const { registry } = getCachedStorageFacilityRegistry();
+      // Shared store: rolling-deploy leftover first, then one on-demand
+      // fetch. A response that arrives before this panel is inserted still
+      // lands in the store and is replayed via runWhenConnected.
+      // First paint skips RPC. Later fetchData ticks (24h scheduler) ask
+      // the store for a CDN-shielded refresh.
+      let { registry } = getCachedStorageFacilityRegistry();
+      if (!registry) {
+        const hydratedRegistry = await ensureStorageFacilityRegistryHydrated({
+          refresh: this.usedHydrationPaint,
+        });
+        registry = hydratedRegistry.registry;
+      } else if (this.usedHydrationPaint) {
+        const hydratedRegistry = await ensureStorageFacilityRegistryHydrated({ refresh: true });
+        registry = hydratedRegistry.registry;
+      }
       const hydrated = buildBootstrapResponse(registry);
       if (hydrated) {
-        this.data = hydrated;
-        this.render();
-        // Background RPC refresh for post-deploy classifier-version bumps.
-        // When it lands, mirror the fresh shape into the store so the
-        // map's next re-render uses the newer stamps too.
-        void getSupplyChainClient().listStorageFacilities({ facilityType: '' }).then(live => {
-          if (!this.element?.isConnected || !live?.facilities?.length) return;
-          this.data = live;
+        const apply = (): void => {
+          this.data = hydrated;
           this.render();
-          const facilitiesRecord: Record<string, StorageFacilityEntry> =
-            Object.fromEntries(live.facilities.map(f => [f.id, f]));
-          setCachedStorageFacilityRegistry({
-            facilities: facilitiesRecord,
-            classifierVersion: live.classifierVersion,
-            updatedAt: live.fetchedAt,
-          });
-        }).catch(() => {});
+        };
+        if (!this.element?.isConnected) {
+          this.runWhenConnected(apply);
+          this.usedHydrationPaint = true;
+          return;
+        }
+        apply();
+        this.usedHydrationPaint = true;
         return;
       }
 
       const live = await getSupplyChainClient().listStorageFacilities({ facilityType: '' });
-      if (!this.element?.isConnected) return;
-      if (live.upstreamUnavailable || !live.facilities?.length) {
-        this.showError('Storage registry unavailable', () => void this.fetchData());
+      if (live.facilities?.length && !live.upstreamUnavailable) {
+        const facilitiesRecord: Record<string, StorageFacilityEntry> =
+          Object.fromEntries(live.facilities.map(f => [f.id, f]));
+        setCachedStorageFacilityRegistry({
+          facilities: facilitiesRecord,
+          classifierVersion: live.classifierVersion,
+          updatedAt: live.fetchedAt,
+        });
+        this.usedHydrationPaint = true;
+      }
+      const applyLive = (): void => {
+        if (live.upstreamUnavailable || !live.facilities?.length) {
+          this.showError('Storage registry unavailable', () => void this.fetchData());
+          return;
+        }
+        this.data = live;
+        this.render();
+      };
+      if (!this.element?.isConnected) {
+        this.runWhenConnected(applyLive);
         return;
       }
-      this.data = live;
-      this.render();
-      const facilitiesRecord: Record<string, StorageFacilityEntry> =
-        Object.fromEntries(live.facilities.map(f => [f.id, f]));
-      setCachedStorageFacilityRegistry({
-        facilities: facilitiesRecord,
-        classifierVersion: live.classifierVersion,
-        updatedAt: live.fetchedAt,
-      });
+      applyLive();
     } catch (err) {
       if (this.isAbortError(err)) return;
-      if (!this.element?.isConnected) return;
-      this.showError('Storage registry error', () => void this.fetchData());
+      const applyError = (): void => {
+        this.showError('Storage registry error', () => void this.fetchData());
+      };
+      if (!this.element?.isConnected) {
+        this.runWhenConnected(applyError);
+        return;
+      }
+      applyError();
     }
   }
 
@@ -344,10 +382,10 @@ export class StorageFacilityMapPanel extends Panel {
         <table class="sf-table">
           <thead>
             <tr>
-              <th>Facility</th>
-              <th>Country · Type</th>
-              <th>Capacity</th>
-              <th>Status</th>
+              <th scope="col">Facility</th>
+              <th scope="col">Country · Type</th>
+              <th scope="col">Capacity</th>
+              <th scope="col">Status</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -377,22 +415,13 @@ export class StorageFacilityMapPanel extends Panel {
         .sf-ev-item a:hover { text-decoration: underline; }
       </style>
     `, 'legacy Panel.setContent() migration'));
-
-    const table = this.element?.querySelector('.sf-table') as HTMLTableElement | null;
-    table?.querySelectorAll<HTMLTableRowElement>('tr.sf-row').forEach(tr => {
-      const id = tr.dataset.facilityId;
-      if (!id) return;
-      tr.addEventListener('click', () => void this.loadDetail(id));
-    });
-    const closeBtn = this.element?.querySelector<HTMLButtonElement>('.sf-drawer-close');
-    closeBtn?.addEventListener('click', () => this.closeDetail());
   }
 
   private renderRow(f: StorageFacilityEntry): string {
     const glyph = TYPE_GLYPH[f.facilityType] ?? '🔹';
     const typeLabel = TYPE_LABEL[f.facilityType] ?? f.facilityType;
     return `
-      <tr class="sf-row" data-facility-id="${escapeHtml(f.id)}">
+      <tr class="sf-row" data-facility-id="${escapeHtml(f.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
         <td>
           <div class="sf-name">${glyph} ${escapeHtml(f.name)}</div>
           <div class="sf-sub">${escapeHtml(f.operator || '')}</div>

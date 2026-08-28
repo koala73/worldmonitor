@@ -310,8 +310,12 @@ paths:
             tags:
                 - AviationService
             summary: ListAirportFlights
-            description: ListAirportFlights returns recent arrivals and departures with direction and limit filters, source attribution, flight status, carrier details, and update time.
+            description: ListAirportFlights returns recent arrivals and departures with direction and limit filters, status and carrier. PRO-gated. Requires an active Pro subscription.
             operationId: ListAirportFlights
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: airport
                   in: query
@@ -379,7 +383,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -452,8 +456,12 @@ paths:
             tags:
                 - AviationService
             summary: GetCarrierOps
-            description: GetCarrierOps returns delay and cancellation metrics grouped by carrier.
+            description: GetCarrierOps returns delay and cancellation metrics grouped by carrier. PRO-gated. Requires an active Pro subscription.
             operationId: GetCarrierOps
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: airports
                   in: query
@@ -517,7 +525,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -590,8 +598,12 @@ paths:
             tags:
                 - AviationService
             summary: GetFlightStatus
-            description: GetFlightStatus looks up the current status of a specific flight.
+            description: GetFlightStatus looks up the current status of a specific flight. PRO-gated. Requires an active Pro subscription.
             operationId: GetFlightStatus
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: flight_number
                   in: query
@@ -653,7 +665,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -1013,8 +1025,12 @@ paths:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: SearchFlightPrices searches for flight price offers on a route.
+            description: SearchFlightPrices searches for flight price offers on a route. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: origin
                   in: query
@@ -1046,7 +1062,9 @@ paths:
                     type: string
                 - name: adults
                   in: query
-                  description: Number of adult passengers (1-9).
+                  description: |-
+                    Number of adult passengers (1-9).
+                     Accepted but currently ignored; quotes are per-person and the count does not filter.
                   required: false
                   example: 1
                   schema:
@@ -1129,7 +1147,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -5351,7 +5369,7 @@ paths:
                     type: string
                 - name: range
                   in: query
-                  description: range is one of "7d", "30d", "90d", "180d".
+                  description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
                   required: false
                   example: "7d"
                   schema:
@@ -5486,7 +5504,7 @@ paths:
                     type: string
                 - name: range
                   in: query
-                  description: range is one of "7d", "30d", "90d", "180d".
+                  description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
                   required: false
                   example: "7d"
                   schema:
@@ -8580,14 +8598,14 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive lower date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive upper date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
@@ -10836,7 +10854,13 @@ paths:
             tags:
                 - ForecastService
             summary: GetSimulationOutcome
-            description: GetSimulationOutcome returns the latest stored forecast simulation outcome; the response note is populated when a supplied runId does not match the returned outcome.
+            description: |-
+                GetSimulationOutcome returns the latest stored forecast simulation outcome.
+                 Outcomes auto-refresh on the deep-forecast cron cadence (~hourly): each
+                 seed-forecasts cycle writes a simulation package and enqueues a worker
+                 task (scripts/seed-forecasts.mjs enqueueSimulationTask). Callers usually
+                 poll this endpoint rather than TriggerSimulation. The response note is
+                 populated when a supplied runId does not match the returned outcome.
             operationId: GetSimulationOutcome
             parameters:
                 - name: runId
@@ -10977,10 +11001,12 @@ paths:
             summary: TriggerSimulation
             description: |-
                 TriggerSimulation enqueues a simulation task for the current
-                 SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. The runId
-                 is server-derived; callers cannot supply one. The Railway worker
-                 (scripts/process-simulation-tasks.mjs) polls the queue and writes
-                 outcomes; callers poll GetSimulationOutcome with the returned runId
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. Usually
+                 unnecessary — outcomes auto-run on each deep-forecast cron cycle (~hourly)
+                 via enqueueSimulationTask; use this only when you need a fresh run outside
+                 that cadence. The runId is server-derived; callers cannot supply one. The
+                 Railway worker (scripts/process-simulation-tasks.mjs) polls the queue and
+                 writes outcomes; callers poll GetSimulationOutcome with the returned runId
                  to retrieve the result. Mirrors run-scenario.ts pattern. See #3734. Requires entitlement tier >= 1.
             operationId: TriggerSimulation
             security:
@@ -14884,6 +14910,147 @@ paths:
                                       "sourceUrl": "https://example.com/worldmonitor"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_ListTelegramFeedResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/intelligence/v1/list-x-feed:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListXFeed
+            description: |-
+                ListXFeed retrieves curated public news-account posts from monitored X
+                 accounts. Returns permalink plus derived facts only — post text is R4.
+            operationId: ListXFeed
+            parameters:
+                - name: limit
+                  in: query
+                  description: Maximum number of posts to return (default 50).
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: topic
+                  in: query
+                  description: Filter by topic keyword (e.g. "breaking", "cyber").
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: account
+                  in: query
+                  description: Filter by account handle.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "count": 1
+                                "enabled": true
+                                "error": "example"
+                                "posts":
+                                    - "accountId": "example-id"
+                                      "accountName": "WorldMonitor Analyst"
+                                      "contentState": "example"
+                                      "facts":
+                                          - "example"
+                                      "handle": "example"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_intelligence_v1_ListXFeedResponse'
                 "400":
                     description: Validation error
                     content:
@@ -20758,14 +20925,14 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive lower date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive upper date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
@@ -21856,8 +22023,12 @@ paths:
             tags:
                 - MilitaryService
             summary: GetAircraftDetails
-            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex.
+            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex. PRO-gated. Requires an active Pro subscription.
             operationId: GetAircraftDetails
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: icao24
                   in: query
@@ -21866,6 +22037,7 @@ paths:
                   example: "a835af"
                   schema:
                     type: string
+                    pattern: '^[0-9a-fA-F]{6}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -21904,7 +22076,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -23443,6 +23615,13 @@ paths:
                                               "link": "https://example.com/worldmonitor"
                                               "source": "example"
                                               "title": "example"
+                                "coverage":
+                                    "attemptedAt": "2026-01-15T12:00:00Z"
+                                    "categoryCompleted": 1
+                                    "categoryStates":
+                                        "exampleKey": "example"
+                                    "categoryTotal": 1
+                                    "droppedCategoryCap": 1
                                 "feedStatuses":
                                     "exampleKey": "example"
                                 "generatedAt": "2026-01-15T12:00:00Z"
@@ -25175,6 +25354,167 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/safety/v1/get-toronto-safety:
+        get:
+            tags:
+                - SafetyService
+            summary: GetTorontoSafety
+            description: Returns one bounded Toronto Police Service dataset with source, semantics, and freshness metadata.
+            operationId: GetTorontoSafety
+            parameters:
+                - name: dataset
+                  in: query
+                  description: 'Dataset selector. Accepted values: reported_occurrence, annual_aggregate.'
+                  required: false
+                  example: "reported_occurrence"
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum rows to return. The service defaults to 50 and caps this value at 100.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: division
+                  in: query
+                  description: Optional case-insensitive police-division filter.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: neighbourhood
+                  in: query
+                  description: Optional case-insensitive neighbourhood filter.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: offence
+                  in: query
+                  description: Optional case-insensitive offence filter for tps_mci.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: year
+                  in: query
+                  description: Optional event-year filter for tps_calls_attended.
+                  required: false
+                  example: 1
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "aggregates":
+                                    - "divisionFinal": "example"
+                                      "divisionOriginal": "example"
+                                      "eventCount": 1
+                                      "eventYear": 1
+                                      "id": "example-id"
+                                "attribution": "example"
+                                "degraded": true
+                                "disclaimer": "example"
+                                "fetchedAt": 1717200000000
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_safety_v1_GetTorontoSafetyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -35358,7 +35698,9 @@ components:
                     maximum: 9
                     minimum: 1
                     format: int32
-                    description: Number of adult passengers (1-9).
+                    description: |-
+                        Number of adult passengers (1-9).
+                         Accepted but currently ignored; quotes are per-person and the count does not filter.
                 cabin:
                     type: string
                     enum:
@@ -37296,7 +37638,7 @@ components:
                     description: basket_slug selects the basket (e.g. "essentials-ae").
                 range:
                     type: string
-                    description: range is one of "7d", "30d", "90d", "180d".
+                    description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
             description: GetConsumerPriceBasketSeriesRequest parameters for time series data.
         worldmonitor_consumer_prices_v1_GetConsumerPriceBasketSeriesResponse:
             type: object
@@ -37316,7 +37658,7 @@ components:
                     description: currency_code is the ISO 4217 currency code.
                 range:
                     type: string
-                    description: range echoes the requested range.
+                    description: range is the effective normalized range used for the returned snapshot.
                 essentialsSeries:
                     type: array
                     items:
@@ -37351,7 +37693,7 @@ components:
                     description: basket_slug selects the basket scope.
                 range:
                     type: string
-                    description: range is one of "7d", "30d", "90d", "180d".
+                    description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
             description: ListConsumerPriceCategoriesRequest parameters for category listing.
         worldmonitor_consumer_prices_v1_ListConsumerPriceCategoriesResponse:
             type: object
@@ -37365,7 +37707,7 @@ components:
                     description: as_of is the Unix millisecond timestamp of the snapshot.
                 range:
                     type: string
-                    description: range echoes the requested range.
+                    description: range is the effective normalized range used for the returned snapshot.
                 categories:
                     type: array
                     items:
@@ -39028,10 +39370,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive lower date bound in YYYY-MM-DD format.
                 toDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive upper date bound in YYYY-MM-DD format.
         worldmonitor_economic_v1_GetEconomicCalendarResponse:
             type: object
             properties:
@@ -40622,10 +40964,12 @@ components:
                          request messages). Safe to omit; default empty string.
             description: |-
                 TriggerSimulationRequest enqueues a simulation task for the current
-                 SIMULATION_PACKAGE_LATEST_KEY package pointer. Caller-supplied
-                 run_id is intentionally absent — the runId is server-derived from
-                 the package pointer (avoids lock-key collision, queue stuffing, and
-                 race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. Usually unnecessary —
+                 outcomes auto-run on each deep-forecast cron cycle (~hourly) via
+                 enqueueSimulationTask; use only when a fresh run is needed outside that
+                 cadence. Caller-supplied run_id is intentionally absent — the runId is
+                 server-derived from the package pointer (avoids lock-key collision, queue
+                 stuffing, and race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
                  feat-simulation-trigger-and-runid-filter-plan.md D1.
         worldmonitor_forecast_v1_TriggerSimulationResponse:
             type: object
@@ -42493,6 +42837,80 @@ components:
                     type: string
                     description: Auto-classified topic based on content.
             description: Validated OSINT post from Telegram channels.
+        worldmonitor_intelligence_v1_ListXFeedRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of posts to return (default 50).
+                topic:
+                    type: string
+                    description: Filter by topic keyword (e.g. "breaking", "cyber").
+                account:
+                    type: string
+                    description: Filter by account handle.
+            description: Request to fetch the curated public news-account X feed.
+        worldmonitor_intelligence_v1_ListXFeedResponse:
+            type: object
+            properties:
+                enabled:
+                    type: boolean
+                    description: Whether the ais-relay poller currently has X_BEARER_TOKEN configured.
+                posts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_XFeedItem'
+                count:
+                    type: integer
+                    format: int32
+                    description: Number of posts returned in this response, after the limit is applied.
+                error:
+                    type: string
+                    description: Detailed error message if the fetch failed.
+            description: |-
+                Curated X news-account feed. Post text is R4 and is not included —
+                 partners receive permalink plus derived facts only.
+        worldmonitor_intelligence_v1_XFeedItem:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique post identifier (handle:postId).
+                accountId:
+                    type: string
+                    description: Numeric X account id (stable across handle renames).
+                accountName:
+                    type: string
+                    description: Human-readable account label.
+                handle:
+                    type: string
+                    description: Current @handle without the leading @.
+                topic:
+                    type: string
+                    description: Curated topic bucket.
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds for when the post was created.. Warning: Values > 2^53 may lose precision in JavaScript'
+                permalink:
+                    type: string
+                    description: Canonical permalink to the original post.
+                facts:
+                    type: array
+                    items:
+                        type: string
+                        description: Derived facts only (no tweet body).
+                hasMedia:
+                    type: boolean
+                    description: Whether the post had media attachments when ingested.
+                lang:
+                    type: string
+                    description: Publisher language code when provided by the API.
+                contentState:
+                    type: string
+                    description: '"active" or "deleted" (tombstoned within 24h of deletion).'
+            description: Derived facts for one curated public news-account post. No tweet body.
         worldmonitor_intelligence_v1_GetCompanyEnrichmentRequest:
             type: object
             properties:
@@ -46276,10 +46694,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive lower date bound in YYYY-MM-DD format.
                 toDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive upper date bound in YYYY-MM-DD format.
         worldmonitor_market_v1_ListEarningsCalendarResponse:
             type: object
             properties:
@@ -47133,7 +47551,7 @@ components:
             properties:
                 icao24:
                     type: string
-                    minLength: 1
+                    pattern: ^[0-9a-fA-F]{6}$
                     description: ICAO 24-bit hex address (lowercase).
             required:
                 - icao24
@@ -48078,6 +48496,8 @@ components:
                 generatedAt:
                     type: string
                     description: ISO 8601 timestamp of when this digest was generated
+                coverage:
+                    $ref: '#/components/schemas/worldmonitor_news_v1_DigestCoverage'
         worldmonitor_news_v1_ListFeedDigestResponse_CategoriesEntry:
             type: object
             properties:
@@ -48237,6 +48657,98 @@ components:
                         - STORY_PHASE_FADING
                     description: StoryPhase represents the lifecycle stage of a tracked news story.
             description: StoryMeta carries cross-cycle persistence data attached to each news item.
+        worldmonitor_news_v1_DigestCoverage:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: |-
+                        complete | partial | stale | unavailable.
+                         complete: every configured category had at least one completed eligible
+                           feed and the build did not hit the global deadline.
+                         partial: content exists, but a category had no completed feed or the
+                           build hit the global deadline.
+                         stale: accepted older content is served after a failed latest attempt
+                           (durable last-good serving, #7084).
+                         unavailable: no eligible content could be served.
+                attemptedAt:
+                    type: string
+                    description: ISO 8601 time of the latest build attempt (attempt identity).
+                itemsServed:
+                    type: integer
+                    format: int32
+                    description: Items served in this response, after every gate.
+                publisherCount:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Distinct publishers among the served items (normalized source labels,
+                         current cycle only — not feed-label counts, not historical sets).
+                feedTotal:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Eligible feeds configured for this variant+language, and how many
+                         completed (with or without items).
+                feedCompleted:
+                    type: integer
+                    format: int32
+                categoryTotal:
+                    type: integer
+                    format: int32
+                    description: Configured categories, and how many had at least one completed feed.
+                categoryCompleted:
+                    type: integer
+                    format: int32
+                categoryStates:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: 'Per-category state: ok (a feed completed) | missing (none did).'
+                droppedFeedCap:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Per-gate drop counts, named by gate position in the pipeline:
+                         feed cap, undated-item, freshness floor, category cap.
+                droppedUndated:
+                    type: integer
+                    format: int32
+                droppedFreshness:
+                    type: integer
+                    format: int32
+                droppedCategoryCap:
+                    type: integer
+                    format: int32
+                servedStale:
+                    type: boolean
+                    description: |-
+                        Durable last-good serving (#7084): true exactly when accepted older
+                         content is replayed after a failed latest attempt. The content counts
+                         above still describe the served body; attempted_at names the FAILED
+                         attempt, so it and generated_at diverge on a replay.
+                staleAgeSeconds:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Age of the served content since acceptance, in seconds (0 when fresh).
+                         Bounded at 21600 (six hours): past that window the service reports
+                         state=unavailable rather than serving older content.
+                staleReason:
+                    type: string
+                    description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'
+            description: |-
+                Content vs attempt state for one digest response (#7085). generated_at
+                 keeps the CONTENT identity (when the served items were produced);
+                 attempted_at keeps the latest BUILD identity — the two diverge when
+                 stale content is served after a failed attempt (#7084).
+        worldmonitor_news_v1_DigestCoverage_CategoryStatesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
         worldmonitor_positive_events_v1_ListPositiveGeoEventsRequest:
             type: object
         worldmonitor_positive_events_v1_ListPositiveGeoEventsResponse:
@@ -49334,6 +49846,134 @@ components:
                 lastObservedAt:
                     type: string
                     description: Latest safe observed timestamp from interval seed-meta or sample payload.
+        worldmonitor_safety_v1_GetTorontoSafetyRequest:
+            type: object
+            properties:
+                dataset:
+                    type: string
+                    description: 'Dataset selector. Accepted values: reported_occurrence, annual_aggregate.'
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum rows to return. The service defaults to 50 and caps this value at 100.
+                division:
+                    type: string
+                    description: Optional case-insensitive police-division filter.
+                neighbourhood:
+                    type: string
+                    description: Optional case-insensitive neighbourhood filter.
+                offence:
+                    type: string
+                    description: Optional case-insensitive offence filter for tps_mci.
+                year:
+                    type: integer
+                    format: int32
+                    description: Optional event-year filter for tps_calls_attended.
+        worldmonitor_safety_v1_GetTorontoSafetyResponse:
+            type: object
+            properties:
+                semantic:
+                    type: string
+                source:
+                    type: string
+                sourceLabel:
+                    type: string
+                attribution:
+                    type: string
+                disclaimer:
+                    type: string
+                sourceUrl:
+                    type: string
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                sourceEditedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                newestContentAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                newestContentYear:
+                    type: integer
+                    format: int32
+                degraded:
+                    type: boolean
+                unavailable:
+                    type: boolean
+                matched:
+                    type: integer
+                    format: int32
+                truncated:
+                    type: boolean
+                occurrences:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_safety_v1_TorontoReportedOccurrence'
+                aggregates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_safety_v1_TorontoAnnualAggregate'
+        worldmonitor_safety_v1_TorontoReportedOccurrence:
+            type: object
+            properties:
+                id:
+                    type: string
+                objectId:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                eventUniqueId:
+                    type: string
+                reportDate:
+                    type: string
+                occurrenceDate:
+                    type: string
+                division:
+                    type: string
+                locationType:
+                    type: string
+                premisesType:
+                    type: string
+                offence:
+                    type: string
+                csiCategory:
+                    type: string
+                neighbourhood:
+                    type: string
+                longitude:
+                    type: number
+                    format: double
+                latitude:
+                    type: number
+                    format: double
+                approximate:
+                    type: boolean
+        worldmonitor_safety_v1_TorontoAnnualAggregate:
+            type: object
+            properties:
+                id:
+                    type: string
+                objectId:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                eventYear:
+                    type: integer
+                    format: int32
+                divisionOriginal:
+                    type: string
+                divisionFinal:
+                    type: string
+                neighbourhood:
+                    type: string
+                eventCount:
+                    type: number
+                    format: double
+                incidentPoint:
+                    type: boolean
         worldmonitor_sanctions_v1_ListSanctionsPressureRequest:
             type: object
             properties:

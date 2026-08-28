@@ -1,0 +1,16 @@
+[
+  {
+    "Port Id": "INMAA",
+    "Port Name": "Chennai",
+    "Issued By": "ACWC CHENNAI",
+    "Date of Issue": "2023-11-05",
+    "Warning": "Distant Cautionary Signal 1 hoisted"
+  },
+  {
+    "Port Id": "INBOM",
+    "Port Name": "Mumbai",
+    "Issued By": "ACWC MUMBAI",
+    "Date of Issue": "2023-11-05",
+    "Warning": "NIL"
+  }
+]

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +44,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/dashboard-news-request-budget.spec.ts',
   'e2e/keyword-spike-flow.spec.ts',
   'e2e/breaking-news-banner-provenance.spec.ts',
+  'e2e/a11y-axe-scan.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -66,13 +67,14 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'desktop-rust',
 ] as const;
 
-const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit'] as const;
+const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit', 'Stacked Merge Guard'] as const;
 
 const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
   'biome',
   'public-docs',
   'security-audit',
+  'stacked-merge-guard',
 ] as const;
 
 // Jobs the deploy gate cannot require under their own name, and the check that
@@ -116,7 +118,6 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
 const REQUIRED_DESKTOP_RUST_INPUTS = [
   'src-tauri/sidecar/',
   'src-tauri/',
-  '.github/workflows/test.yml',
 ] as const;
 
 function escapeRegExp(value: string): string {
@@ -421,6 +422,10 @@ describe('CI workflow coverage', () => {
         `test:e2e:ci-smoke must pass ${spec} as a live argv token — a spec dropped ` +
           '(or commented out) from this command has no other CI invocation',
       );
+      assert.ok(
+        existsSync(resolve(root, spec)),
+        `${spec} must exist on disk — a missing file would only fail once Playwright starts`,
+      );
     }
     assert.ok(
       argvTokens.includes('VITE_VARIANT=full'),
@@ -449,7 +454,7 @@ describe('CI workflow coverage', () => {
     );
     assert.match(
       job,
-      /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*npx playwright install --with-deps chromium/,
+      /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*pkill -9 apt-get[\s\S]*npx playwright install --with-deps chromium/,
     );
   });
 
@@ -676,7 +681,7 @@ describe('CI workflow coverage', () => {
     }
 
     // Every gated job's effective name has to be in `required` (asserted
-    // above), so keying off `required` still covers all four gated workflows
+    // above), so keying off `required` still covers all gated workflows
     // while leaving harmless duplicates alone — two cron-only workflows may
     // both call a job `monitor` without the gate ever reading either.
     //
@@ -857,6 +862,62 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('runs resilience-validation-smoke only when validation inputs change', () => {
+    const job = testJobBlock('resilience-validation-smoke');
+    assert.match(
+      job,
+      /\n {4}if: needs\.changes\.outputs\.validation == 'true'\n/,
+      'the smoke job is the validation-docs path; unit already runs the same files on code PRs',
+    );
+    assert.doesNotMatch(
+      job,
+      /outputs\.code == 'true'/,
+      'a second npm ci on every code PR re-runs tests already inside test:data',
+    );
+  });
+
+  it('path-filters Test jobs on push to main instead of compiling everything', () => {
+    const changes = testWorkflow.slice(testWorkflow.indexOf('id: diff'));
+    const pushGate = changes.slice(0, changes.indexOf('CODE=$('));
+    assert.match(
+      pushGate,
+      /compare\/\$\{BEFORE\}\.\.\.\$\{\{ github\.sha \}\}/,
+      'push to main must classify files from the compare API',
+    );
+    assert.match(
+      pushGate,
+      /No usable parent SHA; running every Test job/,
+      'a zero parent SHA must fail open',
+    );
+    assert.match(
+      pushGate,
+      /Compare listing is truncated at 300 files; running every Test job/,
+      'a truncated compare must fail open',
+    );
+    assert.match(pushGate, /emit_all_true/);
+    assert.ok(
+      pushGate.indexOf('compare/${BEFORE}') < pushGate.lastIndexOf('emit_all_true'),
+      'the compare must run; fail-open is only the truncated/error path',
+    );
+  });
+
+  it('does not rebuild Umami images for an unrelated Test workflow edit', () => {
+    const umamiFilter = shellAwkAssignmentBlock('UMAMI');
+    assert.equal(
+      evaluateAwkAssignmentBlock(umamiFilter, ['.github/workflows/test.yml']),
+      0,
+      'editing test.yml must not set umami=true — unit pins the job shape',
+    );
+    assert.ok(
+      evaluateAwkAssignmentBlock(umamiFilter, ['Dockerfile.umami']) > 0,
+      'Dockerfile.umami must still set umami=true',
+    );
+    assert.ok(
+      evaluateAwkAssignmentBlock(umamiFilter, ['scripts/umami-retention.sql']) > 0,
+      'the retention SQL must still set umami=true',
+    );
+  });
+
   it('routes the root Docker context policy into image build jobs', () => {
     for (const variable of ['DIGEST', 'UMAMI']) {
       const awkBlock = shellAwkAssignmentBlock(variable);
@@ -904,6 +965,21 @@ describe('CI workflow coverage', () => {
         `test.yml desktop_rust filter must cover ${input}`,
       );
     }
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['src-tauri/src/lib.rs']),
+      1,
+      'desktop-rust must compile when the Tauri crate changes',
+    );
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['src-tauri/sidecar/local-api-server.js']),
+      0,
+      'desktop-rust must skip sidecar-only changes (those ride the code filter)',
+    );
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['.github/workflows/test.yml']),
+      0,
+      'desktop-rust must not compile the Tauri crate for a Test workflow edit',
+    );
     assert.match(
       testJobBlock('desktop-config'),
       /if: needs\.changes\.outputs\.desktop_config == 'true'/,

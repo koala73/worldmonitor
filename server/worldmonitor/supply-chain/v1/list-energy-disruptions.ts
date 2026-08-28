@@ -80,7 +80,8 @@ export async function listEnergyDisruptions(
   _ctx: unknown,
   req: ListEnergyDisruptionsRequest,
 ): Promise<ListEnergyDisruptionsResponse> {
-  const raw = (await getCachedJson(ENERGY_DISRUPTIONS_KEY)) as RawRegistry | null;
+  // Seeder writes via raw key (no env-prefix) — match it on read.
+  const raw = (await getCachedJson(ENERGY_DISRUPTIONS_KEY, true)) as RawRegistry | null;
 
   // upstreamUnavailable fires only on raw-null (Redis returned nothing),
   // matching the contract enforced by sibling handlers (list-pipelines,

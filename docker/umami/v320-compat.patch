@@ -40,7 +40,7 @@ index 6cdb33c..d6bee46 100644
  async function pagedQuery<T>(model: string, criteria: T, filters?: QueryFilters) {
    const { page = 1, pageSize, orderBy, sortDescending = false, search } = filters || {};
    const size = +pageSize || DEFAULT_PAGE_SIZE;
-@@ -540,6 +571,22 @@ function getSchema() {
+@@ -540,6 +571,46 @@ function getSchema() {
    return connectionUrl.searchParams.get('schema');
  }
  
@@ -52,12 +52,36 @@ index 6cdb33c..d6bee46 100644
 +// the acquisition wait turns pool exhaustion back into a fast, visible failure.
 +const DEFAULT_POOL_CONNECT_TIMEOUT_MS = 10000;
 +
-+function getPoolOptions() {
-+  const configured = Number(process.env.DATABASE_CONNECT_TIMEOUT_MS);
-+  const connectionTimeoutMillis =
-+    Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_POOL_CONNECT_TIMEOUT_MS;
++// The acquisition bound above made pool exhaustion VISIBLE; it did not make it
++// rarer. pg.Pool also defaults `max` to 10, and nothing here ever set it, so the
++// ceiling was an accident of the library rather than a sizing decision. Measured
++// 2026-08-21: umami held exactly 10 backends at peak and never more, while its
++// Postgres reported max_connections=500 with ~16 in use — the constraint was
++// entirely application-side. Meanwhile the collector saw HTTP 500s whose server
++// log is `timeout exceeded when trying to connect` from pg-pool, i.e. callers
++// giving up waiting for one of those 10 (WORLDMONITOR-YK, and the timeout and
++// queue-overflow siblings it backs up into).
++//
++// Sized deliberately, not maximally: 20 doubles headroom while still consuming
++// 4% of max_connections, so even a scaled-out umami cannot starve the database
++// or the retention service that shares it.
++const DEFAULT_POOL_MAX = 20;
 +
-+  return { connectionTimeoutMillis };
++// Annotated because this lands in a .ts file compiled by Next's build; bare
++// parameters would be implicit `any` and fail the image build under strict mode.
++function readPositiveIntEnv(name: string, fallback: number): number {
++  const configured = Number(process.env[name]);
++  return Number.isFinite(configured) && configured > 0 ? configured : fallback;
++}
++
++function getPoolOptions() {
++  return {
++    connectionTimeoutMillis: readPositiveIntEnv(
++      'DATABASE_CONNECT_TIMEOUT_MS',
++      DEFAULT_POOL_CONNECT_TIMEOUT_MS,
++    ),
++    max: readPositiveIntEnv('DATABASE_POOL_MAX', DEFAULT_POOL_MAX),
++  };
 +}
 +
  function getClient() {

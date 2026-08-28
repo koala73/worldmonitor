@@ -51,6 +51,7 @@ import {
   type GlobeLayerTruncation,
   type GlobeMarkerGroup,
 } from '@/utils/globe-marker-budget';
+import { renderLayerTruncationBadges } from '@/utils/layer-truncation-badge';
 import type { FeatureCollection, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVesselCluster, NaturalEvent, InternetOutage, CyberThreat, SocialUnrestEvent, UcdpGeoEvent, MilitaryBase, GammaIrradiator, Spaceport, EconomicCenter, StrategicWaterway, CriticalMineralProject, AIDataCenter, UnderseaCable, Pipeline, CableAdvisory, RepairShip, AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
@@ -74,6 +75,7 @@ import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/g
 import type { RadiationObservation } from '@/services/radiation';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderPopupSourceLinks } from './map-popup-source-links';
 import {
   applyPremiumLayerPresentation,
   getPremiumLayerPresentation,
@@ -208,6 +210,7 @@ interface ProtestMarker extends BaseMarker {
   title: string;
   eventType: string;
   country: string;
+  sourceUrls?: string[];
 }
 interface UcdpMarker extends BaseMarker {
   _kind: 'ucdp';
@@ -1561,7 +1564,8 @@ export class GlobeMap {
       const c = typeColors[d.eventType] ?? '#ffaa00';
       html = `<span style="color:${c};font-weight:bold;">📢 ${esc(d.eventType)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
-             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>`;
+             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>` +
+             renderPopupSourceLinks(d.sourceUrls, { limit: 1 });
     } else if (d._kind === 'ucdp') {
       html = `<span style="color:#ff6400;font-weight:bold;">⚔ ${esc(d.country)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.sideA)} vs ${esc(d.sideB)}</span>` +
@@ -2897,26 +2901,7 @@ export class GlobeMap {
   private updateLayerTruncationLabels(): void {
     const root = this.layerTogglesEl;
     if (!root) return;
-    for (const row of Array.from(root.querySelectorAll<HTMLElement>('.layer-toggle-row'))) {
-      const layer = row.getAttribute('data-layer');
-      const counts = layer ? this.markerTruncation[layer] : undefined;
-      const existing = row.querySelector<HTMLElement>('.layer-truncation-count');
-      if (!counts) { existing?.remove(); continue; }
-      const badge = existing ?? document.createElement('span');
-      if (!existing) {
-        badge.className = 'layer-truncation-count';
-        // Sibling of the <label>, not a child: inside it, every click on the
-        // badge would toggle the layer off. `.layer-explain-btn` sits outside
-        // the label for the same reason.
-        row.appendChild(badge);
-      }
-      badge.textContent = `${counts.shown}/${counts.total}`;
-      // Untranslated literal: a new i18n key is a ~29-file change across locales,
-      // and the badge itself is numeric. Real key tracked as follow-up.
-      // Says "nearest this view" rather than "highest priority" because that is
-      // what the ranking actually does for layers with no severity of their own.
-      badge.title = `Showing ${counts.shown} of ${counts.total} markers — the most significant, and those nearest the current view. The globe caps markers per layer to keep interaction responsive; rotate or zoom to bring others in.`;
-    }
+    renderLayerTruncationBadges(root, this.markerTruncation, 'rotate');
   }
 
   /**
@@ -3341,15 +3326,17 @@ export class GlobeMap {
   }
 
   public setImageryScenes(scenes: ImageryScene[]): void {
-    const valid = (scenes ?? []).filter(s => {
+    // Parse each scene's GeoJSON once — the filter, marker, and polygon
+    // passes previously re-parsed the identical string up to 3x per scene.
+    const parsed = (scenes ?? []).flatMap(s => {
       try {
-        const geom = JSON.parse(s.geometryGeojson);
-        return geom?.type === 'Polygon' && geom.coordinates?.[0]?.[0];
-      } catch { return false; }
+        const geom = JSON.parse(s.geometryGeojson) as { type?: string; coordinates?: number[][][] };
+        if (geom?.type !== 'Polygon' || !geom.coordinates?.[0]?.[0]) return [];
+        return [{ s, geom }];
+      } catch { return []; }
     });
-    this.imagerySceneMarkers = valid.map(s => {
-      const geom = JSON.parse(s.geometryGeojson);
-      const coords = geom.coordinates[0] as number[][];
+    this.imagerySceneMarkers = parsed.map(({ s, geom }) => {
+      const coords = geom.coordinates![0] as number[][];
       const lats = coords.map(c => c[1] ?? 0);
       const lons = coords.map(c => c[0] ?? 0);
       const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
@@ -3365,8 +3352,7 @@ export class GlobeMap {
         previewUrl: s.previewUrl,
       };
     });
-    this.imageryFootprintPolygons = valid.map(s => {
-      const geom = JSON.parse(s.geometryGeojson);
+    this.imageryFootprintPolygons = parsed.map(({ s, geom }) => {
       return {
         coords: geom.coordinates as number[][][],
         name: `${s.satellite} ${s.datetime}`,
@@ -3507,6 +3493,7 @@ export class GlobeMap {
       title: e.title ?? '',
       eventType: e.eventType ?? 'protest',
       country: e.country ?? '',
+      sourceUrls: e.sourceUrls,
     }));
     this.flushMarkers();
   }

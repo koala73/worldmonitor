@@ -18,6 +18,7 @@ import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
 import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
 import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
+import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
 import { Logo } from './components/Logo';
@@ -38,6 +39,7 @@ import {
 import { appendStoredContentAttributionToUrl } from '../../shared/content-attribution';
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
+import { LegalFooterNav } from './components/LegalFooterNav';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -222,7 +224,7 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
         }
         const resp = await fetch(`${API_BASE}/me/entitlement`, {
           headers: { Authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(8_000),
+          signal: createTimeoutSignal(8_000),
         });
         if (!resp.ok) {
           if (!cancelled) setState({ isPro: false, isChecked: true });
@@ -232,7 +234,11 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
         if (!cancelled) setState({ isPro: data.isPro === true, isChecked: true });
       } catch (err) {
         console.error('[auth] Failed to check pro entitlement:', err);
-        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        // WORLDMONITOR-10F: 8s createTimeoutSignal / page teardown aborts are
+        // expected (Safari: AbortError "Fetch is aborted"). Do not page Sentry.
+        if (!isTimeoutOrAbortError(err)) {
+          Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        }
         if (!cancelled) setState({ isPro: false, isChecked: true });
       }
     })();
@@ -282,7 +288,7 @@ function ClerkUserButton({ user }: { user: UserResource | null }): ReactElement 
   }, [user]);
 
   return (
-    <div ref={ref} className="flex h-8 w-8 items-center justify-center">
+    <div ref={ref} translate="no" className="flex h-8 w-8 items-center justify-center">
       {!user && (
         <span
           className="block h-8 w-8 rounded-full border border-wm-border bg-wm-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
@@ -311,7 +317,7 @@ const Navbar = () => {
   // visitor who hasn't paid.
   const showGoToDashboard = isLoaded && signedIn && !!user && isChecked && isPro;
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+    <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
@@ -1155,7 +1161,7 @@ const FAQ = () => {
 /* ─── Enterprise Page (dedicated /pro/#enterprise) ─── */
 const EnterprisePage = () => (
   <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-    <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+    <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }}><Logo /></a>
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
@@ -1362,6 +1368,10 @@ const EnterprisePage = () => (
         </div>
         <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
+      {/* This is the pricing page — the footer a buyer sees on the way to
+          checkout — so the documents they are agreeing to have to be one click
+          from here, not one FAQ answer deep (#6976). */}
+      <LegalFooterNav />
     </footer>
   </div>
 );
@@ -1370,27 +1380,17 @@ const EnterprisePage = () => (
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
-  // Initialize Dodo checkout overlay with success handler.
+  // Resume a checkout the buyer started before signing in.
   //
-  // On overlay success, the buyer needs to be bridged from /pro to the
-  // main dashboard where their newly-minted entitlement actually
-  // unlocks panels. Two changes vs the original 3-second blind reload:
-  //
-  //   1. Explicit "Go to dashboard now →" button so engaged buyers
-  //      don't wait out the auto-redirect timer.
-  //   2. Auto-redirect is 1500ms (down from 3000ms) — fast enough to
-  //      feel responsive without clipping the confirmation reading time.
-  //   3. Redirect target carries `?wm_checkout=success` so the dashboard
-  //      side (handleCheckoutReturn in src/services/checkout-return.ts)
-  //      recognizes this as a post-purchase landing and triggers the
-  //      extended-unlock banner from PR-4, instead of rendering a
-  //      default dashboard with no context.
+  // This mount hook used to also call `initOverlay()`, which dynamically
+  // imported the heavy Dodo overlay SDK on every /pro mount and registered an
+  // overlay-success handler that bridged the buyer to the dashboard. #4449
+  // moved checkout to a top-level redirect to Dodo's hosted page (see
+  // startCheckout), which made that handler unreachable — after payment the
+  // buyer lands on the dashboard, not /pro, and handleCheckoutReturn owns that
+  // UX via the guarded `?wm_checkout=return` contract. #7222 deleted the
+  // function and dropped `dodopayments-checkout` from this bundle.
   useEffect(() => {
-    // #4449: the Dodo overlay is no longer used — checkout redirects top-level
-    // to the hosted page (see startCheckout). We no longer call initOverlay(),
-    // which dynamically imported the heavy Dodo overlay SDK on /pro mount and
-    // registered a success banner that can never fire (after payment the buyer
-    // lands on the dashboard, not /pro — handleCheckoutReturn owns that UX).
     // Consume checkout intent from URL (set by afterSignInUrl on the
     // checkout-initiated sign-in). No-op for any other /pro entry
     // point; strips params before any await so a reload can't re-fire.

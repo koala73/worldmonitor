@@ -197,9 +197,19 @@ export function buildPortActivityMetaPayload({ countryData, coverage, now = Date
  */
 export function contentClockFor(priorPayload, upstreamMaxDate, refreshedAt) {
   const prior = priorPayload && typeof priorPayload === 'object' ? priorPayload : null;
+  const hasUsableUpstreamDate = typeof upstreamMaxDate === 'string'
+    && Number.isFinite(Date.parse(upstreamMaxDate + 'T23:59:59.999Z'));
   const asofUnchanged = prior !== null
-    && upstreamMaxDate != null
+    && hasUsableUpstreamDate
     && prior.asof === upstreamMaxDate;
+
+  // A failed preflight is not evidence of fresh content. Keep the known clock
+  // so a successful fallback fetch cannot make frozen upstream data look new.
+  if (prior !== null
+    && !hasUsableUpstreamDate
+    && Number.isFinite(prior.contentAsOfChangedAt)) {
+    return prior.contentAsOfChangedAt;
+  }
 
   // Upstream advanced: we observed new content now. Anchoring to `refreshedAt`
   // rather than the observation date is what makes this clock independent of

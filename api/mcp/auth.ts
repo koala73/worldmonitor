@@ -316,9 +316,9 @@ export function getMcpBillingVerificationDenial(
   headers.set('Cache-Control', 'no-store');
   headers.set('Content-Type', 'application/json');
 
-  // #6716 — confirmed lapse stays on the billing envelope (-32002 / 403) but
-  // also carries the agent-facing upgrade attribution fields so clients can
-  // distinguish lapsed-subscription from never-subscribed free accounts.
+  // #6716 — a confirmed lapse detected after the entitlement pre-check stays
+  // on the billing envelope (-32002 / 403), with agent-facing upgrade
+  // attribution so clients can distinguish it from the free-account path.
   const structured = billingStatus === 'subscription_lapsed'
     ? buildMcpStructuredDenial('lapsed-subscription')
     : null;
@@ -614,12 +614,10 @@ async function checkMcpEntitlementGate(
   if (!gate) {
     return passed();
   }
-  // Billing-verification states keep their existing envelopes (403/-32002 for
-  // a confirmed lapse; 503 for renewal/unverifiable). Do not flatten a lapse
-  // into the free-account structured 401 — agents must not OAuth-loop on
-  // -32001 for a terminal billing state (docs/mcp-error-catalog.mdx).
-  // getMcpBillingVerificationDenial already attaches upgrade attribution on
-  // lapsed responses (#6716).
+  // Retryable billing-verification states keep their 503/-32603 envelopes.
+  // Provider-confirmed ended coverage is reclassified by the shared gate to
+  // `free_account` below; a lapse that lands later during a Pro tool call still
+  // uses the downstream 403/-32002 billing envelope in dispatch.
   if (gate.kind === 'billing_verification') {
     const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id);
     if (billingDenial) return { ok: false, response: billingDenial };
@@ -634,9 +632,9 @@ async function checkMcpEntitlementGate(
     return unavailable();
   }
   if (gate.kind === 'free_account') {
-    // MCP call-site ONLY reinterpretation (#6716). OAuth issuance and the
-    // gateway still refuse this verdict. Admission here is eligibility; the
-    // idle-gap + call counters live in dispatch.
+    // Shared free-account interpretation (#6716), also honored by OAuth
+    // issuance. Admission here is eligibility; the idle-gap + call counters
+    // live in dispatch.
     return {
       ok: true,
       mcpDailyLimit: FREE_ACCOUNT_CALLS_PER_DAY,

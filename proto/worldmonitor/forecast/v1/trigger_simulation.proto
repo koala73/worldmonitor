@@ -5,10 +5,12 @@ package worldmonitor.forecast.v1;
 import "sebuf/http/annotations.proto";
 
 // TriggerSimulationRequest enqueues a simulation task for the current
-// SIMULATION_PACKAGE_LATEST_KEY package pointer. Caller-supplied
-// run_id is intentionally absent — the runId is server-derived from
-// the package pointer (avoids lock-key collision, queue stuffing, and
-// race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
+// SIMULATION_PACKAGE_LATEST_KEY package pointer. Usually unnecessary —
+// outcomes auto-run on each deep-forecast cron cycle (~hourly) via
+// enqueueSimulationTask; use only when a fresh run is needed outside that
+// cadence. Caller-supplied run_id is intentionally absent — the runId is
+// server-derived from the package pointer (avoids lock-key collision, queue
+// stuffing, and race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
 // feat-simulation-trigger-and-runid-filter-plan.md D1.
 message TriggerSimulationRequest {
   // Optional opaque client-version string for debugging (e.g., "claude-

@@ -313,5 +313,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   validateAndAggregateAll()
     .then(() => console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`))
     .finally(() => closePool())
-    .catch(console.error);
+    // Mirror scrape.ts: a failed aggregate must fail the cron (Railway green
+    // deploys on exit 0 — console.error alone reported success on 0/N).
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    });
 }

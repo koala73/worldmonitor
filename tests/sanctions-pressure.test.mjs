@@ -378,6 +378,7 @@ async function loadSanctionsService(state) {
       export function createCircuitBreaker() {
         return {
           async execute(fn, fallback) { try { return await fn(); } catch { return fallback; } },
+          recordSuccess() {},
           clearCache() {},
         };
       }
@@ -402,7 +403,7 @@ async function loadSanctionsService(state) {
     `],
   ]);
   const aliases = new Map([
-    ['@/utils', 'utils-stub'],
+    ['@/utils/circuit-breaker', 'utils-stub'],
     ['@/services/rpc-client', 'rpc-client-stub'],
     ['@/services/premium-fetch', 'premium-fetch-stub'],
     ['@/services/bootstrap', 'bootstrap-stub'],

@@ -38,7 +38,9 @@ afterEach(() => {
 
 test('bootstrap R2 shadow telemetry emits only the exact privacy allowlist', async () => {
   const events = [];
+  const deliveryHeaders = [];
   globalThis.fetch = async (_input, init) => {
+    deliveryHeaders.push(init.headers);
     events.push(...JSON.parse(init.body));
     return new Response('{}', { status: 200 });
   };
@@ -88,6 +90,8 @@ test('bootstrap R2 shadow telemetry emits only the exact privacy allowlist', asy
     status: 200,
   });
   assert.equal(JSON.stringify(events[0]).includes('must-not-pass'), false);
+  assert.equal(deliveryHeaders.length, 1);
+  assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
 });
 
 test('bootstrap R2 shadow telemetry is disabled without telemetry configuration or waitUntil', async () => {

@@ -309,6 +309,48 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     );
   });
 
+  for (const pathname of [
+    '/api/military/v1/get-aircraft-details',
+    '/api/military/v1/get-aircraft-details-batch',
+  ]) {
+    it(`${pathname} is an explicit fail-closed endpoint policy route (#7108)`, async () => {
+      // Both Wingbits aircraft-enrichment routes proxy a PAID provider on cache
+      // miss, so a Redis outage must 503 rather than inherit the gateway's
+      // availability-first 600/min fallback and hand out unmetered upstream
+      // spend. Registering the policy is not enough on its own: the registry
+      // entry can be present while the runtime lookup or the failClosed default
+      // regresses, and scripts/enforce-rate-limit-policies.mjs is static-only —
+      // it cross-checks the registries and OpenAPI but never calls the limiter.
+      // So assert the behavior, matching summarize-article / deduct-situation /
+      // reverse-geocode above. The batch sibling is included because it predates
+      // this convention and had the same untested gap.
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      const mod = await importFreshRateLimitModule();
+
+      assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 30, window: '60 s' });
+      assert.ok(
+        pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+        `${pathname} must stay in the fail-closed requirement registry — a Redis outage must 503, not inherit the fail-open fallback`,
+      );
+
+      const res = await mod.checkEndpointRateLimit(
+        makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+        pathname,
+        { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+      );
+
+      assert.ok(res, `expected ${pathname} endpoint policy to fail closed without Redis config`);
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+      assert.equal(
+        res.headers.get('Access-Control-Allow-Origin'),
+        'https://worldmonitor.app',
+        'CORS headers should be propagated on the degraded response',
+      );
+    });
+  }
+
   it('gateway reverse-geocode RPC is a Nominatim provider route with a matched 60/min fail-closed policy (#6432)', async () => {
     // #6432 — the second Nominatim caller. The legacy edge route carries a
     // per-IP 60/min budget (#6234); this RPC must carry the same policy or it
@@ -575,9 +617,19 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
 describe('scoped rate-limit degraded call-site policy (#3531)', () => {
   const SCOPED_RATE_LIMIT_CALLERS = [
     {
+      path: 'api/reverse-geocode.js',
+      expected: /failClosed:\s*true/,
+      reason: 'the provider-wide Nominatim bucket is shared across both routes and must fail closed before upstream work',
+    },
+    {
       path: 'server/worldmonitor/leads/v1/register-interest.ts',
       expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
       reason: 'desktop lead capture bypasses Turnstile, so Redis degradation must fail closed locally',
+    },
+    {
+      path: 'server/worldmonitor/infrastructure/v1/reverse-geocode.ts',
+      expected: /if\s*\(\s*providerLimit\.degraded\s*\)\s*\{/,
+      reason: 'the gateway half of the provider-wide Nominatim bucket must fail closed before upstream work',
     },
     {
       path: 'api/a2a.ts',
@@ -609,13 +661,18 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       expected: /Redis-degraded scoped limits intentionally fail open for prefs writes/,
       reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
     },
+    {
+      path: 'api/notify.ts',
+      expected: /limiter outage here should NOT fail open/,
+      reason: 'notify publishes create relay-side delivery obligations on the shared event queue, so Redis degradation fails closed instead of allowing unbounded fan-out',
+    },
   ];
 
   it('keeps every checkScopedRateLimit caller audited for degraded handling', async () => {
     const fs = await import('node:fs');
     const cp = await import('node:child_process');
     const repo = new URL('..', import.meta.url);
-    const output = cp.execFileSync('git', ['grep', '-lF', 'checkScopedRateLimit(', '--', 'server', 'api'], {
+    const output = cp.execFileSync('git', ['grep', '-lE', 'checkScopedRateLimit\\(|PROVIDER_RATE_LIMIT_IDENTIFIER', '--', 'server', 'api'], {
       cwd: repo,
       encoding: 'utf8',
     });
@@ -629,7 +686,7 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
     assert.deepEqual(
       callers,
       SCOPED_RATE_LIMIT_CALLERS.map(({ path }) => path).sort(),
-      'new checkScopedRateLimit callers must be added here with a degraded-path decision',
+      'new scoped or provider-wide rate-limit callers must be added here with a degraded-path decision',
     );
 
     for (const { path, expected, reason } of SCOPED_RATE_LIMIT_CALLERS) {

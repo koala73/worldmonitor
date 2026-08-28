@@ -1,10 +1,17 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
+import * as Sentry from '@sentry/react';
 import App, { renderTurnstileWidgets } from './App.tsx';
+import { ProDomErrorBoundary } from './ProDomErrorBoundary.tsx';
 import { ensureTurnstileScript } from './turnstile';
-import { initI18n } from './i18n';
+import { currentLanguageBase, initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
+import {
+  collectRemoveChildEvidence,
+  installDetachedNodeGuards,
+  protectReactRootFromTranslators,
+} from './services/clerk-dom-safety';
 import { trackContentHandoff } from './services/checkout';
 import { captureContentAttributionFromUrl } from '../../shared/content-attribution';
 import './index.css';
@@ -15,10 +22,35 @@ if (capturedContentAttribution) trackContentHandoff();
 initSentry();
 initDebugBearRum();
 
+const rootElement = document.getElementById('root')!;
+const servedLanguage = document.documentElement.getAttribute('lang') ?? 'en';
+protectReactRootFromTranslators(rootElement);
+let recoveredDetachedNode = false;
+installDetachedNodeGuards(undefined, (operation) => {
+  if (recoveredDetachedNode) return;
+  recoveredDetachedNode = true;
+  Sentry.captureMessage('pro.removeChild.recovered', {
+    level: 'info',
+    tags: { surface: 'pro-marketing', recoveredOperation: operation },
+    extra: {
+      removeChildDomEvidence: collectRemoveChildEvidence({
+        document,
+        location,
+        servedLanguage,
+        applicationLanguage: currentLanguageBase(),
+        browserLanguage: navigator.language,
+        browserLanguages: [...navigator.languages],
+      }),
+    },
+  });
+});
+
 initI18n().then(() => {
-  createRoot(document.getElementById('root')!).render(
+  createRoot(rootElement).render(
     <StrictMode>
-      <App />
+      <ProDomErrorBoundary>
+        <App />
+      </ProDomErrorBoundary>
     </StrictMode>,
   );
 

@@ -805,6 +805,15 @@ function withStubbedRedis(payloadByKey: Record<string, unknown>, opts: RedisHarn
       gdeltCalls.push(raw);
       throw new Error(`unexpected request-time GDELT fetch: ${raw}`);
     }
+    // #7084: searchDigestByKeywords reads the operator revocation set before
+    // grounding, so every reader of news:digest:v1:* filters the same way.
+    // Without this the pipeline call fell through to the /get/ branch, the read
+    // reported unreadable, and relevantArticles fail-closed to empty.
+    if (raw.includes('/pipeline')) {
+      return new Response(JSON.stringify([{ result: opts.revokedUrls ?? [] }]), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const key = decodeURIComponent(raw.split('/get/')[1] ?? '');
     if (opts.timeoutKeys?.includes(key)) {
       throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });

@@ -22,6 +22,12 @@ import {
 } from './build-use-cases.mjs';
 import { buildSourceCatalog, renderSourcesIndex } from './crawlable-sources-page.mjs';
 import {
+  attachCoverageToCatalog,
+  FEED_DECLARATION_FILES,
+  loadSourceGeography,
+  scanNamedFeedDeclarations,
+} from './source-catalog-identity.mjs';
+import {
   activeSourceAttributionEntries,
   scanUpstreamHosts,
   sourceAttributionStats,
@@ -47,13 +53,19 @@ const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.jso
 const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
 const SOURCE_ORIGIN_PATH = 'scripts/source-origin.mjs';
 const SHARED_PAGE_TEMPLATE_PATH = 'scripts/build-crawlable-corpus.mjs';
+export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
+  'scripts/source-catalog-identity.mjs',
+  'shared/source-geography.json',
+  'shared/publisher-families.js',
+  ...FEED_DECLARATION_FILES,
+]);
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
-const SOURCES_PAGE_CONTENT_VERSION = '2026-08-16';
+const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -231,6 +243,7 @@ export function sourcePageLastmod({
   manifestLastmod,
   rendererLastmod,
   originLastmod,
+  catalogInputLastmods = [],
   sharedTemplateLastmod,
   generatorContentVersion = CORPUS_GENERATOR_CONTENT_VERSION,
   pageContentVersion = SOURCES_PAGE_CONTENT_VERSION,
@@ -239,6 +252,7 @@ export function sourcePageLastmod({
     manifestLastmod,
     rendererLastmod,
     originLastmod,
+    ...catalogInputLastmods,
     sharedTemplateLastmod,
     generatorContentVersion,
     pageContentVersion,
@@ -852,7 +866,13 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const sourceInventory = scanUpstreamHosts(rootDir);
   const sourceStats = sourceAttributionStats(sourceInventory, attributionManifest);
   const activeSourceEntries = activeSourceAttributionEntries(attributionManifest);
-  const sourceCatalog = buildSourceCatalog(activeSourceEntries);
+  const sourceCatalog = attachCoverageToCatalog(
+    buildSourceCatalog(activeSourceEntries, {
+      logicalProviders: attributionManifest.logicalProviders || [],
+    }),
+    scanNamedFeedDeclarations(rootDir),
+    loadSourceGeography(rootDir),
+  );
   if (sourceCatalog.length !== sourceStats.providerCount) {
     throw new Error('Source catalog provider count drifted from the attribution manifest');
   }
@@ -860,6 +880,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     manifestLastmod: gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
     rendererLastmod: gitFileLastmod(rootDir, SOURCE_PAGE_RENDERER_PATH),
     originLastmod: gitFileLastmod(rootDir, SOURCE_ORIGIN_PATH),
+    catalogInputLastmods: SOURCE_CATALOG_LASTMOD_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     sharedTemplateLastmod: gitFileLastmod(rootDir, SHARED_PAGE_TEMPLATE_PATH),
   });
 
@@ -880,6 +901,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
       sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
       sourceOrigin: SOURCE_ORIGIN_PATH,
+      sourceCatalogInputs: [...SOURCE_CATALOG_LASTMOD_PATHS],
       sharedPageTemplate: SHARED_PAGE_TEMPLATE_PATH,
     },
     lastmod: {

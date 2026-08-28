@@ -1,5 +1,6 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { addLocalDays, localYmd } from '@/utils/local-date';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
@@ -107,8 +108,10 @@ export class EconomicCalendarPanel extends Panel {
     try {
       const client = await getEconomicClient();
       const today = new Date();
-      const fromDate = today.toISOString().slice(0, 10);
-      const toDate = new Date(today.getTime() + 30 * 86400_000).toISOString().slice(0, 10);
+      // Local-time day keys: toISOString() is UTC-based and shifted the
+      // window a day for users far from UTC, dropping their local "today".
+      const fromDate = localYmd(today);
+      const toDate = localYmd(addLocalDays(today, 30));
       const resp = await client.getEconomicCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.events || resp.events.length === 0) {
@@ -222,9 +225,9 @@ export class EconomicCalendarPanel extends Panel {
         </colgroup>
         <thead>
           <tr style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:600;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.06em">
-            <th style="text-align:left;padding:0 8px 8px 0;font-weight:600">EVENT</th>
-            <th style="padding:0 0 8px;font-weight:600"></th>
-            <th style="text-align:right;padding:0 0 8px;font-weight:600"></th>
+            <th scope="col" style="text-align:left;padding:0 8px 8px 0;font-weight:600">EVENT</th>
+            <th scope="col" style="padding:0 0 8px;font-weight:600"></th>
+            <th scope="col" style="text-align:right;padding:0 0 8px;font-weight:600"></th>
           </tr>
         </thead>
         <tbody>${emptyMsg}${bodyRows}</tbody>
