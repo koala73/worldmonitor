@@ -635,9 +635,13 @@ const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
 
 const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
 
+function methodForGetEquivalentPolicy(method: string): string {
+  return method === 'HEAD' ? 'GET' : method;
+}
+
 async function shouldReserveGatewayDirectLlmQuota(request: Request, pathname: string): Promise<boolean> {
   if (!DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(pathname)) return false;
-  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== request.method) return false;
+  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== methodForGetEquivalentPolicy(request.method)) return false;
   if (pathname !== '/api/news/v1/summarize-article') return true;
 
   const contentLength = Number(request.headers.get('Content-Length') ?? '0');
@@ -1205,7 +1209,7 @@ export function createDomainGateway(
     // Cloud deployments do not set LOCAL_API_MODE=docker, and every other
     // premium route retains forceKey + entitlement enforcement below.
     const isDockerSelfHostCountryBrief =
-      request.method === 'GET' &&
+      (request.method === 'GET' || request.method === 'HEAD') &&
       pathname === COUNTRY_INTEL_BRIEF_PATH &&
       process.env.LOCAL_API_MODE === 'docker';
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
