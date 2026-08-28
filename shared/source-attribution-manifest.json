@@ -13990,6 +13990,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/_cors.js"
+        },
+        {
           "path": "api/a2a.ts"
         },
         {
