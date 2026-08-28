@@ -77,8 +77,17 @@ function recordServe(env, ctx, { tier, outcome, reason, durationMs, cf }) {
 function serveFromKv(env, ctx, { tier, body, cf, started, corsHeaders }) {
   recordServe(env, ctx, { tier, outcome: 'served', reason: null, durationMs: Date.now() - started, cf });
   // Mirror the headers the origin sets for this route (the Worker is the CORS source of truth, so
-  // corsHeaders is spread first). x-vercel-* / age are intentionally absent; the source marker
-  // makes a KV-served response identifiable in curl/devtools.
+  // corsHeaders is spread first). corsHeaders is the caller's PUBLIC bootstrap shape — ACAO:*, no
+  // Allow-Credentials, no Vary: Origin — matching what api/bootstrap.js returns for a `?public=1`
+  // tier URL; the credentialed bag here was #7308. x-vercel-* / age are intentionally absent; the
+  // source marker makes a KV-served response identifiable in curl/devtools.
+  //
+  // Cache-Control stays `no-store`, deliberately. A Worker-generated Response is never stored by
+  // the Cloudflare cache, so the shared lifetime this path has is the POP-local KV read
+  // (TIER_CACHE_TTL_S) bounded by classifyKvEnvelope's KTD4 staleness gate — not a CDN entry. A
+  // CDN-Cache-Control here would advertise a shared lifetime nothing honours, and a browser
+  // max-age would let a cache replay masquerade as a fresh transfer sample in the bootstrap RUM
+  // (#7047) — the same reason api/bootstrap.js serves no-store on this URL today.
   return new Response(body, {
     status: 200,
     headers: {
@@ -99,6 +108,10 @@ function serveFromKv(env, ctx, { tier, body, cf, started, corsHeaders }) {
  * KV is not servable / too slow, or null when this isn't a servable request at all (so the caller
  * runs its normal pass-through). fetchOrigin is the caller's single origin+CORS path — invoked at
  * most once here, so origin is fetched exactly once across the whole request. Never throws.
+ *
+ * corsHeaders must be the PUBLIC bootstrap shape (#7308). The caller decides that, because it is
+ * also the one that knows whether the request's Origin is allowed at all — a disallowed Origin is
+ * never routed here, so this function can spread what it is given without re-deciding.
  */
 export async function maybeServeBootstrapFromKv(request, url, env, ctx, corsHeaders, fetchOrigin) {
   if (!env?.BOOTSTRAP_KV) return null;

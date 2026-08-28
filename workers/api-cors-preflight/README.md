@@ -58,7 +58,9 @@ npm run deploy
 cd workers/api-cors-preflight && npm test
 
 # Live smoke test against prod. Gated by env var so it doesn't run in PR gates
-# (false positives during deploys).
+# (false positives during deploys). Run this AFTER a Worker deploy: it is the
+# only guard that reads the bytes users receive, including the KV-served
+# bootstrap tiers that never reach api/bootstrap.js.
 LIVE_SMOKE=1 tsx --test tests/cors-preflight-live.test.mjs
 ```
 
@@ -69,6 +71,36 @@ The Worker's allowlist + Allow-Headers list **must be a superset of** what
 function would accept, the browser sees a mismatched origin echo and CORS
 rejects the request. Drift between the two is the load-bearing trap this
 package exists to make visible. Update both files together.
+
+### The public bootstrap tiers are the exception
+
+`GET /api/bootstrap?tier=<fast|slow>&public=1` is answered with the **public**
+shape — ACAO `*`, no `Access-Control-Allow-Credentials`, no `Vary: Origin` —
+mirroring `api/bootstrap.js#getPublicBootstrapHeaders()`. The payload is the
+shared seed bundle, identical for every caller, so keying it by Origin costs a
+cache entry per origin and buys nothing, and advertising credentialed access on
+a response no credential can change is what #7308 was filed about. Both edge
+paths use it: the KV-served bytes and the origin pass-through, so the shape does
+not depend on which one answered.
+
+Two deliberate carve-outs inside that exception:
+
+- **A disallowed Origin is never served from KV and keeps the credentialed
+  bag.** `api/bootstrap.js` refuses those with 403 before it reads a payload;
+  handing one ACAO `*` at the edge would widen access the origin denies.
+- **The KV-served response stays `Cache-Control: no-store` with no
+  `CDN-Cache-Control`.** A Worker-generated `Response` is never stored by the
+  Cloudflare cache, so this path's shared lifetime is the POP-local KV read
+  (`TIER_CACHE_TTL_S`) bounded by `classifyKvEnvelope`'s staleness gate — not a
+  CDN entry. Declaring an `s-maxage` nothing honours would be worse than saying
+  `no-store`. The origin fallback for the same URL does sit behind Vercel's CDN
+  and keeps its `CDN-Cache-Control` shield untouched.
+
+`tests/cors-preflight-live.test.mjs` asserts all of this against a **deployed**
+URL. The handler-level guard in `api/bootstrap-auth.test.mjs` cannot: it calls
+`handler()` directly, so it never sees what the edge does to the bytes
+afterwards. Both read the same assertions from
+`tests/helpers/public-bootstrap-contract.mjs`.
 
 ## Related learning
 

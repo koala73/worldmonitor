@@ -515,3 +515,99 @@ test('502 fallback when origin throws still includes CORS headers', async () => 
     globalThis.fetch = original;
   }
 });
+
+// --- public bootstrap tier shape (#7308) ----------------------------------
+//
+// `/api/bootstrap?tier=<fast|slow>&public=1` is the one Worker-owned route
+// whose Vercel handler deliberately answers with the PUBLIC shape
+// (api/bootstrap.js#getPublicBootstrapHeaders: ACAO:*, no Allow-Credentials,
+// no Vary: Origin) so a single entry can answer every caller. Stamping the
+// Worker's credentialed bag over it re-keyed the response by Origin and put
+// Allow-Credentials: true on an unauthenticated payload that also carries
+// Timing-Allow-Origin: *.
+
+const PUBLIC_TIER_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1';
+
+function assertPublicBootstrapShape(resp, label) {
+  assert.equal(resp.headers.get('access-control-allow-origin'), '*', `${label}: ACAO must be *`);
+  assert.equal(resp.headers.get('access-control-allow-credentials'), null, `${label}: no Allow-Credentials`);
+  assert.equal(
+    (resp.headers.get('vary') || '').toLowerCase().split(',').map((s) => s.trim()).includes('origin'),
+    false,
+    `${label}: Vary must not name Origin; got ${resp.headers.get('vary')}`,
+  );
+}
+
+test('public bootstrap tier pass-through keeps the origin public shape, not the credentialed bag', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store',
+      'CDN-Cache-Control': 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
+      'Timing-Allow-Origin': '*',
+      Vary: 'accept-encoding',
+    },
+  });
+  try {
+    const resp = await worker.fetch(makeRequest('GET', PUBLIC_TIER_URL, { Origin: KNOWN_GOOD }));
+    assertPublicBootstrapShape(resp, 'tier pass-through');
+    assert.equal(resp.headers.get('timing-allow-origin'), '*');
+    // The origin's shared-cache declaration is the only CDN lifetime this path
+    // has; the Worker must not drop it while rewriting CORS.
+    assert.equal(
+      resp.headers.get('cdn-cache-control'),
+      'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
+    );
+    assert.equal(resp.headers.get('vary'), 'accept-encoding');
+    assert.equal(resp.headers.get('access-control-allow-headers'), ACAH_EXPECTED);
+    assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('public bootstrap tier pass-through with no Origin header is still the public shape', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', { status: 200 });
+  try {
+    const resp = await worker.fetch(makeRequest('GET', PUBLIC_TIER_URL));
+    assertPublicBootstrapShape(resp, 'no-Origin tier pass-through');
+    // Merging an absent origin Vary with an absent Worker Vary must leave the
+    // header off entirely, not set it to the empty string.
+    assert.equal(resp.headers.get('vary'), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a disallowed Origin on the public tier URL keeps the credentialed fallback echo', async () => {
+  // api/bootstrap.js rejects a disallowed Origin with 403 before it reads any
+  // payload. Handing that caller ACAO:* would make the seed bundle readable by
+  // a page the origin refuses, so the Worker must not widen it here.
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('Forbidden', { status: 403 });
+  try {
+    const resp = await worker.fetch(makeRequest('GET', PUBLIC_TIER_URL, { Origin: 'https://evil.example' }));
+    assert.notEqual(resp.headers.get('access-control-allow-origin'), '*');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('the credentialed bootstrap URL (no public=1) keeps the Origin-echoing shape', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', { status: 200 });
+  try {
+    const resp = await worker.fetch(
+      makeRequest('GET', 'https://api.worldmonitor.app/api/bootstrap?tier=fast', { Origin: KNOWN_GOOD }),
+    );
+    assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
+    assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+    assert.match(resp.headers.get('vary') || '', /Origin/i);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

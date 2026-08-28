@@ -84,7 +84,65 @@ test('served CORS headers are identical to the origin pass-through the Worker wo
     assert.equal(served.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
     assert.equal(passthru.headers.get('X-Origin'), 'vercel');
     assert.deepEqual(corsOf(served), corsOf(passthru), 'CORS/Vary identical served vs pass-through');
-    assert.equal(served.headers.get('Access-Control-Allow-Credentials'), 'true');
+  } finally { restore(); }
+});
+
+// #7308: the served bytes must carry api/bootstrap.js's PUBLIC header shape
+// (getPublicBootstrapHeaders: ACAO:*, no Allow-Credentials, no Vary: Origin),
+// not the Worker's credentialed bag. The origin handler reaches that shape only
+// for public auth kinds, and `?tier=<t>&public=1` is exactly one of them; the
+// edge previously made no such distinction, so an unauthenticated seed payload
+// went out with Allow-Credentials: true alongside Timing-Allow-Origin: *.
+test('the KV-served public tier carries the origin public header shape (#7308)', async () => {
+  const restore = installFetch();
+  try {
+    const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null);
+    assert.equal(res.headers.get('Vary'), null, 'a caller-invariant payload must not be keyed by Origin');
+    assert.equal(res.headers.get('Timing-Allow-Origin'), '*');
+  } finally { restore(); }
+});
+
+test('a disallowed Origin is never answered from KV (the origin 403 still decides)', async () => {
+  // api/bootstrap.js#isDisallowedOrigin refuses these before reading a payload.
+  // Serving them the ACAO:* public shape from KV would hand the seed bundle to
+  // a page the origin rejects, so the edge falls through and lets it answer.
+  const restore = installFetch();
+  try {
+    const evil = new Request(FAST_URL, { method: 'GET', headers: { Origin: 'https://evil.example' } });
+    const res = await worker.fetch(evil, makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, 'not served from KV');
+    assert.equal(res.headers.get('X-Origin'), 'vercel', 'reached origin');
+    assert.notEqual(res.headers.get('Access-Control-Allow-Origin'), '*');
+  } finally { restore(); }
+});
+
+test('no-Origin callers (curl, server-side, RUM beacons) are served the public shape from KV', async () => {
+  const restore = installFetch();
+  try {
+    const anon = new Request(FAST_URL, { method: 'GET' });
+    const res = await worker.fetch(anon, makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('Vary'), null);
+  } finally { restore(); }
+});
+
+test('the KV-served tier stays browser-no-store — the POP-local KV read is the cache', async () => {
+  // Deliberate, and pinned so it reads as a decision rather than an omission:
+  // a Worker-generated Response is never stored by the Cloudflare cache, so the
+  // shared lifetime this path has is the KV read's own cacheTtl at the POP,
+  // bounded by classifyKvEnvelope's staleness gate. A CDN-Cache-Control here
+  // would advertise a shared lifetime nothing honours, and a browser max-age
+  // would let a cache replay masquerade as a fresh transfer sample in the
+  // bootstrap RUM (#7047) — the same reason the origin serves no-store today.
+  const restore = installFetch();
+  try {
+    const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
   } finally { restore(); }
 });
 
