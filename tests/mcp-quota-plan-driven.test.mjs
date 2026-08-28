@@ -31,8 +31,10 @@
 // mcp-quota-no-refund.test.mjs), and each of those is independently runnable at
 // a fraction of the 3k-line suite's cost.
 
+import { readFileSync } from 'node:fs';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { fileURLToPath } from 'node:url';
 
 import {
   BASE_URL,
@@ -155,7 +157,7 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     assert.equal(res.floor, 0);
   });
 
-  it('F4 overshoot clamp converges on the PLAN limit, not on 50', async () => {
+    it('F4 overshoot clamp converges on the PLAN limit, not on 50', async () => {
     // Counter stuck 30 above a 250 cap (failed DECR rollbacks). One over-cap
     // call must drive it back to exactly 250 — clamping to 50 would wrongly
     // hand the user 200 free calls.
@@ -163,6 +165,71 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     const res = await reserveQuota('u1', pipe.pipeline, 250);
     assert.equal(res.ok, false);
     assert.equal(pipe.count, 250, 'clamp target is the resolved plan limit');
+  });
+
+  it('concurrent overshoot rejections never clamp below the plan limit (#7272)', async () => {
+    // Reachable interleaving on origin/main: counter already overshot at 52,
+    // limit 50. A and B both INCR, A rollback+clamps an aggregate that still
+    // includes B's live increment, then B rollbacks and the meter lands at 49.
+    const pipe = makePipelineMock({ initialCount: 52 });
+    const results = await Promise.all([
+      reserveQuota('u1', pipe.pipeline, 50),
+      reserveQuota('u1', pipe.pipeline, 50),
+    ]);
+    assert.ok(results.every((r) => r.ok === false && r.reason === 'cap-exceeded'));
+    assert.equal(
+      results[0].floor,
+      50,
+      'plan-driven floor must stay 50',
+    );
+    assert.ok(
+      pipe.count >= 50,
+      `counter must never fall below the limit after concurrent rejection recovery; got ${pipe.count}`,
+    );
+  });
+
+  it('concurrent overshoot rejections on a 250-call plan never clamp below 250', async () => {
+    const pipe = makePipelineMock({ initialCount: 252 });
+    const results = await Promise.all([
+      reserveQuota('u1', pipe.pipeline, 250),
+      reserveQuota('u1', pipe.pipeline, 250),
+    ]);
+    assert.ok(results.every((r) => r.ok === false && r.reason === 'cap-exceeded' && r.floor === 250));
+    assert.ok(
+      pipe.count >= 250,
+      `plan-driven clamp must stay at or above 250; got ${pipe.count}`,
+    );
+  });
+
+  it('unlimited concurrent reserves still meter and never reject (#7272)', async () => {
+    const pipe = makePipelineMock({ initialCount: 100_000 });
+    const results = await Promise.all([
+      reserveQuota('u1', pipe.pipeline, null),
+      reserveQuota('u1', pipe.pipeline, null),
+    ]);
+    assert.ok(results.every((r) => r.ok === true));
+    assert.equal(pipe.count, 100_002, 'unlimited must stay metered under concurrency');
+  });
+
+  it('EVAL/Redis failure still fail-closes before dispatch', async () => {
+    const pipe = makePipelineMock({ throwOnIncr: true });
+    const res = await reserveQuota('u1', pipe.pipeline, 50);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'redis-unavailable');
+    assert.equal(pipe.count, 0, 'a failed EVAL must not move the counter');
+  });
+
+  it('reservation recovery is a single EVAL, not a post-rollback probe clamp', () => {
+    const source = readFileSync(fileURLToPath(new URL('../api/mcp/quota.ts', import.meta.url)), 'utf8');
+    assert.match(source, /RESERVE_QUOTA_SCRIPT/, 'reserveQuota must ship a Redis script');
+    assert.match(source, /redis\.call\('INCR'/, 'script must INCR first');
+    assert.match(source, /redis\.call\('DECR'/, 'script must owner-rollback on reject');
+    assert.match(source, /redis\.call\('SET'/, 'script must clamp residue atomically');
+    assert.doesNotMatch(
+      source,
+      /postRollbackCount/,
+      'the racy INCR/DECR probe clamp must not return — it undercounts concurrent rollbacks',
+    );
   });
 });
 

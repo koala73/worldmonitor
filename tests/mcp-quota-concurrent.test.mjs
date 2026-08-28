@@ -12,13 +12,14 @@
 // Case 2 — F4 overshoot recovery. With the counter pre-seeded ABOVE the
 // cap (a Redis-hiccup scenario where a prior burst's DECR rollbacks
 // failed and left the counter stuck high), a single over-cap call must
-// drive the counter back DOWN to the cap via the F4 INCR-DECR probe +
-// clamp loop in `reserveQuota`. Without the clamp the user would be
-// 429-locked until the 48 h key TTL. Single-call by design: the F4
-// clamp is sized per-rejection (`Math.min(overshoot, 100)` DECRs), so
-// stacking concurrent rejections each issue their own full clamp pass
-// and over-correct the counter below the cap. That stacked-clamp
-// behaviour is a separate concern and isn't asserted here.
+// drive the counter back DOWN to the cap via the atomic reserve EVAL in
+// `reserveQuota`. Without the clamp the user would be 429-locked until
+// the 48 h key TTL.
+//
+// Case 3 — concurrent F4 recovery (#7272). The same overshot seed with
+// two in-flight rejections must not let one request clamp the other's
+// still-live increment. After both recover, the counter stays at or
+// above the limit.
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -117,16 +118,15 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
   });
 
   // F4 overshoot recovery — single call. Pre-seed the counter ABOVE the
-  // cap to simulate the scenario the clamp loop is designed for: a prior
+  // cap to simulate the scenario the clamp is designed for: a prior
   // burst's DECR rollbacks failed and left the counter stuck high.
-  // One over-cap tools/call must trigger:
-  //   (1) INCR → newCount = overshoot+1 (above cap+1, so probe runs)
-  //   (2) rollback DECR → counter back to seed
-  //   (3) probe INCR+DECR → reads postRollbackCount = seed
-  //   (4) clamp `seed - cap` DECRs → counter ends at cap exactly
+  // One over-cap tools/call must trigger the atomic EVAL:
+  //   (1) INCR → newCount = seed+1 (above cap)
+  //   (2) owner DECR → counter back to seed
+  //   (3) SET to cap when residue remains
   // The discriminating signal is `pipe.count === QUOTA_LIMIT`. Removing
-  // the clamp loop leaves the counter at the seed value (e.g. 80) and
-  // fails this assertion by exact diff.
+  // the clamp leaves the counter at the seed value (e.g. 80) and fails
+  // this assertion by exact diff.
   const PRESEED_OVERSHOOT = 30;
 
   it(`with counter pre-seeded at ${QUOTA_LIMIT + PRESEED_OVERSHOOT} (above cap), a single tools/call drives the F4 clamp; counter converges to exactly ${QUOTA_LIMIT}`, async () => {
@@ -143,6 +143,33 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
     assert.equal(
       pipe.count, QUOTA_LIMIT,
       `F4 clamp must drive counter from ${QUOTA_LIMIT + PRESEED_OVERSHOOT} down to exactly ${QUOTA_LIMIT}; observed ${pipe.count}`,
+    );
+  });
+
+  const OVERSHOT_SEED = QUOTA_LIMIT + 2;
+  const CONCURRENT_OVERSHOT_REJECTIONS = 8;
+
+  it(`#7272: ${CONCURRENT_OVERSHOT_REJECTIONS} concurrent tools/call at overshot count=${OVERSHOT_SEED} all 429 and the counter never falls below ${QUOTA_LIMIT}`, async () => {
+    const { deps, pipe } = makeProDeps({
+      pipelineOpts: { initialCount: OVERSHOT_SEED },
+    });
+
+    const calls = Array.from({ length: CONCURRENT_OVERSHOT_REJECTIONS },
+      () => mcpHandler(proReq('POST', callBody('get_market_data')), deps));
+    const responses = await Promise.all(calls);
+    const rejectedBodies = await Promise.all(responses.map((r) => r.json()));
+
+    assert.ok(
+      responses.every((r) => r.status === 429),
+      `every overshot call must 429; statuses=${responses.map((r) => r.status).join(',')}`,
+    );
+    assert.ok(
+      rejectedBodies.every((b) => b?.error?.code === -32029),
+      'every rejection must carry JSON-RPC code -32029',
+    );
+    assert.ok(
+      pipe.count >= QUOTA_LIMIT,
+      `concurrent rejection recovery must not undercount below ${QUOTA_LIMIT}; observed ${pipe.count}`,
     );
   });
 });
