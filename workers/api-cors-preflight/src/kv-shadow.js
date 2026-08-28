@@ -13,7 +13,10 @@
 // is a fixed allowlist — never a request, user, credential, or header field.
 
 import { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
+import { KV_ENVELOPE_SCHEMA_VERSION } from './kv-envelope-schema.js';
 import { isBootstrapKvServingTier } from './kv-serve-mode.js';
+
+export { KV_ENVELOPE_SCHEMA_VERSION } from './kv-envelope-schema.js';
 
 export { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
 
@@ -45,6 +48,7 @@ export function classifyKvEnvelope(tier, raw, now) {
     return { outcome: 'fallback', reason: 'invalid' };
   }
   if (!isPlainObject(envelope)
+    || envelope.schemaVersion !== KV_ENVELOPE_SCHEMA_VERSION
     || envelope.tier !== tier
     || !Number.isFinite(envelope.generatedAt)
     || !Number.isInteger(envelope.generatedAt)

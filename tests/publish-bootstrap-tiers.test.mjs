@@ -11,6 +11,7 @@ import {
   runPublisherLoop,
 } from '../scripts/publish-bootstrap-tiers.mjs';
 import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
+import { KV_ENVELOPE_SCHEMA_VERSION } from '../workers/api-cors-preflight/src/kv-envelope-schema.js';
 import {
   CANADA_ALERTS_LEGACY_KEY,
   CANADA_ALERTS_SIBLING_KEY,
@@ -244,6 +245,7 @@ describe('publishBootstrapTier', () => {
     assert.equal(writes.length, 1);
     assert.equal(writes[0][1], 'fast.json');
     assert.deepEqual(writes[0][2], {
+      schemaVersion: KV_ENVELOPE_SCHEMA_VERSION,
       generatedAt: 1_721_000_000_000,
       tier: 'fast',
       payload: { data: { example: { answer: 42 } }, missing: [] },

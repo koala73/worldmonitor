@@ -12,13 +12,19 @@ import {
   __resetKvShadowForTests,
   bootstrapTierFromPublicRequest,
   classifyKvEnvelope,
+  KV_ENVELOPE_SCHEMA_VERSION,
   maybeShadowKvRead,
   TIER_MAX_AGE_MS,
 } from './src/kv-shadow.js';
 
 const BOOT_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1';
 const freshEnvelope = (tier = 'fast', ageMs = 0) =>
-  JSON.stringify({ tier, generatedAt: Date.now() - ageMs, payload: { data: {}, missing: [] } });
+  JSON.stringify({
+    schemaVersion: KV_ENVELOPE_SCHEMA_VERSION,
+    tier,
+    generatedAt: Date.now() - ageMs,
+    payload: { data: {}, missing: [] },
+  });
 
 // Route global fetch: Axiom POSTs are captured; everything else is a canned "origin" response.
 function installFetch(onAxiom, { axiomStatus = 200, axiomError = null } = {}) {
@@ -206,4 +212,19 @@ test('classifyKvEnvelope decides serve-vs-fallback like the serving path', () =>
   assert.equal(classifyKvEnvelope('fast', 'garbage{', now).reason, 'invalid');
   assert.equal(classifyKvEnvelope('fast', JSON.stringify({ tier: 'fast', generatedAt: now, payload: [] }), now).reason, 'invalid');
   assert.equal(classifyKvEnvelope('fast', JSON.stringify({ tier: 'fast', generatedAt: now + 6 * 60_000, payload: { data: {}, missing: [] } }), now).reason, 'invalid');
+});
+
+test('classifyKvEnvelope rejects a legacy unversioned envelope as invalid', () => {
+  const now = Date.now();
+  const payload = { data: {}, missing: [] };
+  const legacy = JSON.stringify({ tier: 'fast', generatedAt: now, payload });
+  assert.deepEqual(classifyKvEnvelope('fast', legacy, now), { outcome: 'fallback', reason: 'invalid' });
+  assert.equal(
+    classifyKvEnvelope('fast', JSON.stringify({ schemaVersion: KV_ENVELOPE_SCHEMA_VERSION + 1, tier: 'fast', generatedAt: now, payload }), now).reason,
+    'invalid',
+  );
+  assert.equal(
+    classifyKvEnvelope('fast', JSON.stringify({ schemaVersion: String(KV_ENVELOPE_SCHEMA_VERSION), tier: 'fast', generatedAt: now, payload }), now).reason,
+    'invalid',
+  );
 });
