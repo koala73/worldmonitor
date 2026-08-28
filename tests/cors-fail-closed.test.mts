@@ -225,6 +225,7 @@ describe('CORS triplet parity — Google Translate + trailing-dot helpers stay i
   }
 });
 
+describe('CORS triplet parity — eliewm preview pattern stays tight in all three twins', () => {
   // Root cause of the original 403s was twins drifting. THREE surfaces gate
   // Vercel-preview CORS and must move together; guard each for:
   // (1) the eliewm-scoped preview pattern is present, and
