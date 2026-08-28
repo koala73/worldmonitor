@@ -122,6 +122,17 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'e2e/embed.spec.ts',
 ] as const;
 
+const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
+  'tests/docs-i18n-parity.test.mjs',
+  'tests/webmcp-inventory.test.mts',
+  'tests/webmcp.test.mjs',
+  'tests/webmcp-dashboard.test.mts',
+  'tests/webmcp-runtime.test.mjs',
+  'tests/webmcp-analytics-policy.test.mjs',
+  'tests/webmcp-evals.test.mjs',
+  'tests/deploy-config.test.mjs',
+] as const;
+
 function sectionBetween(guide: string, startHeading: string, endHeading: string): string {
   const start = guide.indexOf(startHeading);
   const end = guide.indexOf(endHeading, start + startHeading.length);
@@ -164,6 +175,7 @@ function assertGuideContract(
     journeys: string;
     sourceMap: string;
     verification: string;
+    verificationEnd: string;
   },
 ) {
   assert.deepEqual(
@@ -185,6 +197,10 @@ function assertGuideContract(
   );
   assert.deepEqual(sourcePaths, WEBMCP_MAINTAINER_SOURCES);
   for (const source of sourcePaths) assertMaintainerSourceExists(source);
+  const verification = sectionBetween(guide, headings.verification, headings.verificationEnd);
+  const focusedTestPaths = [...verification.matchAll(/^\s{2}(tests\/[^\s\\]+)(?:\s+\\)?$/gm)]
+    .map((match) => match[1]);
+  assert.deepEqual(focusedTestPaths, WEBMCP_FOCUSED_VERIFICATION_TESTS);
   assert.match(guide, /target_cancellation_unsupported/);
   assert.match(guide, /WebMcpToolError/);
   assert.match(guide, /--test-concurrency=1/);
@@ -316,6 +332,7 @@ describe('WebMCP canonical inventories', () => {
           journeys: '## Common browser-agent journeys',
           sourceMap: '### Source map',
           verification: '### Verification ladder',
+          verificationEnd: '## Compatibility and removal policy',
         },
       },
       {
@@ -327,6 +344,7 @@ describe('WebMCP canonical inventories', () => {
           journeys: '## 常见浏览器智能体流程',
           sourceMap: '### 源文件图',
           verification: '### 验证阶梯',
+          verificationEnd: '## 兼容与移除策略',
         },
       },
     ];
@@ -345,6 +363,7 @@ describe('WebMCP canonical inventories', () => {
       journeys: '## Common browser-agent journeys',
       sourceMap: '### Source map',
       verification: '### Verification ladder',
+      verificationEnd: '## Compatibility and removal policy',
     };
     assert.throws(() => assertGuideContract(guide.replace(/^\| `openSearch` .*$/m, ''), headings));
     assert.throws(() => assertGuideContract(guide.replace(/^\| `src\/App\.ts` .*$/m, ''), headings));
@@ -367,6 +386,9 @@ describe('WebMCP canonical inventories', () => {
       ),
     );
     assert.throws(() => assertGuideContract(guide.replace('### Source map', '### Sources'), headings));
+    assert.throws(() =>
+      assertGuideContract(guide.replace(/^\s{2}tests\/webmcp-dashboard\.test\.mts \\\n/m, ''), headings),
+    );
   });
 });
 
