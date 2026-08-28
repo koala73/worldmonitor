@@ -94,7 +94,7 @@ const KNOWN_VIOLATIONS = {
   'Ocean-Ice:seed-climate-ocean-ice.mjs': '24h TTL vs 24h cron (1×)',
 
   // ── Energy ──
-  'JODI-Gas:seed-jodi-gas.mjs': '35d TTL vs 35d cron (1×)',
+  'JODI-Gas:seed-jodi-gas.mjs': '70d TTL vs 35d cron (2×) — one missed-cycle buffer; 3× would be 105d',
 
   // ── Portwatch ──
   'PW-Disruptions:seed-portwatch-disruptions.mjs': '2h TTL vs 1h cron (2×) — borderline',

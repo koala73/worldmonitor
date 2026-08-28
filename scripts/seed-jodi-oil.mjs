@@ -38,7 +38,7 @@ const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json')
 
 export const CANONICAL_KEY = 'energy:jodi-oil:v1:_countries';
 export const COUNTRY_KEY_PREFIX = 'energy:jodi-oil:v1:';
-export const JODI_TTL = 3_024_000; // 35 days
+export const JODI_TTL = 70 * 24 * 3600; // 70 days: 2× 35d cadence so one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
 const META_KEY = 'seed-meta:energy:jodi-oil';
 const LOCK_DOMAIN = 'energy:jodi-oil';
 const LOCK_TTL_MS = 10 * 60 * 1000;
