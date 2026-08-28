@@ -2072,6 +2072,108 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'get_imd_cyclone_marine',
+    _outputBudgetBytes: 65536,
+    description:
+      'Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. ' +
+      'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY. ' +
+      'Read coverageState on every call: disabled means IMD_API_KEY is missing, degraded is a partial product failure, unavailable means no usable IMD snapshot, and ok is live. ' +
+      'Empty lists with disabled, degraded, or unavailable coverage are not an India all-clear.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: ['cyclone', 'port', 'marine'] },
+          description: 'Restrict to cyclone tracks/wind/cones, port warnings, or sea-area/coastal bulletins. Omit for the full snapshot. coverageState and per-product health are always returned.',
+        },
+        limit: { type: 'number', description: 'Cap each product list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      imd_cyclone_marine: {
+        type: ['object', 'null'],
+        properties: {
+          coverageState: { type: 'string', enum: ['ok', 'disabled', 'degraded', 'unavailable'] },
+          skipReason: { type: ['string', 'null'] },
+          generatedAt: { type: 'number' },
+          products: { type: 'object', additionalProperties: { type: 'object', properties: {
+            status: { type: 'string' },
+            reason: { type: ['string', 'null'] },
+            recordCount: { type: 'number' },
+            warningCount: { type: 'number' },
+            carried: { type: 'boolean' },
+          } } },
+          failedProducts: { type: 'array', items: { type: 'string' } },
+          cycloneEvents: { type: 'array', items: { type: 'object' } },
+          portAlerts: { type: 'array', items: { type: 'object' } },
+          marineBulletins: { type: 'array', items: { type: 'object' } },
+          cyclones: { type: 'array', items: { type: 'object' } },
+          windRadii: { type: 'array', items: { type: 'object' } },
+          cones: { type: 'array', items: { type: 'object' } },
+          portWarnings: { type: 'array', items: { type: 'object' } },
+          seaBulletins: { type: 'array', items: { type: 'object' } },
+          coastalBulletins: { type: 'array', items: { type: 'object' } },
+          sourceName: { type: 'string' },
+          sourceUrl: { type: 'string' },
+          attribution: { type: 'string' },
+        },
+        required: ['coverageState'],
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      let snapshot = data.imd_cyclone_marine;
+      // A legacy or corrupt cache value must not look like an India all-clear.
+      // The wire contract requires coverageState on every usable object, so
+      // replace an unexpected value with the explicit unavailable state.
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+        snapshot = { coverageState: 'unavailable', skipReason: 'IMD_CACHE_INVALID' };
+        data.imd_cyclone_marine = snapshot;
+      }
+      const rec = snapshot as Record<string, unknown>;
+      if (!['ok', 'disabled', 'degraded', 'unavailable'].includes(argStr(rec.coverageState))) {
+        rec.coverageState = 'unavailable';
+        rec.skipReason = 'IMD_CACHE_INVALID';
+      }
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
+      const listKeys = [
+        'cyclones', 'windRadii', 'cones', 'portWarnings', 'seaBulletins',
+        'coastalBulletins', 'cycloneEvents', 'portAlerts', 'marineBulletins', 'records',
+      ] as const;
+      for (const key of listKeys) capNested(data, 'imd_cyclone_marine', key, limit);
+
+      const datasets = argStrList(params.dataset);
+      if (datasets.length > 0) {
+        const keep = new Set<string>();
+        if (datasets.includes('cyclone')) {
+          keep.add('cyclones');
+          keep.add('windRadii');
+          keep.add('cones');
+          keep.add('cycloneEvents');
+        }
+        if (datasets.includes('port')) {
+          keep.add('portWarnings');
+          keep.add('portAlerts');
+        }
+        if (datasets.includes('marine')) {
+          keep.add('seaBulletins');
+          keep.add('coastalBulletins');
+          keep.add('marineBulletins');
+        }
+        for (const key of listKeys) {
+          if (!keep.has(key) && Array.isArray(rec[key])) rec[key] = [];
+        }
+      }
+      return data;
+    },
+    _cacheKeys: ['weather:imd-cyclone-marine:v1'],
+    _cacheLabels: { 'weather:imd-cyclone-marine:v1': 'imd_cyclone_marine' },
+    _freshnessChecks: [{ key: 'seed-meta:weather:imd-cyclone-marine', maxStaleMin: 45 }],
+    _apiPaths: [],
+  },
+  {
     name: 'get_infrastructure_status',
     _outputBudgetBytes: 131072,
     description: 'Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.',

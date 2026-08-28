@@ -860,6 +860,23 @@
       ]
     },
     {
+      "host": "api.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. World Monitor public-display and redistribution rights are validated.",
+      "attribution": "Data source: India Meteorological Department. Link https://api.imd.gov.in/public/api_reference.html and the official product page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
+        },
+        {
+          "path": "src/app/data-loader.ts"
+        }
+      ]
+    },
+    {
       "host": "api.imf.org",
       "provider": "api.imf.org",
       "kind": "structured",
@@ -5848,6 +5865,20 @@
       ]
     },
     {
+      "host": "mausam.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official IMD visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department. Link the official marine/coastal bulletin page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
+        }
+      ]
+    },
+    {
       "host": "mcp.linear.app",
       "provider": "Linear MCP",
       "kind": "structured",
@@ -7615,6 +7646,20 @@
       "references": [
         {
           "path": "scripts/seed-resilience-static.mjs"
+        }
+      ]
+    },
+    {
+      "host": "rsmcnewdelhi.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official RSMC New Delhi visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department / RSMC New Delhi. Link https://rsmcnewdelhi.imd.gov.in/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
         }
       ]
     },
