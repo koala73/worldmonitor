@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import type { ServerContext } from '../src/generated/server/worldmonitor/infrastructure/v1/service_server.ts';
+import { ApiError } from '../src/generated/server/worldmonitor/infrastructure/v1/service_server.ts';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
+import { __resetRateLimitForTest as resetServerRateLimit } from '../server/_shared/rate-limit.ts';
 import { reverseGeocode } from '../server/worldmonitor/infrastructure/v1/reverse-geocode.ts';
+import edgeReverseGeocode from '../api/reverse-geocode.js';
+import { __resetRateLimitForTest as resetEdgeRateLimit } from '../api/_rate-limit.js';
 import { GEOCODE_CACHE_DECIMALS, geocodeCacheCell, geocodeCacheKey } from '../shared/geocode-cache-key.js';
 import {
   GEOCODE_CACHE_DECIMALS as edgeDecimals,
@@ -33,6 +37,35 @@ function json(value: unknown): Response {
   });
 }
 
+interface LimiterWire {
+  keys: string[];
+  limit: number;
+}
+
+function readLimiterWire(init?: RequestInit): LimiterWire | null {
+  let parsed: unknown;
+  try { parsed = JSON.parse(String(init?.body)); } catch { return null; }
+  const candidate = parsed as unknown[];
+  const command = Array.isArray(candidate?.[0]) ? candidate[0] as unknown[] : candidate;
+  if (!Array.isArray(command) || !['eval', 'evalsha'].includes(String(command[0]).toLowerCase())) return null;
+  const numKeys = Number(command[2]);
+  const rest = command.slice(3);
+  return {
+    keys: rest.slice(0, numKeys).filter((key): key is string => typeof key === 'string'),
+    limit: Number(rest[numKeys]),
+  };
+}
+
+function limiterReply(remaining: number, limit: number): Response {
+  return json([{ result: [remaining, limit] }]);
+}
+
+function allowLimiter(init?: RequestInit): Response {
+  const wire = readLimiterWire(init);
+  assert.ok(wire, 'expected an Upstash limiter command');
+  return limiterReply(wire.limit - 1, wire.limit);
+}
+
 function configurePreviewRedis(): void {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
@@ -46,6 +79,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   restoreEnv();
   __resetKeyPrefixCacheForTests();
+  resetServerRateLimit();
+  resetEdgeRateLimit();
   __resetReverseGeocodeCacheForTests();
 });
 
@@ -90,6 +125,7 @@ describe('reverse-geocode shared cache contract', () => {
         assert.equal(url, 'https://redis.example.test/get/preview%3Adeadbeef%3Ageocode%3A0.000%2C-150.000');
         return json({ result: null });
       }
+      if (url === 'https://redis.example.test/pipeline') return allowLimiter(init);
       if (url === 'https://redis.example.test/') {
         redisCommands.push(JSON.parse(String(init?.body)));
         return json({ result: 'OK' });
@@ -134,6 +170,7 @@ describe('reverse-geocode shared cache contract', () => {
         const value = store.get(key);
         return json({ result: value ?? null });
       }
+      if (url === 'https://redis.example.test/pipeline') return allowLimiter(init);
       if (url === 'https://redis.example.test/') {
         const command = JSON.parse(String(init?.body)) as unknown[];
         if (command[0] === 'SET' && typeof command[1] === 'string' && typeof command[2] === 'string') {
@@ -196,6 +233,73 @@ describe('reverse-geocode shared cache contract', () => {
         error: '',
       }),
     );
+  });
+
+  it('shares one provider bucket across distinct callers and both routes', async () => {
+    configurePreviewRedis();
+    let providerBucketConsumed = false;
+    let nominatimCalls = 0;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('https://redis.example.test/get/')) return json({ result: null });
+      if (url === 'https://redis.example.test/pipeline') {
+        const wire = readLimiterWire(init);
+        if (!wire) {
+          const commands = JSON.parse(String(init?.body)) as unknown[];
+          return json(commands.map(() => ({ result: 'OK' })));
+        }
+        const isProviderBucket = wire.keys.some((key) => key.includes('rl:scope:reverse-geocode:global'));
+        if (!isProviderBucket) return limiterReply(wire.limit - 1, wire.limit);
+        if (providerBucketConsumed) return limiterReply(-1, 1);
+        providerBucketConsumed = true;
+        return limiterReply(0, 1);
+      }
+      if (url === 'https://redis.example.test/') return json({ result: 'OK' });
+      if (url.startsWith('https://nominatim.openstreetmap.org/reverse?')) {
+        nominatimCalls += 1;
+        return json({ address: { country: 'United States', country_code: 'us' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    const waited: Promise<unknown>[] = [];
+    const edgeCtx = { waitUntil: (promise: Promise<unknown>) => { waited.push(promise); } };
+    const first = await edgeReverseGeocode(new Request(
+      'https://worldmonitor.app/api/reverse-geocode?lat=40.700&lon=-74.000',
+      { headers: { Origin: 'https://worldmonitor.app', 'x-real-ip': '198.51.100.10' } },
+    ), edgeCtx);
+    const second = await edgeReverseGeocode(new Request(
+      'https://worldmonitor.app/api/reverse-geocode?lat=34.052&lon=-118.244',
+      { headers: { Origin: 'https://worldmonitor.app', 'x-real-ip': '198.51.100.11' } },
+    ), edgeCtx);
+    await Promise.all(waited);
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429, 'a distinct caller IP must share the provider-wide bucket');
+    await assert.rejects(
+      reverseGeocode(context, { lat: 51.507, lon: -0.128 }),
+      (error: unknown) => error instanceof ApiError && error.statusCode === 429,
+      'the gateway RPC must observe the bucket consumed by the edge route',
+    );
+    assert.equal(nominatimCalls, 1, 'only the first aggregate cache miss may reach Nominatim');
+  });
+
+  it('fails closed on a gateway cache miss when limiter storage is unavailable', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    __resetKeyPrefixCacheForTests();
+    let nominatimCalls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('nominatim')) nominatimCalls += 1;
+      return json({ result: null });
+    }) as typeof fetch;
+
+    await assert.rejects(
+      reverseGeocode(context, { lat: 40.7, lon: -74 }),
+      (error: unknown) => error instanceof ApiError && error.statusCode === 503,
+    );
+    assert.equal(nominatimCalls, 0);
   });
 });
 

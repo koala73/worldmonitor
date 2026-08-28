@@ -59,6 +59,25 @@ function upstashReply(remaining, limit) {
   });
 }
 
+function readLimiterWire(init = {}) {
+  let parsed;
+  try { parsed = JSON.parse(String(init.body)); } catch { return null; }
+  const command = Array.isArray(parsed?.[0]) ? parsed[0] : parsed;
+  if (!Array.isArray(command) || !['eval', 'evalsha'].includes(String(command[0]).toLowerCase())) return null;
+  const numKeys = Number(command[2]);
+  const rest = command.slice(3);
+  return {
+    keys: rest.slice(0, numKeys),
+    limit: Number(rest[numKeys]),
+  };
+}
+
+function allowLimiter(init) {
+  const wire = readLimiterWire(init);
+  assert.ok(wire, 'expected an Upstash limiter command');
+  return upstashReply(wire.limit - 1, wire.limit);
+}
+
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
@@ -112,13 +131,13 @@ test('meters invalid coordinates too, so a bad parameter is not a free path', as
 test('allows the request through when the limiter reports headroom', async () => {
   // Positive control. The Upstash base URL serves the limiter EVAL; `/get/` is
   // the cache read, answered as a miss so the request reaches Nominatim.
-  const calls = spyFetch((url) => {
+  const calls = spyFetch((url, init) => {
     if (url.includes('/get/')) {
       return new Response(JSON.stringify({ result: null }), {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (url.includes('fake-upstash')) return upstashReply(59, 60);
+    if (url.includes('fake-upstash')) return allowLimiter(init);
     return new Response(JSON.stringify({
       address: { country: 'United States', country_code: 'us' },
       display_name: 'New York, United States',
@@ -175,6 +194,11 @@ test('normalizes an RPC-shaped shared cache hit in the same preview namespace', 
     error: '',
   });
   assert.equal(nominatimCalls(calls).length, 0, 'a shared cache hit must not reach Nominatim');
+  assert.equal(
+    calls.some((call) => readLimiterWire(call.init)?.keys.some((key) => key.includes('reverse-geocode:global'))),
+    false,
+    'a shared cache hit must bypass the provider-wide bucket',
+  );
   assert.ok(
     calls.some((call) => call.url === 'https://fake-upstash.example/get/preview%3Adeadbeef%3Ageocode%3A40.700%2C-74.000'),
     'the edge route must read the same deployment-prefixed key as the gateway RPC',
@@ -187,7 +211,7 @@ test('caches ocean and Antarctic results too — a sweep of empty cells must not
   // request. The parallel gateway RPC writes those cells unconditionally and
   // both share the geocode: namespace, so this route must too. The mutation
   // is one line: no `if (country && code)` around the write.
-  const calls = spyFetch((url) => {
+  const calls = spyFetch((url, init) => {
     if (url.includes('/get/')) {
       // First request is a cache miss; the write is fire-and-forget so no
       // read-back occurs.
@@ -195,6 +219,7 @@ test('caches ocean and Antarctic results too — a sweep of empty cells must not
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
     }
+    if (url.includes('fake-upstash')) return allowLimiter(init);
     // Ocean in the middle of the Pacific — Nominatim returns no address.
     return new Response(JSON.stringify({
       display_name: '',
@@ -258,7 +283,7 @@ test('does not reuse a 0.1-degree cache cell across a country border (#7279)', a
         });
       }
     }
-    if (url.includes('fake-upstash')) return upstashReply(59, 60);
+    if (url.includes('fake-upstash')) return allowLimiter(init);
     nominatimUrls.push(url);
     const parsed = new URL(url);
     const lat = Number(parsed.searchParams.get('lat'));
@@ -311,9 +336,9 @@ test('does not reuse a 0.1-degree cache cell across a country border (#7279)', a
   }));
 });
 
-test('stays available when Upstash is unconfigured', async () => {
-  // Availability-first: the map degrades to an unlabelled country rather than
-  // failing, so a missing/blipping Redis must not black-hole the route.
+test('fails closed before Nominatim when the provider-wide limiter is unconfigured', async () => {
+  // The caller-level budget remains availability-first, but the aggregate
+  // Nominatim budget is a provider safety boundary and must fail closed.
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -323,10 +348,6 @@ test('stays available when Upstash is unconfigured', async () => {
   }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
   const { ctx } = makeCtx();
 
-  // 200 + one upstream call is satisfied by BOTH the intended path (no limiter
-  // constructed) and the unintended one (a memoized limiter throws and the
-  // handler fails open), so capture the degraded marker to tell them apart —
-  // the same probe the positive control above uses. (#6412 review)
   const errorLogs = [];
   const originalConsoleError = console.error;
   console.error = (...args) => { errorLogs.push(args.join(' ')); };
@@ -337,10 +358,40 @@ test('stays available when Upstash is unconfigured', async () => {
     console.error = originalConsoleError;
   }
 
-  assert.equal(res.status, 200);
-  assert.equal(nominatimCalls(calls).length, 1);
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+  assert.equal(nominatimCalls(calls).length, 0);
   assert.ok(
-    !errorLogs.some((l) => l.includes('[rate-limit] redis-error')),
-    `unconfigured Upstash must skip the limiter entirely, not construct one and fail open: ${errorLogs.join(' | ')}`,
+    errorLogs.some((l) => l.includes('checkRateLimit:missing-config')),
+    `the fail-closed provider limiter must report its degraded decision: ${errorLogs.join(' | ')}`,
   );
+});
+
+test('fails closed before Nominatim when provider limiter storage errors', async () => {
+  const calls = spyFetch((url, init) => {
+    if (url.includes('/get/')) return new Response(JSON.stringify({ result: null }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+    const wire = readLimiterWire(init);
+    if (wire?.keys.some((key) => key.includes('reverse-geocode:global'))) {
+      throw new Error('Redis unavailable');
+    }
+    if (url.includes('fake-upstash')) return allowLimiter(init);
+    return new Response(JSON.stringify({
+      address: { country: 'United States', country_code: 'us' },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  const { ctx } = makeCtx();
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  let res;
+  try {
+    res = await handler(makeRequest('lat=40.7&lon=-74.0', uniqueCallerIp()), ctx);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+  assert.equal(nominatimCalls(calls).length, 0);
 });

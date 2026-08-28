@@ -16,6 +16,13 @@ const CHROME_UA = 'WorldMonitor/2.0 (https://worldmonitor.app)';
 // two copies drift. (#6234)
 const RATE_LIMIT_SCOPE = 'reverse-geocode';
 const RATE_LIMIT_PER_MINUTE = 60;
+// Must match checkScopedRateLimit('reverse-geocode', ..., 'global') in the
+// gateway RPC. checkRateLimit uses `rl:${scope}` as its Redis prefix, so the
+// special `scope` namespace plus this identifier produces the same
+// `rl:scope:reverse-geocode:global` bucket on both routes.
+const PROVIDER_RATE_LIMIT_SCOPE = 'scope';
+const PROVIDER_RATE_LIMIT_IDENTIFIER = 'reverse-geocode:global';
+const PROVIDER_RATE_LIMIT_PER_SECOND = 1;
 
 function normalizeCacheEntry(entry) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
@@ -81,6 +88,20 @@ export default async function handler(req, ctx) {
       },
     });
   }
+
+  // Nominatim permits at most one request per second for the application as a
+  // whole. Apply this only after the shared cache misses so cached traffic is
+  // free, and fail closed because a Redis outage must not turn both routes
+  // into unbounded provider passthrough.
+  const providerLimited = await checkRateLimit(req, cors, {
+    ctx,
+    scope: PROVIDER_RATE_LIMIT_SCOPE,
+    identifier: PROVIDER_RATE_LIMIT_IDENTIFIER,
+    limit: PROVIDER_RATE_LIMIT_PER_SECOND,
+    window: '1 s',
+    failClosed: true,
+  });
+  if (providerLimited) return providerLimited;
 
   try {
     const resp = await fetch(

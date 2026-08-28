@@ -4,11 +4,17 @@ import type {
   ReverseGeocodeRequest,
   ReverseGeocodeResponse,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { checkScopedRateLimit } from '../../../_shared/rate-limit';
 import { geocodeCacheKey } from '../../../../shared/geocode-cache-key.js';
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/reverse';
 const CHROME_UA = 'WorldMonitor/2.0 (https://worldmonitor.app)';
+const PROVIDER_RATE_LIMIT_SCOPE = 'reverse-geocode';
+const PROVIDER_RATE_LIMIT_IDENTIFIER = 'global';
+const PROVIDER_RATE_LIMIT_PER_SECOND = 1;
+const PROVIDER_RATE_LIMIT_WINDOW = '1 s' as const;
 
 interface ReverseCacheEntry {
   country?: string;
@@ -67,6 +73,23 @@ export const reverseGeocode: InfrastructureServiceHandler['reverseGeocode'] = as
   if (cached && typeof cached === 'object') {
     const normalized = normalizeCacheEntry(cached as ReverseCacheEntry);
     if (normalized) return normalized;
+  }
+
+  // Shared with api/reverse-geocode.js as the exact Redis bucket
+  // `rl:scope:reverse-geocode:global`. Cache hits bypass this provider budget;
+  // Redis degradation fails closed so it cannot expose Nominatim to unbounded
+  // aggregate traffic from the two routes.
+  const providerLimit = await checkScopedRateLimit(
+    PROVIDER_RATE_LIMIT_SCOPE,
+    PROVIDER_RATE_LIMIT_PER_SECOND,
+    PROVIDER_RATE_LIMIT_WINDOW,
+    PROVIDER_RATE_LIMIT_IDENTIFIER,
+  );
+  if (providerLimit.degraded) {
+    throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
+  }
+  if (!providerLimit.allowed) {
+    throw new ApiError(429, 'Too many requests', '');
   }
 
   try {
