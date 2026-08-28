@@ -169,8 +169,9 @@ describe('/pro bundle has no bare AbortSignal.timeout call sites', () => {
   });
 
   it('routes every /pro fetch deadline through createTimeoutSignal()', () => {
-    // The production crash came from PricingSection, but App.tsx, teasers.ts,
-    // checkout.ts and entitlement-watchdog.ts all built signals the same way.
+    // The production crash came from PricingSection, but App.tsx, teasers.ts
+    // and checkout.ts all built signals the same way. (entitlement-watchdog.ts
+    // was a fourth until #7222 removed the /pro copy.)
     // Pinning only the one file that happened to page would leave the rest
     // free to regress.
     const offenders = files

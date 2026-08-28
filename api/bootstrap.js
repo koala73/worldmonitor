@@ -154,6 +154,13 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
+  // Planned IMD cyclone/port/coastal/marine seeder on a 15min interval against
+  // a 45min health budget (#7005). The public on-demand URL would otherwise
+  // inherit the 2h slow shield and outlive health's stale declaration.
+  imdCycloneMarine: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
+  },
   // seed-aviation aggregate, 90min health budget. Default 2h on-demand
   // shield would outlive the budget after #7046 moved this key off FAST.
   flightDelays: {

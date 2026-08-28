@@ -124,6 +124,7 @@ import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpEvents, deduplicateAgainstAcled, deduplicateUcdpProjectionAggregates, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
+import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
@@ -2948,10 +2949,26 @@ export class DataLoaderManager implements AppModule {
     } catch { /* silent fail — simulation data is supplementary */ }
   }
 
+  async loadImdCycloneMarine(): Promise<import('@/services/imd-cyclone-marine').ImdMappedProducts> {
+    try {
+      return await fetchImdCycloneMarine();
+    } catch {
+      return {
+        coverageState: 'unavailable',
+        cycloneEvents: [],
+        portAlerts: [],
+        marineBulletins: [],
+        sourceName: 'India Meteorological Department',
+        sourceUrl: 'https://api.imd.gov.in/public/api_reference.html',
+      };
+    }
+  }
+
   async loadNatural(): Promise<void> {
-    const [earthquakeResult, eonetResult] = await Promise.allSettled([
+    const [earthquakeResult, eonetResult, imdResult] = await Promise.allSettled([
       fetchEarthquakes(),
       fetchNaturalEvents(30),
+      this.loadImdCycloneMarine(),
     ]);
 
     if (earthquakeResult.status === 'fulfilled') {
@@ -2967,22 +2984,30 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordError('usgs', String(earthquakeResult.reason));
     }
 
+    const imdEvents = imdResult.status === 'fulfilled' ? imdResult.value.cycloneEvents : [];
     if (eonetResult.status === 'fulfilled') {
-      this.ctx.map?.setNaturalEvents(eonetResult.value);
+      this.ctx.map?.setNaturalEvents([...eonetResult.value, ...imdEvents]);
       this.ctx.statusPanel?.updateFeed('EONET', {
         status: 'ok',
         itemCount: eonetResult.value.length,
       });
       this.ctx.statusPanel?.updateApi('NASA EONET', { status: 'ok' });
     } else {
-      this.ctx.map?.setNaturalEvents([]);
+      this.ctx.map?.setNaturalEvents(imdEvents);
       this.ctx.statusPanel?.updateFeed('EONET', { status: 'error', errorMessage: String(eonetResult.reason) });
       this.ctx.statusPanel?.updateApi('NASA EONET', { status: 'error' });
+    }
+    if (imdResult.status === 'fulfilled' && imdResult.value.coverageState !== 'disabled') {
+      const coverage = imdResult.value.coverageState;
+      this.ctx.statusPanel?.updateFeed('IMD', {
+        status: coverage === 'ok' ? 'ok' : 'error',
+        itemCount: imdEvents.length,
+      });
     }
 
     const hasEarthquakes = earthquakeResult.status === 'fulfilled' && earthquakeResult.value.length > 0;
     const hasEonet = eonetResult.status === 'fulfilled' && eonetResult.value.length > 0;
-    this.ctx.map?.setLayerReady('natural', hasEarthquakes || hasEonet);
+    this.ctx.map?.setLayerReady('natural', hasEarthquakes || hasEonet || imdEvents.length > 0);
   }
 
   async loadTechEvents(): Promise<void> {
@@ -3110,17 +3135,24 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadWeatherAlerts(): Promise<void> {
-    try {
-      const alerts = await fetchWeatherAlerts();
-      this.ctx.map?.setWeatherAlerts(alerts);
-      this.ctx.map?.setLayerReady('weather', alerts.length > 0);
-      this.ctx.statusPanel?.updateFeed('Weather', { status: 'ok', itemCount: alerts.length });
-      dataFreshness.recordUpdate('weather', alerts.length);
-    } catch (error) {
+    const [alertsResult, imdResult] = await Promise.allSettled([
+      fetchWeatherAlerts(),
+      this.loadImdCycloneMarine(),
+    ]);
+    const nws = alertsResult.status === 'fulfilled' ? alertsResult.value : [];
+    const imd = imdResult.status === 'fulfilled' ? imdResult.value : null;
+    const imdMarine = imd ? [...imd.portAlerts, ...imd.marineBulletins] : [];
+    const merged = [...nws, ...imdMarine];
+    if (alertsResult.status === 'rejected' && imdMarine.length === 0) {
       this.ctx.map?.setLayerReady('weather', false);
       this.ctx.statusPanel?.updateFeed('Weather', { status: 'error' });
-      dataFreshness.recordError('weather', String(error));
+      dataFreshness.recordError('weather', String(alertsResult.reason));
+      return;
     }
+    this.ctx.map?.setWeatherAlerts(merged);
+    this.ctx.map?.setLayerReady('weather', merged.length > 0);
+    this.ctx.statusPanel?.updateFeed('Weather', { status: 'ok', itemCount: merged.length });
+    dataFreshness.recordUpdate('weather', merged.length);
   }
 
   async loadCanadaAlerts(): Promise<void> {

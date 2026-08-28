@@ -834,6 +834,7 @@ describe('planned Railway service lifecycle', () => {
       'seed-market-quotes',
       'seed-service-statuses',
       'seed-weather-alerts',
+      'seed-imd-cyclone-marine',
     ].sort();
     const plannedEntries = RAILWAY_SERVICE_REGISTRY.filter(
       (entry) => entry.lifecycle === 'planned',
@@ -854,6 +855,14 @@ describe('planned Railway service lifecycle', () => {
       ),
       [],
     );
+  });
+
+  it('does not attach watchPatterns to planned seed-imd-cyclone-marine', () => {
+    const imd = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-imd-cyclone-marine');
+    assert.ok(imd, 'seed-imd-cyclone-marine must remain in the Railway registry');
+    assert.equal(imd.lifecycle, 'planned');
+    assert.equal(Object.hasOwn(imd, 'watchPatterns'), false);
+    assert.equal(Object.hasOwn(imd, 'cronSchedule'), false);
   });
 
   it('does not attach watchPatterns to planned seed-weather-alerts (no dual-SET of weather:alerts:v1)', () => {
