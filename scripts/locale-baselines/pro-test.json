@@ -194,6 +194,7 @@
   "pricing.tiers.enterprise.cta": "Contact Sales",
   "pricing.tiers.enterprise.description": "Custom solutions for organizations",
   "pricing.tiers.enterprise.features[0]": "Everything in Pro + API",
+  "pricing.tiers.enterprise.features[10]": "Fully white-labeled — with or without revenue sharing",
   "pricing.tiers.enterprise.features[1]": "Unlimited API requests",
   "pricing.tiers.enterprise.features[2]": "Dedicated support",
   "pricing.tiers.enterprise.features[3]": "Custom integrations",

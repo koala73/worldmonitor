@@ -325,6 +325,7 @@ export class App {
   private visiblePanelPrimeRetryAt = new Map<string, number>();
   private visiblePanelPrimeRaf: number | null = null;
   private viewportHydrationReady = false;
+  private viewportHydrationReadyAt = 0;
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
@@ -346,6 +347,13 @@ export class App {
   };
   private readonly handleViewportPrime = (event?: Event): void => {
     if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+    if (
+      event &&
+      this.viewportHydrationReadyAt > 0 &&
+      event.timeStamp < this.viewportHydrationReadyAt
+    ) {
+      return;
+    }
     if (
       event?.type === 'scroll' &&
       event.target instanceof Element &&
@@ -2473,6 +2481,10 @@ export class App {
     // (3.5 s browser / 8.5 s desktop). (#4512)
     await slowTierReady;
     if (this.state.isDestroyed) return;
+    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
+      typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
     this.viewportHydrationReady = true;
     // Register viewport triggers only after the slow bootstrap tier settles.
     // Scrolls before this point are covered by the initial fan-out below, which
@@ -3015,6 +3027,7 @@ export class App {
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;
     this.viewportHydrationReady = false;
+    this.viewportHydrationReadyAt = 0;
     cancelBootstrapSlowTier();
     window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);

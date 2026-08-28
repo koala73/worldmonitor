@@ -388,7 +388,8 @@
           "Dohoda o zpracování údajů (DPA)",
           "Fakturace na základě nákupního příkazu",
           "SAML SSO, SCIM",
-          "Vlastní nastavení bezpečnosti a ochrany soukromí"
+          "Vlastní nastavení bezpečnosti a ochrany soukromí",
+          "Plně vlastní značka — s dělením příjmů nebo bez něj"
         ],
         "cta": "Kontaktujte prodej"
       },
