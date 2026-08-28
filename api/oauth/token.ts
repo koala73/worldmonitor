@@ -154,12 +154,23 @@ function boundedGrantTag(grantType: string | null): string {
   return grantType ? 'other' : 'none';
 }
 
-function sanitizeTokenRateLimitError(err: unknown): { error: Error; message: string } {
-  const rawMessage = err instanceof Error ? err.message : String(err);
-  const message = rawMessage.replace(OAUTH_RATE_LIMIT_KEY_PATTERN, 'rl:oauth-token:<redacted>');
-  const error = new Error(message);
-  if (err instanceof Error) error.name = err.name;
-  return { error, message };
+/**
+ * `@upstash/redis` embeds the serialized command body in non-2xx errors.
+ * Sliding-window keys contain the full limiter identifier, which must not
+ * reach logs or Sentry (#7270).
+ */
+function sanitizeTokenRateLimitError(err: unknown): Error {
+  const raw = err instanceof Error ? err.message : String(err);
+  const msg = raw.replace(OAUTH_RATE_LIMIT_KEY_PATTERN, 'rl:oauth-token:<redacted>');
+  if (err instanceof Error && msg === raw) return err;
+  const sanitized = new Error(msg);
+  if (err instanceof Error) {
+    sanitized.name = err.name;
+    if (typeof err.stack === 'string') {
+      sanitized.stack = err.stack.split(raw).join(msg);
+    }
+  }
+  return sanitized;
 }
 
 function reportTokenRateLimitDegraded(
@@ -174,8 +185,9 @@ function reportTokenRateLimitDegraded(
   lastDegradedCaptureAtByStage.set(stage, now);
 
   const sanitized = sanitizeTokenRateLimitError(err);
-  console.error(`[rate-limit] redis-error stage=${stage} msg=${sanitized.message}`);
-  captureSilentError(sanitized.error, {
+  const msg = sanitized.message;
+  console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
+  captureSilentError(sanitized, {
     tags: {
       surface: 'api',
       component: 'rate-limit',

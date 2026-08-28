@@ -1808,7 +1808,7 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     );
     assert.match(src, /X-RateLimit-Mode',\s*'degraded'/);
     assert.match(src, /emitOAuthTokenUsage/);
-    assert.match(src, /captureSilentError\(sanitized\.error/);
+    assert.match(src, /captureSilentError\(sanitized,/);
   });
 
   it('missing Upstash config fail-opens every grant type with a degraded marker and one ops log', async () => {
@@ -1839,22 +1839,20 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(degradedLogs.length, 1, 'missing-config ops signal must be deduplicated per isolate');
   });
 
-  it('limiter throw fail-opens with a degraded marker and redacts Upstash command keys', async () => {
+  it('limiter throw fail-opens with a degraded marker and does not log secrets', async () => {
     const secret = 'wm_super_secret_value_xyz';
     const clientId = 'full-client-identifier-must-not-log';
     __setOAuthTokenRatelimitForTest({
-      limit: async (identifier) => {
-        throw new Error(
-          `upstash unreachable, command was: [["evalsha","sha","rl:oauth-token:${identifier}:current"]]`,
-        );
+      limit: async () => {
+        throw new Error('upstash unreachable');
       },
     });
     const { deps } = makeDeps();
     const resp = await tokenHandler(
-      makeReq('authorization_code', { client_secret: secret, client_id: clientId }),
+      makeReq('client_credentials', { client_secret: secret, client_id: clientId }),
       deps,
     );
-    assert.equal(resp.status, 400, 'throw path must fail open into grant validation, not 503');
+    assert.equal(resp.status, 401, 'throw path must fail open into credential validation, not 503');
     assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
     assert.ok(
       consoleErrors.some((line) => line.includes('[rate-limit] redis-error') && line.includes('stage=oauthToken')),
@@ -1863,7 +1861,46 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     const joined = consoleErrors.join('\n');
     assert.equal(joined.includes(secret), false, 'client_secret must not appear in ops logs');
     assert.equal(joined.includes(clientId), false, 'full client_id must not appear in ops logs');
-    assert.match(joined, /rl:oauth-token:<redacted>/, 'the redacted key must preserve a stable ops signal');
+  });
+
+  it('redacts full client_id from Upstash command-key errors before log and Sentry', async () => {
+    const clientId = 'full-client-identifier-must-not-log';
+    const upstashMsg = `ERR Error running script, command was: ${JSON.stringify([
+      'evalsha',
+      'deadbeef',
+      '1',
+      `rl:oauth-token:cid:${clientId}`,
+      `rl:oauth-token:cid:${clientId}:1`,
+    ])}`;
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => {
+        throw new Error(upstashMsg);
+      },
+    });
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(
+      makeReq('authorization_code', { client_id: clientId }),
+      deps,
+    );
+    assert.equal(resp.status, 400, 'throw path must fail open, not 503');
+    assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
+    const joined = consoleErrors.join('\n');
+    assert.ok(
+      consoleErrors.some((line) => line.includes('[rate-limit] redis-error') && line.includes('stage=oauthToken')),
+      `expected throw-path ops log, got: ${joined}`,
+    );
+    assert.equal(joined.includes(clientId), false, 'full client_id must not appear in ops logs');
+    assert.ok(
+      joined.includes('rl:oauth-token:<redacted>'),
+      `expected identifier-bearing keys to be redacted, got: ${joined}`,
+    );
+    const src = readFileSync(fileURLToPath(new URL('../api/oauth/token.ts', import.meta.url)), 'utf8');
+    assert.match(
+      src,
+      /const sanitized = sanitizeTokenRateLimitError\(err\)/,
+      'Sentry must receive the sanitized Error, not the original Upstash error',
+    );
+    assert.match(src, /captureSilentError\(sanitized,/);
   });
 
   it('limiter timeout reason fail-opens as degraded, not as a silent allow', async () => {
@@ -1939,6 +1976,7 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(JSON.stringify(events).includes(secret), false);
     assert.equal(Object.hasOwn(events[0], 'client_secret'), false);
     assert.equal(Object.hasOwn(events[0], 'client_id'), false);
+    assert.equal(deliveryHeaders.length, 1);
     assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
   });
 
@@ -1949,7 +1987,9 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
       limit: async () => ({ success: false }),
     });
     const events = [];
+    const deliveryHeaders = [];
     globalThis.fetch = async (_input, init) => {
+      deliveryHeaders.push(init.headers);
       events.push(...JSON.parse(init.body));
       return new Response('{}', { status: 200 });
     };
@@ -1961,5 +2001,7 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(events.length, 1);
     assert.equal(events[0].reason, 'rate_limit_429');
     assert.equal(events[0].route, '/api/oauth/token');
+    assert.equal(deliveryHeaders.length, 1);
+    assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
   });
 });
