@@ -73,6 +73,44 @@ export const BRIEF_REJECTIONS = Object.freeze({
  * independent reporting signal — corroboration as a hard requirement, not a
  * tiebreaker.
  */
+// Turn a gate rejection into a bounded correction the NEXT sample can obey.
+//
+// The gates were a filter with no feedback path: the rejection named what was
+// wrong (#6995) and the information went only to the log, so the retry got the
+// identical prompt. At temperature 0.1 with a story set that rotates over
+// hours, the identical prompt returns the identical draft — measured on
+// 2026-08-28 as 25 consecutive INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN rejections
+// on the same phrase, every cycle for four hours, while the brief served an
+// aging LKG. Telling the model what was rejected is the missing half of the
+// gate: rejection becomes repair.
+//
+// The detail is bounded and whitespace-flattened before it is quoted back:
+// it is model-authored text going into a prompt, not a log, but the same
+// no-unbounded-payload rule applies.
+const REJECTION_FEEDBACK_MAX_DETAIL_CHARS = 80;
+
+export function synthesisRejectionFeedback(rejection) {
+  const code = rejection?.code;
+  if (!code) return null;
+  const detail = typeof rejection?.detail === 'string'
+    ? rejection.detail.replace(/\s+/g, ' ').trim().slice(0, REJECTION_FEEDBACK_MAX_DETAIL_CHARS)
+    : '';
+  switch (code) {
+    case BRIEF_REJECTIONS.LEAD_PROPER_NOUN:
+    case BRIEF_REJECTIONS.LEAD_NUMERIC_FACT:
+      if (detail) {
+        return `Correction: your previous draft was rejected because "${detail}" does not appear in any story its sentence cited. Remove it, or move that claim into a sentence that cites the story stating it.`;
+      }
+      return 'Correction: your previous draft was rejected because a lead claim was not supported by the stories its sentence cited. Every name, place and number must appear in a cited story.';
+    case BRIEF_REJECTIONS.LEAD_UNCITED:
+      return 'Correction: your previous draft was rejected because a lead sentence carried no citation. End every lead sentence with the bracket number(s) of the stories it draws from.';
+    case BRIEF_REJECTIONS.PARSE:
+      return 'Correction: your previous response was not the required JSON shape. Respond with the JSON object ONLY — no markdown fences, no commentary.';
+    default:
+      return 'Correction: your previous draft was rejected by an editorial gate. Follow the rules exactly: cite every claim, and use only facts present in the numbered story text.';
+  }
+}
+
 export function pickBriefCluster(topStories) {
   if (!Array.isArray(topStories)) return null;
   return topStories.find(isBriefLeadEligible) ?? null;
@@ -429,17 +467,39 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     .split(/(?<=[.!?])\s+/)
     .filter((sentence) => sentence.trim().length > 0);
   if (leadSentences.length === 0) return reject(BRIEF_REJECTIONS.LEAD_EMPTY);
+  // Repair, don't reject (2026-08-28). One ungrounded noun in one lead sentence
+  // used to reject the ENTIRE synthesis — lead and all story lines — and fall
+  // back to the single-headline brief, which loses to the LKG, so one bad noun
+  // cost a whole cycle of fresh content (25 consecutive cycles, in the incident
+  // that motivated this). Meanwhile the per-story line gate below has always
+  // repaired: a hallucinated line is substituted with its headline, never
+  // fatal. The same policy now applies here: a failing sentence is DROPPED and
+  // the brief rejects only when no sentence survives. Every surviving sentence
+  // passed every gate, so publishing them is editorially identical to
+  // publishing the shorter draft the model could have written.
+  //
+  // The rejection code and detail of the FIRST drop are preserved for the
+  // no-survivors rejection and surfaced alongside the repaired brief, so the
+  // resample-feedback path upstream can still tell the model what to fix.
+  const survivingSentences = [];
+  let droppedLeadSentences = 0;
+  let firstDrop = null;
+  const dropSentence = (rejection, detail = null) => {
+    droppedLeadSentences += 1;
+    if (!firstDrop) firstDrop = { rejection, detail };
+  };
   for (const sentence of leadSentences) {
     const cited = [...sentence.matchAll(/\[(\d{1,3})\]/g)]
       .map((match) => Number.parseInt(match[1], 10))
       .filter((n) => n >= 1 && n <= topStories.length);
-    // Contract: every claim is cited. An uncited sentence is unverifiable.
-    if (cited.length === 0) return reject(BRIEF_REJECTIONS.LEAD_UNCITED);
+    // Contract: every claim is cited. An uncited sentence is unverifiable —
+    // and unpublishable, in every validator mode.
+    if (cited.length === 0) { dropSentence(BRIEF_REJECTIONS.LEAD_UNCITED); continue; }
     const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1])).join(' — ');
     // Fail CLOSED on empty ground. Both validators return ok:true for an empty
     // ground string, so an untitled cluster would accept every proper noun and
     // every number in the sentence — a dead gate that looks like a healthy one.
-    if (!scopedGround.trim()) return reject(BRIEF_REJECTIONS.LEAD_GROUNDING);
+    if (!scopedGround.trim()) { dropSentence(BRIEF_REJECTIONS.LEAD_GROUNDING); continue; }
     // The lead may NAME the outlets of the stories it cites — the prompt showed
     // it those labels. Blank them so they ground nothing else, scoped to the
     // cited stories so one story's outlet cannot license a claim about another.
@@ -448,21 +508,56 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
       cited.map((n) => topStories[n - 1]?.primarySource),
     );
     const attributed = attribution.text;
-    if (attribution.matches > 0) sourceAttributions++;
-    // Both validators still run before either can reject, so shadow mode
+    // Both validators still run before either can drop, so shadow mode
     // observes exactly what it observed before the reasons were split out.
     const sentenceValidation = validateNoHallucinatedProperNouns(attributed, scopedGround);
     const factValidation = validateNoHallucinatedFacts(attributed, scopedGround);
     if (validatorMode === 'enforce') {
       if (!sentenceValidation.ok) {
-        return reject(BRIEF_REJECTIONS.LEAD_PROPER_NOUN, sentenceValidation.hallucinated);
+        dropSentence(BRIEF_REJECTIONS.LEAD_PROPER_NOUN, sentenceValidation.hallucinated);
+        continue;
       }
       if (!factValidation.ok) {
-        return reject(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT, factValidation.hallucinated);
+        dropSentence(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT, factValidation.hallucinated);
+        continue;
       }
     }
+    // Attribution is an accept-side counter; a dropped sentence's outlet naming
+    // never reached a reader, so only survivors count.
+    if (attribution.matches > 0) sourceAttributions++;
+    survivingSentences.push(sentence);
   }
-  if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) {
+  if (survivingSentences.length === 0) {
+    // Total failure classifies exactly as before: the first failing sentence's
+    // code and detail.
+    return reject(
+      firstDrop?.rejection ?? BRIEF_REJECTIONS.LEAD_EMPTY,
+      firstDrop?.detail ?? null,
+    );
+  }
+  // Publishing view. Byte-identical to leadCheck.text when nothing was dropped.
+  // When a sentence WAS dropped, the lead is rebuilt from the gate-view
+  // sentences, whose only divergence from the original text is the mid-clause
+  // dotted-acronym collapse ("U.S." -> "US") — the exact style the system
+  // prompt mandates, so the rebuild cannot introduce a style the prompt forbids.
+  const publishedLead = droppedLeadSentences === 0
+    ? leadCheck.text
+    : survivingSentences.join(' ');
+  // #7253 review (both reviewers, independently): the aggregate anchor check
+  // demands 2 combined hits on a corpus with >=4 anchor tokens — calibrated
+  // for a FULL lead. When the repair dropped a sentence, the drop may have
+  // taken the second anchor with it, and rejecting the fully-gated survivor
+  // here would defeat the repair in exactly the case it exists for. A
+  // shortened lead is held to requirement 1 (>=1 corpus anchor in the
+  // published text — the anti-mush floor) plus a combined threshold of 1;
+  // an intact lead keeps the original bar.
+  const grounded = checkLeadGrounding(
+    { lead: publishedLead },
+    groundingStories,
+    topStories.length,
+    droppedLeadSentences > 0 ? { combinedThreshold: 1 } : {},
+  );
+  if (!grounded) {
     return reject(BRIEF_REJECTIONS.LEAD_GROUNDING);
   }
 
@@ -506,7 +601,21 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   });
 
   return {
-    brief: { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations, sourceAttributions },
+    brief: {
+      lead: publishedLead,
+      lines,
+      sources,
+      hallucinatedLines,
+      strippedCitations,
+      sourceAttributions,
+      droppedLeadSentences,
+      // What the first dropped sentence tripped on, for the repair log and the
+      // resample-feedback path — null on a clean compose.
+      droppedLeadRejection: firstDrop?.rejection ?? null,
+      droppedLeadDetail: (Array.isArray(firstDrop?.detail) && firstDrop.detail.length > 0)
+        ? firstDrop.detail.join(' ')
+        : null,
+    },
     rejection: null,
     rejectionDetail: null,
   };

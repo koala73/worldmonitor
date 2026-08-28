@@ -410,8 +410,17 @@ test('the composer rejection reason reaches the failure code through the real se
     resolve('Prices rose sharply in Chile by 42 percent last quarter [1].').failureCode,
     INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_NUMERIC_FACT,
   );
+  // Repair policy (2026-08-28): one uncited sentence beside a cited one is
+  // dropped, not fatal — the seam reports success with the drop surfaced on the
+  // composed brief. The failure CODE path for uncited leads is pinned by the
+  // all-sentences-fail case below.
+  const repaired = resolve('Prices rose sharply in Chile last quarter [1]. Analysts expect more ahead.');
+  assert.equal(repaired.failureCode, null, 'a repairable lead is not a failure');
+  assert.ok(repaired.composed);
+  assert.ok(!repaired.composed.lead.includes('Analysts expect'));
+  assert.equal(repaired.composed.droppedLeadSentences, 1);
   assert.equal(
-    resolve('Prices rose sharply in Chile last quarter [1]. Analysts expect more ahead.').failureCode,
+    resolve('Analysts expect more ahead. Markets may move next week.').failureCode,
     INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED,
   );
   assert.equal(

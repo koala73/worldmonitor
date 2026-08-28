@@ -310,9 +310,47 @@ test('GET method is rejected with 405', async () => {
   assert.equal(resp.status, 405);
 });
 
+test('Disallowed origin OPTIONS preflight succeeds with echoed Origin (#6411)', async () => {
+  const origin = 'https://evil.example.com';
+  const resp = await handler(makeReq('OPTIONS', { origin }));
+  assert.equal(resp.status, 204);
+  assert.equal(resp.headers.get('access-control-allow-origin'), origin);
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
 test('Disallowed origin gets 403', async () => {
   const resp = await handler(makeReq('POST', { origin: 'https://evil.example.com' }));
   assert.equal(resp.status, 403);
+});
+
+test('Disallowed origin 403 echoes the request Origin so the client can read it (#6411)', async () => {
+  const origin = 'https://evil.example.com';
+  const resp = await handler(makeReq('POST', { origin }));
+  assert.equal(resp.status, 403);
+  assert.equal(resp.headers.get('access-control-allow-origin'), origin);
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+  assert.equal(await resp.text(), 'Forbidden');
+});
+
+test('Google Translate proxy origin can mint an anonymous session (#6411)', async () => {
+  const origin = 'https://www-worldmonitor-app.translate.goog';
+  const resp = await handler(makeReq('POST', { origin }));
+  assert.equal(resp.status, 200);
+  assert.equal(resp.headers.get('access-control-allow-origin'), origin);
+  const body = await resp.json();
+  assert.equal(body.ok, true);
+  assert.match(body.token, /^wms_/);
+  assert.equal(typeof body.exp, 'number');
+});
+
+test('Trailing-dot FQDN first-party origin can mint a session (#6411)', async () => {
+  const origin = 'https://tech.worldmonitor.app.';
+  const resp = await handler(makeReq('POST', { origin }));
+  assert.equal(resp.status, 200);
+  assert.equal(resp.headers.get('access-control-allow-origin'), origin);
+  const body = await resp.json();
+  assert.equal(body.ok, true);
+  assert.match(body.token, /^wms_/);
 });
 
 test('No origin (curl) is allowed (rate limit + token TTL are the throttles)', async () => {

@@ -10,7 +10,7 @@
  */
 
 import { createRouter, type RouteDescriptor } from './router';
-import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
+import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 // @ts-expect-error — JS module, no declaration file
@@ -878,22 +878,15 @@ export function createDomainGateway(
       })());
     }
 
-    // Origin check — skip CORS headers for disallowed origins
-    if (isDisallowedOrigin(request)) {
-      emitRequest(403, 'origin_403', null);
-      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
     // Fail closed on CORS-header generation errors. Previous behaviour fell
     // back to a wildcard ACAO, which converted the allowlist into wildcard
     // CORS on the error path. Now we omit CORS headers and surface a 500
     // so the browser blocks any cross-origin read. See issue #3705.
     let corsHeaders: Record<string, string>;
     try {
-      corsHeaders = getCorsHeaders(request);
+      corsHeaders = isDisallowedOrigin(request)
+        ? getOriginDeniedCorsHeaders(request)
+        : getCorsHeaders(request);
     } catch (err) {
       // Pass the Sentry delivery promise through ctx.waitUntil so the
       // Vercel Edge isolate survives long enough to actually flush the
@@ -916,10 +909,25 @@ export function createDomainGateway(
       });
     }
 
-    // OPTIONS preflight
+    // OPTIONS preflight must succeed even for origins we refuse on the actual
+    // request — otherwise the browser never sends POST/GET and origin_403 is
+    // an opaque network error (#6411).
     if (request.method === 'OPTIONS') {
       emitRequest(204, 'preflight', null);
       return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    // Origin check — refuse with readable CORS so the browser can surface the
+    // 403 instead of an opaque network error (#6411).
+    if (isDisallowedOrigin(request)) {
+      emitRequest(403, 'origin_403', null);
+      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders,
+        },
+      });
     }
 
     // ----------------------------------------------------------------------

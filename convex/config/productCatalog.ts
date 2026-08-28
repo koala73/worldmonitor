@@ -473,11 +473,12 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Redistribution rights — embed our data in what you sell",
       "300 requests/minute",
       "10,000 requests/day included",
-      "5 Pro licenses included",
+      "5 Pro licenses — invite users at any corporate email domain",
       "Priority support",
     ],
-    // "Same company email required" dropped from the card (#5604): it is a
-    // requirement, not a benefit. Server-side enforcement is unchanged.
+    // API Business is the paid Embed/OEM tier, so its bundled seats may go to
+    // corporate addresses at any domain. The server still rejects free or
+    // disposable addresses and enforces the four-invite cap.
     highlightFeatures: ["Commercial license — for your customers"],
     // Published + self-serve since #4945 (bet B4): the tier existed in the
     // billing system but was invisible on every pricing surface and had

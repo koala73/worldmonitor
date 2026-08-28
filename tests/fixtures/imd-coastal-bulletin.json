@@ -1,0 +1,34 @@
+[
+  {
+    "Id": "108",
+    "Date of Observation": "2023-03-28",
+    "Layer": "South Tamilnadu coast",
+    "Issued by": "ACWC CHENNAI",
+    "Valid From": "2023-03-28 22:00:00",
+    "Validity": "12",
+    "TTT Warning": "",
+    "Wind": "South Westerly/ South Easterly, 10 - 15 Knots ",
+    "Synoptic Situation": "NIL",
+    "Weather": "Isolated Rain/ Thunderstorm ",
+    "Visibility": "Good Becoming Poor ",
+    "Sea Condition": "Smooth to Slight",
+    "Port Signal": "NIL at all Ports",
+    "Update Time": "2023-03-28 22:27:17"
+  },
+  {
+    "Id": "111",
+    "Date of Observation": "2023-11-05",
+    "Layer": "South Tamilnadu coast",
+    "Issued by": "ACWC CHENNAI",
+    "Valid From": "2023-11-05 12:00:00",
+    "Validity": "12",
+    "TTT Warning": "Fishermen advised not to venture",
+    "Wind": "North Easterly 25-30 Knots",
+    "Synoptic Situation": "Cyclonic storm",
+    "Weather": "Heavy rain",
+    "Visibility": "Poor",
+    "Sea Condition": "Rough to very rough",
+    "Port Signal": "Local Cautionary Signal 3 at Chennai",
+    "Update Time": "2023-11-05 11:50:00"
+  }
+]

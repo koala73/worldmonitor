@@ -4,6 +4,10 @@ description: "Multi-source natural disaster monitoring via GDACS and NASA EONET 
 ---
 The Natural layer combines two authoritative sources for comprehensive disaster monitoring, providing real-time alerts with severity assessments and satellite-derived event detection.
 
+## IMD RSMC New Delhi cyclones
+
+North Indian Ocean cyclone tracks, forecast wind radii, and cones of uncertainty come from the official IMD API (`weather:imd-cyclone-marine:v1`). Observed positions stay distinct from forecast positions. Wind radii and the cone of uncertainty are forecast/uncertainty geometry, never an observed storm footprint. The seeder does not flatten these products into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`; a disabled or empty snapshot is not an all-clear.
+
 ## GDACS (Global Disaster Alert and Coordination System)
 
 UN-backed disaster alert system providing official severity assessments:

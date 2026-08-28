@@ -8,6 +8,7 @@ export const HEALTH_CHECK_SOURCE_MAP: Record<string, readonly DataSourceId[]> = 
   cyberThreats: ['cyber_threats'],
   naturalEvents: ['usgs'],
   weatherAlerts: ['weather'],
+  imdCycloneMarine: ['weather'],
   spending: ['spending'],
   wildfires: ['firms'],
   ucdpEvents: ['ucdp_events'],
