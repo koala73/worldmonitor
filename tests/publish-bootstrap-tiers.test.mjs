@@ -208,6 +208,24 @@ describe('canadaAlerts cutover fallback in published envelopes', () => {
     });
     assert.deepEqual(payload.data.canadaAlerts, emptyUnion);
   });
+
+  it('reports canadaAlerts missing when a present aggregate unwraps to undefined', async () => {
+    // Origin getCachedJsonBatch still Map.set(primary, undefined) for a
+    // successfully parsed envelope whose data field is absent, then uses
+    // Map.has(primary) so the #6659 fallback does not publish sibling data.
+    const payload = await assembleBootstrapTierPayload(registry, {
+      env: TEST_ENV,
+      fetchFn: canadaPipeline({
+        [PRIMARY_KEY]: { _seed: { fetchedAt: 1 } },
+        'eq:key': quake,
+        [CANADA_ALERTS_SIBLING_KEY]: sibling,
+        [CANADA_ALERTS_LEGACY_KEY]: legacy,
+      }),
+    });
+    assert.equal(Object.hasOwn(payload.data, 'canadaAlerts'), false);
+    assert.ok(payload.missing.includes('canadaAlerts'));
+    assert.deepEqual(payload.data.earthquakes, quake);
+  });
 });
 
 describe('publishBootstrapTier', () => {

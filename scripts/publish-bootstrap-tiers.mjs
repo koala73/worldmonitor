@@ -82,14 +82,19 @@ function parseBootstrapPipelineEntry(entry, index) {
     throw new Error(`Bootstrap Redis pipeline command failed at index ${index}`);
   }
 
-  if (!entry.result) return undefined;
+  if (!entry.result) return { present: false, value: undefined };
   try {
     const parsed = JSON.parse(entry.result);
-    if (parsed !== NEG_SENTINEL) return unwrapEnvelope(parsed).data;
+    if (parsed !== NEG_SENTINEL) {
+      // Presence is independent of the unwrapped value. A well-formed envelope
+      // can unwrap to `data === undefined`; origin still records Map.has(key)
+      // and reports that field missing instead of applying a sibling fallback.
+      return { present: true, value: unwrapEnvelope(parsed).data };
+    }
   } catch {
     // Malformed values match /api/bootstrap: omit from data and report missing.
   }
-  return undefined;
+  return { present: false, value: undefined };
 }
 
 /**
@@ -132,17 +137,17 @@ export async function assembleBootstrapTierPayload(registry, options = {}) {
 
   const valuesByKey = new Map();
   for (let index = 0; index < readKeys.length; index += 1) {
-    const value = parseBootstrapPipelineEntry(results[index], index);
-    if (value !== undefined) valuesByKey.set(readKeys[index], value);
+    const parsed = parseBootstrapPipelineEntry(results[index], index);
+    if (parsed.present) valuesByKey.set(readKeys[index], parsed.value);
   }
 
   const data = {};
   const missing = [];
   for (let index = 0; index < names.length; index += 1) {
-    let value = valuesByKey.get(keys[index]);
-    if (value === undefined && keys[index] === BOOTSTRAP_CACHE_KEYS.canadaAlerts) {
-      value = canadaAlertsCutoverFallbackValue(valuesByKey);
-    }
+    let value = keys[index] === BOOTSTRAP_CACHE_KEYS.canadaAlerts
+      && !valuesByKey.has(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
+      ? canadaAlertsCutoverFallbackValue(valuesByKey)
+      : valuesByKey.get(keys[index]);
 
     if (value === undefined) {
       missing.push(names[index]);
