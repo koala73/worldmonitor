@@ -259,6 +259,49 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
   }
 }
 
+/**
+ * First-writer-wins JSON publish. Uses SET NX EX so concurrent isolates cannot
+ * overwrite a key the other already persisted. Returns true only when this
+ * caller created the key; false means the key already existed or the write
+ * could not be confirmed. Callers that need the persisted winner must GET
+ * after this and fail closed on a miss.
+ */
+export async function setCachedJsonIfAbsent(key: string, value: unknown, ttlSeconds: number, raw = false): Promise<boolean> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheSetIfAbsent } = await import('./sidecar-cache');
+    return sidecarCacheSetIfAbsent(key, value, ttlSeconds);
+  }
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return false;
+  try {
+    const finalKey = raw ? key : prefixKey(key);
+    const resp = await fetch(`${url}/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
+      },
+      body: JSON.stringify(['SET', finalKey, JSON.stringify(value), 'EX', String(ttlSeconds), 'NX']),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    const data = (await resp.json().catch(() => null)) as {
+      result?: string | null;
+      error?: string;
+    } | null;
+    if (!resp.ok || data?.error) {
+      console.warn(`[redis] setCachedJsonIfAbsent failed:`, data?.error ?? `HTTP ${resp.status}`);
+      return false;
+    }
+    return data?.result === 'OK';
+  } catch (err) {
+    console.warn('[redis] setCachedJsonIfAbsent failed:', errMsg(err));
+    return false;
+  }
+}
+
 /** Read a bounded Redis list whose members are independently JSON encoded. */
 export async function readCachedJsonList(
   key: string,

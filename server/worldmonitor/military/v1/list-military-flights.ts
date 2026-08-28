@@ -9,7 +9,7 @@ import type {
 
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
 import { hasFiniteRequestBounds, normalizeBounds, type RequestBounds } from './_bounds';
-import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson, setCachedJsonIfAbsent } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import {
@@ -335,15 +335,23 @@ async function fetchStableLiveSeedSnapshot(): Promise<LiveSeedRead> {
   }
 
   if (stableLiveSeedSnapshotInflight) return stableLiveSeedSnapshotInflight;
-  const promise = (async () => {
+  const promise = (async (): Promise<LiveSeedRead> => {
     const seeded = await fetchLiveSeedSnapshot();
     if (seeded.status !== 'hit') return seeded;
-    await setCachedJson(
+    // First writer publishes the cursor source; losers must adopt that
+    // persisted snapshot. Returning the local read after an unconfirmed
+    // write lets the next numeric page slice a different isolate's snapshot.
+    await setCachedJsonIfAbsent(
       STABLE_LIVE_SNAPSHOT_CACHE_KEY,
       { flights: seeded.flights, coverage: seeded.coverage },
       REDIS_CACHE_TTL,
     );
-    return seeded;
+    const persisted = await readCachedJson(STABLE_LIVE_SNAPSHOT_CACHE_KEY);
+    if (persisted.status === 'hit') {
+      const snapshot = parseStableLiveSeedSnapshot(persisted.value);
+      if (snapshot) return { status: 'hit', ...snapshot };
+    }
+    return { status: 'error' };
   })().finally(() => {
     stableLiveSeedSnapshotInflight = null;
   });

@@ -105,7 +105,19 @@ function isSetRequest(_url, init) {
 
 function parseSetRequest(_url, init) {
   const body = JSON.parse(String(init.body));
-  return { key: body[1], value: body[2], ttlSeconds: Number(body[4]) };
+  return {
+    key: body[1],
+    value: body[2],
+    ttlSeconds: Number(body[4]),
+    nx: body.includes('NX'),
+  };
+}
+
+function applySetToStore(store, url, init) {
+  const { key, value, nx } = parseSetRequest(url, init);
+  if (nx && store.has(key)) return jsonResponse({ result: null });
+  store.set(key, value);
+  return jsonResponse({ result: 'OK' });
 }
 
 describe('redis caching behavior', { concurrency: 1 }, () => {
@@ -2560,6 +2572,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
     const redisGetKeys = [];
     const redisSetKeys = [];
+    const store = new Map();
     let openskyCalls = 0;
 
     globalThis.fetch = async (url, init) => {
@@ -2586,11 +2599,11 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             }),
           });
         }
-        return jsonResponse({ result: null });
+        return jsonResponse({ result: store.get(key) ?? null });
       }
       if (isSetRequest(url, init)) {
         redisSetKeys.push(parseSetRequest(url, init).key);
-        return jsonResponse({ result: 'OK' });
+        return applySetToStore(store, url, init);
       }
       if (raw.includes('/opensky') || raw.includes('opensky-network.org')) {
         openskyCalls += 1;
@@ -2649,6 +2662,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
     const redisKeys = [];
+    const store = new Map();
 
     globalThis.fetch = async (url, init) => {
       const raw = String(url);
@@ -2669,9 +2683,9 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             }),
           });
         }
-        return jsonResponse({ result: null });
+        return jsonResponse({ result: store.get(key) ?? null });
       }
-      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -2687,7 +2701,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.deepEqual(result.pagination, { nextCursor: '', totalCount: 2 });
       assert.deepEqual(
         redisKeys,
-        [stableLiveCacheKey, 'military:flights:v1'],
+        [stableLiveCacheKey, 'military:flights:v1', stableLiveCacheKey],
         'an authoritative seed should be filtered for the caller without a provider cache entry',
       );
     } finally {
@@ -2759,6 +2773,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
     const redisKeys = [];
+    const store = new Map();
     let openskyCalls = 0;
 
     globalThis.fetch = async (url, init) => {
@@ -2766,17 +2781,18 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/')[1] || '');
         redisKeys.push(key);
-        return jsonResponse({
-          result: key === 'military:flights:v1'
-            ? JSON.stringify({ flights: [], fetchedAt: Date.now() })
-            : null,
-        });
+        if (key === 'military:flights:v1') {
+          return jsonResponse({
+            result: JSON.stringify({ flights: [], fetchedAt: Date.now() }),
+          });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
       }
       if (raw.includes('/opensky') || raw.includes('opensky-network.org')) {
         openskyCalls += 1;
         return jsonResponse({ states: [] });
       }
-      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -2785,7 +2801,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
         seededRequest,
       );
-      assert.deepEqual(redisKeys, [stableLiveCacheKey, 'military:flights:v1']);
+      assert.deepEqual(redisKeys, [stableLiveCacheKey, 'military:flights:v1', stableLiveCacheKey]);
       assert.equal(openskyCalls, 0);
       assert.deepEqual(result, { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } });
     } finally {
@@ -2917,11 +2933,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         }
         return jsonResponse({ result: store.get(key) ?? null });
       }
-      if (isSetRequest(url, init)) {
-        const { key, value } = parseSetRequest(url, init);
-        store.set(key, value);
-        return jsonResponse({ result: 'OK' });
-      }
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -2950,6 +2962,142 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('publishes the stable live snapshot first-writer-wins and returns the persisted winner', async () => {
+    const firstIsolate = await importListMilitaryFlights();
+    const secondIsolate = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+    let rootReads = 0;
+    let releaseRoot;
+    const rootGate = new Promise((resolveGate) => { releaseRoot = resolveGate; });
+    const setBodies = [];
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') {
+          rootReads += 1;
+          const flights = rootReads === 1
+            ? [
+              { id: 'seed-a', callsign: 'RCH501', lat: 20.2, lon: 10.2 },
+              { id: 'seed-b', callsign: 'RCH502', lat: 20.3, lon: 10.3 },
+            ]
+            : [{ id: 'seed-new', callsign: 'RCH599', lat: 20.4, lon: 10.4 }];
+          await rootGate;
+          return jsonResponse({ result: JSON.stringify({ flights, coverage: 'global', fetchedAt: Date.now() }) });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) {
+        setBodies.push(JSON.parse(String(init.body)));
+        return applySetToStore(store, url, init);
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+      const firstPromise = firstIsolate.module.listMilitaryFlights(ctx, { ...seededRequest, pageSize: 1, cursor: '' });
+      const secondPromise = secondIsolate.module.listMilitaryFlights(ctx, { ...seededRequest, pageSize: 1, cursor: '' });
+      for (let ticks = 0; ticks < 20 && rootReads < 2; ticks += 1) {
+        await new Promise((resolveTick) => setImmediate(resolveTick));
+      }
+      assert.equal(rootReads, 2, 'both isolates must miss the cold stable key and read the rotating root');
+      releaseRoot();
+      const [first, second] = await Promise.all([firstPromise, secondPromise]);
+      const continuation = await secondIsolate.module.listMilitaryFlights(ctx, {
+        ...seededRequest,
+        pageSize: 1,
+        cursor: first.pagination?.nextCursor ?? '',
+      });
+
+      assert.ok(setBodies.every((body) => body.includes('NX')), 'stable snapshot publication must use SET NX EX');
+      assert.ok(setBodies.length >= 2, 'the losing isolate must still attempt SET NX');
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['seed-a']);
+      assert.deepEqual(
+        second.flights.map((flight) => flight.id),
+        ['seed-a'],
+        'the losing isolate must return the persisted winner, not its later root snapshot',
+      );
+      assert.deepEqual(continuation.flights.map((flight) => flight.id), ['seed-b']);
+    } finally {
+      firstIsolate.cleanup();
+      secondIsolate.cleanup();
+      releaseRoot?.();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('fails closed when stable snapshot publication or readback cannot be confirmed', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let openskyCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [{ id: 'unpersisted', callsign: 'RCH900', lat: 20.2, lon: 10.2 }],
+              coverage: 'global',
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: null });
+      }
+      if (isSetRequest(url, init)) {
+        return {
+          ok: false,
+          status: 503,
+          async json() { return null; },
+        };
+      }
+      if (raw.includes('/opensky') || raw.includes('opensky-network.org')) {
+        openskyCalls += 1;
+        return jsonResponse({ states: [] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        seededRequest,
+      );
+      assert.deepEqual(
+        result.flights.map((flight) => flight.id),
+        [],
+        'an unpersisted local snapshot must not become a cursor source',
+      );
+      assert.equal(openskyCalls, 0, 'failed publication must fail closed instead of opening OpenSky');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   // A viewport over North America — outside BOTH of the regional bboxes the
   // producer queried before #6222, so under the old coverage list it fell
   // through to per-viewer authenticated OpenSky recovery.
@@ -2971,6 +3119,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       VERCEL_GIT_COMMIT_SHA: undefined,
     });
     const originalFetch = globalThis.fetch;
+    const store = new Map();
     let openskyCalls = 0;
 
     globalThis.fetch = async (url, init) => {
@@ -2987,9 +3136,9 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             }),
           });
         }
-        return jsonResponse({ result: null });
+        return jsonResponse({ result: store.get(key) ?? null });
       }
-      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
       if (raw.includes('/opensky')) {
         openskyCalls += 1;
         return jsonResponse({ states: [] });
@@ -3032,6 +3181,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       VERCEL_GIT_COMMIT_SHA: undefined,
     });
     const originalFetch = globalThis.fetch;
+    const store = new Map();
     let openskyCalls = 0;
 
     globalThis.fetch = async (url, init) => {
@@ -3049,9 +3199,9 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             }),
           });
         }
-        return jsonResponse({ result: null });
+        return jsonResponse({ result: store.get(key) ?? null });
       }
-      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
       if (raw.includes('/opensky')) {
         openskyCalls += 1;
         return jsonResponse({
@@ -4330,6 +4480,65 @@ describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, (
       const [msg, detail] = warnings[0];
       assert.match(String(msg), /setCachedJson failed/);
       assert.equal(detail, 'HTTP 503', 'warn payload should name the HTTP status');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      restoreEnv();
+    }
+  });
+
+  it('emits POST / with body ["SET", key, value, "EX", String(ttl), "NX"]', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const captured = [];
+    globalThis.fetch = async (url, init) => {
+      captured.push({ url: String(url), init });
+      return jsonResponse({ result: 'OK' });
+    };
+
+    try {
+      const key = 'military:flights:stable-live:v1';
+      const value = { flights: [{ id: 'a' }], coverage: 'global' };
+      const ttl = 600;
+      const created = await redis.setCachedJsonIfAbsent(key, value, ttl);
+
+      assert.equal(created, true, 'SET NX should report creation when Redis returns OK');
+      assert.equal(captured.length, 1, 'exactly one Redis write should be issued');
+      assert.deepEqual(
+        JSON.parse(String(captured[0].init.body)),
+        ['SET', key, JSON.stringify(value), 'EX', String(ttl), 'NX'],
+        'body must carry SET NX EX verbatim',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('returns false without warning when SET NX loses to an existing key', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+    console.warn = (...args) => { warnings.push(args); };
+    globalThis.fetch = async () => jsonResponse({ result: null });
+
+    try {
+      const created = await redis.setCachedJsonIfAbsent('k', { v: 1 }, 30);
+      assert.equal(created, false, 'an existing key must not look like a successful create');
+      assert.equal(warnings.length, 0, 'losing SET NX is expected and must not warn');
     } finally {
       globalThis.fetch = originalFetch;
       console.warn = originalWarn;
