@@ -140,6 +140,14 @@ describe('get_imd_cyclone_marine cache tool', () => {
     assert.equal(result.stale, false);
   });
 
+  it('marks a state-less cache snapshot unavailable, never all-clear', async () => {
+    const result = await runTool({
+      [IMD_CANONICAL_KEY]: {},
+    });
+    assert.equal(result.data.imd_cyclone_marine.coverageState, 'unavailable');
+    assert.equal(result.data.imd_cyclone_marine.skipReason, 'IMD_CACHE_INVALID');
+  });
+
   it('degraded snapshots keep failed product state', async () => {
     const now = Date.now();
     const degraded = snapshot({

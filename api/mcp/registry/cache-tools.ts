@@ -2077,7 +2077,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     description:
       'Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. ' +
       'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY. ' +
-      'Read coverageState on every call: disabled means IMD_API_KEY is missing, degraded is a partial product failure, unavailable is a total fetch failure, and ok is live. ' +
+      'Read coverageState on every call: disabled means IMD_API_KEY is missing, degraded is a partial product failure, unavailable means no usable IMD snapshot, and ok is live. ' +
       'Empty lists with disabled, degraded, or unavailable coverage are not an India all-clear.',
     inputSchema: {
       type: 'object',
@@ -2124,9 +2124,19 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const snapshot = data.imd_cyclone_marine;
-      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return data;
+      let snapshot = data.imd_cyclone_marine;
+      // A legacy or corrupt cache value must not look like an India all-clear.
+      // The wire contract requires coverageState on every usable object, so
+      // replace an unexpected value with the explicit unavailable state.
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+        snapshot = { coverageState: 'unavailable', skipReason: 'IMD_CACHE_INVALID' };
+        data.imd_cyclone_marine = snapshot;
+      }
       const rec = snapshot as Record<string, unknown>;
+      if (!['ok', 'disabled', 'degraded', 'unavailable'].includes(argStr(rec.coverageState))) {
+        rec.coverageState = 'unavailable';
+        rec.skipReason = 'IMD_CACHE_INVALID';
+      }
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       const listKeys = [
         'cyclones', 'windRadii', 'cones', 'portWarnings', 'seaBulletins',
