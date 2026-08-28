@@ -58,6 +58,9 @@ test('isAllowedOrigin accepts Google Translate proxy origins of worldmonitor.app
   assert.equal(isAllowedOrigin('https://worldmonitor-app.translate.goog'), true);
   assert.equal(isAllowedOrigin('https://tech-worldmonitor-app.translate.goog'), true);
   assert.equal(isAllowedOrigin('https://evil-example-com.translate.goog'), false);
+  // `--` is Google's encoding of a literal hyphen — must not suffix-match.
+  assert.equal(isAllowedOrigin('https://evil--worldmonitor-app.translate.goog'), false);
+  assert.equal(isAllowedOrigin('https://notworldmonitor-app.translate.goog'), false);
 });
 
 test('isAllowedOrigin accepts Vercel preview deploys under the eliewm team scope (mirrors api/_cors.js)', () => {
@@ -169,15 +172,17 @@ test('OPTIONS preflight to /api/product-catalog preserves the endpoint-owned DEL
   }
 });
 
-test('OPTIONS preflight from disallowed origin still sets ACAC but echoes fallback origin', async () => {
+test('OPTIONS preflight from disallowed origin echoes the request Origin (#6411)', async () => {
+  const evil = 'https://evil.com';
   const req = makeRequest('OPTIONS', 'https://api.worldmonitor.app/api/bootstrap', {
-    Origin: 'https://evil.com',
+    Origin: evil,
   });
   const resp = await worker.fetch(req);
   assert.equal(resp.status, 204);
-  assert.equal(resp.headers.get('access-control-allow-origin'), CANONICAL_FALLBACK);
-  // Browser sees fallback origin != evil.com → rejects. ACAC: true is still
-  // set because it must be a paired invariant with origin-specific ACAO.
+  // Preflight must echo the caller so the browser will send the actual request;
+  // the POST/GET response still uses the allowlist (canonical fallback) except
+  // on explicit 401/403 refusals.
+  assert.equal(resp.headers.get('access-control-allow-origin'), evil);
   assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
 });
 

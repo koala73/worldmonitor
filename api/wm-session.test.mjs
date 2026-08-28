@@ -310,6 +310,14 @@ test('GET method is rejected with 405', async () => {
   assert.equal(resp.status, 405);
 });
 
+test('Disallowed origin OPTIONS preflight succeeds with echoed Origin (#6411)', async () => {
+  const origin = 'https://evil.example.com';
+  const resp = await handler(makeReq('OPTIONS', { origin }));
+  assert.equal(resp.status, 204);
+  assert.equal(resp.headers.get('access-control-allow-origin'), origin);
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
 test('Disallowed origin gets 403', async () => {
   const resp = await handler(makeReq('POST', { origin: 'https://evil.example.com' }));
   assert.equal(resp.status, 403);

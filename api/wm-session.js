@@ -167,12 +167,17 @@ export default async function handler(req, ctx) {
     return response;
   };
 
-  // Build CORS before the origin gate. A bare 403 without ACAO matching the
-  // request Origin is opaque to the browser (credentials:include fetch throws
-  // a network error), so the client cannot tell "refused" from "never arrived"
-  // — the same blind spot as WORLDMONITOR-WG (#6411). Disallowed origins get
-  // refusal-specific headers that echo their Origin; allowed origins use the
-  // normal credentialed helper below.
+  // Preflight must succeed even for origins we refuse on POST — otherwise the
+  // browser never sends the actual request and the client sees a network error
+  // instead of a readable 403 (#6411). Allowed origins get normal CORS;
+  // disallowed origins get refusal-specific headers that echo their Origin.
+  if (req.method === 'OPTIONS') {
+    const preflight = isDisallowedOrigin(req)
+      ? getOriginDeniedCorsHeaders(req, 'POST, OPTIONS')
+      : getCorsHeaders(req, 'POST, OPTIONS');
+    return new Response(null, { status: 204, headers: preflight });
+  }
+
   if (isDisallowedOrigin(req)) {
     const deniedCors = getOriginDeniedCorsHeaders(req, 'POST, OPTIONS');
     const response = new Response('Forbidden', { status: 403, headers: deniedCors });
@@ -181,10 +186,6 @@ export default async function handler(req, ctx) {
   }
 
   const cors = getCorsHeaders(req, 'POST, OPTIONS');
-
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: cors });
-  }
 
   if (req.method !== 'POST') {
     return respond({ error: 'Method not allowed' }, 405, cors, 'method_not_allowed');

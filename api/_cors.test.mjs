@@ -45,8 +45,16 @@ test('allows Google Translate proxy origins of worldmonitor.app (#6411)', () => 
 });
 
 test('rejects unrelated translate.goog hosts', () => {
-  const req = makeRequest('https://evil-example-com.translate.goog');
-  assert.equal(isDisallowedOrigin(req), true);
+  const rejected = [
+    'https://evil-example-com.translate.goog',
+    // Google encodes literal hyphens as `--`. evil-worldmonitor.app must NOT
+    // match a naive *-worldmonitor-app.translate.goog suffix check (#6411).
+    'https://evil--worldmonitor-app.translate.goog',
+    'https://notworldmonitor-app.translate.goog',
+  ];
+  for (const origin of rejected) {
+    assert.equal(isDisallowedOrigin(makeRequest(origin)), true, `must reject ${origin}`);
+  }
 });
 
 test('allows trailing-dot FQDN form of first-party origins (#6411)', () => {

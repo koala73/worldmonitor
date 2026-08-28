@@ -12,10 +12,6 @@ const PRODUCTION_PATTERNS: RegExp[] = [
   //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
   // Tight on purpose: never a bare *.vercel.app (this is a security allowlist).
   /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
-  // Google Translate proxy of our dashboard (#6411). Keep in sync with
-  // api/_cors.js and workers/api-cors-preflight — anonymous readers only;
-  // SameSite=Lax keeps first-party auth cookies off this cross-site origin.
-  /^https:\/\/(?:[a-z0-9-]+-)*worldmonitor-app\.translate\.goog$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -93,8 +89,31 @@ function originForAllowlistMatch(origin: string): string {
   }
 }
 
+/**
+ * Decode Google Translate's hostname rewrite and require the reconstructed
+ * host to be worldmonitor.app / *.worldmonitor.app. Suffix-matching the
+ * encoded label would admit evil--worldmonitor-app.translate.goog (#6411).
+ * Keep in sync with api/_cors.js and workers/api-cors-preflight.
+ */
+function isWorldMonitorGoogleTranslateOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.replace(/\.+$/, '');
+    const suffix = '.translate.goog';
+    if (!host.endsWith(suffix)) return false;
+    const encoded = host.slice(0, -suffix.length);
+    if (!encoded || encoded.includes('.')) return false;
+    const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
+    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+  } catch {
+    return false;
+  }
+}
+
 export function isAllowedOrigin(origin: string): boolean {
   if (!origin) return false;
+  if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }

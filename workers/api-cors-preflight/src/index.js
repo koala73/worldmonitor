@@ -31,10 +31,6 @@ const ALLOWED_ORIGIN_PATTERNS = [
   //   worldmonitor-git-<branch>-eliewm.vercel.app / worldmonitor-<hash>-eliewm.vercel.app
   // Mirror of api/_cors.js + server/cors.ts (see superset note above).
   /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
-  // Google Translate proxy of our dashboard (#6411). Mirror api/_cors.js —
-  // Worker allowlist must stay a superset or preflights echo the canonical
-  // fallback and translated readers stay dark.
-  /^https:\/\/(?:[a-z0-9-]+-)*worldmonitor-app\.translate\.goog$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -122,16 +118,36 @@ function originForAllowlistMatch(origin) {
   }
 }
 
+/**
+ * Decode Google Translate hostname rewrite; require reconstructed host to be
+ * worldmonitor.app / *.worldmonitor.app. Keep in sync with api/_cors.js (#6411).
+ */
+function isWorldMonitorGoogleTranslateOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.replace(/\.+$/, '');
+    const suffix = '.translate.goog';
+    if (!host.endsWith(suffix)) return false;
+    const encoded = host.slice(0, -suffix.length);
+    if (!encoded || encoded.includes('.')) return false;
+    const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
+    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+  } catch {
+    return false;
+  }
+}
+
 export function isAllowedOrigin(origin) {
   if (!origin) return false;
+  if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
   return ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(candidate));
 }
 
 export { hasPublicCorsPolicy };
 
-export function buildCorsHeaders(origin) {
-  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
+function corsHeaderBag(allowOrigin) {
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     // Required because the app fetch interceptor sends credentials: 'include'
@@ -145,6 +161,32 @@ export function buildCorsHeaders(origin) {
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
   };
+}
+
+export function buildCorsHeaders(origin) {
+  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
+  return corsHeaderBag(allowOrigin);
+}
+
+/**
+ * OPTIONS preflight for disallowed origins must echo the request Origin so the
+ * browser will send the actual request. Otherwise origin_403 stays an opaque
+ * network error (#6411). Success responses still use the allowlist via
+ * buildCorsHeaders / buildResponseCorsHeaders.
+ */
+export function buildPreflightCorsHeaders(origin) {
+  return corsHeaderBag(origin || 'https://worldmonitor.app');
+}
+
+/**
+ * Stamp CORS onto an origin response. Allowed origins are echoed; disallowed
+ * origins get a readable ACAO only on explicit auth/origin refusals so the
+ * client can observe 401/403, while successful bodies stay opaque.
+ */
+export function buildResponseCorsHeaders(origin, status) {
+  if (isAllowedOrigin(origin)) return buildCorsHeaders(origin);
+  if (status === 401 || status === 403) return buildPreflightCorsHeaders(origin);
+  return buildCorsHeaders(origin);
 }
 
 function mergeHeaderNames(...values) {
@@ -181,11 +223,14 @@ const STORY_FETCH_OPTIONS = {
 // The single origin path: fetch Vercel, stamp the Worker's canonical CORS onto the response, and
 // preserve the bootstrap route's function-owned exposed headers. Shared by the normal pass-through
 // AND the U-K4 hedge, so there is exactly one origin+CORS implementation to keep correct.
-async function passThroughToOrigin(request, url, corsHeaders) {
+async function passThroughToOrigin(request, url, corsHeadersForStatus) {
   try {
     const response = url.pathname === '/api/story'
       ? await fetch(request, STORY_FETCH_OPTIONS)
       : await fetch(request);
+    const corsHeaders = typeof corsHeadersForStatus === 'function'
+      ? corsHeadersForStatus(response.status)
+      : corsHeadersForStatus;
     const newHeaders = new Headers(response.headers);
     const originExposedHeaders = newHeaders.get('Access-Control-Expose-Headers');
     const originVary = newHeaders.get('Vary');
@@ -209,6 +254,9 @@ async function passThroughToOrigin(request, url, corsHeaders) {
       headers: newHeaders,
     });
   } catch (err) {
+    const corsHeaders = typeof corsHeadersForStatus === 'function'
+      ? corsHeadersForStatus(502)
+      : corsHeadersForStatus;
     return new Response(JSON.stringify({ error: 'Origin unavailable' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -239,26 +287,26 @@ export default {
     }
 
     const origin = request.headers.get('Origin') || '';
-    const corsHeaders = buildCorsHeaders(origin);
-
-    // OPTIONS preflight — return immediately, skip Vercel.
-    // The browser's CORS gate is the preflight response, not the actual
-    // request response, so this is the load-bearing branch.
+    // OPTIONS must echo the request Origin even when disallowed so the browser
+    // will send the actual request; otherwise origin_403 is an opaque network
+    // error (#6411). Non-OPTIONS responses still use the allowlist, with a
+    // readable echo only on 401/403 refusals.
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders });
+      return new Response(null, { status: 204, headers: buildPreflightCorsHeaders(origin) });
     }
 
+    const corsForStatus = (status) => buildResponseCorsHeaders(origin, status);
     // The single origin path for this request. maybeServeBootstrapFromKv (U-K4) may invoke it once
     // internally when it hedges/falls back; every other request runs it directly below. Either way
     // origin is fetched at most once.
-    const fetchOrigin = () => passThroughToOrigin(request, url, corsHeaders);
+    const fetchOrigin = () => passThroughToOrigin(request, url, corsForStatus);
 
     // KV serving (U-K4, #5338): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE on, serve
     // the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged against
     // origin and any non-servable outcome uses the origin response — strictly additive (KTD3), so
     // the worst case is today's behaviour. Returns null for non-servable requests (flag off, not a
     // bootstrap GET), which then run the normal pass-through. Inert until the flag is flipped.
-    const bootstrapKv = await maybeServeBootstrapFromKv(request, url, env, ctx, corsHeaders, fetchOrigin);
+    const bootstrapKv = await maybeServeBootstrapFromKv(request, url, env, ctx, buildCorsHeaders(origin), fetchOrigin);
     if (bootstrapKv) return bootstrapKv;
 
     // All other methods/paths — pass through to Vercel with the Worker's canonical CORS stamped.

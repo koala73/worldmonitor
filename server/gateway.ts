@@ -878,27 +878,15 @@ export function createDomainGateway(
       })());
     }
 
-    // Origin check — refuse with readable CORS so the browser can surface the
-    // 403 instead of an opaque network error (#6411). Success paths still use
-    // getCorsHeaders (canonical fallback for strangers).
-    if (isDisallowedOrigin(request)) {
-      emitRequest(403, 'origin_403', null);
-      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
-        status: 403,
-        headers: {
-          'Content-Type': 'application/json',
-          ...getOriginDeniedCorsHeaders(request),
-        },
-      });
-    }
-
     // Fail closed on CORS-header generation errors. Previous behaviour fell
     // back to a wildcard ACAO, which converted the allowlist into wildcard
     // CORS on the error path. Now we omit CORS headers and surface a 500
     // so the browser blocks any cross-origin read. See issue #3705.
     let corsHeaders: Record<string, string>;
     try {
-      corsHeaders = getCorsHeaders(request);
+      corsHeaders = isDisallowedOrigin(request)
+        ? getOriginDeniedCorsHeaders(request)
+        : getCorsHeaders(request);
     } catch (err) {
       // Pass the Sentry delivery promise through ctx.waitUntil so the
       // Vercel Edge isolate survives long enough to actually flush the
@@ -921,10 +909,25 @@ export function createDomainGateway(
       });
     }
 
-    // OPTIONS preflight
+    // OPTIONS preflight must succeed even for origins we refuse on the actual
+    // request — otherwise the browser never sends POST/GET and origin_403 is
+    // an opaque network error (#6411).
     if (request.method === 'OPTIONS') {
       emitRequest(204, 'preflight', null);
       return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    // Origin check — refuse with readable CORS so the browser can surface the
+    // 403 instead of an opaque network error (#6411).
+    if (isDisallowedOrigin(request)) {
+      emitRequest(403, 'origin_403', null);
+      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders,
+        },
+      });
     }
 
     // ----------------------------------------------------------------------

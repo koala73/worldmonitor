@@ -5,18 +5,6 @@ const ALLOWED_ORIGIN_PATTERNS = [
   //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
   // Tight on purpose: never a bare *.vercel.app (this is a security allowlist).
   /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
-  // Google Translate proxy hosts our dashboard at
-  //   https://www-worldmonitor-app.translate.goog
-  // (dots in the real hostname become hyphens). Readers there cannot mint a
-  // session today because the origin matches none of the first-party patterns,
-  // so every credentialed API call fails (#6411).
-  //
-  // Policy: admit these origins for anonymous dashboard reads. SameSite=Lax
-  // session cookies are not sent on cross-site fetches from translate.goog, so
-  // existing first-party auth cookies do not ride along; the client falls back
-  // to the freely-mintable anonymous wms_ header token. Do NOT widen this to
-  // bare *.translate.goog — only WorldMonitor's rewritten hostnames.
-  /^https:\/\/(?:[a-z0-9-]+-)*worldmonitor-app\.translate\.goog$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -95,8 +83,33 @@ function originForAllowlistMatch(origin) {
   }
 }
 
+/**
+ * Google Translate rewrites `https://www.worldmonitor.app` to
+ * `https://www-worldmonitor-app.translate.goog` (`.` → `-`, and literal `-` →
+ * `--`). Suffix-matching the encoded label would admit
+ * `evil--worldmonitor-app.translate.goog` (`evil-worldmonitor.app`). Decode
+ * first, then require the reconstructed host to be `worldmonitor.app` or a
+ * subdomain (#6411 review).
+ */
+function isWorldMonitorGoogleTranslateOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.replace(/\.+$/, '');
+    const suffix = '.translate.goog';
+    if (!host.endsWith(suffix)) return false;
+    const encoded = host.slice(0, -suffix.length);
+    if (!encoded || encoded.includes('.')) return false;
+    const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
+    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedOrigin(origin) {
   if (!origin) return false;
+  if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }
@@ -124,6 +137,10 @@ export function getCorsHeaders(req, methods = 'GET, OPTIONS') {
  * arrived"). Echo the request Origin with credentials so a credentials:include
  * fetch can read the status. Safe only for refusal bodies — never use this for
  * successful authenticated responses (#6411).
+ *
+ * Preflight (OPTIONS) for disallowed origins must also use these headers (or
+ * the browser never sends the POST). On api.worldmonitor.app the Cloudflare
+ * Worker mirrors this: echo on OPTIONS / denial statuses, allowlist on success.
  */
 export function getOriginDeniedCorsHeaders(req, methods = 'GET, OPTIONS') {
   const origin = req.headers.get('origin') || '';

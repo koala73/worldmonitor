@@ -128,6 +128,7 @@ describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () 
     ['suffix-spoofed eliewm origin', 'https://worldmonitor-git-feature-eliewm.vercel.app.evil.com'],
     ['dead personal-scope preview (post-migration)', 'https://worldmonitor-feature-elie-abc123.vercel.app'],
     ['unrelated translate.goog host', 'https://evil-example-com.translate.goog'],
+    ['hyphen-encoded lookalike translate host', 'https://evil--worldmonitor-app.translate.goog'],
     ['trailing-dot unrelated origin', 'https://evil.example.com.'],
   ];
 
@@ -203,11 +204,19 @@ describe('CORS triplet parity — Google Translate + trailing-dot helpers stay i
   ];
 
   for (const rel of TWINS) {
-    it(`${rel} admits WorldMonitor Google Translate proxy hosts`, async () => {
+    it(`${rel} decodes Google Translate hosts before allowlisting`, async () => {
       const source = await readFile(new URL(rel, import.meta.url), 'utf8');
       assert.ok(
-        source.includes('(?:[a-z0-9-]+-)*worldmonitor-app\\.translate\\.goog'),
-        `${rel} must allow *-worldmonitor-app.translate.goog readers with the scoped pattern`,
+        source.includes('isWorldMonitorGoogleTranslateOrigin'),
+        `${rel} must share the Translate decode helper`,
+      );
+      assert.ok(
+        source.includes('replace(/--/g,'),
+        `${rel} must decode Google's -- hyphen escape before matching`,
+      );
+      assert.ok(
+        !source.includes('(?:[a-z0-9-]+-)*worldmonitor-app\\.translate\\.goog'),
+        `${rel} must not use the suffix-only Translate pattern (hyphen bypass)`,
       );
     });
 
@@ -292,6 +301,7 @@ describe('CORS Worker superset invariant — edge allowlist ⊇ function allowli
     'https://worldmonitor-feature-elie-abc123.vercel.app',
     'https://evil.com',
     'https://evil-example-com.translate.goog',
+    'https://evil--worldmonitor-app.translate.goog',
   ];
 
   for (const origin of PROD_ORIGINS) {
