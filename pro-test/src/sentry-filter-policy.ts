@@ -334,9 +334,20 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // `tests/pro-sentry-filter-policy.test.mts` fails if a JSON-RPC client is
   // ever added to this surface, rather than letting the rule silently widen.
   //
-  // Deliberately narrow: EIP-1193's own `4001` (user rejected the request) is
-  // outside the reserved range and keeps reporting, as does any `{code,
-  // message}` our own code rejects with.
+  // Deliberately narrow on the CODE: EIP-1193's own `4001` (user rejected the
+  // request) is outside the reserved range and keeps reporting, as does any
+  // non-integer, string, or absent code.
+  //
+  // The payload's own `message` is deliberately NOT consulted, so
+  // `{code: -32603, message: 'checkout failed'}` is dropped too (raised in
+  // review, PR #7241). Requiring the literal "Internal JSON-RPC error." would
+  // reintroduce the wording heuristic this rule exists to avoid: wallets emit
+  // many different strings inside the reserved block (-32002 "Request already
+  // pending", provider-specific texts), so matching on message would shrink
+  // coverage and break on the next wallet. The reserved range is
+  // protocol-defined; the message is free text. What licenses ignoring it is
+  // the JSON-RPC-free invariant above — no first-party code on this surface can
+  // mint a -32768..-32000 code at all, whatever message it pairs with.
   const rejected = event.extra?.__serialized__;
   const rejectedCode = rejected?.code;
   if (PLAIN_OBJECT_REJECTION.test(msg)

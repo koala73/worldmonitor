@@ -556,24 +556,106 @@ describe('marketing beforeSend — wallet JSON-RPC rejection (WORLDMONITOR-107)'
     }) !== null, 'no extra at all');
   });
 
-  it('KEEPS an unrelated message even with a reserved-range code', () => {
+  it('KEEPS an unrelated EXCEPTION VALUE even with a reserved-range code', () => {
     // The rule needs BOTH halves; a real first-party error that happens to
     // carry a JSON-RPC-shaped code must not be swallowed by the range alone.
+    // "Message" here means the synthetic exception value Sentry built — NOT the
+    // rejected payload's own `message`, which the next test pins separately.
     assert.ok(marketingBeforeSend({
       exception: { values: [{ type: 'TypeError', value: 'Cannot read properties of undefined (reading "plan")' }] },
       extra: { __serialized__: { code: -32603, message: 'Internal JSON-RPC error.' } },
     }) !== null);
   });
 
+  it('ignores the PAYLOAD message entirely — the code is the whole discriminator', () => {
+    // Asked for in review (PR #7241): `{code: -32603, message: 'checkout
+    // failed'}` IS dropped, and that is deliberate. Requiring the literal
+    // "Internal JSON-RPC error." would reintroduce exactly the wording
+    // heuristic this rule was designed to avoid — wallets emit many different
+    // strings inside the reserved block (-32002 "Request already pending", and
+    // provider-specific texts), so a message match would shrink coverage and
+    // break on the next wallet. The reserved range is protocol-defined; the
+    // message is free text.
+    //
+    // What licenses ignoring it is the JSON-RPC-free invariant below: no
+    // first-party code on this surface can mint a -32768..-32000 code at all,
+    // whatever message it pairs with. Pinned so a later "fix" toward
+    // message-matching has to argue with a red test.
+    for (const message of ['checkout failed', '', 'Internal JSON-RPC error.', 'user rejected']) {
+      assert.equal(
+        marketingBeforeSend({
+          exception: {
+            values: [{
+              type: 'UnhandledRejection',
+              value: 'Object captured as promise rejection with keys: code, message',
+            }],
+          },
+          extra: { __serialized__: { code: -32603, message } },
+        }),
+        null,
+        `payload message ${JSON.stringify(message)} must not change the verdict`,
+      );
+    }
+  });
+
+  /**
+   * Every first-party source file the marketing bundle can execute.
+   *
+   * `pro-test/src` alone is NOT the bundle's boundary: `App.tsx` and `main.tsx`
+   * import leaf modules out of the repo-root `shared/` tree, so a scan stopping
+   * at `pro-test/src` stays green on JSON-RPC introduced there (greptile
+   * review, PR #7241). The out-of-tree imports are RESOLVED from the source
+   * rather than hardcoded, so a new one is covered the day it is added instead
+   * of silently widening the suppression it licenses.
+   *
+   * Third-party package code is deliberately out of scope: `node_modules` is
+   * neither reviewable nor stable enough to assert on, and the only SDK this
+   * surface loads is Clerk, which is REST. A dependency that both spoke
+   * JSON-RPC and rejected a reserved-range `{code}` into the page's
+   * `onunhandledrejection` would defeat the rule — an accepted, named limit of
+   * the tripwire rather than an oversight.
+   */
+  function marketingFirstPartySources(): { rel: string; code: string }[] {
+    const seen = new Map<string, string>();
+    for (const f of readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })) {
+      if (!/\.(ts|tsx)$/.test(f)) continue;
+      const rel = `pro-test/src/${f}`;
+      seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+    }
+    // `from '../../shared/<mod>'` → `shared/<mod>.ts`. The shared modules in use
+    // today are import-free leaves, so one hop is the whole closure; one that
+    // grew imports of its own would need this widened, which is what the
+    // reachability test below exists to keep visible.
+    for (const code of [...seen.values()]) {
+      for (const m of code.matchAll(/from '\.\.\/\.\.\/(shared\/[\w./-]+)'/g)) {
+        const rel = `${m[1]}.ts`;
+        if (!seen.has(rel)) seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+      }
+    }
+    return [...seen].map(([rel, code]) => ({ rel, code }));
+  }
+
   it('pins the marketing bundle as JSON-RPC-free, which is what licenses the rule', () => {
     // If a JSON-RPC client is ever added to this surface, the reserved-range
     // discriminator stops proving third-party origin and this suppression must
     // be re-derived. Fails loudly instead of silently widening.
-    const files = readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })
-      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('sentry-filter-policy'))
-      .map((f) => readFileSync(resolve(root, 'pro-test/src', f), 'utf-8'))
-      .join('\n');
-    assert.ok(!/jsonrpc|JSON-RPC|json_rpc/i.test(files),
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /jsonrpc|JSON-RPC|json_rpc/i.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [],
       'a JSON-RPC client on the marketing surface invalidates the WORLDMONITOR-107 rule');
+  });
+
+  it('the JSON-RPC scan reaches the whole bundle, shared/ included', () => {
+    // Two ways the invariant above could pass vacuously: a walk that returns
+    // nothing, and a walk that stops at `pro-test/src` — the exact hole this
+    // pass closed. Both are pinned here, so the scan is known to have teeth.
+    const files = marketingFirstPartySources().map((f) => f.rel);
+    assert.ok(files.length > 20, `walk must reach the real tree, got ${files.length} files`);
+    assert.ok(files.includes('pro-test/src/App.tsx'), 'walk must include the app root');
+    const shared = files.filter((f) => f.startsWith('shared/'));
+    assert.ok(shared.length >= 3,
+      `walk must follow the out-of-tree imports, got ${JSON.stringify(shared)}`);
   });
 });
