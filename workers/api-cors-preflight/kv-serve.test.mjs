@@ -1,11 +1,12 @@
 // Tests for KV serving added to the api-cors-preflight Worker (U-K4, #5338).
 //
-// The load-bearing invariant: serving is STRICTLY ADDITIVE. With the flag off (the deployed
-// default) behaviour is byte-identical to the origin pass-through, and every KV failure mode
+// The load-bearing invariant: serving is STRICTLY ADDITIVE. With the flag off (the kill-switch)
+// behaviour is byte-identical to the origin pass-through, and every KV failure mode
 // (miss/invalid/stale/error/timeout) falls through to origin — never a served 5xx. When serving is
 // on, the body is the tier envelope's payload and the CORS headers match what the Worker stamps on
-// the pass-through (it remains the CORS source of truth).
+// the pass-through (it remains the CORS source of truth). Production is BOOTSTRAP_KV_SERVE="all".
 
+import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
@@ -82,7 +83,7 @@ test('served CORS headers are identical to the origin pass-through the Worker wo
   } finally { restore(); }
 });
 
-test('serve=off (the deployed default): public-tier GET falls through to origin unchanged', async () => {
+test('serve=off (kill-switch): public-tier GET falls through to origin unchanged', async () => {
   const restore = installFetch();
   try {
     const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'off', kvValue: envelopeFor('fast') }), makeCtx().ctx);
@@ -255,6 +256,12 @@ test('a served tier skips the redundant shadow read during cutover', async () =>
     assert.equal(reads, 1, 'serve telemetry replaces the same-tier shadow read');
     assert.deepEqual(events.map((event) => event.event_type), ['bootstrap_kv_serve']);
   } finally { restore(); }
+});
+
+test('wrangler.toml stage 2 serves both public tiers from KV', () => {
+  const toml = readFileSync(new URL('./wrangler.toml', import.meta.url), 'utf8');
+  assert.match(toml, /^BOOTSTRAP_KV_SERVE = "all"$/m, 'fast-tier cutover (#7291) must stay deployed');
+  assert.match(toml, /^BOOTSTRAP_KV_SHADOW = "1"$/m, 'keep the shadow baseline until stage 3');
 });
 
 test('serve=slow keeps the unserved fast tier on the shadow path', async () => {

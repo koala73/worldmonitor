@@ -301,11 +301,12 @@ export default {
     // origin is fetched at most once.
     const fetchOrigin = () => passThroughToOrigin(request, url, corsForStatus);
 
-    // KV serving (U-K4, #5338): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE on, serve
-    // the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged against
-    // origin and any non-servable outcome uses the origin response — strictly additive (KTD3), so
-    // the worst case is today's behaviour. Returns null for non-servable requests (flag off, not a
-    // bootstrap GET), which then run the normal pass-through. Inert until the flag is flipped.
+    // KV serving (U-K4, #5338 / #7291): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE
+    // on, serve the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged
+    // against origin and any non-servable outcome uses the origin response — strictly additive
+    // (KTD3), so the worst case is origin pass-through. Returns null for non-servable requests
+    // (flag off, not a bootstrap GET), which then run the normal pass-through. Production is
+    // BOOTSTRAP_KV_SERVE="all"; "slow" and "off" remain kill-switches.
     const bootstrapKv = await maybeServeBootstrapFromKv(request, url, env, ctx, buildCorsHeaders(origin), fetchOrigin);
     if (bootstrapKv) return bootstrapKv;
 
