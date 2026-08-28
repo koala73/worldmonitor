@@ -4228,6 +4228,18 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   margin-bottom: 6px;
 }
 
+.deckgl-webcam-popup-link {
+  display: block;
+  margin: 4px 0;
+  color: var(--accent, #00d4ff);
+  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
+  text-decoration: none;
+}
+
+.deckgl-webcam-popup-link:hover {
+  text-decoration: underline;
+}
+
 /* News Items */
 .item {
   padding: 8px 0;

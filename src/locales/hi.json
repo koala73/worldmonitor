@@ -599,6 +599,8 @@
       "recent": "हाल की खोजें",
       "empty": "डेटा खोजें या कमांड चलाएं",
       "noResults": "कोई परिणाम नहीं",
+      "resultAnnouncement_one": "{{query}} के लिए {{count}} परिणाम",
+      "resultAnnouncement_other": "{{query}} के लिए {{count}} परिणाम",
       "commands": "कमांड्स",
       "results": "परिणाम",
       "addPanel": "जोड़ें",

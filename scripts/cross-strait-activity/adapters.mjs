@@ -2104,6 +2104,10 @@ export function buildCrossStraitActivitySnapshot({
       transportStatus: mndOutcome?.ok ? 'fresh' : 'error',
       requestCount: mndOutcome?.requestCount ?? 0,
       errorCodes: mndOutcome?.errorCodes ?? [],
+      // WHEN this verdict was produced. lastSuccessAt is retained across failing
+      // runs by design, so on its own an errored record cannot say whether the
+      // seeder just ran or stopped running days ago — see the japan-mod note.
+      lastAttemptAt: generatedAt,
       lastSuccessAt: mndOutcome?.ok
         ? generatedAt
         : latestSourceSuccess(previousSnapshot, 'taiwan-mnd'),
@@ -2134,6 +2138,16 @@ export function buildCrossStraitActivitySnapshot({
         ? { proxyControlProbe: japanOutcome.proxyControlProbe }
         : {}),
       errorCodes: japanOutcome?.errorCodes ?? [],
+      // The per-source key publishes this object alone — the snapshot's
+      // generatedAt never reaches it — so a failing record carried only a
+      // lastSuccessAt that is deliberately NOT re-dated on failure. On
+      // 2026-08-26 japan-mod had been erroring for 6.8 days behind a rejected
+      // proxy credential, and the stored record could not distinguish "the
+      // seeder ran 60 minutes ago and the upstream refused it" from "the seeder
+      // has been dead for a week": both look like error + a week-old success.
+      // Answering it required reading Railway logs. Stamping the attempt makes
+      // the record self-sufficient.
+      lastAttemptAt: generatedAt,
       lastSuccessAt: japanOutcome?.ok
         ? generatedAt
         : previousJapanSource?.lastSuccessAt ?? latestSourceSuccess(previousSnapshot, 'japan-mod'),

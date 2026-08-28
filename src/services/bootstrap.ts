@@ -66,6 +66,13 @@ let lastHydrationState: BootstrapHydrationState = {
 let bootstrapGeneration = 0;
 let activeSlowCtrl: AbortController | null = null;
 let slowTierSettled: Promise<void> | null = null;
+/**
+ * Resolver for the slow-tier reservation held across a bootstrap. Non-null only
+ * while a bootstrap is in flight and has not yet handed its checkpoint over to
+ * the real scheduled fetch. Every exit path from fetchBootstrapData must call
+ * it, or awaiters of the reservation hang forever.
+ */
+let releaseReservedSlowTier: (() => void) | null = null;
 let bootstrapTransferRumTier: BootstrapTransferRumTier | null = null;
 let bootstrapTransferRumReported = false;
 let bootstrapTransferRumReporter = reportBootstrapTransferRum;
@@ -501,6 +508,20 @@ function scheduleSlowTierFetch(generation: number, onSlowSettled?: () => void): 
   });
 }
 
+/**
+ * True once the slow tier for the in-flight bootstrap has settled.
+ *
+ * `slowTierSettled` is null in two very different situations: no bootstrap is
+ * running at all, and a bootstrap IS running but has not scheduled its slow
+ * tier yet (it is only scheduled after the fast tier commits). Treating both as
+ * "settled" made this fail open: a caller landing in the second window got an
+ * instant `true` for a slow tier that had not even been requested. App.ts gates
+ * viewportHydrationReady + its scroll listener on this checkpoint precisely so
+ * an early scroll cannot consume the consume-once hydration keys before they
+ * arrive, so opening that gate early wasted the ~500 KB slow tier. The
+ * reservation installed by fetchBootstrapData now covers the whole bootstrap,
+ * leaving null to mean only "nothing in flight".
+ */
 export async function waitForBootstrapSlowTier(timeoutMs = 0): Promise<boolean> {
   const pending = slowTierSettled;
   if (!pending) return true;
@@ -525,6 +546,10 @@ export function cancelBootstrapSlowTier(): void {
   bootstrapGeneration += 1;
   activeSlowCtrl?.abort();
   activeSlowCtrl = null;
+  // Resolve before dropping the reference: a caller that already captured this
+  // checkpoint would otherwise await a promise nothing can settle.
+  releaseReservedSlowTier?.();
+  releaseReservedSlowTier = null;
   slowTierSettled = null;
 }
 
@@ -546,7 +571,23 @@ export async function fetchBootstrapData(onSlowSettled?: () => void): Promise<vo
 
   activeSlowCtrl?.abort();
   activeSlowCtrl = null;
-  slowTierSettled = null;
+  // Release any reservation from a superseded bootstrap before replacing it,
+  // so an awaiter still holding that generation's checkpoint is not stranded.
+  releaseReservedSlowTier?.();
+  // Reserve the checkpoint for the WHOLE bootstrap rather than only from the
+  // moment the slow tier is scheduled. Between here and that hand-off the slow
+  // tier has not settled, and a null would tell waitForBootstrapSlowTier
+  // otherwise — the fail-open that let App.ts open viewport hydration before
+  // the slow tier was even requested.
+  slowTierSettled = new Promise<void>((resolve) => {
+    releaseReservedSlowTier = resolve;
+  });
+  const reservation = releaseReservedSlowTier;
+  const releaseReservation = (): void => {
+    if (releaseReservedSlowTier === reservation) releaseReservedSlowTier = null;
+    reservation?.();
+  };
+  let handedOffToSlowFetch = false;
   hydrationCache.clear();
   lastHydrationState = {
     source: 'none',
@@ -572,18 +613,29 @@ export async function fetchBootstrapData(onSlowSettled?: () => void): Promise<vo
     desktop ? BOOTSTRAP_TIER_TIMEOUT_MS.desktop.fast : BOOTSTRAP_TIER_TIMEOUT_MS.web.fast,
   );
   try {
-    const fastState = await fetchTier('fast', fastCtrl.signal, isCurrentGeneration);
-    if (!isCurrentGeneration()) return;
-    lastHydrationState = {
-      source: combineHydrationSources([fastState, lastHydrationState.tiers.slow]),
-      tiers: { fast: fastState, slow: lastHydrationState.tiers.slow },
-    };
-  } finally {
-    clearTimeout(fastTimeout);
-  }
+    try {
+      const fastState = await fetchTier('fast', fastCtrl.signal, isCurrentGeneration);
+      if (!isCurrentGeneration()) return;
+      lastHydrationState = {
+        source: combineHydrationSources([fastState, lastHydrationState.tiers.slow]),
+        tiers: { fast: fastState, slow: lastHydrationState.tiers.slow },
+      };
+    } finally {
+      clearTimeout(fastTimeout);
+    }
 
-  if (!isCurrentGeneration()) return;
-  slowTierSettled = scheduleSlowTierFetch(generation, onSlowSettled);
+    if (!isCurrentGeneration()) return;
+    const scheduled = scheduleSlowTierFetch(generation, onSlowSettled);
+    slowTierSettled = scheduled;
+    handedOffToSlowFetch = true;
+    // Callers that captured the reservation before this hand-off must observe
+    // the REAL settle, not resolve early, so chain it rather than releasing now.
+    void scheduled.then(releaseReservation, releaseReservation);
+  } finally {
+    // Every other way out — a superseded generation, or a throw from the fast
+    // tier — leaves nothing that will ever settle, so release immediately.
+    if (!handedOffToSlowFetch) releaseReservation();
+  }
 }
 
 export const __testing__ = {

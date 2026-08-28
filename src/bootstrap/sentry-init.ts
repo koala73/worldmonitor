@@ -129,6 +129,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // WKScriptMessageHandler ourselves; this is browser-native and unactionable
       // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
       /WKWebView API client did not respond to this postMessage/,
+      // Apple's native WKWebView find-on-page bridge: the host app evaluates
+      // `WKWebView_RemoveAllHighlights()` in the page when the user dismisses
+      // the in-app find bar, and it is undefined in web content the host never
+      // instrumented. `WKWebView_` is Apple's native-bridge prefix and appears
+      // nowhere in src/, api/, public/ or index.html, so it can never come from
+      // our bundle, minified or not — same class as the two `WKWebView` entries
+      // around it. The existing `^(?:LIDNotify…|removeHighlight|…) is not
+      // defined$` entry covers other host-injected names but is anchored to the
+      // Chrome phrasing and an exact alternation, so it missed the Safari
+      // `Can't find variable:` wording (WORLDMONITOR-10W — Mobile Safari 26.6 /
+      // iOS 18.7, single frame on the /dashboard document).
+      /\bWKWebView_[A-Za-z]\w*/,
       /Unexpected end of(?: JSON)? input/,
       /window\.android\.\w+ is not a function/,
       /Attempted to assign to readonly property/,
@@ -416,10 +428,45 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // bucket, `api.worldmonitor.app`) are intentionally NOT in the set so a
       // real basemap / API regression is never silently dropped
       // (WORLDMONITOR-NE/NF, WORLDMONITOR-QG).
+      //
+      // Surviving events are additionally FINGERPRINTED by host. Suppression
+      // already read the host; grouping did not, and Sentry groups these on the
+      // stack — which `fetch-failure-attribution.ts` establishes is identical
+      // for every fetch failure (all frames are `window.fetch` wrappers; the
+      // async boundary drops the calling frame). So every host that survives the
+      // allowlist landed in ONE issue, titled after whichever host arrived last.
+      // WORLDMONITOR-ZG held all three populations at once (2026-08-27 triage,
+      // 32 events): 21 bare pre-attribution `Failed to fetch`, 8
+      // `api.worldmonitor.app` from a real ~90s origin blip on 2026-08-16, and 3
+      // `motramby.com` adware-beacon failures on 2026-08-27. The origin failures
+      // — the exact population the attribution work existed to surface — were
+      // unreadable under an adware title.
+      //
+      // The split is by OWNERSHIP, not by raw host: each of our own hosts keeps
+      // its own issue, while every foreign host collapses into a single
+      // `third-party` bucket. Adware and tracker domains rotate, so bucketing
+      // them bounds cardinality at (our hosts + 1) instead of leaving it open to
+      // one new issue per injected domain.
       if (isHostScopedFetchFailure) {
         const hostMatch = msg.match(/^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \(([^)]+)\)$/);
         const host = hostMatch?.[1];
         if (host && THIRD_PARTY_FETCH_HOST_ALLOWLIST.has(host)) return null;
+        if (host) {
+          // Anchored at the end so a lookalike (`worldmonitor.app.evil.example`)
+          // is foreign. The R2 bucket is matched EXACTLY, not by `.r2.dev`
+          // suffix: `r2.dev` is Cloudflare's shared public-bucket domain, so
+          // every account gets a `pub-<id>.r2.dev` host. A suffix match would
+          // hand each foreign tenant its own raw-host fingerprint — reopening
+          // the unbounded cardinality this bucket exists to close, and dressing
+          // an unrelated bucket up as a first-party incident. Our own bucket
+          // still needs naming here because it is deliberately absent from the
+          // suppression allowlist (WORLDMONITOR-NE/NF) so a basemap regression
+          // surfaces, and it must surface as itself rather than in the
+          // third-party bin. Kept in step with `docs/maps-and-geocoding.mdx`.
+          const isOwnHost = /(?:^|\.)worldmonitor\.app$/.test(host)
+            || host === 'pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev';
+          event.fingerprint = ['fetch-failure', isOwnHost ? host : 'third-party'];
+        }
       }
       // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
       // __globeObjType is exclusively set by three-globe on its own objects and we have no user onClick/onHover handler, so it is always globe.gl internal even when the stack shows the bundled main chunk (WORLDMONITOR-ME).

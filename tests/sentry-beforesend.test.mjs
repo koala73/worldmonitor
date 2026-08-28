@@ -1759,3 +1759,94 @@ describe('beforeSend — Firefox bare-primitive throw (WORLDMONITOR-106)', () =>
       'stripping comments must clear it');
   });
 });
+
+// ─── WORLDMONITOR-ZG grouping: host-attributed fetch failures must not share ──
+// ─── one issue with third-party beacons ───────────────────────────────────────
+//
+// `fetch-failure-attribution.ts` put the host in the MESSAGE, and the allowlist
+// block above uses it to decide suppression. Grouping was never updated, and
+// Sentry groups these on the stack — which the attribution module's own
+// docstring establishes is identical for every fetch failure (all frames are
+// `window.fetch` wrappers; the async boundary drops the caller).
+//
+// Measured consequence (2026-08-27 triage of WORLDMONITOR-ZG, 32 events):
+//   21 x bare `Failed to fetch`         (pre-attribution builds)
+//    8 x `api.worldmonitor.app`         (a real ~90s origin blip, 2026-08-16)
+//    3 x `motramby.com`                 (injected adware beacon, 2026-08-27)
+// all in ONE issue, titled after whichever host arrived last. The eight
+// first-party origin failures — the exact population the whole attribution
+// effort existed to surface — were invisible under an adware title.
+//
+// The split is by OWNERSHIP, not by raw host: every foreign host collapses into
+// a single `third-party` bucket so a rotating adware domain cannot explode
+// issue cardinality, while each of our own hosts keeps its own issue.
+describe('host-attributed fetch failures are fingerprinted by host (WORLDMONITOR-ZG)', () => {
+  const zgStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: 't' },
+    { filename: '/assets/widget-store-DbqgxtxV.js', lineno: 0, function: 'Pn.window.fetch' },
+    { filename: '/assets/analytics-DdK2NArM.js', lineno: 0, function: 'c' },
+  ];
+
+  it('gives a first-party origin failure its own fingerprint', () => {
+    const event = beforeSend(makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', zgStack));
+    assert.ok(event !== null, 'an origin outage must never be suppressed');
+    assert.deepEqual(event.fingerprint, ['fetch-failure', 'api.worldmonitor.app']);
+  });
+
+  it('gives the self-hosted PMTiles bucket its own fingerprint', () => {
+    // Deliberately absent from the suppression allowlist (WORLDMONITOR-NE/NF),
+    // so a basemap regression must also be readable on its own. The exact
+    // bucket, per docs/maps-and-geocoding.mdx.
+    const event = beforeSend(makeEvent('Failed to fetch (pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev)', 'TypeError', zgStack));
+    assert.ok(event !== null);
+    assert.deepEqual(event.fingerprint, ['fetch-failure', 'pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev']);
+  });
+
+  it('does not hand every Cloudflare R2 tenant a first-party group', () => {
+    // `r2.dev` is a SHARED suffix — any Cloudflare account gets a `pub-<id>.r2.dev`
+    // bucket. Matching it by suffix would give each foreign tenant its own raw-host
+    // fingerprint, reopening the unbounded cardinality the third-party bucket
+    // exists to close, and dressing an unrelated bucket up as our incident
+    // (greptile review, PR #7228).
+    const foreign = beforeSend(makeEvent('Failed to fetch (pub-0000000000000000000000000000000.r2.dev)', 'TypeError', zgStack));
+    assert.ok(foreign !== null);
+    assert.deepEqual(foreign.fingerprint, ['fetch-failure', 'third-party']);
+  });
+
+  it('collapses every foreign host into one bounded bucket', () => {
+    // Adware/tracker domains rotate. Bucketing them keeps cardinality at
+    // (our hosts + 1) instead of unbounded.
+    const adware = beforeSend(makeEvent('Failed to fetch (motramby.com)', 'TypeError', zgStack));
+    const other = beforeSend(makeEvent('Failed to fetch (a8f3c1e9.example-tracker.net)', 'TypeError', zgStack));
+    assert.ok(adware !== null && other !== null);
+    assert.deepEqual(adware.fingerprint, ['fetch-failure', 'third-party']);
+    assert.deepEqual(other.fingerprint, adware.fingerprint,
+      'two rotating foreign hosts must land in the SAME issue');
+  });
+
+  it('does not separate the first-party bucket from the third-party one by accident', () => {
+    // Positive control for the ownership predicate: a host that merely CONTAINS
+    // our domain is not ours.
+    const spoof = beforeSend(makeEvent('Failed to fetch (worldmonitor.app.evil.example)', 'TypeError', zgStack));
+    assert.ok(spoof !== null);
+    assert.deepEqual(spoof.fingerprint, ['fetch-failure', 'third-party']);
+  });
+
+  it('leaves suppression verdicts unchanged', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', zgStack)), null);
+    assert.equal(beforeSend(makeEvent('Failed to fetch (data.debugbear.com)', 'TypeError', zgStack)), null);
+  });
+
+  it('leaves events that are not host-attributed fetch failures ungrouped', () => {
+    // A still-bare `Failed to fetch` carries no host, so there is nothing
+    // honest to fingerprint on — it must keep Sentry's default grouping.
+    const bare = beforeSend(makeEvent('Failed to fetch', 'TypeError', zgStack));
+    assert.ok(bare !== null);
+    assert.equal(bare.fingerprint, undefined);
+
+    const unrelated = beforeSend(makeEvent('Something else broke', 'Error', zgStack));
+    assert.ok(unrelated !== null);
+    assert.equal(unrelated.fingerprint, undefined);
+  });
+});

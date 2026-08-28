@@ -97,4 +97,26 @@ describe('the aviation client attaches Pro credentials on metered routes', () =>
       + 'PREMIUM_RPC_PATHS or the client stopped using premiumFetch',
     );
   });
+
+  it('does not cache a partial airport board', async () => {
+    let airportBoardCalls = 0;
+    mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : (input as Request).url ?? String(input);
+      if (url.includes('list-airport-flights')) airportBoardCalls++;
+      return new Response(JSON.stringify({
+        flights: [{ flightNumber: 'AA1', date: '2026-08-27', operatingCarrier: { iataCode: 'AA', name: 'American Airlines' }, origin: { iata: 'LAX', name: 'Los Angeles' }, destination: { iata: 'JFK', name: 'New York' }, scheduledDeparture: 1, scheduledArrival: 2, estimatedDeparture: 1, estimatedArrival: 2, status: 'FLIGHT_INSTANCE_STATUS_SCHEDULED', delayMinutes: 0, cancelled: false, diverted: false, gate: '', terminal: '', aircraftType: '', source: 'aviationstack' }],
+        totalAvailable: 1,
+        source: 'partial',
+        updatedAt: 0,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+
+    const { fetchAirportFlights } = await import('../src/services/aviation/index.ts');
+    const first = await fetchAirportFlights('LAX', 'both', 30);
+    const second = await fetchAirportFlights('LAX', 'both', 30);
+
+    assert.equal(first[0]?.flightNumber, 'AA1');
+    assert.equal(second[0]?.flightNumber, 'AA1');
+    assert.equal(airportBoardCalls, 2, 'partial boards must not be retained in the client cache');
+  });
 });

@@ -230,12 +230,33 @@ function installMockFetch({ riskPayload = null } = {}) {
 
     // get_country_risk RPC — the sibling fetch dispatch._execute does.
     if (u.includes('/api/intelligence/v1/get-country-risk')) {
+      // GetCountryRiskResponse as the gateway actually serializes it: the
+      // proto struct, camelCase, no case conversion. This mock previously
+      // invented `country_code` / a numeric `cii` / `components{unrest,…}` /
+      // `travelAdvisory` / `sanctionsExposure` — the same fiction the tool's
+      // outputSchema advertised — so the assertions below were checking the
+      // mock against itself rather than against anything production emits.
       const body = riskPayload ?? {
-        country_code: 'DE',
-        cii: 28,
-        components: { unrest: 12, conflict: 8, security: 5, news: 3 },
-        travelAdvisory: { level: 1 },
-        sanctionsExposure: [],
+        countryCode: 'DE',
+        countryName: 'Germany',
+        cii: {
+          region: 'DE',
+          staticBaseline: 22,
+          dynamicScore: 1.5,
+          combinedScore: 28,
+          trend: 'TREND_DIRECTION_STABLE',
+          components: { newsActivity: 3, ciiContribution: 12, geoConvergence: 8, militaryActivity: 5 },
+          computedAt: 1756288800000,
+          methodologyVersion: 'cii-v4',
+          eventMultiplier: 1,
+          advisoryLevel: '',
+          advisoryProvenance: 'live',
+        },
+        advisoryLevel: 'caution',
+        sanctionsActive: false,
+        sanctionsCount: 0,
+        fetchedAt: 1756288800000,
+        upstreamUnavailable: false,
       };
       return new Response(JSON.stringify(body), {
         status: 200,
@@ -751,6 +772,169 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     }
   });
 
+  // country-risk shipped for a long time reading fields that do not exist on
+  // the wire (`country_code`, a numeric `cii`, `components.unrest`,
+  // `travelAdvisory`, `sanctionsExposure`), so every read returned undefined:
+  // a country under thousands of active OFAC designations rendered "None", and
+  // a total upstream outage rendered identically to a calm, low-risk country.
+  // Nothing caught it because this shell was the one widget never mounted in
+  // the harness above. These drive the real script, so they fail on a field
+  // rename regardless of what the outputSchema claims.
+  const COUNTRY_RISK_HTML = async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
+    return (await res.json()).result.contents[0].text;
+  };
+
+  // GetCountryRiskResponse for a tracked, sanctioned, high-risk country.
+  const RISK_RU = {
+    countryCode: 'RU',
+    countryName: 'Russia',
+    cii: {
+      region: 'RU',
+      staticBaseline: 62,
+      dynamicScore: 4.2,
+      combinedScore: 78.4,
+      trend: 'TREND_DIRECTION_RISING',
+      components: { newsActivity: 71, ciiContribution: 44, geoConvergence: 88, militaryActivity: 65 },
+      computedAt: 1756288800000,
+      methodologyVersion: 'cii-v4',
+      eventMultiplier: 1.8,
+      advisoryLevel: 'do-not-travel',
+      advisoryProvenance: 'live',
+    },
+    advisoryLevel: 'do-not-travel',
+    sanctionsActive: true,
+    sanctionsCount: 3417,
+    fetchedAt: 1756288800000,
+    upstreamUnavailable: false,
+  };
+
+  // Every upstream read failed. get-country-risk.ts fails closed into this
+  // shape: the risk fields are zeroed, but they mean UNKNOWN, not calm.
+  const RISK_OUTAGE = {
+    countryCode: 'DE', countryName: 'Germany', advisoryLevel: '',
+    sanctionsActive: false, sanctionsCount: 0, fetchedAt: 0, upstreamUnavailable: true,
+  };
+
+  // A real, healthy answer that simply carries no CII score.
+  const RISK_UNTRACKED = {
+    countryCode: 'LU', countryName: 'Luxembourg', advisoryLevel: '',
+    sanctionsActive: false, sanctionsCount: 0, fetchedAt: 0, upstreamUnavailable: false,
+  };
+
+  it('country-risk widget renders the real GetCountryRiskResponse field names', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_RU);
+
+    assert.equal(view.text('country'), 'Russia');
+    // The original defect: sanctionsExposure did not exist, so this printed
+    // "None" for a country carrying 3417 active designations.
+    assert.equal(view.text('sanctions'), '3417 OFAC-listed');
+    // cii is a CiiScore object, never a bare number.
+    assert.equal(view.text('cii'), '78');
+    assert.equal(view.text('level'), 'Severe');
+    assert.equal(view.text('advisory'), 'do not travel');
+    assert.equal(view.text('trend'), 'Rising');
+    assert.equal(view.text('foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
+  });
+
+  it('country-risk widget labels CII components by meaning, not by their misnamed wire keys', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_RU);
+    const rendered = view.text('components');
+
+    // proto CiiComponents names are historical misnomers — cii_contribution is
+    // unrest, geo_convergence is armed conflict, military_activity is
+    // security/mobility. A reader must never see the raw key.
+    assert.match(rendered, /Domestic unrest44/);
+    assert.match(rendered, /Armed conflict88/);
+    assert.match(rendered, /Security & mobility65/);
+    assert.match(rendered, /Information environment71/);
+    for (const wireName of ['ciiContribution', 'geoConvergence', 'militaryActivity', 'newsActivity']) {
+      assert.doesNotMatch(rendered, new RegExp(wireName), `must not surface the raw wire name ${wireName}`);
+    }
+  });
+
+  it('country-risk widget reports an upstream outage as unknown, never as calm', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_OUTAGE);
+
+    assert.equal(view.text('cii'), '—');
+    assert.equal(view.text('level'), 'Unknown');
+    // The zeroed fields must not read as a clean bill of health.
+    assert.equal(view.text('sanctions'), '—');
+    assert.equal(view.text('advisory'), '—');
+    assert.equal(view.text('trend'), '—');
+    assert.match(view.text('components'), /unavailable/i);
+    assert.equal(view.text('foot'), 'Upstream unavailable — no snapshot time.');
+  });
+
+  it('country-risk widget separates an outage from a genuinely untracked country', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    view.sendToolResult(RISK_UNTRACKED);
+
+    // "None" here is a real finding: no advisory, no designations. The outage
+    // above must not be able to produce the same reading.
+    assert.equal(view.text('sanctions'), 'None');
+    assert.equal(view.text('advisory'), 'None');
+    assert.match(view.text('components'), /No component breakdown available/);
+    assert.equal(view.text('foot'), '', 'fetchedAt 0 means unknown — do not print epoch 0');
+  });
+
+  it('country-risk widget does not let one result\'s severity bleed into the next', async () => {
+    // The host posts results into one long-lived shell, so render() must fully
+    // own the score visuals on every branch. Leaving them untouched when cii
+    // is null showed an outage as "Unknown" above the PREVIOUS country's full
+    // red bar — the exact outage-reads-as-a-verdict failure the banner exists
+    // to prevent.
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+    const barWidth = () => view.nodes('ciibar').find((n) => n.id === 'ciibar')?.style.width;
+
+    view.sendToolResult(RISK_RU);
+    assert.equal(barWidth(), '78.4%');
+    assert.match(view.text('components'), /Armed conflict88/);
+
+    view.sendToolResult(RISK_OUTAGE);
+    assert.equal(barWidth(), '0%', 'score bar must be emptied when the score is unknown');
+    assert.doesNotMatch(view.text('components'), /Armed conflict/, 'components must be rebuilt, not appended to');
+  });
+
+  it('country-risk widget normalises and caps server strings without eating characters', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+
+    // The shell is a TS template literal, so a regex written `\s` reaches the
+    // browser as a literal "s" and silently collapses every letter s in the
+    // value ("Russia" -> "Ru ia"). Only an executed render catches that.
+    view.sendToolResult(RISK_RU);
+    assert.equal(view.text('country'), 'Russia');
+
+    // Whitespace collapses, and an unbounded value cannot flood the card:
+    // the tool's output budget is 256 KB, and this shell has no shared
+    // collapseWs helper behind it.
+    view.sendToolResult({
+      ...RISK_UNTRACKED,
+      countryName: '  Bosnia\n\nand   Herzegovina  ',
+      advisoryLevel: 'x'.repeat(5000),
+    });
+    assert.equal(view.text('country'), 'Bosnia and Herzegovina');
+    assert.ok(view.text('advisory').length <= 64, 'an unbounded advisory string must be capped');
+  });
+
+  it('country-risk widget resolves sanctions and trend without trusting the prototype chain', async () => {
+    const view = mountWidgetHtml(await COUNTRY_RISK_HTML());
+
+    // sanctionsActive is authoritative over the count.
+    view.sendToolResult({ ...RISK_UNTRACKED, sanctionsActive: true, sanctionsCount: undefined });
+    assert.equal(view.text('sanctions'), 'Active');
+
+    // A bare label-map index also resolves inherited members, so these would
+    // print an Object internal into the Trend row instead of the em-dash.
+    for (const hostile of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      view.sendToolResult({ ...RISK_RU, cii: { ...RISK_RU.cii, trend: hostile } });
+      assert.equal(view.text('trend'), '—', `trend "${hostile}" must fall back to the em-dash`);
+    }
+  });
+
   it('conflict-events widget distinguishes byte-truncated responses from complete results', async () => {
     const res = await handler(envKeyReq(readBody('ui://worldmonitor/conflict-events.html')));
     const html = (await res.json()).result.contents[0].text;
@@ -944,8 +1128,10 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(typeof payload.stale, 'boolean', 'stale must be a boolean');
     // The RPC-backed payload merges through — assert the country-risk
     // shape survived the freshness wrap.
-    assert.equal(payload.country_code, 'DE', 'country_code must round-trip through the freshness wrap');
-    assert.equal(payload.cii, 28);
+    assert.equal(payload.countryCode, 'DE', 'countryCode must round-trip through the freshness wrap');
+    assert.equal(payload.cii.combinedScore, 28, 'cii is a CiiScore object; the score lives on combinedScore');
+    assert.equal(payload.sanctionsActive, false);
+    assert.equal(payload.upstreamUnavailable, false);
   });
 
   it('resources/read worldmonitor://chokepoints/suez/status returns the transit-summary envelope with cached_at + stale', async () => {

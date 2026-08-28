@@ -528,6 +528,7 @@
       "recent": "最近搜索",
       "empty": "搜索数据或执行命令",
       "noResults": "无结果",
+      "resultAnnouncement_other": "“{{query}}”有 {{count}} 个结果",
       "commands": "命令",
       "results": "结果",
       "seeAllCommands": "查看所有命令",

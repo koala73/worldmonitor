@@ -14,6 +14,7 @@ function readFileSync(path, options) {
 }
 import { fileURLToPath } from 'node:url';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
+import { CACHE_POLICY_HEADER_NAME, isSharedCacheable } from './helpers/shared-cache-policy.mjs';
 import {
   CONTENT_CORPUS_PREFIXES,
   discoverContentCorpusPages,
@@ -28,6 +29,10 @@ const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.co
 const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
 const webMcpE2eSource = readFileSync(resolve(__dirname, '../e2e/webmcp.spec.ts'), 'utf-8');
+const webMcpCancellationE2eSource = readFileSync(
+  resolve(__dirname, '../e2e/helpers/webmcp-cancellation.ts'),
+  'utf-8',
+);
 const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
@@ -1874,10 +1879,10 @@ describe('security header guardrails', () => {
     assert.match(webMcpE2eSource, /document\.modelContext/);
     assert.match(webMcpE2eSource, /\.getTools\(\)/);
     assert.match(webMcpE2eSource, /provider\.executeTool/);
-    assert.match(webMcpE2eSource, /new AbortController\(\)/);
-    assert.match(webMcpE2eSource, /page\.on\('pageerror'/);
-    assert.match(webMcpE2eSource, /window\.addEventListener\('unhandledrejection'/);
-    assert.match(webMcpE2eSource, /lateLeakWindowMs/);
+    assert.match(webMcpCancellationE2eSource, /new AbortController\(\)/);
+    assert.match(webMcpCancellationE2eSource, /page\.on\('pageerror'/);
+    assert.match(webMcpCancellationE2eSource, /window\.addEventListener\('unhandledrejection'/);
+    assert.match(webMcpCancellationE2eSource, /lateLeakWindowMs/);
     assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
     assert.match(webMcpE2eSource, /testInfo\.outputPath\(name\)/);
     assert.match(webMcpE2eSource, /writeFile\(path/);
@@ -2471,6 +2476,61 @@ describe('embeddable map route guardrails', () => {
     assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
   });
 
+  it('no vercel.json rule re-enables shared caching of /api/geo', () => {
+    // /api/geo's body IS the caller's IP-geo, so it ships `Cache-Control: no-store`
+    // (api/geo.js) and tests/geo-per-visitor-cache.test.mts pins that. But a
+    // vercel.json header rule is ADDITIVE and outranks the handler at the CDN --
+    // Vercel reads Vercel-CDN-Cache-Control > CDN-Cache-Control > Cache-Control --
+    // so adding a cache directive to the existing `/api/(.*)` block would make the
+    // per-visitor body shared-cacheable again while the handler-level test stays
+    // green. This is the half of that guard the handler test cannot see.
+    // Judge the VALUE, not just the header name: a deployment rule that sets
+    // `Vercel-CDN-Cache-Control: no-store` reinforces the endpoint's contract and
+    // must not fail CI. Only a value a shared cache may actually store is an
+    // offender. Shares one predicate with the handler-level guard so the two
+    // cannot drift apart.
+    const offenders = [];
+    for (const rule of vercelConfig.headers) {
+      if (!sourceToRegExp(rule.source).test('/api/geo')) continue;
+      for (const header of rule.headers ?? []) {
+        if (!CACHE_POLICY_HEADER_NAME.test(header.key)) continue;
+        if (isSharedCacheable(header.value)) {
+          offenders.push(`${rule.source} -> ${header.key}: ${header.value}`);
+        }
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      'a vercel.json rule sets a cache-policy header on /api/geo, overriding the handler no-store at the CDN',
+    );
+  });
+
+  it('the /api/geo cache guard judges header values, not just header names', () => {
+    // Control for the guard above, both directions. A deployment rule that pins a
+    // non-storable policy REINFORCES the endpoint's contract and must not be
+    // reported; only a storable value is an offender.
+    assert.equal(isSharedCacheable('no-store'), false, 'a no-store deployment rule must not be flagged');
+    assert.equal(isSharedCacheable('private, max-age=300'), false);
+    assert.equal(isSharedCacheable('public, s-maxage=3600'), true);
+    assert.equal(isSharedCacheable('max-age=300'), true, 'bare max-age is still shared-storable');
+    assert.ok(CACHE_POLICY_HEADER_NAME.test('Vercel-CDN-Cache-Control'));
+    assert.ok(CACHE_POLICY_HEADER_NAME.test('Cloudflare-CDN-Cache-Control'));
+    assert.equal(CACHE_POLICY_HEADER_NAME.test('RateLimit-Limit'), false);
+  });
+
+  it('the /api/geo cache guard is wired to a rule source that really matches it', () => {
+    // Positive control for the guard above: prove sourceToRegExp actually matches
+    // /api/geo against a real rule in the file. Without this, a change to the
+    // matcher (or a renamed route) would make the guard vacuous -- it would scan
+    // zero rules and pass forever.
+    const matching = vercelConfig.headers.filter((rule) => sourceToRegExp(rule.source).test('/api/geo'));
+    assert.ok(
+      matching.some((rule) => rule.source === '/api/(.*)'),
+      'expected the /api/(.*) header rule to match /api/geo; the cache guard above scans nothing if it does not',
+    );
+  });
+
   it('keeps the global security header anti-framing rule off the embed entries', () => {
     // Both /embed (partner iframe) and /wm-widget-sandbox.html (agent widget
     // sandbox) need cross-origin framing + their own dedicated CSP; the
@@ -2488,7 +2548,14 @@ describe('embeddable map route guardrails', () => {
       `${source} must not match the global security-header rule`,
     );
     assert.equal(getHeaderValueForSource(source, 'X-Frame-Options'), null);
-    assert.match(getHeaderValueForSource(source, 'Content-Security-Policy') ?? '', /default-src 'none'/);
+    const csp = getHeaderValueForSource(source, 'Content-Security-Policy') ?? '';
+    assert.match(csp, /default-src 'none'/);
+    assert.match(csp, /(?:^|;\s*)sandbox allow-scripts(?:;|$)/, 'sandbox response must retain script execution in an opaque origin');
+    assert.equal(
+      getHeaderValueForSource(source, 'Cache-Control'),
+      'public, max-age=0, must-revalidate',
+      'unversioned sandbox policy documents must revalidate on every request',
+    );
   });
 
   for (const source of ['/embed', '/embed.html']) {

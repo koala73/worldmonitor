@@ -26,12 +26,17 @@ export default function handler(req, res) {
   const ua = req.headers['user-agent'] || '';
   const isBot = BOT_UA.test(ua);
 
+  res.setHeader('Vary', 'User-Agent');
+
   const baseUrl = 'https://worldmonitor.app';
   const spaUrl = `${baseUrl}/?c=${countryCode}&t=${type}${ts ? `&ts=${ts}` : ''}`;
 
   // Real users → redirect to SPA
   if (!isBot) {
-    res.writeHead(302, { Location: spaUrl });
+    res.writeHead(302, {
+      Location: spaUrl,
+      'Cache-Control': 'private, no-store',
+    });
     res.end();
     return;
   }

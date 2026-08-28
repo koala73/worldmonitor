@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
@@ -177,48 +176,64 @@ describe('China official policy adapters (#5576)', () => {
     );
   });
 
-  it('parses hostile markup without superlinear rescans', () => {
-    // Scaling, not wall-clock: an absolute millisecond ceiling measures the
-    // runner's load as much as the parser and flakes on a busy CI box while
-    // passing in isolation.
-    //
-    // The size step is 4x, not 2x, on purpose. A 2x step puts linear (~2x) and
-    // quadratic (~4x) close enough together that GC noise can straddle the
-    // gate — the larger input allocates proportionally more string, so
-    // collection cost rides along with the measurement and best-of-N does not
-    // remove it (GC is allocation-driven, not scheduler-driven). At 4x the
-    // bands are ~4x versus ~16x.
-    //
-    // `test:data` runs this file at concurrency 16. A discarded warmup plus a
-    // 12x gate still fail quadratic (~16x) and ReDoS, but tolerate the ~10x
-    // linear+GC ratios that 16-way CI has produced.
-    // Inputs are built once per size, outside every timed call: allocating
-    // them is linear bookkeeping, not parser work, and re-allocating on each
-    // attempt would add GC noise on top of the measurement — the exact
-    // allocation-driven noise this guard is designed to filter out.
-    const buildFixtures = (repeat: number) => {
-      const openers = '<div class="content">'.repeat(repeat);
-      const closers = '</div>'.repeat(repeat);
-      return {
-        nested: `<body>${openers}正文内容足够长且必须保留${closers}</body>`,
-        unbalanced: `${'<div>'.repeat(repeat)}${'</span>'.repeat(repeat)}`,
-        script: '<script '.repeat(repeat),
-        anchors: '<a >'.repeat(repeat),
-      };
+  // Scaling, not wall-clock: an absolute millisecond ceiling measures the
+  // runner's load as much as the parser and flakes on a busy CI box while
+  // passing in isolation. `process.cpuUsage()` is the clock for the same
+  // reason — `performance.now()` includes time this process was descheduled
+  // under `test:data`'s 16-way oversubscription, which compresses a genuine
+  // quadratic toward the linear band (observed 9.5x wall-clock on a loaded
+  // GitHub runner) even though the parser's own CPU still scales ~14x.
+  // CPU time still counts this process's GC; it just stops charging the
+  // parser for a sibling worker's slice.
+  //
+  // The size step is 4x, not 2x, on purpose. A 2x step puts linear (~2x) and
+  // quadratic (~4x) close enough together that GC noise can straddle the
+  // gate — the larger input allocates proportionally more string, so
+  // collection cost rides along with the measurement and best-of-N does not
+  // remove it (GC is allocation-driven, not scheduler-driven). At 4x the
+  // bands are ~4x versus ~16x.
+  //
+  // `test:data` runs this file at concurrency 16. A discarded warmup plus a
+  // 12x gate still fail quadratic (~14–16x) and ReDoS, but tolerate the ~10x
+  // linear+GC ratios that 16-way CI has produced.
+  // Inputs are built once per size, outside every timed call: allocating
+  // them is linear bookkeeping, not parser work, and re-allocating on each
+  // attempt would add GC noise on top of the measurement — the exact
+  // allocation-driven noise this guard is designed to filter out.
+  const buildFixtures = (repeat: number) => {
+    const openers = '<div class="content">'.repeat(repeat);
+    const closers = '</div>'.repeat(repeat);
+    return {
+      nested: `<body>${openers}正文内容足够长且必须保留${closers}</body>`,
+      unbalanced: `${'<div>'.repeat(repeat)}${'</span>'.repeat(repeat)}`,
+      script: '<script '.repeat(repeat),
+      anchors: '<a >'.repeat(repeat),
     };
+  };
 
-    const timeOnce = (fixtures: ReturnType<typeof buildFixtures>): number => {
-      const { nested, unbalanced, script, anchors } = fixtures;
-      const startedAt = performance.now();
-      __testing__.stripHtml(script);
-      parseAgencyListing('CAC', anchors);
-      parsePolicyDocumentHtml(nested);
-      parsePolicyDocumentHtml(unbalanced);
-      return performance.now() - startedAt;
+  type ScalingFixtures = ReturnType<typeof buildFixtures>;
+
+  const SCALING_ATTEMPTS = 5;
+
+  // One definition of the ceiling, shared by the guard and by the control that
+  // proves the guard can still fail. A control carrying its own copy of the
+  // threshold stops tracking the guard the moment either one is retuned, which
+  // is exactly when a stale control is most reassuring and least true.
+  const scalingCeilingMs = (base: number): number => base * 12 + 2;
+
+  const measureScaling = (
+    walk: (fixtures: ScalingFixtures) => void,
+    baseRepeat: number,
+  ): { base: number; quadrupled: number; ratio: number; marginMs: number } => {
+    const baseFixtures = buildFixtures(baseRepeat);
+    const quadrupledFixtures = buildFixtures(baseRepeat * 4);
+
+    const timeOnce = (fixtures: ScalingFixtures): number => {
+      const startedAt = process.cpuUsage();
+      walk(fixtures);
+      const used = process.cpuUsage(startedAt);
+      return (used.user + used.system) / 1000;
     };
-
-    const baseFixtures = buildFixtures(4_000);
-    const quadrupledFixtures = buildFixtures(16_000);
 
     // Discarded warmup, one per size.
     timeOnce(baseFixtures);
@@ -231,15 +246,69 @@ describe('China official policy adapters (#5576)', () => {
     // lands on both series' running minimum instead of just one (#6985).
     let base = Number.POSITIVE_INFINITY;
     let quadrupled = Number.POSITIVE_INFINITY;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < SCALING_ATTEMPTS; attempt += 1) {
       base = Math.min(base, timeOnce(baseFixtures));
       quadrupled = Math.min(quadrupled, timeOnce(quadrupledFixtures));
     }
-    const ratio = quadrupled / base;
+
+    return {
+      base,
+      quadrupled,
+      ratio: quadrupled / base,
+      marginMs: quadrupled - scalingCeilingMs(base),
+    };
+  };
+
+  const scalingDetail = (
+    scaling: ReturnType<typeof measureScaling>,
+  ): string =>
+    `${scaling.ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x ` +
+    `(${scaling.base.toFixed(1)}ms → ${scaling.quadrupled.toFixed(1)}ms, ` +
+    `${scaling.marginMs.toFixed(1)}ms against the ceiling)`;
+
+  it('parses hostile markup without superlinear rescans', () => {
+    const scaling = measureScaling((fixtures) => {
+      __testing__.stripHtml(fixtures.script);
+      parseAgencyListing('CAC', fixtures.anchors);
+      parsePolicyDocumentHtml(fixtures.nested);
+      parsePolicyDocumentHtml(fixtures.unbalanced);
+    }, 4_000);
 
     assert.ok(
-      quadrupled <= base * 12 + 2,
-      `quadrupling the input scaled cost ${ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x (${base.toFixed(1)}ms → ${quadrupled.toFixed(1)}ms)`,
+      scaling.marginMs <= 0,
+      `quadrupling the input scaled cost ${scalingDetail(scaling)}`,
+    );
+  });
+
+  it('keeps its teeth: a genuinely quadratic scan still trips the gate', () => {
+    // Positive control for the guard above. Every change that has made that
+    // guard quieter — the 4x step, the discarded warmup, the 12x ceiling, the
+    // interleaved best-of-5 (#6985) — traded sensitivity for stability, and
+    // nothing in the suite has ever checked how much sensitivity was left. A
+    // guard that can no longer fail passes for the same reason a deleted one
+    // does.
+    //
+    // The control walks hostile input with the unbounded prefix rescan that
+    // parsePolicyHtmlFields' closing-tag unwind
+    // (scripts/china-policy/adapters.mjs) degenerates into once the open-tag
+    // count stops bounding it — the regression this suite exists to catch. It
+    // uses a test-only probe around that real parser path and runs at a smaller
+    // base size because a genuinely quadratic scan at 16k would dominate the
+    // file's runtime.
+    let stackComparisons = 0;
+    const scaling = measureScaling((fixtures) => {
+      stackComparisons += __testing__.runPolicyHtmlClosingTagRegressionProbe(
+        fixtures.unbalanced,
+      );
+    }, 2_000);
+
+    assert.ok(
+      stackComparisons > 0,
+      'the control must actually scan the parser closing-tag stack',
+    );
+    assert.ok(
+      scaling.marginMs > 0,
+      `the quadratic control must trip the gate, but scaled only ${scalingDetail(scaling)}`,
     );
   });
 

@@ -85,19 +85,31 @@ Worked example — the `outputSchema` for `get_country_risk`:
 {
   "type": "object",
   "properties": {
-    "country_code": { "type": "string" },
-    "cii": { "type": ["number", "null"], "description": "Composite Instability Index 0-100." },
-    "components": {
-      "type": "object",
+    "countryCode": { "type": "string" },
+    "countryName": { "type": "string" },
+    "cii": {
+      "type": ["object", "null"],
+      "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
       "properties": {
-        "unrest":   { "type": ["number", "null"] },
-        "conflict": { "type": ["number", "null"] },
-        "security": { "type": ["number", "null"] },
-        "news":     { "type": ["number", "null"] }
+        "combinedScore": { "type": "number", "description": "The headline CII, 0-100." },
+        "trend": { "type": "string", "enum": ["TREND_DIRECTION_UNSPECIFIED", "TREND_DIRECTION_RISING", "TREND_DIRECTION_STABLE", "TREND_DIRECTION_FALLING"] },
+        "components": {
+          "type": "object",
+          "description": "Names are historical and do NOT describe their contents -- read the descriptions.",
+          "properties": {
+            "ciiContribution":  { "type": "number", "description": "DOMESTIC UNREST contribution." },
+            "geoConvergence":   { "type": "number", "description": "ARMED CONFLICT contribution." },
+            "militaryActivity": { "type": "number", "description": "SECURITY AND MOBILITY contribution." },
+            "newsActivity":     { "type": "number", "description": "INFORMATION ENVIRONMENT contribution." }
+          }
+        }
       }
     },
-    "travelAdvisory":    { "type": ["object", "string", "null"] },
-    "sanctionsExposure": { "type": ["object", "array", "null"] }
+    "advisoryLevel":   { "type": "string" },
+    "sanctionsActive": { "type": "boolean" },
+    "sanctionsCount":  { "type": "number" },
+    "fetchedAt":       { "type": "number", "description": "Unix epoch ms; 0 means unknown." },
+    "upstreamUnavailable": { "type": "boolean", "description": "True when ANY required upstream read failed; the whole response is withheld, so the zeroed risk fields mean UNKNOWN, not low." }
   }
 }
 ```
@@ -121,11 +133,24 @@ A typed-parsing sketch in TypeScript using the schema for compile-time hints:
 ```ts
 // Synthesise types from the schema once (e.g. with json-schema-to-typescript).
 type CountryRisk = {
-  country_code: string;
-  cii: number | null;
-  components: { unrest: number | null; conflict: number | null; security: number | null; news: number | null };
-  travelAdvisory: object | string | null;
-  sanctionsExposure: object | unknown[] | null;
+  countryCode: string;
+  countryName: string;
+  // The four component names are historical misnomers: ciiContribution is
+  // domestic unrest, geoConvergence is armed conflict, militaryActivity is
+  // security/mobility, newsActivity is the information environment.
+  cii?: {
+    combinedScore: number;
+    trend: 'TREND_DIRECTION_UNSPECIFIED' | 'TREND_DIRECTION_RISING' | 'TREND_DIRECTION_STABLE' | 'TREND_DIRECTION_FALLING';
+    components?: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number };
+  };
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  // Check this BEFORE reading any score: true means a required upstream
+  // read failed and the response was withheld — the zeroed fields are
+  // unknown, not calm.
+  upstreamUnavailable: boolean;
 };
 
 const reply = await callTool('get_country_risk', { country_code: 'IR' });
@@ -145,7 +170,7 @@ if ('_budget_exceeded' in parsed) {
 } else if ('_jmespath_error' in parsed) {
   // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
 } else {
-  console.log(parsed.cii, parsed.components.conflict);
+  console.log(parsed.cii?.combinedScore, parsed.cii?.components?.geoConvergence);
 }
 ```
 
@@ -832,7 +857,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_risk`
 
-Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?"
+Structured risk intelligence for a specific country: the Composite Instability Index at `cii.combinedScore` (0-100), its four contributing components under `cii.components` (domestic unrest, armed conflict, security and mobility, and the information environment), the government travel-advisory level, and OFAC sanctions exposure as `sanctionsActive` plus `sanctionsCount`. Fast Redis read - no LLM. Check `upstreamUnavailable` before interpreting a low score: when it is true, at least one required upstream read failed and the zeroed risk fields mean UNKNOWN, not calm. Use for quantitative risk screening or to answer "how risky is X right now?"
 
 **Parameters:**
 
@@ -1690,7 +1715,7 @@ curl -s https://worldmonitor.app/mcp \
 
 Reverse-chronological read of the stored history for one scope. Pure index read — no embedding and no ranking — so ordering is by `occurredAt` alone and every record's `score` is `0`.
 
-At least one of `domain` or `country` is required. Those are the two indexed scopes on the store; an unscoped read has no index to serve it and is rejected rather than run as a table scan. The rule is enforced inside the tool body, not by the input schema (`required` is empty), so schema-validating clients will not pre-catch it — the server rejects the call with a JSON-RPC `-32603` internal error whose message names the missing argument. Supplying both narrows to their intersection.
+At least one of `domain` or `country` is required. Those are the two indexed scopes on the store; an unscoped read has no index to serve it and is rejected rather than run as a table scan. The rule is enforced inside the tool body, not by the input schema (`required` is empty), so schema-validating clients will not pre-catch it — the server rejects the call with a JSON-RPC `-32602` Invalid params error and `error.data.violations` naming both fields. Supplying both narrows to their intersection.
 
 **Parameters:**
 
