@@ -26,8 +26,13 @@ const BATCH_MIN_BUDGET_MS = 2_000;
 // exits and DEFAULT_MAX_EXIT_ATTEMPTS was unreachable in production -- the cap
 // that actually bound rotation was this budget, not the attempt count. 30s fits
 // four and still leaves half the 60s valuation budget for the quoteSummary tier,
-// which only runs for symbols the batch failed to cover.
+// which covers symbols the batch missed and age-triggered return-metric refreshes.
 const BATCH_BUDGET_MS = 30_000;
+// v7 never returns ytd/3Y/5Y; those only arrive from quoteSummary. Once v7 covers
+// every symbol, quoteSummary would otherwise never run and the last-good metrics
+// snapshot freezes. Refresh when that snapshot is older than this age (or was
+// never stamped), still bounded by the valuation budget.
+const METRICS_REFRESH_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 // Yahoo's quote fundamentals cache is populated PER RESIDENTIAL EXIT IP: across
 // 10 rotated Decodo exits, 7 answered HTTP 200 while omitting trailingPE for a
 // stable subset of sector ETFs and 3 served it.
@@ -649,6 +654,39 @@ function mergeReturnMetrics(freshVals, lastGoodValuations) {
     if (used) usedSymbols.push(s);
   }
   return usedSymbols;
+}
+
+function hasLiveReturnMetrics(valuation) {
+  return Boolean(
+    valuation
+    && valuation.ytdReturn != null
+    && valuation.threeYearReturn != null
+    && valuation.fiveYearReturn != null,
+  );
+}
+
+function metricsRefreshDue(metricsFetchedAt, nowMs, maxAgeMs = METRICS_REFRESH_MAX_AGE_MS) {
+  if (!Number.isFinite(metricsFetchedAt)) return true;
+  if (!Number.isFinite(nowMs) || !Number.isFinite(maxAgeMs)) return true;
+  return (nowMs - metricsFetchedAt) >= maxAgeMs;
+}
+
+/** Overlay quoteSummary fields onto a v7 hit without discarding live core PE/beta. */
+function applyQuoteSummaryValuation(existing, parsed, source) {
+  if (!parsed || typeof parsed !== 'object') {
+    return existing || null;
+  }
+  if (!existing) {
+    return { ...parsed, ...(source ? { source } : {}) };
+  }
+  const next = { ...existing };
+  for (const key of ['ytdReturn', 'threeYearReturn', 'fiveYearReturn']) {
+    if (parsed[key] != null) next[key] = parsed[key];
+  }
+  for (const key of ['trailingPE', 'forwardPE', 'beta']) {
+    if (next[key] == null && parsed[key] != null) next[key] = parsed[key];
+  }
+  return next;
 }
 
 // The shape every published valuation must have. Consumers (MarketPanel's
@@ -1753,41 +1791,14 @@ async function collectSectorValuations({
   const valuationDiagnostics = v7Result.diagnostics || [];
   for (const source of v7Result.valuationSources || []) valuationSources.add(source);
 
-  // Tier 2: reserve the last-good read until every current valuation tier has
-  // run. Otherwise a complete v7 failure followed by quoteSummary fallback
-  // data can overwrite the previous snapshot before its return metrics are
-  // available to merge.
+  // Read last-good before quoteSummary so an age-triggered metrics refresh can
+  // see metricsFetchedAt. Persistence still waits until after merges below —
+  // an early read cannot re-date borrowed data.
   let lastGood = null;
   let lastGoodFetchedAt = null;
   let lastGoodMetricsFetchedAt = null;
   let lastGoodMetricsUsed = [];
   let lastGoodValuationSymbols = [];
-
-  // Tier 3: v10/quoteSummary for symbols v7 didn't cover
-  for (const symbol of symbols) {
-    if (v7Vals[symbol]) continue;
-    if (deadlineAt != null && now() >= deadlineAt) {
-      valuationDiagnostics.push({
-        symbol,
-        outcomes: [{ route: 'quoteSummary', attempts: 0, responseClass: 'deadline_exceeded', failure: 'valuation_budget_exceeded' }],
-      });
-      continue;
-    }
-    const detailed = typeof fetchValueDetailed === 'function'
-      ? await fetchValueDetailed(symbol, { deadlineAt })
-      : null;
-    const raw = detailed?.value ?? (detailed ? null : await fetchValue(symbol));
-    const parsed = parseValue(raw);
-    if (parsed) {
-      v7Vals[symbol] = { ...parsed, ...(raw?.source ? { source: raw.source } : {}) };
-      if (raw?.source) valuationSources.add(raw.source);
-    }
-    if (detailed?.diagnostics) {
-      valuationDiagnostics.push({ symbol, outcomes: detailed.diagnostics });
-    }
-    const remainingMs = deadlineAt == null ? DEFAULT_REQUEST_SPACING_MS : Math.max(0, deadlineAt - now());
-    if (remainingMs > 0) await sleepFn(Math.min(DEFAULT_REQUEST_SPACING_MS, remainingMs));
-  }
 
   if (typeof upstashGet === 'function') {
     try {
@@ -1804,6 +1815,47 @@ async function collectSectorValuations({
         failure: boundedFailure(error?.message || error?.name),
       });
     }
+  }
+
+  const metricsAgeAnchor = Number.isFinite(lastGoodMetricsFetchedAt)
+    ? lastGoodMetricsFetchedAt
+    : null;
+  // Only an existing snapshot can freeze return metrics. With no last-good yet,
+  // quoteSummary stays coverage-only; the next cycle (after a core persist)
+  // treats a missing metricsFetchedAt as due and fills ytd/3Y/5Y.
+  const refreshReturnMetrics = lastGood != null
+    && metricsRefreshDue(metricsAgeAnchor, now());
+
+  // Tier 3: v10/quoteSummary for symbols v7 didn't cover, and for covered
+  // symbols whose return metrics are due for an age-triggered refresh.
+  for (const symbol of symbols) {
+    const existing = v7Vals[symbol];
+    const needsCoverage = !existing;
+    const needsMetricsRefresh = Boolean(existing)
+      && refreshReturnMetrics
+      && !hasLiveReturnMetrics(existing);
+    if (!needsCoverage && !needsMetricsRefresh) continue;
+    if (deadlineAt != null && now() >= deadlineAt) {
+      valuationDiagnostics.push({
+        symbol,
+        outcomes: [{ route: 'quoteSummary', attempts: 0, responseClass: 'deadline_exceeded', failure: 'valuation_budget_exceeded' }],
+      });
+      continue;
+    }
+    const detailed = typeof fetchValueDetailed === 'function'
+      ? await fetchValueDetailed(symbol, { deadlineAt })
+      : null;
+    const raw = detailed?.value ?? (detailed ? null : await fetchValue(symbol));
+    const parsed = parseValue(raw);
+    if (parsed) {
+      v7Vals[symbol] = applyQuoteSummaryValuation(existing, parsed, raw?.source);
+      if (raw?.source) valuationSources.add(raw.source);
+    }
+    if (detailed?.diagnostics) {
+      valuationDiagnostics.push({ symbol, outcomes: detailed.diagnostics });
+    }
+    const remainingMs = deadlineAt == null ? DEFAULT_REQUEST_SPACING_MS : Math.max(0, deadlineAt - now());
+    if (remainingMs > 0) await sleepFn(Math.min(DEFAULT_REQUEST_SPACING_MS, remainingMs));
   }
 
   const currentValuationCount = Object.keys(v7Vals).length;
@@ -1838,13 +1890,7 @@ async function collectSectorValuations({
 
   const hasCompleteReturnMetrics = currentValuationCount === symbols.length
     && symbols.length > 0
-    && symbols.every((symbol) => {
-      const valuation = currentValuations[symbol];
-      return valuation
-        && valuation.ytdReturn != null
-        && valuation.threeYearReturn != null
-        && valuation.fiveYearReturn != null;
-    });
+    && symbols.every((symbol) => hasLiveReturnMetrics(currentValuations[symbol]));
   const hasCompleteCoreCoverage = currentValuationCount === symbols.length
     && symbols.length > 0
     && symbols.every((symbol) => hasCoreValuation(currentValuations[symbol]));
@@ -2013,6 +2059,9 @@ module.exports = {
   fetchYahooV7QuoteDirect,
   fetchYahooV7QuoteProxy,
   mergeReturnMetrics,
+  metricsRefreshDue,
+  hasLiveReturnMetrics,
+  applyQuoteSummaryValuation,
   parseCurlResponse,
   parseV7Quote,
   parseV7QuoteBatch,
@@ -2023,4 +2072,5 @@ module.exports = {
   requestCurlText,
   LAST_GOOD_KEY,
   LAST_GOOD_TTL,
+  METRICS_REFRESH_MAX_AGE_MS,
 };
