@@ -15,7 +15,7 @@ import {
   INSIGHTS_SYNTHESIS_FAILURE_CODES,
   classifyInsightsSynthesisFailure,
   composeInsightsSynthesis,
-  insightsStoriesSignature,
+  insightsSynthesisSignature,
   resolveInsightsSynthesis,
   shouldSkipInsightsSynthesis,
 } from '../scripts/_insights-synthesis-diagnostics.mjs';
@@ -564,58 +564,60 @@ test('a rejected synthesized brief keeps a successful legacy fallback degraded',
 // ---------------------------------------------------------------- breaker ---
 // 2026-08-28: 25 consecutive identical gate rejections, one paid call every
 // cycle for four hours, against a story set that never changed. The breaker is
-// the backstop behind the resample-feedback and lead-repair changes: same gate
-// failure + same story set + three cycles running => skip the spend.
+// the backstop behind the resample-feedback and lead-repair changes.
+//
+// #7255 review hardened both halves: the signature hashes the RENDERED prompts
+// (titles alone missed outlet labels, publisher counts, and the date), and the
+// threshold reads a PER-SIGNATURE repeat counter (the producer-wide
+// consecutiveFailures let provider noise arm the breaker for a single gate
+// failure).
 
-const SIGNED_STORIES = [
-  { primaryTitle: 'Nepal floods kill hundreds' },
-  { primaryTitle: 'Russia strikes Ukrainian ports' },
-];
+const SYS = 'system prompt for 2026-08-28';
+const USER = 'Stories:\n1. Nepal floods kill hundreds (Reuters, 3 sources)\n\nCompile the world brief JSON.';
 
-test('insightsStoriesSignature is stable, order-sensitive, and null on empty', () => {
-  const sig = insightsStoriesSignature(SIGNED_STORIES);
+test('insightsSynthesisSignature hashes the rendered prompts, so ANY prompt change re-arms', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
   assert.match(sig, /^[0-9a-f]{12}$/);
-  assert.equal(insightsStoriesSignature(SIGNED_STORIES), sig, 'same stories, same signature');
-  assert.notEqual(
-    insightsStoriesSignature([...SIGNED_STORIES].reverse()),
-    sig,
-    'the prompt renders stories in order, so a reorder IS a different input',
-  );
-  assert.equal(insightsStoriesSignature([]), null);
-  assert.equal(insightsStoriesSignature(undefined), null);
-  assert.equal(insightsStoriesSignature([{ primaryTitle: '' }]), null, 'all-empty titles sign nothing');
+  assert.equal(insightsSynthesisSignature(SYS, USER), sig, 'same prompts, same signature');
+  // The three inputs the title-only signature missed (#7255 review):
+  assert.notEqual(insightsSynthesisSignature('system prompt for 2026-08-29', USER), sig, 'the date is in the system prompt — UTC midnight re-arms');
+  assert.notEqual(insightsSynthesisSignature(SYS, USER.replace('Reuters', 'AP News')), sig, 'an outlet change is a prompt change');
+  assert.notEqual(insightsSynthesisSignature(SYS, USER.replace('3 sources', '4 sources')), sig, 'a publisher-count change is a prompt change');
+  assert.equal(insightsSynthesisSignature('', ''), null);
 });
 
-test('the breaker opens only on a repeated gate failure against the same story set', () => {
-  const sig = insightsStoriesSignature(SIGNED_STORIES);
+test('the breaker opens on the per-signature counter, never the producer-wide one', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
   const meta = (over = {}) => ({
-    consecutiveFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE,
+    consecutiveFailures: 10,
+    sameSignatureFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE,
     lastSynthesisFailureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
     failedStoriesSignature: sig,
     ...over,
   });
 
-  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), storiesSignature: sig }), true);
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), synthesisSignature: sig }), true);
 
-  // Below the threshold: the resample/repair machinery still gets its chances.
+  // Provider noise inflating the WIDE counter must not arm the breaker for a
+  // single matching gate failure — the exact defect the review found.
   assert.equal(
     shouldSkipInsightsSynthesis({
-      previousMeta: meta({ consecutiveFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE - 1 }),
-      storiesSignature: sig,
+      previousMeta: meta({ consecutiveFailures: 10, sameSignatureFailures: 1 }),
+      synthesisSignature: sig,
     }),
     false,
+    'one matching failure after unrelated noise must not open the breaker',
   );
 
-  // A changed story set re-arms synthesis — that is the whole exit condition.
   assert.equal(
     shouldSkipInsightsSynthesis({
       previousMeta: meta(),
-      storiesSignature: insightsStoriesSignature([...SIGNED_STORIES].reverse()),
+      synthesisSignature: insightsSynthesisSignature(SYS, `${USER} changed`),
     }),
     false,
+    'a changed prompt re-arms synthesis',
   );
 
-  // PROVIDER is transport, not determinism; MISSING_CLUSTER never spends.
   for (const code of [
     INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
     INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER,
@@ -623,35 +625,70 @@ test('the breaker opens only on a repeated gate failure against the same story s
     assert.equal(
       shouldSkipInsightsSynthesis({
         previousMeta: meta({ lastSynthesisFailureCode: code }),
-        storiesSignature: sig,
+        synthesisSignature: sig,
       }),
       false,
       `${code} must never open the breaker`,
     );
   }
 
-  // Pre-rollout metas carry no signature; absent evidence must not skip spend.
+  // Pre-rollout metas lack the per-signature counter; absent evidence must
+  // not skip spend.
   assert.equal(
     shouldSkipInsightsSynthesis({
-      previousMeta: meta({ failedStoriesSignature: undefined }),
-      storiesSignature: sig,
+      previousMeta: meta({ sameSignatureFailures: undefined }),
+      synthesisSignature: sig,
     }),
     false,
   );
-  // A garbage code (not in the vocabulary) must not open it either.
-  assert.equal(
-    shouldSkipInsightsSynthesis({
-      previousMeta: meta({ lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_SOMETHING_NEW' }),
-      storiesSignature: sig,
-    }),
-    false,
-  );
-  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: null, storiesSignature: sig }), false);
-  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), storiesSignature: null }), false);
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: null, synthesisSignature: sig }), false);
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), synthesisSignature: null }), false);
+});
+
+test('the per-signature counter increments only on an EXACT repeat and resets on any change', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
+  const fail = (previousMeta, over = {}) => buildInsightsFreshnessMetaPatch({
+    previousMeta,
+    outcome: 'degraded',
+    failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failureDetail: 'strait of hormuz',
+    storiesSignature: sig,
+    ...over,
+  });
+
+  // Identical triple: 1 -> 2 -> 3.
+  let meta = fail({});
+  assert.equal(meta.sameSignatureFailures, 1);
+  meta = fail(meta);
+  assert.equal(meta.sameSignatureFailures, 2);
+  meta = fail(meta);
+  assert.equal(meta.sameSignatureFailures, 3);
+
+  // Provider noise in between: wide counter keeps climbing, per-signature
+  // counter RESETS — three noise failures then one gate failure reads 1.
+  let noisy = buildInsightsFreshnessMetaPatch({ previousMeta: {}, outcome: 'degraded', failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER });
+  noisy = buildInsightsFreshnessMetaPatch({ previousMeta: noisy, outcome: 'degraded', failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER });
+  noisy = buildInsightsFreshnessMetaPatch({ previousMeta: noisy, outcome: 'degraded', failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER });
+  assert.ok(noisy.consecutiveFailures >= 3, 'the wide counter sees the noise');
+  const afterNoise = fail(noisy);
+  assert.equal(afterNoise.sameSignatureFailures, 1, 'a first gate failure after noise starts at 1');
+
+  // A changed rejection DETAIL is a different (converging) failure: reset.
+  const changedDetail = fail(meta, { failureDetail: 'some other phrase' });
+  assert.equal(changedDetail.sameSignatureFailures, 1, 'a model producing a different wrong draft is converging — retry has value');
+
+  // A changed signature resets too.
+  const changedSig = fail(meta, { storiesSignature: insightsSynthesisSignature(SYS, `${USER}!`) });
+  assert.equal(changedSig.sameSignatureFailures, 1);
+
+  // A publish clears everything.
+  const published = buildInsightsFreshnessMetaPatch({ previousMeta: meta, outcome: 'published', storiesSignature: sig });
+  assert.equal(published.sameSignatureFailures, 0);
+  assert.equal(published.failedStoriesSignature, null);
 });
 
 test('a failed run persists the breaker pair; a publish clears it', () => {
-  const sig = insightsStoriesSignature(SIGNED_STORIES);
+  const sig = insightsSynthesisSignature(SYS, USER);
   const failed = buildInsightsFreshnessMetaPatch({
     previousMeta: { consecutiveFailures: 2 },
     outcome: 'degraded',
@@ -674,7 +711,7 @@ test('a failed run persists the breaker pair; a publish clears it', () => {
 });
 
 test('the run-meta seam projects detail and signature into the patch args', () => {
-  const sig = insightsStoriesSignature(SIGNED_STORIES);
+  const sig = insightsSynthesisSignature(SYS, USER);
   const decorated = decorateInsightsRun({ generatedAt: '2026-08-28T10:00:00.000Z' }, {
     outcome: 'degraded',
     failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,

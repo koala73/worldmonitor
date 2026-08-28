@@ -48,30 +48,43 @@ const BREAKER_INELIGIBLE_CODES = new Set([
 ]);
 export const INSIGHTS_BREAKER_MIN_CONSECUTIVE = 3;
 
-// Order-sensitive on purpose: the prompt renders stories in order, so a
-// reorder IS a different synthesis input.
-export function insightsStoriesSignature(topStories) {
-  if (!Array.isArray(topStories) || topStories.length === 0) return null;
-  const titles = topStories.map((story) => String(story?.primaryTitle ?? ''));
-  if (titles.every((title) => title === '')) return null;
-  return createHash('sha256').update(titles.join('\u0000')).digest('hex').slice(0, 12);
+// Signature over the RENDERED prompts, not their ingredients (#7255 review,
+// both reviewers): the first version hashed only story titles, but the user
+// prompt also renders each story's outlet label and publisher count, and the
+// system prompt renders the current date — so a prompt that had actually
+// changed could keep the breaker open. Hashing what the model is sent covers
+// every input by construction, and the date inside the system prompt gives an
+// open breaker a natural re-arm at UTC midnight: suppression can never outlive
+// the day it was justified on.
+export function insightsSynthesisSignature(systemPrompt, userPrompt) {
+  const system = typeof systemPrompt === 'string' ? systemPrompt : '';
+  const user = typeof userPrompt === 'string' ? userPrompt : '';
+  if (system === '' && user === '') return null;
+  return createHash('sha256').update(`${system}\u0000${user}`).digest('hex').slice(0, 12);
 }
 
 export function shouldSkipInsightsSynthesis({
   previousMeta,
-  storiesSignature,
+  synthesisSignature,
   minConsecutive = INSIGHTS_BREAKER_MIN_CONSECUTIVE,
 } = {}) {
-  if (typeof storiesSignature !== 'string' || storiesSignature.length === 0) return false;
+  if (typeof synthesisSignature !== 'string' || synthesisSignature.length === 0) return false;
   const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : null;
   if (!previous) return false;
-  const failures = Number.isInteger(previous.consecutiveFailures) ? previous.consecutiveFailures : 0;
+  // The PER-SIGNATURE counter, not the producer-wide consecutiveFailures
+  // (#7255 review): three provider outages followed by one gate rejection
+  // left the wide counter over the threshold, so the breaker opened after a
+  // SINGLE matching failure. sameSignatureFailures increments only while the
+  // (code, detail, signature) triple repeats exactly and resets on any change
+  // — including a changed rejection detail, because a model producing a
+  // DIFFERENT wrong draft is converging, and retrying it has value.
+  const failures = Number.isInteger(previous.sameSignatureFailures) ? previous.sameSignatureFailures : 0;
   if (failures < minConsecutive) return false;
   const code = previous.lastSynthesisFailureCode;
   if (typeof code !== 'string' || code.length === 0) return false;
   if (!Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES).includes(code)) return false;
   if (BREAKER_INELIGIBLE_CODES.has(code)) return false;
-  return previous.failedStoriesSignature === storiesSignature;
+  return previous.failedStoriesSignature === synthesisSignature;
 }
 
 // This map refines only the final gate stage. Missing-cluster and parse

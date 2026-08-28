@@ -37,7 +37,7 @@ import {
   classifyInsightsSynthesisFailure,
   composeInsightsSynthesis,
   resolveInsightsSynthesis,
-  insightsStoriesSignature,
+  insightsSynthesisSignature,
   shouldSkipInsightsSynthesis,
 } from './_insights-synthesis-diagnostics.mjs';
 export {
@@ -225,6 +225,21 @@ export function buildInsightsFreshnessMetaPatch({
   const boundedSignature = typeof storiesSignature === 'string' && storiesSignature.length > 0
     ? storiesSignature.slice(0, 16)
     : null;
+  // Per-signature repeat counter (#7255 review). consecutiveFailures counts
+  // every degraded run producer-wide, so provider noise inflated it past the
+  // breaker threshold before a gate failure ever repeated. This counter
+  // increments only while the (code, detail, signature) triple repeats
+  // EXACTLY, and resets to 1 on any change.
+  const previousSameSignature = Number.isInteger(previous.sameSignatureFailures) && previous.sameSignatureFailures > 0
+    ? previous.sameSignatureFailures
+    : 0;
+  const failureCodeForMeta = normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
+  const repeatsPrevious = previousSameSignature > 0 || previous.lastSynthesisFailureCode
+    ? failureCodeForMeta === previous.lastSynthesisFailureCode
+      && (boundedDetail ?? null) === (previous.lastSynthesisFailureDetail ?? null)
+      && boundedSignature !== null
+      && boundedSignature === (previous.failedStoriesSignature ?? null)
+    : false;
 
   if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
     return {
@@ -232,6 +247,7 @@ export function buildInsightsFreshnessMetaPatch({
       lastSuccessAt: now,
       servedGeneratedAt: servedAt,
       consecutiveFailures: 0,
+      sameSignatureFailures: 0,
       lastSynthesisFailureCode: normalizedFailureCode,
       lastSynthesisFailureDetail: null,
       failedStoriesSignature: null,
@@ -244,7 +260,10 @@ export function buildInsightsFreshnessMetaPatch({
     lastSuccessAt: Number.isFinite(previous.lastSuccessAt) ? previous.lastSuccessAt : null,
     servedGeneratedAt: servedAt,
     consecutiveFailures: Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
-    lastSynthesisFailureCode: normalizedFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    sameSignatureFailures: repeatsPrevious
+      ? Math.min(INSIGHTS_MAX_CONSECUTIVE_FAILURES, previousSameSignature + 1)
+      : 1,
+    lastSynthesisFailureCode: failureCodeForMeta,
     lastSynthesisFailureDetail: boundedDetail,
     failedStoriesSignature: boundedSignature,
     briefEligibleClusters: eligibleClusters,
@@ -894,10 +913,14 @@ async function fetchInsights() {
   // resample/repair machinery has already had its chance on each. Re-arms the
   // moment the story set (and therefore the prompt) changes.
   const previousFreshnessMeta = await readExistingSeedMeta('news', 'insights');
-  const storiesSignature = insightsStoriesSignature(topStories);
+  // The signature hashes the exact prompts callLLM is about to send — computed
+  // here, passed there, one source of truth.
+  const synthesisSystem = synthesisSystemPrompt(new Date().toISOString().split('T')[0]);
+  const synthesisUser = synthesisUserPrompt(topStories);
+  const storiesSignature = insightsSynthesisSignature(synthesisSystem, synthesisUser);
   const synthesisBreakerOpen = hasBriefCluster && shouldSkipInsightsSynthesis({
     previousMeta: previousFreshnessMeta,
-    storiesSignature,
+    synthesisSignature: storiesSignature,
   });
   if (synthesisBreakerOpen) {
     console.warn(
@@ -908,8 +931,8 @@ async function fetchInsights() {
   }
   const synthesisResult = hasBriefCluster && !synthesisBreakerOpen
     ? await callLLM(null, {
-        systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
-        userPrompt: synthesisUserPrompt(topStories),
+        systemPrompt: synthesisSystem,
+        userPrompt: synthesisUser,
         maxTokens: 900,
         // A model whose output trips the editorial gates must not strand the
         // run. callLLM resamples this model once before demoting to a weaker
@@ -917,6 +940,7 @@ async function fetchInsights() {
         accept: composeFromText,
       })
     : null;
+  let breakerCarriedDetail = null;
   const { composed, failureCode, failureDetail } = synthesisBreakerOpen
     ? { composed: null, failureCode: null, failureDetail: null }
     : resolveInsightsSynthesis({
@@ -935,6 +959,14 @@ async function fetchInsights() {
     synthesisFailureCode = normalizeInsightsFailureCode(previousFreshnessMeta?.lastSynthesisFailureCode)
       ?? INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
     status = 'degraded';
+    // Carry the standing detail too: a skipped run repeats the previous
+    // failure identically, and the per-signature counter downstream matches on
+    // (code, detail, signature) — a null detail here would read as a CHANGED
+    // failure, reset the counter, and flap the breaker open/closed every other
+    // run.
+    breakerCarriedDetail = typeof previousFreshnessMeta?.lastSynthesisFailureDetail === 'string'
+      ? previousFreshnessMeta.lastSynthesisFailureDetail
+      : null;
   } else if (composed) {
     worldBrief = composed.lead;
     briefStoryLines = composed.lines;
@@ -1084,7 +1116,7 @@ async function fetchInsights() {
         {
           outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
           failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
-          failureDetail,
+          failureDetail: breakerCarriedDetail ?? failureDetail,
           storiesSignature,
           briefEligibleClusters,
         },
@@ -1095,7 +1127,7 @@ async function fetchInsights() {
   return decorateInsightsRun(payload, {
     outcome: status === 'ok' ? INSIGHTS_RUN_OUTCOMES.PUBLISHED : INSIGHTS_RUN_OUTCOMES.DEGRADED,
     failureCode: synthesisFailureCode,
-    failureDetail,
+    failureDetail: breakerCarriedDetail ?? failureDetail,
     storiesSignature,
     briefEligibleClusters,
   });
