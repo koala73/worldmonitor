@@ -1588,6 +1588,9 @@ canvas,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* The digest coverage row (#7085) joins as a full-width flex child and
+     wraps onto its own line; the brand/nav/copy children still fit one row. */
+  flex-wrap: wrap;
   padding: 12px 20px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -1643,6 +1646,20 @@ canvas,
      #5a5a5a on the #141414 footer (2.67:1). At full strength #888 clears
      4.5:1 (≈5.2:1) for WCAG AA, matching the footer nav links. */
   color: var(--text-dim);
+}
+
+/* #7085: digest coverage status row, mounted into the site footer by
+   StatusPanel. Text-only state disclosure — same muted mono treatment as the
+   footer copy, which already clears WCAG AA on this surface. */
+.site-footer .status-panel-container {
+  flex-basis: 100%;
+  order: 10;
+}
+.digest-coverage-row {
+  font-family: var(--font-mono, monospace);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  padding-top: 6px;
 }
 
 /* Mobile application navigation is injected with the hydrated shell but stays
