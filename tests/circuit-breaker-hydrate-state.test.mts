@@ -182,9 +182,9 @@ describe('CircuitBreaker — hydratePersistentCache lastDataState (#6781 / audit
       }).hydratePersistentCache('__default__');
 
       assert.deepEqual(
-        breaker.getCachedOrDefault({ value: 'fallback' }),
+        breaker.getCachedOrDefaultStale({ value: 'fallback' }),
         { value: 'persisted' },
-        'hydrate must still restore the persisted entry into the in-memory cache',
+        'hydrate must still restore the stale persisted entry into the in-memory cache',
       );
     } finally {
       clearAllCircuitBreakers();
