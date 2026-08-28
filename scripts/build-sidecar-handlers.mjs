@@ -1,6 +1,10 @@
 /**
- * Compiles per-domain RPC handlers (api/{domain}/v1/[rpc].ts) into bundled
- * ESM .js files so the Tauri sidecar's buildRouteTable() can load them.
+ * Compiles per-domain RPC handlers into bundled ESM .js files so the Tauri
+ * sidecar's buildRouteTable() can load them.
+ *
+ * Two supported layouts are discovered:
+ * - legacy: api/{domain}/v{major}/[rpc].ts
+ * - version-major: api/v{major}/{domain}/[rpc].ts
  *
  * Run: node scripts/build-sidecar-handlers.mjs
  */
@@ -18,47 +22,85 @@ const apiDir = path.join(ROOT, 'api');
 // Skip the catch-all [domain] directory (handled by build-sidecar-sebuf.mjs)
 const SKIP_DIRS = new Set(['[domain]', '[[...path]]']);
 
-// Discover all api/{domain}/v1/[rpc].ts entry points
-const entries = [];
-const dirs = await readdir(apiDir, { withFileTypes: true });
-for (const d of dirs) {
-  if (!d.isDirectory() || SKIP_DIRS.has(d.name)) continue;
-  const tsFile = path.join(apiDir, d.name, 'v1', '[rpc].ts');
-  if (existsSync(tsFile)) {
-    entries.push(tsFile);
-  }
+const VERSION_DIRECTORY = /^v\d+$/;
+
+function relativeApiPath(apiRoot, filePath) {
+  return path.relative(apiRoot, filePath).split(path.sep).join('/');
 }
 
-if (entries.length === 0) {
-  console.log('build:sidecar-handlers  no domain handlers found, skipping');
-  process.exit(0);
-}
+export async function discoverSidecarHandlerEntries(apiRoot = apiDir) {
+  const entries = [];
+  const topDirs = await readdir(apiRoot, { withFileTypes: true });
 
-try {
-  await build({
-    entryPoints: entries,
-    outdir: ROOT,
-    outbase: ROOT,
-    bundle: true,
-    format: 'esm',
-    platform: 'node',
-    target: 'node20',
-    treeShaking: true,
-    // Resolve @/ alias to src/
-    alias: { '@': path.join(ROOT, 'src') },
-  });
+  for (const topDir of topDirs) {
+    if (!topDir.isDirectory() || SKIP_DIRS.has(topDir.name)) continue;
 
-  // Report results
-  let totalKB = 0;
-  for (const entry of entries) {
-    const jsFile = entry.replace(/\.ts$/, '.js');
-    if (existsSync(jsFile)) {
-      const { size } = await stat(jsFile);
-      totalKB += size / 1024;
+    const topPath = path.join(apiRoot, topDir.name);
+    if (VERSION_DIRECTORY.test(topDir.name)) {
+      const domains = await readdir(topPath, { withFileTypes: true });
+      for (const domain of domains) {
+        if (!domain.isDirectory() || SKIP_DIRS.has(domain.name)) continue;
+        const tsFile = path.join(topPath, domain.name, '[rpc].ts');
+        if (existsSync(tsFile)) {
+          entries.push({ entryPoint: tsFile, relativePath: relativeApiPath(apiRoot, tsFile) });
+        }
+      }
+      continue;
+    }
+
+    const versions = await readdir(topPath, { withFileTypes: true });
+    for (const version of versions) {
+      if (!version.isDirectory() || !VERSION_DIRECTORY.test(version.name)) continue;
+      const tsFile = path.join(topPath, version.name, '[rpc].ts');
+      if (existsSync(tsFile)) {
+        entries.push({ entryPoint: tsFile, relativePath: relativeApiPath(apiRoot, tsFile) });
+      }
     }
   }
-  console.log(`build:sidecar-handlers  ${entries.length} domains  ${totalKB.toFixed(0)} KB total`);
-} catch (err) {
-  console.error('build:sidecar-handlers failed:', err.message);
-  process.exit(1);
+
+  return entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+async function buildSidecarHandlers() {
+  const entries = await discoverSidecarHandlerEntries();
+  if (entries.length === 0) {
+    console.log('build:sidecar-handlers  no domain handlers found, skipping');
+    return;
+  }
+
+  try {
+    await build({
+      entryPoints: entries.map(({ entryPoint }) => entryPoint),
+      outdir: ROOT,
+      outbase: ROOT,
+      bundle: true,
+      format: 'esm',
+      platform: 'node',
+      target: 'node20',
+      treeShaking: true,
+      // Resolve @/ alias to src/
+      alias: { '@': path.join(ROOT, 'src') },
+    });
+
+    // Report results
+    let totalKB = 0;
+    for (const { entryPoint } of entries) {
+      const jsFile = entryPoint.replace(/\.ts$/, '.js');
+      if (existsSync(jsFile)) {
+        const { size } = await stat(jsFile);
+        totalKB += size / 1024;
+      }
+    }
+    console.log(`build:sidecar-handlers  ${entries.length} domains  ${totalKB.toFixed(0)} KB total`);
+  } catch (err) {
+    console.error('build:sidecar-handlers failed:', err.message);
+    process.exitCode = 1;
+  }
+}
+
+const invokedFromCli =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedFromCli) {
+  await buildSidecarHandlers();
 }
