@@ -20,6 +20,8 @@ type EnergyMapHarnessWindow = Window & {
   __mapHarness?: {
     ready: boolean;
     variant: string;
+    seedAllDynamicData: () => void;
+    setLayersForSnapshot: (enabledLayers: string[]) => void;
     getLayerDataCount: (layerId: string) => number;
   };
 };
@@ -66,13 +68,28 @@ async function expectPopulatedEnergyMapLayers(page: Page): Promise<void> {
     const harness = (window as EnergyMapHarnessWindow).__mapHarness;
     return harness?.ready && harness.variant === 'energy';
   }), { timeout: 45_000 }).toBe(true);
-  await expect.poll(() => page.evaluate(() => {
+
+  // Energy harness boots with nearly every map layer on. getLayerDataCount()
+  // rebuilds the full DeckGL stack on each poll (~60 layers). Under
+  // variant-smoke-full CI load that single evaluate can take most of a 20s
+  // expect.poll budget (or hang the Playwright protocol) even when counts
+  // are already correct — see issue #7249 traces. Narrow to the two layers
+  // under contract, matching e2e/map-harness.spec.ts's snapshot pattern.
+  await page.evaluate(() => {
     const harness = (window as EnergyMapHarnessWindow).__mapHarness;
-    return {
-      pipelines: harness?.getLayerDataCount('pipelines-layer') ?? 0,
-      storage: harness?.getLayerDataCount('storage-facilities-layer') ?? 0,
-    };
-  }), { timeout: 20_000 }).toEqual({ pipelines: 2, storage: 1 });
+    harness?.seedAllDynamicData();
+    harness?.setLayersForSnapshot(['pipelines', 'storageFacilities']);
+  });
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const harness = (window as EnergyMapHarnessWindow).__mapHarness;
+      return {
+        pipelines: harness?.getLayerDataCount('pipelines-layer') ?? 0,
+        storage: harness?.getLayerDataCount('storage-facilities-layer') ?? 0,
+      };
+    });
+  }, { timeout: 30_000 }).toEqual({ pipelines: 2, storage: 1 });
 }
 
 test.describe('bootstrap request budget (#7046)', () => {
