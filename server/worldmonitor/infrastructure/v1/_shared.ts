@@ -65,15 +65,169 @@ export const TEMPORAL_ANOMALIES_TTL = 3600;
  * Changing this without moving those consumers' maxStaleMin is a monitoring change,
  * not just a caching one. See tests/temporal-anomalies-cache.test.mts.
  *
- * KNOWN LIMIT — this is a rebuild clock, not a content clock. A "successful rebuild"
- * only means the reads from COUNT_SOURCE_KEYS resolved; it does not check whether
- * those upstream sources actually advanced. If news:insights:v1 or wildfire:fires:v1
- * freezes, this route keeps stamping fresh every cycle and the monitor stays green.
- * Moving the stamp off request traffic closed the larger hole (traffic alone used to
- * keep it green), but detecting a frozen UPSTREAM needs a content clock — compare the
- * sources' own timestamps, not merely the success of reading them.
+ * fetchedAt on seed-meta:temporal:anomalies is this rebuild clock. The CONTENT
+ * clock is newestItemAt / maxContentAgeMin, derived from the upstream payloads
+ * themselves (see temporalAnomaliesContentMeta). A frozen-but-200 news or FIRMS
+ * feed keeps fetchedAt fresh every cycle; only the observation dates go stale.
  */
 export const TEMPORAL_ANOMALIES_REBUILD_AFTER_MS = 20 * 60 * 1000;
+
+/**
+ * Content-age budget for `seed-meta:temporal:anomalies`.
+ *
+ * Sized from the slower upstream's publication calendar, not the 20-minute
+ * rebuild cadence. FIRMS area queries use a 1-day window (`/1` in
+ * seed-fire-detections.mjs) and NRT files reset at midnight UTC with 3–6h to
+ * accumulate; 48h is 2× that window plus the midnight lag. News top-stories
+ * are ranked by importance, not recency, so a live digest can still cite
+ * stories many hours old — 48h absorbs that without becoming the 12-month
+ * blind spot #3845 documented.
+ *
+ * Health liveness (`fetchedAt` vs maxStaleMin: 45) remains the rebuild clock.
+ */
+export const TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN = 48 * 60;
+
+/** Matches scripts/_content-age-helpers.mjs CLOCK_SKEW_TOLERANCE_MS. */
+const CONTENT_AGE_CLOCK_SKEW_MS = 60 * 60 * 1000;
+
+export interface TemporalAnomaliesContentAge {
+  newestItemAt: number;
+  oldestItemAt: number;
+}
+
+function parseObservationMs(value: unknown, skewLimit: number): number | null {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0 || value > skewLimit) return null;
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const ts = Date.parse(value);
+    if (!Number.isFinite(ts) || ts <= 0 || ts > skewLimit) return null;
+    return ts;
+  }
+  return null;
+}
+
+function reduceTimestamps(timestamps: number[]): TemporalAnomaliesContentAge | null {
+  if (timestamps.length === 0) return null;
+  let newest = timestamps[0]!;
+  let oldest = timestamps[0]!;
+  for (const ts of timestamps) {
+    if (ts > newest) newest = ts;
+    if (ts < oldest) oldest = ts;
+  }
+  return { newestItemAt: newest, oldestItemAt: oldest };
+}
+
+function newsContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const payload = data as Record<string, unknown>;
+  const timestamps: number[] = [];
+  const stories = payload.topStories;
+  if (Array.isArray(stories)) {
+    for (const story of stories) {
+      if (!story || typeof story !== 'object') continue;
+      const row = story as Record<string, unknown>;
+      for (const field of ['pubDate', 'publishedAt', 'date', 'lastUpdated'] as const) {
+        const ts = parseObservationMs(row[field], skewLimit);
+        if (ts != null) timestamps.push(ts);
+      }
+    }
+  }
+  const range = payload.sourceAgeRange;
+  if (range && typeof range === 'object' && !Array.isArray(range)) {
+    const window = range as Record<string, unknown>;
+    const newest = parseObservationMs(window.newestMs, skewLimit);
+    const oldest = parseObservationMs(window.oldestMs, skewLimit);
+    if (newest != null) timestamps.push(newest);
+    if (oldest != null) timestamps.push(oldest);
+  }
+  // A contributing news payload with nothing datable is indistinguishable from
+  // a frozen feed whose items lost their timestamps. Fail closed.
+  return reduceTimestamps(timestamps);
+}
+
+function firesContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const payload = data as { fireDetections?: unknown; _firmsState?: unknown };
+  // Canonical wildfire merge preserves `_firmsState: 'failed'` when CWFIS/BC
+  // still publish. That is Canada-only coverage, not a skippable empty FIRMS
+  // window — returning undefined here lets a live news clock hide the outage.
+  if (payload._firmsState === 'failed') return null;
+  const fires = payload.fireDetections;
+  if (!Array.isArray(fires) || fires.length === 0) {
+    // A live FIRMS 1-day window can be empty in the monitored regions. That is
+    // "no satellite observations right now", not "we cannot date this".
+    return undefined;
+  }
+  const timestamps: number[] = [];
+  let firmsRows = 0;
+  for (const fire of fires) {
+    if (!fire || typeof fire !== 'object') continue;
+    const row = fire as Record<string, unknown>;
+    const source = row.source;
+    const isFirms = source == null || source === '' || source === 'firms';
+    if (!isFirms) continue;
+    firmsRows += 1;
+    const ts = parseObservationMs(row.detectedAt, skewLimit);
+    if (ts != null) timestamps.push(ts);
+  }
+  if (firmsRows === 0) {
+    // Agency-only payload without an explicit FIRMS failure: skip rather than
+    // clock off ignition dates that can be days old on ongoing fires.
+    return undefined;
+  }
+  if (timestamps.length === 0) return null;
+  return reduceTimestamps(timestamps);
+}
+
+/**
+ * Content-age of a temporal-anomalies rebuild from the upstream payloads that
+ * actually contributed a count this cycle.
+ *
+ * Two independently-failing sources (`news:insights:v1`, `wildfire:fires:v1`).
+ * One clock per source, reduced with min() — a live fires feed must not hide a
+ * frozen news feed, and vice versa. See CONCEPTS.md "Content-Age Contract" and
+ * docs/solutions/design-patterns/multi-source-freshness-clock-must-reduce-with-min.md.
+ *
+ * Returns null when no contributing source is datable, when a contributing
+ * source has items that cannot be dated, or when a configured COUNT_SOURCE_KEYS
+ * source was not read this cycle. A present source may still skip (empty FIRMS
+ * window / agency-only). An *absent* configured source must not: the remaining
+ * live clock would otherwise stamp fresh content for partial coverage, and no
+ * temporal-anomalies consumer sets minRecordCount. The writer stamps
+ * `newestItemAt: null` in the fail-closed case, which classifyKey reads as
+ * STALE_CONTENT.
+ */
+export function temporalAnomaliesContentMeta(
+  sources: { news?: unknown; satellite_fires?: unknown },
+  nowMs = Date.now(),
+): TemporalAnomaliesContentAge | null {
+  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
+  const clocks: TemporalAnomaliesContentAge[] = [];
+  for (const clock of [
+    // Missing configured source → null (fail closed), not undefined (skip).
+    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : null,
+    sources.satellite_fires !== undefined
+      ? firesContentClock(sources.satellite_fires, skewLimit)
+      : null,
+  ]) {
+    if (clock === undefined) continue;
+    if (clock === null) return null;
+    clocks.push(clock);
+  }
+  if (clocks.length === 0) return null;
+  return {
+    newestItemAt: Math.min(...clocks.map((clock) => clock.newestItemAt)),
+    oldestItemAt: Math.min(...clocks.map((clock) => clock.oldestItemAt)),
+  };
+}
 
 /**
  * How often a rebuild folds a new sample into the `baseline:v2:*` running mean.

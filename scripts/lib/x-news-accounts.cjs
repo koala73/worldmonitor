@@ -57,6 +57,46 @@ const DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT = 2;
 // reports degraded). Only the binary verdict softens — the real
 // polled/failed/attempted counts stay in coverage for the operator.
 const MAX_TOLERATED_FAILED_ACCOUNTS = 3;
+
+// Poll cadence by editorial tier. Every enabled account used to be polled every
+// cycle: 64 accounts x 96 cycles/day = 6,240 reads/day, which billed ~$50 per
+// four days. Breaking news only needs the 15-minute cadence on the handles that
+// actually break it; a tier-3 regional feed re-read 96 times a day is spend, not
+// coverage.
+//
+// Registry tiers today: 10 tier-1, 43 tier-2, 11 tier-3. Tier 1 keeps the
+// baseline cycle (10 x 96 = 960/day), tier 2 goes hourly (43 x 24 = 1,032/day),
+// tier 3 every four hours (11 x 6 = 66/day): ~2,058 reads/day against 6,240, a
+// 67% cut that never touches a tier-1 handle.
+// Only tiers SLOWER than the poll cycle appear here. Tier 1 is the baseline: it
+// polls every cycle exactly as the whole registry did before, so the accounts
+// that actually break news are untouched by this change.
+const TIER_POLL_INTERVAL_MS = Object.freeze({
+  2: 60 * 60 * 1000,
+  3: 4 * 60 * 60 * 1000,
+});
+// An untiered account polls at the baseline cadence, like tier 1. Absent
+// metadata must not silently downgrade a feed's freshness — a missing tier is an
+// unannotated registry row, not an editorial judgement that it matters less.
+const UNTIERED_POLL_INTERVAL_MS = 0;
+
+function pollIntervalForTier(tier) {
+  const key = Number(tier);
+  return TIER_POLL_INTERVAL_MS[key] ?? UNTIERED_POLL_INTERVAL_MS;
+}
+
+// Due when the account has no throttle, has never been polled, or its tier's
+// interval has elapsed. A clock that moves backwards (host clock skew, a
+// restored snapshot) must not park an account forever, so a future-dated stamp
+// reads as due.
+function isAccountDueForPoll(account, lastPolledAt, nowMs) {
+  const interval = pollIntervalForTier(account?.tier);
+  if (interval <= 0) return true;
+  const last = Number(lastPolledAt);
+  if (!Number.isFinite(last) || last <= 0) return true;
+  if (last > nowMs) return true;
+  return (nowMs - last) >= interval;
+}
 const TOLERATED_FAILED_ACCOUNT_FRACTION = 0.05;
 // 401/403 is not a transient upstream hiccup and does not heal on API time: an
 // absent, wrong-scope or revoked bearer rejects EVERY account until an operator
@@ -299,6 +339,17 @@ function copyAccountIdMap(value) {
   return result;
 }
 
+function copyPolledAtMap(value) {
+  const result = Object.create(null);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  for (const [handle, at] of Object.entries(value)) {
+    const normalizedHandle = normalizeHandle(handle);
+    const ms = Math.max(0, Number(at) || 0);
+    if (normalizedHandle && ms > 0) result[normalizedHandle] = ms;
+  }
+  return result;
+}
+
 function copyCatchupMap(value) {
   const result = Object.create(null);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
@@ -342,6 +393,7 @@ function buildXPollState(state, { expectedAccounts = 0 } = {}) {
     cursorByAccountId: copyCursorMap(state?.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(state?.accountIdByHandle),
     catchupByAccountId: copyCatchupMap(state?.catchupByAccountId),
+    lastPolledAtByHandle: copyPolledAtMap(state?.lastPolledAtByHandle),
     lookupOffset: Math.max(0, Math.floor(Number(state?.lookupOffset) || 0)),
     accountOffset: Math.max(0, Math.floor(Number(state?.accountOffset) || 0)),
     lastPollAt,
@@ -386,6 +438,7 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
     cursorByAccountId: copyCursorMap(pollState.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(pollState.accountIdByHandle),
     catchupByAccountId: copyCatchupMap(pollState.catchupByAccountId),
+    lastPolledAtByHandle: copyPolledAtMap(pollState.lastPolledAtByHandle),
     items: validSnapshot ? snapshot.items.filter((item) => item && typeof item === 'object').slice(0, itemLimit) : [],
     lookupOffset: Math.max(0, Math.floor(Number(pollState.lookupOffset) || 0)),
     accountOffset: Math.max(0, Math.floor(Number(pollState.accountOffset) || 0)),
@@ -430,6 +483,7 @@ function mergeRefreshedPollState(current, refreshed) {
       cursorByAccountId: { ...(current?.cursorByAccountId || {}) },
       accountIdByHandle: { ...(current?.accountIdByHandle || {}) },
       catchupByAccountId: { ...(current?.catchupByAccountId || {}) },
+      lastPolledAtByHandle: { ...(current?.lastPolledAtByHandle || {}) },
       lookupOffset: toCount(current?.lookupOffset),
       accountOffset: toCount(current?.accountOffset),
       rateLimitedUntil: currentDeadline,
@@ -449,6 +503,14 @@ function mergeRefreshedPollState(current, refreshed) {
     cursorByAccountId: copyCursorMap(refreshed.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(refreshed.accountIdByHandle),
     catchupByAccountId: copyCatchupMap(refreshed.catchupByAccountId),
+    // Merge, never replace: a cycle only stamps the accounts it actually
+    // attempted, so a bare copy of the refreshed map would forget every handle
+    // this cycle skipped and make them all due again next tick — reinstating the
+    // poll-everything-every-cycle bill this change exists to remove.
+    lastPolledAtByHandle: copyPolledAtMap({
+      ...(current?.lastPolledAtByHandle || {}),
+      ...(refreshed.lastPolledAtByHandle || {}),
+    }),
     lookupOffset: toCount(refreshed.lookupOffset),
     accountOffset: toCount(refreshed.accountOffset),
     rateLimitedUntil,
@@ -682,6 +744,7 @@ async function pollXFeed({
     cursorByAccountId: { ...(state?.cursorByAccountId || {}) },
     accountIdByHandle: { ...(state?.accountIdByHandle || {}) },
     catchupByAccountId: copyCatchupMap(state?.catchupByAccountId),
+    lastPolledAtByHandle: copyPolledAtMap(state?.lastPolledAtByHandle),
     items: Array.isArray(state?.items) ? [...state.items] : [],
     lookupOffset: Number(state?.lookupOffset) || 0,
     accountOffset: Number(state?.accountOffset) || 0,
@@ -708,6 +771,13 @@ async function pollXFeed({
   const orderedAccounts = configuredAccounts.length
     ? [...configuredAccounts.slice(startingOffset), ...configuredAccounts.slice(0, startingOffset)]
     : [];
+  // Tier cadence is applied INSIDE the loop, never by filtering this list.
+  // accountOffset advances by accountsAttempted through the full registry, and
+  // cycleComplete requires accountsAttempted === configuredAccounts.length — so a
+  // filtered list would corrupt rotation fairness AND make every cadence-limited
+  // cycle permanently incomplete, holding the feed at partial coverage forever.
+  // A not-due account is walked past, counted, and costs no request.
+  const pollCycleNow = now();
   const pageLimit = Math.max(1, Math.floor(Number(maxTimelinePages) || DEFAULT_MAX_TIMELINE_PAGES));
   // Never exceed an explicitly-requested page limit, even for a cold start.
   const coldStartPageLimit = Math.min(
@@ -748,7 +818,22 @@ async function pollXFeed({
       nextState.lastError = `cycle request budget ${cycleRequestBudget} exhausted; deferred ${orderedAccounts.length - nextState.accountsAttempted} accounts to the next cycle`;
       break;
     }
+    const attemptedHandle = normalizeHandle(account?.handle);
+    // Not due yet on its tier's cadence: walk past it without spending a request.
+    // Counted as attempted AND polled on purpose — it is deliberately up to date
+    // on its own schedule, not a coverage gap, and both counters feed rotation
+    // and the completeness verdict rather than any freshness claim.
+    if (!isAccountDueForPoll(account, nextState.lastPolledAtByHandle[attemptedHandle], pollCycleNow)) {
+      nextState.accountsAttempted += 1;
+      nextState.accountsPolled += 1;
+      continue;
+    }
     nextState.accountsAttempted += 1;
+    // Stamp on ATTEMPT, not on success. A handle that fails every cycle would
+    // otherwise stay permanently due and be retried 96 times a day — exactly the
+    // spend this change removes, concentrated on the accounts least able to repay
+    // it. Its own failure handling and the cycle failure budget still apply.
+    if (attemptedHandle) nextState.lastPolledAtByHandle[attemptedHandle] = pollCycleNow;
     let accountId = normalizeAccountId(account.accountId) || nextState.accountIdByHandle[account.handle];
     try {
       if (!accountId) {
@@ -991,6 +1076,10 @@ module.exports = {
   DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT,
   MAX_TOLERATED_FAILED_ACCOUNTS,
   TOLERATED_FAILED_ACCOUNT_FRACTION,
+  TIER_POLL_INTERVAL_MS,
+  UNTIERED_POLL_INTERVAL_MS,
+  pollIntervalForTier,
+  isAccountDueForPoll,
   AUTH_FAILURE_BACKOFF_MS,
   X_BACKOFF_CAUSES,
   X_FEED_SNAPSHOT_VERSION,

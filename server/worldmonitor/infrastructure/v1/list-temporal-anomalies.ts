@@ -18,9 +18,11 @@ import {
   TEMPORAL_ANOMALIES_KEY,
   TEMPORAL_ANOMALIES_TTL,
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
+  TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   BASELINE_SAMPLE_INTERVAL_MS,
   BASELINE_LOCK_KEY,
   BASELINE_LOCK_TTL,
+  temporalAnomaliesContentMeta,
   type BaselineEntry,
 } from './_shared';
 
@@ -95,12 +97,20 @@ async function tryAcquireLock(): Promise<boolean> {
 async function writeTemporalAnomaliesSeedMeta(
   snapshot: AnomalySnapshot,
   coveredSourceCount: number,
+  contentAge: { newestItemAt: number | null; oldestItemAt: number | null },
 ): Promise<boolean> {
   return setCachedJson('seed-meta:temporal:anomalies', {
     fetchedAt: Date.now(),
     recordCount: Number.isFinite(coveredSourceCount)
       ? coveredSourceCount
       : (Array.isArray(snapshot.anomalies) ? snapshot.anomalies.length : 0),
+    // Presence of maxContentAgeMin is the opt-in signal classifyKey and
+    // evaluateFreshness both honor. newestItemAt may be explicit null when
+    // the contributing payloads were undatable — that is STALE_CONTENT,
+    // not a skipped contract.
+    newestItemAt: contentAge.newestItemAt,
+    oldestItemAt: contentAge.oldestItemAt,
+    maxContentAgeMin: TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   }, 604800).catch(() => false);
 }
 
@@ -137,6 +147,7 @@ export async function listTemporalAnomalies(
       const anomalies: TemporalAnomalyProto[] = [];
 
       const counts: Record<string, number> = {};
+      const countPayloads: { news?: unknown; satellite_fires?: unknown } = {};
       const countEntries = await Promise.all(
         Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
           type,
@@ -145,6 +156,9 @@ export async function listTemporalAnomalies(
       );
       for (const [type, data] of countEntries) {
         if (!data) continue;
+        if (type === 'news' || type === 'satellite_fires') {
+          countPayloads[type] = data;
+        }
 
         if (type === 'news') {
           const stories = (data as { topStories?: unknown[] })?.topStories;
@@ -262,7 +276,12 @@ export async function listTemporalAnomalies(
         // away — so surface it with a grep-able marker rather than discarding it.
         // typesWithCounts is the sources that actually returned a count this
         // rebuild — the achieved coverage, not the configured one.
-        const stamped = await writeTemporalAnomaliesSeedMeta(snapshot, typesWithCounts.length);
+        const contentAge = temporalAnomaliesContentMeta(countPayloads, now.getTime());
+        const stamped = await writeTemporalAnomaliesSeedMeta(
+          snapshot,
+          typesWithCounts.length,
+          contentAge ?? { newestItemAt: null, oldestItemAt: null },
+        );
         if (!stamped) {
           console.warn(
             '[TemporalAnomalies] seed-meta stamp FAILED after a successful publish; '

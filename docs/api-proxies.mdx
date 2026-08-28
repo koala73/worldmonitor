@@ -34,6 +34,8 @@ All proxies:
 
 Fetches an RSS/Atom feed and returns the parsed JSON. The URL must match one of the patterns in `_rss-allowed-domains.js` — arbitrary URLs are refused to prevent SSRF.
 
+The route is API-key gated. Responses use `Cache-Control: private, max-age=180` and omit `CDN-Cache-Control`, because shared caches do not key on the credential header. Browser clients may still reuse the body for three minutes.
+
 ## Skills registry
 
 ### `POST /api/skills/fetch-agentskills`

@@ -10,6 +10,50 @@ import {
 } from '@/services/webmcp';
 
 describe('App WebMCP country binding cold start', () => {
+  it('rejects a no-signal country open before the App binding starts', async () => {
+    let bindingCalls = 0;
+    const tools = buildWebMcpTools({
+      openCountryBriefByCode: async () => {
+        bindingCalls += 1;
+        return true;
+      },
+      resolveCountryName: () => 'France',
+      openSearch: async () => true,
+      getDashboardContext: async () => ({
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: [], enabled: [] },
+      }),
+      applyDashboardAction: async () => ({
+        ok: true,
+        status: 'applied',
+        message: 'Applied dashboard action.',
+        targets: [],
+      }),
+      searchDashboard: async (query) => ({
+        queryLength: query.length,
+        results: [],
+        resultCount: 0,
+        truncated: false,
+      }),
+      openSearchResult: async () => ({ ok: true, status: 'opened' }),
+    }, () => {});
+
+    await expect(tools.find((tool) => tool.name === 'openCountryBrief')!.execute({ iso2: 'FR' }))
+      .resolves.toMatchObject({
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+      });
+    expect(bindingCalls).toBe(0);
+  });
+
   it('lazy-creates a null country page and acknowledges the visible tool result', async () => {
     let visible = false;
     let activeCode = '';

@@ -1118,11 +1118,14 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string' },
+        // GetCountryIntelBriefResponse is spread verbatim below, so these
+        // mirror the proto's camelCase wire names. `framework` is an input
+        // only and `provider` does not exist on this response — neither is
+        // declared here.
+        countryCode: { type: 'string', description: 'ISO 3166-1 alpha-2 code, echoed back uppercased.' },
+        countryName: { type: 'string', description: 'Resolved country name, or the ISO code when no name is known.' },
         brief: { type: 'string', description: 'LLM-synthesized country intelligence brief.' },
-        framework: { type: 'string' },
         generatedAt: { type: ['string', 'number', 'null'] },
-        provider: { type: 'string' },
         model: { type: 'string' },
         digestCoverage: {
           type: 'object',
@@ -1310,7 +1313,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_risk',
     _outputBudgetBytes: 262144,
-    description: 'Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?"',
+    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1318,22 +1321,56 @@ export const RPC_TOOLS: ToolDef[] = [
       },
       required: ['country_code'],
     },
+    // Mirrors GetCountryRiskResponse verbatim — `_execute` returns the
+    // gateway's `res.json()` unchanged, and the gateway `JSON.stringify`s the
+    // proto-generated struct with no case conversion. Keep this in step with
+    // proto/worldmonitor/intelligence/v1/get_country_risk.proto; the
+    // OpenAPI-parity guard in tests/mcp-output-schema-coverage.test.mjs fails
+    // the build if a property here stops existing on the wire.
     outputSchema: {
       type: 'object',
+      required: ['countryCode', 'countryName', 'advisoryLevel', 'sanctionsActive', 'sanctionsCount', 'fetchedAt', 'upstreamUnavailable'],
       properties: {
-        country_code: { type: 'string' },
-        cii: { type: ['number', 'null'], description: 'Composite Instability Index 0-100.' },
-        components: {
-          type: 'object',
+        countryCode: { type: 'string', description: 'ISO 3166-1 alpha-2 code, echoed back uppercased.' },
+        countryName: { type: 'string', description: 'Resolved country name, or the ISO code when no name is known.' },
+        cii: {
+          type: ['object', 'null'],
+          description: 'Composite Instability Index score. Absent when the country is not tracked, and always absent when upstreamUnavailable is true.',
           properties: {
-            unrest: { type: ['number', 'null'] },
-            conflict: { type: ['number', 'null'] },
-            security: { type: ['number', 'null'] },
-            news: { type: ['number', 'null'] },
+            region: { type: 'string', description: 'ISO 3166-1 alpha-2 code this score was computed for.' },
+            combinedScore: { type: 'number', description: 'The headline CII, 0-100. This is the number to read as "the CII score" — the top-level `cii` is an object, not a number.' },
+            staticBaseline: { type: 'number', description: 'Structural baseline 0-100, before live signals.' },
+            dynamicScore: { type: 'number', description: 'Approximate 24-hour movement delta, -100 to 100. Positive is rising, negative falling, 0 stable or no valid prior snapshot.' },
+            trend: {
+              type: 'string',
+              enum: ['TREND_DIRECTION_UNSPECIFIED', 'TREND_DIRECTION_RISING', 'TREND_DIRECTION_STABLE', 'TREND_DIRECTION_FALLING'],
+              description: 'Direction of travel for combinedScore.',
+            },
+            components: {
+              type: 'object',
+              description: 'The four contributions rolled into combinedScore, each 0-100. These field names are historical and do NOT describe their contents — read each description before attributing a score to a driver.',
+              properties: {
+                ciiContribution: { type: 'number', description: 'DOMESTIC UNREST contribution: protests, riots, fatalities, severity, and outages.' },
+                geoConvergence: { type: 'number', description: 'ARMED CONFLICT contribution: ACLED events, fatalities, violence against civilians, strikes, and OREF alerts.' },
+                militaryActivity: { type: 'number', description: 'SECURITY AND MOBILITY contribution: military flights, military vessels, aviation disruption, and GPS interference.' },
+                newsActivity: { type: 'number', description: 'INFORMATION ENVIRONMENT contribution: news urgency and threat-summary signals.' },
+              },
+            },
+            computedAt: { type: 'number', description: 'CII computation time, Unix epoch milliseconds.' },
+            methodologyVersion: { type: 'string', description: 'CII formula version, bumped whenever score or movement semantics change.' },
+            eventMultiplier: { type: 'number', description: 'Editorial per-country multiplier applied to live signals before they roll into combinedScore. Bounds [0, 10].' },
+            advisoryLevel: { type: 'string', description: 'Advisory level the score itself consumed. Empty when no advisory input applied. Distinct from the top-level advisoryLevel.' },
+            advisoryProvenance: { type: 'string', description: 'Where cii.advisoryLevel came from — "live" for the advisory cache, otherwise a fallback marker.' },
           },
         },
-        travelAdvisory: { type: ['object', 'string', 'null'] },
-        sanctionsExposure: { type: ['object', 'array', 'null'] },
+        advisoryLevel: { type: 'string', description: 'Government travel-advisory level, e.g. "do-not-travel", "reconsider", "caution". Empty when none.' },
+        sanctionsActive: { type: 'boolean', description: 'True when this country has active OFAC designations.' },
+        sanctionsCount: { type: 'number', description: 'Count of sanctioned entities associated with this country.' },
+        fetchedAt: { type: 'number', description: 'Freshness stamp taken from cii.computedAt, Unix epoch milliseconds. 0 means unknown, including "no CII score for this country".' },
+        upstreamUnavailable: {
+          type: 'boolean',
+          description: 'True when ANY required upstream read failed. The handler fails closed on the first missing key, so the whole response is withheld: cii is absent and every risk field is zeroed. Those zeros mean UNKNOWN, not "low risk" — never report a country as calm on such a response.',
+        },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -2135,6 +2172,7 @@ export const RPC_TOOLS: ToolDef[] = [
           total_duration: { type: ['number', 'string', 'null'] },
           segments: { type: 'array', items: { type: 'object' } },
         } } },
+        degraded: { type: 'boolean', description: 'True when the upstream search failed or returned no usable results.' },
         search_metadata: { type: ['object', 'null'] },
         error: { type: 'string', description: 'Present when upstream returned a usable error message.' },
       },
@@ -2197,6 +2235,7 @@ export const RPC_TOOLS: ToolDef[] = [
           date: { type: 'string' }, price: { type: ['number', 'string', 'null'] },
           currency: { type: 'string' },
         } } },
+        degraded: { type: 'boolean', description: 'True when the upstream search failed or returned partial results.' },
         search_metadata: { type: ['object', 'null'] },
         error: { type: 'string' },
       },
@@ -2391,13 +2430,24 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
       // Scope is mandatory server-side (a 400 from the handler). Checking it
-      // here turns an opaque downstream failure into an actionable message and
-      // saves the round-trip; the handler stays the enforcing authority.
+      // here turns an opaque downstream failure into actionable -32602
+      // violations (RpcValidationError) and saves the round-trip; the handler
+      // stays the enforcing authority. A plain Error would land as -32603 +
+      // Sentry error (WORLDMONITOR-10Y).
       const domain = typeof params.domain === 'string' ? params.domain.trim() : '';
       const country = normalizeCountry(params.country);
       assertIntelHistoryCountry('get-intel-timeline', country);
       if (!domain && !country) {
-        throw new Error('get_intel_timeline requires at least one of domain ("conflict", "military", or "energy") or country (ISO 3166-1 alpha-2) — those are the two indexed scopes on the history store.');
+        throw new RpcValidationError('get-intel-timeline', [
+          {
+            field: 'domain',
+            description: 'Required unless country is set. One of conflict, military, or energy.',
+          },
+          {
+            field: 'country',
+            description: 'Required unless domain is set. ISO 3166-1 alpha-2, uppercase (e.g. UA).',
+          },
+        ]);
       }
 
       const query = new URLSearchParams();

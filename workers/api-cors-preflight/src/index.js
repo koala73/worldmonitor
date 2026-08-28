@@ -73,12 +73,23 @@ const ALLOW_METHODS = 'GET, POST, DELETE, HEAD, OPTIONS';
 //     (hardcoded ACAO: '*')
 //   - api/security/report.js (CSP/COOP/COEP reports from any origin)
 //   - api/geo.js, api/version.js (public, no credentials)
+//   - api/fwdstart.js, api/gpsjam.js, api/reverse-geocode.js,
+//     api/product-catalog.js (cacheable public GET responses use ACAO: '*';
+//     product-catalog also owns the CORS policy for its credentialed DELETE)
+//
+// Do not let the Worker replace these endpoints' response headers with its
+// credentialed, Origin-varying policy. That would make a cached public
+// response origin-specific again and overwrite the endpoint's ACAO: '*'.
 const PUBLIC_CORS_PATHS = new Set([
   '/api/mcp',
   '/api/oauth-protected-resource',
   '/api/security/report',
   '/api/geo',
   '/api/version',
+  '/api/fwdstart',
+  '/api/gpsjam',
+  '/api/reverse-geocode',
+  '/api/product-catalog',
 ]);
 const PUBLIC_CORS_PREFIXES = [
   '/api/mcp/',
@@ -128,17 +139,37 @@ function mergeHeaderNames(...values) {
   return merged.join(', ');
 }
 
+// /api/story intentionally varies cacheable crawler HTML from browser redirects
+// by User-Agent. Cloudflare evaluates origin Vary headers while resolving this
+// subrequest, before the Worker can merge response headers below, so declare the
+// expected variant here. Unknown future Vary headers bypass cache by default;
+// the intentional User-Agent variant uses the raw value as its cache key.
+const STORY_FETCH_OPTIONS = {
+  cf: {
+    vary: {
+      default: { action: 'bypass' },
+      headers: {
+        'user-agent': { action: 'passthrough' },
+      },
+    },
+  },
+};
+
 // The single origin path: fetch Vercel, stamp the Worker's canonical CORS onto the response, and
 // preserve the bootstrap route's function-owned exposed headers. Shared by the normal pass-through
 // AND the U-K4 hedge, so there is exactly one origin+CORS implementation to keep correct.
 async function passThroughToOrigin(request, url, corsHeaders) {
   try {
-    const response = await fetch(request);
+    const response = url.pathname === '/api/story'
+      ? await fetch(request, STORY_FETCH_OPTIONS)
+      : await fetch(request);
     const newHeaders = new Headers(response.headers);
     const originExposedHeaders = newHeaders.get('Access-Control-Expose-Headers');
+    const originVary = newHeaders.get('Vary');
     for (const [k, v] of Object.entries(corsHeaders)) {
       newHeaders.set(k, v);
     }
+    newHeaders.set('Vary', mergeHeaderNames(originVary, corsHeaders.Vary));
     // Bootstrap temporarily exposes U3a timing and cache-classifier headers.
     // Preserve only that route's function-owned additions while retaining
     // the Worker's canonical baseline. Replacing this header outright made

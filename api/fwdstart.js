@@ -1,5 +1,5 @@
 // Non-sebuf: returns XML/HTML, stays as standalone Vercel function
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { readRawJsonFromUpstash, setCachedData } from './_upstash-json.js';
@@ -76,6 +76,7 @@ export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403, cors);
   }
+  const publicCors = getPublicCorsHeaders();
   try {
     // Redis is a load shield, not a dependency: a cache outage must still
     // serve the feed, so every failure here falls through to the live scrape.
@@ -128,7 +129,7 @@ export default async function handler(req, ctx) {
     return new Response(rss, {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
-        ...cors,
+        ...publicCors,
         'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
       },
     });

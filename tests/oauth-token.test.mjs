@@ -24,6 +24,13 @@ import crypto from 'node:crypto';
 
 import { tokenHandler } from '../api/oauth/token.ts';
 import {
+  REFRESH_ATTEMPT_TTL_SECONDS,
+  rawRedisBeginRefreshAttempt,
+  rawRedisFinalizeRefreshAttempt,
+  rawRedisProtectFailedRefreshAttempt,
+  rawRedisRestoreRefreshAttempt,
+} from '../api/oauth/_refresh-recovery.ts';
+import {
   resolveBearerToContext,
   resolveApiKeyFromBearer,
 } from '../api/_oauth-token.js';
@@ -77,6 +84,10 @@ async function ensureFixtures() {
 function makeRedis() {
   const store = new Map();
   const ops = [];
+  const parseStored = (value) => {
+    if (typeof value !== 'string') return value;
+    try { return JSON.parse(value); } catch { return null; }
+  };
   return {
     store,
     ops,
@@ -84,7 +95,13 @@ function makeRedis() {
       ops.push({ kind: 'getdel', key });
       const v = store.get(key);
       store.delete(key);
-      return v ?? null;
+      if (v === undefined) return null;
+      // Mirror production rawRedisGetDel: pipeline writes JSON strings and
+      // the handler receives their parsed value on the next redemption.
+      if (typeof v === 'string') {
+        try { return JSON.parse(v); } catch { return null; }
+      }
+      return v;
     },
     redisGet: async (key) => {
       ops.push({ kind: 'get', key });
@@ -97,6 +114,67 @@ function makeRedis() {
         try { return JSON.parse(v); } catch { return null; }
       }
       return v;
+    },
+    redisBeginRefreshAttempt: async (refreshToken, attemptId) => {
+      const refreshKey = `oauth:refresh:${refreshToken}`;
+      const attemptKey = `oauth:famattempt:${refreshToken}`;
+      const pointerKey = `oauth:famptr:${refreshToken}`;
+      const attemptValue = JSON.stringify({ attempt_id: attemptId });
+      const attemptMarker = JSON.stringify({ kind: 'refresh_attempt', attempt_id: attemptId });
+      ops.push({ kind: 'begin-refresh-attempt', refreshToken, attemptValue });
+      if (store.has(refreshKey)) {
+        const refreshData = parseStored(store.get(refreshKey));
+        if (refreshData?.kind === 'refresh_attempt') {
+          return {
+            kind: 'miss',
+            recoveryPending: store.has(attemptKey),
+            familyId: parseStored(store.get(pointerKey))?.family_id ?? parseStored(store.get(pointerKey)) ?? null,
+          };
+        }
+        store.set(attemptKey, attemptValue);
+        store.set(refreshKey, attemptMarker);
+        return { kind: 'consumed', refreshData, attemptValue };
+      }
+      return {
+        kind: 'miss',
+        recoveryPending: store.has(attemptKey),
+        familyId: parseStored(store.get(pointerKey))?.family_id ?? parseStored(store.get(pointerKey)) ?? null,
+      };
+    },
+    redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId) => {
+      const attemptKey = `oauth:famattempt:${refreshToken}`;
+      ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue });
+      if (store.get(attemptKey) !== attemptValue) return false;
+      store.set(`oauth:refresh:${refreshToken}`, JSON.stringify(refreshData));
+      if (familyId) store.set(`oauth:famptr:${refreshToken}`, JSON.stringify(familyId));
+      store.delete(attemptKey);
+      return true;
+    },
+    redisFinalizeRefreshAttempt: async (refreshToken, attemptValue) => {
+      const attemptKey = `oauth:famattempt:${refreshToken}`;
+      ops.push({ kind: 'finalize-refresh-attempt', refreshToken, attemptValue });
+      if (store.get(attemptKey) !== attemptValue) return false;
+      const marker = parseStored(store.get(`oauth:refresh:${refreshToken}`));
+      if (marker?.kind === 'refresh_attempt') store.delete(`oauth:refresh:${refreshToken}`);
+      store.delete(attemptKey);
+      return true;
+    },
+    redisProtectFailedRefreshAttempt: async (refreshToken, attemptValue) => {
+      const attemptKey = `oauth:famattempt:${refreshToken}`;
+      ops.push({ kind: 'protect-failed-refresh-attempt', refreshToken, attemptValue });
+      if (store.get(attemptKey) !== attemptValue) return false;
+      const { attempt_id: attemptId } = JSON.parse(attemptValue);
+      store.set(attemptKey, JSON.stringify({ attempt_id: attemptId, state: 'failed' }));
+      store.set(
+        `oauth:famptr:${refreshToken}`,
+        JSON.stringify({ kind: 'refresh_recovery_failed', attempt_id: attemptId }),
+      );
+      const refreshKey = `oauth:refresh:${refreshToken}`;
+      const currentRefresh = parseStored(store.get(refreshKey));
+      if (!currentRefresh || currentRefresh.kind === 'refresh_attempt') {
+        store.set(refreshKey, JSON.stringify({ kind: 'refresh_attempt', attempt_id: attemptId }));
+      }
+      return true;
     },
     redisPipeline: async (commands) => {
       const results = [];
@@ -131,19 +209,42 @@ function assertSetEx(ops, key, expectedValue, expectedTtl) {
   assert.deepEqual(cmd, ['SET', key, expectedValue, 'EX', expectedTtl]);
 }
 
+function assertFamilyPointerSetEx(ops, key, expectedFamilyId, expectedTtl) {
+  const cmd = findSetCommand(ops, key);
+  assert.ok(cmd, `expected SET command for ${key}`);
+  assert.equal(cmd[0], 'SET');
+  assert.equal(cmd[1], key);
+  assert.equal(cmd[3], 'EX');
+  assert.equal(cmd[4], expectedTtl);
+  const pointer = JSON.parse(cmd[2]);
+  assert.equal(pointer, expectedFamilyId, 'family pointers must remain legacy JSON strings');
+}
+
 let _uuidCounter = 0;
+let _pointerCounter = 0;
 function deterministicUuid() {
   _uuidCounter += 1;
   return `uuid_${String(_uuidCounter).padStart(4, '0')}`;
 }
 
+function deterministicPointerId() {
+  _pointerCounter += 1;
+  return `pointer_${String(_pointerCounter).padStart(4, '0')}`;
+}
+
 function makeDeps(overrides = {}) {
   const redis = overrides.redis ?? makeRedis();
+  const restoreFailures = [];
   return {
     redis, // for assertions (not part of TokenHandlerDeps)
+    restoreFailures,
     deps: {
       redisGetDel: redis.redisGetDel,
       redisGet: redis.redisGet,
+      redisBeginRefreshAttempt: redis.redisBeginRefreshAttempt,
+      redisRestoreRefreshAttempt: redis.redisRestoreRefreshAttempt,
+      redisFinalizeRefreshAttempt: redis.redisFinalizeRefreshAttempt,
+      redisProtectFailedRefreshAttempt: redis.redisProtectFailedRefreshAttempt,
       redisPipeline: redis.redisPipeline,
       // F3 (U7+U8 review pass): validateProMcpToken now returns the
       // ProMcpValidateUnion. Tests passing `null` are normalised here to
@@ -151,6 +252,8 @@ function makeDeps(overrides = {}) {
       // tests passing the new shape pass through unchanged.
       validateProMcpToken: overrides.validateProMcpToken ?? (async () => ({ ok: 'valid', userId: USER_ID })),
       randomUuid: overrides.randomUuid ?? deterministicUuid,
+      randomPointerId: overrides.randomPointerId ?? deterministicPointerId,
+      captureRestoreFailure: overrides.captureRestoreFailure ?? ((context) => restoreFailures.push(context)),
     },
   };
 }
@@ -163,6 +266,119 @@ function makeReq(grantType, params) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 }
+
+describe('OAuth Redis refresh-attempt production contract', () => {
+  it('atomically consumes a refresh token and creates a short-lived attempt', async () => {
+    const realFetch = globalThis.fetch;
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(JSON.stringify({ result: [1, JSON.stringify({ family_id: 'fam-contract' })] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      const result = await rawRedisBeginRefreshAttempt('rt-contract', 'attempt-contract');
+      assert.deepEqual(result, {
+        kind: 'consumed',
+        refreshData: { family_id: 'fam-contract' },
+        attemptValue: JSON.stringify({ attempt_id: 'attempt-contract' }),
+      });
+      assert.equal(calls[0].url, 'https://test.upstash.io/');
+      assert.equal(calls[0].init.method, 'POST');
+      assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token');
+      assert.equal(calls[0].init.headers['Content-Type'], 'application/json');
+      assert.equal(calls[0].init.headers['User-Agent'], 'worldmonitor-edge/1.0');
+      const command = JSON.parse(calls[0].init.body);
+      assert.equal(command[0], 'EVAL');
+      assert.equal(command[2], '3');
+      assert.equal(command[3], 'oauth:refresh:rt-contract');
+      assert.equal(command[4], 'oauth:famattempt:rt-contract');
+      assert.equal(command[5], 'oauth:famptr:rt-contract');
+      assert.equal(command[6], JSON.stringify({ attempt_id: 'attempt-contract' }));
+      assert.deepEqual(JSON.parse(command[7]), { kind: 'refresh_attempt', attempt_id: 'attempt-contract' });
+      assert.equal(command[8], REFRESH_ATTEMPT_TTL_SECONDS);
+    } finally {
+      globalThis.fetch = realFetch;
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
+  it('uses fenced EVAL transitions for restore, finalize, and failed recovery protection', async () => {
+    const realFetch = globalThis.fetch;
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(JSON.stringify({ result: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const attemptValue = JSON.stringify({ attempt_id: 'attempt-contract' });
+    try {
+      assert.equal(
+        await rawRedisRestoreRefreshAttempt(
+          'rt-contract',
+          attemptValue,
+          { family_id: 'fam-contract' },
+          'fam-contract',
+        ),
+        true,
+      );
+      assert.equal(await rawRedisFinalizeRefreshAttempt('rt-contract', attemptValue), true);
+      assert.equal(await rawRedisProtectFailedRefreshAttempt('rt-contract', attemptValue), true);
+
+      const restore = JSON.parse(calls[0].init.body);
+      assert.equal(restore[0], 'EVAL');
+      assert.deepEqual(restore.slice(3, 6), [
+        'oauth:refresh:rt-contract',
+        'oauth:famptr:rt-contract',
+        'oauth:famattempt:rt-contract',
+      ]);
+      assert.equal(restore[8], JSON.stringify('fam-contract'));
+
+      const finalize = JSON.parse(calls[1].init.body);
+      assert.deepEqual(finalize.slice(2, 5), [
+        '2',
+        'oauth:refresh:rt-contract',
+        'oauth:famattempt:rt-contract',
+      ]);
+      assert.equal(finalize[5], attemptValue);
+      assert.equal(JSON.parse(finalize[6]).kind, 'refresh_attempt');
+
+      const protect = JSON.parse(calls[2].init.body);
+      assert.equal(protect[2], '3');
+      assert.equal(protect[3], 'oauth:refresh:rt-contract');
+      assert.equal(protect[4], 'oauth:famattempt:rt-contract');
+      assert.equal(protect[5], 'oauth:famptr:rt-contract');
+      assert.equal(protect[6], attemptValue);
+      assert.equal(JSON.parse(protect[7]).state, 'failed');
+      assert.equal(JSON.parse(protect[8]).kind, 'refresh_attempt');
+      assert.equal(JSON.parse(protect[9]).kind, 'refresh_recovery_failed');
+      assert.equal(protect[10], REFRESH_TTL_SECONDS);
+    } finally {
+      globalThis.fetch = realFetch;
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // authorization_code — Pro path
@@ -219,7 +435,7 @@ describe('U6 tokenHandler — authorization_code (Pro)', () => {
     assert.equal(refresh.scope, 'mcp_pro');
     assert.equal(refresh.family_id, 'uuid_0003');
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0001', JSON.stringify('uuid_0003'), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0002', JSON.stringify('uuid_0003'), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0002', 'uuid_0003', REFRESH_TTL_SECONDS);
 
     // The auth code was consumed via GETDEL.
     assert.equal(redis.store.has('oauth:code:abc'), false);
@@ -354,7 +570,7 @@ describe('U6 tokenHandler — authorization_code (legacy)', () => {
     assert.equal(refresh.scope, 'mcp');
     assert.equal(typeof refresh.family_id, 'string');
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0101', JSON.stringify(refresh.family_id), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0102', JSON.stringify(refresh.family_id), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0102', refresh.family_id, REFRESH_TTL_SECONDS);
   });
 });
 
@@ -401,9 +617,9 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.equal(refresh.mcpTokenId, MCP_TOKEN_ID);
     assert.equal(refresh.scope, 'mcp_pro');
     assert.equal(refresh.family_id, FAMILY); // PRESERVED across rotation
-    assertSetEx(redis.ops, 'oauth:famptr:rt-1', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-1', FAMILY, REFRESH_TTL_SECONDS);
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0201', JSON.stringify(FAMILY), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0202', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0202', FAMILY, REFRESH_TTL_SECONDS);
 
     // Old refresh token consumed.
     assert.equal(redis.store.has('oauth:refresh:rt-1'), false);
@@ -463,7 +679,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.equal(restoredObj.userId, USER_ID);
     assert.equal(restoredObj.mcpTokenId, MCP_TOKEN_ID);
     assert.equal(restoredObj.family_id, 'fam');
-    assertSetEx(redis.ops, 'oauth:famptr:rt-1', JSON.stringify('fam'), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-1', 'fam', REFRESH_TTL_SECONDS);
   });
 
   it('Pro refresh rejects when client_id does not match', async () => {
@@ -553,9 +769,9 @@ describe('U6 tokenHandler — refresh_token (legacy)', () => {
     assert.equal(refresh.kind, undefined);
     assert.equal(refresh.api_key_hash, ENV_KEY_HASH);
     assert.equal(refresh.family_id, FAMILY);
-    assertSetEx(redis.ops, 'oauth:famptr:rt-old', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-old', FAMILY, REFRESH_TTL_SECONDS);
     assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0301', JSON.stringify(FAMILY), TOKEN_TTL_SECONDS);
-    assertSetEx(redis.ops, 'oauth:famptr:uuid_0302', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:uuid_0302', FAMILY, REFRESH_TTL_SECONDS);
   });
 });
 
@@ -587,6 +803,11 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const rotated = (await r1.json()).refresh_token;
     assert.equal(redis.store.has('oauth:refresh:rt-1'), false, 'rt-1 consumed by GETDEL');
     assert.ok(redis.store.has('oauth:famptr:rt-1'), 'family pointer survives rotation (enables reuse detection)');
+    assert.equal(
+      JSON.parse(redis.store.get('oauth:famptr:rt-1')),
+      FAMILY,
+      'the merge-base handler must parse the pointer as a legacy family-id string after rollback',
+    );
     assert.ok(redis.store.has(`oauth:famptr:${rotated}`), 'rotated token also gets a family pointer');
     assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'family not revoked yet');
 
@@ -620,7 +841,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const r1 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-old', client_id: CLIENT_ID }), deps);
     assert.equal(r1.status, 200);
     const rotated = (await r1.json()).refresh_token;
-    assertSetEx(redis.ops, 'oauth:famptr:rt-old', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-old', FAMILY, REFRESH_TTL_SECONDS);
 
     const r2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-old', client_id: CLIENT_ID }), deps);
     assert.equal(r2.status, 400);
@@ -651,7 +872,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(r1.status, 200);
     const rotated = (await r1.json()).refresh_token;
-    assertSetEx(redis.ops, 'oauth:famptr:rt-legacy', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-legacy', FAMILY, REFRESH_TTL_SECONDS);
 
     const r2 = await tokenHandler(
       makeReq('refresh_token', { refresh_token: 'rt-legacy', client_id: CLIENT_ID }),
@@ -685,6 +906,23 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal((await resp.json()).error, 'server_error');
   });
 
+  it('reads object pointers from the prior deployment but only writes rollback-safe strings', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_prior_object_pointer';
+    redis.store.set(
+      'oauth:famptr:rt-prior-object',
+      JSON.stringify({ family_id: FAMILY, pointer_id: 'prior-attempt' }),
+    );
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-prior-object', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+  });
+
   it('revocation-state read failure restores the consumed token and does not rotate', async () => {
     await ensureFixtures();
     const { redis, deps } = makeDeps();
@@ -711,7 +949,69 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const restored = redis.store.get('oauth:refresh:rt-live');
     assert.ok(restored, 'refresh token is restored when revocation state is unknown');
     assert.equal(redis.store.has('oauth:token:uuid_0951'), false, 'must not mint a new access token');
-    assertSetEx(redis.ops, 'oauth:famptr:rt-live', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-live', FAMILY, REFRESH_TTL_SECONDS);
+  });
+
+  it('revocation-state read failure protects the attempt when the consumed token cannot be restored', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    redis.redisRestoreRefreshAttempt = async () => false;
+    const { deps, restoreFailures } = makeDeps({ redis });
+    const FAMILY = 'fam_read_restore_fail';
+    redis.store.set('oauth:refresh:rt-read-fail', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-read-fail', JSON.stringify(FAMILY));
+    const originalRedisGet = deps.redisGet;
+    deps.redisGet = async (key) => {
+      if (key === `oauth:famrev:${FAMILY}`) throw new Error('redis down');
+      return originalRedisGet(key);
+    };
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-read-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    assert.equal(JSON.parse(redis.store.get('oauth:famptr:rt-read-fail')).kind, 'refresh_recovery_failed');
+    assert.equal(JSON.parse(redis.store.get('oauth:famattempt:rt-read-fail')).state, 'failed');
+    assert.deepEqual(restoreFailures, [
+      { stage: 'read-family-revocation' },
+    ]);
+  });
+
+  it('family-pointer preclaim failure leaves the token and pointer untouched', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const { deps, restoreFailures } = makeDeps({ redis });
+    const FAMILY = 'fam_backfill_restore_fail';
+    redis.store.set('oauth:refresh:rt-backfill-fail', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-backfill-fail', JSON.stringify(FAMILY));
+    deps.redisPipeline = async (commands) => {
+      for (const cmd of commands) redis.ops.push({ kind: 'pipeline', cmd });
+      return null;
+    };
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-backfill-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    assert.equal(redis.store.has('oauth:refresh:rt-backfill-fail'), true);
+    assert.equal(redis.store.has('oauth:famptr:rt-backfill-fail'), true);
+    assert.deepEqual(restoreFailures, []);
   });
 
   it('transient Pro validation restores the refresh token and its family pointer together', async () => {
@@ -734,7 +1034,325 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(resp.status, 503);
     assert.ok(redis.store.has('oauth:refresh:rt-transient'));
-    assertSetEx(redis.ops, 'oauth:famptr:rt-transient', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-transient', FAMILY, REFRESH_TTL_SECONDS);
+  });
+
+  it('a failed transient restore protects the attempt so retry cannot revoke sibling sessions', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    redis.redisRestoreRefreshAttempt = async () => false;
+    const { deps, restoreFailures } = makeDeps({
+      redis,
+      validateProMcpToken: async (mcpTokenId) => (
+        mcpTokenId === 'mcp-blip'
+          ? { ok: 'transient' }
+          : { ok: 'valid', userId: USER_ID }
+      ),
+    });
+    const FAMILY = 'fam_restore_blip';
+    redis.store.set('oauth:refresh:rt-blip', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: 'mcp-blip',
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-blip', JSON.stringify(FAMILY));
+    redis.store.set('oauth:refresh:rt-sibling', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: 'mcp-sibling',
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-sibling', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-blip', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(first.status, 503);
+    assert.deepEqual(JSON.parse(redis.store.get('oauth:refresh:rt-blip')), {
+      kind: 'refresh_attempt',
+      attempt_id: JSON.parse(redis.store.get('oauth:famattempt:rt-blip')).attempt_id,
+    });
+    assert.equal(JSON.parse(redis.store.get('oauth:famptr:rt-blip')).kind, 'refresh_recovery_failed');
+    assert.equal(JSON.parse(redis.store.get('oauth:famattempt:rt-blip')).state, 'failed');
+    assert.deepEqual(restoreFailures, [
+      { stage: 'convex-transient' },
+    ]);
+
+    // A rollback handler consumes the marker on its first retry. The failed
+    // recovery tombstone contains no family id, so later rollback retries also
+    // cannot revoke sibling sessions.
+    assert.equal((await redis.redisGetDel('oauth:refresh:rt-blip')).kind, 'refresh_attempt');
+    assert.equal(JSON.parse(redis.store.get('oauth:famptr:rt-blip')).family_id, undefined);
+
+    const retry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-blip', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(retry.status, 503);
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'retry must not revoke the family');
+
+    const sibling = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-sibling', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(sibling.status, 200, 'a sibling session in the family must still validate');
+  });
+
+  it('a partial restore that writes the token keeps replay evidence and remains retryable', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalRestore = redis.redisRestoreRefreshAttempt;
+    redis.redisRestoreRefreshAttempt = async (refreshToken, _attemptValue, refreshData) => {
+      redis.store.set(`oauth:refresh:${refreshToken}`, JSON.stringify(refreshData));
+      return false;
+    };
+    let validationCalls = 0;
+    const { deps, restoreFailures } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        validationCalls += 1;
+        return validationCalls === 1
+          ? { ok: 'transient' }
+          : { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_partial_restore';
+    redis.store.set('oauth:refresh:rt-partial', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-partial', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-partial', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(first.status, 503);
+    assert.ok(redis.store.has('oauth:refresh:rt-partial'), 'partial pipeline restored the token record');
+    assert.equal(
+      redis.store.has('oauth:famptr:rt-partial'),
+      true,
+      'cleanup preserves replay evidence while the restored token exists',
+    );
+    assert.deepEqual(restoreFailures, [
+      { stage: 'convex-transient' },
+    ]);
+
+    const retry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-partial', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(retry.status, 200, 'the restored token remains usable after cleanup');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+    redis.redisRestoreRefreshAttempt = originalRestore;
+  });
+
+  it('a lost restore response preserves replay evidence when Redis committed both records', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalRestore = redis.redisRestoreRefreshAttempt;
+    redis.redisRestoreRefreshAttempt = async (...args) => {
+      await originalRestore(...args);
+      throw new Error('response lost after Redis committed the restore');
+    };
+    let validationCalls = 0;
+    const { deps, restoreFailures } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        validationCalls += 1;
+        return validationCalls === 1
+          ? { ok: 'transient' }
+          : { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_lost_restore_response';
+    redis.store.set('oauth:refresh:rt-lost-response', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-lost-response', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-lost-response', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(first.status, 503);
+    assert.ok(redis.store.has('oauth:refresh:rt-lost-response'), 'Redis committed the restored token');
+    assert.ok(
+      redis.store.has('oauth:famptr:rt-lost-response'),
+      'cleanup must preserve the pointer while the restored token exists',
+    );
+    assert.deepEqual(restoreFailures, [
+      { stage: 'convex-transient' },
+    ]);
+
+    const retry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-lost-response', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(retry.status, 200);
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+  });
+
+  it('an in-flight concurrent retry does not revoke, but replay after success still does', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    let signalValidationStarted;
+    const validationStarted = new Promise((resolve) => { signalValidationStarted = resolve; });
+    let releaseValidation;
+    const validationReleased = new Promise((resolve) => { releaseValidation = resolve; });
+    const { deps } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        signalValidationStarted();
+        await validationReleased;
+        return { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_concurrent_restore';
+    redis.store.set('oauth:refresh:rt-concurrent', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-concurrent', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const firstRedemption = tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
+      deps,
+    );
+    await validationStarted;
+
+    const concurrentRetry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(concurrentRetry.status, 503);
+    assert.equal(
+      redis.store.has(`oauth:famrev:${FAMILY}`),
+      false,
+      'an active recovery attempt must suppress family revocation',
+    );
+
+    // A merge-base handler ignores famattempt, but its GETDEL sees this marker
+    // as a consumed record rather than a miss. It therefore returns an opaque
+    // grant error instead of revoking the family during a mixed deployment.
+    const rollbackRead = await redis.redisGetDel('oauth:refresh:rt-concurrent');
+    assert.equal(rollbackRead.kind, 'refresh_attempt');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+
+    releaseValidation();
+    assert.equal((await firstRedemption).status, 200);
+    assert.equal(redis.store.has('oauth:famattempt:rt-concurrent'), false);
+
+    const replay = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(replay.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`), 'replay must still revoke the token family');
+  });
+
+  it('a failed finalization cannot report success or create a refresh-TTL replay blind spot', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    redis.redisFinalizeRefreshAttempt = async () => false;
+    const { deps } = makeDeps({ redis });
+    const FAMILY = 'fam_finalize_failure';
+    redis.store.set('oauth:refresh:rt-finalize-fail', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-finalize-fail', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const rotation = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-finalize-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(rotation.status, 503, 'the handler must not report a successful rotation without finalization');
+    assert.ok(redis.store.has('oauth:famattempt:rt-finalize-fail'));
+    assert.equal(redis.store.get('oauth:famptr:rt-finalize-fail'), JSON.stringify(FAMILY));
+
+    const immediateRetry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-finalize-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(immediateRetry.status, 503);
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+
+    // Production gives ordinary in-flight attempts a 60-second TTL. Once it
+    // expires, the canonical legacy pointer resumes normal replay detection.
+    redis.store.delete('oauth:famattempt:rt-finalize-fail');
+    const afterAttemptExpiry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-finalize-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(afterAttemptExpiry.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+  });
+
+  it('a lost finalization response resumes replay detection immediately', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalFinalize = redis.redisFinalizeRefreshAttempt;
+    redis.redisFinalizeRefreshAttempt = async (...args) => {
+      await originalFinalize(...args);
+      throw new Error('response lost after Redis committed finalization');
+    };
+    const { deps } = makeDeps({ redis });
+    const FAMILY = 'fam_finalize_response_lost';
+    redis.store.set('oauth:refresh:rt-finalize-lost', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-finalize-lost', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const rotation = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-finalize-lost', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(rotation.status, 503);
+    assert.equal(redis.store.has('oauth:famattempt:rt-finalize-lost'), false);
+    assert.equal(redis.store.has('oauth:refresh:rt-finalize-lost'), false);
+    assert.equal(redis.store.get('oauth:famptr:rt-finalize-lost'), JSON.stringify(FAMILY));
+
+    const replay = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-finalize-lost', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(replay.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
   });
 
   it('a genuine expired/unknown refresh token (no family pointer) does NOT revoke anything', async () => {

@@ -641,9 +641,11 @@ jobs:
       # One invocation for all three smoke specs: each `playwright test` run
       # boots its own vite dev server (reuseExistingServer is false), so three
       # separate steps paid three boots; the specs are independent and share
-      # VITE_VARIANT=full. The set includes the news-budget guard (#5376) and
-      # both bootstrap request-budget guards (#7046 energy on-demand, #7045 U5
-      # hydration reuse) — named explicitly because nothing in CI runs the e2e/
+      # VITE_VARIANT=full. The set includes the news-budget guard (#5376), both
+      # bootstrap request-budget guards (#7046 energy on-demand, #7045 U5
+      # hydration reuse) and the SVG overlay marker budget (#7112/#7134/#7145,
+      # which pins that a drag costs O(1) overlay rebuilds rather than one per
+      # pointer event) — named explicitly because nothing in CI runs the e2e/
       # glob, and a regression guard no job invokes reports green while the
       # regression ships.
       - run: npm run test:e2e:ci-smoke

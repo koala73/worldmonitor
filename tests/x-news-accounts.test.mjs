@@ -255,6 +255,94 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.equal(xNews.compute429BackoffMs(new Headers(), 99), xNews.MAX_429_BACKOFF_MS);
   });
 
+  it('polls tier 1 every cycle but throttles tier 2 and tier 3', async () => {
+    // 64 accounts x 96 cycles/day = 6,240 X reads/day, billed ~$50 per four days.
+    // Tier 1 keeps the baseline cadence; the slower tiers carry the saving.
+    const accounts = [
+      { handle: 'Reuters', accountId: '1', tier: 1 },
+      { handle: 'Slower', accountId: '2', tier: 2 },
+      { handle: 'Slowest', accountId: '3', tier: 3 },
+      { handle: 'Untiered', accountId: '4' },
+    ];
+    const polled = [];
+    const fetchImpl = async (url) => {
+      const match = String(url).match(/users\/(\d+)\/tweets/);
+      if (match) polled.push(match[1]);
+      return new Response(JSON.stringify({ data: [], meta: {} }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    };
+    const poll = (state, nowMs) => xNews.pollXFeed({
+      accounts, state, bearerToken: 'test-token', fetchImpl,
+      now: () => nowMs, wait: async () => {}, lookupDeletions: false,
+    });
+
+    const T0 = 1_000_000;
+    let state = await poll({ items: [], accountOffset: 0 }, T0);
+    assert.deepEqual(polled.sort(), ['1', '2', '3', '4'], 'first cycle polls everything');
+
+    // +15 min: one baseline cycle. Tier 1 and untiered are due; 2 and 3 are not.
+    polled.length = 0;
+    state = await poll(state, T0 + 15 * 60_000);
+    assert.deepEqual(polled.sort(), ['1', '4'], 'only baseline accounts poll at +15m');
+
+    // +60 min: tier 2 comes due, tier 3 still throttled.
+    polled.length = 0;
+    state = await poll(state, T0 + 60 * 60_000);
+    assert.deepEqual(polled.sort(), ['1', '2', '4'], 'tier 2 rejoins at its hour');
+
+    // +4h: everything is due again.
+    polled.length = 0;
+    await poll(state, T0 + 4 * 60 * 60_000);
+    assert.deepEqual(polled.sort(), ['1', '2', '3', '4'], 'tier 3 rejoins at four hours');
+  });
+
+  it('a throttled cycle still completes and keeps rotation honest', async () => {
+    // accountOffset advances by accountsAttempted through the FULL registry and
+    // cycleComplete requires attempted === configured. Filtering the account list
+    // instead of skipping in-loop corrupts both: rotation drifts, and every
+    // cadence-limited cycle reports incomplete, holding the feed at partial
+    // coverage forever. A skipped account must still be counted.
+    const accounts = [
+      { handle: 'Fast', accountId: '1', tier: 1 },
+      { handle: 'Slow', accountId: '2', tier: 3 },
+    ];
+    const fetchImpl = async () => new Response(JSON.stringify({ data: [], meta: {} }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    });
+    const poll = (state, nowMs) => xNews.pollXFeed({
+      accounts, state, bearerToken: 'test-token', fetchImpl,
+      now: () => nowMs, wait: async () => {}, lookupDeletions: false,
+    });
+    const T0 = 2_000_000;
+    let state = await poll({ items: [], accountOffset: 0 }, T0);
+    assert.equal(state.cycleComplete, true);
+
+    state = await poll(state, T0 + 15 * 60_000);
+    assert.equal(state.accountsAttempted, 2, 'a skipped account is still attempted');
+    assert.equal(state.cycleComplete, true, 'throttling must not read as partial coverage');
+  });
+
+  it('never throttles an account whose tier is missing or unknown', () => {
+    // A missing tier is an unannotated registry row, not an editorial judgement
+    // that the feed matters less; absent metadata must not downgrade freshness.
+    const now = 5_000_000;
+    for (const tier of [undefined, null, 1, 0, 99, 'weird']) {
+      assert.equal(
+        xNews.isAccountDueForPoll({ tier }, now, now),
+        true,
+        `tier ${String(tier)} must poll at the baseline cadence`,
+      );
+    }
+    // A slower tier just polled is not due; the same tier an interval later is.
+    assert.equal(xNews.isAccountDueForPoll({ tier: 2 }, now, now), false);
+    assert.equal(xNews.isAccountDueForPoll({ tier: 2 }, now, now + 60 * 60_000), true);
+    // A backwards clock must never park an account forever.
+    assert.equal(xNews.isAccountDueForPoll({ tier: 3 }, now + 60_000, now), true);
+    // Never polled reads as due.
+    assert.equal(xNews.isAccountDueForPoll({ tier: 3 }, 0, now), true);
+  });
+
   it('lets the attempt counter climb far enough to reach that ceiling', async () => {
     // The counter was capped at 7 (128s), which held the exponential below the
     // ceiling no matter how long the rate limiting lasted.

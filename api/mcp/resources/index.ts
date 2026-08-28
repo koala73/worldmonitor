@@ -282,7 +282,7 @@ export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
   {
     uriTemplate: 'worldmonitor://countries/{iso2}/risk',
     name: 'Country Risk',
-    description: 'Composite Instability Index (CII) score 0–100 with unrest/conflict/security/news components, travel-advisory level, and OFAC sanctions exposure for a single ISO 3166-1 alpha-2 country. URI param {iso2} is lowercase alpha-2 (e.g. "de", "us", "ir").',
+    description: 'Composite Instability Index at cii.combinedScore (0–100) with its four contributing components under cii.components — historical names whose meanings are domestic unrest, armed conflict, security and mobility, and the information environment — plus advisoryLevel and OFAC exposure as sanctionsActive/sanctionsCount, for a single ISO 3166-1 alpha-2 country. Check upstreamUnavailable before trusting a low score: when true, at least one required upstream read failed and the whole response was withheld, so the zeroed fields mean UNKNOWN, not calm. URI param {iso2} is lowercase alpha-2 (e.g. "de", "us", "ir").',
     mimeType: 'application/json',
     tool: 'get_country_risk',
     // RPC tool — wrap freshness against the regional-snapshot-canonical

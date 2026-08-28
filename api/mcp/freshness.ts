@@ -58,6 +58,25 @@ export function evaluateFreshness(
       stale ||= recordCount == null || recordCount < check.minRecordCount;
     }
 
+    // House-standard content-age contract (#3845 / #7141). Presence of
+    // maxContentAgeMin on seed-meta is the opt-in signal, matching
+    // api/health.js classifyKey: a fresh fetchedAt with stale observations
+    // is stale. Without this branch MCP answers stale:false for the exact
+    // key health calls STALE_CONTENT — the #6080 divergence on this
+    // simpler newestItemAt clock.
+    if (meta && typeof meta === 'object' && 'maxContentAgeMin' in meta) {
+      const maxContentAgeMin = (meta as { maxContentAgeMin?: unknown }).maxContentAgeMin;
+      if (typeof maxContentAgeMin === 'number' && Number.isFinite(maxContentAgeMin)) {
+        const newestRaw = (meta as { newestItemAt?: unknown }).newestItemAt;
+        const newestItemAt = typeof newestRaw === 'number' && Number.isFinite(newestRaw)
+          ? newestRaw
+          : null;
+        const contentAgeMin = newestItemAt == null ? null : Math.round((now - newestItemAt) / 60_000);
+        const isFutureDated = contentAgeMin != null && contentAgeMin < 0;
+        stale ||= contentAgeMin == null || isFutureDated || contentAgeMin > maxContentAgeMin;
+      }
+    }
+
     if (check.requireContentFreshness) {
       // Same assessor api/health.js uses, so the two surfaces cannot drift on
       // parsing, on the fail-closed rules, or on re-aging: the producer's

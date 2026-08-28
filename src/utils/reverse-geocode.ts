@@ -25,6 +25,7 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
 
   try {
     const res = await fetch(toApiUrl(`/api/reverse-geocode?lat=${lat}&lon=${lon}`), {
+      credentials: 'omit',
       signal: controller.signal,
     });
     if (!res.ok) {

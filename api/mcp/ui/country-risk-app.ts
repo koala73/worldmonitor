@@ -59,6 +59,10 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   [data-theme="dark"] {
     --bg: #0b1220; --fg: #e5e7eb; --muted: #94a3b8; --card: #131c2e;
     --border: #1e293b; --accent: #60a5fa;
+    /* The severity ramp needs dark variants too: the light values sit at
+       3.5:1 on --card, under WCAG AA for the 12px degraded banner — the one
+       element whose whole job is being noticed during an outage. */
+    --low: #4ade80; --moderate: #facc15; --high: #fb923c; --severe: #f87171;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
@@ -78,7 +82,9 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   .components { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .comp { }
   .comp-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-  .comp-name { text-transform: capitalize; color: var(--fg); font-weight: 550; }
+  .comp-name { color: var(--fg); font-weight: 550; }
+  .degraded { margin: 0 0 14px; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+    color: var(--severe); background: var(--card); border: 1px solid var(--severe); }
   .comp-bar { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 4px; }
   .comp-bar > span { display: block; height: 100%; width: 0%; }
   .meta { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
@@ -98,6 +104,12 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
       <div class="country" id="country">—</div>
       <div class="badge" id="badge">Composite Instability Index</div>
     </div>
+    <!-- upstreamUnavailable: a required upstream read failed, so the zeroed risk
+         fields mean UNKNOWN. Without this banner an outage renders exactly
+         like a calm, low-risk country. -->
+    <div class="degraded" id="degraded" style="display:none">
+      Upstream risk data is unavailable — the fields below are unknown, not low.
+    </div>
     <div class="cii-row">
       <div class="cii-score" id="cii">—</div>
       <div class="cii-of">/ 100</div>
@@ -108,6 +120,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     <div class="meta">
       <div class="k">Travel advisory</div><div class="v" id="advisory">—</div>
       <div class="k">Sanctions exposure</div><div class="v" id="sanctions">—</div>
+      <div class="k">Trend</div><div class="v" id="trend">—</div>
     </div>
     <div class="foot" id="foot"></div>
   </div>
@@ -132,9 +145,16 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (score >= 25) return { label: "Moderate", varName: "--moderate" };
     return { label: "Low", varName: "--low" };
   }
+  // Only real numbers and numeric strings become numbers. A bare Number()
+  // coerces null, "", and [] to 0, which would render a MISSING score as a
+  // reassuring 0 — the same "absent read as calm" failure as the outage path.
   function num(v) {
-    var n = typeof v === "number" ? v : Number(v);
-    return isFinite(n) ? n : null;
+    if (typeof v === "number") return isFinite(v) ? v : null;
+    if (typeof v === "string" && v.trim() !== "") {
+      var n = Number(v);
+      return isFinite(n) ? n : null;
+    }
+    return null;
   }
   function clampPct(n) { return Math.max(0, Math.min(100, n)); }
 
@@ -143,53 +163,102 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (el) el.textContent = text == null ? "—" : String(text);
   }
 
-  function describeAdvisory(a) {
-    if (a == null) return "—";
-    if (typeof a === "string") return a;
-    if (typeof a === "object" && a.level != null) {
-      var lvl = num(a.level);
-      return lvl == null ? "—" : "Level " + lvl;
-    }
+  // Server strings are collapsed and capped before they reach the DOM. The
+  // sibling shells get this from shell.ts's collapseWs; this shell is
+  // hand-rolled, and the tool's 256 KB output budget means an unbounded value
+  // could flood a cell and push a huge height back to the host.
+  // NOTE the doubled backslash: this file is a TS template literal, so a bare
+  // \\s would reach the browser as a literal "s" and collapse every letter s
+  // in the value. shell.ts:189 escapes the same way for the same reason.
+  function cleanText(s, max) {
+    return String(s == null ? "" : s).replace(/\\s+/g, " ").trim().slice(0, max);
+  }
+  // GetCountryRiskResponse.advisory_level is a plain string ("do-not-travel",
+  // "reconsider", "caution", …), empty when no advisory applies.
+  function describeAdvisory(level) {
+    var text = cleanText(level, 64).replace(/[-_]+/g, " ");
+    return text === "" ? "None" : text;
+  }
+  // Sanctions arrive as two scalars, not a collection: sanctions_active plus
+  // sanctions_count. count alone is enough to render, but active is the
+  // authoritative flag, so an active designation with an unknown count still
+  // reads as active rather than as "None".
+  function describeSanctions(active, count) {
+    // Count first, so a positive one is never discarded. The producer keeps
+    // the two coupled today (sanctionsActive = sanctionsCount > 0), but the
+    // schema declares them independently and nothing enforces that, and
+    // "designations exist but we printed None" is the precise failure this
+    // shell was fixed to stop making.
+    var n = num(count);
+    if (n != null && n > 0) return String(n) + " OFAC-listed";
+    if (active === true) return "Active";
+    if (active === false) return "None";
     return "—";
   }
-  function describeSanctions(s) {
-    if (s == null) return "None";
-    if (Array.isArray(s)) return s.length === 0 ? "None" : String(s.length) + " listed";
-    if (typeof s === "object") {
-      var keys = Object.keys(s);
-      return keys.length === 0 ? "None" : String(keys.length) + " field(s)";
-    }
-    if (typeof s === "number") return String(s);
-    return String(s);
+  var TREND_LABELS = {
+    TREND_DIRECTION_RISING: "Rising",
+    TREND_DIRECTION_STABLE: "Stable",
+    TREND_DIRECTION_FALLING: "Falling"
+  };
+  function describeTrend(trend) {
+    if (typeof trend !== "string") return "—";
+    // Require a string hit: a bare lookup also finds inherited members, so a
+    // payload sending trend "constructor" or "__proto__" would render an
+    // Object internal into the row instead of the em-dash.
+    var label = TREND_LABELS[trend];
+    return typeof label === "string" ? label : "—";
   }
+  // The four CiiComponents wire names are historical and do not describe what
+  // they measure (cii_contribution is unrest, geo_convergence is armed
+  // conflict, military_activity is security/mobility). Label them by meaning —
+  // see proto/worldmonitor/intelligence/v1/intelligence.proto.
+  var COMPONENTS = [
+    { key: "ciiContribution", label: "Domestic unrest" },
+    { key: "geoConvergence", label: "Armed conflict" },
+    { key: "militaryActivity", label: "Security & mobility" },
+    { key: "newsActivity", label: "Information environment" }
+  ];
 
   function render(data) {
     if (!data || typeof data !== "object") return;
     document.getElementById("empty").style.display = "none";
     document.getElementById("card").style.display = "block";
 
-    setText("country", data.country_code || data.country || "—");
+    var degraded = data.upstreamUnavailable === true;
+    document.getElementById("degraded").style.display = degraded ? "block" : "none";
 
-    var cii = num(data.cii);
+    setText("country", cleanText(data.countryName, 64) || cleanText(data.countryCode, 8) || "—");
+
+    // cii is a CiiScore object; combinedScore is the headline 0-100 number.
+    var score = (data.cii && typeof data.cii === "object") ? data.cii : {};
+    var cii = degraded ? null : num(score.combinedScore);
     setText("cii", cii == null ? "—" : String(Math.round(cii)));
     var lv = levelFor(cii);
     var levelEl = document.getElementById("level");
+    var bar = document.getElementById("ciibar");
     levelEl.textContent = lv.label;
-    if (cii != null) {
+    // The host can post a second tool-result into this same shell, so every
+    // branch must fully own the score visuals. Leaving them untouched when
+    // cii is null let an outage inherit the PREVIOUS country's severity —
+    // "Unknown" in red above a full red bar — which is the exact
+    // outage-reads-as-a-verdict failure this shell exists to prevent.
+    if (cii == null) {
+      levelEl.style.color = "";
+      bar.style.width = "0%";
+      bar.style.background = "";
+    } else {
       var color = getComputedStyle(document.documentElement).getPropertyValue(lv.varName).trim();
       levelEl.style.color = color;
-      var bar = document.getElementById("ciibar");
       bar.style.width = clampPct(cii) + "%";
       bar.style.background = color || "var(--accent)";
     }
 
-    var comps = (data.components && typeof data.components === "object") ? data.components : {};
-    var order = ["unrest", "conflict", "security", "news"];
+    var comps = (score.components && typeof score.components === "object") ? score.components : {};
     var host = document.getElementById("components");
     host.textContent = "";
     var any = false;
-    order.forEach(function (key) {
-      var val = num(comps[key]);
+    COMPONENTS.forEach(function (spec) {
+      var val = degraded ? null : num(comps[spec.key]);
       if (val == null) return;
       any = true;
       var wrap = document.createElement("div");
@@ -198,7 +267,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
       top.className = "comp-top";
       var name = document.createElement("span");
       name.className = "comp-name";
-      name.textContent = key;
+      name.textContent = spec.label;
       var v = document.createElement("span");
       v.textContent = String(Math.round(val));
       top.appendChild(name); top.appendChild(v);
@@ -216,18 +285,25 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (!any) {
       var none = document.createElement("div");
       none.className = "empty";
-      none.textContent = "No component breakdown available.";
+      none.textContent = degraded
+        ? "Component breakdown unavailable — upstream data could not be read."
+        : "No component breakdown available.";
       host.appendChild(none);
     }
 
-    setText("advisory", describeAdvisory(data.travelAdvisory));
-    setText("sanctions", describeSanctions(data.sanctionsExposure));
+    setText("advisory", degraded ? "—" : describeAdvisory(data.advisoryLevel));
+    setText("sanctions", degraded ? "—" : describeSanctions(data.sanctionsActive, data.sanctionsCount));
+    setText("trend", degraded ? "—" : describeTrend(score.trend));
 
+    // fetched_at is Unix epoch milliseconds, 0 when the CII computation time
+    // is unknown (which includes "no CII score for this country").
     var foot = document.getElementById("foot");
-    if (data.cached_at) {
-      foot.textContent = "Snapshot: " + String(data.cached_at) + (data.stale ? " (stale)" : "");
+    var fetchedAt = num(data.fetchedAt);
+    if (fetchedAt != null && fetchedAt > 0) {
+      var when = new Date(fetchedAt);
+      foot.textContent = "Snapshot: " + (isNaN(when.getTime()) ? String(fetchedAt) : when.toISOString());
     } else {
-      foot.textContent = "";
+      foot.textContent = degraded ? "Upstream unavailable — no snapshot time." : "";
     }
     reportSize();
   }

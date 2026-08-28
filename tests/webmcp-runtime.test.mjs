@@ -5,6 +5,8 @@ import {
   WEBMCP_SPA_TOOL_NAMES,
 } from '../src/config/webmcp.ts';
 import {
+  CANCELLATION_REQUIRED_WEBMCP_TOOLS,
+  WEBMCP_TOOL_CANCELLATION_POLICY,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 import { waitForWebMcpUiReady } from '../src/app/webmcp-dashboard.ts';
@@ -139,10 +141,12 @@ describe('WebMCP registry behavioral contract', () => {
   });
 
   it('marks registration settlement so a probe can read the inventory in one call', async () => {
-    // Chrome's WebMCP origin-trial build wedges every later getTools() call
-    // once one has read a pre-registration (empty) inventory, so a discovery
-    // probe must not poll getTools(). This mark is the page-side signal that
-    // says "read now, once" — see e2e/webmcp.spec.ts.
+    // On Chrome's WebMCP origin-trial build, ANY access to
+    // document.modelContext before the page finishes registering wedges the
+    // registration itself — a bare property read is enough, and an empty
+    // getTools() is a symptom rather than the cause. So a discovery probe must
+    // touch nothing until this mark, which the page emits from its own
+    // instrumentation, says "read now, once" — see e2e/webmcp.spec.ts.
     const previousWindow = Object.hasOwn(globalThis, 'window') ? globalThis.window : undefined;
     const hadWindow = Object.hasOwn(globalThis, 'window');
     const marks = [];
@@ -165,6 +169,46 @@ describe('WebMCP registry behavioral contract', () => {
         (await provider.getTools()).map(({ name }) => name),
         [...WEBMCP_SPA_TOOL_NAMES].sort((left, right) => left.localeCompare(right)),
         'the mark must not fire before the inventory is actually readable',
+      );
+    } finally {
+      if (hadWindow) globalThis.window = previousWindow;
+      else delete globalThis.window;
+    }
+  });
+
+  it('marks an empty registration pass without authorizing an inventory read', async () => {
+    const previousWindow = Object.hasOwn(globalThis, 'window') ? globalThis.window : undefined;
+    const hadWindow = Object.hasOwn(globalThis, 'window');
+    const marks = [];
+    globalThis.window = { __wmLcpDebug: { enabled: true, marks } };
+    try {
+      const failures = new Map(WEBMCP_SPA_TOOL_NAMES.map((name) => [
+        name,
+        new DOMException(`${name} rejected`, 'NotAllowedError'),
+      ]));
+      const provider = new FakeWebMcpModelContext({ registrationFailure: failures });
+      const harness = trackedRuntime(provider);
+      registerWebMcpTools(createBindings(), harness.runtime);
+
+      assert.equal(marks.length, 0, 'no settlement mark appears before registration finishes');
+      await settlePromises();
+
+      const empty = marks.filter(({ name }) => name === 'wm:webmcp:registration-empty');
+      assert.equal(empty.length, 1, 'the all-rejected pass settles exactly once');
+      assert.deepEqual(empty[0].detail, { toolCount: 0 });
+      assert.equal(
+        marks.some(({ name }) => name === 'wm:webmcp:registered'),
+        false,
+        'an empty pass must not authorize the probe to read the provider inventory',
+      );
+      assert.deepEqual(await provider.getTools(), []);
+      assert.equal(
+        harness.events.filter(({ event }) => event === 'webmcp-registration-failed').length,
+        WEBMCP_SPA_TOOL_NAMES.length,
+      );
+      assert.equal(
+        harness.events.some(({ event }) => event === 'webmcp-registered'),
+        false,
       );
     } finally {
       if (hadWindow) globalThis.window = previousWindow;
@@ -209,7 +253,80 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
-  it('returns a branchable denial when the host omits the target execution signal', async () => {
+  it('classifies every SPA tool in the cancellation policy record', () => {
+    // The gate is derived from this record, so an unclassified tool would fall
+    // out of the gate silently. TypeScript catches a missing key only while the
+    // record keeps its Record<WebMcpSpaToolName, ...> annotation; this asserts
+    // the same exhaustiveness at runtime, from the shipped tool inventory, so
+    // growing WEBMCP_SPA_TOOL_NAMES past the policy fails loudly here.
+    assert.deepEqual(
+      Object.keys(WEBMCP_TOOL_CANCELLATION_POLICY).sort(),
+      [...WEBMCP_SPA_TOOL_NAMES].sort(),
+      'every SPA tool needs an explicit cancellation policy',
+    );
+    assert.deepEqual(
+      Object.values(WEBMCP_TOOL_CANCELLATION_POLICY)
+        .filter((policy) => !['read-only', 'view-state', 'cancellation-required'].includes(policy)),
+      [],
+      'policy values are limited to the three documented classifications',
+    );
+  });
+
+  it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
+    // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
+    // stream); open_search_result reaches the same write through a layer
+    // command. An uncancellable invocation of either outlives the session, so
+    // both stay fail-closed while the browser cannot deliver a signal.
+    assert.deepEqual(
+      [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
+      ['openCountryBrief', 'open_search_result', 'set_map_layers'],
+      'the gated set includes persistent effects and metered country generation',
+    );
+    let mutationCalls = 0;
+    let openCalls = 0;
+    const provider = new FakeWebMcpModelContext();
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      applyDashboardAction: async () => {
+        mutationCalls += 1;
+        return { ok: true, status: 'applied', actionType: 'set_layers', message: 'Applied.', targets: [] };
+      },
+      openSearchResult: async () => {
+        openCalls += 1;
+        return { ok: true, status: 'opened' };
+      },
+    }), harness.runtime);
+    await settlePromises();
+
+    const denial = {
+      ok: false,
+      status: 'denied',
+      reason: 'target_cancellation_unsupported',
+      message: 'This browser cannot cancel work already running in the page, so World Monitor '
+        + 'will not run tools whose effects can outlive cancellation. Read-only and '
+        + 'reversible view-state dashboard tools still work.',
+    };
+    assert.deepEqual(
+      await executeRegistered(provider, 'openCountryBrief', JSON.stringify({ iso2: 'DE' })),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(provider, 'set_map_layers', JSON.stringify({ layers: { conflicts: true } })),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'open_search_result',
+        JSON.stringify({ resultKey: `sr_${'a'.repeat(32)}` }),
+      ),
+      denial,
+    );
+    assert.equal(mutationCalls, 0, 'a gated tool must not reach its binding');
+    assert.equal(openCalls, 0, 'a gated tool must not reach its binding');
+  });
+
+  it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {
     let mutationCalls = 0;
     let contextCalls = 0;
     const provider = new FakeWebMcpModelContext();
@@ -236,20 +353,26 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(context.variant, 'full');
     assert.equal(contextCalls, 1);
 
+    // Chrome through 151 passes no target-side signal. These tools only move
+    // visible, reversible dashboard view state, so they run anyway rather than
+    // costing 6 of 8 tools on every browser that exists.
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
       {
-        ok: false,
-        status: 'denied',
-        reason: 'target_cancellation_unsupported',
-        message: 'This browser cannot safely execute dashboard-changing WebMCP tools.',
+        ok: true,
+        status: 'applied',
+        actionType: 'set_view',
+        message: 'Applied dashboard action.',
+        targets: [],
+        targetCount: 0,
+        targetsTruncated: false,
       },
     );
-    assert.equal(mutationCalls, 0);
+    assert.equal(mutationCalls, 1, 'the binding must actually run without a target signal');
     assert.equal(provider.executionCalls.at(-1).targetSignal, undefined);
     assert.deepEqual(harness.events.at(-1), {
       event: 'webmcp-tool-invoked',
-      data: { tool: 'set_map_view', outcome: 'denied', reason: 'unavailable' },
+      data: { tool: 'set_map_view', outcome: 'success', reason: 'completed' },
     });
   });
 

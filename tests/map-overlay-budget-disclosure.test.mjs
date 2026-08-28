@@ -11,10 +11,11 @@
  * missing data, and the trimmed layer still spends fair share out of the global
  * total, tightening the cap on the layers that DO disclose.
  *
- * That is not hypothetical: the commodity variant turns `fires` and `minerals` on
- * (COMMODITY_MAP_LAYERS) and has no `commodityLayers` picker list, so it falls
- * through to `fullLayers`, which lists neither. This pins the relationship for
- * every variant so the next one fails here instead of in production.
+ * #7144 closed the live case: commodity now has its own `commodityLayers` picker
+ * list, so `fires` / `minerals` / `commodityHubs` (all default-on in
+ * COMMODITY_MAP_LAYERS, none of them in `fullLayers`) get rows the badge can
+ * write onto. This pins the relationship for every variant so the next gap
+ * fails here instead of in production.
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,12 +40,11 @@ function sliceBetween(src, start, end) {
  * budgeted because the DOM ceiling is the point of #7112 and none of these feeds
  * is bounded upstream (`toMapFires` caps nothing), and their cut is reported via
  * `getOverlayMarkerBudgetState().undisclosed` rather than vanishing.
+ *
+ * Empty after #7144: commodity now has `commodityLayers`. Keep the map so the
+ * stale-entry arm still exercises, and so the next gap has a place.
  */
-const DECLARED_GAPS = new Map([
-  ['commodity:fires', 'commodity has no picker list of its own; falls through to fullLayers'],
-  ['commodity:minerals', 'commodity has no picker list of its own; falls through to fullLayers'],
-  ['commodity:commodityHubs', 'commodity has no picker list of its own; falls through to fullLayers'],
-]);
+const DECLARED_GAPS = new Map();
 
 /** Variant -> the createLayerToggles list it actually uses. */
 const VARIANT_PICKER_LIST = {
@@ -53,8 +53,7 @@ const VARIANT_PICKER_LIST = {
   finance: 'financeLayers',
   happy: 'happyLayers',
   energy: 'energyLayers',
-  // No `commodityLayers` exists; createLayerToggles' ternary falls through.
-  commodity: 'fullLayers',
+  commodity: 'commodityLayers',
 };
 
 /** Variant -> the panels.ts default map-layer state it boots with. */
@@ -180,5 +179,33 @@ describe('SVG overlay marker budget disclosure (#7112)', () => {
       /undisclosed: this\.overlayUndisclosedTruncation,/,
       'getOverlayMarkerBudgetState must expose it',
     );
+  });
+
+  it('gives commodity toggle rows for fires/minerals/commodityHubs so a shown/total badge can render (#7144)', () => {
+    // The live gap: COMMODITY_MAP_LAYERS turns these on, fullLayers lists none
+    // of them, and without a commodityLayers list the ternary fell through.
+    const defaultOn = defaultOnLayersFor('COMMODITY_MAP_LAYERS');
+    const rows = pickerLayersFor('commodityLayers');
+    const planned = plannedLayers();
+    for (const layer of ['fires', 'minerals', 'commodityHubs']) {
+      assert.ok(defaultOn.has(layer), `${layer} must stay default-on for commodity`);
+      assert.ok(planned.has(layer), `${layer} must stay budgeted`);
+      assert.ok(rows.has(layer), `commodityLayers must include ${layer}`);
+    }
+    assert.match(
+      togglesBlock,
+      /SITE_VARIANT === 'commodity' \? commodityLayers/,
+      'createLayerToggles must select commodityLayers, not fall through to fullLayers',
+    );
+
+    // The badge writer keys off `.layer-toggle-row[data-layer="<key>"]`. Both
+    // halves of that contract have to hold or a row exists and still cannot
+    // carry shown/total.
+    assert.match(togglesBlock, /row\.className = 'layer-toggle-row'/);
+    assert.match(togglesBlock, /row\.dataset\.layer = layer/);
+    const badgeSrc = read('../src/utils/layer-truncation-badge.ts');
+    assert.match(badgeSrc, /root\.querySelectorAll<HTMLElement>\('\.layer-toggle-row'\)/);
+    assert.match(badgeSrc, /row\.dataset\.layer/);
+    assert.match(badgeSrc, /badge\.textContent = `\$\{counts\.shown\}\/\$\{counts\.total\}`/);
   });
 });

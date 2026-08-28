@@ -14,7 +14,7 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module
-import { getCorsHeaders } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module
 import { timingSafeEqualSecret } from './_crypto.js';
 // @ts-expect-error — generated JS module
@@ -198,10 +198,14 @@ function buildTiers(dodoPrices) {
 }
 
 export default async function handler(req) {
-  const cors = getCorsHeaders(req);
+  const cors = getCorsHeaders(req, 'GET, DELETE, OPTIONS');
+
+  if (isDisallowedOrigin(req)) {
+    return json({ error: 'Origin not allowed' }, 403, cors);
+  }
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' } });
+    return new Response(null, { status: 204, headers: cors });
   }
 
   // DELETE = purge cache (authenticated)
@@ -219,10 +223,12 @@ export default async function handler(req) {
     return json({ error: 'Method not allowed' }, 405, cors);
   }
 
+  const publicCors = getPublicCorsHeaders('GET, DELETE, OPTIONS');
+
   // Read from Redis (populated by Railway ais-relay seed loop)
   const cached = await getFromCache();
   if (cached) {
-    return json(withPublicFacts(cached), 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300', 'cache');
+    return json(withPublicFacts(cached), 200, publicCors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300', 'cache');
   }
 
   // Redis empty (purged or seed hasn't run). Try Dodo directly as backup.
@@ -242,12 +248,12 @@ export default async function handler(req) {
       // Just return the result with short cache so the next Railway cycle repopulates properly.
       // Header must carry the SAME source as the body: a partial Dodo read
       // stamped 'dodo' here made probes read a degraded response as fully live.
-      return json(result, 200, cors, 'public, max-age=60, s-maxage=60', priceSource);
+      return json(result, 200, publicCors, 'public, max-age=60, s-maxage=60', priceSource);
     }
   }
 
   // All sources failed. Return fallback with short cache.
   const tiers = buildTiers({});
   const now = Date.now();
-  return json(withPublicFacts({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }), 200, cors, 'public, max-age=60, s-maxage=60', 'fallback');
+  return json(withPublicFacts({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }), 200, publicCors, 'public, max-age=60, s-maxage=60', 'fallback');
 }
