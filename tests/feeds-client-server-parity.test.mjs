@@ -204,8 +204,7 @@ function canonicalizeUpstreamUrl(upstream) {
   return url.toString();
 }
 
-function findVariableInitializer(filePath, variableName) {
-  const source = readFileSync(filePath, 'utf-8');
+function findVariableInitializerInSource(source, filePath, variableName) {
   const ast = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   let initializer = null;
   const visit = node => {
@@ -221,6 +220,10 @@ function findVariableInitializer(filePath, variableName) {
   };
   visit(ast);
   return initializer;
+}
+
+function findVariableInitializer(filePath, variableName) {
+  return findVariableInitializerInSource(readFileSync(filePath, 'utf-8'), filePath, variableName);
 }
 
 /**
@@ -253,13 +256,21 @@ function extractFullFeedsByCategory(filePath, side) {
 function extractFeedRecord(record, filePath) {
   const out = new Map();
   for (const categoryProperty of record.properties) {
-    if (!ts.isPropertyAssignment(categoryProperty) || !ts.isArrayLiteralExpression(categoryProperty.initializer)) {
-      continue;
-    }
+    assert.ok(
+      ts.isPropertyAssignment(categoryProperty),
+      `${filePath} full-feed catalog contains an unsupported category entry: ${categoryProperty.getText()}`,
+    );
     const category = categoryProperty.name.getText().replace(/^['"]|['"]$/g, '');
+    assert.ok(
+      ts.isArrayLiteralExpression(categoryProperty.initializer),
+      `${filePath} category ${category} must use an inline array literal`,
+    );
     let parsedCount = 0;
     for (const element of categoryProperty.initializer.elements) {
-      if (!ts.isObjectLiteralExpression(element)) continue;
+      assert.ok(
+        ts.isObjectLiteralExpression(element),
+        `${filePath} category ${category} contains an unsupported feed entry: ${element.getText()}`,
+      );
       const nameProperty = element.properties.find(property => {
         return (
           ts.isPropertyAssignment(property) &&
@@ -273,7 +284,14 @@ function extractFeedRecord(record, filePath) {
           property.name.getText().replace(/^['"]|['"]$/g, '') === 'url'
         );
       });
-      if (!ts.isPropertyAssignment(nameProperty) || !ts.isPropertyAssignment(urlProperty)) continue;
+      assert.ok(
+        ts.isPropertyAssignment(nameProperty) && ts.isStringLiteralLike(nameProperty.initializer),
+        `${filePath} category ${category} contains a feed without an inline string name`,
+      );
+      assert.ok(
+        ts.isPropertyAssignment(urlProperty),
+        `${filePath} feed ${category}:${nameProperty.initializer.text} has no inline URL`,
+      );
       const name = nameProperty.initializer.text;
       const urls = extractUpstreamUrls(urlProperty.initializer).map(canonicalizeUpstreamUrl);
       if (urls.length === 0) {
@@ -288,6 +306,13 @@ function extractFeedRecord(record, filePath) {
     assert.ok(parsedCount > 0, `No feeds parsed from ${filePath} category ${category}`);
   }
   return out;
+}
+
+function assertReasonedExceptions(exceptions, label) {
+  for (const [key, reason] of exceptions) {
+    assert.equal(typeof reason, 'string', `${label} ${key} must have a written reason`);
+    assert.ok(reason.trim().length > 0, `${label} ${key} must have a written reason`);
+  }
 }
 
 describe('feed parity: client vs server (PR #3715 follow-up)', () => {
@@ -454,7 +479,34 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
     ['energy:Reuters Energy', 'The server uses a narrower, more recent energy query.'],
   ]);
 
+  it('REGRESSION (#6427): full-feed extraction rejects unsupported catalog shapes', () => {
+    const unsupportedCatalogs = [
+      'const FULL_FEEDS = { ...baseCategories };',
+      'const FULL_FEEDS = { us: sharedFeeds };',
+      "const FULL_FEEDS = { us: [{ name: 'Inline', url: rss('https://example.com/feed') }, ...sharedFeeds] };",
+    ];
+
+    for (const [index, source] of unsupportedCatalogs.entries()) {
+      const filePath = `unsupported-full-feeds-${index}.ts`;
+      const initializer = findVariableInitializerInSource(source, filePath, 'FULL_FEEDS');
+      assert.ok(ts.isObjectLiteralExpression(initializer));
+      assert.throws(
+        () => extractFeedRecord(initializer, filePath),
+        /unsupported category entry|must use an inline array literal|unsupported feed entry/,
+      );
+    }
+  });
+
+  it('REGRESSION (#6427): parity exceptions require written reasons', () => {
+    assertReasonedExceptions(INTENTIONAL_URL_DIVERGENCES, 'URL-divergence exception');
+    assert.throws(
+      () => assertReasonedExceptions(new Map([['us:Example', '   ']]), 'test exception'),
+      /must have a written reason/,
+    );
+  });
+
   it('REGRESSION (#6427): shared full-variant feeds resolve to the same upstream', () => {
+    assertReasonedExceptions(INTENTIONAL_URL_DIVERGENCES, 'URL-divergence exception');
     const clientFullFeeds = extractFullFeedsByCategory(CLIENT_PATH, 'client');
     const serverFullFeeds = extractFullFeedsByCategory(SERVER_PATH, 'server');
     assert.ok(clientFullFeeds.size > 0);
@@ -556,6 +608,7 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
       ['asia:Guardian Australia', 'Intentionally client-only catalog source.'],
       ['energy:Mining & Resources', 'Intentionally client-only catalog source.'],
     ]);
+    assertReasonedExceptions(INTENTIONAL_CLIENT_ONLY, 'client-only exception');
     const unreviewed = [];
     for (const key of clientFullFeeds.keys()) {
       if (serverFullFeeds.has(key) || INTENTIONAL_CLIENT_ONLY.has(key)) continue;
