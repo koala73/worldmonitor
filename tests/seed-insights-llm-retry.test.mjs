@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { callLLM, __setInsightsLlmTransportForTests } from '../scripts/seed-insights.mjs';
+import { callLLM, createSynthesisAcceptor, __setInsightsLlmTransportForTests } from '../scripts/seed-insights.mjs';
 
 const LONG_BRIEF = 'Insights brief succeeded with more than enough narrative content to pass.';
 
@@ -433,6 +433,99 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     assert.equal(feedbackCalls, 0, 'the feedback hook is rejection-only');
   });
 
+  it('an acceptor FAULT never heats the sampler, consults feedback, or resamples', async () => {
+    // #7248 review: the composer contains its own exceptions and reports a
+    // sentinel rejection, which rode the ordinary-rejection path — heating the
+    // sampler and appending a generic correction for a bug in OUR gate. The
+    // caller now re-throws on the sentinel; this pins callLLM's side of the
+    // contract for any throwing acceptor.
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+
+    const bodies = [];
+    let feedbackCalls = 0;
+    __setInsightsLlmTransportForTests({
+      fetch: async (url, init) => {
+        bodies.push({ url: String(url), body: JSON.parse(init.body) });
+        return okResponse(LONG_BRIEF);
+      },
+    });
+
+    const result = await callLLM(null, {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      accept: () => {
+        // Fault only for openrouter-family attempts; groq's sample is accepted.
+        if (bodies.at(-1).url.includes('openrouter')) throw new Error('composer fault: composer-threw');
+        return { composed: true };
+      },
+      rejectionFeedback: () => { feedbackCalls += 1; return 'never'; },
+    });
+
+    assert.ok(result, 'the chain still lands on the provider whose sample is accepted');
+    assert.equal(result.provider, 'groq');
+    // No resample: each faulting provider is asked exactly once. Three
+    // openrouter-family providers + groq = 4 calls, not 7.
+    assert.equal(bodies.length, 4, 'a faulted acceptor never earns a resample');
+    for (const { body } of bodies) {
+      assert.equal(body.temperature, 0.1, 'a fault in our own gate must not heat the sampler');
+      assert.equal(body.messages[1].content, 'user', 'no correction is appended for our own fault');
+    }
+    assert.equal(feedbackCalls, 0, 'the feedback hook is for editorial rejections only');
+  });
+
+  it('telemetry records the size of the corrected prompt, not the base one', async () => {
+    // #7248 review: promptChars was computed once from the base prompts, so
+    // every corrected resample recorded an undersized event.
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+    delete process.env.OLLAMA_API_URL;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      const telemetryBatches = [];
+      // Provider calls go through the transport hook; the Axiom POST uses the
+      // global fetch, so the two streams are separable.
+      globalThis.fetch = async (_url, init) => {
+        telemetryBatches.push(JSON.parse(init.body));
+        return { ok: true, status: 200, json: async () => ({}) };
+      };
+      __setInsightsLlmTransportForTests({
+        fetch: async (url) => okResponse(String(url).includes('openrouter') ? `${LONG_BRIEF} REJECT_ME` : LONG_BRIEF),
+      });
+
+      const FEEDBACK = 'Correction: drop the ungrounded phrase.';
+      await callLLM(null, {
+        systemPrompt: 'sys',
+        userPrompt: 'user',
+        accept: (text) => (text.includes('REJECT_ME') ? null : { composed: true }),
+        rejectionFeedback: () => FEEDBACK,
+      });
+      // emitLlmEvents is fire-and-forget; give the microtask queue a beat.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const events = telemetryBatches.flat();
+      assert.ok(events.length >= 2, 'the walk must emit one event per attempt');
+      const base = 'sys'.length + 'user'.length;
+      const corrected = 'sys'.length + `user\n\n${FEEDBACK}`.length;
+      assert.equal(events[0].prompt_chars, base, 'the first attempt sends the base prompt');
+      for (const event of events.slice(1)) {
+        assert.equal(
+          event.prompt_chars,
+          corrected,
+          'every attempt after the rejection records the corrected prompt it actually sent',
+        );
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.USAGE_TELEMETRY;
+      delete process.env.AXIOM_API_TOKEN;
+    }
+  });
+
   it('returns the last attempt when every provider is rejected, so the failure stays classifiable', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     process.env.GROQ_API_KEY = 'groq-test-key';
@@ -516,5 +609,60 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
 
     const result = await callLLM(null, { systemPrompt: 'sys', userPrompt: 'user', accept: () => null });
     assert.match(result.text, /PRIMARY/, 'the last provider would misattribute the failure stage');
+  });
+});
+
+
+describe('createSynthesisAcceptor (composer-fault contract, #7248 review)', () => {
+  const STORY = {
+    primaryTitle: 'Regional apple prices rose sharply in Chile last quarter, growers say',
+    primarySource: 'Reuters',
+    primaryLink: 'http://apple',
+    sources: ['Reuters', 'AP News'],
+    memberTitles: ['Regional apple prices rose sharply in Chile last quarter, growers say'],
+  };
+  const RAW = JSON.stringify({
+    lead: 'Prices rose sharply in Chile last quarter [1].',
+    lines: [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }],
+  });
+
+  it('THROWS on a contained composer fault instead of reporting a rejection', () => {
+    // sanitizeTitle throwing makes the composer itself fault; the composer
+    // contains it and reports the sentinel. The acceptor must convert that
+    // back into a throw so callLLM takes its faulted path — no temperature
+    // bump, no correction, no resample — rather than treating our own bug as
+    // an editorial verdict on the sample.
+    const { accept, lastRejection } = createSynthesisAcceptor([STORY], {
+      validatorMode: 'enforce',
+      briefCluster: STORY,
+      sanitizeTitle: () => { throw new Error('composer bug'); },
+    });
+    assert.throws(() => accept(RAW), /composer fault/);
+    assert.equal(lastRejection(), null, 'a fault is not a rejection the feedback path may quote');
+  });
+
+  it('returns null and records the code on an editorial rejection', () => {
+    const { accept, lastRejection } = createSynthesisAcceptor([STORY], {
+      validatorMode: 'enforce',
+      briefCluster: STORY,
+    });
+    const bad = JSON.stringify({
+      lead: 'Prices rose sharply in Venezuela last quarter [1].',
+      lines: [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }],
+    });
+    assert.equal(accept(bad), null);
+    assert.equal(lastRejection().code, 'lead-proper-noun');
+    assert.match(lastRejection().detail, /venezuela/);
+  });
+
+  it('returns the brief and clears the rejection on success', () => {
+    const { accept, lastRejection } = createSynthesisAcceptor([STORY], {
+      validatorMode: 'enforce',
+      briefCluster: STORY,
+    });
+    const brief = accept(RAW);
+    assert.ok(brief);
+    assert.match(brief.lead, /Chile/);
+    assert.equal(lastRejection(), null);
   });
 });

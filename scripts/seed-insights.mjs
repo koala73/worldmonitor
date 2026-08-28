@@ -458,7 +458,6 @@ async function callLLM(headline, options = {}) {
   // llm_call telemetry (#4944 U5): one event per provider OUTCOME (the
   // withRetry duration covers in-provider retries), unified with the
   // Vercel-side stream via scripts/lib/llm-telemetry.cjs.
-  const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
   const events = [];
   let attemptIndex = 0;
   // 0.1 keeps the first sample stable and cheap to reason about. But after a
@@ -517,11 +516,19 @@ async function callLLM(headline, options = {}) {
 
     const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
+    // Captured per attempt, BEFORE the request: a correction collected during
+    // this attempt's rejection belongs to the NEXT request. The request body
+    // and the telemetry both derive from this one variable, so the recorded
+    // promptChars is the size of what was actually sent — a corrected resample
+    // is larger than the base prompt, and the events must say so (#7248
+    // review: every event recorded the base-only size).
+    const effectiveUserPrompt = gateFeedbackNote ? `${userPrompt}\n\n${gateFeedbackNote}` : userPrompt;
+    const attemptPromptChars = (systemPrompt?.length ?? 0) + effectiveUserPrompt.length;
     const t0 = Date.now();
     const record = (ok, extra = {}) => {
       events.push(buildLlmCallEvent({
         provider: provider.name, model, stage: 'seed-insights', ok,
-        durationMs: Date.now() - t0, promptChars, maxTokens,
+        durationMs: Date.now() - t0, promptChars: attemptPromptChars, maxTokens,
         fallbackIndex: attemptIndex++,
         ...extra,
       }));
@@ -538,7 +545,7 @@ async function callLLM(headline, options = {}) {
             model,
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: gateFeedbackNote ? `${userPrompt}\n\n${gateFeedbackNote}` : userPrompt },
+              { role: 'user', content: effectiveUserPrompt },
             ],
             max_tokens: maxTokens,
             temperature: samplingTemperature,
@@ -776,6 +783,39 @@ export function normalizeDigestItemsForInsights(items) {
   })).filter(item => item.title.length > 10);
 }
 
+/**
+ * Acceptance gate for the synthesis provider walk. Exported so the composer-
+ * fault contract is directly testable — the #7248 review found the contained
+ * composer sentinel riding the ordinary-rejection path, and the fix lived in
+ * an inline closure no test could reach.
+ *
+ * Contract:
+ *   - editorial rejection -> returns null and records {code, detail} for the
+ *     resample-feedback path;
+ *   - composer FAULT (the contained INSIGHTS_COMPOSER_THREW sentinel) ->
+ *     THROWS, so callLLM takes its faulted-acceptor path: no temperature bump,
+ *     no correction note, no resample. The sample may have been fine; the
+ *     fault is in OUR gate. resolveInsightsSynthesis still classifies the run
+ *     as COMPOSER_ERROR from its own contained composer call.
+ */
+export function createSynthesisAcceptor(topStories, composerOptions) {
+  let lastSynthesisRejection = null;
+  return {
+    accept: (text) => {
+      const result = composeInsightsSynthesis(text, topStories, composerOptions);
+      if (result?.rejection === INSIGHTS_COMPOSER_THREW) {
+        lastSynthesisRejection = null;
+        throw new Error(`composer fault: ${INSIGHTS_COMPOSER_THREW}`);
+      }
+      lastSynthesisRejection = result?.brief
+        ? null
+        : { code: result?.rejection ?? null, detail: result?.rejectionDetail ?? null };
+      return result?.brief ?? null;
+    },
+    lastRejection: () => lastSynthesisRejection,
+  };
+}
+
 async function fetchInsights() {
   const digest = await readOrWarmDigest('en');
   if (!digest) {
@@ -887,16 +927,7 @@ async function fetchInsights() {
     sanitizeTitle,
     sourceFromStory: briefSourceFromStory,
   };
-  // The accept callback used to swallow WHY composition failed; the rejection
-  // code and detail are exactly what the resample needs to not repeat itself.
-  let lastSynthesisRejection = null;
-  const composeFromText = (text) => {
-    const result = composeInsightsSynthesis(text, topStories, synthesisComposerOptions);
-    lastSynthesisRejection = result?.brief
-      ? null
-      : { code: result?.rejection ?? null, detail: result?.rejectionDetail ?? null };
-    return result?.brief ?? null;
-  };
+  const { accept: composeFromText, lastRejection } = createSynthesisAcceptor(topStories, synthesisComposerOptions);
 
   // #6001: L1 may now walk the whole provider chain, and L2 below makes a
   // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
@@ -913,7 +944,7 @@ async function fetchInsights() {
         // and the resample carries the gate's correction plus real sampling
         // variance, so it is a different draft rather than the same one twice.
         accept: composeFromText,
-        rejectionFeedback: () => synthesisRejectionFeedback(lastSynthesisRejection),
+        rejectionFeedback: () => synthesisRejectionFeedback(lastRejection()),
       })
     : null;
   const { composed, failureCode, failureDetail } = resolveInsightsSynthesis({
