@@ -9,6 +9,11 @@ import {
   seedAnonymousDashboard,
   waitForStartup,
 } from './bootstrap-request-budget-fixtures';
+import {
+  DEFAULT_QUIESCENCE_TIMEOUT_MS,
+  type HydrationRequestLog,
+  waitForHydrationRequestQuiescence,
+} from './helpers/hydration-request-quiescence';
 
 // ---------------------------------------------------------------------------
 // #7045 U5 — prove the transfer work removed requests rather than data.
@@ -185,12 +190,7 @@ const EMPTY_FALLBACK_PAYLOAD = {
  * being guarded are 30 minutes, so any refetch inside this window is a miss.
  * Also the outer budget for quiescence waits — not a fixed sleep that freezes
  * the baseline (#7212). */
-const REPEAT_LOAD_SETTLE_MS = 6_000;
-
-/** Sample gap while watching request counters for quiescence. The signal is
- * N unchanged samples with zero in-flight handlers, not the wall clock alone. */
-const QUIESCENCE_SAMPLE_MS = 200;
-const QUIESCENCE_STABLE_SAMPLES = 3;
+const REPEAT_LOAD_SETTLE_MS = DEFAULT_QUIESCENCE_TIMEOUT_MS;
 
 /** The shared breaker opens after two rejected fallback responses for five
  * minutes. The uncacheable control intentionally rejects those responses, and
@@ -205,61 +205,7 @@ const BREAKER_COOLDOWN_ADVANCE_MS = 5 * 60 * 1000 + 1;
  * forbids raising that deadline. */
 const WEB_FAST_TIER_DEADLINE_MS = 1_200;
 
-type HydrationRequestLog = {
-  /** Per logical dataset: RPC hits plus public per-key bootstrap hits. */
-  counts: Record<string, number>;
-  tiers: string[];
-  /** Route handlers currently inside their fulfill body (including delays). */
-  inflight: number;
-};
-
 const HYDRATION_DATASET_KEYS = HYDRATION_DATASETS.map((dataset) => dataset.key);
-
-function snapshotHydrationCounts(
-  log: HydrationRequestLog,
-  keys: readonly string[],
-): Record<string, number> {
-  return Object.fromEntries(keys.map((key) => [key, log.counts[key] ?? 0]));
-}
-
-/**
- * Wait until the named counters stop moving and no tracked route handler is
- * still in flight. A fixed sleep cannot prove the first fallback pass finished
- * (#7212): it freezes mid-cascade (false red) or after a premature baseline
- * (false green). Consecutive unchanged samples with `inflight === 0` are the
- * quiescence signal.
- */
-async function waitForHydrationRequestQuiescence(
-  page: Page,
-  log: HydrationRequestLog,
-  keys: readonly string[],
-  options: { timeout?: number; message?: string } = {},
-): Promise<Record<string, number>> {
-  const timeoutMs = options.timeout ?? REPEAT_LOAD_SETTLE_MS;
-  const message = options.message
-    ?? 'hydration request counters did not quiesce';
-  const deadline = Date.now() + timeoutMs;
-  let previous = snapshotHydrationCounts(log, keys);
-  let stableSamples = 0;
-
-  while (Date.now() < deadline) {
-    await page.waitForTimeout(QUIESCENCE_SAMPLE_MS);
-    const current = snapshotHydrationCounts(log, keys);
-    const quiet = log.inflight === 0
-      && keys.every((key) => (current[key] ?? 0) === (previous[key] ?? 0));
-    if (quiet) {
-      stableSamples += 1;
-      if (stableSamples >= QUIESCENCE_STABLE_SAMPLES) return current;
-    } else {
-      stableSamples = 0;
-      previous = current;
-    }
-  }
-
-  throw new Error(
-    `${message} (inflight=${log.inflight}, lastCounts=${JSON.stringify(previous)})`,
-  );
-}
 
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
@@ -783,54 +729,4 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       }
     });
   }
-});
-
-// ---------------------------------------------------------------------------
-// #7212 — quiescence helper contracts (false-green / false-red shape).
-// These do not boot the dashboard; they pin that the baseline freeze waits for
-// observed stability rather than a wall-clock timer.
-// ---------------------------------------------------------------------------
-test.describe('hydration request quiescence helper (#7212)', () => {
-  test('absorbs a late counter bump before freezing the baseline', async ({ page }) => {
-    await page.setContent('<html><body></body></html>');
-    const log: HydrationRequestLog = {
-      counts: { earthquakes: 1 },
-      tiers: [],
-      inflight: 0,
-    };
-
-    const pending = waitForHydrationRequestQuiescence(page, log, ['earthquakes'], {
-      message: 'late first-pass bump was not absorbed into the baseline',
-    });
-    // Land after the first quiet sample window would have begun — a fixed sleep
-    // that froze immediately after the first visible count would misattribute
-    // this bump to a later "repeat" window (false green).
-    setTimeout(() => {
-      log.counts.earthquakes = 2;
-    }, QUIESCENCE_SAMPLE_MS + 50);
-
-    const baseline = await pending;
-    expect(baseline.earthquakes).toBe(2);
-  });
-
-  test('waits for in-flight handlers to drain before freezing the baseline', async ({ page }) => {
-    await page.setContent('<html><body></body></html>');
-    const log: HydrationRequestLog = {
-      counts: { earthquakes: 1 },
-      tiers: [],
-      inflight: 1,
-    };
-
-    const pending = waitForHydrationRequestQuiescence(page, log, ['earthquakes'], {
-      message: 'in-flight first-pass handler was not drained before the baseline freeze',
-    });
-    setTimeout(() => {
-      log.counts.earthquakes = 2;
-      log.inflight = 0;
-    }, QUIESCENCE_SAMPLE_MS + 50);
-
-    const baseline = await pending;
-    expect(baseline.earthquakes).toBe(2);
-    expect(log.inflight).toBe(0);
-  });
 });
