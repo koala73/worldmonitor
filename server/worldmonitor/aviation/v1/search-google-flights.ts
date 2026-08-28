@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import { parseStringArray } from '../../../_shared/parse-string-array';
+import { normalizePassengerCount } from '../../../_shared/passenger-count';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const CACHE_TTL = 600;
@@ -27,7 +28,7 @@ export async function searchGoogleFlights(
   }
 
   // Clamp once so equivalent relay calls (e.g. passengers=99 → 9) share a cache entry.
-  const passengers = Math.max(1, Math.min(req.passengers ?? 1, 9));
+  const passengers = normalizePassengerCount(req.passengers);
   const airlines = parseStringArray(req.airlines);
   const params = new URLSearchParams({
     origin,

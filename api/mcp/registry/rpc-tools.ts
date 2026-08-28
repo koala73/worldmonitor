@@ -20,6 +20,7 @@ import {
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
+import { normalizePassengerCount } from '../../../server/_shared/passenger-count';
 import {
   collectInsightSources,
   INSIGHTS_MAX_SERVEABLE_AGE_MS,
@@ -2242,7 +2243,7 @@ export const RPC_TOOLS: ToolDef[] = [
         cabin_class: String(params.cabin_class ?? 'economy'),
         ...(params.max_stops ? { max_stops: String(params.max_stops) } : {}),
         ...(params.sort_by ? { sort_by: String(params.sort_by) } : {}),
-        passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
+        passengers: String(normalizePassengerCount(params.passengers)),
       });
       const url = `${base}/api/aviation/v1/search-google-flights?${qs}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
@@ -2301,7 +2302,7 @@ export const RPC_TOOLS: ToolDef[] = [
         // upstream-empty-on-missing-cabin-class issue.
         cabin_class: String(params.cabin_class ?? 'economy'),
         sort_by_price: String(params.sort_by_price ?? false),
-        passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
+        passengers: String(normalizePassengerCount(params.passengers)),
       });
       const url = `${base}/api/aviation/v1/search-google-dates?${qs}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);

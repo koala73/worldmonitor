@@ -8,6 +8,9 @@ process.env.RELAY_SHARED_SECRET = 'test-secret';
 
 const { searchGoogleFlights } = await import('../server/worldmonitor/aviation/v1/search-google-flights.ts');
 const { searchGoogleDates } = await import('../server/worldmonitor/aviation/v1/search-google-dates.ts');
+const { aviationHandler } = await import('../server/worldmonitor/aviation/v1/handler.ts');
+const { serverOptions } = await import('../server/gateway.ts');
+const { createAviationServiceRoutes } = await import('../src/generated/server/worldmonitor/aviation/v1/service_server.ts');
 
 type MockFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -207,5 +210,92 @@ describe('searchGoogleDates — multi-airline filtering', () => {
 
     assert.equal(result.degraded, false);
     assert.equal(result.dates.length, 1);
+  });
+});
+
+describe('Google Flights passenger normalization', () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('defaults a non-finite flight-search passenger count before relay and cache use', async () => {
+    let capturedUrl = '';
+    mockFetch(async (input) => {
+      capturedUrl = urlOf(input);
+      return new Response(JSON.stringify({ flights: [] }), { status: 200 });
+    });
+
+    await searchGoogleFlights(mockCtx, {
+      origin: 'NAN',
+      destination: 'FIN',
+      departureDate: '2026-10-01',
+      airlines: [],
+      returnDate: '',
+      cabinClass: '',
+      maxStops: '',
+      departureWindow: '',
+      sortBy: '',
+      passengers: Number.NaN,
+    });
+
+    assert.equal(new URL(capturedUrl).searchParams.get('passengers'), '1');
+    assert.doesNotMatch(capturedUrl, /NaN/);
+  });
+
+  it('defaults a non-finite date-search passenger count before relay and cache use', async () => {
+    let capturedUrl = '';
+    mockFetch(async (input) => {
+      capturedUrl = urlOf(input);
+      return new Response(JSON.stringify({ dates: [], partial: false }), { status: 200 });
+    });
+
+    await searchGoogleDates(mockCtx, {
+      origin: 'NAN',
+      destination: 'FIN',
+      startDate: '2026-10-01',
+      endDate: '2026-10-08',
+      airlines: [],
+      isRoundTrip: false,
+      tripDuration: 0,
+      cabinClass: '',
+      maxStops: '',
+      departureWindow: '',
+      sortByPrice: false,
+      passengers: Number.NaN,
+    });
+
+    assert.equal(new URL(capturedUrl).searchParams.get('passengers'), '1');
+    assert.doesNotMatch(capturedUrl, /NaN/);
+  });
+
+  it('normalizes passengers=abc through both generated REST routes', async () => {
+    const capturedUrls: string[] = [];
+    mockFetch(async (input) => {
+      const url = urlOf(input);
+      capturedUrls.push(url);
+      const body = url.includes('search-dates')
+        ? { dates: [], partial: false }
+        : { flights: [] };
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    const routes = createAviationServiceRoutes(aviationHandler, serverOptions);
+    const requests = [
+      '/api/aviation/v1/search-google-flights?origin=ABC&destination=DEF&departure_date=2026-11-01&passengers=abc',
+      '/api/aviation/v1/search-google-dates?origin=GHI&destination=JKL&start_date=2026-11-01&end_date=2026-11-08&passengers=abc',
+    ];
+
+    for (const requestPath of requests) {
+      const path = new URL(requestPath, 'https://worldmonitor.app').pathname;
+      const route = routes.find((candidate) => candidate.path === path);
+      assert.ok(route);
+      const response = await route.handler(new Request(`https://worldmonitor.app${requestPath}`));
+      assert.equal(response.status, 200);
+    }
+
+    assert.equal(capturedUrls.length, 2);
+    for (const url of capturedUrls) {
+      assert.equal(new URL(url).searchParams.get('passengers'), '1');
+      assert.doesNotMatch(url, /NaN/);
+    }
   });
 });
