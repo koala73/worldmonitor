@@ -93,6 +93,39 @@ describe('api/telegram-feed contract normalization', () => {
     assert.deepEqual(data.items[0].mediaUrls, ['https://cdn.example.com/image.jpg']);
   });
 
+  it('synthesises distinct ids for same-second messages sharing a 32-char prefix (#7210)', async () => {
+    const sharedPrefix = 'BREAKING: air raid alert issued for';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      enabled: true,
+      messages: [
+        // No upstream id, same channel, same whole-second timestamp, first 32
+        // chars identical — the exact collision triple. Bot/templated feeds
+        // produce this shape routinely.
+        { channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Kharkiv oblast` },
+        { channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Odesa oblast` },
+        // Byte-identical duplicate of the first — a REAL duplicate that must
+        // still collapse to the same id.
+        { channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Kharkiv oblast` },
+        // Upstream-supplied id must pass through untouched.
+        { id: 'relay-42', channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Kherson oblast` },
+      ],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest());
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    const [kharkiv, odesa, duplicate, withId] = data.items;
+
+    assert.notEqual(
+      kharkiv.id,
+      odesa.id,
+      'messages differing past the 32nd character must not collide',
+    );
+    assert.equal(kharkiv.id, duplicate.id, 'byte-identical messages still collapse');
+    assert.equal(withId.id, 'relay-42', 'an upstream id is never synthesised over');
+  });
+
   it('uses private max-age=0 when the normalized feed is empty', async () => {
     globalThis.fetch = async () => new Response(JSON.stringify({
       enabled: true,

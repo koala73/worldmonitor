@@ -188,7 +188,7 @@ describe('notification webhook SSRF guard', () => {
     assert.doesNotMatch(source, /channelType === 'webhook' && webhookEnvelope/);
     assert.match(
       source,
-      /if \(webhookEnvelope\) \{\s*try \{\s*await assertNotificationWebhookRegistrationUrlSafe\(webhookEnvelope\)/,
+      /if \(webhookEnvelope !== undefined\) \{\s*try \{\s*await assertNotificationWebhookRegistrationUrlSafe\(webhookEnvelope\)/,
     );
   });
 
