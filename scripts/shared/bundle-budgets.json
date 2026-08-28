@@ -1,16 +1,17 @@
 {
-  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
+  "comment": "Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk ±max(2048 B, 2%), total ±max(16384 B, 0.25%). Tolerance fields here are informational — the gate enforces its own constants and rejects a snapshot that disagrees. Regenerate after \"npm run build:pro && VITE_VARIANT=full ./node_modules/.bin/vite build\" with: npm run bundle:budgets",
+  "surface": "dashboard",
   "variant": "full",
   "tolerancePct": 2,
   "toleranceBytes": 2048,
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1584653
+    "raw": 1603179
   },
   "chunks": {
     "analytics": {
-      "raw": 117604,
+      "raw": 118604,
       "files": 1
     },
     "cached-risk-scores": {
@@ -18,7 +19,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 16749,
+      "raw": 16727,
       "files": 1
     },
     "continuous": {
@@ -30,7 +31,7 @@
       "files": 1
     },
     "data-freshness": {
-      "raw": 85732,
+      "raw": 85761,
       "files": 1
     },
     "dom-utils": {
@@ -38,7 +39,7 @@
       "files": 1
     },
     "embed-url": {
-      "raw": 59759,
+      "raw": 62546,
       "files": 1
     },
     "font-settings": {
@@ -46,7 +47,7 @@
       "files": 1
     },
     "gdelt-intel": {
-      "raw": 132663,
+      "raw": 132635,
       "files": 1
     },
     "i18n": {
@@ -58,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 840609,
+      "raw": 855123,
       "files": 1
     },
     "panel-gating": {
@@ -66,7 +67,7 @@
       "files": 1
     },
     "panels": {
-      "raw": 146004,
+      "raw": 146160,
       "files": 1
     },
     "persistent-cache": {
@@ -90,7 +91,7 @@
       "files": 1
     },
     "widget-store": {
-      "raw": 26304,
+      "raw": 26394,
       "files": 1
     }
   }
