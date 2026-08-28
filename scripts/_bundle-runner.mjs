@@ -724,6 +724,7 @@ export async function runBundle(label, sections, opts = {}) {
   // with a graceful skip, where real work published and one source blipped. A
   // tick that published NOTHING has no successful work to vouch for it.
   const starvedTick = ran === 0 && deferred > 0;
+  const exitsNonZero = failed > 0 || starvedTick || stalled > 0;
   if (starvedTick) {
     console.error(
       `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `
@@ -745,12 +746,12 @@ export async function runBundle(label, sections, opts = {}) {
     // independently by the /api/health freshness monitor keyed on seed-meta TTL.
     console.log(`[Bundle:${label}] ${gracefulFailed} graceful fetch skip(s), no hard failures — no data lost, exiting 0 (not a crash)`);
   }
-  if (failed === 0 && publishBlocked > 0) {
+  if (!exitsNonZero && publishBlocked > 0) {
     // #6396: a gate refusal is not a crash — the member verified preservation
     // of the last-good snapshot before exiting, and the freshness monitor
     // alarms if the refusal persists. What changed versus the old exit-0
     // silence is that the per-section line and summary now say so.
     console.log(`[Bundle:${label}] ${publishBlocked} publish-blocked section(s) preserved last-good and wrote no seed keys — exiting 0; the freshness monitor owns the alarm`);
   }
-  process.exit(failed > 0 || starvedTick || stalled > 0 ? 1 : 0);
+  process.exit(exitsNonZero ? 1 : 0);
 }

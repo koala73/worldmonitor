@@ -176,6 +176,38 @@ function runBundleWith(sections, opts = {}, env = {}) {
   });
 }
 
+function runBundleWithVirtualClock(sections, opts = {}, clockOffsetsMs = [], env = {}) {
+  const runPath = join(FIXTURES_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
+  const fixtureSections = sections.map((section) => ({
+    ...section,
+    script: fixtureScript(section.script),
+  }));
+  writeFileSync(
+    runPath,
+    `import { runBundle } from '../_bundle-runner.mjs';\n`
+    + `const realNow = Date.now;\n`
+    + `const baseNow = realNow();\n`
+    + `const offsets = ${JSON.stringify(clockOffsetsMs)};\n`
+    + `let idx = 0;\n`
+    + `Date.now = () => baseNow + (offsets[Math.min(idx++, offsets.length - 1)] ?? 0);\n`
+    + `await runBundle('test', ${JSON.stringify(fixtureSections)}, ${JSON.stringify(opts)});\n`,
+  );
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c) => { stdout += c; });
+    child.stderr.on('data', (c) => { stderr += c; });
+    child.on('close', (code) => {
+      try { unlinkSync(runPath); } catch {}
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
 function writeFixture(name, body) {
   const path = join(FIXTURES_DIR, name);
   writeFileSync(path, body);
@@ -1056,6 +1088,36 @@ test('a coverage-gate refusal reports PUBLISH_BLOCKED, never OK (#6396)', async 
     assert.doesNotMatch(stdout, /graceful:1/);
   } finally {
     cleanup();
+  }
+});
+
+test('a publish-blocked section does not claim exit 0 when the tick starves due work', async () => {
+  const cleanupBlocked = writeFixture(
+    '_bundle-fixture-publish-blocked-starves.mjs',
+    `console.error('COVERAGE GATE FAILED: china-missing (dataMonth=missing)');\nprocess.exit(${PUBLISH_BLOCKED_EXIT_CODE});\n`,
+  );
+  const cleanupLate = writeFixture('_bundle-fixture-publish-blocked-late.mjs', `console.log('late-ran');\n`);
+  try {
+    const { code, stdout, stderr } = await runBundleWithVirtualClock(
+      [
+        { label: 'GATED', script: '_bundle-fixture-publish-blocked-starves.mjs', intervalMs: 1, timeoutMs: 5_000 },
+        { label: 'LATE', script: '_bundle-fixture-publish-blocked-late.mjs', intervalMs: 1, timeoutMs: 5_000 },
+      ],
+      { maxBundleMs: 30_000 },
+      [0, 0, 0, 100, 16_000, 16_000],
+    );
+    assert.equal(code, 1, 'publish-blocked work must not mask deferred due work');
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:1 failed:0 graceful:0 stalled:0 publish_blocked:1/);
+    assert.match(
+      stderr,
+      /\[Bundle:test\] ran:0 while 1 due section\(s\) were deferred/,
+      `expected the starvation explanation; stderr:\n${stderr}`,
+    );
+    assert.doesNotMatch(stdout, /publish-blocked section\(s\).*exiting 0/);
+    assert.doesNotMatch(stdout, /late-ran/);
+  } finally {
+    cleanupBlocked();
+    cleanupLate();
   }
 });
 
