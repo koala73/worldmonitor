@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -97,6 +97,98 @@ const HOMEPAGE_VALID_INPUTS: Record<string, Record<string, unknown>> = {
   launchWorldMonitor: { monitor: 'world' },
   getWorldMonitorMcpEndpoint: {},
 };
+
+const WEBMCP_MAINTAINER_SOURCES = [
+  'src/config/webmcp.ts',
+  'src/services/webmcp.ts',
+  'src/App.ts',
+  'src/app/webmcp-dashboard.ts',
+  'src/app/webmcp-search-controller.ts',
+  'src/app/search-selection-dispatcher.ts',
+  'src/components/GlobalProcurementPanel.ts',
+  'pro-test/welcome.html',
+  'vercel.json',
+  'docker/nginx-security-headers.conf',
+  'docker/nginx-embed-security-headers.conf',
+  'vite.config.ts',
+  'pro-test/vite.config.ts',
+  'tests/webmcp*.test.*',
+  'tests/dom/*webmcp*.test.*',
+  'tests/deploy-config.test.mjs',
+  'tests/fixtures/webmcp/evals.v1.json',
+  'scripts/evaluate-webmcp-evals.mjs',
+  'e2e/webmcp.spec.ts',
+  'e2e/webmcp-cancellation.spec.ts',
+  'e2e/embed.spec.ts',
+] as const;
+
+function sectionBetween(guide: string, startHeading: string, endHeading: string): string {
+  const start = guide.indexOf(startHeading);
+  const end = guide.indexOf(endHeading, start + startHeading.length);
+  assert.notEqual(start, -1, `public WebMCP guide is missing ${startHeading}`);
+  assert.notEqual(end, -1, `public WebMCP guide is missing ${endHeading}`);
+  return guide.slice(start, end);
+}
+
+function visibleMdx(section: string): string {
+  return section
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/```[\s\S]*?```/g, '');
+}
+
+function renderedTableNames(section: string): string[] {
+  return [...visibleMdx(section).matchAll(/^\| `([^`]+)` \|/gm)].map((match) => match[1]);
+}
+
+function assertMaintainerSourceExists(source: string) {
+  const lastSlash = source.lastIndexOf('/');
+  const directory = source.slice(0, lastSlash);
+  const basename = source.slice(lastSlash + 1);
+  if (!basename.includes('*')) {
+    assert.ok(existsSync(resolve(ROOT, source)), `WebMCP maintainer source does not exist: ${source}`);
+    return;
+  }
+
+  const pattern = new RegExp(`^${basename.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*')}$`);
+  const matches = readdirSync(resolve(ROOT, directory)).filter((entry) => pattern.test(entry));
+  assert.ok(matches.length > 0, `WebMCP maintainer source glob matches no files: ${source}`);
+}
+
+function assertGuideContract(
+  guide: string,
+  headings: {
+    homepage: string;
+    dashboard: string;
+    declarative: string;
+    journeys: string;
+    sourceMap: string;
+    verification: string;
+  },
+) {
+  assert.deepEqual(
+    renderedTableNames(sectionBetween(guide, headings.homepage, headings.dashboard)),
+    WEBMCP_HOMEPAGE_TOOL_NAMES,
+  );
+  assert.deepEqual(
+    renderedTableNames(sectionBetween(guide, headings.dashboard, headings.declarative)),
+    WEBMCP_SPA_TOOL_NAMES,
+  );
+  assert.deepEqual(
+    renderedTableNames(sectionBetween(guide, headings.declarative, headings.journeys)),
+    WEBMCP_DECLARATIVE_TOOL_NAMES,
+  );
+
+  const sourceMap = visibleMdx(sectionBetween(guide, headings.sourceMap, headings.verification));
+  const sourcePaths = [...sourceMap.matchAll(/^\| ([^|]+) \|/gm)].flatMap((row) =>
+    [...(row[1] ?? '').matchAll(/`([^`]+)`/g)].map((match) => match[1]),
+  );
+  assert.deepEqual(sourcePaths, WEBMCP_MAINTAINER_SOURCES);
+  for (const source of sourcePaths) assertMaintainerSourceExists(source);
+  assert.match(guide, /target_cancellation_unsupported/);
+  assert.match(guide, /WebMcpToolError/);
+  assert.match(guide, /--test-concurrency=1/);
+}
 
 function homepageTools(): HomepageTool[] {
   const html = readFileSync(resolve(ROOT, 'pro-test/welcome.html'), 'utf8');
@@ -211,6 +303,70 @@ describe('WebMCP canonical inventories', () => {
       ];
       assert.equal(new Set(combined).size, combined.length, `${variant} combined inventory has duplicates`);
     }
+  });
+
+  it('keeps both public guides aligned with the canonical inventory and maintainer map', () => {
+    const guides = [
+      {
+        guide: readFileSync(resolve(ROOT, 'docs/webmcp.mdx'), 'utf8'),
+        headings: {
+          homepage: '### Homepage tools',
+          dashboard: '### Dashboard imperative tools',
+          declarative: '### Declarative procurement tool',
+          journeys: '## Common browser-agent journeys',
+          sourceMap: '### Source map',
+          verification: '### Verification ladder',
+        },
+      },
+      {
+        guide: readFileSync(resolve(ROOT, 'docs/zh/webmcp.mdx'), 'utf8'),
+        headings: {
+          homepage: '### 首页工具',
+          dashboard: '### 仪表板命令式工具',
+          declarative: '### 声明式采购工具',
+          journeys: '## 常见浏览器智能体流程',
+          sourceMap: '### 源文件图',
+          verification: '### 验证阶梯',
+        },
+      },
+    ];
+
+    for (const { guide, headings } of guides) {
+      assertGuideContract(guide, headings);
+    }
+  });
+
+  it('fails the guide contract when a row disappears, drifts, or cannot be extracted', () => {
+    const guide = readFileSync(resolve(ROOT, 'docs/webmcp.mdx'), 'utf8');
+    const headings = {
+      homepage: '### Homepage tools',
+      dashboard: '### Dashboard imperative tools',
+      declarative: '### Declarative procurement tool',
+      journeys: '## Common browser-agent journeys',
+      sourceMap: '### Source map',
+      verification: '### Verification ladder',
+    };
+    assert.throws(() => assertGuideContract(guide.replace(/^\| `openSearch` .*$/m, ''), headings));
+    assert.throws(() => assertGuideContract(guide.replace(/^\| `src\/App\.ts` .*$/m, ''), headings));
+    assert.throws(() =>
+      assertGuideContract(
+        guide.replace('| Tool | Input schema | Behavior |', '| Tool | Input schema | Behavior |\n| `stale_tool` | Empty object | Stale entry. |'),
+        headings,
+      ),
+    );
+    assert.throws(() =>
+      assertGuideContract(
+        guide.replace(/^\| `openSearch` (.*)$/m, '{/* | `openSearch` $1 */}'),
+        headings,
+      ),
+    );
+    assert.throws(() =>
+      assertGuideContract(
+        guide.replace(/^\| `src\/App\.ts` (.*)$/m, '{/* | `src/App.ts` $1 */}'),
+        headings,
+      ),
+    );
+    assert.throws(() => assertGuideContract(guide.replace('### Source map', '### Sources'), headings));
   });
 });
 
