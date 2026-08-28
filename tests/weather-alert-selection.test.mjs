@@ -948,6 +948,34 @@ describe('selectWeatherNotifyAlerts — per-country fan-out (#7243)', () => {
       'swic:abc',
     );
   });
+
+  it('family keys stay distinct across countries that share a generic SWIC headline', () => {
+    // Codex P1 on #7250: if coalesceKey is VTEC-only, publishNotificationEvent
+    // falls back to weather_alert:<title> and the second country loses SET NX.
+    const ch = {
+      id: 'swic-ch-1',
+      source: 'swic',
+      countryCode: 'CH',
+      severity: 'Extreme',
+      headline: 'Violent thunderstorm',
+    };
+    const ca = {
+      id: 'eccc-ca-1',
+      source: 'eccc',
+      countryCode: 'CA',
+      severity: 'Severe',
+      headline: 'Violent thunderstorm',
+    };
+    assert.notEqual(
+      weatherAlertNotifyFamilyKey(ch),
+      weatherAlertNotifyFamilyKey(ca),
+      'shared headlines must not collapse publisher dedup across countries',
+    );
+    const selected = selectWeatherNotifyAlerts([ch, ca]);
+    assert.equal(selected.length, 2);
+    const keys = selected.map((a) => weatherAlertNotifyFamilyKey(a));
+    assert.equal(new Set(keys).size, 2);
+  });
 });
 
 describe('weather alert selection (continued wiring)', () => {

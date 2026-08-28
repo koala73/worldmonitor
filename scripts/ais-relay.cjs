@@ -5196,9 +5196,9 @@ async function seedWeatherAlerts() {
       requireAlertFeatures,
       selectEcccAlerts,
       selectSwicAlerts,
-      deriveWeatherCoalesceKey,
       selectWeatherNotifyAlerts,
       weatherAlertNotifyCountryCode,
+      weatherAlertNotifyFamilyKey,
       weatherAlertNotifyLocation,
       weatherAlertNotifySource,
     } = (await weatherAlertSelectPromise) || (() => {
@@ -5342,11 +5342,12 @@ async function seedWeatherAlerts() {
     // (issue #7243). Still collapses VTEC duplicate zones first (PR #3467).
     const distinctFamilyAlerts = selectWeatherNotifyAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
-      // so adjacent-zone bulletins for the same logical event collapse to one
-      // notification per user. Falls back to title-based dedup when VTEC is
-      // absent (ECCC, rare advisory types, or missing parameters).
-      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
+      // Use the SAME family key the selector partitioned by. Deriving only
+      // from VTEC left coalesceKey undefined for SWIC/ECCC, so
+      // publishNotificationEvent fell back to global `weather_alert:<title>`
+      // dedup and two countries sharing a generic headline ("Violent
+      // thunderstorm") collided on SET NX — recreating #7243 one layer down.
+      const coalesceKey = weatherAlertNotifyFamilyKey(a);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',

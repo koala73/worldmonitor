@@ -470,18 +470,23 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
     );
   });
 
-  it('publishNotificationEvent call passes coalesceKey when derivable from VTEC', () => {
-    // Spread-conditional: only includes the field when the parser returned a value,
-    // so undefined isn't sent over the wire.
+  it('publishNotificationEvent call passes the selector family key as coalesceKey', () => {
+    // Must use weatherAlertNotifyFamilyKey so VTEC-less SWIC/ECCC alerts from
+    // different countries that share a headline do not collide on title dedup.
     assert.match(
       aisRelaySrc,
-      /coalesceKey\s*=\s*deriveWeatherCoalesceKey\(a\.vtec\)/,
-      'weather publisher must derive coalesceKey via deriveWeatherCoalesceKey(a.vtec)',
+      /coalesceKey\s*=\s*weatherAlertNotifyFamilyKey\(a\)/,
+      'weather publisher must pass weatherAlertNotifyFamilyKey into coalesceKey',
     );
     assert.match(
       aisRelaySrc,
       /\.\.\.\(coalesceKey\s*\?\s*\{\s*coalesceKey\s*\}\s*:\s*\{\}\)/,
       'weather publisher must spread coalesceKey into payload only when defined',
+    );
+    assert.doesNotMatch(
+      aisRelaySrc,
+      /coalesceKey\s*=\s*deriveWeatherCoalesceKey\(a\.vtec\)/,
+      'publisher must not derive coalesceKey from VTEC alone — that drops SWIC/ECCC family identity',
     );
   });
 
