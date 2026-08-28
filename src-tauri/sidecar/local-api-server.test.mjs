@@ -16,7 +16,13 @@ import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
 
 test('bundles the shared LLM health provider registry with the sidecar (#7126)', () => {
   const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
   assert.ok(config.bundle.resources.includes('../shared/llm-health-providers.js'));
+  assert.match(
+    dockerfile,
+    /COPY --from=builder \/app\/shared\/llm-health-providers\.js \.\/shared\/llm-health-providers\.js/,
+  );
+  assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
 });
 
 test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
