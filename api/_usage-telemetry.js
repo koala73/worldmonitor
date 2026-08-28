@@ -208,6 +208,19 @@ export function emitBootstrapR2Shadow(ctx, input) {
  * allowlisted request metadata; never add cookies or request/response bodies.
  */
 export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
+  emitStandaloneAuthUsage(ctx, req, res, startedAt, reason, '/api/wm-session');
+}
+
+/**
+ * Queue a token-endpoint limiter outcome. Same privacy allowlist as the
+ * session mint emitter — never client secrets, authorization codes, refresh
+ * tokens, or full client identifiers (#7270).
+ */
+export function emitOAuthTokenUsage(ctx, req, res, startedAt, reason) {
+  emitStandaloneAuthUsage(ctx, req, res, startedAt, reason, '/api/oauth/token');
+}
+
+function emitStandaloneAuthUsage(ctx, req, res, startedAt, reason, route) {
   if (!ctx?.waitUntil || process.env.USAGE_TELEMETRY !== '1') return;
   try {
     const requestId = req.headers.get('x-vercel-id') ?? '';
@@ -216,7 +229,7 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
       event_type: 'request',
       request_id: requestId,
       domain: 'auth',
-      route: '/api/wm-session',
+      route,
       method: req.method,
       status: res.status,
       duration_ms: Math.max(0, Date.now() - startedAt),
@@ -247,6 +260,6 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
       reason,
     }));
   } catch {
-    // Request metadata parsing must not alter the mint response path.
+    // Request metadata parsing must not alter the auth response path.
   }
 }

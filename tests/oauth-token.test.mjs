@@ -19,10 +19,16 @@
  */
 
 import { strict as assert } from 'node:assert';
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-import { tokenHandler } from '../api/oauth/token.ts';
+import {
+  tokenHandler,
+  __resetOAuthTokenRateLimitForTest,
+  __setOAuthTokenRatelimitForTest,
+} from '../api/oauth/token.ts';
 import {
   REFRESH_ATTEMPT_TTL_SECONDS,
   rawRedisBeginRefreshAttempt,
@@ -35,6 +41,19 @@ import {
   resolveApiKeyFromBearer,
 } from '../api/_oauth-token.js';
 import { sha256Hex, keyFingerprint } from '../api/_crypto.js';
+
+beforeEach(() => {
+  // Existing tokenHandler cases inject Redis deps. They must not share a
+  // process-level Upstash limiter: this file reuses `client_abc`, and a
+  // credentialed agent/CI environment would 429 later cases after 10 POSTs.
+  __setOAuthTokenRatelimitForTest({
+    limit: async () => ({ success: true }),
+  });
+});
+
+afterEach(() => {
+  __resetOAuthTokenRateLimitForTest();
+});
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -1737,5 +1756,198 @@ describe('U6 tokenHandler — client_credentials (regression guard)', () => {
     assert.equal(typeof access, 'string');
     assert.equal(access.length, 16);
     assert.equal(access, ENV_KEY_FINGERPRINT);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rate-limit degradation observability (#7270)
+// ---------------------------------------------------------------------------
+
+describe('oauth/token rate-limit degradation (#7270)', () => {
+  const originalEnv = { ...process.env };
+  const originalConsoleError = console.error;
+  const originalFetch = globalThis.fetch;
+  let consoleErrors = [];
+
+  function restoreEnv() {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+  }
+
+  function makeWaitUntilCtx() {
+    const pending = [];
+    return {
+      ctx: { waitUntil: (promise) => pending.push(promise) },
+      settle: async () => Promise.allSettled(pending),
+    };
+  }
+
+  beforeEach(() => {
+    consoleErrors = [];
+    console.error = (...args) => {
+      consoleErrors.push(args.map((a) => String(a)).join(' '));
+    };
+    __resetOAuthTokenRateLimitForTest();
+  });
+
+  afterEach(() => {
+    console.error = originalConsoleError;
+    globalThis.fetch = originalFetch;
+    __resetOAuthTokenRateLimitForTest();
+    restoreEnv();
+  });
+
+  it('source contract: missing-config and throw paths capture with a stable fingerprint', () => {
+    const src = readFileSync(fileURLToPath(new URL('../api/oauth/token.ts', import.meta.url)), 'utf8');
+    assert.match(src, /oauthToken:missing-config/);
+    assert.match(
+      src,
+      /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*rateLimitFingerprintStage\(stage\)\]/,
+    );
+    assert.match(src, /X-RateLimit-Mode',\s*'degraded'/);
+    assert.match(src, /emitOAuthTokenUsage/);
+  });
+
+  it('missing Upstash config fail-opens every grant type with a degraded marker and one ops log', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    const cases = [
+      { grant: 'authorization_code', params: {}, status: 400 },
+      { grant: 'refresh_token', params: {}, status: 400 },
+      { grant: 'client_credentials', params: {}, status: 401 },
+    ];
+    for (const { grant, params, status } of cases) {
+      const { deps } = makeDeps();
+      const resp = await tokenHandler(makeReq(grant, params), deps);
+      assert.equal(resp.status, status, `${grant} must remain fail-open (not 503)`);
+      assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded', `${grant} must carry the degraded marker`);
+      assert.notEqual(resp.status, 429);
+    }
+
+    const degradedLogs = consoleErrors.filter((line) =>
+      line.includes('[rate-limit] redis-error') && line.includes('stage=oauthToken:missing-config'),
+    );
+    assert.equal(degradedLogs.length, 1, 'missing-config ops signal must be deduplicated per isolate');
+  });
+
+  it('limiter throw fail-opens with a degraded marker and does not log secrets', async () => {
+    const secret = 'wm_super_secret_value_xyz';
+    const clientId = 'full-client-identifier-must-not-log';
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => {
+        throw new Error('upstash unreachable');
+      },
+    });
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(
+      makeReq('client_credentials', { client_secret: secret, client_id: clientId }),
+      deps,
+    );
+    assert.equal(resp.status, 401, 'throw path must fail open into credential validation, not 503');
+    assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.ok(
+      consoleErrors.some((line) => line.includes('[rate-limit] redis-error') && line.includes('stage=oauthToken')),
+      `expected throw-path ops log, got: ${consoleErrors.join('\n')}`,
+    );
+    const joined = consoleErrors.join('\n');
+    assert.equal(joined.includes(secret), false, 'client_secret must not appear in ops logs');
+    assert.equal(joined.includes(clientId), false, 'full client_id must not appear in ops logs');
+  });
+
+  it('limiter timeout reason fail-opens as degraded, not as a silent allow', async () => {
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => ({ success: true, reason: 'timeout' }),
+    });
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(makeReq('unsupported', {}), deps);
+    assert.equal(resp.status, 400);
+    assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.ok(
+      consoleErrors.some((line) => line.includes('stage=oauthToken:timeout')),
+      `expected timeout degraded log, got: ${consoleErrors.join('\n')}`,
+    );
+  });
+
+  it('limiter rejection returns 429 without a degraded marker', async () => {
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => ({ success: false }),
+    });
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(makeReq('client_credentials', { client_secret: 'x' }), deps);
+    assert.equal(resp.status, 429);
+    const body = await resp.json();
+    assert.equal(body.error, 'rate_limit_exceeded');
+    assert.equal(resp.headers.get('X-RateLimit-Mode'), null);
+    assert.ok(
+      !consoleErrors.some((line) => line.includes('[rate-limit] redis-error')),
+      `healthy 429 must not look like limiter degradation: ${consoleErrors.join(' | ')}`,
+    );
+  });
+
+  it('healthy limiter headroom does not mark the response degraded', async () => {
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => ({ success: true }),
+    });
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(makeReq('unsupported', {}), deps);
+    assert.equal(resp.status, 400);
+    assert.equal(resp.headers.get('X-RateLimit-Mode'), null);
+    assert.ok(
+      !consoleErrors.some((line) => line.includes('[rate-limit] redis-error')),
+      `granted headroom must not log redis-error: ${consoleErrors.join(' | ')}`,
+    );
+  });
+
+  it('degraded fail-open emits a usage event without credentials', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+    const events = [];
+    globalThis.fetch = async (_input, init) => {
+      events.push(...JSON.parse(init.body));
+      return new Response('{}', { status: 200 });
+    };
+    const { ctx, settle } = makeWaitUntilCtx();
+    const { deps } = makeDeps();
+    const secret = 'wm_must_not_reach_axiom';
+    const resp = await tokenHandler(
+      makeReq('client_credentials', { client_secret: secret }),
+      { ...deps, ctx },
+    );
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].route, '/api/oauth/token');
+    assert.equal(events[0].reason, 'rate_limit_degraded');
+    assert.equal(events[0].status, 401);
+    assert.equal(JSON.stringify(events).includes(secret), false);
+    assert.equal(Object.hasOwn(events[0], 'client_secret'), false);
+    assert.equal(Object.hasOwn(events[0], 'client_id'), false);
+  });
+
+  it('limiter 429 emits usage reason rate_limit_429', async () => {
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+    __setOAuthTokenRatelimitForTest({
+      limit: async () => ({ success: false }),
+    });
+    const events = [];
+    globalThis.fetch = async (_input, init) => {
+      events.push(...JSON.parse(init.body));
+      return new Response('{}', { status: 200 });
+    };
+    const { ctx, settle } = makeWaitUntilCtx();
+    const { deps } = makeDeps();
+    const resp = await tokenHandler(makeReq('unsupported', {}), { ...deps, ctx });
+    assert.equal(resp.status, 429);
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].reason, 'rate_limit_429');
+    assert.equal(events[0].route, '/api/oauth/token');
   });
 });

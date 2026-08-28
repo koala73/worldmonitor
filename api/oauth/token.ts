@@ -33,7 +33,7 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp } from '../_rate-limit.js';
+import { getClientIp, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
@@ -44,6 +44,8 @@ import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
+// @ts-expect-error — JS module, no declaration file
+import { emitOAuthTokenUsage } from '../_usage-telemetry.js';
 import {
   REFRESH_TTL_SECONDS,
   finalizeRefreshAttempt,
@@ -72,24 +74,110 @@ const CLIENT_TTL_SECONDS = 90 * 24 * 3600;
 
 const NO_STORE = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
+type WaitUntilCtx = { waitUntil: (promise: Promise<unknown>) => void };
+
+interface TokenRateLimiter {
+  limit(identifier: string): Promise<{ success: boolean; reason?: string }>;
+}
+
+type TokenRateLimitDecision =
+  | { kind: 'allow' }
+  | { kind: 'degraded' }
+  | { kind: 'limited'; response: Response };
+
 function jsonResp(body: unknown, status = 200): Response {
   return jsonResponse(body, status, { ...getPublicCorsHeaders('POST, OPTIONS'), ...NO_STORE });
 }
 
+function withRateLimitDegradedHeader(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set('X-RateLimit-Mode', 'degraded');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+// @upstash/redis defaults to 5 retries (~4.3s) before surfacing an unreachable
+// Redis error. Under the node test runner skip retries so fail-open tests that
+// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately. Production
+// (env unset) keeps the resilient default. Mirrors api/_rate-limit.js.
+const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+
 // Tight rate limiter for credential endpoint
-let _rl: Ratelimit | null = null;
-function getRatelimit(): Ratelimit | null {
+let _rl: TokenRateLimiter | null = null;
+let _rlOverride: TokenRateLimiter | null | undefined;
+const DEGRADED_CAPTURE_DEDUP_MS = 60_000;
+const lastDegradedCaptureAtByStage = new Map<string, number>();
+
+function getRatelimit(): TokenRateLimiter | null {
+  if (_rlOverride !== undefined) return _rlOverride;
   if (_rl) return _rl;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   _rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
     prefix: 'rl:oauth-token',
     analytics: false,
   });
   return _rl;
+}
+
+/**
+ * Test-only limiter injection. `null` forces the unconfigured path; omit via
+ * `__resetOAuthTokenRateLimitForTest` to restore production construction.
+ */
+export function __setOAuthTokenRatelimitForTest(rl: TokenRateLimiter | null): void {
+  _rlOverride = rl;
+}
+
+export function __resetOAuthTokenRateLimitForTest(): void {
+  _rl = null;
+  _rlOverride = undefined;
+  lastDegradedCaptureAtByStage.clear();
+}
+
+/**
+ * Bounded ops signal when the token limiter cannot decide. Deduped per isolate
+ * per stage so an Upstash outage does not mint one Sentry event per POST.
+ * Logs and Sentry extras never include client secrets, codes, refresh tokens,
+ * or full client identifiers (#7270).
+ */
+function boundedGrantTag(grantType: string | null): string {
+  if (
+    grantType === 'authorization_code'
+    || grantType === 'refresh_token'
+    || grantType === 'client_credentials'
+  ) {
+    return grantType;
+  }
+  return grantType ? 'other' : 'none';
+}
+
+function reportTokenRateLimitDegraded(
+  stage: string,
+  err: unknown,
+  ctx: WaitUntilCtx | undefined,
+  grantType: string | null,
+): void {
+  const now = Date.now();
+  const last = lastDegradedCaptureAtByStage.get(stage);
+  if (last !== undefined && now - last < DEGRADED_CAPTURE_DEDUP_MS) return;
+  lastDegradedCaptureAtByStage.set(stage, now);
+
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
+  captureSilentError(err, {
+    tags: {
+      surface: 'api',
+      component: 'rate-limit',
+      route: 'api/oauth/token',
+      stage,
+      grant: boundedGrantTag(grantType),
+    },
+    fingerprint: ['rate-limit', 'redis-error', rateLimitFingerprintStage(stage)],
+    ctx,
+    level: rateLimitErrorLevel(stage, msg),
+  });
 }
 
 async function validateSecret(secret: string | null | undefined): Promise<boolean> {
@@ -297,6 +385,8 @@ export interface TokenHandlerDeps extends RefreshRecoveryDeps {
   randomUuid: () => string;
   /** Attempt id used to fence one consumed refresh-token recovery. */
   randomPointerId: () => string;
+  /** Optional Vercel isolate context so limiter Sentry/usage survive teardown. */
+  ctx?: WaitUntilCtx;
 }
 
 interface CodeDataPro {
@@ -753,14 +843,31 @@ async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Prom
   return null;
 }
 
+/**
+ * Abuse budget for POST /oauth/token. All grant types stay fail-open when the
+ * limiter is unconfigured or throws: MCP clients abort the handshake on a 503
+ * here, Redis persistence still fails closed downstream when storage is down,
+ * and `client_credentials` still has the env-key allowlist. The current
+ * fallback must stay operator-visible (#7270) — log + Sentry (deduped),
+ * `X-RateLimit-Mode: degraded` on the response, and a usage `reason`.
+ */
 async function applyRateLimit(
   req: Request,
   grantType: string | null,
   clientSecret: string | null,
   clientId: string | null,
-): Promise<Response | null> {
+  ctx: WaitUntilCtx | undefined,
+): Promise<TokenRateLimitDecision> {
   const rl = getRatelimit();
-  if (!rl) return null;
+  if (!rl) {
+    reportTokenRateLimitDegraded(
+      'oauthToken:missing-config',
+      new Error('Upstash Redis is not configured'),
+      ctx,
+      grantType,
+    );
+    return { kind: 'degraded' };
+  }
   try {
     let rlKey: string;
     if (grantType === 'client_credentials' && clientSecret) {
@@ -770,16 +877,33 @@ async function applyRateLimit(
     } else {
       rlKey = `ip:${getClientIp(req)}`;
     }
-    const { success } = await rl.limit(rlKey);
-    if (!success) {
-      return jsonResp(
-        { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
-        429,
+    const result = await rl.limit(rlKey);
+    // @upstash/ratelimit v2 races Redis against an internal timeout and
+    // RESOLVES `{ success: true, reason: 'timeout' }` rather than rejecting,
+    // so a slow Redis is indistinguishable from a genuine allow unless we
+    // treat timeout as the same fail-open degraded path as a throw (#6412).
+    if (result.reason === 'timeout') {
+      reportTokenRateLimitDegraded(
+        'oauthToken:timeout',
+        new Error('Upstash rate-limit decision timed out'),
+        ctx,
+        grantType,
       );
+      return { kind: 'degraded' };
     }
-    return null;
-  } catch {
-    return null; // graceful degradation
+    if (!result.success) {
+      return {
+        kind: 'limited',
+        response: jsonResp(
+          { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
+          429,
+        ),
+      };
+    }
+    return { kind: 'allow' };
+  } catch (err) {
+    reportTokenRateLimitDegraded('oauthToken', err, ctx, grantType);
+    return { kind: 'degraded' };
   }
 }
 
@@ -793,24 +917,34 @@ export async function tokenHandler(req: Request, deps: TokenHandlerDeps): Promis
     return jsonResp({ error: 'method_not_allowed' }, 405);
   }
 
+  const startedAt = Date.now();
   const params = new URLSearchParams(await req.text().catch(() => ''));
   const grantType = params.get('grant_type');
   const clientSecret = params.get('client_secret');
   const clientId = params.get('client_id');
 
-  const rateLimited = await applyRateLimit(req, grantType, clientSecret, clientId);
-  if (rateLimited) return rateLimited;
+  const rateLimit = await applyRateLimit(req, grantType, clientSecret, clientId, deps.ctx);
+  if (rateLimit.kind === 'limited') {
+    emitOAuthTokenUsage(deps.ctx, req, rateLimit.response, startedAt, 'rate_limit_429');
+    return rateLimit.response;
+  }
 
+  let response: Response;
   if (grantType === 'authorization_code') {
-    return handleAuthorizationCode(params, clientId, deps);
+    response = await handleAuthorizationCode(params, clientId, deps);
+  } else if (grantType === 'refresh_token') {
+    response = await handleRefreshToken(params, clientId, deps);
+  } else if (grantType === 'client_credentials') {
+    response = await handleClientCredentials(clientSecret, deps);
+  } else {
+    response = jsonResp({ error: 'unsupported_grant_type' }, 400);
   }
-  if (grantType === 'refresh_token') {
-    return handleRefreshToken(params, clientId, deps);
+
+  if (rateLimit.kind === 'degraded') {
+    response = withRateLimitDegradedHeader(response);
+    emitOAuthTokenUsage(deps.ctx, req, response, startedAt, 'rate_limit_degraded');
   }
-  if (grantType === 'client_credentials') {
-    return handleClientCredentials(clientSecret, deps);
-  }
-  return jsonResp({ error: 'unsupported_grant_type' }, 400);
+  return response;
 }
 
 // ---------------------------------------------------------------------------
@@ -832,6 +966,7 @@ export default async function handler(
     validateProMcpToken,
     randomUuid: () => crypto.randomUUID(),
     randomPointerId: () => crypto.randomUUID(),
+    ctx,
     captureRestoreFailure: (context: RefreshRestoreFailureContext) => {
       void captureSilentError(new Error('OAuth refresh token restore failed'), {
         tags: {
