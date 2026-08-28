@@ -267,6 +267,28 @@ describe('fetchWithProxy persistent response freshness', () => {
     assert.equal(await response.text(), '<rss>current</rss>');
   });
 
+  it('omits credentials for the public FwdStart feed and keeps RSS credentialed', async () => {
+    const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
+    state.networkOutcomes.push(
+      new Response('<rss>fwdstart</rss>', { status: 200 }),
+      new Response('<rss>proxy</rss>', { status: 200 }),
+    );
+
+    await proxyModule.fetchWithProxy('/api/fwdstart');
+    await proxyModule.fetchWithProxy(API_PATH);
+
+    assert.deepEqual(state.fetchCalls, [
+      {
+        input: 'https://api.test/api/fwdstart',
+        init: { cache: 'no-store', credentials: 'omit' },
+      },
+      {
+        input: `https://api.test${API_PATH}`,
+        init: { cache: 'no-store' },
+      },
+    ]);
+  });
+
   it('does not reuse or persist responses marked no-store', async () => {
     const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
     state.cached = cachedResponse('<rss>stale-cache</rss>', 0, 'no-store');

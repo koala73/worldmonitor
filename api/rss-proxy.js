@@ -226,9 +226,9 @@ export default async function handler(req, ctx) {
       headers: {
         'Content-Type': response.headers.get('content-type') || 'application/xml',
         // validateApiKey() gates every GET. Shared caches do not key on the
-        // credential header, so neither direct nor relay RSS bodies may be
-        // stored by a CDN.
-        'Cache-Control': 'private, no-store',
+        // credential header, so this must not be public / s-maxage / CDN-cached.
+        // `private` keeps CDNs out; max-age lets the SPA feedCache persist.
+        'Cache-Control': 'private, max-age=180',
         ...(relayCacheState && { 'X-Cache': relayCacheState }),
         ...(relayStaleMarker && { 'X-Relay-Stale': relayStaleMarker }),
         ...corsHeaders,

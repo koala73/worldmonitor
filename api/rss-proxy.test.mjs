@@ -257,7 +257,7 @@ test('keeps stale Railway RSS bodies private with reflected credentialed CORS', 
   const res = await handler(makeRequest('https://techcrunch.com/feed'));
 
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=180');
   assert.equal(res.headers.get('cdn-cache-control'), null);
   assert.equal(res.headers.get('access-control-allow-origin'), 'https://worldmonitor.app');
   assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
@@ -288,7 +288,7 @@ test('keeps legacy plain STALE relay responses non-cacheable during rollout', as
   const res = await handler(makeRequest('https://techcrunch.com/feed'));
 
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=180');
   assert.equal(res.headers.get('cdn-cache-control'), null);
   assert.equal(res.headers.get('x-cache'), 'STALE');
   assert.equal(res.headers.get('x-relay-stale'), null);
@@ -645,7 +645,7 @@ test('routes relay-only domains straight to Railway without shared caching', asy
   assert.deepEqual(calls.map((c) => c.url), [
     `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
   ]);
-  assert.equal(res.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
   assert.equal(res.headers.get('CDN-Cache-Control'), null);
   assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
   assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
@@ -685,7 +685,7 @@ test('keeps successful non-relay-only feeds private and out of shared caches', a
 
   assert.equal(res.status, 200);
   assert.deepEqual(calls.map((c) => c.url), ['https://techcrunch.com/feed']);
-  assert.equal(res.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
   assert.equal(res.headers.get('CDN-Cache-Control'), null);
   assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
   assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
@@ -698,7 +698,7 @@ test('passes a non-2xx upstream status through without caching it', async () => 
   const res = await handler(makeRequest('https://techcrunch.com/feed'));
 
   assert.equal(res.status, 503);
-  assert.equal(res.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
   assert.equal(
     res.headers.get('CDN-Cache-Control'),
     null,
@@ -917,7 +917,7 @@ test('does not treat an upstream CBC 403 as a cacheable success (#6624)', async 
   const res = await handler(makeRequest(CBC_CATALOG_URL));
   assert.equal(res.status, 403);
   assert.equal(await res.text(), 'Forbidden');
-  assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=180');
   assert.equal(res.headers.get('cdn-cache-control'), null);
   assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
 });
