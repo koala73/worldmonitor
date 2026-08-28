@@ -46,6 +46,17 @@ function deleteRequest(authHeader) {
   });
 }
 
+function optionsRequest({ origin = 'https://worldmonitor.app', requestHeaders = 'x-worldmonitor-key' } = {}) {
+  return new Request('https://api.worldmonitor.app/api/product-catalog', {
+    method: 'OPTIONS',
+    headers: {
+      Origin: origin,
+      'Access-Control-Request-Method': 'GET',
+      'Access-Control-Request-Headers': requestHeaders,
+    },
+  });
+}
+
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   restoreEnv();
@@ -73,6 +84,16 @@ test('DELETE purge fails closed when RELAY_SHARED_SECRET is missing', async () =
 
   const noAuth = await handler(deleteRequest(null));
   assert.equal(noAuth.status, 401);
+});
+
+test('OPTIONS advertises the session API key header for the catalog probe', async () => {
+  const handler = await importHandler({ relaySecret: null });
+  const response = await handler(optionsRequest());
+  assert.equal(response.status, 204);
+  const allowHeaders = (response.headers.get('access-control-allow-headers') || '').toLowerCase();
+  assert.ok(allowHeaders.includes('x-worldmonitor-key'), allowHeaders);
+  assert.ok(allowHeaders.includes('authorization'), allowHeaders);
+  assert.equal(response.headers.get('access-control-allow-methods'), 'GET, DELETE, OPTIONS');
 });
 
 test('GET fallback publishes generated lifecycle, pricing, and capability facts', async () => {

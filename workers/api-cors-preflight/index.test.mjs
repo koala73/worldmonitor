@@ -124,20 +124,36 @@ test('OPTIONS preflight returns 204 with Access-Control-Allow-Credentials: true'
   assert.equal(resp.headers.get('vary'), 'Origin');
 });
 
-test('OPTIONS preflight advertises DELETE (regression — api/product-catalog purge)', async () => {
-  // api/product-catalog.js handles `DELETE /api/product-catalog` with its own
-  // 'GET, DELETE, OPTIONS' Allow-Methods string. Because this Worker short-
-  // circuits the preflight before Vercel sees it, the Worker's Allow-Methods
-  // MUST be a superset — if it isn't, the browser rejects the preflight and
-  // the authenticated DELETE never reaches the function. Pin the invariant.
-  const req = makeRequest('OPTIONS', 'https://api.worldmonitor.app/api/product-catalog', {
-    Origin: KNOWN_GOOD,
-    'Access-Control-Request-Method': 'DELETE',
-  });
-  const resp = await worker.fetch(req);
-  const methods = (resp.headers.get('access-control-allow-methods') || '')
-    .split(',').map((s) => s.trim().toUpperCase());
-  assert.ok(methods.includes('DELETE'), `ACAM must include DELETE; got: ${methods.join(', ')}`);
+test('OPTIONS preflight to /api/product-catalog preserves the endpoint-owned DELETE policy', async () => {
+  // Product catalog owns both its public GET CORS contract and its
+  // credentialed DELETE policy. Its preflight must now reach Vercel rather
+  // than being replaced by the Worker's generic CORS headers.
+  const original = globalThis.fetch;
+  let received;
+  globalThis.fetch = async (request) => {
+    received = request;
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': KNOWN_GOOD,
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS',
+      },
+    });
+  };
+  try {
+    const req = makeRequest('OPTIONS', 'https://api.worldmonitor.app/api/product-catalog', {
+      Origin: KNOWN_GOOD,
+      'Access-Control-Request-Method': 'DELETE',
+    });
+    const resp = await worker.fetch(req);
+    assert.equal(received, req, 'preflight must be forwarded to the endpoint');
+    assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
+    assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+    assert.equal(resp.headers.get('access-control-allow-methods'), 'GET, DELETE, OPTIONS');
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test('OPTIONS preflight from disallowed origin still sets ACAC but echoes fallback origin', async () => {
@@ -308,6 +324,10 @@ test('hasPublicCorsPolicy: exact-match paths', () => {
   assert.equal(hasPublicCorsPolicy('/api/security/report'), true);
   assert.equal(hasPublicCorsPolicy('/api/geo'), true);
   assert.equal(hasPublicCorsPolicy('/api/version'), true);
+  assert.equal(hasPublicCorsPolicy('/api/fwdstart'), true);
+  assert.equal(hasPublicCorsPolicy('/api/gpsjam'), true);
+  assert.equal(hasPublicCorsPolicy('/api/reverse-geocode'), true);
+  assert.equal(hasPublicCorsPolicy('/api/product-catalog'), true);
 });
 
 test('hasPublicCorsPolicy: prefix paths for nested OAuth + MCP routes', () => {
@@ -411,6 +431,48 @@ test('GET to /api/oauth/token from https://claude.ai passes Vercel headers throu
     assert.equal(resp.status, 200);
     assert.equal(resp.headers.get('access-control-allow-origin'), '*');
     assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('public cacheable endpoint paths pass Vercel CORS headers through unchanged', async () => {
+  // These endpoints use endpoint-owned wildcard CORS on cacheable GET
+  // responses. If the Worker stamps its credentialed Origin-varying headers
+  // here, Cloudflare caches an origin-specific contract and breaks the
+  // endpoint policy. Pin every path because this Worker is the final CORS
+  // layer before the browser.
+  const paths = [
+    '/api/fwdstart',
+    '/api/gpsjam',
+    '/api/reverse-geocode',
+    '/api/product-catalog',
+  ];
+  const original = globalThis.fetch;
+  const received = [];
+  globalThis.fetch = async (request) => {
+    received.push(request);
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=60, s-maxage=300',
+        'X-Origin-Cors-Contract': 'endpoint-owned',
+      },
+    });
+  };
+  try {
+    for (const pathname of paths) {
+      const resp = await worker.fetch(makeRequest('GET', `https://api.worldmonitor.app${pathname}`, {
+        Origin: KNOWN_GOOD,
+      }));
+      assert.equal(resp.status, 200, `${pathname} should pass through Vercel's response`);
+      assert.equal(resp.headers.get('access-control-allow-origin'), '*', `${pathname} must preserve ACAO: *`);
+      assert.equal(resp.headers.get('access-control-allow-credentials'), null, `${pathname} must not receive Worker credentials CORS`);
+      assert.equal(resp.headers.get('cache-control'), 'public, max-age=60, s-maxage=300', `${pathname} must preserve cache policy`);
+      assert.equal(resp.headers.get('x-origin-cors-contract'), 'endpoint-owned', `${pathname} must preserve origin response headers`);
+    }
+    assert.deepEqual(received.map((request) => new URL(request.url).pathname), paths);
   } finally {
     globalThis.fetch = original;
   }

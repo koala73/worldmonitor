@@ -219,28 +219,16 @@ export default async function handler(req, ctx) {
     }
 
     const data = await response.text();
-    const isSuccess = response.status >= 200 && response.status < 300;
     const relayCacheState = usedRelay ? response.headers.get('x-cache') : null;
     const relayStaleMarker = usedRelay ? response.headers.get('x-relay-stale') : null;
-    // New relays identify stale fallback explicitly. Keep the label fallback
-    // while Railway and Vercel revisions roll out independently.
-    const legacyStaleCacheLabel = relayCacheState === 'STALE' || relayCacheState?.endsWith('-STALE');
-    const isStaleRelay = relayStaleMarker === '1' || legacyStaleCacheLabel;
-    const isCacheableSuccess = isSuccess && !isStaleRelay;
-    // Relay-only feeds are slow-updating institutional sources — cache longer
-    const cdnTtl = isRelayOnly ? 3600 : 900;
-    const swr = isRelayOnly ? 7200 : 1800;
-    const sie = isRelayOnly ? 14400 : 3600;
-    const browserTtl = isRelayOnly ? 600 : 180;
     return new Response(data, {
       status: response.status,
       headers: {
         'Content-Type': response.headers.get('content-type') || 'application/xml',
-        'Cache-Control': isCacheableSuccess
-          ? `public, max-age=${browserTtl}, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}`
-          : isStaleRelay ? 'no-store' : 'public, max-age=15, s-maxage=60, stale-while-revalidate=120',
-        ...(isCacheableSuccess && { 'CDN-Cache-Control': `public, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}` }),
-        ...(isStaleRelay && { 'CDN-Cache-Control': 'no-store' }),
+        // validateApiKey() gates every GET. Shared caches do not key on the
+        // credential header, so this must not be public / s-maxage / CDN-cached.
+        // `private` keeps CDNs out; max-age lets the SPA feedCache persist.
+        'Cache-Control': 'private, max-age=180',
         ...(relayCacheState && { 'X-Cache': relayCacheState }),
         ...(relayStaleMarker && { 'X-Relay-Stale': relayStaleMarker }),
         ...corsHeaders,

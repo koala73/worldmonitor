@@ -4,7 +4,7 @@ import type {
   SearchImageryResponse,
   ImageryScene,
 } from '../../../../src/generated/server/worldmonitor/imagery/v1/service_server';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 
 const STAC_SEARCH = 'https://earth-search.aws.element84.com/v1/search';
@@ -123,7 +123,7 @@ export async function searchImagery(
   const key = cacheKey(snappedBbox, datetime, req.source, limit);
 
   try {
-    const result = await cachedFetchJson<{ scenes: ImageryScene[]; totalResults: number }>(
+    const result = await cachedFetchJsonWithMeta<{ scenes: ImageryScene[]; totalResults: number }>(
       key,
       CACHE_TTL,
       async () => {
@@ -177,10 +177,14 @@ export async function searchImagery(
       },
     );
 
-    if (result) {
-      return { scenes: result.scenes, totalResults: result.totalResults, cacheHit: true };
+    if (result.data) {
+      return {
+        scenes: result.data.scenes,
+        totalResults: result.data.totalResults,
+        cacheHit: result.source === 'cache',
+      };
     }
-    return { scenes: [], totalResults: 0, cacheHit: false };
+    return { scenes: [], totalResults: 0, cacheHit: result.source === 'cache' };
   } catch (err) {
     console.warn(`[Imagery] Search failed: ${err instanceof Error ? err.message : 'unknown'}`);
     return { scenes: [], totalResults: 0, cacheHit: false };

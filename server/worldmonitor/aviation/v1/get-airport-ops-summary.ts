@@ -166,6 +166,8 @@ export async function getAirportOpsSummary(
             }
         }
 
+        // This endpoint composes a fresh response from independent delay and
+        // NOTAM seed reads. A seed-cache hit is not a response-cache hit.
         return { summaries, cacheHit: false };
     } catch (err) {
         console.warn(`[Aviation] GetAirportOpsSummary failed: ${err instanceof Error ? err.message : err}`);

@@ -140,6 +140,8 @@ describe('getAirportOpsSummary — coverage gating (#7106)', () => {
 
     const response = await getAirportOpsSummary({}, { airports: 'LHR' });
     const lhr = summaryFor(response, 'LHR');
+    assert.equal(response.cacheHit, false,
+      'the response is composed from independent seed reads, not served from a response cache');
     assert.equal(lhr.source, 'aviationstack');
     assert.equal(lhr.delayPct, 35);
     assert.equal(lhr.avgDelayMinutes, 60);
