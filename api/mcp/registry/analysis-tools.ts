@@ -224,7 +224,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: 'True when any contributing feed fails its freshness contract: fetched longer ago than its budget, or carrying upstream observations older than its content-age budget even though the fetch itself is recent (refetching will not help in that case).' },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -368,7 +368,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: 'True when any contributing feed fails its freshness contract: fetched longer ago than its budget, or carrying upstream observations older than its content-age budget even though the fetch itself is recent (refetching will not help in that case).' },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -459,7 +459,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Fetch time of the seeded cable table.' },
-        stale: { type: 'boolean', description: 'True when the cable table is older than its freshness budget.' },
+        stale: { type: 'boolean', description: 'True when the cable table fails its freshness contract: fetched longer ago than its budget, or carrying upstream observations older than its content-age budget even though the fetch itself is recent (refetching will not help in that case).' },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -545,7 +545,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: 'True when any contributing feed fails its freshness contract: fetched longer ago than its budget, or carrying upstream observations older than its content-age budget even though the fetch itself is recent (refetching will not help in that case).' },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -680,7 +680,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the feeds read; null in point and countries modes.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: 'True when any contributing feed fails its freshness contract: fetched longer ago than its budget, or carrying upstream observations older than its content-age budget even though the fetch itself is recent (refetching will not help in that case).' },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -810,7 +810,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: 'True when any contributing feed fails its freshness contract: fetched longer ago than its budget, or carrying upstream observations older than its content-age budget even though the fetch itself is recent (refetching will not help in that case).' },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -851,7 +851,9 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
         { key: 'seed-meta:cable-health', maxStaleMin: 90 },
         { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
-        { key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }, // liveness 45min; content-age is stamped on the same key (newestItemAt) and evaluated by evaluateFreshness
+        // liveness 45min; content-age (newestItemAt vs maxContentAgeMin) is stamped
+        // on the same key and evaluated by evaluateFreshness via honorContentAge.
+        { key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true },
         { key: 'seed-meta:thermal:escalation', maxStaleMin: 360 },
         { key: 'seed-meta:supply_chain:shipping_stress', maxStaleMin: 45 },
       ];
@@ -927,7 +929,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: 'True when any contributing feed fails its freshness contract: fetched longer ago than its budget, or carrying upstream observations older than its content-age budget even though the fetch itself is recent (refetching will not help in that case).' },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',

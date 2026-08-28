@@ -155,11 +155,30 @@ function firesContentClock(
   skewLimit: number,
 ): TemporalAnomaliesContentAge | null | undefined {
   if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
-  const payload = data as { fireDetections?: unknown; _firmsState?: unknown };
+  const payload = data as {
+    fireDetections?: unknown;
+    _firmsState?: unknown;
+    _firmsCount?: unknown;
+  };
   // Canonical wildfire merge preserves `_firmsState: 'failed'` when CWFIS/BC
   // still publish. That is Canada-only coverage, not a skippable empty FIRMS
   // window — returning undefined here lets a live news clock hide the outage.
   if (payload._firmsState === 'failed') return null;
+  // Same outage, older payload shape: before the #7141 follow-up the merge
+  // graded FIRMS on promise settlement alone, so a total outage published
+  // `{_firmsState: 'ok', _firmsCount: 0}` with Canada-only rows. The producer
+  // now marks that 'failed', but a payload written by the previous version can
+  // still be in Redis (2h TTL) across a deploy, so fail closed on the declared
+  // count too.
+  //
+  // This deliberately also fails closed on a genuinely empty WORLDWIDE FIRMS
+  // window, which is indistinguishable from the outage in this payload shape.
+  // That is the intended bias: zero satellite detections across every
+  // monitored region in a 1-day window is vanishingly rare, a global FIRMS
+  // outage is not, and a false STALE_CONTENT is recoverable where a silently
+  // green monitor is the bug this contract exists to prevent. Once legacy
+  // payloads age out, the `_firmsState: 'failed'` guard above is what fires.
+  if (payload._firmsState === 'ok' && payload._firmsCount === 0) return null;
   const fires = payload.fireDetections;
   if (!Array.isArray(fires) || fires.length === 0) {
     // A live FIRMS 1-day window can be empty in the monitored regions. That is

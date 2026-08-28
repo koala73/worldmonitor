@@ -31,6 +31,7 @@ import {
   PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   projectContentFreshnessForWire,
 } from './_content-freshness.js';
+import { assessContentAge } from './_content-age.js';
 
 export const config = { runtime: 'edge' };
 
@@ -1948,28 +1949,10 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
   // newestItemAt may be explicit null when seeder's contentMeta returned null
   // (no usable item timestamps); classifier reads that as STALE_CONTENT.
-  let contentAge = null;
-  if (meta && typeof meta.maxContentAgeMin === 'number') {
-    const newestItemAt = (typeof meta.newestItemAt === 'number') ? meta.newestItemAt : null;
-    const contentAgeMin = newestItemAt == null ? null : Math.round((now - newestItemAt) / 60_000);
-    // Future-dated newestItemAt (contentAgeMin < 0) is suspicious data, not
-    // fresh data: an upstream that publishes timestamps in the future is
-    // either confusing forecasts with observations, mishandling timezones,
-    // or running on a skewed clock. Treat as STALE so the signal surfaces
-    // — without this, `contentAgeMin > maxContentAgeMin` is false for any
-    // negative number and the staleness check silently passes. The
-    // negative `contentAgeMin` is preserved on the wire so operators can
-    // see HOW far in the future the timestamp was (a -10-minute drift is
-    // a clock-skew nit; -8760 minutes is a year-from-now corruption).
-    const isFutureDated = contentAgeMin != null && contentAgeMin < 0;
-    contentAge = {
-      newestItemAt,
-      oldestItemAt: (typeof meta.oldestItemAt === 'number') ? meta.oldestItemAt : null,
-      maxContentAgeMin: meta.maxContentAgeMin,
-      contentAgeMin,
-      contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
-    };
-  }
+  // Shared assessor (api/_content-age.js) owns the rule so this endpoint and
+  // MCP's evaluateFreshness cannot drift on parsing, the future-dated rule, or
+  // re-aging — the same reason buildContentFreshnessAssessment is shared below.
+  const contentAge = assessContentAge(meta, now);
   // The shared assessment owns validation, fail-closed activation semantics,
   // and exact millisecond re-aging. This endpoint keeps only its status and
   // response-shaping concerns local.

@@ -537,6 +537,40 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
       NOW - newsAge,
       'frozen news must win over live fires — max() would hide the freeze',
     );
+    // oldestItemAt reduces with min() too: it is the oldest observation across
+    // every contributing source, so the frozen news window bounds it. Without
+    // this assertion a swapped reduction on either field ships green.
+    assert.equal(
+      meta.oldestItemAt,
+      NOW - newsAge,
+      'oldestItemAt is the min across sources, not the max',
+    );
+  });
+
+  it('reduces oldestItemAt to the oldest observation across sources', () => {
+    // Distinct newest/oldest per source so a newest/oldest swap cannot pass:
+    // news spans [-90m, -30m], fires spans [-50m, -20m].
+    const meta = temporalAnomaliesContentMeta({
+      news: {
+        topStories: [
+          { id: 'old', pubDate: new Date(NOW - 90 * 60_000).toISOString() },
+          { id: 'new', pubDate: new Date(NOW - 30 * 60_000).toISOString() },
+        ],
+      },
+      satellite_fires: {
+        fireDetections: [
+          { id: 'f-old', source: 'firms', detectedAt: NOW - 50 * 60_000 },
+          { id: 'f-new', source: 'firms', detectedAt: NOW - 20 * 60_000 },
+        ],
+        pagination: { nextCursor: '', totalCount: 2 },
+      },
+    }, NOW);
+
+    assert.ok(meta);
+    // news newest -30m vs fires newest -20m -> min is news at -30m.
+    assert.equal(meta.newestItemAt, NOW - 30 * 60_000, 'newest is min of per-source newest');
+    // news oldest -90m vs fires oldest -50m -> min is news at -90m.
+    assert.equal(meta.oldestItemAt, NOW - 90 * 60_000, 'oldest is min of per-source oldest');
   });
 
   it('a live news clock must not hide frozen FIRMS detections', () => {
@@ -608,6 +642,32 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
       meta,
       null,
       'Canada-only degraded payload must fail closed, not skip so live news looks fresh',
+    );
+  });
+
+  it('fails closed on a silent FIRMS outage (_firmsState ok, _firmsCount 0)', () => {
+    // The shape the canonical merge published BEFORE the #7141 follow-up:
+    // fetchAllRegions catches every per-region error and always resolves, so a
+    // worldwide FIRMS outage settled 'fulfilled' with zero rows and graded
+    // _firmsState 'ok'. CWFIS/BC rows keep fireDetections non-empty, so the
+    // old code took the firmsRows === 0 SKIP arm and let live news stamp a
+    // fresh clock while worldwide satellite coverage was gone.
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, 12 * 60_000),
+      satellite_fires: {
+        fireDetections: [
+          { id: 'cwfis-1', source: 'cwfis', detectedAt: NOW - 30 * 60_000 },
+          { id: 'bc-1', source: 'bc-wildfire', detectedAt: NOW - 20 * 60_000 },
+        ],
+        _firmsState: 'ok',
+        _firmsCount: 0,
+      },
+    }, NOW);
+
+    assert.equal(
+      meta,
+      null,
+      'zero declared FIRMS coverage must fail closed, not skip so live news reads fresh',
     );
   });
 

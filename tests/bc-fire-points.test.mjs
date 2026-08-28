@@ -289,6 +289,51 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     assert.equal(noBc._bcErrorCode, 'BC_WILDFIRE_SOURCE_FAILED');
   });
 
+  it('grades a resolved-but-zero-coverage FIRMS fetch as failed, not ok', async () => {
+    // fetchAllRegions catches every per-region error internally and always
+    // resolves, so a total FIRMS outage settles 'fulfilled' with zero rows.
+    // Grading on settlement alone published that as _firmsState 'ok', and the
+    // canonical WORLDWIDE key silently became Canada-only while every
+    // downstream content clock read it as healthy (#7141 follow-up).
+    const silentOutage = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => ({
+        fireDetections: [],
+        pagination: undefined,
+        _firmsFulfilledCalls: 0,
+        _firmsFailedCalls: 27,
+      }),
+      fetchCwfis: async () => parseCwfisGeoJson(cwfisActiveJson, 'active'),
+      fetchBcWildfire: async () => parseBcFireKml(kml),
+    });
+
+    assert.equal(silentOutage._firmsState, 'failed', 'zero successful region calls is an outage');
+    assert.equal(silentOutage._firmsErrorCode, 'FIRMS_SOURCE_FAILED');
+    assert.equal(silentOutage._firmsCount, 0);
+    assert.equal(
+      canadianWildfireAfterPublish(silentOutage).freshnessMetaPatch.sourceState,
+      'degraded',
+      'the canonical key must not report ok when it lost worldwide coverage',
+    );
+  });
+
+  it('keeps FIRMS ok when some region calls succeed but return no rows', async () => {
+    // A live worldwide window can legitimately be empty in the monitored
+    // regions. That is coverage with nothing to report, not an outage.
+    const emptyButLive = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => ({
+        fireDetections: [],
+        pagination: undefined,
+        _firmsFulfilledCalls: 27,
+        _firmsFailedCalls: 0,
+      }),
+      fetchCwfis: async () => parseCwfisGeoJson(cwfisActiveJson, 'active'),
+      fetchBcWildfire: async () => parseBcFireKml(kml),
+    });
+
+    assert.equal(emptyButLive._firmsState, 'ok');
+    assert.equal(emptyButLive._firmsErrorCode, null);
+  });
+
   it('publishes Canada-only fallback with health-visible FIRMS degradation metadata', async () => {
     const canadaOnly = await mergeWildfireSourcesWithBc({
       fetchFirms: async () => { throw new Error('FIRMS key rejected'); },

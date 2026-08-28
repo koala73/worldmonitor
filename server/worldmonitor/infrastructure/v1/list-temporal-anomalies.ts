@@ -5,7 +5,7 @@ import type {
   TemporalAnomaly as TemporalAnomalyProto,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { getCachedJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
 import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
 import {
   BASELINE_TTL,
@@ -79,6 +79,35 @@ async function tryAcquireLock(): Promise<boolean> {
 }
 
 /**
+ * Last-stamped content clock, for the transient-read-error path.
+ *
+ * Returns null when there is no prior stamp to carry forward (first run, or
+ * the previous cycle itself failed closed) — the caller then stamps the
+ * explicit null, which is the correct fail-closed answer when nothing is known.
+ */
+async function readPriorContentAge(
+  erroredSourceTypes: string[],
+): Promise<{ newestItemAt: number | null; oldestItemAt: number | null } | null> {
+  console.warn(
+    `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}); `
+    + 'carrying the previous content clock forward rather than stamping a false STALE_CONTENT',
+  );
+  const prior = await getCachedJson('seed-meta:temporal:anomalies').catch(() => null);
+  if (!prior || typeof prior !== 'object') return null;
+  const meta = prior as { newestItemAt?: unknown; oldestItemAt?: unknown };
+  const newestItemAt = typeof meta.newestItemAt === 'number' && Number.isFinite(meta.newestItemAt)
+    ? meta.newestItemAt
+    : null;
+  if (newestItemAt == null) return null;
+  return {
+    newestItemAt,
+    oldestItemAt: typeof meta.oldestItemAt === 'number' && Number.isFinite(meta.oldestItemAt)
+      ? meta.oldestItemAt
+      : null,
+  };
+}
+
+/**
  * `recordCount` must report the coverage actually ACHIEVED, not the coverage
  * configured.
  *
@@ -148,12 +177,26 @@ export async function listTemporalAnomalies(
 
       const counts: Record<string, number> = {};
       const countPayloads: { news?: unknown; satellite_fires?: unknown } = {};
-      const countEntries = await Promise.all(
+      // Status-aware reads: getCachedJson collapses a genuine miss and a
+      // transient read ERROR (timeout, non-2xx, parse failure) into the same
+      // null, and the content clock fails closed on a missing source. Without
+      // the distinction one Redis blip stamps newestItemAt:null on two live
+      // feeds, which health reads as STALE_CONTENT immediately (it never
+      // reaches the 48h budget) and the scheduled monitor pages on with no
+      // debounce. An errored read means "unknown this cycle", not "frozen".
+      const countReads = await Promise.all(
         Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
           type,
-          await getCachedJson(sourceKey) as Record<string, unknown> | null,
+          await readCachedJson(sourceKey),
         ] as const),
       );
+      const erroredSourceTypes = countReads
+        .filter(([, read]) => read.status === 'error')
+        .map(([type]) => type);
+      const countEntries = countReads.map(([type, read]) => [
+        type,
+        (read.status === 'hit' ? read.value : null) as Record<string, unknown> | null,
+      ] as const);
       for (const [type, data] of countEntries) {
         if (!data) continue;
         if (type === 'news' || type === 'satellite_fires') {
@@ -276,7 +319,14 @@ export async function listTemporalAnomalies(
         // away — so surface it with a grep-able marker rather than discarding it.
         // typesWithCounts is the sources that actually returned a count this
         // rebuild — the achieved coverage, not the configured one.
-        const contentAge = temporalAnomaliesContentMeta(countPayloads, now.getTime());
+        // A source whose read ERRORED is unknown, not frozen: carry the last
+        // stamped clock forward rather than asserting a fresh null. The
+        // liveness clock (fetchedAt) still advances, so a genuinely dead
+        // producer is caught by maxStaleMin, and a persistent read failure
+        // ages the carried-forward newestItemAt into STALE_CONTENT on its own.
+        const contentAge = erroredSourceTypes.length > 0
+          ? await readPriorContentAge(erroredSourceTypes)
+          : temporalAnomaliesContentMeta(countPayloads, now.getTime());
         const stamped = await writeTemporalAnomaliesSeedMeta(
           snapshot,
           typesWithCounts.length,

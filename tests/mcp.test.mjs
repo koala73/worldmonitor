@@ -634,7 +634,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   it('evaluateFreshness marks content-age stale even when fetchedAt is fresh (#7141)', () => {
     const now = Date.UTC(2026, 7, 27, 12, 0, 0);
     const freshness = evaluateFreshness(
-      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true }],
       [{
         fetchedAt: now - 5 * 60_000,
         recordCount: 2,
@@ -651,7 +651,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   it('evaluateFreshness stays fresh when content-age is inside budget', () => {
     const now = Date.UTC(2026, 7, 27, 12, 0, 0);
     const freshness = evaluateFreshness(
-      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true }],
       [{
         fetchedAt: now - 5 * 60_000,
         recordCount: 2,
@@ -669,7 +669,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   it('evaluateFreshness marks content-age stale when newestItemAt is null (#7141)', () => {
     const now = Date.UTC(2026, 7, 27, 12, 0, 0);
     const freshness = evaluateFreshness(
-      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true }],
       [{
         fetchedAt: now - 5 * 60_000,
         recordCount: 2,
@@ -686,7 +686,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   it('evaluateFreshness marks content-age stale when newestItemAt is in the future (#7141)', () => {
     const now = Date.UTC(2026, 7, 27, 12, 0, 0);
     const freshness = evaluateFreshness(
-      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true }],
       [{
         fetchedAt: now - 5 * 60_000,
         recordCount: 2,
@@ -698,6 +698,46 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     assert.equal(freshness.stale, true, 'future-dated content must not read stale:false');
     assert.equal(freshness.cached_at, new Date(now - 5 * 60_000).toISOString());
+  });
+
+  it('content-age is opt-in per check, not inferred from seed-meta presence', () => {
+    // Many seeders already stamp maxContentAgeMin. Inferring the opt-in from
+    // the stored meta silently enrolled ~14 unrelated keys whose tools never
+    // declared a content-age contract and have no coverage for one. The gate
+    // lives on the check, like minRecordCount and requireContentFreshness.
+    const now = Date.UTC(2026, 7, 27, 12, 0, 0);
+    const meta = [{
+      fetchedAt: now - 5 * 60_000,
+      recordCount: 2,
+      newestItemAt: now - 72 * 60 * 60_000,
+      maxContentAgeMin: 48 * 60,
+    }];
+
+    assert.equal(
+      evaluateFreshness([{ key: 'seed-meta:some:other-key', maxStaleMin: 45 }], meta, now).stale,
+      false,
+      'a key that never declared honorContentAge must not gain a content-age gate',
+    );
+    assert.equal(
+      evaluateFreshness(
+        [{ key: 'seed-meta:some:other-key', maxStaleMin: 45, honorContentAge: true }],
+        meta,
+        now,
+      ).stale,
+      true,
+      'the same meta DOES go stale once the check opts in',
+    );
+  });
+
+  it('honorContentAge is a no-op when the producer stamps no maxContentAgeMin', () => {
+    const now = Date.UTC(2026, 7, 27, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true }],
+      [{ fetchedAt: now - 5 * 60_000, recordCount: 2 }],
+      now,
+    );
+
+    assert.equal(freshness.stale, false, 'no content-age contract stamped -> nothing to age');
   });
 
   it('get_chokepoint_status declares the PortWatch 174-country freshness floor', async () => {

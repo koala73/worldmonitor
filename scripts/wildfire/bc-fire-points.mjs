@@ -603,7 +603,17 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
     fetchCwfis(),
     fetchBcWildfire(),
   ]);
-  const firmsOk = firmsResult.status === 'fulfilled';
+  // Settlement alone is NOT coverage. fetchAllRegions catches every per-region
+  // error internally and always resolves, so an all-regions FIRMS outage
+  // settles 'fulfilled' with zero rows. When the fetcher reports its per-call
+  // counters, require at least one successful call: otherwise the canonical
+  // WORLDWIDE key silently republishes as Canada-only and reads healthy on
+  // every downstream clock (#7141 follow-up). Fetchers that report no counters
+  // keep the settlement-only grading.
+  const firmsValue = firmsResult.status === 'fulfilled' ? firmsResult.value : null;
+  const firmsReportedCalls = typeof firmsValue?._firmsFulfilledCalls === 'number';
+  const firmsOk = firmsResult.status === 'fulfilled'
+    && (!firmsReportedCalls || firmsValue._firmsFulfilledCalls > 0);
   const cwfisOk = cwfisResult.status === 'fulfilled';
   const bcOk = bcResult.status === 'fulfilled';
   if (!firmsOk && !cwfisOk && !bcOk) {
@@ -614,7 +624,14 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
       `All wildfire upstreams failed (firms: ${firmsErr}; cwfis: ${cwfisErr}; bc-wildfire: ${bcErr})`,
     );
   }
-  if (!firmsOk) console.warn(`[wildfire] FIRMS failed: ${firmsResult.reason?.message || firmsResult.reason}`);
+  if (!firmsOk) {
+    // Distinguish the two failure shapes: a rejected fetch has a reason, a
+    // zero-coverage fetch settled fine but every region call failed.
+    const firmsErr = firmsResult.status === 'rejected'
+      ? (firmsResult.reason?.message || firmsResult.reason)
+      : `0 of ${(firmsValue?._firmsFulfilledCalls ?? 0) + (firmsValue?._firmsFailedCalls ?? 0)} region calls succeeded`;
+    console.warn(`[wildfire] FIRMS failed: ${firmsErr}`);
+  }
   if (!cwfisOk) console.warn(`[wildfire] CWFIS failed: ${cwfisResult.reason?.message || cwfisResult.reason}`);
   if (!bcOk) console.warn(`[wildfire] BC wildfire failed: ${bcResult.reason?.message || bcResult.reason}`);
 
