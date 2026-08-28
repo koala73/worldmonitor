@@ -1,13 +1,15 @@
 /**
- * Parity check for the entitlement-watchdog mirror files.
+ * Parity check for the marketing/dashboard mirror files.
  *
- * `src/services/entitlement-watchdog.ts` (dashboard bundle) and
- * `pro-test/src/services/entitlement-watchdog.ts` (marketing bundle)
- * MUST be byte-identical. The dashboard version is what the unit tests
- * in entitlement-watchdog.test.mts cover; pro-test imports its own copy
- * because the bundles have no cross-root imports (Vite alias `@`
- * resolves to the pro-test root only). A silent drift between the two
- * copies would leave /pro's watchdog uncovered and possibly broken.
+ * `src/services/` and `pro-test/src/services/` are separate bundle roots with
+ * no cross-root imports (the Vite alias `@` resolves to the pro-test root
+ * only), so a helper both surfaces need is physically duplicated. The copies
+ * MUST be byte-identical: a silent drift leaves one bundle running an older
+ * implementation with nothing failing loudly.
+ *
+ * `entitlement-watchdog.ts` left this set with #7222 — the marketing copy's
+ * only consumer was the dormant `initOverlay`, so the watchdog is now
+ * dashboard-only and covered directly by entitlement-watchdog.test.mts.
  *
  * Prior-art: the scripts/shared/ mirror convention
  * (feedback_shared_dir_mirror_requirement).
@@ -22,15 +24,16 @@ import { dirname, resolve } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
- * `timeout-signal.ts` joined the mirror set with WORLDMONITOR-109. The
- * watchdog imports it as `./timeout-signal`, so that specifier only resolves
- * in both bundles if the helper exists at the same relative path under each
- * root. Drift there is quieter than watchdog drift and therefore worse: the
- * import still resolves, nothing fails loudly, and one bundle silently loses
- * its old-engine fallback and goes back to throwing before `fetch`.
+ * `timeout-signal.ts` joined the mirror set with WORLDMONITOR-109 and is what
+ * is left of it. Each root's `checkout-transport.ts` imports it as
+ * `./timeout-signal`, so that specifier only resolves in both bundles if the
+ * helper exists at the same relative path under each root. Drift here is
+ * quiet and therefore dangerous: the import still resolves, nothing fails
+ * loudly, and one bundle silently loses its old-engine fallback and goes back
+ * to throwing before `fetch` — the exact WORLDMONITOR-109 crash, which was a
+ * /pro bug, so the marketing copy is the one that must not rot.
  */
 const MIRRORED = [
-  'services/entitlement-watchdog.ts',
   'services/timeout-signal.ts',
 ];
 

@@ -16,13 +16,12 @@
  * silently instead (an entitlement poll that could never succeed).
  *
  * MIRROR PAIR: `src/services/timeout-signal.ts` and
- * `pro-test/src/services/timeout-signal.ts` MUST stay byte-identical, because
- * `entitlement-watchdog.ts` — itself a byte-identical mirror across the two
- * roots — imports it as `./timeout-signal`. That specifier only resolves in
- * both bundles if the helper sits at the same relative path under each root.
- * `tests/entitlement-watchdog-parity.test.mts` enforces both halves; drift
- * there is quiet, because the import still resolves while one bundle loses
- * its fallback.
+ * `pro-test/src/services/timeout-signal.ts` MUST stay byte-identical. Each
+ * root's `checkout-transport.ts` imports it as `./timeout-signal`, and that
+ * specifier only resolves in both bundles if the helper sits at the same
+ * relative path under each root. `tests/marketing-mirror-parity.test.mts`
+ * enforces it; drift is quiet, because the import still resolves while one
+ * bundle loses its fallback.
  */
 export function createTimeoutSignal(ms: number): AbortSignal {
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {

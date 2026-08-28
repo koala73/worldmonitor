@@ -1397,10 +1397,11 @@ export default function App() {
   //      default dashboard with no context.
   useEffect(() => {
     // #4449: the Dodo overlay is no longer used — checkout redirects top-level
-    // to the hosted page (see startCheckout). We no longer call initOverlay(),
-    // which dynamically imported the heavy Dodo overlay SDK on /pro mount and
-    // registered a success banner that can never fire (after payment the buyer
-    // lands on the dashboard, not /pro — handleCheckoutReturn owns that UX).
+    // to the hosted page (see startCheckout). The `initOverlay()` call that
+    // used to live here dynamically imported the heavy Dodo overlay SDK on
+    // /pro mount and registered a success banner that can never fire (after
+    // payment the buyer lands on the dashboard, not /pro — handleCheckoutReturn
+    // owns that UX). #7222 deleted the function and the SDK dependency.
     // Consume checkout intent from URL (set by afterSignInUrl on the
     // checkout-initiated sign-in). No-op for any other /pro entry
     // point; strips params before any await so a reload can't re-fire.
