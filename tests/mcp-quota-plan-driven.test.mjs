@@ -167,6 +167,34 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     assert.equal(pipe.count, 250, 'clamp target is the resolved plan limit');
   });
 
+  it('a lower-limit rejection does not SET the shared counter below a higher charged allowance', async () => {
+    // Same user/day key: Pro Business already charged 200 of 250, then a
+    // user_key (50/day) rejection must owner-rollback only — not clamp to 50.
+    const pipe = makePipelineMock({ initialCount: 200, initialLimitFloor: 250 });
+    const res = await reserveQuota('u1', pipe.pipeline, 50);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'cap-exceeded');
+    assert.equal(res.floor, 50, 'the rejecting path still reports its own limit');
+    assert.equal(pipe.count, 200, 'higher-limit reservations must survive the clamp');
+  });
+
+  it('an unlimited reserve marks the floor so a later 50/day rejection cannot clamp', async () => {
+    const pipe = makePipelineMock({ initialCount: 100_000 });
+    const unlimited = await reserveQuota('u1', pipe.pipeline, null);
+    assert.equal(unlimited.ok, true);
+    assert.equal(pipe.limitFloor, -1);
+    const rejected = await reserveQuota('u1', pipe.pipeline, 50);
+    assert.equal(rejected.ok, false);
+    assert.equal(pipe.count, 100_001, 'unlimited metering must not be SET back to 50');
+  });
+
+  it('a successful finite reserve records the charged limit as the clamp floor', async () => {
+    const pipe = makePipelineMock({ initialCount: 10 });
+    const res = await reserveQuota('u1', pipe.pipeline, 250);
+    assert.equal(res.ok, true);
+    assert.equal(pipe.limitFloor, 250);
+  });
+
   it('concurrent overshoot rejections never clamp below the plan limit (#7272)', async () => {
     // Reachable interleaving on origin/main: counter already overshot at 52,
     // limit 50. A and B both INCR, A rollback+clamps an aggregate that still
@@ -219,11 +247,21 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     assert.equal(pipe.count, 0, 'a failed EVAL must not move the counter');
   });
 
+  it('dailyQuotaFloorKey is a date-stable sibling of dailyCounterKey', async () => {
+    const { dailyCounterKey, dailyQuotaFloorKey } = await import('../server/_shared/pro-mcp-token.ts');
+    const date = new Date(Date.UTC(2026, 4, 10, 12, 0, 0));
+    assert.equal(dailyQuotaFloorKey('u1', date), 'mcp:pro-usage-floor:u1:2026-05-10');
+    assert.equal(dailyCounterKey('u1', date), 'mcp:pro-usage:u1:2026-05-10');
+    assert.equal(dailyQuotaFloorKey(''), '', 'empty userId fails closed like the counter key');
+  });
+
   it('reservation recovery is a single EVAL, not a post-rollback probe clamp', () => {
     const source = readFileSync(fileURLToPath(new URL('../api/mcp/quota.ts', import.meta.url)), 'utf8');
     assert.match(source, /RESERVE_QUOTA_SCRIPT/, 'reserveQuota must ship a Redis script');
+    assert.match(source, /dailyQuotaFloorKey/, 'clamp floor must be a sibling of the daily counter');
     assert.match(source, /redis\.call\('INCR'/, 'script must INCR first');
     assert.match(source, /redis\.call\('DECR'/, 'script must owner-rollback on reject');
+    assert.match(source, /redis\.call\('GET', KEYS\[2\]/, 'script must read the charged-limit floor');
     assert.match(source, /redis\.call\('SET'/, 'script must clamp residue atomically');
     assert.doesNotMatch(
       source,

@@ -172,4 +172,18 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
       `concurrent rejection recovery must not undercount below ${QUOTA_LIMIT}; observed ${pipe.count}`,
     );
   });
+
+  it('#7298: a 50/day rejection against a 250-charged counter leaves the higher usage in place', async () => {
+    const { deps, pipe } = makeProDeps({
+      pipelineOpts: { initialCount: 200, initialLimitFloor: 250 },
+    });
+
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 429, 'the 50/day default must still reject at 201');
+    assert.equal(
+      pipe.count,
+      200,
+      `clamp must not refund the 250-limit charge; observed ${pipe.count}`,
+    );
+  });
 });

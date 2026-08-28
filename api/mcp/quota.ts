@@ -1,5 +1,6 @@
 import {
   dailyCounterKey,
+  dailyQuotaFloorKey,
   PRO_DAILY_QUOTA_LIMIT,
   PRO_DAILY_QUOTA_TTL_SECONDS,
 } from '../../server/_shared/pro-mcp-token';
@@ -79,10 +80,16 @@ export function resolvePlanDrivenMcpAllowance(
  * Redis serializes EVAL, so increment, this-request rollback, and F4
  * residue clamp cannot interleave with another reservation. After this
  * script's DECR, any remaining overshoot is failed-rollback residue —
- * not another request's still-live increment — so SET-to-limit cannot
- * steal a concurrent reservation and later undercount the meter (#7272).
+ * not another request's still-live increment — so SET cannot steal a
+ * concurrent reservation and later undercount the meter (#7272).
+ *
+ * KEYS[2] records the highest allowance that successfully reserved today
+ * (`-1` = unlimited). Clamp never drops the shared counter below that
+ * floor, so a user_key 50/day rejection cannot SET away a Pro Business
+ * 250/day charge on the same key.
  *
  * KEYS[1] = daily counter
+ * KEYS[2] = max successful limit today (`-1` = unlimited seen)
  * ARGV[1] = finite limit, or empty for unlimited (meter only)
  * ARGV[2] = TTL seconds
  *
@@ -98,8 +105,30 @@ if ttl ~= nil and ttl > 0 then
   redis.call('EXPIRE', KEYS[1], ttl)
 end
 
+local function read_floor()
+  local raw = redis.call('GET', KEYS[2])
+  if raw == false or raw == nil or raw == '' then return nil end
+  return tonumber(raw)
+end
+
+local function write_floor(value)
+  redis.call('SET', KEYS[2], value)
+  if ttl ~= nil and ttl > 0 then
+    redis.call('EXPIRE', KEYS[2], ttl)
+  end
+end
+
+local function remember_success(limit)
+  local seen = read_floor()
+  if seen == -1 then return end
+  if seen == nil or limit > seen then
+    write_floor(limit)
+  end
+end
+
 local limit_raw = ARGV[1]
 if limit_raw == nil or limit_raw == false or limit_raw == '' then
+  write_floor(-1)
   return {1, n}
 end
 
@@ -110,16 +139,22 @@ if limit == nil or limit < 0 then
 end
 
 if n <= limit then
+  remember_success(limit)
   return {1, n}
 end
 
 n = redis.call('DECR', KEYS[1])
-if n > limit then
-  redis.call('SET', KEYS[1], limit)
-  if ttl ~= nil and ttl > 0 then
-    redis.call('EXPIRE', KEYS[1], ttl)
+local seen = read_floor()
+if seen ~= -1 then
+  local clamp_to = limit
+  if seen ~= nil and seen > clamp_to then clamp_to = seen end
+  if n > clamp_to then
+    redis.call('SET', KEYS[1], clamp_to)
+    if ttl ~= nil and ttl > 0 then
+      redis.call('EXPIRE', KEYS[1], ttl)
+    end
+    n = clamp_to
   end
-  n = limit
 end
 return {0, n}
 `;
@@ -140,15 +175,17 @@ export async function reserveQuota(
   // the rejection branch below is skipped entirely.
   const limit = resolveDailyLimit(planDailyLimit);
   const key = dailyCounterKey(userId);
-  if (!key) return { ok: false, reason: 'redis-unavailable' };
+  const floorKey = dailyQuotaFloorKey(userId);
+  if (!key || !floorKey) return { ok: false, reason: 'redis-unavailable' };
 
   let pipeResult: Array<{ result?: unknown; error?: unknown }> | null;
   try {
     pipeResult = await pipeline([[
       'EVAL',
       RESERVE_QUOTA_SCRIPT,
-      1,
+      2,
       key,
+      floorKey,
       limit === null ? '' : limit,
       PRO_DAILY_QUOTA_TTL_SECONDS,
     ]]);
