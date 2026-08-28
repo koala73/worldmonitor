@@ -79,6 +79,8 @@ export class CircuitBreaker<T> {
   private backgroundRefreshPromises = new Map<string, Promise<StaleRefreshOutcome<T>>>();
   private recoveryProbeInFlight = false;
   private recoveryProbePromise: Promise<RecoveryProbeOutcome<T>> | null = null;
+  private recoveryProbeCacheKey: string | null = null;
+  private recoveryProbeRequired = false;
   private recoveryProbeGeneration = 0;
   private maxCacheEntries: number;
   private persistentStaleCeilingMs: number;
@@ -111,22 +113,30 @@ export class CircuitBreaker<T> {
     return Date.now() < this.state.cooldownUntil;
   }
 
-  /** Move an expired breaker into one bounded recovery probe.
+  /** Move an expired or caller-cancelled breaker into one bounded recovery probe.
    *
    *  Cooldown reads must stay side-effect-free; recovery is decided only when
    *  execute() is ready to start a new upstream call. Retaining one failure
    *  below the threshold makes a failed probe reopen the breaker immediately.
+   *  Caller-owned cancellation keeps the next upstream call in half-open mode
+   *  without starting a cooldown that would block unrelated callers.
    *  Call this only when creating that call — never when joining an in-flight
    *  SWR — so the matching finally always owns the flag.
    */
-  private beginRecoveryProbeIfCooldownExpired(): boolean {
-    if (this.state.cooldownUntil === 0 || this.isStateOnCooldown() || this.recoveryProbeInFlight) {
+  private beginRecoveryProbeIfCooldownExpired(cacheKey: string): boolean {
+    if (
+      this.isStateOnCooldown()
+      || this.recoveryProbeInFlight
+      || (this.state.cooldownUntil === 0 && !this.recoveryProbeRequired)
+    ) {
       return false;
     }
     this.state.cooldownUntil = 0;
     this.state.failures = Math.max(0, this.maxFailures - 1);
+    this.recoveryProbeRequired = false;
     this.recoveryProbeGeneration += 1;
     this.recoveryProbeInFlight = true;
+    this.recoveryProbeCacheKey = cacheKey;
     return true;
   }
 
@@ -134,9 +144,17 @@ export class CircuitBreaker<T> {
     return this.recoveryProbeInFlight && this.recoveryProbeGeneration === generation;
   }
 
-  private finishRecoveryProbe(): void {
+  private requireRecoveryProbeRetry(generation: number): void {
+    if (this.isCurrentRecoveryProbe(generation)) {
+      this.recoveryProbeRequired = true;
+    }
+  }
+
+  private finishRecoveryProbe(generation: number): void {
+    if (!this.isCurrentRecoveryProbe(generation)) return;
     this.recoveryProbeInFlight = false;
     this.recoveryProbePromise = null;
+    this.recoveryProbeCacheKey = null;
     this.recoveryProbeGeneration += 1;
   }
 
@@ -329,8 +347,8 @@ export class CircuitBreaker<T> {
     this.state.failures = 0;
     this.state.cooldownUntil = 0;
     this.state.lastError = undefined;
+    this.recoveryProbeRequired = false;
     this.lastDataState = { mode: 'live', timestamp, offline: false };
-    this.finishRecoveryProbe();
   }
 
   private writeCacheEntry(data: T, cacheKey: string, timestamp: number): void {
@@ -365,7 +383,6 @@ export class CircuitBreaker<T> {
     this.backgroundRefreshPromises.clear();
     this.persistentLoadPromises.clear();
     this.persistentLoadedKeys.clear();
-    this.finishRecoveryProbe();
     if (this.persistEnabled) {
       this.deleteAllPersistentCache();
     }
@@ -383,7 +400,6 @@ export class CircuitBreaker<T> {
     this.backgroundRefreshPromises.clear();
     this.persistentLoadPromises.clear();
     this.persistentLoadedKeys.clear();
-    this.finishRecoveryProbe();
   }
 
   recordFailure(error?: string): void {
@@ -391,6 +407,7 @@ export class CircuitBreaker<T> {
     this.state.lastError = error;
     if (this.state.failures >= this.maxFailures) {
       this.state.cooldownUntil = Date.now() + this.cooldownMs;
+      this.recoveryProbeRequired = false;
       console.warn(`[${this.name}] On cooldown for ${this.cooldownMs / 1000}s after ${this.state.failures} failures`);
     }
   }
@@ -483,11 +500,15 @@ export class CircuitBreaker<T> {
         return cachedEntry.data as R;
       }
       const pending = this.recoveryProbePromise;
+      const probeCacheKey = this.recoveryProbeCacheKey;
       if (pending) {
         const outcome = await pending;
-        if (outcome.kind === 'success') return outcome.data as R;
-        this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
-        return defaultValue;
+        if (outcome.kind === 'success') {
+          if (probeCacheKey === cacheKey) return outcome.data as R;
+        } else {
+          this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
+          return defaultValue;
+        }
       }
     }
 
@@ -514,7 +535,7 @@ export class CircuitBreaker<T> {
       // spawn a parallel request.
       let refreshPromise = this.backgroundRefreshPromises.get(cacheKey);
       if (!refreshPromise) {
-        const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired();
+        const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired(cacheKey);
         const probeGeneration = this.recoveryProbeGeneration;
         refreshPromise = (async (): Promise<StaleRefreshOutcome<T>> => {
           try {
@@ -547,7 +568,10 @@ export class CircuitBreaker<T> {
             // the default and matches the market-quote use case.
             return { kind: 'not-cacheable' };
           } catch (e) {
-            if (options.ignoreError?.(e)) return { kind: 'failed' };
+            if (options.ignoreError?.(e)) {
+              if (recoveryProbe) this.requireRecoveryProbeRetry(probeGeneration);
+              return { kind: 'failed' };
+            }
             if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
               return { kind: 'failed' };
             }
@@ -556,7 +580,7 @@ export class CircuitBreaker<T> {
             return { kind: 'failed' };
           }
         })().finally(() => {
-          if (recoveryProbe) this.finishRecoveryProbe();
+          if (recoveryProbe) this.finishRecoveryProbe(probeGeneration);
           this.backgroundRefreshPromises.delete(cacheKey);
         });
         this.backgroundRefreshPromises.set(cacheKey, refreshPromise);
@@ -588,7 +612,7 @@ export class CircuitBreaker<T> {
       return cachedEntry.data as R;
     }
 
-    const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired();
+    const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired(cacheKey);
     const probeGeneration = this.recoveryProbeGeneration;
     const liveWork = (async (): Promise<RecoveryProbeOutcome<T>> => {
       try {
@@ -605,7 +629,10 @@ export class CircuitBreaker<T> {
         }
         return { kind: 'success', data: result };
       } catch (e) {
-        if (options.ignoreError?.(e)) throw e;
+        if (options.ignoreError?.(e)) {
+          if (recoveryProbe) this.requireRecoveryProbeRetry(probeGeneration);
+          throw e;
+        }
         if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
           return { kind: 'failed' };
         }
@@ -615,10 +642,15 @@ export class CircuitBreaker<T> {
         this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
         return { kind: 'failed' };
       } finally {
-        if (recoveryProbe) this.finishRecoveryProbe();
+        if (recoveryProbe) this.finishRecoveryProbe(probeGeneration);
       }
     })();
-    if (recoveryProbe) this.recoveryProbePromise = liveWork;
+    if (recoveryProbe) {
+      this.recoveryProbePromise = liveWork.then(
+        (outcome) => outcome,
+        () => ({ kind: 'failed' }),
+      );
+    }
     const liveOutcome = await liveWork;
     if (liveOutcome.kind === 'success') return liveOutcome.data as R;
     return defaultValue;

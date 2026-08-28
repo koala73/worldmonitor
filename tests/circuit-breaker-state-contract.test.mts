@@ -8,6 +8,14 @@ import {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function createDeferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: () => void = () => {};
+  const promise = new Promise<void>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 test('cooldown queries do not reset the accumulated failure count', async () => {
   clearAllCircuitBreakers();
   const breaker = createCircuitBreaker<{ value: string }>({
@@ -85,6 +93,150 @@ test('concurrent callers wait for the same recovery probe', async () => {
   assert.equal(await blockedCaller, 7, 'a caller arriving during a recovery probe must await that probe result');
   assert.equal(extraCalls, 0, 'a caller arriving during a recovery probe must not bypass half-open state');
 });
+
+test('a caller for another cache key waits for recovery, then runs its own fetch', async () => {
+  clearAllCircuitBreakers();
+  const breaker = createCircuitBreaker<number>({
+    name: 'state-contract-cross-key-probe',
+    maxFailures: 2,
+    cooldownMs: 20,
+  });
+
+  breaker.recordFailure('first');
+  breaker.recordFailure('second');
+  await sleep(30);
+
+  const held = createDeferred();
+  const probeA = breaker.execute(async () => {
+    await held.promise;
+    return 7;
+  }, 0, { cacheKey: 'A' });
+
+  let bCalls = 0;
+  const callerB = breaker.execute(async () => {
+    bCalls += 1;
+    return 9;
+  }, 0, { cacheKey: 'B' });
+
+  held.resolve();
+  assert.equal(await probeA, 7);
+  assert.equal(await callerB, 9, 'a different cache key must not receive the probe owner payload');
+  assert.equal(bCalls, 1, 'the different cache key must fetch after the shared health probe succeeds');
+});
+
+test('probe-owner cancellation does not reject an unrelated waiter', async () => {
+  clearAllCircuitBreakers();
+  const breaker = createCircuitBreaker<number>({
+    name: 'state-contract-probe-cancel-waiter',
+    maxFailures: 2,
+    cooldownMs: 20,
+  });
+
+  breaker.recordFailure('first');
+  breaker.recordFailure('second');
+  await sleep(30);
+
+  const held = createDeferred();
+  const cancelled = new Error('caller cancelled');
+  const owner = breaker.execute(async () => {
+    await held.promise;
+    throw cancelled;
+  }, 0, {
+    ignoreError: (error) => error === cancelled,
+  });
+  const waiterOutcome = breaker.execute(async () => 9, 0).then(
+    (value) => ({ kind: 'resolved' as const, value }),
+    (error: unknown) => ({ kind: 'rejected' as const, error }),
+  );
+
+  held.resolve();
+  await assert.rejects(owner, (error: unknown) => error === cancelled);
+  assert.deepEqual(
+    await waiterOutcome,
+    { kind: 'resolved', value: 0 },
+    'caller-owned cancellation must stay private to the caller that supplied ignoreError',
+  );
+});
+
+test('an ignored cancelled probe keeps the next concurrent retry half-open', async () => {
+  clearAllCircuitBreakers();
+  const breaker = createCircuitBreaker<number>({
+    name: 'state-contract-probe-cancel-retry',
+    maxFailures: 2,
+    cooldownMs: 20,
+  });
+
+  breaker.recordFailure('first');
+  breaker.recordFailure('second');
+  await sleep(30);
+
+  const cancelled = new Error('caller cancelled');
+  await assert.rejects(
+    breaker.execute(async () => {
+      throw cancelled;
+    }, 0, { ignoreError: (error) => error === cancelled }),
+    (error: unknown) => error === cancelled,
+  );
+
+  const held = createDeferred();
+  let retryCalls = 0;
+  let bypassCalls = 0;
+  const retry = breaker.execute(async () => {
+    retryCalls += 1;
+    await held.promise;
+    return 7;
+  }, 0);
+  const waiter = breaker.execute(async () => {
+    bypassCalls += 1;
+    return 9;
+  }, 0);
+
+  held.resolve();
+  assert.equal(await retry, 7);
+  assert.equal(await waiter, 7, 'the concurrent caller must join the retry probe');
+  assert.equal(retryCalls, 1);
+  assert.equal(bypassCalls, 0, 'ignored cancellation must not reopen unrestricted live traffic');
+});
+
+for (const reset of ['clearCache', 'clearMemoryCache', 'recordSuccess'] as const) {
+  test(`${reset} does not release an active recovery probe`, async () => {
+    clearAllCircuitBreakers();
+    const breaker = createCircuitBreaker<number>({
+      name: `state-contract-active-probe-${reset}`,
+      maxFailures: 2,
+      cooldownMs: 20,
+      cacheTtlMs: 0,
+    });
+
+    breaker.recordFailure('first');
+    breaker.recordFailure('second');
+    await sleep(30);
+
+    const held = createDeferred();
+    const probe = breaker.execute(async () => {
+      await held.promise;
+      return 7;
+    }, 0, { cacheKey: 'A' });
+
+    if (reset === 'recordSuccess') {
+      breaker.recordSuccess(11, 'unrelated');
+    } else {
+      breaker[reset]();
+    }
+
+    let bypassCalls = 0;
+    const waiter = breaker.execute(async () => {
+      bypassCalls += 1;
+      return 9;
+    }, 0, { cacheKey: 'A' });
+
+    await sleep(0);
+    assert.equal(bypassCalls, 0, `${reset} must leave the active probe latch owned by that probe`);
+    held.resolve();
+    assert.equal(await probe, 7);
+    assert.equal(await waiter, 7);
+  });
+}
 
 test('joining an in-flight SWR after cooldown expiry does not latch the recovery probe', async () => {
   clearAllCircuitBreakers();
