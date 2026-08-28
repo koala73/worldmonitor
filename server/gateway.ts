@@ -543,8 +543,10 @@ type PostToGetCompatParse =
  * clients that POST with no payload. Any other body is all-or-nothing: a
  * JSON object of scalars and scalar arrays becomes query parameters; mixed
  * or nested values, non-object JSON, and malformed JSON return 400 without
- * applying a partial translation. The 1 MB byte cap and 200-values-per-key
- * cap from #3550 still bound expansion cost.
+ * applying a partial translation. Compatibility-body errors are only
+ * returned when a GET handler exists for the path; unknown routes still
+ * 404/405. Body-read failures return 400. The 1 MB byte cap and
+ * 200-values-per-key cap from #3550 still bound expansion cost.
  */
 function parsePostToGetCompatBody(bodyText: string): PostToGetCompatParse {
   if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
@@ -1752,19 +1754,31 @@ export function createDomainGateway(
     if (!matchedHandler && request.method === 'POST') {
       if (isPostToGetCompatibleBodySize(request.headers)) {
         const url = new URL(request.url);
-        const bodyText = await request.clone().text();
-        const parsed = parsePostToGetCompatBody(bodyText);
-        if (parsed.status !== 'ok') {
-          emitRequest(400, 'malformed_request', null);
-          return new Response(JSON.stringify(postToGetCompatErrorBody(parsed)), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
-          });
+        const getProbe = new Request(url.toString(), { method: 'GET', headers: request.headers });
+        if (router.match(getProbe)) {
+          let bodyText: string;
+          try {
+            bodyText = await request.clone().text();
+          } catch {
+            emitRequest(400, 'malformed_request', null);
+            return new Response(JSON.stringify({ error: 'malformed_request' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            });
+          }
+          const parsed = parsePostToGetCompatBody(bodyText);
+          if (parsed.status !== 'ok') {
+            emitRequest(400, 'malformed_request', null);
+            return new Response(JSON.stringify(postToGetCompatErrorBody(parsed)), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            });
+          }
+          applyPostToGetCompatFields(url.searchParams, parsed.fields);
+          const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+          matchedHandler = router.match(getReq);
+          if (matchedHandler) request = getReq;
         }
-        applyPostToGetCompatFields(url.searchParams, parsed.fields);
-        const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
-        matchedHandler = router.match(getReq);
-        if (matchedHandler) request = getReq;
       }
     }
     if (!matchedHandler) {

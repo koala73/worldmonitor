@@ -634,6 +634,42 @@ describe('POST-to-GET compatibility hardening', () => {
     assert.deepEqual(await res.json(), { error: 'Unsupported POST compatibility body' });
     assert.equal(seenUrl(), null);
   });
+
+  it('does not reject an unsupported body when no GET fallback route exists', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ filter: { nested: true } });
+
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/does-not-exist', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+        'Content-Type': 'application/json',
+        'Content-Length': String(Buffer.byteLength(body)),
+      },
+      body,
+    }));
+
+    assert.equal(res.status, 404);
+    assert.equal(seenUrl(), null);
+  });
+
+  it('returns 400 when the POST compatibility body cannot be read', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['AAPL'] });
+    const req = compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) });
+    req.clone = () => ({
+      text: async () => {
+        throw new Error('stream reset');
+      },
+    }) as Request;
+
+    const res = await handler(req);
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'malformed_request' });
+    assert.equal(seenUrl(), null);
+  });
 });
 
 // ---------------------------------------------------------------------------
