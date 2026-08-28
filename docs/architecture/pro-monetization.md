@@ -26,7 +26,7 @@ Products are served at runtime from `https://api.worldmonitor.app/api/product-ca
 - **Pro Annual** — `pdt_0NbttMIfjLWC10jHQWYgJ` ($399.99/yr, ~17% discount).
 - **API Starter** — `pdt_0NbttVmG1SERrxhygbbUq` ($99.99/mo, 1k req/day).
 - **API Annual** — `pdt_0Nbu2lawHYE3dv2THgSEV` ($999/yr).
-- **API Business** — `pdt_0Nbttg7NuOJrhbyBGCius` ($299.99/mo, 10k req/day, commercial-use license + 5 bundled Pro seats (same company email domain); monthly-only, published in #4945; Starter→Business upgrades ride the Dodo collection/portal path).
+- **API Business** — `pdt_0Nbttg7NuOJrhbyBGCius` ($299.99/mo, 10k req/day, commercial-use license + 5 bundled Pro seats (any corporate email domain); monthly-only, published in #4945; Starter→Business upgrades ride the Dodo collection/portal path).
 - **Enterprise** — `mailto:enterprise@worldmonitor.app` (contact sales).
 
 ## Auth — Clerk

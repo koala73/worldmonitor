@@ -374,7 +374,7 @@ function pricingSummary() {
         name: 'API Business',
         price_usd_monthly: byKey.api_business.price,
         price_usd_yearly: byKey.api_business_annual.price,
-        features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day', dashboardAi('api_business'), '5 Pro licenses included', 'same company email required', 'commercial license — for your customers', 'priority support'],
+        features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day', dashboardAi('api_business'), '5 Pro licenses — invite users at any corporate email domain', 'commercial license — for your customers', 'priority support'],
       },
       {
         name: 'Enterprise',
