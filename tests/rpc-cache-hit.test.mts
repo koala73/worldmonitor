@@ -54,7 +54,11 @@ function jsonResponse(payload: unknown): Response {
 
 function installFetchMock(options: FetchMockOptions = {}) {
   const cache = new Map<string, string>();
-  const calls = { relay: 0, stac: 0 };
+  const calls = {
+    relay: 0,
+    stac: 0,
+    redisSets: [] as RedisSetCommand[],
+  };
 
   mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -67,6 +71,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
     if (url === 'https://redis.test/') {
       const command = JSON.parse(String(init?.body ?? '[]')) as RedisSetCommand;
       assert.equal(command[0], 'SET');
+      calls.redisSets.push(command);
       cache.set(command[1], command[2]);
       return jsonResponse({ result: 'OK' });
     }
@@ -101,6 +106,29 @@ function installFetchMock(options: FetchMockOptions = {}) {
   });
 
   return calls;
+}
+
+function redisPayloads(calls: ReturnType<typeof installFetchMock>): unknown[] {
+  return calls.redisSets.map(([, , payload]) => JSON.parse(payload));
+}
+
+function assertOnlyNegativeSentinels(calls: ReturnType<typeof installFetchMock>) {
+  const payloads = redisPayloads(calls);
+  assert.ok(payloads.length > 0, 'expected at least one Redis SET');
+  assert.deepEqual([...new Set(payloads)], ['__WM_NEG__']);
+}
+
+function assertPositiveFlightCache(calls: ReturnType<typeof installFetchMock>) {
+  const payloads = redisPayloads(calls);
+  assert.ok(payloads.length > 0, 'expected at least one Redis SET');
+  for (const payload of payloads) {
+    assert.notEqual(payload, '__WM_NEG__', 'live lookup must not write a negative sentinel');
+    assert.equal(typeof payload, 'object');
+    assert.ok(payload !== null);
+    const record = payload as { flights?: unknown; source?: unknown };
+    assert.equal(record.source, 'aviationstack');
+    assert.ok(Array.isArray(record.flights) && record.flights.length > 0);
+  }
 }
 
 function flightContext() {
@@ -146,6 +174,11 @@ describe('RPC cache-hit reporting', { concurrency: 1 }, () => {
     assert.equal(cold.cacheHit, false);
     assert.equal(warm.cacheHit, true);
     assert.equal(calls.stac, 1, 'the cached failure must not retry STAC');
+    assert.deepEqual(cold.scenes, []);
+    assert.equal(cold.totalResults, 0);
+    assert.deepEqual(warm.scenes, []);
+    assert.equal(warm.totalResults, 0);
+    assertOnlyNegativeSentinels(calls);
   });
 
   it('reports a live flight lookup as a miss and its immediate repeat as a hit', async () => {
@@ -158,5 +191,10 @@ describe('RPC cache-hit reporting', { concurrency: 1 }, () => {
     assert.equal(cold.cacheHit, false);
     assert.equal(warm.cacheHit, true);
     assert.equal(calls.relay, 1, 'the repeat must use the cached flight result');
+    assert.ok(cold.flights.length > 0);
+    assert.equal(cold.source, 'aviationstack');
+    assert.ok(warm.flights.length > 0);
+    assert.equal(warm.source, 'aviationstack');
+    assertPositiveFlightCache(calls);
   });
 });
