@@ -1912,7 +1912,9 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     process.env.USAGE_TELEMETRY = '1';
     process.env.AXIOM_API_TOKEN = 'axiom-test-token';
     const events = [];
+    const deliveryHeaders = [];
     globalThis.fetch = async (_input, init) => {
+      deliveryHeaders.push(init.headers);
       events.push(...JSON.parse(init.body));
       return new Response('{}', { status: 200 });
     };
@@ -1933,6 +1935,8 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(JSON.stringify(events).includes(secret), false);
     assert.equal(Object.hasOwn(events[0], 'client_secret'), false);
     assert.equal(Object.hasOwn(events[0], 'client_id'), false);
+    assert.equal(deliveryHeaders.length, 1);
+    assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
   });
 
   it('limiter 429 emits usage reason rate_limit_429', async () => {
@@ -1942,7 +1946,9 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
       limit: async () => ({ success: false }),
     });
     const events = [];
+    const deliveryHeaders = [];
     globalThis.fetch = async (_input, init) => {
+      deliveryHeaders.push(init.headers);
       events.push(...JSON.parse(init.body));
       return new Response('{}', { status: 200 });
     };
@@ -1954,5 +1960,7 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(events.length, 1);
     assert.equal(events[0].reason, 'rate_limit_429');
     assert.equal(events[0].route, '/api/oauth/token');
+    assert.equal(deliveryHeaders.length, 1);
+    assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
   });
 });
