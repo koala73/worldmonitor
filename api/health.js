@@ -2205,6 +2205,14 @@ function classifyKey(name, redisKey, opts, ctx) {
     resilienceCacheState,
     failedDatasets,
   } = meta;
+  // A missing marker can result from a swallowed marker write or Redis
+  // restore, so it is not enough to establish pre-activation by itself. Grant
+  // the on-demand grace only when the marker was read absent and neither the
+  // current payload nor readable seed metadata shows a prior publication.
+  const isPreActivationOnDemand = isOnDemand
+    && !hasData
+    && !hasMeta
+    && ctx.activationStates?.get(name) === false;
   const rankableRecordCount = name === 'educationAttainment' && Object.hasOwn(ctx, 'educationPayloadRankableCount')
     ? ctx.educationPayloadRankableCount
     : metaRankableCount;
@@ -2303,6 +2311,9 @@ function classifyKey(name, redisKey, opts, ctx) {
     // warn on that path while the sibling `sourceState` path (where staleness
     // IS measured) correctly reported EMPTY. One physical state, two verdicts.
     else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && (seedStale !== true || fault)) absent = 'EMPTY';
+    // Ahead of EMPTY_DATA_OK_KEYS only when no readable publication evidence
+    // exists. Marker absence alone never overrides normal data/meta semantics.
+    else if (isPreActivationOnDemand) absent = 'EMPTY_ON_DEMAND';
     else if (EMPTY_DATA_OK_KEYS.has(name)) absent = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) absent = 'EMPTY_ON_DEMAND';
     // Deliberately the ONLY branch rollout softening touches: an absent data

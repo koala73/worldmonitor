@@ -24,7 +24,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -672,5 +672,100 @@ describe('base-guard fetches lazily and only to disprove a violation (#6764)', (
     assert.equal(result.status, 0);
     assert.equal(result.base, 'main', 'the resolved base is reported so the hook can use it');
     assert.equal(result.count, 1);
+  });
+});
+
+describe('per-gate cache keys one gate on its own worktree inputs (#6765)', () => {
+  // The whole-tree cache never hits in a merge/amend loop — any byte anywhere
+  // invalidates every gate. gate-read/gate-write key ONE gate on the worktree
+  // bytes of its declared inputs. Every case executes the real script against
+  // a real repo; the refusal rules mirror cache-read/cache-write.
+  function makeGateRepo() {
+    const root = makeRepo({
+      baseFiles: {
+        'docs/readme.md': 'docs\n',
+        'docs/café notes.md': 'unicode path\n',
+        'src/app.ts': 'code\n',
+      },
+    });
+    return { root, cache: join(root, '.git', 'wm-prepush-gate-cache') };
+  }
+
+  const gateRead = (fx, gate, diffResolved, specs) =>
+    attest(fx.root, ['gate-read', fx.cache, gate, diffResolved, '--', ...specs]).status;
+  const gateWrite = (fx, gate, diffResolved, attestable, specs) =>
+    attest(fx.root, ['gate-write', fx.cache, gate, diffResolved, attestable, '--', ...specs]).status;
+
+  test('hit: an unchanged input set read back after a green write', () => {
+    const fx = makeGateRepo();
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 3, 'no entry yet -> miss');
+    assert.equal(gateWrite(fx, 'lint-md', 'true', 'true', ['docs']), 0);
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 0, 'identical inputs -> hit');
+  });
+
+  test('miss: changing a declared input (including a unicode-named one) invalidates the gate', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    write(fx.root, 'docs/café notes.md', 'edited\n');
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 3, 'a C-quotable path must still be part of the key');
+  });
+
+  test('no cross-gate invalidation: changing gate B inputs leaves gate A green', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'typecheck', 'true', 'true', ['src']);
+    write(fx.root, 'docs/readme.md', 'changed\n');
+    assert.equal(gateRead(fx, 'typecheck', 'true', ['src']), 0, 'docs edits must not re-pay the typecheck');
+    assert.equal(gateRead(fx, 'typecheck', 'true', ['docs']), 3, 'same gate, different input set -> different key');
+  });
+
+  test('untracked-but-unignored files are inputs; gitignored output is not', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    write(fx.root, 'docs/new-page.md', 'brand new\n');
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 3, 'a NEW file is an input change');
+    rmSync(join(fx.root, 'docs/new-page.md'));
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 0, 'removing it restores the key');
+    write(fx.root, '.gitignore', 'docs/generated/\n');
+    git(fx.root, ['add', '.gitignore']);
+    git(fx.root, ['commit', '--quiet', '-m', 'ignore output']);
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    write(fx.root, 'docs/generated/out.md', 'build output\n');
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 0, 'ignored build output must not churn the key');
+  });
+
+  test('refusals mirror the whole-tree cache: dirty worktree cannot write, unresolved diff can neither write nor read', () => {
+    const fx = makeGateRepo();
+    const refused = attest(fx.root, ['gate-write', fx.cache, 'lint-md', 'true', 'false', '--', 'docs']);
+    assert.equal(refused.status, 3);
+    assert.match(refused.stdout, /not byte-identical/);
+    assert.equal(existsSync(join(fx.cache, 'lint-md')), false, 'a refused write must leave no entry');
+
+    assert.equal(gateWrite(fx, 'lint-md', 'false', 'true', ['docs']), 3, 'RUN_ALL runs must not mint entries');
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    assert.equal(gateRead(fx, 'lint-md', 'false', ['docs']), 3, 'a blind run must not trust entries either');
+  });
+
+  test('a second worktree with identical bytes shares the hit through the common cache dir', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'typecheck', 'true', 'true', ['src']);
+    const second = join(fx.root, '..', `${fx.root.split('/').pop()}-wt2`);
+    git(fx.root, ['worktree', 'add', '--detach', '--quiet', second, 'main']);
+    fixtures.push(second);
+    // The hook derives the cache dir from --git-common-dir, which resolves to
+    // the SAME location from both worktrees; here that dir is passed
+    // explicitly, so assert the resolution too.
+    const commonFromSecond = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      cwd: second, env: isolatedGitEnv(), encoding: 'utf8',
+    }).trim();
+    // realpath both sides: macOS reports /var as /private/var.
+    assert.equal(realpathSync(commonFromSecond), realpathSync(join(fx.root, '.git')));
+    const status = attest(second, ['gate-read', fx.cache, 'typecheck', 'true', '--', 'src']).status;
+    assert.equal(status, 0, 'identical input bytes in a sibling worktree must hit');
+  });
+
+  test('a gate name that could escape the cache dir is a usage error', () => {
+    const fx = makeGateRepo();
+    assert.equal(gateWrite(fx, '../evil', 'true', 'true', ['docs']), 2);
+    assert.equal(existsSync(join(fx.root, '.git', 'evil')), false);
   });
 });

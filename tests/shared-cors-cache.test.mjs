@@ -101,7 +101,18 @@ test('shared responses use public CORS and RSS is the private exception (#7216)'
           hexes: [{ h3: '8928308280fffff', lat: 37.77, lon: -122.42, level: 'high', pct: 20 }],
         }) });
       }
+      if (key === 'geocode:37.700,-122.400') {
+        return json({ result: JSON.stringify({
+          country: 'United States',
+          code: 'US',
+          displayName: 'United States',
+          error: '',
+        }) });
+      }
       throw new Error(`unexpected Redis key: ${key}`);
+    }
+    if (url === `${REDIS_URL}/pipeline`) {
+      return json([{ result: [59, 60] }]);
     }
     if (url.startsWith('https://www.fwdstart.me/')) {
       return new Response('<a href="/p/test"></a><img alt="Shared CORS Test Post" /><span>Jan 12, 2026</span>');
@@ -133,6 +144,8 @@ test('shared responses use public CORS and RSS is the private exception (#7216)'
   const { default: fwdStart } = await import(moduleUrl('../api/fwdstart.js', suffix));
   const fwdStartResponse = await fwdStart(request('/api/fwdstart'));
 
+  process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   const { default: reverseGeocode } = await import(moduleUrl('../api/reverse-geocode.js', suffix));
   const pendingWrites = [];
   const reverseGeocodeResponse = await reverseGeocode(
@@ -140,6 +153,8 @@ test('shared responses use public CORS and RSS is the private exception (#7216)'
     { waitUntil: (work) => pendingWrites.push(Promise.resolve(work)) },
   );
   await Promise.all(pendingWrites);
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
   const { default: rssProxy } = await import(moduleUrl('../api/rss-proxy.js', suffix));
   const rssProxyResponse = await rssProxy(request('/api/rss-proxy?url=https%3A%2F%2Ftechcrunch.com%2Ffeed', {
