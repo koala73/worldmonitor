@@ -111,10 +111,11 @@ export function resolveInsightsSynthesis(options = {}) {
     validatorMode,
     sanitizeTitle,
     sourceFromStory,
+    promptScopedMembers,
   } = options;
   const hasExplicitBriefCluster = Object.prototype.hasOwnProperty.call(options, 'briefCluster');
   const briefCluster = hasExplicitBriefCluster ? options.briefCluster : undefined;
-  const composerOptions = { validatorMode, sanitizeTitle, sourceFromStory };
+  const composerOptions = { validatorMode, sanitizeTitle, sourceFromStory, promptScopedMembers };
   if (hasExplicitBriefCluster) composerOptions.briefCluster = briefCluster;
 
   const { composeResult, parsedSynthesis } = synthesisResult

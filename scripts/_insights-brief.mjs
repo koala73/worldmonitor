@@ -128,6 +128,21 @@ Rules:
 // beyond the primary headline without ballooning the prompt eight-fold.
 const SYNTHESIS_PROMPT_MAX_MEMBER_TITLES = 2;
 
+// The ONE member-title selection, shared by the prompt and (when the prompt
+// shows members) the gate. #7261 review, both reviewers: the prompt capped at
+// two titles while storyGroundText admitted every member, so an invented fact
+// that happened to match a HIDDEN third title still passed — the exact
+// asymmetry the flag exists to close, reopened one slice deeper. Symmetry is
+// only real if both sides read the same list.
+export function promptMemberTitles(story) {
+  return (Array.isArray(story?.memberTitles) ? story.memberTitles : [])
+    .map((title) => (typeof title === 'string' ? title.trim() : ''))
+    .filter((title, index, all) => title
+      && title !== story?.primaryTitle
+      && all.indexOf(title) === index)
+    .slice(0, SYNTHESIS_PROMPT_MAX_MEMBER_TITLES);
+}
+
 export function synthesisUserPrompt(stories, { includeMemberTitles = false } = {}) {
   const lines = stories.map((story, i) => {
     // #6428: the model writes the published brief from these lines, so this
@@ -154,12 +169,7 @@ export function synthesisUserPrompt(stories, { includeMemberTitles = false } = {
     // Member titles render as sub-lines OF the numbered story, so the system
     // prompt's "facts present in the numbered story text" already covers them
     // and a claim drawn from one still requires that story's citation.
-    const members = (Array.isArray(story.memberTitles) ? story.memberTitles : [])
-      .map((title) => (typeof title === 'string' ? title.trim() : ''))
-      .filter((title, index, all) => title
-        && title !== story.primaryTitle
-        && all.indexOf(title) === index)
-      .slice(0, SYNTHESIS_PROMPT_MAX_MEMBER_TITLES)
+    const members = promptMemberTitles(story)
       .map((title) => `   - also reported: ${title}`);
     return [head, ...members].join('\n');
   });
@@ -237,9 +247,16 @@ export function parseBriefSynthesis(rawText, storyCount) {
  *
  * `primarySource` is deliberately NOT here — see `maskAttributedSources`.
  */
-export const storyGroundText = (story) => [
+export const storyGroundText = (story, { promptScopedMembers = false } = {}) => [
   story?.primaryTitle,
-  ...(Array.isArray(story?.memberTitles) ? story.memberTitles : []),
+  // Flag-off keeps the legacy permissive mirror (documented below as unable to
+  // cause a false rejection). Flag-on grounds against EXACTLY the member titles
+  // the prompt rendered — promptMemberTitles is the shared selection — so the
+  // gate can no longer accept a fact from a headline the model was never shown
+  // (#7261 review).
+  ...(promptScopedMembers
+    ? promptMemberTitles(story)
+    : (Array.isArray(story?.memberTitles) ? story.memberTitles : [])),
 ].filter(Boolean).join(' — ');
 
 const REGEX_METACHARACTERS = /[.*+?^${}()|[\]\\]/g;
@@ -380,6 +397,10 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
  */
 export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   const validatorMode = opts.validatorMode === 'shadow' ? 'shadow' : 'enforce';
+  // True only when the caller rendered member titles into the prompt — the
+  // gate then grounds against the same capped selection (see storyGroundText).
+  const promptScopedMembers = opts.promptScopedMembers === true;
+  const groundOpts = { promptScopedMembers };
   const sanitize = typeof opts.sanitizeTitle === 'function' ? opts.sanitizeTitle : (t) => t;
   const sourceFromStory = typeof opts.sourceFromStory === 'function' ? opts.sourceFromStory : () => null;
   // `detail` carries WHAT tripped the gate, not just which gate. Both
@@ -461,7 +482,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
       .filter((n) => n >= 1 && n <= topStories.length);
     // Contract: every claim is cited. An uncited sentence is unverifiable.
     if (cited.length === 0) return reject(BRIEF_REJECTIONS.LEAD_UNCITED);
-    const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1])).join(' — ');
+    const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1], groundOpts)).join(' — ');
     // Fail CLOSED on empty ground. Both validators return ok:true for an empty
     // ground string, so an untitled cluster would accept every proper noun and
     // every number in the sentence — a dead gate that looks like a healthy one.
@@ -511,7 +532,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // `bare` — only the gate's view is masked.
     const validation = validateNoHallucinatedProperNouns(
       maskAttributedSources(bare, [story.primarySource]),
-      storyGroundText(story),
+      storyGroundText(story, groundOpts),
     );
     if (!validation.ok) {
       hallucinatedLines++;

@@ -6,6 +6,7 @@ import {
   briefUserPrompt,
   synthesisSystemPrompt,
   synthesisUserPrompt,
+  promptMemberTitles,
   maskAttributedSources,
   composeSynthesizedBrief,
   composeSynthesizedBriefResult,
@@ -1065,5 +1066,75 @@ describe('synthesisUserPrompt member titles (prompt/gate symmetry)', () => {
       synthesisUserPrompt(bare, { includeMemberTitles: true }),
       synthesisUserPrompt(bare),
     );
+  });
+});
+
+
+describe('prompt-scoped grounding symmetry (#7261 review)', () => {
+  // Cluster with FOUR distinct member titles; the prompt shows only two.
+  const stories = [{
+    primaryTitle: 'Regional apple prices rose sharply in Chile last quarter, growers say',
+    primarySource: 'Reuters',
+    primaryLink: 'http://apple',
+    sources: ['Reuters', 'AP News'],
+    memberTitles: [
+      'Regional apple prices rose sharply in Chile last quarter, growers say',
+      'Growers blame drought for the Chile price surge',
+      'Retailers warn of pass-through to consumers',
+      'Bolivia mulls emergency fruit imports amid the squeeze',
+    ],
+  }];
+  const lines = [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }];
+  // "Bolivia" exists ONLY in member title #3 — beyond the two-title cap, so
+  // the model was never shown it.
+  const hiddenMemberFact = JSON.stringify({
+    lead: 'Bolivia weighed emergency imports as Chile prices rose sharply [1].',
+    lines,
+  });
+  // "drought" claims ground in member title #1 — WITHIN the cap.
+  const shownMemberFact = JSON.stringify({
+    lead: 'Growers blamed drought as prices rose sharply in Chile last quarter [1].',
+    lines,
+  });
+
+  it('flag ON: a fact from a member title the model was never shown is rejected', () => {
+    const out = composeSynthesizedBriefResult(hiddenMemberFact, stories, {
+      validatorMode: 'enforce',
+      promptScopedMembers: true,
+    });
+    assert.equal(out.brief, null, 'evidence the model could not have seen must not license a claim');
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.match(out.rejectionDetail, /bolivia/);
+  });
+
+  it('flag ON: a fact from a SHOWN member title still grounds', () => {
+    const out = composeSynthesizedBriefResult(shownMemberFact, stories, {
+      validatorMode: 'enforce',
+      promptScopedMembers: true,
+    });
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+    assert.match(out.brief.lead, /drought/);
+  });
+
+  it('flag OFF: the legacy permissive mirror is unchanged', () => {
+    // Documented pre-existing stance: members in the ground text but not the
+    // prompt can only make the gate MORE permissive, never falsely reject.
+    const out = composeSynthesizedBriefResult(hiddenMemberFact, stories, {
+      validatorMode: 'enforce',
+    });
+    assert.equal(out.rejection, null, 'flag-off behavior is byte-for-byte the legacy gate');
+    assert.ok(out.brief);
+  });
+
+  it('the prompt and the gate read the same selection', () => {
+    // The prompt renders exactly promptMemberTitles; flag-on grounding admits
+    // exactly primaryTitle + promptMemberTitles. One list, two consumers.
+    const prompt = synthesisUserPrompt(stories, { includeMemberTitles: true });
+    for (const shown of promptMemberTitles(stories[0])) {
+      assert.ok(prompt.includes(shown), 'every grounded member title is shown');
+    }
+    assert.ok(!prompt.includes('Bolivia'), 'a hidden title is neither shown nor (flag-on) grounded');
+    assert.equal(promptMemberTitles(stories[0]).length, 2);
   });
 });

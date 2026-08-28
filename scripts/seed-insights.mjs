@@ -858,11 +858,16 @@ async function fetchInsights() {
   }
   // The acceptance gate is the composer itself (#6001), so the chain can never
   // accept output the composer would later reject.
+  // One read drives BOTH the prompt and the gate: symmetry between what the
+  // model sees and what grounds it is the whole point of the flag, and two
+  // separate reads could drift.
+  const promptMemberTitlesEnabled = process.env.INSIGHTS_PROMPT_MEMBER_TITLES === '1';
   const synthesisComposerOptions = {
     briefCluster,
     validatorMode: BRIEF_VALIDATOR_MODE,
     sanitizeTitle,
     sourceFromStory: briefSourceFromStory,
+    promptScopedMembers: promptMemberTitlesEnabled,
   };
   const composeFromText = (text) =>
     composeInsightsSynthesis(text, topStories, synthesisComposerOptions).brief;
@@ -879,7 +884,7 @@ async function fetchInsights() {
         // enabled per-service (INSIGHTS_PROMPT_MEMBER_TITLES=1) for A/B
         // against the [brief_synthesis]/[brief_repair] log counters.
         userPrompt: synthesisUserPrompt(topStories, {
-          includeMemberTitles: process.env.INSIGHTS_PROMPT_MEMBER_TITLES === '1',
+          includeMemberTitles: promptMemberTitlesEnabled,
         }),
         maxTokens: 900,
         // A model whose output trips the editorial gates must not strand the
