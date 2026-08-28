@@ -621,6 +621,9 @@ test('the breaker opens on the per-signature counter, never the producer-wide on
   for (const code of [
     INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
     INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.PARSE,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.COMPOSER_ERROR,
   ]) {
     assert.equal(
       shouldSkipInsightsSynthesis({
@@ -629,6 +632,23 @@ test('the breaker opens on the per-signature counter, never the producer-wide on
       }),
       false,
       `${code} must never open the breaker`,
+    );
+  }
+
+  for (const code of [
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_EMPTY,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_NUMERIC_FACT,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_GROUNDING,
+  ]) {
+    assert.equal(
+      shouldSkipInsightsSynthesis({
+        previousMeta: meta({ lastSynthesisFailureCode: code }),
+        synthesisSignature: sig,
+      }),
+      true,
+      `${code} can open the breaker after repeated identical gate failures`,
     );
   }
 

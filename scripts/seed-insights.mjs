@@ -925,7 +925,7 @@ async function fetchInsights() {
   if (synthesisBreakerOpen) {
     console.warn(
       `  [brief_synthesis] breaker open: ${previousFreshnessMeta?.lastSynthesisFailureCode} `
-      + `x${previousFreshnessMeta?.consecutiveFailures} on an unchanged story set — `
+      + `x${previousFreshnessMeta?.sameSignatureFailures} on an unchanged story set — `
       + 'skipping synthesis spend until the stories change',
     );
   }

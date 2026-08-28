@@ -42,9 +42,12 @@ export const INSIGHTS_COMPOSER_THREW = 'composer-threw';
 //     there is no spend to save.
 //   - The signature must match exactly. Any change in the top stories —
 //     ordering included, since ordering changes the prompt — re-arms synthesis.
-const BREAKER_INELIGIBLE_CODES = new Set([
-  INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
-  INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER,
+const BREAKER_ELIGIBLE_CODES = new Set([
+  INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_EMPTY,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_NUMERIC_FACT,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_GROUNDING,
 ]);
 export const INSIGHTS_BREAKER_MIN_CONSECUTIVE = 3;
 
@@ -82,8 +85,7 @@ export function shouldSkipInsightsSynthesis({
   if (failures < minConsecutive) return false;
   const code = previous.lastSynthesisFailureCode;
   if (typeof code !== 'string' || code.length === 0) return false;
-  if (!Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES).includes(code)) return false;
-  if (BREAKER_INELIGIBLE_CODES.has(code)) return false;
+  if (!BREAKER_ELIGIBLE_CODES.has(code)) return false;
   return previous.failedStoriesSignature === synthesisSignature;
 }
 
