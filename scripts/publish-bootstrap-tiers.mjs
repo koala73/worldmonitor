@@ -11,6 +11,8 @@ import {
   extraCanadaAlertsCutoverReadKeys,
 } from '../shared/canada-alerts-cutover.js';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { evaluatePublishedBootstrapVolume } from './_bootstrap-payload-budget.mjs';
+import { compactNaturalEventsDashboardPayload } from './_natural-events-dashboard.mjs';
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
@@ -181,6 +183,11 @@ export async function assembleBootstrapTierPayload(registry, options = {}) {
       value = stripXFeedRestrictedFields(value);
     }
     if (names[index] === 'wildfires') value = compactWildfireDashboardPayload(value);
+    // NHC forecast cones on natural:events:v1 are seasonally unbounded
+    // (~346 KB for four storms on 2026-08-28) and ride the slow tier that
+    // every client downloads. Compact at publish time; the canonical Redis
+    // value stays intact for RPC / MCP (#7288).
+    if (names[index] === 'naturalEvents') value = compactNaturalEventsDashboardPayload(value);
     data[names[index]] = value;
   }
 
@@ -245,10 +252,14 @@ export async function publishBootstrapTier(tier, options = {}) {
     timeoutMs: options.redisTimeoutMs,
   });
   const payloadLedger = buildBootstrapPayloadByteLedger(payload);
+  const keyBytes = Object.fromEntries(
+    payloadLedger.keys.map(({ key, valueBytes }) => [key, valueBytes]),
+  );
   const largestKeys = [...payloadLedger.keys]
     .sort((left, right) => right.bytes - left.bytes || left.key.localeCompare(right.key))
     .slice(0, PUBLISHER_LARGEST_KEY_LIMIT)
     .map(({ key, bytes }) => ({ key, bytes }));
+  const volume = evaluatePublishedBootstrapVolume(tier, payloadLedger);
   const resolveStorage = options.resolveStorage
     ?? (storageEnv => resolveR2StorageConfig(storageEnv, { profile: 'bootstrap' }));
   const storage = resolveStorage(env);
@@ -274,7 +285,9 @@ export async function publishBootstrapTier(tier, options = {}) {
     missing: payload.missing.length,
     bytes: write?.bytes ?? null,
     payloadBytes: payloadLedger.totalBytes,
+    keyBytes,
     largestKeys,
+    volume,
     kv,
   };
 }
@@ -350,9 +363,19 @@ export async function runPublisherLoop(options = {}) {
         artifactBytes: result?.bytes ?? null,
         payloadBytes: result?.payloadBytes ?? null,
         missing: result?.missing ?? null,
+        keyBytes: result?.keyBytes ?? {},
         largestKeys: result?.largestKeys ?? [],
+        volumeAlerts: result?.volume?.alerts ?? [],
         kv: kvStatus,
       });
+      if (result?.volume?.alerts?.length) {
+        logger.warn?.('[bootstrap-volume] published payload exceeded frozen budget', {
+          tier,
+          payloadBytes: result.payloadBytes ?? null,
+          ceilingBytes: result.volume.ceilingBytes ?? null,
+          alerts: result.volume.alerts,
+        });
+      }
     } catch (error) {
       logger.warn?.(`[bootstrap-r2] publish failed tier=${tier}: ${error?.message ?? String(error)}`);
     } finally {

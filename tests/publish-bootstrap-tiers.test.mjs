@@ -16,6 +16,7 @@ import {
   CANADA_ALERTS_LEGACY_KEY,
   CANADA_ALERTS_SIBLING_KEY,
 } from '../shared/canada-alerts-cutover.js';
+import { NATURAL_EVENTS_CONE_MAX_POINTS } from '../scripts/_natural-events-dashboard.mjs';
 
 const execFileAsync = promisify(execFile);
 const TEST_ENV = {
@@ -255,6 +256,20 @@ describe('publishBootstrapTier', () => {
       Buffer.byteLength(JSON.stringify({ data: { example: { answer: 42 } }, missing: [] }), 'utf8'),
     );
     assert.deepEqual(result.largestKeys, [{ key: 'example', bytes: 23 }]);
+    assert.deepEqual(result.keyBytes, { example: 13 });
+    assert.equal(result.volume.alerts[0].kind, 'unmeasured-key');
+  });
+
+  it('does not warn as unmeasured when the Iran sunset gate publishes iranEvents', async () => {
+    const result = await publishBootstrapTier('fast', {
+      env: TEST_ENV,
+      resolveRegistry: () => ({ fast: { iranEvents: 'conflict:iran-events:v1' } }),
+      fetchFn: async () => pipelineResponse([raw({ events: [] })]),
+      resolveStorage: () => ({ mode: 's3' }),
+      putObject: async () => ({ bytes: 10 }),
+    });
+    assert.equal(result.keyBytes.iranEvents, Buffer.byteLength(JSON.stringify({ events: [] }), 'utf8'));
+    assert.deepEqual(result.volume.alerts, []);
   });
 
   it('returns only the five largest key-size fields without payload values', async () => {
@@ -273,6 +288,34 @@ describe('publishBootstrapTier', () => {
     assert.equal(result.largestKeys.length, 5);
     assert.deepEqual(result.largestKeys.map(({ key }) => key), ['f', 'e', 'd', 'c', 'b']);
     assert.equal(JSON.stringify(result.largestKeys).includes('xxxxxx'), false);
+    assert.deepEqual(Object.keys(result.keyBytes).sort(), ['a', 'b', 'c', 'd', 'e', 'f']);
+    assert.equal(result.keyBytes.f, Buffer.byteLength(JSON.stringify('xxxxxx'), 'utf8'));
+    assert.equal(JSON.stringify(result.keyBytes).includes('xxxxxx'), false);
+  });
+
+  it('compacts NHC cones on naturalEvents before measuring and writing', async () => {
+    const points = [];
+    for (let i = 0; i < 1939; i += 1) {
+      const theta = (i / 1939) * Math.PI * 2;
+      points.push({ lon: -40 + Math.cos(theta) * 2 + i * 1e-9, lat: 15 + Math.sin(theta) * 2 });
+    }
+    points.push({ ...points[0] });
+    const writes = [];
+    const result = await publishBootstrapTier('slow', {
+      env: TEST_ENV,
+      resolveRegistry: () => ({ slow: { naturalEvents: 'natural:events:v1' } }),
+      fetchFn: async () => pipelineResponse([raw({
+        events: [{ id: 'nhc-AL04-3', conePolygon: [{ points }] }],
+      })]),
+      resolveStorage: () => ({ mode: 's3' }),
+      putObject: async (...args) => { writes.push(args); return { bytes: 10 }; },
+    });
+
+    const published = writes[0][2].payload.data.naturalEvents.events[0];
+    assert.equal(published.id, 'nhc-AL04-3');
+    assert.ok(published.conePolygon[0].points.length <= NATURAL_EVENTS_CONE_MAX_POINTS);
+    assert.ok(result.keyBytes.naturalEvents < Buffer.byteLength(JSON.stringify({ events: [{ id: 'nhc-AL04-3', conePolygon: [{ points }] }] }), 'utf8'));
+    assert.equal(writes.length, 1);
   });
 
   it('performs no PUT when Redis assembly fails', async () => {
@@ -342,6 +385,39 @@ describe('runPublisherLoop', () => {
       logger: { info() {}, warn() {}, error() {} },
     });
     assert.deepEqual(calls, ['fast']);
+  });
+
+  it('emits an operational volume warning without aborting the loop', async () => {
+    const warns = [];
+    const infos = [];
+    await runPublisherLoop({
+      publishTier: async (tier) => ({
+        tier,
+        generatedAt: 1,
+        bytes: 10,
+        payloadBytes: 99,
+        missing: 0,
+        keyBytes: { example: 13 },
+        largestKeys: [],
+        volume: {
+          ceilingBytes: 1,
+          alerts: [{ kind: 'tier-ceiling', tier, bytes: 99, limitBytes: 1 }],
+        },
+        kv: { skipped: true },
+      }),
+      now: () => 0,
+      sleep: async () => {},
+      maxPublishes: 1,
+      logger: {
+        info: (...args) => infos.push(args),
+        warn: (...args) => warns.push(args),
+        error() {},
+      },
+    });
+    assert.equal(infos.length, 1);
+    assert.equal(warns.length, 1);
+    assert.match(String(warns[0][0]), /\[bootstrap-volume\]/);
+    assert.equal(warns[0][1].alerts[0].kind, 'tier-ceiling');
   });
 });
 

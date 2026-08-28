@@ -25,6 +25,7 @@ import {
   bootstrapTierKeyNames,
   resolveBootstrapRegistry,
 } from './_bootstrap-tier-keys.js';
+import { compactNaturalEventsDashboardPayload } from './_natural-events-dashboard.js';
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
 import {
   canadaAlertsCutoverFallbackValue,
@@ -356,6 +357,7 @@ function hasBootstrapCredentialCookie(req) {
 
 const NEG_SENTINEL = '__WM_NEG__';
 export const compactWildfireBootstrapPayload = compactWildfireDashboardPayload;
+export { compactNaturalEventsDashboardPayload };
 
 async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
   const result = new Map();
@@ -669,6 +671,7 @@ export default async function handler(req, ctx) {
         responseValue = stripXFeedRestrictedFields(val);
       }
       if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
+      if (names[i] === 'naturalEvents') responseValue = compactNaturalEventsDashboardPayload(responseValue);
       data[names[i]] = responseValue;
     } else {
       missing.push(names[i]);
