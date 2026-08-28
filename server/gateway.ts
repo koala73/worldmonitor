@@ -10,7 +10,7 @@
  */
 
 import { createRouter, type RouteDescriptor } from './router';
-import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
+import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 // @ts-expect-error — JS module, no declaration file
@@ -878,12 +878,17 @@ export function createDomainGateway(
       })());
     }
 
-    // Origin check — skip CORS headers for disallowed origins
+    // Origin check — refuse with readable CORS so the browser can surface the
+    // 403 instead of an opaque network error (#6411). Success paths still use
+    // getCorsHeaders (canonical fallback for strangers).
     if (isDisallowedOrigin(request)) {
       emitRequest(403, 'origin_403', null);
       return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
         status: 403,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getOriginDeniedCorsHeaders(request),
+        },
       });
     }
 

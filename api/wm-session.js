@@ -3,7 +3,7 @@
 // caller submits legacy tester keys during migration, those keys are moved into
 // short-lived HttpOnly cookies so they stop living in JS-readable storage.
 
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { issueSessionToken, validateSessionToken } from './_session.js';
@@ -167,8 +167,15 @@ export default async function handler(req, ctx) {
     return response;
   };
 
+  // Build CORS before the origin gate. A bare 403 without ACAO matching the
+  // request Origin is opaque to the browser (credentials:include fetch throws
+  // a network error), so the client cannot tell "refused" from "never arrived"
+  // — the same blind spot as WORLDMONITOR-WG (#6411). Disallowed origins get
+  // refusal-specific headers that echo their Origin; allowed origins use the
+  // normal credentialed helper below.
   if (isDisallowedOrigin(req)) {
-    const response = new Response('Forbidden', { status: 403 });
+    const deniedCors = getOriginDeniedCorsHeaders(req, 'POST, OPTIONS');
+    const response = new Response('Forbidden', { status: 403, headers: deniedCors });
     emitWmSessionUsage(ctx, req, response, startedAt, 'origin_403');
     return response;
   }

@@ -31,6 +31,10 @@ const ALLOWED_ORIGIN_PATTERNS = [
   //   worldmonitor-git-<branch>-eliewm.vercel.app / worldmonitor-<hash>-eliewm.vercel.app
   // Mirror of api/_cors.js + server/cors.ts (see superset note above).
   /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
+  // Google Translate proxy of our dashboard (#6411). Mirror api/_cors.js —
+  // Worker allowlist must stay a superset or preflights echo the canonical
+  // fallback and translated readers stay dark.
+  /^https:\/\/(?:[a-z0-9-]+-)*worldmonitor-app\.translate\.goog$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -101,8 +105,27 @@ function hasPublicCorsPolicy(pathname) {
   return PUBLIC_CORS_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+/**
+ * Strip trailing DNS dots before allowlist match (#6411). Keep in sync with
+ * api/_cors.js / server/cors.ts. ACAO still echoes the raw Origin.
+ */
+function originForAllowlistMatch(origin) {
+  if (!origin) return '';
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.replace(/\.+$/, '');
+    if (!host || host === url.hostname) return origin;
+    url.hostname = host;
+    return url.origin;
+  } catch {
+    return origin;
+  }
+}
+
 export function isAllowedOrigin(origin) {
-  return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(origin));
+  if (!origin) return false;
+  const candidate = originForAllowlistMatch(origin);
+  return ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(candidate));
 }
 
 export { hasPublicCorsPolicy };

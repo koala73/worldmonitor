@@ -47,6 +47,19 @@ test('isAllowedOrigin accepts apex worldmonitor.app and subdomains', () => {
   assert.equal(isAllowedOrigin('https://commodity.worldmonitor.app'), true);
 });
 
+test('isAllowedOrigin accepts trailing-dot FQDN first-party origins (#6411)', () => {
+  assert.equal(isAllowedOrigin('https://worldmonitor.app.'), true);
+  assert.equal(isAllowedOrigin('https://tech.worldmonitor.app.'), true);
+  assert.equal(isAllowedOrigin('https://www.worldmonitor.app.'), true);
+});
+
+test('isAllowedOrigin accepts Google Translate proxy origins of worldmonitor.app (#6411)', () => {
+  assert.equal(isAllowedOrigin('https://www-worldmonitor-app.translate.goog'), true);
+  assert.equal(isAllowedOrigin('https://worldmonitor-app.translate.goog'), true);
+  assert.equal(isAllowedOrigin('https://tech-worldmonitor-app.translate.goog'), true);
+  assert.equal(isAllowedOrigin('https://evil-example-com.translate.goog'), false);
+});
+
 test('isAllowedOrigin accepts Vercel preview deploys under the eliewm team scope (mirrors api/_cors.js)', () => {
   // The project deploys previews under the "eliewm" Vercel team scope, so URLs
   // end in `-eliewm.vercel.app` (git-branch alias AND hash deployment forms).

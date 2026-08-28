@@ -12,6 +12,10 @@ const PRODUCTION_PATTERNS: RegExp[] = [
   //   worldmonitor-<hash>-eliewm.vercel.app        (deployment URL)
   // Tight on purpose: never a bare *.vercel.app (this is a security allowlist).
   /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
+  // Google Translate proxy of our dashboard (#6411). Keep in sync with
+  // api/_cors.js and workers/api-cors-preflight — anonymous readers only;
+  // SameSite=Lax keeps first-party auth cookies off this cross-site origin.
+  /^https:\/\/(?:[a-z0-9-]+-)*worldmonitor-app\.translate\.goog$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -71,8 +75,28 @@ const EXPOSED_HEADERS = [
   'X-Military-Bbox',
 ].join(', ');
 
+/**
+ * Strip trailing DNS dots before allowlist match so
+ * `https://tech.worldmonitor.app.` is treated as first-party (#6411).
+ * Matching only — ACAO still echoes the raw Origin.
+ */
+function originForAllowlistMatch(origin: string): string {
+  if (!origin) return '';
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.replace(/\.+$/, '');
+    if (!host || host === url.hostname) return origin;
+    url.hostname = host;
+    return url.origin;
+  } catch {
+    return origin;
+  }
+}
+
 export function isAllowedOrigin(origin: string): boolean {
-  return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+  if (!origin) return false;
+  const candidate = originForAllowlistMatch(origin);
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }
 
 export function getCorsHeaders(req: Request): Record<string, string> {
@@ -80,6 +104,24 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': ALLOWED_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSED_HEADERS,
+    'Access-Control-Max-Age': '3600',
+    'Vary': 'Origin',
+  };
+}
+
+/**
+ * Echo the caller's Origin on an explicit origin_403 so credentials:include
+ * fetches can read the status instead of seeing an opaque network failure.
+ * Refusal bodies only — keep in sync with api/_cors.js (#6411).
+ */
+export function getOriginDeniedCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') || '';
+  return {
+    'Access-Control-Allow-Origin': origin || 'https://worldmonitor.app',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': ALLOWED_HEADERS,
