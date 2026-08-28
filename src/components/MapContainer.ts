@@ -175,6 +175,10 @@ export class MapContainer {
   private globeInitToken = 0;
   private rendererInitToken = 0;
   private viewportActionToken = 0;
+  private humanViewportInteractionToken = 0;
+  private readonly invalidateViewportAuthority = (): void => {
+    this.markHumanViewportInteraction();
+  };
   private rendererReady = false;
   private rendererReadyWaiters = new Set<{
     resolve: () => void;
@@ -266,6 +270,14 @@ export class MapContainer {
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
+
+    // A WebMCP viewport action can wait for the UI and renderer to become
+    // ready. Any direct map interaction during that wait owns the newer user
+    // intent and must make the queued agent action stale before it can apply.
+    this.container.addEventListener('pointerdown', this.invalidateViewportAuthority, { passive: true });
+    this.container.addEventListener('wheel', this.invalidateViewportAuthority, { passive: true });
+    this.container.addEventListener('touchstart', this.invalidateViewportAuthority, { passive: true });
+    this.container.addEventListener('keydown', this.invalidateViewportAuthority);
 
     if (!this.useDeckGL && this.initialState.layers?.resilienceScore) {
       this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
@@ -797,6 +809,15 @@ export class MapContainer {
     return new Promise((resolve, reject) => {
       this.rendererReadyWaiters.add({ resolve, reject });
     });
+  }
+
+  /** Snapshot direct user interaction so delayed agent work cannot overwrite it. */
+  public getViewportAuthorityToken(): number {
+    return this.humanViewportInteractionToken;
+  }
+
+  private markHumanViewportInteraction(): void {
+    this.humanViewportInteractionToken += 1;
   }
 
   /** Resolves after the current programmatic viewport transition is visible. */
@@ -1671,6 +1692,10 @@ export class MapContainer {
 
   public destroy(): void {
     this.destroyed = true;
+    this.container.removeEventListener('pointerdown', this.invalidateViewportAuthority);
+    this.container.removeEventListener('wheel', this.invalidateViewportAuthority);
+    this.container.removeEventListener('touchstart', this.invalidateViewportAuthority);
+    this.container.removeEventListener('keydown', this.invalidateViewportAuthority);
     this.rendererReady = false;
     const rendererReadyWaiters = Array.from(this.rendererReadyWaiters);
     this.rendererReadyWaiters.clear();

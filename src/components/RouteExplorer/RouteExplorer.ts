@@ -7,6 +7,7 @@
  */
 
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { checkoutConsentHtml } from '@/utils/legal-links';
 import { openExternalUrl } from '@/services/external-navigation';
 import { CountryPicker } from './CountryPicker';
 import { Hs2Picker } from './Hs2Picker';
@@ -140,6 +141,7 @@ export class RouteExplorer {
   public close(): void {
     if (!this.isOpen || !this.root) return;
     this.generationId++;
+    this.isLoading = false;
     if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
     document.removeEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.helpOverlay?.element.remove();
@@ -349,6 +351,7 @@ export class RouteExplorer {
       setTrustedHtml(this.contentEl, trustedHtml('<div class="re-content__gate">' +
         '<h3>Unlock route intelligence</h3>' +
         '<ul><li>Current route with chokepoint risk</li><li>Ranked bypass alternatives</li><li>Overland corridor options</li></ul>' +
+        checkoutConsentHtml(WEB_APP_ORIGIN) +
         '<button class="re-content__upgrade" type="button">Upgrade to PRO</button>' +
         '</div>', "legacy direct innerHTML migration"));
       const btn = this.contentEl.querySelector<HTMLButtonElement>('.re-content__upgrade');
@@ -593,12 +596,26 @@ export class RouteExplorer {
     return false;
   }
 
+  /**
+   * AviationCommandBar and the findings modal mount on `document.body` with
+   * aria-modal=true while Route Explorer is still open. The Explorer capture
+   * listener is registered first, so without this check Escape (and the
+   * number/letter shortcuts) steal keys from the stacked dialog.
+   */
+  private isStackedModalFocused(): boolean {
+    const el = document.activeElement;
+    if (!(el instanceof Element) || !this.root) return false;
+    const modal = el.closest('[aria-modal="true"]');
+    return modal !== null && !this.root.contains(modal);
+  }
+
   private blurActiveInput(): void {
     (document.activeElement as HTMLElement | null)?.blur();
   }
 
   private handleGlobalKeydown = (e: KeyboardEvent): void => {
     if (!this.isOpen || !this.root) return;
+    if (this.isStackedModalFocused()) return;
 
     if (e.key === 'Escape') {
       if (this.helpOverlay) {

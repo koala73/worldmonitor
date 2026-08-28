@@ -5,9 +5,11 @@ description: "World Monitor 如何处理个人数据的完整说明：我们收�
 
 {/* REVIEW — operator based in Dubai, UAE; effective date 10 July 2026. Still optional: (1) name the specific registered legal entity if one exists; (2) a dedicated privacy@ inbox vs support@; (3) confirm the subprocessor list matches production. NOT legal advice — a legal review is still recommended. */}
 
-_最后更新：2026 年 7 月 10 日_
+_最后更新：2026 年 8 月 20 日_
 
-本隐私政策说明总部位于阿拉伯联合酋长国迪拜的 World Monitor（“World Monitor”、“我们”）在您使用 World Monitor 仪表盘、网站、API、MCP 服务器和应用（“服务”）时如何处理信息。
+**下载：**[PDF](https://www.worldmonitor.app/legal/privacy.pdf) · [Markdown](https://www.worldmonitor.app/docs/privacy.md)（英文原本，具有约束力的版本）
+
+本隐私政策说明在阿拉伯联合酋长国迪拜注册的自由区有限责任公司 World Monitor FZ LLC（“World Monitor”、“我们”）在您使用 World Monitor 仪表盘、网站、API、MCP 服务器和应用（“服务”）时如何处理信息。
 
 本页面以通俗语言撰写，不构成法律意见。
 
@@ -27,7 +29,8 @@ _最后更新：2026 年 7 月 10 日_
 **使用与诊断信息。** 为保持服务可靠，我们收集：
 
 - **错误和崩溃诊断信息**，通过 Sentry 收集（例如错误消息、堆栈跟踪、浏览器和设备类型）。
-- **聚合的、注重隐私的分析数据**，通过 Vercel Web Analytics 和 Cloudflare 收集——用于了解流量模式。它们的设计旨在避免跨站跟踪，并在相应配置下不使用 Cookie。
+- **聚合的、注重隐私的分析数据**，通过 Vercel Web Analytics、Cloudflare 以及我们自托管的 Umami 实例（`abacus.worldmonitor.app`）收集——用于了解流量模式。它们的设计旨在避免跨站跟踪，并在相应配置下不使用 Cookie。
+- **页面性能监测（RUM）**，通过 DebugBear 按 10% 的页面加载抽样收集。它接收页面路径、视口与设备像素比、导航与网页核心指标计时、用户代理，以及任何网络请求都必然包含的 IP 地址。**不收集 URL 查询参数** —— 你地址栏中携带的仪表盘状态（地图视图、时间范围、已选图层）不在 DebugBear 存储的范围内。用途是发现缓慢和不稳定的页面，而非识别或追踪你。
 - **服务器和请求日志**，通过 Axiom 及我们的托管/CDN 提供商（Vercel、Cloudflare）收集，包括 IP 地址、用户代理和请求元数据，为安全和调试目的而保留。
 
 **您提交给 AI 功能的内容。** 当您使用 AI 简报、分析、预测或研究助手时，您的查询文本和相关上下文会被发送给我们的 AI 提供商（Anthropic，以及通过 OpenRouter 接入的其他模型提供商）以生成响应。请勿在 AI 提示词中提交敏感个人数据。
@@ -40,9 +43,13 @@ _最后更新：2026 年 7 月 10 日_
 - **偏好项**——仪表盘设置本地存储在您的浏览器中。
 - **分析项**——我们的分析功能设计上注重隐私，并在相应配置下不使用跟踪 Cookie。
 
+## 数据处理附录
+
+如果你使用本服务处理个人数据并需要一份处理者协议，[数据处理附录](/zh/dpa)自动适用，无需签署，并就跨境传输并入欧盟标准合同条款与英国附录。如需经双方签署的副本，可来函索取。
+
 ## 子处理方
 
-我们仅与代表我们处理数据以运营服务的服务提供商共享个人数据：
+我们仅与代表我们处理数据以运营服务的服务提供商共享个人数据。下表同时列出了我们自行托管的那一个分析采集器，以便你把网络请求日志中看到的内容与本表逐一对应：
 
 | 提供商 | 用途 |
 |----------|---------|
@@ -51,12 +58,23 @@ _最后更新：2026 年 7 月 10 日_
 | Convex | 应用数据库（账户、权益、警报、偏好） |
 | Dodo Payments | 支付处理和订阅计费（登记商户） |
 | Sentry | 错误和崩溃监控 |
+| DebugBear | 真实用户页面性能监测（10% 抽样） |
+| Umami（自托管，`abacus.worldmonitor.app`） | 运行在我们自有基础设施上的产品分析 —— 没有第三方接收这些数据 |
+| Upstash | 速率限制与缓存存储；速率限制的键由你的 IP 地址派生 |
+| Railway | 我们分析服务与通知投递的容器托管 |
+| Mintlify | 文档站点托管（`worldmonitor.app/docs`，包括本页） |
 | Vercel | 应用托管和网页分析 |
-| Cloudflare | 内容分发、边缘安全和网页分析 |
+| Cloudflare | 内容分发、边缘安全、机器人验证（Turnstile）和网页分析 |
 | Axiom | 应用日志和可观测性 |
 | Anthropic | 用于分析和简报的 AI 模型提供商 |
 | OpenRouter | 用于分析和预测的 AI 模型路由 |
 | Resend | 事务性电子邮件投递 |
+
+## 你的告警发送到哪里
+
+如果你连接了告警或摘要渠道，我们会把你所请求的告警内容发送到**你**选择的目的地：Telegram、Slack、Discord、你自己的 Webhook URL、电子邮件，或浏览器推送端点。为此我们会存储该渠道所需的标识信息 —— 聊天或频道 ID、Webhook URL，或你授予我们的 OAuth 令牌 —— 除此之外不存储其他内容。
+
+这些目的地不是我们的次级处理方：它们接收你的告警是因为你如此指示，其对内容的处理受你与它们自身关系的约束。断开某个渠道即会删除我们为其保存的标识信息。
 
 ## 我们如何使用信息
 

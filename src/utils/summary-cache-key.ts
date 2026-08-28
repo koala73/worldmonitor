@@ -29,7 +29,10 @@ export const CACHE_VERSION = 'v9';
 const MAX_HEADLINE_LEN = 500;
 export const MAX_SUMMARY_HEADLINES = 5;
 const MAX_GEO_CONTEXT_LEN = 2000;
-const MAX_BODY_LEN = 400; // matches SummarizeArticle prompt interpolation clip
+// Canonical clip shared with server/worldmonitor/news/v1/summarize-article.ts
+// (re-exported via its _shared.ts) so the prompt window and the cache-key
+// window cannot drift.
+export const MAX_BODY_LEN = 400;
 
 export interface SummaryHeadlinePair {
   h: string;

@@ -20,6 +20,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { runScenario, getScenarioStatus } from '@/services/scenario';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { bindActivationKeys } from '@/utils/activation';
 
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
@@ -35,6 +36,7 @@ export class SupplyChainPanel extends Panel {
   private stressData: GetShippingStressResponse | null = null;
   private activeTab: TabId = 'chokepoints';
   private expandedChokepoint: string | null = null;
+  private pendingFocusChokepoint: string | null = null;
   private transitChart = new TransitChart();
   private chartObserver: MutationObserver | null = null;
   private chartMountTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,6 +54,7 @@ export class SupplyChainPanel extends Panel {
 
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
+    bindActivationKeys(this.content, '.trade-restriction-header');
     this.content.addEventListener('click', (e) => {
       const stageBtn = (e.target as HTMLElement).closest('[data-mineral-stage]') as HTMLElement | null;
       if (stageBtn?.dataset.mineralStage === 'mine' || stageBtn?.dataset.mineralStage === 'refinery') {
@@ -84,9 +87,23 @@ export class SupplyChainPanel extends Panel {
         const newId = this.expandedChokepoint === card.dataset.cpId ? null : card.dataset.cpId;
         if (!newId) this.clearTransitChart();
         this.expandedChokepoint = newId;
+        this.pendingFocusChokepoint = card.dataset.cpId ?? null;
         this.render();
       }
     });
+  }
+
+  private restoreChokepointHeaderFocus(): void {
+    const name = this.pendingFocusChokepoint;
+    this.pendingFocusChokepoint = null;
+    if (!name) return;
+    const cards = this.content.querySelectorAll<HTMLElement>('.trade-restriction-card');
+    for (const card of cards) {
+      if (card.dataset.cpId === name) {
+        card.querySelector<HTMLElement>('.trade-restriction-header')?.focus();
+        return;
+      }
+    }
   }
 
   private clearTransitChart(): void {
@@ -178,7 +195,9 @@ export class SupplyChainPanel extends Panel {
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
-    `, 'legacy Panel.setContent() migration'));
+    `, 'legacy Panel.setContent() migration'), () => {
+      this.restoreChokepointHeaderFocus();
+    });
 
     if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {
       const expandedCpName = this.expandedChokepoint;
@@ -296,7 +315,7 @@ export class SupplyChainPanel extends Panel {
         return `<tr><td>${escapeHtml(opt.name)}</td><td>${days}</td><td>${cost}</td><td>${escapeHtml(risk)}</td></tr>`;
       }).join('');
       return `<table class="sc-bypass-table">
-        <thead><tr><th>Corridor</th><th>+Days</th><th>+Cost</th><th>Risk</th></tr></thead>
+        <thead><tr><th scope="col">Corridor</th><th scope="col">+Days</th><th scope="col">+Cost</th><th scope="col">Risk</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
     };
@@ -459,7 +478,7 @@ export class SupplyChainPanel extends Panel {
           : `<span class="trade-badge">${cp.disruptionScore}/100</span>`;
 
         return `<div class="trade-restriction-card${expanded ? ' expanded' : ''}${isAffectedByScenario ? ' scenario-affected' : ''}" data-cp-id="${escapeHtml(cp.name)}" style="cursor:pointer${isAffectedByScenario ? ';border-left:3px solid #dc2626' : ''}">
-          <div class="trade-restriction-header">
+          <div class="trade-restriction-header" role="button" tabindex="0" aria-expanded="${expanded ? 'true' : 'false'}">
             <span class="trade-country">${escapeHtml(cp.name)}</span>
             <span class="sc-status-dot ${statusDot}"></span>
             ${badgeHtml}
@@ -559,11 +578,11 @@ export class SupplyChainPanel extends Panel {
       <div class="trade-sector" style="font-weight:600;margin-bottom:4px">${t('components.supplyChain.corridorDisruption')}</div>
       <table class="sc-disruption-table">
         <thead><tr>
-          <th>${t('components.supplyChain.corridor')}</th>
-          <th>${t('components.supplyChain.vessels')}</th>
-          <th>${t('components.supplyChain.wowChange')}</th>
-          <th>${t('components.supplyChain.disruption')}</th>
-          <th>${t('components.supplyChain.risk')}</th>
+          <th scope="col">${t('components.supplyChain.corridor')}</th>
+          <th scope="col">${t('components.supplyChain.vessels')}</th>
+          <th scope="col">${t('components.supplyChain.wowChange')}</th>
+          <th scope="col">${t('components.supplyChain.disruption')}</th>
+          <th scope="col">${t('components.supplyChain.risk')}</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
@@ -763,9 +782,9 @@ export class SupplyChainPanel extends Panel {
         <table>
           <thead>
             <tr>
-              <th>${t('components.supplyChain.mineral')}</th>
-              <th>${t('components.supplyChain.topProducers')}</th>
-              <th>HHI</th>
+              <th scope="col">${t('components.supplyChain.mineral')}</th>
+              <th scope="col">${t('components.supplyChain.topProducers')}</th>
+              <th scope="col">HHI</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -797,10 +816,10 @@ export class SupplyChainPanel extends Panel {
       <table>
         <thead>
           <tr>
-            <th>${t('components.supplyChain.mineral')}</th>
-            <th>${t('components.supplyChain.topProducers')}</th>
-            <th>HHI</th>
-            <th>${t('components.supplyChain.risk')}</th>
+            <th scope="col">${t('components.supplyChain.mineral')}</th>
+            <th scope="col">${t('components.supplyChain.topProducers')}</th>
+            <th scope="col">HHI</th>
+            <th scope="col">${t('components.supplyChain.risk')}</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

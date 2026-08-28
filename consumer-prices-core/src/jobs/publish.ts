@@ -146,6 +146,7 @@ export async function publishAll() {
     }
   }
 
+  let totalPagesFailed = 0;
   for (const marketCode of markets) {
     const freshnessSnapshot = marketFreshnessSnapshots[marketCode];
     // hasFreshData = at least one retailer scraped within last 2 hours
@@ -266,19 +267,47 @@ export async function publishAll() {
     const totalSnapshots = pagesOk + pagesFailed;
     const completionRatio = totalSnapshots > 0 ? Number((pagesOk / totalSnapshots).toFixed(4)) : 0;
     logger.info(`  market ${marketCode} done: ${pagesOk}/${totalSnapshots} ok, ratio=${completionRatio}`);
+    totalPagesFailed += pagesFailed;
+  }
+
+  if (totalPagesFailed > 0) {
+    throw new Error(`${totalPagesFailed} snapshot publication${totalPagesFailed === 1 ? '' : 's'} failed`);
   }
 
   logger.info('Publish complete');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+export async function runPublishCli(): Promise<void> {
   // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
-  // diagnostic can distinguish a clean run from a silent death. Chained BEFORE .catch so a
-  // rejection skips it. Plain console.log, not the logger, so the marker survives whatever
-  // transport/format the logger uses.
+  // diagnostic can distinguish a clean run from a silent death. Emit it only after publication
+  // resolves. Plain console.log, not the logger, so the marker survives whatever transport/format
+  // the logger uses.
   const runStartedAt = Date.now();
-  publishAll()
-    .then(() => console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`))
-    .finally(() => closePool())
-    .catch(console.error);
+  let failure: unknown;
+  let failed = false;
+  try {
+    await publishAll();
+    console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`);
+  } catch (err) {
+    // Mirror scrape.ts: failed publishes must fail the cron, not exit 0.
+    console.error(err);
+    process.exitCode = 1;
+    failure = err;
+    failed = true;
+  }
+
+  try {
+    await closePool();
+  } catch (err) {
+    console.error(err);
+    process.exitCode = 1;
+    if (!failed) failure = err;
+    failed = true;
+  }
+
+  if (failed) throw failure;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  void runPublishCli().catch(() => {});
 }

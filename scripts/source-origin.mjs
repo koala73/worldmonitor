@@ -1,9 +1,10 @@
 // Publisher-origin country for the public /sources/ catalog.
 //
-// A source's country is where the feed comes from — the publisher's home
-// country or the government that issues it — not the set of countries it
-// reports on. International organizations and global platforms are classified
-// as null and shown as "International".
+// A source's origin country is where the publisher or issuing government
+// lives — not the set of countries it reports on. Coverage geography is
+// attached separately from named feed declarations. International
+// organizations and global platforms are classified as null and shown as
+// "International".
 //
 // Closed world: every catalog provider must resolve. Government suffixes and
 // real ccTLDs infer automatically. Generic or vanity TLDs need an explicit
@@ -271,6 +272,7 @@ const HOST_ORIGINS = Object.freeze({
   'freeipapi.com': null,
   'gain.nd.edu': 'US',
   'gcaptain.com': 'US',
+  'gtaupdate.com': 'CA',
   'geospatial-usace.opendata.arcgis.com': 'US',
   'ghoapi.azureedge.net': null,
   'github.blog': null,
@@ -285,7 +287,6 @@ const HOST_ORIGINS = Object.freeze({
   'humanprogress.org': 'US',
   'inc42.com': 'IN',
   'indianexpress.com': 'IN',
-  'insideclimatenews.org': 'US',
   'insightcrime.org': 'US',
   'ipinfo.io': 'US',
   'islandtimes.org': 'PW',
@@ -349,6 +350,7 @@ const HOST_ORIGINS = Object.freeze({
   'schema.org': 'US',
   'seekingalpha.com': 'US',
   'serpapi.com': 'US',
+  'services.arcgis.com': 'CA',
   'services7.arcgis.com': 'US',
   'services9.arcgis.com': 'US',
   'simpleflying.com': 'GB',
@@ -384,6 +386,7 @@ const HOST_ORIGINS = Object.freeze({
   'thesentry.org': 'US',
   'thinkglobalhealth.github.io': 'US',
   'timesca.com': null,
+  'timesofindia.indiatimes.com': 'IN',
   'trumpstruth.org': 'US',
   'unchainedcrypto.com': 'US',
   'vancouversun.com': 'CA',
@@ -564,9 +567,15 @@ const HOST_ORIGINS = Object.freeze({
 // platform that would otherwise point at the wrong country.
 const PROVIDER_ORIGINS = Object.freeze({
   'B.C. Evacuation Orders and Alerts': 'CA',
+  'Toronto Police Service': 'CA',
+  'Toronto Police Service Open Data': 'CA',
+  'GTA Update': 'CA',
   'Ember electricity data': 'GB',
+  'Fast Company': 'US',
   'Mexico Energy Regulatory Commission (CRE)': 'MX',
+  NDTV: 'IN',
   'Our World in Data': 'GB',
+  'The Hacker News': 'IN',
   'World Health Organization (WHO)': null,
 });
 
@@ -681,6 +690,18 @@ export function catalogCountryOptions(sourceCatalog) {
     options.unshift({ code: INTERNATIONAL_FILTER, name: 'International' });
   }
   return options;
+}
+
+export function catalogCoverageCountryOptions(sourceCatalog) {
+  const codes = new Set();
+  for (const provider of sourceCatalog) {
+    for (const code of provider.coveredCountries || []) {
+      if (code) codes.add(code);
+    }
+  }
+  return [...codes]
+    .map((code) => ({ code: sourceOriginFilterValue(code), name: sourceOriginLabel(code) }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'en', { sensitivity: 'base' }));
 }
 
 export function assertKnownOriginCode(code, label) {

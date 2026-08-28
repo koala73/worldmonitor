@@ -154,6 +154,34 @@ describe('Product catalog freshness', () => {
     assert.ok(names.includes('API Starter'), 'Missing API Starter tier');
   });
 
+  it('Enterprise tier advertises full white-label options', () => {
+    const enterprise = tiersJson.find(t => t.name === 'Enterprise');
+    assert.ok(enterprise, 'Enterprise tier not found');
+    assert.ok(
+      enterprise.features.includes('Fully white-labeled — with or without revenue sharing'),
+      'Enterprise white-label option missing',
+    );
+  });
+
+  it('translated Enterprise tiers include every canonical feature', () => {
+    const enterprise = tiersJson.find(t => t.name === 'Enterprise');
+    assert.ok(enterprise, 'Enterprise tier not found');
+
+    for (const [file, source] of Object.entries(readProLocaleFiles())) {
+      const features = JSON.parse(source)?.pricing?.tiers?.enterprise?.features;
+      assert.ok(Array.isArray(features), `${file} missing Enterprise pricing features`);
+      assert.equal(
+        features.length,
+        enterprise.features.length,
+        `${file} Enterprise pricing features are stale`,
+      );
+      assert.ok(
+        features.every((feature) => typeof feature === 'string' && feature.trim()),
+        `${file} has an empty Enterprise feature`,
+      );
+    }
+  });
+
   it('Pro tier has monthly and annual prices', () => {
     const pro = tiersJson.find(t => t.name === 'Pro');
     assert.ok(pro, 'Pro tier not found');
@@ -413,6 +441,9 @@ describe('Product catalog freshness', () => {
     const currentSharedCatalog = readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8');
     const currentRelayCatalog = readFileSync(join(ROOT, 'scripts/shared/product-catalog.generated.json'), 'utf8');
     const currentPublicFacts = readFileSync(join(ROOT, 'public/product-facts.json'), 'utf8');
+    // Tracked A2A card is a product:facts emit target; snapshot before regen
+    // so a concurrent rewrite cannot hide a stale committed catalog size.
+    const currentAgentCard = readFileSync(join(ROOT, 'public/.well-known/agent-card.json'), 'utf8');
     const currentRelayFacts = readFileSync(join(ROOT, 'scripts/shared/product-facts.generated.json'), 'utf8');
     const currentRelayInventory = readFileSync(join(ROOT, 'scripts/shared/inventory-facts.generated.json'), 'utf8');
     const currentEdgeInventory = readFileSync(join(ROOT, 'api/_inventory-facts.generated.js'), 'utf8');
@@ -429,6 +460,7 @@ describe('Product catalog freshness', () => {
     const freshSharedCatalog = readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8');
     const freshRelayCatalog = readFileSync(join(ROOT, 'scripts/shared/product-catalog.generated.json'), 'utf8');
     const freshPublicFacts = readFileSync(join(ROOT, 'public/product-facts.json'), 'utf8');
+    const freshAgentCard = readFileSync(join(ROOT, 'public/.well-known/agent-card.json'), 'utf8');
     const freshRelayFacts = readFileSync(join(ROOT, 'scripts/shared/product-facts.generated.json'), 'utf8');
     const freshRelayInventory = readFileSync(join(ROOT, 'scripts/shared/inventory-facts.generated.json'), 'utf8');
     const freshEdgeInventory = readFileSync(join(ROOT, 'api/_inventory-facts.generated.js'), 'utf8');
@@ -442,6 +474,7 @@ describe('Product catalog freshness', () => {
     assert.equal(currentSharedCatalog, freshSharedCatalog, 'product-catalog.generated.json is stale — run: npm run product:facts');
     assert.equal(currentRelayCatalog, freshRelayCatalog, 'scripts/shared product catalog is stale — run: npm run product:facts');
     assert.equal(currentPublicFacts, freshPublicFacts, 'product-facts.json is stale — run: npm run product:facts');
+    assert.equal(currentAgentCard, freshAgentCard, 'public/.well-known/agent-card.json is stale — run: npm run product:facts');
     assert.equal(currentRelayFacts, freshRelayFacts, 'scripts/shared product facts are stale — run: npm run product:facts');
     assert.equal(currentRelayInventory, freshRelayInventory, 'Railway inventory facts are stale — run: npm run inventory:facts');
     assert.equal(currentEdgeInventory, freshEdgeInventory, 'Edge inventory facts are stale — run: npm run inventory:facts');

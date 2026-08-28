@@ -1611,7 +1611,7 @@ describe('forecast llm overrides', () => {
     assert.equal(providers[1]?.name, 'openrouter-free');
     assert.equal(providers[1]?.model, 'google/gemma-4-26b-a4b-it:free');
     assert.equal(providers[2]?.name, 'openrouter-free-backup');
-    assert.equal(providers[2]?.model, 'openai/gpt-oss-20b:free');
+    assert.equal(providers[2]?.model, 'minimax/minimax-m3:free');
     assert.equal(providers[3]?.name, 'groq');
     assert.equal(providers[3]?.model, 'openai/gpt-oss-20b');
     assert.equal(providers[3]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
@@ -1717,7 +1717,7 @@ describe('forecast llm overrides', () => {
     assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
     assert.equal(scenarioProviders[0]?.timeout, 40_000, 'Flash completion deadline (see above); non-Flash overrides keep 25s');
     assert.equal(scenarioProviders[1]?.model, 'google/gemma-4-26b-a4b-it:free');
-    assert.equal(scenarioProviders[2]?.model, 'openai/gpt-oss-20b:free');
+    assert.equal(scenarioProviders[2]?.model, 'minimax/minimax-m3:free');
     assert.equal(scenarioProviders[3]?.model, 'openai/gpt-oss-20b');
   });
 

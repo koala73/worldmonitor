@@ -46,6 +46,14 @@ export default defineConfig({
     // contributor named after the repo's more common convention — the exact
     // never-reported-test failure this directory exists to prevent.
     include: ['tests/dom/**/*.test.{mts,mjs}'],
+    // #6984: vitest's 5000ms default is not a budget anyone chose. Several
+    // DOM files pay a large module-graph transform to the first test
+    // (`@/app/data-loader`, story-data, economic), and under load that lands
+    // a few milliseconds over 5000 — a false red on a green tree that can
+    // fail the pre-push hook. 15000ms is a load margin for the suite; it is
+    // not a license for a test to sit on a real timer. Files that still take
+    // ~5s should move the transform into the import phase (see #6677).
+    testTimeout: 15_000,
     // Every test file installs its own listeners on a shared `document`;
     // isolate so a leaked listener cannot reach across files.
     isolate: true,

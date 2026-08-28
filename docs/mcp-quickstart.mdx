@@ -82,8 +82,7 @@ And the response is a standard MCP content block — a single text block whose `
   "result": {
     "content": [
       { "type": "text", "text": "{\"cached_at\":\"2026-05-17T10:34:00.852Z\",\"stale\":false,\"data\":{\"stocks-bootstrap\":{...},\"sectors\":{...},\"fear-greed\":{...}}}" }
-    ],
-    "isError": false
+    ]
   }
 }
 ```
@@ -92,6 +91,8 @@ Two payload-level fields you'll see on every cache tool:
 
 - `cached_at` — ISO timestamp of the oldest contributing data point. Use this to reason about how fresh the answer is.
 - `stale` — `true` when any contributing seed exceeded its freshness budget. Tells the model when to caveat its answer.
+
+Two more appear only when relevant: `activationUnknown: true` when a content-freshness activation marker could not be read, meaning `stale` was computed without knowing whether the producer has ever published; and `contentFreshnessPendingUntil` (ISO timestamp) when a never-published seed is inside its deployment grace window — content-age checks start counting against `stale` after that deadline.
 
 ## 4. Trim the response (when it matters)
 

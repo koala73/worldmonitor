@@ -8,7 +8,37 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import {
+  cachedFetchJsonWithMeta,
+  getCachedJson,
+  setCachedJson,
+  getCachedJsonBatch,
+  readCachedJson,
+  runRedisPipeline,
+  runRedisTransaction,
+  REDIS_PIPELINE_TIMEOUT_MS,
+} from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import {
+  classifyStaleSnapshot,
+  filterRevokedUrls,
+  type RevocationRead,
+  type StaleReason,
+} from './_lastgood';
+import {
+  beginDigestAttempt,
+  completeDigestAttempt,
+  publishAcceptedSnapshot,
+  publishFailedAttempt,
+  readAcceptedSnapshot,
+  readRevokedUrlSet,
+  recoverFailedAttempt,
+  shouldStartDigestAttempt,
+  __testing__ as lastGoodStoreTesting,
+  type FailedDigestAttempt,
+  type LastGoodRead,
+} from './_lastgood-store';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -20,10 +50,37 @@ import {
   type ServerFeed,
 } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
+import {
+  buildDigestCoverage,
+  cachedAttemptFrom,
+  classifyFeedAttempt,
+  interleaveByCategory,
+  resolveTerminalFetchFailure,
+  runFeedAttemptBatches,
+  summarizeFeedAttempts,
+  type FeedFetchAttempt,
+} from './_attempts';
+import {
+  FORECAST_EVIDENCE_KEY,
+  FORECAST_EVIDENCE_COVERAGE_KEY,
+  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+  FORECAST_EVIDENCE_TTL_S,
+  accumulatorPruneBounds,
+  advanceForecastEvidenceCoverage,
+  buildForecastEvidenceMember,
+  evidencePruneBounds,
+  forecastEvidenceCoversWindow,
+  forecastEvidenceRecordKey,
+  isEligibleForecastEvidence,
+  parseForecastEvidenceCoverage,
+} from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
+// @ts-expect-error — JS module, no declaration file
+import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
+import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
@@ -38,6 +95,7 @@ import {
   STORY_SOURCES_KEY,
   STORY_PEAK_KEY,
   STORY_ALIAS_KEY,
+  STORY_ALIAS_PUBLICATION_LOCK_KEY,
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
   DIGEST_ACCUMULATOR_TTL,
@@ -49,6 +107,7 @@ import {
   MIN_CORROBORATING_PUBLISHERS,
   PUBLISHER_FAMILIES,
   publisherFamilyFor,
+  publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
@@ -64,10 +123,231 @@ const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
 const DIGEST_RESPONSE_TIMEOUT_MS = 14_000;
 const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
+const RESPONSE_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
+const MAX_REDIS_PIPELINE_COMMANDS = 1000;
+const STORY_BATCH_SIZE = 80; // bounds per-story work; command chunks enforce the hard cap
+// #4925 item 1: canonical adoption reads two commands per member hash
+// (alias GET + track HMGET), so the hash budget is half the command budget.
+const ADOPTION_BATCH_SIZE = 400;
+// Keep adoption inside the cold digest response budget, with the same guard
+// band reserved for final assembly and cache writes.
+const ADOPTION_DEADLINE_MS = DIGEST_RESPONSE_TIMEOUT_MS - RESPONSE_GUARD_BAND_MS;
+// #7084: latest wall-clock point at which the best-effort snapshot publish may
+// still start. Derivation: 25s platform ceiling - 3s guard band - the
+// publish's own worst case (one 5s EVAL pipeline timeout).
+const PUBLISH_DEADLINE_CUTOFF_MS =
+  VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS - 5_000;
 
-type DigestFeedEntry = { category: string; feed: ServerFeed };
+async function settleBeforeDeadline<T>(
+  promise: Promise<T>,
+  deadlineAt: number,
+  fallback: T,
+): Promise<T> {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) return fallback;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
+
+/**
+ * #7084: apply the revocation set to a whole digest body at SERVE time.
+ * Shared by every path that can return bytes — fresh build, digest cache hit,
+ * durable snapshot, warm-isolate replay — so an operator's SADD takes effect
+ * on the next request rather than on the next rebuild. Returns the original
+ * object untouched when nothing was suppressed, so the common path stays free.
+ */
+function suppressRevoked(
+  data: ListFeedDigestResponse,
+  revoked: ReadonlySet<string>,
+): { data: ListFeedDigestResponse; dropped: number } {
+  if (revoked.size === 0) return { data, dropped: 0 };
+  const categories: Record<string, { items: ProtoNewsItem[] }> = {};
+  let dropped = 0;
+  for (const [category, bucket] of Object.entries(data.categories ?? {})) {
+    const { kept, dropped: n } = filterRevokedUrls(
+      (bucket?.items ?? []) as Array<{ link?: string }>,
+      revoked,
+    );
+    dropped += n;
+    categories[category] = { items: kept as ProtoNewsItem[] };
+  }
+  if (dropped === 0) return { data, dropped: 0 };
+  const next = { ...data, categories } as ListFeedDigestResponse;
+  // Counts must describe the body actually served, per the DigestCoverage
+  // contract ("Items served in this response, after every gate").
+  if (next.coverage) {
+    const items = Object.values(categories).flatMap((b) => b.items);
+    next.coverage = {
+      ...next.coverage,
+      itemsServed: items.length,
+      publisherCount: new Set(items.map((i) => publisherFamilyFor(i?.source ?? ''))).size,
+    };
+  }
+  return { data: next, dropped };
+}
+
+/**
+ * #7084: durable last-good serving, tried before the warm-isolate cache on the
+ * degraded paths. Returns a stale-marked response when Redis is readable and
+ * the accepted snapshot is inside the six-hour contract, else null so the
+ * caller falls through to the isolate tier and finally the explicit
+ * unavailable response.
+ */
+async function serveLastGood(
+  variant: string,
+  lang: string,
+  reason: StaleReason,
+  attemptedAt: string,
+  // Shared with the isolate tier so a degraded request pays for ONE
+  // revocation read, not one per tier — two serial pipeline reads were part
+  // of how the worst-case degraded path blew through the 25s Edge budget.
+  revokedPromise: Promise<RevocationRead> = readRevokedUrlSet(),
+  snapshotPromise: Promise<LastGoodRead<ListFeedDigestResponse>> = readAcceptedSnapshot(variant, lang),
+): Promise<ListFeedDigestResponse | null> {
+  const stored = await snapshotPromise;
+  if (!stored.readable) {
+    console.warn(`[digest-serving] tier=durable result=redis-unreadable variant=${variant} lang=${lang}`);
+    return null;
+  }
+  const snapshot = stored.snapshot;
+
+  // Everything below runs over a body deserialized from Redis. A malformed
+  // shape must fail THIS tier, never the request — a throw escaping here
+  // reaches the handler's catch, whose own degraded path re-throws on the
+  // same body, and the second throw escapes as a 500 with every fallback
+  // still unserved.
+  try {
+    const now = Date.now();
+
+    const revoked = await revokedPromise;
+    if (!revoked.readable) {
+      // Fail CLOSED on replay: revocation is a content-suppression control,
+      // and no path may serve unfiltered content when operator suppressions
+      // cannot be checked.
+      // `tier=` lines are hand-offs, not outcomes: only the tier that actually
+      // returns a body emits `outcome=`. Counting `outcome=` occurrences used
+      // to double-count isolate-fallback and record one request as two
+      // different outcomes.
+      console.warn(
+        `[digest-serving] tier=durable result=revocations-unreadable variant=${variant} lang=${lang}`,
+      );
+      captureSilentError(new Error('revocation set unreadable on durable serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-durable'],
+      });
+      return null;
+    }
+
+    // Revoke BEFORE the servability gate: a snapshot whose every item has
+    // been revoked is not servable content, and classifying the unfiltered
+    // body would let it through with counts describing items nobody receives.
+    const suppressed = snapshot ? suppressRevoked(snapshot.data, revoked.urls) : null;
+
+    const verdict = classifyStaleSnapshot(
+      snapshot && suppressed ? { acceptedAt: snapshot.acceptedAt, data: suppressed.data } : null,
+      now,
+    );
+    if (!verdict.serve) {
+      console.log(`[digest-serving] tier=durable result=${verdict.outcome} reason=${reason} variant=${variant} lang=${lang}`);
+      return null;
+    }
+
+    console.log(
+      `[digest-serving] outcome=stale reason=${reason} age_s=${verdict.ageSeconds} ` +
+        `variant=${variant} lang=${lang} revoked_urls=${revoked.urls.size} ` +
+        `revoked_dropped=${suppressed!.dropped}`,
+    );
+    // attemptedAt names the FAILED attempt, not the content.
+    return markFallbackCoverageStale(suppressed!.data, attemptedAt, {
+      ageSeconds: verdict.ageSeconds,
+      reason,
+    });
+  } catch (err) {
+    console.warn(`[digest-serving] tier=durable result=snapshot-malformed variant=${variant} lang=${lang}`);
+    captureSilentError(err, {
+      tags: { surface: 'news', component: 'digest-lastgood', stage: 'serve-classify', variant, lang },
+      fingerprint: ['digest-lastgood', 'serve-classify-threw'],
+    });
+    return null;
+  }
+}
+
+/**
+ * Stamp a replayed body with the coverage that describes how it is being
+ * served. Every replay tier goes through here — the durable snapshot (#7084)
+ * and the warm in-isolate cache — so no tier can go out wearing the state its
+ * original build stamped on it, and the stale fields have exactly one
+ * implementation.
+ *
+ * `staleAgeSeconds`/`staleReason` are 0/'' for the isolate tier, which knows
+ * only that the content is old, not how old relative to an acceptance.
+ */
+function markFallbackCoverageStale(
+  fallback: ListFeedDigestResponse,
+  attemptedAt: string,
+  stale: { ageSeconds: number; reason: string } = { ageSeconds: 0, reason: '' },
+): ListFeedDigestResponse {
+  const coverage = fallback.coverage;
+  if (coverage) {
+    return {
+      ...fallback,
+      coverage: {
+        ...coverage,
+        state: 'stale',
+        attemptedAt,
+        servedStale: true,
+        staleAgeSeconds: stale.ageSeconds,
+        staleReason: stale.reason,
+      },
+    };
+  }
+
+  // Redis can still contain a digest written before the coverage field was
+  // introduced. Keep that retained content useful, but do not describe it as
+  // current. Only content-derived counts can be reconstructed here.
+  // `bucket?.` / `item?.` guards throughout: this body was read back from
+  // Redis, and a malformed bucket must degrade the counts, not throw out of
+  // the last serving tier standing.
+  const categoryEntries = Object.entries(fallback.categories ?? {});
+  const items = categoryEntries.flatMap(([, bucket]) => bucket?.items ?? []);
+  const categoryStates = Object.fromEntries(
+    categoryEntries.map(([category, bucket]) => [category, (bucket?.items?.length ?? 0) > 0 ? 'ok' : 'missing']),
+  );
+  return {
+    ...fallback,
+    coverage: {
+      state: 'stale',
+      attemptedAt,
+      itemsServed: items.length,
+      publisherCount: new Set(items.map(item => publisherFamilyFor(item?.source ?? ''))).size,
+      feedTotal: 0,
+      feedCompleted: 0,
+      categoryTotal: Object.keys(categoryStates).length,
+      categoryCompleted: Object.values(categoryStates).filter(state => state === 'ok').length,
+      categoryStates,
+      droppedFeedCap: 0,
+      droppedUndated: 0,
+      droppedFreshness: 0,
+      droppedCategoryCap: 0,
+      servedStale: true,
+      staleAgeSeconds: stale.ageSeconds,
+      staleReason: stale.reason,
+    },
+  };
+}
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
@@ -187,11 +467,12 @@ interface ParsedItem {
   // Originating publisher from the RSS <source> element ('' when absent).
   // Google News feeds — which back 154 of the 366 server digest labels —
   // stamp it per item, naming the outlet that actually wrote the story.
-  // Corroboration counting prefers this over `source`: a Reuters wire
-  // arriving through the "Oil & Gas" keyword feed and through "Reuters
-  // Energy" is ONE publisher, not two (#6430). Internal to the digest
-  // build; `source` stays what the UI credits, links, and tiers.
+  // Corroboration counting may prefer this over `source` only when the parser
+  // marks the feed as an explicitly configured trusted aggregator (#6430).
+  // Internal to the digest build; `source` stays what the UI credits, links,
+  // and tiers.
   originPublisher: string;
+  originPublisherTrusted: boolean;
   title: string;
   link: string;
   publishedAt: number;
@@ -239,10 +520,17 @@ interface ParsedItem {
   tickers?: string[];
 }
 
-type CredibilitySourceItem = Pick<ParsedItem, 'source' | 'originPublisher'>;
+type CredibilitySourceItem = Pick<ParsedItem, 'source' | 'originPublisher'> & {
+  originPublisherTrusted?: boolean;
+};
 
 function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
-  const rawName = item.originPublisher.trim() || item.source.trim();
+  const originPublisher = item.originPublisherTrusted === true
+    && typeof item.originPublisher === 'string'
+    ? item.originPublisher.trim()
+    : '';
+  const source = typeof item.source === 'string' ? item.source.trim() : '';
+  const rawName = originPublisher || source;
   const family = publisherFamilyFor(rawName);
   const familyEntry = PUBLISHER_FAMILIES[family];
   const candidates = [
@@ -259,6 +547,46 @@ function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
     ?? candidates.find(hasReviewedPropagandaRisk)
     ?? candidates.find(hasSourceTier)
     ?? rawName;
+}
+
+// A story-track row is allowed to anchor a future cluster only after the
+// current mention carries a server-known trust signal. Unknown/legacy rows
+// fail closed; their firstSeen timestamp alone is never enough to seize a
+// canonical identity.
+const MAX_TRUSTED_ANCHOR_SOURCE_TIER = 2;
+
+function isAnchorEligible(item: Pick<ParsedItem, 'source' | 'originPublisher' | 'corroborationCount'>): boolean {
+  // `source` is the server-configured feed label. Do not use the RSS
+  // `<source>`/originPublisher field for this gate: that field is upstream
+  // content and therefore cannot elevate an otherwise unknown feed.
+  return getSourceTier(item.source) <= MAX_TRUSTED_ANCHOR_SOURCE_TIER
+    || (Number.isFinite(item.corroborationCount)
+      && item.corroborationCount >= MIN_CORROBORATING_PUBLISHERS);
+}
+
+// Story identity calculates corroboration for the complete semantic cluster.
+// Use that value while selecting a safe batch default instead of the parsed
+// item's initial exact-title count, which is normally one before identity is
+// applied back to every member.
+function isIdentityAnchorEligible(
+  item: Pick<ParsedItem, 'source' | 'originPublisher'>,
+  corroborationCount: number,
+): boolean {
+  return isAnchorEligible({
+    source: item.source,
+    originPublisher: item.originPublisher,
+    corroborationCount,
+  });
+}
+
+function compareAnchorCandidates(a: ParsedItem, b: ParsedItem): number {
+  const aTrusted = getSourceTier(a.source) <= MAX_TRUSTED_ANCHOR_SOURCE_TIER;
+  const bTrusted = getSourceTier(b.source) <= MAX_TRUSTED_ANCHOR_SOURCE_TIER;
+  if (aTrusted !== bTrusted) return aTrusted ? -1 : 1;
+  if (a.publishedAt !== b.publishedAt) return a.publishedAt - b.publishedAt;
+  if (a.title < b.title) return -1;
+  if (a.title > b.title) return 1;
+  return 0;
 }
 
 function computeItemCredibilityScore(
@@ -372,9 +700,16 @@ function computeImportanceScore(
 function createTimeoutLinkedController(parentSignal: AbortSignal): {
   controller: AbortController;
   cleanup: () => void;
+  timedOut: () => boolean;
 } {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
+  // #7083: distinguish the per-feed timeout from the parent (global digest
+  // deadline) abort so the attempt classifier can name the real cause.
+  let perFeedTimeoutFired = false;
+  const timeout = setTimeout(() => {
+    perFeedTimeoutFired = true;
+    controller.abort();
+  }, FEED_TIMEOUT_MS);
   const onAbort = () => controller.abort();
   parentSignal.addEventListener('abort', onAbort, { once: true });
 
@@ -384,6 +719,7 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
       clearTimeout(timeout);
       parentSignal.removeEventListener('abort', onAbort);
     },
+    timedOut: () => perFeedTimeoutFired,
   };
 }
 
@@ -420,8 +756,8 @@ export function looksLikeRssXml(text: string): boolean {
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
-): Promise<string | null> {
-  const { controller, cleanup } = createTimeoutLinkedController(signal);
+): Promise<{ text: string | null; failure: FeedFetchAttempt['failure'] }> {
+  const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
 
   try {
     const resp = await fetch(url, {
@@ -432,13 +768,18 @@ async function fetchRssText(
       },
       signal: controller.signal,
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) return { text: null, failure: 'direct-error' };
     const text = await resp.text();
     // Defensive: upstream may return HTTP 200 with an HTML interstitial
     // (Cloudflare bot challenge, captcha page). Reject up front so the
     // caller's relay fallback fires instead of caching an empty parse.
-    if (!looksLikeRssXml(text)) return null;
-    return text;
+    if (!looksLikeRssXml(text)) return { text: null, failure: 'direct-error' };
+    return { text, failure: null };
+  } catch {
+    return {
+      text: null,
+      failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'direct-error',
+    };
   } finally {
     cleanup();
   }
@@ -455,6 +796,9 @@ interface ParseResult {
   parsedTotal: number;     // count of <item>/<entry> blocks attempted
   droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
   droppedFeedCap?: number; // #4920: items beyond ITEMS_PER_FEED, previously uncounted
+  // #7083: how the fetch leg of this attempt actually ended. Absent on
+  // cache entries written before the field existed.
+  attempt?: FeedFetchAttempt;
 }
 
 // Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
@@ -494,7 +838,10 @@ async function fetchAndParseRss(
   // v7→v8: extend the same exclusion policy to duration-led anniversary
   // explainers ("10 years on from …"). Warm v7 rows already carry an
   // authoritative isOpinion="0", so force another cold parse on rollout.
-  const cacheKey = `rss:feed:v8:${variant}:${feed.url}`;
+  // v8→v9 (#7083): ParseResult gained the `attempt` field. Warm v8 rows
+  // lack it, so zero-item entries could not be classified between
+  // negative-cache and fresh-failure; force a cold parse on rollout.
+  const cacheKey = `rss:feed:v9:${variant}:${feed.url}`;
 
   try {
     // Read cache unconditionally — the v5 prefix guarantees pre-fix
@@ -505,21 +852,34 @@ async function fetchAndParseRss(
     // what the PR description claimed and what review P1 flagged was
     // missing.
     const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
-    if (cached) return cached;
+    if (cached) {
+      if (cached.parsedTotal === 0 && cached.items.length === 0) {
+        // Only a cached prior fetch failure is negative. A valid RSS body
+        // can also contain no entries; preserve that successful empty result
+        // so cache hits keep the normal `empty` verdict.
+        return { ...cached, attempt: cachedAttemptFrom(cached.attempt) };
+      }
+      return cached;
+    }
 
     // Try direct fetch first
-    let text = await fetchRssText(feed.url, signal).catch(() => null);
+    const direct = await fetchRssText(feed.url, signal);
+    let text = direct.text;
+    let failure: FeedFetchAttempt['failure'] = direct.failure;
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
+    let relayFailure: FeedFetchAttempt['failure'] = null;
+    let relayAttempted = false;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
     // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
     if (!text) {
       const relayBase = getRelayBaseUrl();
       if (relayBase) {
+        relayAttempted = true;
         relayBodyShape = 'fetch-error';
         const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-        const { controller, cleanup } = createTimeoutLinkedController(signal);
+        const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
         try {
           const resp = await fetch(relayUrl, {
             headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
@@ -538,7 +898,10 @@ async function fetchAndParseRss(
               relayBodyShape = 'html-or-empty';
             }
           }
-        } catch { /* relay also failed */ } finally {
+        } catch {
+          /* relay also failed */
+          relayFailure = timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error';
+        } finally {
           cleanup();
         }
       }
@@ -557,8 +920,20 @@ async function fetchAndParseRss(
 
     if (!text) {
       // Both direct and relay failed. Cache empty short so we retry sooner
-      // than the healthy-result TTL.
-      const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0 };
+      // than the healthy-result TTL. The attempt verdict distinguishes the
+      // global deadline abort (#7083) so a deadline-starved build is not
+      // later reported as an upstream failure.
+      const attempt: FeedFetchAttempt = {
+        source: relayAttempted ? 'relay' : 'direct',
+        failure: resolveTerminalFetchFailure({
+          directFailure: failure,
+          relayFailure,
+          relayAttempted,
+          deadlineAborted: signal.aborted,
+        }),
+        negativeCache: false,
+      };
+      const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
       await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
       return empty;
     }
@@ -568,13 +943,26 @@ async function fetchAndParseRss(
     // network failure: cache empty short so we retry sooner.
     const parsed = parseRssXml(text, feed, variant);
     const result: ParseResult = parsed ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
+    // text is non-null here, so the fetch source can only be 'direct' or
+    // 'relay' — narrow explicitly, the variable's type still carries
+    // 'both-failed' for the log line above.
+    result.attempt = {
+      source: source === 'relay' ? 'relay' : 'direct',
+      failure: null,
+      negativeCache: false,
+    };
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
     await setCachedJson(cacheKey, result, ttl);
     return result;
   } catch {
-    return { items: [], parsedTotal: 0, droppedUndated: 0 };
+    return {
+      items: [],
+      parsedTotal: 0,
+      droppedUndated: 0,
+      attempt: { source: 'direct', failure: 'direct-error', negativeCache: false },
+    };
   }
 }
 
@@ -589,6 +977,22 @@ const DATE_TAG_PRIORITY = {
 
 // Future-dated guard: items > 1h ahead of now are clock-skew or malformed.
 const FUTURE_DATE_TOLERANCE_MS = 60 * 60 * 1000;
+
+// RSS <source> is upstream-provided text. Only these server-configured
+// aggregator endpoints are allowed to vouch for it as publisher provenance;
+// ordinary feeds remain anchored to their configured `feed.name` label.
+const TRUSTED_ORIGIN_AGGREGATOR_HOSTS = new Set(['news.google.com']);
+
+function isTrustedOriginAggregator(feedUrl: string): boolean {
+  try {
+    const parsed = new URL(feedUrl);
+    return TRUSTED_ORIGIN_AGGREGATOR_HOSTS.has(parsed.hostname)
+      || (parsed.hostname === 'moxie.foxbusiness.com'
+        && parsed.pathname.startsWith('/google-publisher/'));
+  } catch {
+    return false;
+  }
+}
 
 function extractFirstDateTag(block: string, isAtom: boolean): string {
   const tags = isAtom ? DATE_TAG_PRIORITY.atom : DATE_TAG_PRIORITY.rss;
@@ -669,6 +1073,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     items.push({
       source: feed.name,
       originPublisher,
+      originPublisherTrusted: !isAtom && isTrustedOriginAggregator(feed.url),
       title,
       link,
       publishedAt,
@@ -774,7 +1179,12 @@ function extractDescription(block: string, isAtom: boolean, title: string): stri
   for (const tag of tags) {
     const raw = extractRawTagBody(block, tag);
     if (!raw) continue;
-    const cleaned = decodeXmlEntities(raw)
+    // Some publisher feeds place entity-encoded thumbnail markup before a
+    // literal CDATA summary in one tag body (Times of India is one example).
+    // Unwrap complete embedded CDATA sections before entity decoding and HTML
+    // stripping; otherwise `<...>` removal consumes the wrapper and its text.
+    const unwrapped = raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+    const cleaned = decodeXmlEntities(unwrapped)
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -877,9 +1287,13 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   // so the cache prefix (currently classify:sebuf:v6:) lives in exactly
   // one place — bumping it again only requires touching _shared.ts and
   // the relay's independent .cjs helper. See U4 of the plan.
+  // Titles are independent — hash them concurrently instead of N sequential
+  // WebCrypto hops on this hot fast-tier surface.
+  const keyed = await Promise.all(
+    candidates.map((item) => buildClassifyCacheKey(item.title).then((key) => ({ key, item }))),
+  );
   const keyMap = new Map<string, ParsedItem[]>();
-  for (const item of candidates) {
-    const key = await buildClassifyCacheKey(item.title);
+  for (const { key, item } of keyed) {
     const existing = keyMap.get(key) ?? [];
     existing.push(item);
     keyMap.set(key, existing);
@@ -1042,10 +1456,10 @@ function computeEntityCorroborationSignals(
       // signal that feeds importanceScore and the diplomacy severity
       // promotion. The tier is a property of the LABEL, so a family joins
       // tier12Sources when any of its labels is tier 1-2.
-      // #6430: the originating publisher (RSS <source>) outranks the feed
-      // label — a wire syndicated through a keyword feed corroborates as
-      // the wire, not as the query it arrived through.
-      const family = publisherFamilyFor(item.originPublisher || item.source);
+      // #6430: a trusted aggregator's originating publisher (RSS <source>)
+      // outranks the feed label — a wire syndicated through a keyword feed
+      // corroborates as the wire, not as the query it arrived through.
+      const family = publisherFamilyForItem(item);
       if (family) {
         bucket.sources.add(family);
         if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(family);
@@ -1080,18 +1494,54 @@ interface StoryTrack {
   lastSeen: number;
   mentionCount: number;
   sourceCount: number;
-  currentScore: number;
-  peakScore: number;
 }
 
-function derivePhase(track: StoryTrack): ProtoStoryPhase {
-  const ageMs = Date.now() - track.firstSeen;
-  if (track.mentionCount <= 1) return 'STORY_PHASE_BREAKING';
-  if (track.mentionCount <= 5 && ageMs < 2 * 60 * 60 * 1000) return 'STORY_PHASE_DEVELOPING';
-  // FADING requires real scores from E1. Until E1 ships, currentScore and
-  // peakScore are both 0 (HSETNX placeholders), so this branch is intentionally
-  // inactive — stories fall through to SUSTAINED rather than incorrectly FADING.
-  if (track.currentScore > 0 && track.peakScore > 0 && track.currentScore < track.peakScore * 0.5) return 'STORY_PHASE_FADING';
+/**
+ * Derive the wire lifecycle phase for a story appearing in THIS build cycle.
+ *
+ * FADING is deliberately not derivable here. #7081 ran a bounded study against
+ * frozen production evidence (tests/fixtures/story-phase-fading-study.json,
+ * replayed by scripts/study-story-phase-fading.mjs) and recorded a no-go for
+ * the previously documented `currentScore < 0.5 * peakScore` rule. Three
+ * findings, each reproducible from that fixture:
+ *
+ *   1. The rule was unreachable. It read `peakScore` from the story:track hash,
+ *      but the peak is written to the story:peak:v1 ZSet and that hash field has
+ *      no writer — the field was absent on 14,000/14,000 sampled rows, so the
+ *      branch could never be taken. The old comment here blamed "HSETNX
+ *      placeholders" for both scores; that was wrong about currentScore, which
+ *      is written on every cycle and was positive on all 14,000 rows.
+ *
+ *   2. Repaired to read the real peak, the ratio measures article age, not
+ *      traction. importanceScore weights severity at 0.55 and recency at 0.10,
+ *      so the score's dynamic range at fixed severity is min/max = 0.63
+ *      (critical), 0.57 (high), 0.49 (medium), 0.37 (low), 0.18 (info). A
+ *      critical or high story therefore cannot reach half its peak without a
+ *      severity downgrade, while an info story crosses it on the recency term
+ *      alone once its article passes 24h (18 -> 8). Measured on the same rows:
+ *      673 firings, 670 of them info/low, and 0 of 679 critical/high rows.
+ *
+ *   3. Fading is not observable at this call site at all. derivePhase only runs
+ *      for stories present in the current cycle, and it is handed a track whose
+ *      lastSeen is `now` — a story that stopped being covered is absent from the
+ *      cycle and never reaches this function. Silence, the one signal that does
+ *      identify a fading story, is only visible where the non-serving population
+ *      is in scope: scripts/seed-digest-notifications.mjs calls
+ *      deriveNotificationStoryPhase() from shared/story-phase.js, which
+ *      applies the same core mention-count/age rules documented here and
+ *      additionally treats >24h of silence as fading.
+ *
+ * The STORY_PHASE_FADING wire value is retained for compatibility and is still
+ * handled by consumers (the client alert gate suppresses it), but this handler
+ * does not emit it. Do not reintroduce a score-ratio branch here without new
+ * evidence that clears the acceptance bar recorded in the study.
+ *
+ * `nowMs` is injectable so the phase boundaries are testable without a live clock.
+ */
+function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryPhase {
+  const phase = deriveCoreStoryPhase(track, nowMs);
+  if (phase === 'breaking') return 'STORY_PHASE_BREAKING';
+  if (phase === 'developing') return 'STORY_PHASE_DEVELOPING';
   return 'STORY_PHASE_SUSTAINED';
 }
 
@@ -1099,13 +1549,26 @@ function derivePhase(track: StoryTrack): ProtoStoryPhase {
  * Batch-read existing story:track hashes from Redis for a list of title hashes.
  * Returns a Map<titleHash, StoryTrack>. Missing entries are absent from the map.
  */
-async function readStoryTracks(titleHashes: string[]): Promise<Map<string, StoryTrack>> {
+async function readStoryTracks(
+  titleHashes: string[],
+  deadlineAt = Number.POSITIVE_INFINITY,
+): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
-  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', 'currentScore', 'peakScore'];
+  // currentScore and peakScore are deliberately NOT read here. derivePhase is
+  // the only consumer this handler ever had for them, and it no longer uses a
+  // score at all (#7081 no-go — see derivePhase). peakScore in particular never
+  // existed as a hash field: the peak lives in the story:peak:v1 ZSet, so the
+  // HMGET slot returned null on every sampled production row. Dropping both
+  // trims two fields from every per-story HMGET in the batch. The WRITE side is
+  // unchanged — buildStoryTrackHsetFields still persists currentScore, which
+  // scripts/seed-digest-notifications.mjs reads.
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount'];
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
-  const results = await runRedisPipeline(commands);
+  const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+  if (timeoutMs === undefined) return new Map();
+  const results = await runRedisPipeline(commands, false, timeoutMs);
   const map = new Map<string, StoryTrack>();
   for (let i = 0; i < titleHashes.length; i++) {
     const vals = results[i]?.result as string[] | null;
@@ -1115,11 +1578,270 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
       lastSeen:     Number(vals[1] ?? 0),
       mentionCount: Number(vals[2] ?? 0),
       sourceCount:  Number(vals[3] ?? 0),
-      currentScore: Number(vals[4] ?? 0),
-      peakScore:    Number(vals[5] ?? 0),
     });
   }
   return map;
+}
+
+function parseRedisTimestamp(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  if (typeof value === 'string' && value.trim().length === 0) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function chunkRedisCommands(
+  commands: Array<Array<string | number>>,
+  maxCommands: number = MAX_REDIS_PIPELINE_COMMANDS,
+): Array<Array<Array<string | number>>> {
+  if (!Number.isInteger(maxCommands) || maxCommands < 1) {
+    throw new RangeError('maxCommands must be a positive integer');
+  }
+  const chunks: Array<Array<Array<string | number>>> = [];
+  for (let offset = 0; offset < commands.length; offset += maxCommands) {
+    chunks.push(commands.slice(offset, offset + maxCommands));
+  }
+  return chunks;
+}
+
+/**
+ * Convert an absolute digest deadline into a Redis request timeout. A caller
+ * must not start a request after its deadline, but a short positive remainder
+ * is still useful because same-region Upstash reads normally complete far
+ * below the shared five-second fallback timeout.
+ */
+function redisTimeoutForDeadline(deadlineAt: number): number | undefined {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) return undefined;
+  return Math.min(REDIS_PIPELINE_TIMEOUT_MS, Math.max(1, Math.ceil(remainingMs)));
+}
+
+/**
+ * Return firstSeen only for a track that is safe to use as a canonical anchor.
+ * Missing/legacy metadata, malformed timestamps, stale rows, and explicit
+ * ineligibility all fail closed.
+ */
+function parseFreshEligibleTrackFirstSeen(
+  row: unknown,
+  freshnessCutoff: number,
+): number | undefined {
+  if (!Array.isArray(row) || row.length < 3 || row[2] !== '1') return undefined;
+  const firstSeen = parseRedisTimestamp(row[0]);
+  const lastSeen = parseRedisTimestamp(row[1]);
+  if (firstSeen === undefined || lastSeen === undefined || lastSeen < freshnessCutoff) {
+    return undefined;
+  }
+  return firstSeen;
+}
+
+interface AdoptionState {
+  aliasTargetByHash: Map<string, string>;
+  trackFirstSeenByHash: Map<string, number>;
+  incompleteHashes: Set<string>;
+}
+
+function isCompleteRedisResult(result: unknown): result is { result: unknown } {
+  if (!result || typeof result !== 'object') return false;
+  const record = result as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, 'result')
+    && !Object.prototype.hasOwnProperty.call(record, 'error');
+}
+
+/**
+ * Read the alias and track state for one adoption pass.
+ *
+ * Each bounded chunk starts with one MULTI/EXEC call so the alias and
+ * three-field member-track read for every hash come from the same Redis
+ * snapshot. Distinct non-self alias targets are then read in a second bounded
+ * MULTI/EXEC call, because their keys are not known until the aliases return.
+ * The reader has one absolute deadline shared by all chunks. Each Redis call
+ * is tightened to the remaining budget, so a short positive remainder can
+ * still serve a normal fast response without letting a slow call outlive the
+ * digest. A timeout, incomplete response, command error, or deadline skip
+ * leaves the affected source hashes marked incomplete; callers must use their
+ * batch-derived canonical for any affected cluster.
+ */
+async function readAdoptionState(
+  memberHashes: string[],
+  freshnessCutoff: number,
+  deadlineAt = Date.now() + ADOPTION_DEADLINE_MS,
+): Promise<AdoptionState> {
+  const aliasTargetByHash = new Map<string, string>();
+  const trackFirstSeenByHash = new Map<string, number>();
+  const incompleteHashes = new Set(memberHashes);
+
+  for (let offset = 0; offset < memberHashes.length; offset += ADOPTION_BATCH_SIZE) {
+    const chunk = memberHashes.slice(offset, offset + ADOPTION_BATCH_SIZE);
+    const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+    if (timeoutMs === undefined) {
+      console.warn(
+        `[digest] story adoption deadline reached; skipped ${memberHashes.length - offset} member hash(es)`,
+      );
+      break;
+    }
+
+    const adoptionResults = await runRedisTransaction([
+      ...chunk.map((h) => ['GET', STORY_ALIAS_KEY(h)]),
+      ...chunk.map((h) => ['HMGET', STORY_TRACK_KEY(h), 'firstSeen', 'lastSeen', 'anchorEligible']),
+    ], false, timeoutMs);
+
+    // A response that crossed the deadline is not a usable snapshot. Do this
+    // check before applying either map so no half-read can influence adoption.
+    if (Date.now() > deadlineAt) {
+      console.warn(
+        `[digest] story adoption chunk crossed deadline; skipped ${chunk.length} member hash(es)`,
+      );
+      break;
+    }
+
+    const expectedLength = chunk.length * 2;
+    const complete = Array.isArray(adoptionResults)
+      && adoptionResults.length === expectedLength
+      && adoptionResults.every(isCompleteRedisResult);
+    if (!complete) {
+      console.warn(
+        `[digest] story adoption chunk incomplete; expected ${expectedLength} Redis result(s), got ${Array.isArray(adoptionResults) ? adoptionResults.length : 'non-array'}`,
+      );
+      // A failed chunk is a Redis-health signal, not a per-key miss. Stop
+      // here so later chunks cannot extend the cold-path work while the
+      // adoption result is already unconfirmed.
+      break;
+    }
+
+    // A successful Redis response can still contain an unexpected command
+    // shape. Treat that as an unconfirmed chunk, not as a cache miss that is
+    // safe to combine with other members in the same cluster.
+    const aliases = adoptionResults.slice(0, chunk.length);
+    const tracks = adoptionResults.slice(chunk.length);
+    const validShapes = aliases.every(({ result }) => result === null || typeof result === 'string')
+      && tracks.every(({ result }) => Array.isArray(result) && result.length >= 3);
+    if (!validShapes) {
+      console.warn('[digest] story adoption chunk returned invalid Redis value shapes');
+      break;
+    }
+
+    // Only a complete, error-free chunk is eligible for adoption. A normal
+    // HMGET miss is [null, null, null] and contributes no live track. The
+    // exact string '1' is required for eligibility; missing/legacy metadata
+    // never becomes trusted merely because firstSeen is old.
+    const trackRowByHash = new Map<string, unknown[]>();
+    for (let i = 0; i < chunk.length; i++) {
+      const row = adoptionResults[chunk.length + i]!.result;
+      trackRowByHash.set(chunk[i]!, row as unknown[]);
+    }
+
+    const nonSelfAliasByHash = new Map<string, string>();
+    for (let i = 0; i < chunk.length; i++) {
+      const target = adoptionResults[i]!.result;
+      const row = trackRowByHash.get(chunk[i]!)!;
+      // Self-aliases are useful only when their own track is fresh and
+      // explicitly eligible. Non-self aliases are held until the target's own
+      // track has been read and validated below.
+      // This matters when the canonical member dropped out of the batch — its
+      // persisted track is the only evidence that the alias is trustworthy.
+      if (
+        typeof target === 'string'
+        && target.length > 0
+      ) {
+        if (
+          target === chunk[i]
+          && parseFreshEligibleTrackFirstSeen(row, freshnessCutoff) !== undefined
+        ) {
+          aliasTargetByHash.set(chunk[i]!, target);
+        } else if (target !== chunk[i]) {
+          nonSelfAliasByHash.set(chunk[i]!, target);
+        }
+      }
+    }
+
+    const targetHashes = [...new Set(nonSelfAliasByHash.values())]
+      .filter((target) => !trackRowByHash.has(target));
+    const unreadableTargetHashes = new Set<string>();
+    if (targetHashes.length > 0) {
+      const targetTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+      if (targetTimeoutMs === undefined) {
+        console.warn(
+          `[digest] story adoption target deadline reached; skipped ${targetHashes.length} track read(s)`,
+        );
+        for (const target of targetHashes) unreadableTargetHashes.add(target);
+      } else {
+        const targetResults = await runRedisTransaction(
+          targetHashes.map((target) => [
+            'HMGET', STORY_TRACK_KEY(target), 'firstSeen', 'lastSeen', 'anchorEligible',
+          ]),
+          false,
+          targetTimeoutMs,
+        );
+
+        // A response that crossed the deadline is not a usable target
+        // snapshot. Treat every target as unreadable so no alias can influence
+        // adoption from a half-read result.
+        if (Date.now() > deadlineAt) {
+          console.warn(
+            `[digest] story adoption target chunk crossed deadline; skipped ${targetHashes.length} track read(s)`,
+          );
+          for (const target of targetHashes) unreadableTargetHashes.add(target);
+        } else {
+          const targetComplete = Array.isArray(targetResults)
+            && targetResults.length === targetHashes.length
+            && targetResults.every(isCompleteRedisResult);
+          if (!targetComplete) {
+            console.warn(
+              `[digest] story adoption target read incomplete; expected ${targetHashes.length} Redis result(s), got ${Array.isArray(targetResults) ? targetResults.length : 'non-array'}`,
+            );
+            for (const target of targetHashes) unreadableTargetHashes.add(target);
+          } else {
+            for (let i = 0; i < targetHashes.length; i++) {
+              const row = targetResults[i]!.result;
+              if (!Array.isArray(row) || row.length < 3) {
+                unreadableTargetHashes.add(targetHashes[i]!);
+                continue;
+              }
+              trackRowByHash.set(targetHashes[i]!, row);
+            }
+          }
+        }
+      }
+    }
+
+    // A target row is trusted only when it carries its own fresh, eligible
+    // anchor metadata. A readable but stale/ineligible/legacy row rejects the
+    // alias; an unreadable row marks the source incomplete so its whole
+    // cluster falls back to the batch-derived canonical.
+    for (const [memberHash, target] of nonSelfAliasByHash) {
+      if (unreadableTargetHashes.has(target)) {
+        continue;
+      }
+      if (parseFreshEligibleTrackFirstSeen(trackRowByHash.get(target), freshnessCutoff) !== undefined) {
+        aliasTargetByHash.set(memberHash, target);
+      }
+    }
+
+    for (let i = 0; i < chunk.length; i++) {
+      const firstSeen = parseFreshEligibleTrackFirstSeen(
+        trackRowByHash.get(chunk[i]!),
+        freshnessCutoff,
+      );
+      if (firstSeen !== undefined) trackFirstSeenByHash.set(chunk[i]!, firstSeen);
+    }
+
+    const affectedByUnreadableTarget = new Set<string>();
+    for (const [memberHash, target] of nonSelfAliasByHash) {
+      if (unreadableTargetHashes.has(target)) affectedByUnreadableTarget.add(memberHash);
+    }
+    for (const hash of chunk) {
+      if (!affectedByUnreadableTarget.has(hash)) incompleteHashes.delete(hash);
+    }
+    if (unreadableTargetHashes.size > 0) {
+      // A transport/incomplete/deadline failure is a Redis-health signal, not
+      // a per-key miss. Stop here so later chunks cannot extend the cold-path
+      // work while adoption is already unconfirmed.
+      break;
+    }
+  }
+
+  return { aliasTargetByHash, trackFirstSeenByHash, incompleteHashes };
 }
 
 function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
@@ -1154,42 +1876,352 @@ export async function listFeedDigest(
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
+  const requestStart = Date.now();
+  const attemptedAt = new Date(requestStart).toISOString();
+  const responseDeadlineAt = requestStart + RESPONSE_DEADLINE_MS;
+  // Wall-clock budget for optional tail work. The build alone can consume
+  // ~19s worst case (14s fetcher timeout + a 5s sentinel write inside the
+  // cache wrapper); every awaited Redis op after it must fit inside the 25s
+  // Edge response ceiling minus a guard band.
+  // ONE revocation read per request, started at t=0 so its worst case
+  // overlaps the build instead of stacking after it. Shared by the fresh
+  // serve path and both replay tiers.
+  const revokedPromise = readRevokedUrlSet();
 
-  const empty = (): ListFeedDigestResponse => ({ categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() });
+  // #7085: an empty response still carries an explicit `unavailable`
+  // coverage block so clients can distinguish "nothing served" from
+  // "digest temporarily absent".
+  const empty = (at: string, reason: string): ListFeedDigestResponse => ({
+    categories: {},
+    feedStatuses: {},
+    generatedAt: new Date().toISOString(),
+    coverage: {
+      state: 'unavailable',
+      attemptedAt: at,
+      itemsServed: 0,
+      publisherCount: 0,
+      feedTotal: 0,
+      feedCompleted: 0,
+      categoryTotal: 0,
+      categoryCompleted: 0,
+      categoryStates: {},
+      droppedFeedCap: 0,
+      droppedUndated: 0,
+      droppedFreshness: 0,
+      droppedCategoryCap: 0,
+      servedStale: false,
+      staleAgeSeconds: 0,
+      staleReason: reason,
+    },
+  });
+
+  /**
+   * #7084: the last serving tier — the warm in-isolate cache, reached when the
+   * durable snapshot was unreadable, absent, or expired. Bounded by the same
+   * six-hour contract as the durable tier: the `ts` recorded at write time was
+   * previously never read, so this tier could replay content of unbounded age.
+   */
+  const serveIsolateFallback = async (
+    reason: StaleReason,
+    at: string,
+    revoked: RevocationRead,
+  ): Promise<ListFeedDigestResponse> => {
+    const entry = fallbackDigestCache.get(fallbackKey);
+    if (!entry) {
+      console.log(`[digest-serving] outcome=unavailable reason=${reason} variant=${variant} lang=${lang}`);
+      return empty(at, reason);
+    }
+    if (!revoked.readable) {
+      // Same fail-closed rule as the durable tier: replayed content must not
+      // go out unfiltered when the suppression set could not be read.
+      console.warn(
+        `[digest-serving] outcome=unavailable reason=revocations-unreadable variant=${variant} lang=${lang} tier=isolate`,
+      );
+      captureSilentError(new Error('revocation set unreadable on isolate serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-isolate'],
+      });
+      return empty(at, reason);
+    }
+    // The body below was cached in-process, but it originated from a build or
+    // a Redis read — degrade this tier on a malformed shape, never the request.
+    try {
+      // Suppress BEFORE the servability gate, mirroring the durable tier: a
+      // fully-revoked body is not servable content, and classifying the
+      // unfiltered body would serve it as a valid (empty) stale response.
+      const { data, dropped } = suppressRevoked(entry.data, revoked.urls);
+      // Same window policy as the durable tier — one implementation, so the
+      // two replay tiers cannot drift apart on what "six hours" means.
+      const verdict = classifyStaleSnapshot({ acceptedAt: entry.ts, data }, Date.now());
+      if (!verdict.serve) {
+        fallbackDigestCache.delete(fallbackKey);
+        console.log(
+          `[digest-serving] outcome=${verdict.outcome} reason=${reason} variant=${variant} ` +
+            `lang=${lang} tier=isolate age_s=${verdict.ageSeconds}`,
+        );
+        return empty(at, reason);
+      }
+      const ageSeconds = verdict.ageSeconds;
+      console.log(
+        `[digest-serving] outcome=isolate-fallback reason=${reason} age_s=${ageSeconds} ` +
+          `variant=${variant} lang=${lang} revoked_urls=${revoked.urls.size} revoked_dropped=${dropped}`,
+      );
+      return markFallbackCoverageStale(data, at, { ageSeconds, reason });
+    } catch (err) {
+      fallbackDigestCache.delete(fallbackKey);
+      console.warn(`[digest-serving] outcome=unavailable reason=isolate-malformed variant=${variant} lang=${lang}`);
+      captureSilentError(err, {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'isolate-serve', variant, lang },
+        fingerprint: ['digest-lastgood', 'isolate-serve-threw'],
+      });
+      return empty(at, reason);
+    }
+  };
+
+  /** Durable snapshot first, warm isolate second, unavailable last. */
+  const serveDegraded = async (
+    fallbackReason: StaleReason,
+    knownAttempt: FailedDigestAttempt | null,
+    preferRecentAttempt = true,
+  ): Promise<ListFeedDigestResponse> => {
+    if (Date.now() >= responseDeadlineAt) {
+      return empty(knownAttempt?.at ?? attemptedAt, knownAttempt?.reason ?? fallbackReason);
+    }
+    // Start the large body read only after degradation is known. It overlaps
+    // attempt recovery and the already-running revocation read without adding
+    // ~126KB of Redis I/O to every healthy/cache-hit request.
+    const degradedSnapshotPromise = readAcceptedSnapshot<ListFeedDigestResponse>(variant, lang);
+    const fallbackAttempt = Object.freeze({ at: attemptedAt, reason: fallbackReason });
+    const attempt = knownAttempt ?? await settleBeforeDeadline(
+      recoverFailedAttempt(variant, lang, fallbackAttempt, preferRecentAttempt),
+      responseDeadlineAt,
+      fallbackAttempt,
+    );
+    const unavailable = empty(attempt.at, attempt.reason);
+    const stale = await settleBeforeDeadline(
+      serveLastGood(
+        variant,
+        lang,
+        attempt.reason,
+        attempt.at,
+        revokedPromise,
+        degradedSnapshotPromise,
+      ),
+      responseDeadlineAt,
+      null,
+    );
+    if (stale) return stale;
+    const revoked = await settleBeforeDeadline(
+      revokedPromise,
+      responseDeadlineAt,
+      { urls: new Set<string>(), readable: false },
+    );
+    return settleBeforeDeadline(
+      serveIsolateFallback(attempt.reason, attempt.at, revoked),
+      responseDeadlineAt,
+      unavailable,
+    );
+  };
+
+  let leaderSlot: ReturnType<typeof beginDigestAttempt> | null = null;
+  let leaderFailure: FailedDigestAttempt | null = null;
 
   try {
-    // cachedFetchJson coalesces concurrent cold-path calls: concurrent requests
-    // for the same key share a single buildDigest() run instead of fanning out
-    // across all RSS feeds. Returning null skips the Redis write and caches a
-    // neg-sentinel (120s) to absorb the request storm during degraded periods.
-    const fresh = await cachedFetchJson<ListFeedDigestResponse>(
-      digestCacheKey,
-      900,
-      async () => {
-        const result = await buildDigest(variant, lang);
-        const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
-        return totalItems > 0 ? result : null;
-      },
-      120,
-      { timeoutMs: DIGEST_RESPONSE_TIMEOUT_MS },
+    // cachedFetchJsonWithMeta reports whether the fetcher actually ran, which
+    // the plain wrapper hides. Publishing on a cache hit would mean a full
+    // read+write of the ~126KB snapshot on EVERY request, awaited before the
+    // response, and would re-stamp acceptance for content that had not changed.
+    const cachedResult = await settleBeforeDeadline(
+      cachedFetchJsonWithMeta<ListFeedDigestResponse>(
+        digestCacheKey,
+        900,
+        async () => {
+          leaderSlot = beginDigestAttempt(variant, lang, attemptedAt);
+          try {
+            const result = await buildDigest(variant, lang, (await revokedPromise).urls);
+            const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
+            if (totalItems > 0) {
+              completeDigestAttempt(variant, lang, leaderSlot);
+              return result;
+            }
+            leaderFailure = publishFailedAttempt(
+              variant,
+              lang,
+              digestCacheKey,
+              leaderSlot,
+              'empty-rebuild',
+              120,
+            );
+            completeDigestAttempt(variant, lang, leaderSlot);
+            return null;
+          } catch (err) {
+            leaderFailure = publishFailedAttempt(
+              variant,
+              lang,
+              digestCacheKey,
+              leaderSlot,
+              'build-error',
+              30,
+            );
+            completeDigestAttempt(variant, lang, leaderSlot);
+            throw err;
+          }
+        },
+        120,
+        {
+          timeoutMs: DIGEST_RESPONSE_TIMEOUT_MS,
+          // The fetcher publishes attempt + sentinel atomically. Letting the
+          // generic wrapper write its own sentinel first would detach identity.
+          cacheFailures: false,
+          shouldFetch: () => shouldStartDigestAttempt(digestCacheKey),
+        },
+      ),
+      responseDeadlineAt,
+      { data: null, source: 'skipped', leader: false },
     );
+    const { data: fresh, source, leader } = cachedResult;
 
     if (fresh === null) {
       markNoCacheResponse(ctx.request);
-      return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
+      if (leaderSlot && !leaderFailure) {
+        leaderFailure = publishFailedAttempt(
+          variant,
+          lang,
+          digestCacheKey,
+          leaderSlot,
+          'build-error',
+          30,
+        );
+        completeDigestAttempt(variant, lang, leaderSlot);
+      }
+      return await serveDegraded('empty-rebuild', leaderFailure, source !== 'cache');
     }
 
     if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
-    fallbackDigestCache.set(fallbackKey, { data: fresh, ts: Date.now() });
-    return fresh;
+    // Anchor the isolate entry to the CONTENT clock, exactly like acceptedAt:
+    // stamping Date.now() re-aged unchanged content on every cache hit, so a
+    // steadily-hit digest never expired from this tier and a later replay
+    // reported an age measured from the last request rather than the build.
+    const contentTs = Date.parse(fresh.generatedAt ?? '');
+    fallbackDigestCache.set(fallbackKey, {
+      data: fresh,
+      ts: Number.isFinite(contentTs) ? contentTs : Date.now(),
+    });
+    // Revocation is a SERVE-time gate. Applying it only inside buildDigest
+    // would let a cache hit replay the pre-revocation body for up to 900s.
+    // The read has been in flight since t=0, so this await is essentially
+    // free by the time a build has run.
+    const revoked = await settleBeforeDeadline(
+      revokedPromise,
+      responseDeadlineAt,
+      { urls: new Set<string>(), readable: false },
+    );
+    if (!revoked.readable) {
+      console.warn(
+        `[digest-serving] outcome=unavailable reason=revocations-unreadable variant=${variant} lang=${lang} tier=fresh`,
+      );
+      captureSilentError(new Error('revocation set unreadable on fresh serving path'), {
+        tags: { surface: 'news', component: 'digest-lastgood', stage: 'revocation-read', variant, lang },
+        fingerprint: ['digest-lastgood', 'revocations-unreadable-fresh'],
+      });
+      markNoCacheResponse(ctx.request);
+      return empty(fresh.coverage?.attemptedAt || attemptedAt, '');
+    }
+    // Only the coalescing LEADER of a real build publishes: followers resolve
+    // with source 'fresh' too, and each would repeat the full ~126KB guarded
+    // write for a body identical to the one the leader just published. The
+    // deadline gate keeps the worst case inside the 25s Edge ceiling: a
+    // maximally slow build (~19s with its own cache writes) plus this
+    // publish's worst case (~6.5s of Redis timeouts) would exceed it, and
+    // the publish is best-effort by contract — skipping it under pressure
+    // loses nothing the next uncontended build will not restore.
+    if (source === 'fresh' && leader) {
+      if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
+        await settleBeforeDeadline(
+          publishAcceptedSnapshot(variant, lang, fresh),
+          responseDeadlineAt,
+          undefined,
+        );
+      } else {
+        console.warn(
+          `[digest-lastgood] publish skipped (over deadline budget) variant=${variant} lang=${lang} ` +
+            `elapsed_ms=${Date.now() - requestStart}`,
+        );
+      }
+    }
+    // #7084: while ANY revocation is live, stop feeding shared caches. This
+    // endpoint is the gateway's `slow` tier (s-maxage=1800, CDN-Cache-Control
+    // s-maxage=3600), so without this an operator's SADD left the revoked item
+    // being served from the CDN for up to an hour from the very endpoint the
+    // runbook calls clean. This does not evict copies already stored — the
+    // runbook in _lastgood.ts still requires a purge for those — it stops new
+    // ones accumulating for as long as the suppression is in force.
+    if (revoked.urls.size > 0) markNoCacheResponse(ctx.request);
+    const { data: served, dropped } = suppressRevoked(fresh, revoked.urls);
+    if (dropped > 0) {
+      console.log(`[digest-serving] outcome=fresh variant=${variant} lang=${lang} revoked_dropped=${dropped}`);
+    }
+    return served;
   } catch {
     markNoCacheResponse(ctx.request);
-    return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
+    // A cache-layer timeout rejects outside the fetcher. Name it from the
+    // leader's request-start clock without waiting for telemetry; followers
+    // recover the same in-isolate identity.
+    if (leaderSlot && !leaderFailure) {
+      leaderFailure = publishFailedAttempt(
+        variant,
+        lang,
+        digestCacheKey,
+        leaderSlot,
+        'build-error',
+        30,
+      );
+      completeDigestAttempt(variant, lang, leaderSlot);
+    }
+    return await serveDegraded('build-error', leaderFailure);
   }
 }
 
-const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
+function redisPipelineConfirmed(
+  results: Array<{ result?: unknown; error?: string }>,
+  expectedCommands: number,
+): boolean {
+  return results.length === expectedCommands && results.every(result => !result?.error);
+}
 
+/**
+ * The prune is destructive, so this gate takes no staleness budget: the marker
+ * handed in was written by THIS publication and must already reach `nowMs`.
+ * (The read path in seed-forecast-resolutions.mjs is the only caller that opts
+ * into FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS.)
+ *
+ * `evidenceDropped` is deliberately separate from `evidenceWritesConfirmed`:
+ * a story whose member could not be built never reached Redis, so it says
+ * nothing about whether the writes that DID happen were confirmed. It still
+ * blocks the marker advance (and therefore this gate, via coverageAdvanced),
+ * but it must not be laundered into a write-failure signal.
+ */
+function shouldPruneAccumulator(options: {
+  evidenceEligible: boolean;
+  cutoverEnabled: boolean;
+  coverage: unknown;
+  nowMs: number;
+  trackingWritesConfirmed: boolean;
+  evidenceWritesConfirmed: boolean;
+  coverageAdvanced: boolean;
+  accumulatorTtlConfirmed: boolean;
+}): boolean {
+  if (!options.trackingWritesConfirmed || !options.accumulatorTtlConfirmed) return false;
+  if (!options.evidenceEligible) return true;
+  return options.cutoverEnabled
+    && options.evidenceWritesConfirmed
+    && options.coverageAdvanced
+    && forecastEvidenceCoversWindow(
+      options.coverage,
+      options.nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+      options.nowMs,
+    );
+}
 /**
  * Build the HSET field list for a story:track:v1 row.
  *
@@ -1209,10 +2241,14 @@ function buildStoryTrackHsetFields(
   item: ParsedItem,
   nowStr: string,
   score: number,
+  anchorEligible = isAnchorEligible(item),
 ): Array<string | number> {
   return [
     'lastSeen', nowStr,
     'currentScore', score,
+    // Canonical adoption may use firstSeen only when this server-derived
+    // eligibility stamp is present. Legacy rows without it fail closed.
+    'anchorEligible', anchorEligible ? '1' : '0',
     'title', item.title,
     'link', item.link,
     'severity', item.level,
@@ -1270,10 +2306,52 @@ function buildStoryTrackHsetFields(
   ];
 }
 
-async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[], memberHashesByFinal?: Map<string, Set<string>>): Promise<void> {
+async function writeStoryTracking(
+  items: ParsedItem[],
+  variant: string,
+  lang: string,
+  hashes: string[],
+  memberHashesByFinal?: Map<string, Set<string>>,
+  deadlineAt = Number.POSITIVE_INFINITY,
+  clusterAnchorEligibleByHash?: ReadonlyMap<string, boolean>,
+): Promise<void> {
   if (items.length === 0) return;
+  if (redisTimeoutForDeadline(deadlineAt) === undefined) {
+    console.warn('[digest] story tracking deadline reached before writes');
+    return;
+  }
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
+  // The archive/coverage keys are written raw (see the pipeline call below), so
+  // getKeyPrefix() does NOT isolate them per deployment the way the accumulator
+  // ZADD on the adjacent line is isolated. Preview and dev deployments share
+  // this Upstash instance, and the marker they would rewrite is the artefact
+  // that authorises destructive accumulator pruning — so production is the only
+  // deployment allowed to publish evidence at all.
+  const productionDeployment = (process.env.VERCEL_ENV ?? 'production') === 'production';
+  const evidenceEligible = isEligibleForecastEvidence(variant, lang) && productionDeployment;
+  const cutoverEnabled = process.env.FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
+  const coverageRead = evidenceEligible
+    ? await readCachedJson(FORECAST_EVIDENCE_COVERAGE_KEY, true)
+    : { status: 'miss' as const };
+  const coverageReadConfirmed = !evidenceEligible || coverageRead.status !== 'error';
+  const coverageBefore = evidenceEligible && coverageRead.status === 'hit'
+    ? parseForecastEvidenceCoverage(coverageRead.value)
+    : null;
+  // #7082 evidence archive publication counters (operator visibility).
+  let evidenceAttempted = 0;
+  let evidenceDropped = 0;
+  let trackingWritesConfirmed = true;
+  let evidenceWritesConfirmed = coverageReadConfirmed;
+
+  const runPipelineBeforeDeadline = async (
+    commands: Array<Array<string | number>>,
+    raw = false,
+  ) => {
+    const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+    if (timeoutMs === undefined) return [];
+    return runRedisPipeline(commands, raw, timeoutMs);
+  };
 
   // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
   // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
@@ -1287,9 +2365,11 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   // are set-shaped stay per item: SADD source (distinct-source set is the
   // point of corroboration) and ZADD peak GT (max is idempotent).
   const representativeByHash = new Map<string, ParsedItem>();
+  const displayedAnchorEligibleByHash = new Map<string, boolean>();
   for (let i = 0; i < items.length; i++) {
     const hash = hashes[i]!;
     const item = items[i]!;
+    if (isAnchorEligible(item)) displayedAnchorEligibleByHash.set(hash, true);
     const current = representativeByHash.get(hash);
     if (
       !current
@@ -1303,9 +2383,12 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   }
 
   const writtenHashes = new Set<string>();
+  const aliasMembersByFinal = new Map<string, Set<string>>();
+  let trackingStopped = false;
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
     const commands: Array<Array<string | number>> = [];
+    const evidenceBatchCommands: Array<Array<string | number>> = [];
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i]!;
@@ -1320,20 +2403,74 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       if (!writtenHashes.has(hash)) {
         writtenHashes.add(hash);
         const representative = representativeByHash.get(hash) ?? item;
-        const hsetFields = buildStoryTrackHsetFields(representative, nowStr, representative.importanceScore);
+        const hsetFieldsWithEligibility = buildStoryTrackHsetFields(
+          representative,
+          nowStr,
+          representative.importanceScore,
+          clusterAnchorEligibleByHash?.get(hash)
+            ?? displayedAnchorEligibleByHash.get(hash)
+            ?? false,
+        );
+        const anchorFieldAt = hsetFieldsWithEligibility.indexOf('anchorEligible');
+        const anchorEligible = anchorFieldAt >= 0
+          && hsetFieldsWithEligibility[anchorFieldAt + 1] === '1';
+        const hsetFields = anchorFieldAt >= 0
+          ? [
+            ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
+            ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
+          ]
+          : hsetFieldsWithEligibility;
         commands.push(
           ['HINCRBY', trackKey, 'mentionCount', '1'],
           ['HSET', trackKey, ...hsetFields],
+          // Eligibility is monotonic: an eligible mention upgrades the stamp,
+          // while an ineligible mention can initialize it to 0 without
+          // erasing a prior 1. Exactly one command handles the field, keeping
+          // every Redis request inside the hard command budget.
+          anchorEligible
+            ? ['HSET', trackKey, 'anchorEligible', '1']
+            : ['HSETNX', trackKey, 'anchorEligible', '0'],
           ['HSETNX', trackKey, 'firstSeen', nowStr],
           ['EXPIRE', trackKey, ttl],
           ['ZADD', accKey, nowStr, hash],
         );
-        // #4924: alias rows for every member exact-title hash -> the FINAL
-        // (post-adoption) canonical, story-track TTL — next cycle's
-        // adoption source. Includes the canonical's own hash.
-        for (const memberHash of memberHashesByFinal?.get(hash) ?? []) {
-          commands.push(['SET', STORY_ALIAS_KEY(memberHash), hash, 'EX', ttl]);
+        // #7082 dual publication: forecast judging needs this story for up
+        // to 14 days, beyond the accumulator's retention contract. The
+        // evidence archive member is self-contained (title/link/description
+        // ride on the member; no story:track dependency) and only the
+        // full/English scope that judging actually reads is archived.
+        if (evidenceEligible) {
+          const evidenceMember = buildForecastEvidenceMember(
+            {
+              hash,
+              title: representative.title,
+              link: representative.link,
+              description: representative.description,
+              publishedAt: representative.publishedAt,
+            },
+            now,
+          );
+          if (evidenceMember) {
+            // The ZSet member is the stable story hash. Mutable lastSeen and
+            // representative fields live in a self-contained, independently
+            // retained record key, so refreshing one story cannot create a
+            // second index member or crowd unique evidence out of the cap.
+            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
+            evidenceAttempted += 1;
+          } else {
+            // Counted, but NOT folded into evidenceWritesConfirmed: nothing was
+            // attempted against Redis, so this says nothing about whether the
+            // writes that did happen were confirmed. evidenceDropped gates the
+            // coverage advance on its own below.
+            evidenceDropped += 1;
+          }
         }
+        // Alias rows publish canonical continuity. Keep each final-hash group
+        // separate from the mutable tracking pipeline so it can be committed
+        // atomically only after all base tracking writes are confirmed.
+        const aliasMembers = memberHashesByFinal?.get(hash);
+        if (aliasMembers?.size) aliasMembersByFinal.set(hash, new Set(aliasMembers));
       }
 
       commands.push(
@@ -1349,11 +2486,211 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       );
     }
 
-    await runRedisPipeline(commands);
+    // Tracking and evidence touch disjoint keyspaces and neither reads the
+    // other's result, so evidence stays in flight while tracking chunks are
+    // sent in order. Each request receives the digest's remaining budget;
+    // after any failed or expired chunk we stop rather than starting more
+    // writes that can outlive the cold response.
+    //
+    // Archive keys are deliberately raw: the Railway resolver and backfill
+    // operate outside a Vercel deployment prefix and must read this same
+    // durable evidence namespace.
+    const evidenceTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+    const evidencePromise = evidenceEligible && evidenceTimeoutMs !== undefined
+      ? runRedisPipeline(evidenceBatchCommands, true, evidenceTimeoutMs)
+      : Promise.resolve([]);
+    if (evidenceEligible && evidenceTimeoutMs === undefined) evidenceWritesConfirmed = false;
+    for (const trackingChunk of chunkRedisCommands(commands)) {
+      const trackingTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+      if (trackingTimeoutMs === undefined) {
+        console.warn('[digest] story tracking deadline reached; skipped remaining writes');
+        trackingWritesConfirmed = false;
+        trackingStopped = true;
+        break;
+      }
+      const trackingResults = await runRedisPipeline(trackingChunk, false, trackingTimeoutMs);
+      if (!redisPipelineConfirmed(trackingResults, trackingChunk.length)) {
+        trackingWritesConfirmed = false;
+        trackingStopped = true;
+        break;
+      }
+    }
+    const evidenceResults = await evidencePromise;
+    if (evidenceEligible) {
+      if (!redisPipelineConfirmed(evidenceResults, evidenceBatchCommands.length)) {
+        evidenceWritesConfirmed = false;
+      }
+    }
+    if (trackingStopped) break;
   }
 
-  // Refresh accumulator TTL once per build — 48h, shorter than STORY_TTL since digest cron only needs ~24h lookback.
-  await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
+  // Alias rows decide whether a later, differently-worded batch can retain a
+  // live canonical. They must never be sliced at an arbitrary pipeline
+  // boundary: publish each complete canonical group atomically only after all
+  // base tracking writes have confirmed. A short, shared publication lease
+  // keeps separate Edge isolates and digest scopes from racing. Each Lua call
+  // checks its token inside Redis, which fences an older request that was
+  // delayed until after the lease expired. A group above the Redis command
+  // limit is deliberately deferred; preserving its prior aliases is safer
+  // than exposing a partial new cohort.
+  if (trackingWritesConfirmed && aliasMembersByFinal.size > 0) {
+    const aliasTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+    if (aliasTimeoutMs === undefined) {
+      console.warn('[digest] story alias deadline reached; skipped alias publication');
+      trackingWritesConfirmed = false;
+    } else {
+      // Keep the lease no longer than the request timeout. If an abort races
+      // with a late Redis execution, its orphaned lease can then block later
+      // publishers for at most the existing five-second Redis bound. A lease
+      // that expires during a long publication is safe: the fenced script
+      // rejects every remaining call before it writes aliases.
+      const aliasLeaseMs = aliasTimeoutMs;
+      const aliasLockToken = crypto.randomUUID();
+      const aliasLockResults = await runRedisPipeline([[
+        'SET',
+        STORY_ALIAS_PUBLICATION_LOCK_KEY,
+        aliasLockToken,
+        'NX',
+        'PX',
+        aliasLeaseMs,
+      ]], false, aliasTimeoutMs);
+      const aliasLockAcquired = aliasLockResults.length === 1
+        && aliasLockResults[0]?.result === 'OK';
+      if (!aliasLockAcquired) {
+        console.warn('[digest] story alias publication lease unavailable; preserved live aliases');
+      } else {
+        const aliasScriptCommands: Array<Array<string | number>> = [];
+        for (const [hash, memberHashes] of aliasMembersByFinal) {
+          if (memberHashes.size > MAX_REDIS_PIPELINE_COMMANDS) {
+            console.warn(
+              `[digest] deferred ${memberHashes.size} story aliases for ${hash.slice(0, 12)}; group exceeds Redis transaction limit`,
+            );
+            trackingWritesConfirmed = false;
+            break;
+          }
+          const aliasKeys = [...memberHashes].map(STORY_ALIAS_KEY);
+          aliasScriptCommands.push([
+            'EVAL',
+            STORY_ALIAS_PUBLISH_SCRIPT,
+            String(aliasKeys.length + 1),
+            STORY_ALIAS_PUBLICATION_LOCK_KEY,
+            ...aliasKeys,
+            aliasLockToken,
+            hash,
+            String(STORY_TTL),
+          ]);
+        }
+        if (trackingWritesConfirmed) {
+          // One EVAL is one bounded pipeline command even when the script writes
+          // a full alias group. Batch the independent, fenced group scripts so
+          // a high-cardinality digest cannot spend one network round-trip per
+          // story; each EVAL remains atomic on Redis.
+          for (const aliasScriptChunk of chunkRedisCommands(aliasScriptCommands)) {
+            const groupTimeoutMs = redisTimeoutForDeadline(deadlineAt);
+            if (groupTimeoutMs === undefined) {
+              console.warn('[digest] story alias deadline reached; skipped remaining alias groups');
+              trackingWritesConfirmed = false;
+              break;
+            }
+            const aliasResults = await runRedisPipeline(aliasScriptChunk, false, groupTimeoutMs);
+            if (
+              aliasResults.length !== aliasScriptChunk.length
+              || aliasResults.some((result) => result?.result !== 1)
+            ) {
+              console.warn('[digest] story alias publication was not confirmed; stopped remaining groups');
+              trackingWritesConfirmed = false;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (redisTimeoutForDeadline(deadlineAt) === undefined) {
+    console.warn('[digest] story tracking deadline reached before maintenance writes');
+    return;
+  }
+
+  // Refresh accumulator TTL once per build. The TTL is abandoned-key cleanup
+  // only: member retention is the explicit prune below (#7082) — millions of
+  // expired members previously lived here forever because the TTL never
+  // removed them.
+  const accumulatorTtlCommands: Array<Array<string | number>> = [['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]];
+  const accumulatorTtlResults = await runPipelineBeforeDeadline(accumulatorTtlCommands);
+  const accumulatorTtlConfirmed = redisPipelineConfirmed(accumulatorTtlResults, accumulatorTtlCommands.length);
+  let coverageAdvanced = false;
+  let coverageAfter = coverageBefore;
+  if (evidenceEligible && coverageBefore) {
+    const canAdvance = trackingWritesConfirmed && evidenceWritesConfirmed && evidenceDropped === 0;
+    // Even when this cycle cannot advance the window, re-SET the marker so its
+    // EX is refreshed. Otherwise a condition that recurs for 15 days (a feed
+    // that keeps emitting one unbuildable item, say) lets the marker EXPIRE,
+    // coverageBefore becomes null forever, and the only way back is another
+    // backfill run — a self-inflicted outage on top of a recoverable blip.
+    const advanced = advanceForecastEvidenceCoverage(coverageBefore, now);
+    coverageAfter = canAdvance && advanced ? advanced : coverageBefore;
+    const coverageCommands: Array<Array<string | number>> = [[
+      'SET',
+      FORECAST_EVIDENCE_COVERAGE_KEY,
+      JSON.stringify(coverageAfter),
+      'EX',
+      FORECAST_EVIDENCE_TTL_S,
+    ]];
+    const coverageResults = await runPipelineBeforeDeadline(coverageCommands, true);
+    coverageAdvanced = canAdvance && redisPipelineConfirmed(coverageResults, coverageCommands.length);
+  }
+
+  // For the judged full/en accumulator, pruning is destructive migration:
+  // retain legacy evidence until backfill has installed a verified coverage
+  // marker AND this cycle's archive writes and coverage update are confirmed.
+  // Other accumulator scopes are not used by forecast judging.
+  const pruneAllowed = shouldPruneAccumulator({
+    evidenceEligible,
+    cutoverEnabled,
+    coverage: coverageAfter,
+    nowMs: now,
+    trackingWritesConfirmed,
+    evidenceWritesConfirmed,
+    coverageAdvanced,
+    accumulatorTtlConfirmed,
+  });
+  let pruneConfirmed = true;
+  if (pruneAllowed) {
+    const prune = accumulatorPruneBounds(now);
+    const pruneCommands: Array<Array<string | number>> = [['ZREMRANGEBYSCORE', accKey, prune.min, prune.max]];
+    const pruneResults = await runPipelineBeforeDeadline(pruneCommands);
+    // A silently-failing prune is how an unbounded key stays unbounded while
+    // the operator log reports a healthy cutover.
+    pruneConfirmed = redisPipelineConfirmed(pruneResults, pruneCommands.length);
+  }
+  const archiveMaintenanceCommands: Array<Array<string | number>> = [];
+  if (evidenceEligible) {
+    // Rolling archive retention + TTL (contract + guard band).
+    const evidencePrune = evidencePruneBounds(now);
+    archiveMaintenanceCommands.push(['ZREMRANGEBYSCORE', FORECAST_EVIDENCE_KEY, evidencePrune.min, evidencePrune.max]);
+    archiveMaintenanceCommands.push(['EXPIRE', FORECAST_EVIDENCE_KEY, FORECAST_EVIDENCE_TTL_S]);
+  }
+  const archiveMaintenanceResults = await runPipelineBeforeDeadline(archiveMaintenanceCommands, true);
+  const maintenanceConfirmed = redisPipelineConfirmed(archiveMaintenanceResults, archiveMaintenanceCommands.length);
+  if (evidenceEligible) {
+    // `published` counts what the confirmed pipeline actually wrote. Drops are
+    // reported separately — folding them in here reported published=0 for a
+    // cycle where every attempted member landed.
+    const published = evidenceWritesConfirmed ? evidenceAttempted : 0;
+    const message =
+      `[forecast-evidence] attempted=${evidenceAttempted} published=${published} dropped=${evidenceDropped} ` +
+      `coverage_read_confirmed=${coverageReadConfirmed} tracking_writes_confirmed=${trackingWritesConfirmed} ` +
+      `writes_confirmed=${evidenceWritesConfirmed} coverage_advanced=${coverageAdvanced} ` +
+      `accumulator_ttl_confirmed=${accumulatorTtlConfirmed} maintenance_confirmed=${maintenanceConfirmed} ` +
+      `accumulator_pruned=${pruneAllowed} accumulator_prune_confirmed=${pruneConfirmed} ` +
+      `cutover_enabled=${cutoverEnabled} cutover_verified=${pruneAllowed} ` +
+      `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`;
+    if (evidenceWritesConfirmed && coverageAdvanced && maintenanceConfirmed && pruneConfirmed) console.info(message);
+    else console.warn(message);
+  } else if (!pruneConfirmed) {
+    console.warn(`[forecast-evidence] accumulator prune unconfirmed key=${accKey}`);
+  }
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
@@ -1366,18 +2703,29 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   for (const [category, feeds] of Object.entries(feedsByCategory)) {
     const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
     for (const feed of filtered) {
-      allEntries.push({ category, feed });
+      allEntries.push({ attemptId: `${category}:${allEntries.length}`, category, feed });
     }
   }
 
   if (variant === 'full') {
     const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
     for (const feed of filteredIntel) {
-      allEntries.push({ category: 'intel', feed });
+      allEntries.push({ attemptId: `intel:${allEntries.length}`, category: 'intel', feed });
     }
   }
 
-  const orderedEntries = orderServerFeedEntries(allEntries);
+  // #7083: category-fair scheduling, with the deadline-priority promise
+  // kept absolute: feeds with deadlinePriority > 0 start first in a cold
+  // build (the China coverage trio is market-hours critical), and the rest
+  // interleave so the next wave contains the head of every eligible
+  // category — a slow category can no longer push all later categories
+  // behind the global deadline.
+  const priorityOrdered = orderServerFeedEntries(allEntries);
+  const priorityHead = priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) > 0);
+  const orderedEntries = [
+    ...priorityHead,
+    ...interleaveByCategory(priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) <= 0)),
+  ];
   const batches: DigestFeedEntry[][] = [];
   for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
     batches.push(orderedEntries.slice(i, i + BATCH_CONCURRENCY));
@@ -1385,12 +2733,22 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   return { allEntries, batches };
 }
 
-async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
+async function buildDigest(
+  variant: string,
+  lang: string,
+  // #7084: the operator suppression set, threaded in so a revoked item is
+  // dropped BEFORE the per-category cap rather than after it. Filtering only
+  // at serve time left a hole: the revoked item had already taken a cap slot,
+  // so the category shipped 19 items and the 21st-ranked one was never
+  // promoted, while droppedCategoryCap still counted the item it displaced.
+  revokedUrls: ReadonlySet<string> = new Set(),
+): Promise<ListFeedDigestResponse> {
   const feedStatuses: Record<string, string> = {};
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
   const ledgerDrops = { perFeedCap: 0, undated: 0, freshnessFloor: 0, perCategoryCap: 0 };
   const categories: Record<string, CategoryBucket> = {};
+  const digestStartedAt = Date.now();
 
   const deadlineController = new AbortController();
   const deadlineTimeout = setTimeout(() => deadlineController.abort(), OVERALL_DEADLINE_MS);
@@ -1399,54 +2757,84 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
 
     const results = new Map<string, ParsedItem[]>();
-    // Track feeds that actually completed (with or without items) so we can
-    // distinguish a genuine timeout (never ran) from a successful empty fetch.
-    const completedFeeds = new Set<string>();
+    const buildStart = Date.now();
+    const attempts = await runFeedAttemptBatches(
+      allEntries,
+      batches,
+      deadlineController.signal,
+      async (entry) => {
+        const { category, feed } = entry;
+        const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
+        const outcome = classifyFeedAttempt(true, result.attempt ?? {
+          source: 'cache', failure: null, negativeCache: false,
+        }, {
+          parsedTotal: result.parsedTotal,
+          keptItems: result.items.length,
+          droppedUndated: result.droppedUndated,
+        });
 
-    for (const batch of batches) {
-      if (deadlineController.signal.aborted) break;
+        // Public feed status keeps the historical four-value contract
+        // (docs/methodology + the proto comment): completed feeds carry
+        // 'all-undated'/'empty'/'partial-undated', feeds that never
+        // completed carry 'timeout'. The fine-grained attempt outcome
+        // stays in telemetry, keyed by the unique inventory attempt ID.
+        if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
+          feedStatuses[feed.name] = 'all-undated';
+        } else if (result.items.length === 0) {
+          feedStatuses[feed.name] = 'empty';
+        } else if (result.droppedUndated > 0) {
+          feedStatuses[feed.name] = 'partial-undated';
+        }
 
-      const settled = await Promise.allSettled(
-        batch.map(async ({ category, feed }) => {
-          const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
-          completedFeeds.add(feed.name);
-          // Classify per-feed status. 'all-undated' is the silent-zeroing
-          // failure mode (every parsed item dropped for missing/unparseable
-          // dates) — distinguished from a genuinely empty fetch ('empty')
-          // so log aggregation can keyword-match. 'partial-undated' is
-          // informational (some items dropped, some kept).
-          if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
-            feedStatuses[feed.name] = 'all-undated';
-          } else if (result.items.length === 0) {
-            feedStatuses[feed.name] = 'empty';
-          } else if (result.droppedUndated > 0) {
-            feedStatuses[feed.name] = 'partial-undated';
-          }
-          return {
+        return {
+          outcome,
+          value: {
             category,
             items: result.items,
             droppedUndated: result.droppedUndated,
             droppedFeedCap: result.droppedFeedCap ?? 0,
-          };
-        }),
-      );
+          },
+        };
+      },
+    );
 
-      for (const result of settled) {
-        if (result.status === 'fulfilled') {
-          const { category, items, droppedUndated, droppedFeedCap } = result.value;
-          const existing = results.get(category) ?? [];
-          existing.push(...items);
-          results.set(category, existing);
-          ledgerDrops.undated += droppedUndated;
-          ledgerDrops.perFeedCap += droppedFeedCap;
-        }
+    for (const { value } of attempts.fulfilled) {
+      const { category, items, droppedUndated, droppedFeedCap } = value;
+      const existing = results.get(category) ?? [];
+      existing.push(...items);
+      results.set(category, existing);
+      ledgerDrops.undated += droppedUndated;
+      ledgerDrops.perFeedCap += droppedFeedCap;
+    }
+
+    const deadlineAborted = deadlineController.signal.aborted;
+    for (const entry of allEntries) {
+      if (!attempts.startedAttemptIds.has(entry.attemptId)) {
+        // #7083: this feed's batch never ran. The public map keeps the
+        // coarse 'timeout' contract; the precise 'not-started' verdict
+        // (scheduling starvation, not an upstream failure) lives in
+        // the helper's attempt-outcome map and telemetry line.
+        feedStatuses[entry.feed.name] = 'timeout';
       }
     }
 
-    for (const entry of allEntries) {
-      if (!completedFeeds.has(entry.feed.name)) {
-        feedStatuses[entry.feed.name] = 'timeout';
-      }
+    // #7083 operator telemetry: one structured line per build with the
+    // outcome histogram, per-category coverage, and the timings needed to
+    // see which stage consumes the deadline. No host names or exceptions
+    // here — details stay in the [feed-fetch] lines.
+    {
+      const { byOutcome, byCategory, headroomMs } = summarizeFeedAttempts(
+        attempts.attemptCategories,
+        attempts.attemptOutcomes,
+        OVERALL_DEADLINE_MS,
+        attempts.finalCompletionMs ?? Date.now() - buildStart,
+      );
+      console.info(
+        `[digest-attempts] variant=${variant} lang=${lang} feeds=${allEntries.length} ` +
+        `deadline_aborted=${deadlineAborted} first_start_ms=${attempts.firstStartMs ?? 'n/a'} ` +
+        `first_completion_ms=${attempts.firstCompletionMs ?? 'n/a'} final_completion_ms=${attempts.finalCompletionMs ?? 'n/a'} ` +
+        `headroom_ms=${headroomMs} by_outcome=${JSON.stringify(byOutcome)} by_category=${JSON.stringify(byCategory)}`,
+      );
     }
 
     // U3 — hard freshness floor. Drop items older than NEWS_MAX_AGE_HOURS
@@ -1488,27 +2876,77 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // #4924 review P1: adopt a LIVE canonical before assigning hashes.
     // Alias rows (memberHash -> canonicalHash, story-track TTL) written by
     // previous cycles let a cluster keep its story identity when the
-    // member that anchored the canonical drops out of the batch. One
-    // batched read for all member hashes; failures degrade to
-    // batch-derived canonicals (pre-adoption behavior).
+    // member that anchored the canonical drops out of the batch.
+    //
+    // #4925 item 1: the alias vote is most-common-wins, and how many member
+    // hashes point at a canonical is something a determined feed can move —
+    // publish several wordings, they alias to your canonical, out-vote the
+    // genuine story and absorb its track (phase re-fires, counts reset).
+    // story:track.firstSeen cannot be moved that way: the digest HSETNXs it
+    // at first observation, so it is server-side state, unlike publishedAt,
+    // which decides the batch-derived default and is publisher-controlled.
+    // Read it alongside the alias row and prefer the oldest live track.
+    // A failed or skipped chunk degrades affected clusters to batch-derived
+    // canonicals (pre-adoption behavior).
     const allMemberHashes = new Set<string>();
+    // If no eligible persisted track can be adopted, a current trusted or
+    // independently corroborated member may still provide the batch default.
+    // Prefer a trusted-tier member over a merely corroborated one, then use
+    // the same deterministic publication-time ordering as identity clustering.
+    const eligibleAnchorByCluster = new Map<string, ParsedItem>();
     for (const identity of identityByItem.values()) {
       for (const h of identity.memberTitleHashes ?? []) allMemberHashes.add(h);
     }
-    const aliasTargetByHash = new Map<string, string>();
-    if (allMemberHashes.size > 0) {
-      const aliasHashes = [...allMemberHashes];
-      const aliasResults = await runRedisPipeline(aliasHashes.map((h) => ['GET', STORY_ALIAS_KEY(h)]));
-      for (let i = 0; i < aliasHashes.length; i++) {
-        const target = aliasResults[i]?.result;
-        if (typeof target === 'string' && target.length > 0) aliasTargetByHash.set(aliasHashes[i]!, target);
+    for (const [item, identity] of identityByItem) {
+      if (!isIdentityAnchorEligible(item, identity.corroborationCount)) continue;
+      const current = eligibleAnchorByCluster.get(identity.titleHash);
+      if (!current || compareAnchorCandidates(item, current) < 0) {
+        eligibleAnchorByCluster.set(identity.titleHash, item);
       }
     }
+    const eligibleDefaultHashByCluster = new Map<string, string>();
+    await Promise.all([...eligibleAnchorByCluster].map(async ([clusterHash, item]) => {
+      const normalized = normalizeTitle(item.title);
+      if (normalized) eligibleDefaultHashByCluster.set(clusterHash, await sha256Hex(normalized));
+    }));
+    const aliasTargetByHash = new Map<string, string>();
+    const trackFirstSeenByHash = new Map<string, number>();
+    const memberHashes = [...allMemberHashes];
+    // Chunked because this read now carries two commands per member hash, and
+    // a full batch runs to four figures of hashes — the alias read was already
+    // unchunked at one command each, which STORY_BATCH_SIZE's own comment says
+    // is the wrong side of Upstash's 1000-command cap. readAdoptionState keeps
+    // both reads for a hash in one atomic MULTI/EXEC call, validates the whole
+    // response before applying either map, and enforces one digest deadline.
+    const adoptionState = await readAdoptionState(
+      memberHashes,
+      freshnessCutoff,
+      digestStartedAt + ADOPTION_DEADLINE_MS,
+    );
+    const { aliasTargetByHash: adoptionAliases, trackFirstSeenByHash: adoptionTracks } = adoptionState;
+    for (const [hash, target] of adoptionAliases) aliasTargetByHash.set(hash, target);
+    for (const [hash, firstSeen] of adoptionTracks) trackFirstSeenByHash.set(hash, firstSeen);
 
+    // Do not overwrite a live alias cohort when this build could not confirm
+    // all of the cluster's prior state. The batch default is safe only for
+    // serving this response; persisting it would erase continuity evidence
+    // and let a transient Redis failure re-fork the next cycle.
+    const incompleteIdentityHashes = new Set<string>();
     await Promise.all(allItems.map(async (item) => {
       const identity = identityByItem.get(item);
       if (identity) {
-        item.titleHash = adoptExistingCanonical(identity.memberTitleHashes, identity.titleHash, aliasTargetByHash);
+        const clusterReadIncomplete = (identity.memberTitleHashes ?? [])
+          .some((hash) => adoptionState.incompleteHashes.has(hash));
+        if (clusterReadIncomplete) incompleteIdentityHashes.add(identity.titleHash);
+        const batchDefaultHash = eligibleDefaultHashByCluster.get(identity.titleHash) ?? identity.titleHash;
+        item.titleHash = clusterReadIncomplete
+          ? batchDefaultHash
+          : adoptExistingCanonical(
+            identity.memberTitleHashes,
+            batchDefaultHash,
+            aliasTargetByHash,
+            trackFirstSeenByHash,
+          );
         item.corroborationCount = identity.corroborationCount;
       } else {
         // Defensive: assignStoryIdentity covers every input by
@@ -1522,12 +2960,23 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       }
     }));
 
+    // Category capping happens after identity. A trusted/corroborated member
+    // can therefore be absent from allSliced while a lower-tier cluster member
+    // is retained. Preserve the full cluster's eligibility on the canonical
+    // track instead of deriving it only from the displayed representative.
+    const clusterAnchorEligibleByFinalHash = new Map<string, boolean>();
+    for (const item of allItems) {
+      if (item.titleHash && isAnchorEligible(item)) {
+        clusterAnchorEligibleByFinalHash.set(item.titleHash, true);
+      }
+    }
+
     // Final(post-adoption) hash -> member exact-title hashes, consumed by
     // writeStoryTracking to persist next cycle's alias rows.
     const memberHashesByFinal = new Map<string, Set<string>>();
     for (const item of allItems) {
       const identity = identityByItem.get(item);
-      if (!identity || !item.titleHash) continue;
+      if (!identity || !item.titleHash || incompleteIdentityHashes.has(identity.titleHash)) continue;
       let set = memberHashesByFinal.get(item.titleHash);
       if (!set) { set = new Set(); memberHashesByFinal.set(item.titleHash, set); }
       for (const h of identity.memberTitleHashes ?? []) set.add(h);
@@ -1594,13 +3043,21 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
       );
-      ledgerDrops.perCategoryCap += Math.max(0, items.length - MAX_ITEMS_PER_CATEGORY);
-      slicedByCategory.set(category, items.slice(0, MAX_ITEMS_PER_CATEGORY));
+      // Suppress BEFORE the cap so a revoked item never occupies a slot and
+      // the next-ranked item is promoted into it.
+      const servable = revokedUrls.size === 0
+        ? items
+        : items.filter((item) => typeof item.link !== 'string' || !revokedUrls.has(item.link));
+      ledgerDrops.perCategoryCap += Math.max(0, servable.length - MAX_ITEMS_PER_CATEGORY);
+      slicedByCategory.set(category, servable.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
 
     const allSliced = [...slicedByCategory.values()].flat();
     // titleHash was already set on each item during the corroboration pass above.
     const titleHashes = allSliced.map(i => i.titleHash!);
+    // Leave the response guard intact for final assembly and cache writes.
+    // All optional Redis work after feed fetches shares this absolute boundary.
+    const storyTrackingDeadlineAt = digestStartedAt + ADOPTION_DEADLINE_MS;
 
     const now = Date.now();
 
@@ -1608,10 +3065,19 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // mentionCount. We merge read state + this cycle's increment in memory to
     // produce accurate, current StoryMeta without a second Redis round-trip.
     const uniqueHashes = [...new Set(titleHashes)];
-    const storyTracks = await readStoryTracks(uniqueHashes).catch(() => new Map<string, StoryTrack>());
+    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt)
+      .catch(() => new Map<string, StoryTrack>());
 
     // Write story tracking. Errors never fail the digest build.
-    await writeStoryTracking(allSliced, variant, lang, titleHashes, memberHashesByFinal).catch((err: unknown) =>
+    await writeStoryTracking(
+      allSliced,
+      variant,
+      lang,
+      titleHashes,
+      memberHashesByFinal,
+      storyTrackingDeadlineAt,
+      clusterAnchorEligibleByFinalHash,
+    ).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
 
@@ -1631,14 +3097,12 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
             lastSeen: now,
             mentionCount,
             sourceCount,
-            currentScore: stale?.currentScore ?? 0,
-            peakScore: stale?.peakScore ?? 0,
           };
           const storyMeta: ProtoStoryMeta = {
             firstSeen,
             mentionCount,
             sourceCount,
-            phase: derivePhase(merged),
+            phase: derivePhase(merged, now),
           };
           return toProtoItem(item, storyMeta);
         }),
@@ -1671,10 +3135,27 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       );
     }
 
+    // #7085 coverage block: one compact summary of the content served and
+    // the latest build attempt. Content identity (generatedAt) and attempt
+    // identity (attemptedAt) are separate on purpose — they diverge the day
+    // durable last-good serving lands (#7084). Counts only: no raw errors,
+    // feed URLs, hostnames, or per-host timings leave the server.
+    // This describes the BUILD; a replay is stamped by markFallbackCoverageStale.
+    const coverage = buildDigestCoverage({
+      entries: allEntries,
+      attemptOutcomes: attempts.attemptOutcomes,
+      itemsServed: allSliced.length,
+      publisherSources: allSliced.map((item) => publisherFamilyForItem(item)),
+      deadlineAborted: deadlineController.signal.aborted,
+      drops: { ...ledgerDrops },
+      buildStartMs: buildStart,
+    });
+
     return {
       categories,
       feedStatuses,
       generatedAt: new Date().toISOString(),
+      coverage,
     };
   } finally {
     clearTimeout(deadlineTimeout);
@@ -1683,13 +3164,32 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
+  // than asserted against this file's own source text — a grep for
+  // `serveLastGood(...)` passes whether or not the function behaves.
+  publishAcceptedSnapshot,
+  serveLastGood,
+  readRevokedUrlSet,
+  suppressRevoked,
+  fallbackDigestCache,
+  markFallbackCoverageStale,
+  settleBeforeDeadline,
+  lastGoodStoreTesting,
+  beginDigestAttempt,
+  completeDigestAttempt,
+  publishFailedAttempt,
+  recoverFailedAttempt,
+  shouldStartDigestAttempt,
   buildDigestFeedBatches,
   parseRssXml,
+  isTrustedOriginAggregator,
   decodeXmlEntities,
   extractDescription,
   extractRawTagBody,
   extractFirstDateTag,
   buildStoryTrackHsetFields,
+  isAnchorEligible,
+  isIdentityAnchorEligible,
   computeImportanceScore,
   computeCredibilityScore,
   computeItemCredibilityScore,
@@ -1697,7 +3197,11 @@ export const __testing__ = {
   promoteDiplomacySeverity,
   computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
+  derivePhase,
   readStoryTracks,
+  readAdoptionState,
+  redisTimeoutForDeadline,
+  chunkRedisCommands,
   resolveMaxAgeMs,
   capLlmUpgrade,
   parseClassifyCacheHit,
@@ -1705,7 +3209,15 @@ export const __testing__ = {
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,
   RESPONSE_GUARD_BAND_MS,
+  RESPONSE_DEADLINE_MS,
   OVERALL_DEADLINE_MS,
+  ADOPTION_BATCH_SIZE,
+  ADOPTION_DEADLINE_MS,
+  BATCH_CONCURRENCY,
+  redisPipelineConfirmed,
+  shouldPruneAccumulator,
+  writeStoryTracking,
+  MAX_REDIS_PIPELINE_COMMANDS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

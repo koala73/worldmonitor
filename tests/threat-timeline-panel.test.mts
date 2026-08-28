@@ -196,6 +196,9 @@ async function loadThreatTimelinePanelHarness() {
     ['analytics-stub', `export function trackPanelResized() {}`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
     ['runtime-config-stub', `export function getSecretState() { return { present: true }; }`],
+    // Return null (not undefined) on purpose: harness stubs often use null
+    // for "no hydration". consumeHydration must treat that as an empty slot,
+    // not a rejected CDN body, or refresh skips the on-demand fetch (#7290).
     ['bootstrap-stub', `export function getHydratedData() { return null; }`],
     ['dom-utils-stub', `
       function append(parent, child) {

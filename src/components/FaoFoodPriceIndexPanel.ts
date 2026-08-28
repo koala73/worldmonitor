@@ -87,7 +87,7 @@ function buildChart(points: FaoFoodPricePoint[]): string {
     return `<polyline points="${coords}" fill="none" stroke="${s.color}" stroke-width="${s.key === 'ffpi' ? 2 : 1.2}" opacity="${s.key === 'ffpi' ? 1 : 0.7}"/>`;
   }).join('');
 
-  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${yAxis}${xAxis}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="FAO food price index history by commodity group" style="width:100%;height:auto;display:block">${yAxis}${xAxis}${lines}</svg>`;
 }
 
 function buildLegend(): string {

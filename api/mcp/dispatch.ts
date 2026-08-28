@@ -261,7 +261,9 @@ export async function dispatchToolsCall(
   }
   const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
   if (!tool) {
-    return rpcError(id, -32602, `Unknown tool: ${p.name}`, corsHeaders);
+    // Cap the echoed tool name — same reflection-amplification class as the
+    // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
+    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
   }
 
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in

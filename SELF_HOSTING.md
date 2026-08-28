@@ -21,6 +21,7 @@ npm install
 echo "RELAY_SHARED_SECRET=$(openssl rand -hex 32)" >> .env
 echo "REDIS_PASSWORD=$(openssl rand -hex 32)"      >> .env
 echo "REDIS_TOKEN=$(openssl rand -hex 32)"         >> .env
+echo "WM_SESSION_SECRET=$(openssl rand -hex 32)"   >> .env
 
 # 3. Start the stack
 docker compose up -d        # or: uvx podman-compose up -d
@@ -43,8 +44,26 @@ These must be set before `docker compose up -d`, or one of the containers will e
 | `RELAY_SHARED_SECRET` | Authenticates every non-public request the dashboard makes to the AIS relay. The relay refuses to start without it. | `openssl rand -hex 32` |
 | `REDIS_PASSWORD` | Redis AUTH password (`--requirepass`). The Redis container refuses to start without it; the REST proxy uses it in its upstream connection string. | `openssl rand -hex 32` |
 | `REDIS_TOKEN` | Bearer token the REST proxy (`redis-rest`) requires on every request, and the value the app sends as `UPSTASH_REDIS_REST_TOKEN`. The proxy and app containers refuse to start without it. | `openssl rand -hex 32` |
+| `WM_SESSION_SECRET` | Signs the anonymous browser session used by self-hosted API routes. The app container refuses to start without it. | `openssl rand -hex 32` |
 
-> Earlier releases shipped `wm-local-token` as a default for the REST token. That default has been removed (#3804) — the proxy was only reachable from `127.0.0.1:8079` so external exposure required a hostile `docker-compose.override.yml`, but any user who flipped that binding to `0.0.0.0` was instantly authenticated by a publicly documented string. Fresh installs and existing clones both need to set `REDIS_TOKEN` and `REDIS_PASSWORD` in `.env` from this release onward.
+> Earlier releases shipped `wm-local-token` as a default for the REST token. That default has been removed (#3804) — the proxy was only reachable from `127.0.0.1:8079` so external exposure required a hostile `docker-compose.override.yml`, but any user who flipped that binding to `0.0.0.0` was instantly authenticated by a publicly documented string. Fresh installs and existing clones both need to set `REDIS_TOKEN`, `REDIS_PASSWORD`, and `WM_SESSION_SECRET` in `.env` from this release onward.
+
+## Self-hosted API authentication
+
+Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex entitlement backend. The dashboard still mints an anonymous `wms_` session signed with `WM_SESSION_SECRET`.
+
+- Only `GET /api/intelligence/v1/get-country-intel-brief` accepts that session as the authentication boundary. The handler still returns the shared (non-premium) brief.
+- Direct-LLM spend on that route is capped at 50 calls per UTC day per client IP. nginx stamps `X-Real-IP` from `$remote_addr`, so a caller cannot rotate the header to reset the cap. Rotating the session token also does not reset spend.
+- Every other premium route still requires an API key or a Clerk entitlement. Cloud deployments do not set `LOCAL_API_MODE=docker` and keep key plus entitlement enforcement on this route too.
+
+If another reverse proxy sits in front of the World Monitor container, set
+`WM_TRUSTED_PROXY_CIDRS` to that proxy's IP address or network. Separate multiple
+values with commas, for example `WM_TRUSTED_PROXY_CIDRS=172.20.0.0/16,2001:db8::/32`.
+World Monitor then uses `X-Forwarded-For` only when it comes through those trusted
+peers, and nginx resolves the original client address recursively. Invalid values
+stop the container at startup. Leave this variable unset for direct connections;
+never trust a network that can contain untrusted clients, because those clients
+could then supply a false forwarded address and evade the per-IP quota.
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
@@ -173,8 +192,10 @@ node scripts/seed-military-flights.mjs
 | `worldmonitor-ais-relay` | Live vessel tracking WebSocket | 3004 (internal) |
 
 > **`redis-rest` command allowlist**: the bundled proxy (`docker/redis-rest-proxy.mjs`) only
-> forwards a fixed allowlist of Redis commands and rejects `EVAL`/`EVALSHA`/`SCRIPT` (no Lua
-> scripting). Two consequences for a self-hosted stack:
+> forwards a fixed allowlist of Redis commands. It permits byte-pinned `EVAL` scripts for
+> the news digest's atomic last-good publication, fenced story-alias publication, and Pro MCP
+> quota reservation; all caller-selected Lua plus `EVALSHA` and `SCRIPT` remain rejected.
+> Two consequences for a self-hosted stack:
 >
 > - `@upstash/ratelimit`'s Lua-based sliding-window limiter (`server/_shared/rate-limit.ts`,
 >   `api/_rate-limit.js`) can't run against it. Both automatically detect the rejection once and
@@ -185,6 +206,81 @@ node scripts/seed-military-flights.mjs
 >   never satisfies. Set `UPSTASH_ALLOW_INSECURE_HTTP=true` on the `ais-relay` service (already
 >   wired for `redis-rest` in `docker-compose.yml`) to opt into using the proxy from
 >   inside the relay container.
+
+## Revoking a news item
+
+Sometimes a headline has to come down now — a retracted story, a defamatory
+claim, a wrong attribution. The digest keeps a narrow, versioned set of
+suppressed URLs and filters against it at **read** time, on every path that can
+return bytes: a fresh build, a digest cache hit, the durable last-good
+snapshot, the warm-isolate replay, the country brief, and the chat analyst.
+
+```bash
+# Source .env so REDIS_TOKEN is available, then point at the REST proxy.
+set -a; . ./.env; set +a
+export UPSTASH_REDIS_REST_URL=http://localhost:8079
+export UPSTASH_REDIS_REST_TOKEN="$REDIS_TOKEN"
+
+# 1. Suppress the URL. Match is EXACT string equality on the item's `link` —
+#    scheme, trailing slash, and query string all count. Copy the URL from the
+#    API response rather than retyping it.
+curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
+  -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '[["SADD","news:digest:revoked-urls:v1","https://example.com/retracted-story"]]'
+```
+
+That single `SADD` is enough for everything served out of Redis — no key
+deletion is required, because suppression happens on read.
+
+**Two things it does not do**, both of which matter during an incident:
+
+1. **It does not evict shared caches.** `/api/news/v1/list-feed-digest` is
+   served with `s-maxage=1800` and `CDN-Cache-Control: s-maxage=3600`. Once a
+   revocation is live the endpoint stops feeding shared caches, but copies
+   already stored survive. **Purge the CDN for that path** if you have one in
+   front of the stack. A purely local Docker stack has no CDN and can skip this.
+2. **It does not force a rebuild.** The existing digest keeps being rebuilt on
+   its normal ~900s cycle. To rebuild immediately:
+
+   ```bash
+   curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
+     -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '[["DEL","news:digest:v1:full:en"],["DEL","news:digest:lastgood:v1:full:en"]]'
+   ```
+
+   Note the key version is **v1**. Repeat per `<variant>:<lang>` scope you serve.
+
+To lift a revocation, `SREM` the same URL — stored bodies are kept unfiltered on
+purpose, so the item reappears on the next read without waiting for a rebuild.
+
+```bash
+curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
+  -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '[["SREM","news:digest:revoked-urls:v1","https://example.com/retracted-story"]]'
+```
+
+> If the revocation set cannot be read at all (Redis erroring, not merely
+> absent), every serving path fails **closed** — it serves nothing rather than
+> serving content it could not check. A stack with no Redis configured is a
+> different case: there is no suppression store to consult, so serving proceeds
+> normally.
+
+> **`redis-rest` request body limit**: the proxy accepts request bodies up to **16 MB**,
+> overridable with `SRH_MAX_BODY_BYTES` (bytes) on the `redis-rest` service. The default is
+> sized for the seeders: every seeder publishing through `atomicPublish` is capped at 5 MB per
+> key (`MAX_PAYLOAD_BYTES` in `scripts/_seed-utils.mjs`), and `atomicPublish` sends that payload
+> as a JSON string nested inside `["SET", key, <payload>, "EX", ttl]`, so escaping makes the
+> wire body larger than the payload.
+>
+> An over-limit body is answered with `413 Payload Too Large` and logged by the proxy, so a
+> rejection shows up as a clear HTTP status in the seeder log *and* a matching line in
+> `docker compose logs redis-rest` — never a bare `EPIPE`-style connection error. That holds at
+> any value you set, so lowering the limit is safe to diagnose. The `redis-rest` service also
+> carries a `mem_limit`, since the proxy buffers each accepted body in full; raise both together
+> if you raise `SRH_MAX_BODY_BYTES`.
 
 ## 🔨 Building from Source
 

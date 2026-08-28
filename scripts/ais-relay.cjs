@@ -26,11 +26,28 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
+  OPENSKY_COOLDOWN_KEY,
+  OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
+  OPENSKY_MAX_DEADLINE_SET_LUA,
+  accountFingerprint: openSkyAccountFingerprint,
+  clampCooldownMs,
+  ttlSecondsForCooldown,
+  inspectCooldownRecord,
+  buildCooldownRecord,
+  maxDeadlineSetCommand,
+} = require('./_opensky-account-cooldown.cjs');
+const {
   GROQ_DEFAULT_MODEL,
+  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
 } = require('./lib/llm-model-policy.cjs');
+const xNewsAccounts = require('./lib/x-news-accounts.cjs');
+const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
+const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
+const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -282,7 +299,7 @@ if (UPSTASH_ENABLED) {
   console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY}${UPSTASH_REDIS_REST_URL.startsWith('http://') ? ', insecure-http opt-in' : ''})`);
 }
 
-function upstashGet(key, onFailure) {
+function upstashGet(key, onFailure, timeoutMs = 5000) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(null);
     let settled = false;
@@ -297,11 +314,12 @@ function upstashGet(key, onFailure) {
       if (onFailure) onFailure(reason);
       resolve(null);
     };
+    const requestTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
     const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
     const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
-      timeout: 5000,
+      timeout: requestTimeoutMs,
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
@@ -586,12 +604,73 @@ function upstashDel(key) {
   });
 }
 
+function upstashEval(script, keys, args) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(null);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const body = JSON.stringify(['EVAL', script, String(keys.length), ...keys, ...args.map((arg) => String(arg))]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(JSON.parse(data)?.result); } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.end(body);
+  });
+}
+
 function upstashReleaseLockIfOwner(key, owner) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const script = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
     const body = JSON.stringify(['EVAL', script, '1', key, owner]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(Number(JSON.parse(data)?.result) === 1); } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
+function upstashPublishXIfLockOwner({ lockKey, owner, snapshotKey, snapshot, pollStateKey, pollState, ttlSeconds, metaKey, meta, metaTtlSeconds }) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const script = [
+      'if redis.call("get",KEYS[1]) ~= ARGV[1] then return 0 end',
+      'redis.call("set",KEYS[2],ARGV[2],"EX",ARGV[4])',
+      'redis.call("set",KEYS[3],ARGV[3],"EX",ARGV[4])',
+      'if ARGV[5] == "1" then redis.call("set",KEYS[4],ARGV[6],"EX",ARGV[7]) end',
+      'return 1',
+    ].join(' ');
+    const body = JSON.stringify([
+      'EVAL', script, '4', lockKey, snapshotKey, pollStateKey, metaKey,
+      owner, JSON.stringify(snapshot), JSON.stringify(pollState), String(ttlSeconds),
+      meta ? '1' : '0', JSON.stringify(meta || {}), String(metaTtlSeconds),
+    ]);
     const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
@@ -671,33 +750,6 @@ function normalizeNotificationCountryCode(raw) {
 function marketAlertCoalesceKey(assetClass, identifier, direction, severity) {
   const stableIdentifier = String(identifier || 'unknown').trim().toLowerCase();
   return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}`;
-}
-
-/**
- * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
- *
- * NWS VTEC format (https://www.weather.gov/vtec/):
- *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
- *    │  │   │   │  │  │
- *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
- *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
- *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
- *    │  │   └──────────── forecast office (4-letter ICAO)
- *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
- *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
- *
- * The (office, phenomenon, significance, eventID) tuple identifies one logical
- * event across adjacent zones — exactly what we want to coalesce. We drop the
- * action so NEW + CON + CAN bulletins for the same event also collapse.
- *
- * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
- * VTEC string is missing or malformed.
- */
-function deriveWeatherCoalesceKey(vtec) {
-  if (typeof vtec !== 'string') return undefined;
-  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
-  if (!m) return undefined;
-  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
 }
 
 function nwsVtec(p) {
@@ -1224,6 +1276,178 @@ function startTelegramPollLoop() {
     setInterval(guardedTelegramPoll, TELEGRAM_POLL_INTERVAL_MS).unref?.();
     console.log('[Relay] Telegram poll loop started');
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Curated X news-account monitoring (Track A / #6654)
+// Official X API user-timeline + since_id. Cadence 5–15 min.
+// Requires env: X_BEARER_TOKEN (same Bearer as company-monitoring-worker).
+// ─────────────────────────────────────────────────────────────
+const X_BEARER_TOKEN = String(process.env.X_BEARER_TOKEN || '').trim();
+const X_ENABLED = Boolean(X_BEARER_TOKEN);
+const X_POLL_INTERVAL_MS = xNewsAccounts.clampPollIntervalMs(process.env.X_POLL_INTERVAL_MS || xNewsAccounts.DEFAULT_POLL_INTERVAL_MS);
+// `Number('abc')` is NaN, and Math.max(50, NaN) is NaN — which reaches
+// mergeAndDedup as `.slice(0, NaN)` and silently publishes an EMPTY feed every
+// cycle with no error anywhere. Coerce non-numeric env values to the default.
+const X_MAX_FEED_ITEMS = Math.max(50, Number(process.env.X_MAX_FEED_ITEMS) || xNewsAccounts.DEFAULT_MAX_FEED_ITEMS);
+const X_MAX_TEXT_CHARS = Math.max(200, Number(process.env.X_MAX_TEXT_CHARS) || 800);
+const X_TRACK_A_ACCOUNT_BUDGET = 64;
+const X_FEED_CACHE_KEY = 'intelligence:x-feed:v1';
+const X_FEED_META_KEY = 'seed-meta:intelligence:x-feed:v1';
+const X_FEED_POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';
+const X_FEED_POLL_LOCK_KEY = 'intelligence:x-feed:poll-lock:v1';
+const X_FEED_TTL_SECONDS = 5400;
+const X_FEED_META_TTL_SECONDS = 3600;
+const X_FEED_POLL_LOCK_TTL_SECONDS = Math.ceil((X_POLL_INTERVAL_MS + 120_000) / 1000);
+// The stuck-poll abort has to fire while the Redis lease above is still HELD,
+// and the guard only re-evaluates when a scheduled tick calls it. A threshold at
+// or above the cadence therefore pushes the first evaluation out to 2x the
+// cadence — well past the lease TTL — so between TTL expiry and that tick this
+// replica keeps issuing requests on a lapsed lease while a peer's SETNX
+// succeeds: both drain the shared bearer's quota and both write the whole cursor
+// map. Sitting a minute under the cadence (clamped to 5-15min, so 4-14min here)
+// makes the very next tick abort the run, with the lease still ours to release.
+// Derived from the same constant as the TTL so the invariant
+// X_POLL_STUCK_AFTER_MS < X_POLL_INTERVAL_MS < X_FEED_POLL_LOCK_TTL_SECONDS * 1000
+// cannot drift the way two independently tuned literals can.
+const X_POLL_STUCK_AFTER_MS = X_POLL_INTERVAL_MS - 60_000;
+
+const xState = {
+  accounts: [],
+  cursorByAccountId: Object.create(null),
+  accountIdByHandle: Object.create(null),
+  catchupByAccountId: Object.create(null),
+  items: [],
+  lookupOffset: 0,
+  accountOffset: 0,
+  // Persisted snapshot version, published to Redis and to /status. NOT the poll
+  // guard's run counter — see xPollGeneration below for why the two must stay
+  // apart.
+  generation: 0,
+  lastPollAt: 0,
+  lastHealthyAt: 0,
+  lastCoverage: null,
+  lastError: null,
+  rateLimitedUntil: 0,
+  rateLimitAttempt: 0,
+  backoffCause: null,
+  // True when a Redis read failed, so last-good state is present but unreadable.
+  // Blocks polling/publishing until a clean read (see the cycle's hydrate()).
+  hydrationFailed: false,
+  startedAt: Date.now(),
+};
+
+// The poll guard's in-process run counter, deliberately NOT xState.generation.
+// The guard stamps each run with this value and, in its `.finally`, only clears
+// the in-flight flag while the stamp still matches. The cycle's hydrate() runs INSIDE
+// a live poll (the lease-conflict and hydration-retry paths) and overwrites the
+// persisted snapshot version from Redis — when both meanings shared one field
+// that overwrite retired the run the guard was fencing on, so inFlight was never
+// cleared, the next tick returned early, and a whole cycle was skipped until
+// stuckAfterMs force-cleared it with a misleading "X poll stuck" warning.
+let xPollGeneration = 0;
+
+function loadXAccounts() {
+  const p = path.join(__dirname, '..', 'data', 'x-accounts.json');
+  const set = String(process.env.X_CHANNEL_SET || '').trim().toLowerCase();
+  try {
+    const raw = JSON.parse(readFileSync(p, 'utf8'));
+    const enabledTotal = xNewsAccounts.countEnabledAccounts(raw);
+    if (enabledTotal > X_TRACK_A_ACCOUNT_BUDGET) {
+      console.warn(`[Relay] X registry has ${enabledTotal} enabled accounts; Track A budget is ~${X_TRACK_A_ACCOUNT_BUDGET}. Re-run spend math before growing the set.`);
+    }
+    xState.accounts = set
+      ? xNewsAccounts.loadXAccounts(raw, { set })
+      : xNewsAccounts.loadXAccounts(raw);
+    if (!xState.accounts.length) {
+      console.warn(`[Relay] X account set "${set || 'all'}" is empty — no accounts to poll`);
+    }
+    return xState.accounts;
+  } catch (e) {
+    xState.accounts = [];
+    xState.lastError = `failed to load x-accounts.json: ${e?.message || String(e)}`;
+    return [];
+  }
+}
+
+// hydrate / publish / pollOnce live in scripts/lib/x-poll-cycle.cjs so a test can
+// EXECUTE them. This file has no module.exports and no require.main guard, so
+// importing it to reach those functions boots the whole relay — which is why the
+// only coverage they ever had was regex-on-source, and why a generation-field
+// collision, a lease handoff that dropped a peer's posts, and a stuck-abort
+// threshold that outlived the Redis lease all shipped unnoticed. Built once here
+// with the relay's real Redis helpers, constants and state object;
+// tests/x-poll-cycle.test.mjs drives the same factory with stubs.
+const xPollCycle = createXPollCycle({
+  xState,
+  xNewsAccounts,
+  loadXAccounts,
+  upstashGet,
+  upstashSetNx,
+  upstashPublishXIfLockOwner,
+  upstashReleaseLockIfOwner,
+  // The guard's run counter, never xState.generation — see the comment on
+  // `let xPollGeneration` above. Passed as an accessor so the cycle module
+  // cannot reach the module-level mutable itself.
+  getPollGeneration: () => xPollGeneration,
+  scheduleRetry: (retryAfterLeaseConflict) => guardedXPoll(retryAfterLeaseConflict),
+  randomId: () => crypto.randomBytes(4).toString('hex'),
+  X_ENABLED,
+  X_BEARER_TOKEN,
+  X_FEED_CACHE_KEY,
+  X_FEED_META_KEY,
+  X_FEED_POLL_STATE_KEY,
+  X_FEED_POLL_LOCK_KEY,
+  X_FEED_TTL_SECONDS,
+  X_FEED_META_TTL_SECONDS,
+  X_FEED_POLL_LOCK_TTL_SECONDS,
+  X_MAX_FEED_ITEMS,
+  X_MAX_TEXT_CHARS,
+  log: (message) => console.log(message),
+  warn: (message) => console.warn(message),
+});
+
+const xPollGuard = createPollGenerationGuard({
+  poll: (context) => xPollCycle.pollOnce(context),
+  getGeneration: () => xPollGeneration,
+  setGeneration: (generation) => { xPollGeneration = generation; },
+  stuckAfterMs: X_POLL_STUCK_AFTER_MS,
+  warn: (stuckMs, error) => {
+    if (error) {
+      console.warn('[Relay] X poll error:', error?.message || error);
+    } else {
+      console.warn(`[Relay] X poll stuck for ${Math.round(stuckMs / 1000)}s — force-clearing in-flight flag`);
+    }
+  },
+});
+
+function guardedXPoll(retryAfterLeaseConflict = false) {
+  xPollGuard.run({ retryAfterLeaseConflict });
+}
+
+async function startXPollLoop() {
+  loadXAccounts();
+  await xPollCycle.hydrate();
+  if (!X_ENABLED) {
+    console.warn('[Relay] X news-account poll skipped — X_BEARER_TOKEN is not configured on ais-relay');
+    return;
+  }
+  const nextDueAt = Math.max(
+    xState.lastPollAt ? xState.lastPollAt + X_POLL_INTERVAL_MS : 0,
+    xState.rateLimitedUntil || 0,
+  );
+  const startupDelayMs = Math.max(0, nextDueAt - Date.now());
+  const startInterval = () => {
+    guardedXPoll();
+    setInterval(guardedXPoll, X_POLL_INTERVAL_MS).unref?.();
+  };
+  if (startupDelayMs > 0) {
+    const timer = setTimeout(startInterval, startupDelayMs);
+    timer.unref?.();
+  } else {
+    startInterval();
+  }
+  console.log(`[Relay] X poll loop started (${Math.round(X_POLL_INTERVAL_MS / 60000)} min cadence)`);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2153,8 +2377,25 @@ function _parseYahooChartJson(body) {
     const price = meta.regularMarketPrice;
     const prevClose = meta.chartPreviousClose || meta.previousClose || price;
     const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    // Round to 7 significant digits like the cron seeders' roundSparkline
+    // (_seed-utils.mjs). Raw float64 noise made these FAST-tier keys ~2x the
+    // rounded size, and whichever writer wins the relay/cron race decides
+    // what every visitor downloads on cold load.
+    //
+    // The guard below MIRRORS toSignificantDigits in _seed-utils.mjs exactly:
+    // non-numbers, non-finite values and 0 pass through untouched so a malformed
+    // upstream degrades identically on both writers. Without it a string close
+    // ("N/A") becomes NaN and serialises to null, denting the curve on the relay
+    // path only. CJS cannot import the ESM helper, so the copy is deliberate and
+    // tests/ais-relay-sparkline-precision.test.mjs pins the two in lockstep.
     const closes = result.indicators?.quote?.[0]?.close;
-    const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
+    const sparkline = Array.isArray(closes)
+      ? closes.filter((v) => v != null).map((v) => (
+        typeof v === 'number' && Number.isFinite(v) && v !== 0
+          ? Number(v.toPrecision(7))
+          : v
+      ))
+      : [];
     return { price, change, sparkline };
   } catch { return null; }
 }
@@ -3458,7 +3699,10 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // tests/importance-score-parity.test.mjs.
 // Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
 // is enforced by tests/importance-score-parity.test.mjs.
-const RELAY_SOURCE_TIERS = requireShared('source-tiers.json');
+const RELAY_SOURCE_TIERS = {
+  ...requireShared('source-tiers.json'),
+  ...requireShared('x-account-source-tiers.json'),
+};
 const {
   createExplicitTierFourSourceSet,
   shouldDropRelaySourceForTier,
@@ -3759,6 +4003,7 @@ const CLASSIFY_LLM_PROVIDERS = [
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
     model: GROQ_DEFAULT_MODEL,
+    extraBody: GROQ_REASONING_EXTRA_BODY,
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 30000,
   },
@@ -3852,26 +4097,25 @@ async function seedClassifyForVariant(variant, seenTitles) {
     return { total: 0, classified: 0, skipped: 0 };
   }
 
-  // Map of title → item metadata; recency gate: skip articles older than 6h
-  const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
-  const now6h = Date.now() - RECENCY_GATE_MS;
-  const allTitles = new Map();
-  if (digest?.categories) {
-    for (const bucket of Object.values(digest.categories)) {
-      for (const item of bucket?.items ?? []) {
-        if (!item?.title) continue;
-        if (item.publishedAt && item.publishedAt < now6h) continue; // stale item
-        if (!allTitles.has(item.title)) {
-          allTitles.set(item.title, {
-            source: item.source ?? variant,
-            publishedAt: item.publishedAt ?? Date.now(),
-            corroborationCount: item.corroborationCount ?? 1,
-            link: item.link ?? '',
-          });
-        }
-      }
-    }
+  // #7084: stale RSS titles already had their alert pass when served fresh.
+  // Exclude only those digest-derived candidates; fresh X candidates remain
+  // eligible because they are an independent input to the combined pass.
+  if (isStaleDigestReplay(digest)) {
+    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
   }
+
+  // Map of title → item metadata; recency gate: skip articles older than 6h.
+  // The pure helper keeps the stale-RSS plus fresh-X behavior executable in
+  // tests without importing this boot-on-require relay.
+  const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
+  const classifyNow = Date.now();
+  const xCandidates = xNewsAccounts.collectXAlertCandidates(
+    xState.items,
+    RELAY_SOURCE_TIERS,
+    classifyNow,
+    RECENCY_GATE_MS,
+  );
+  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
 
   const titleArr = [...allTitles.keys()];
@@ -4951,6 +5195,8 @@ async function seedWeatherAlerts() {
       requireAlertFeatures,
       selectEcccAlerts,
       selectSwicAlerts,
+      selectWeatherNotificationAlerts,
+      weatherAlertFamilyKey,
       weatherAlertNotifyCountryCode,
       weatherAlertNotifyLocation,
       weatherAlertNotifySource,
@@ -5089,34 +5335,19 @@ async function seedWeatherAlerts() {
         : { sourceState: 'ok' }),
     }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (nws=${nwsAlerts.length} eccc=${ecccAlerts.length} swic=${swicAlerts.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
-    // Pick up to 3 DISTINCT event families before publishing. The naive
-    // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
-    // alerts are adjacent-zone duplicates for one VTEC family (one storm
-    // crossing 3 counties), the publisher-side dedup collapses them to 1
-    // notification and a 4th genuinely-distinct family (tornado / flood /
-    // different storm) sitting at index 3+ would NEVER be considered.
-    // Dedupe by coalesceKey FIRST, then take the top 3 distinct families.
-    // Slot B regression fix from PR #3467 review.
-    const seenFamilyKeys = new Set();
-    const distinctFamilyAlerts = [];
-    for (const a of highSeverityAlerts) {
-      // Family key: prefer VTEC-derived coalesce key; fall back to a stable
-      // identity from the alert so VTEC-less / ECCC alerts still deduplicate
-      // against themselves.
-      const familyKey = deriveWeatherCoalesceKey(a.vtec)
-        ?? `${a.source || 'weather'}:${a.id || a.headline || a.event || ''}`;
-      if (seenFamilyKeys.has(familyKey)) continue;
-      seenFamilyKeys.add(familyKey);
-      distinctFamilyAlerts.push(a);
-      if (distinctFamilyAlerts.length >= 3) break;
-    }
+    // Which high-severity alerts this tick notifies on. Distinct families,
+    // partitioned per country so a single-country burst cannot spend every
+    // slot (#7243). Selection rules live in _weather-alert-select.mjs so they
+    // are unit-testable without booting the relay.
+    const distinctFamilyAlerts = selectWeatherNotificationAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
-      // so adjacent-zone bulletins for the same logical event collapse to one
-      // notification per user. Falls back to title-based dedup when VTEC is
-      // absent (ECCC, rare advisory types, or missing parameters).
-      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
+      // The SAME family key the selector partitioned by. Publishing a narrower
+      // key (VTEC only) let publishNotificationEvent fall back to its global
+      // `weather_alert:<title>` dedup hash for every VTEC-less SWIC/ECCC
+      // alert, so two countries sharing a generic WMO title ("Heavy rain",
+      // "Forestfire") collided on SET NX and only the first survived —
+      // recreating the #7243 starvation one layer below the selector.
+      const coalesceKey = weatherAlertFamilyKey(a);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',
@@ -8458,10 +8689,17 @@ async function seedTransitSummaries() {
   // coverage shortfall surfaces via the `pwCovered/N` log + recordCount only.
   const CANONICAL_IDS = Object.keys(CHOKEPOINT_THREAT_LEVELS);
   let pwCovered = 0;
+  // WHICH ids are missing, not just how many. A bare `11/13` cannot be acted on
+  // after the fact: portwatch dropped exactly two chokepoints for ~4.5h on
+  // 2026-08-25 and by the time anyone read the alarm the upstream had recovered,
+  // so the shortfall was unattributable — the count was identical every cycle
+  // and named nothing.
+  const pwMissing = [];
 
   for (const cpId of CANONICAL_IDS) {
     const cpData = pw[cpId];
     if (cpData) pwCovered++;
+    else pwMissing.push(cpId);
     const threatLevel = CHOKEPOINT_THREAT_LEVELS[cpId] || 'normal';
     const history = cpData?.history ?? [];
     const anomaly = detectTrafficAnomaly(history, threatLevel);
@@ -8522,7 +8760,7 @@ async function seedTransitSummaries() {
   }
 
   if (pwCovered < CANONICAL_IDS.length) {
-    console.warn(`[TransitSummary] portwatch coverage shortfall: ${pwCovered}/${CANONICAL_IDS.length} — missing chokepoints will publish zero-state until next upstream success`);
+    console.warn(`[TransitSummary] portwatch coverage shortfall: ${pwCovered}/${CANONICAL_IDS.length} (missing: ${pwMissing.join(', ')}) — missing chokepoints will publish zero-state until next upstream success`);
   }
 
   const ok = await envelopeWrite(TRANSIT_SUMMARY_REDIS_KEY, { summaries, fetchedAt: now }, TRANSIT_SUMMARY_TTL, { recordCount: pwCovered, sourceVersion: 'transit-summaries' });
@@ -8855,13 +9093,106 @@ const OPENSKY_AUTH_COOLDOWN_MS = 60000; // 1 min cooldown after auth failure
 // Global OpenSky rate limiter — serializes upstream requests and enforces 429 cooldown
 let openskyGlobal429Until = 0; // timestamp: block ALL upstream requests until this time
 const OPENSKY_429_COOLDOWN_MS = Number(process.env.OPENSKY_429_COOLDOWN_MS) || 90 * 1000; // 90s cooldown after any 429
-const OPENSKY_MAX_429_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const OPENSKY_MAX_429_COOLDOWN_MS = OPENSKY_MAX_COOLDOWN_MS;
 const OPENSKY_REQUEST_SPACING_MS = Number(process.env.OPENSKY_REQUEST_SPACING_MS) || 2000; // 2s minimum between consecutive upstream requests
 let openskyLastUpstreamTime = 0;
 let openskyUpstreamQueue = Promise.resolve(); // serial chain — only 1 upstream request at a time
 let openskyRateLimitRemaining = null;
 let openskyLastSuccessAt = 0;
 let openskyLast429At = 0;
+
+function mergeLocalOpenSkyCooldown(untilMs) {
+  if (!Number.isFinite(untilMs) || untilMs <= Date.now()) return;
+  openskyGlobal429Until = Math.max(openskyGlobal429Until, untilMs);
+}
+
+// Aviation bbox callers abort this relay hop after 6s
+// (track-aircraft BBOX_RELAY_TIMEOUT_MS). The default Upstash GET waits 5s,
+// and the queued fetch used to repeat that read — a slow Redis consumed the
+// fail-open path before OpenSky could answer. Bound the GET and reuse the
+// result for the same request's second check (#6253).
+const OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS = 1_000;
+const OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS = 5_000;
+let sharedOpenSkyCooldownReadPromise = null;
+let sharedOpenSkyCooldownReadResult = 0;
+let sharedOpenSkyCooldownReadExpiresAt = 0;
+
+// Shared Redis record written by this relay and by seed-military-flights.
+// Fails OPEN on every error path: a Redis problem must never disable the
+// data tier, and the in-process cooldown still works when Redis is down (#6253).
+async function remainingSharedOpenSkyCooldownMs() {
+  if (sharedOpenSkyCooldownReadPromise) return sharedOpenSkyCooldownReadPromise;
+  if (Date.now() < sharedOpenSkyCooldownReadExpiresAt) return sharedOpenSkyCooldownReadResult;
+
+  const pending = readSharedOpenSkyCooldownMs().then((remainingMs) => {
+    sharedOpenSkyCooldownReadResult = remainingMs;
+    sharedOpenSkyCooldownReadExpiresAt = Date.now() + OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS;
+    return remainingMs;
+  });
+  sharedOpenSkyCooldownReadPromise = pending;
+  try {
+    return await pending;
+  } finally {
+    if (sharedOpenSkyCooldownReadPromise === pending) {
+      sharedOpenSkyCooldownReadPromise = null;
+    }
+  }
+}
+
+async function readSharedOpenSkyCooldownMs() {
+  try {
+    const record = await upstashGet(OPENSKY_COOLDOWN_KEY, (reason) => {
+      console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${reason}`);
+    }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
+    const inspected = inspectCooldownRecord(record, {
+      account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    });
+    if (inspected.ignoreReason === 'account-mismatch') {
+      console.warn('[Relay] OpenSky shared cooldown ignored — recorded for a different account');
+    } else if (inspected.ignoreReason === 'implausible-deadline') {
+      console.warn(`[Relay] OpenSky shared cooldown ignored — implausible deadline ${inspected.until}`);
+    }
+    if (inspected.remainingMs > 0) {
+      mergeLocalOpenSkyCooldown(Date.now() + inspected.remainingMs);
+    }
+    return inspected.remainingMs;
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${err.message || err}`);
+    return 0;
+  }
+}
+
+async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Date.now()) {
+  const localCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_429_COOLDOWN_MS);
+  mergeLocalOpenSkyCooldown(completedAt + localCooldownMs);
+  // The in-process limiter can stay short (90s). The shared record must
+  // outlive the seeder's */5 tick, so header-less 429s use the 10-minute
+  // persist fallback instead of the relay's local default (#6253).
+  const persistCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS);
+  const record = buildCooldownRecord({
+    now: completedAt,
+    cooldownMs: persistCooldownMs,
+    retryAfterSeconds,
+    account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    recordedBy: 'ais-relay',
+  });
+  try {
+    // Atomic max-deadline write: a late shorter persist must not erase a
+    // longer seeder (or earlier relay) lockout already stored at this key.
+    const command = maxDeadlineSetCommand(
+      OPENSKY_COOLDOWN_KEY,
+      record,
+      ttlSecondsForCooldown(persistCooldownMs),
+    );
+    const written = await upstashEval(OPENSKY_MAX_DEADLINE_SET_LUA, [OPENSKY_COOLDOWN_KEY], command.slice(4));
+    if (written == null && UPSTASH_ENABLED) {
+      console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
+    }
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown persist failed: ${err.message || err}`);
+  }
+  return localCooldownMs;
+}
 
 async function getOpenSkyToken() {
   const clientId = process.env.OPENSKY_CLIENT_ID;
@@ -9113,6 +9444,11 @@ function openskyQueuedFetch(url, token) {
     if (Date.now() < openskyGlobal429Until) {
       return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
     }
+    // Cross-process arming: a seeder 429 parked the shared Redis key while this
+    // process still had a zero in-process deadline (#6253). Fail-open on Redis.
+    if (await remainingSharedOpenSkyCooldownMs() > 0) {
+      return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
+    }
     openskyLastUpstreamTime = Date.now();
     incrementRelayMetric('openskyUpstreamFetches');
     const result = await _openskyRawFetch(url, token);
@@ -9124,14 +9460,7 @@ function openskyQueuedFetch(url, token) {
       openskyLastSuccessAt = completedAt;
     }
     if (result.status === 429) {
-      const providerCooldownMs = result.retryAfterSeconds == null
-        ? OPENSKY_429_COOLDOWN_MS
-        : result.retryAfterSeconds * 1000;
-      const cooldownMs = Math.min(
-        OPENSKY_MAX_429_COOLDOWN_MS,
-        Math.max(OPENSKY_429_COOLDOWN_MS, providerCooldownMs),
-      );
-      openskyGlobal429Until = Math.max(openskyGlobal429Until, completedAt + cooldownMs);
+      const cooldownMs = await persistSharedOpenSkyCooldown(result.retryAfterSeconds, completedAt);
       openskyLast429At = completedAt;
       console.warn(`[Relay] OpenSky 429 — global cooldown ${Math.ceil(cooldownMs / 1000)}s (all bbox queries blocked)`);
     }
@@ -9190,6 +9519,11 @@ async function handleOpenSkyRequest(req, res, PORT) {
     // 2b. Global 429 cooldown — blocks ALL bbox queries when OpenSky is rate-limiting.
     //     Without this, 5 unique bbox keys all fire simultaneously when neg cache expires,
     //     ALL get 429'd, and the cycle repeats forever with zero data flowing.
+    //     Also honor a seeder-written Redis deadline so this process does not
+    //     spend a doomed auth+data round-trip to rediscover the same lockout.
+    if (Date.now() >= openskyGlobal429Until) {
+      await remainingSharedOpenSkyCooldownMs();
+    }
     if (Date.now() < openskyGlobal429Until) {
       incrementRelayMetric('openskyNegativeHit');
       recordRelayOutcome('opensky', 'throttle');
@@ -10470,6 +10804,24 @@ const server = http.createServer(async (req, res) => {
         pollInFlight: telegramPollInFlight,
         pollInFlightSince: telegramPollInFlight && telegramPollStartedAt ? new Date(telegramPollStartedAt).toISOString() : null,
       },
+      xFeed: {
+        enabled: X_ENABLED,
+        accounts: xState.accounts?.length || 0,
+        items: xState.items?.length || 0,
+        lastPollAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        hasError: !!xState.lastError,
+        lastError: xState.lastError || null,
+        // Distinguishes "Redis unreadable, refusing to publish" from an ordinary
+        // poll error — otherwise both look like a generic lastError string.
+        hydrationFailed: !!xState.hydrationFailed,
+        generation: xState.generation,
+        coverage: xState.lastCoverage,
+        lastHealthyAt: xState.lastHealthyAt ? new Date(xState.lastHealthyAt).toISOString() : null,
+        pollInFlight: xPollGuard.isInFlight(),
+        pollInFlightSince: xPollGuard.startedAt() ? new Date(xPollGuard.startedAt()).toISOString() : null,
+        rateLimitedUntil: xState.rateLimitedUntil ? new Date(xState.rateLimitedUntil).toISOString() : null,
+        backoffCause: xState.backoffCause || null,
+      },
       oref: {
         enabled: SIREN_ALERTS_ENABLED,
         alertCount: orefState.lastAlerts?.length || 0,
@@ -10676,6 +11028,39 @@ const server = http.createServer(async (req, res) => {
         enabled: TELEGRAM_ENABLED,
         count: filtered.length,
         updatedAt: telegramState.lastPollAt ? new Date(telegramState.lastPollAt).toISOString() : null,
+        items: filtered,
+      }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal error' }));
+    }
+  } else if (pathname === '/x' || pathname.startsWith('/x/')) {
+    try {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 50)));
+      const topic = (url.searchParams.get('topic') || '').trim().toLowerCase();
+      const account = (url.searchParams.get('account') || url.searchParams.get('channel') || '').trim().toLowerCase();
+      const includeDeleted = url.searchParams.get('includeDeleted') === '1';
+
+      const items = Array.isArray(xState.items) ? xState.items : [];
+      const filtered = items.filter((it) => {
+        if (!includeDeleted && it.contentState === 'deleted') return false;
+        if (topic && String(it.topic || '').toLowerCase() !== topic) return false;
+        if (account && String(it.account || '').toLowerCase() !== account) return false;
+        return true;
+      }).slice(0, limit);
+
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=10',
+        'CDN-Cache-Control': 'public, max-age=10',
+      }, JSON.stringify({
+        source: 'x',
+        earlySignal: true,
+        enabled: X_ENABLED,
+        count: filtered.length,
+        updatedAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        coverage: xState.lastCoverage,
         items: filtered,
       }));
     } catch (e) {
@@ -12727,7 +13112,11 @@ server.listen(PORT, () => {
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }
-  startTelegramPollLoop();
+    startTelegramPollLoop();
+    void startXPollLoop().catch((error) => {
+      xState.lastError = `X poll startup failed: ${error?.message || String(error)}`;
+      console.warn('[Relay] X poll startup failed:', error?.message || error);
+    });
   startOrefPollLoop();
   startUcdpSeedLoop();
   startMarketDataSeedLoop();

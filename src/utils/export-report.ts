@@ -116,7 +116,7 @@ function linkCell(title: unknown, link: unknown): string {
 
 function section(title: string, headers: string[], rows: string[][]): string {
   if (rows.length === 0) return '';
-  const head = headers.map((h) => `<th>${escapeReportHtml(h)}</th>`).join('');
+  const head = headers.map((h) => `<th scope="col">${escapeReportHtml(h)}</th>`).join('');
   const body = rows
     .map((cells) => `<tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`)
     .join('');

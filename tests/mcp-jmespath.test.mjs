@@ -344,7 +344,7 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
         logging: {},
         prompts: { listChanged: false },
         resources: { subscribe: false, listChanged: false },
-        extensions: { 'io.modelcontextprotocol/ui': {} },
+        extensions: { 'io.modelcontextprotocol/ui': {}, 'io.modelcontextprotocol/skills': {} },
       });
       assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
     });

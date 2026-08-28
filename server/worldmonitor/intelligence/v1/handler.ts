@@ -13,6 +13,7 @@ import { listSatellites } from './list-satellites';
 import { listGpsInterference } from './list-gps-interference';
 import { listOrefAlerts } from './list-oref-alerts';
 import { listTelegramFeed } from './list-telegram-feed';
+import { listXFeed } from './list-x-feed';
 import { getCompanyEnrichment } from './get-company-enrichment';
 import { listCompanySignals } from './list-company-signals';
 import { searchSecFilings } from './search-sec-filings';
@@ -46,6 +47,7 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   listGpsInterference,
   listOrefAlerts,
   listTelegramFeed,
+  listXFeed,
   getCompanyEnrichment,
   listCompanySignals,
   searchSecFilings,

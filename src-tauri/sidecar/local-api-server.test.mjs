@@ -10,6 +10,7 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
 
 test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
@@ -54,6 +55,94 @@ async function listen(server, host = '127.0.0.1', port = 0) {
   }
   return address.port;
 }
+
+function executeYoutubeEmbedHtml(html) {
+  const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
+  assert.ok(script, 'youtube embed response must contain an executable script');
+  const posted = [];
+  const appendedScripts = [];
+  let playerEvents = null;
+  const parent = {};
+  Object.defineProperty(parent, 'postMessage', {
+    configurable: false,
+    get: () => (message, targetOrigin) => posted.push({ message, targetOrigin }),
+    set: () => {
+      throw new Error('child attempted to replace parent.postMessage');
+    },
+  });
+  const sandbox = {
+    console: { log() {}, warn() {}, error() {} },
+    window: { parent, addEventListener() {} },
+    document: {
+      createElement: () => ({}),
+      head: { appendChild: (node) => appendedScripts.push(node) },
+      getElementById: () => ({ classList: { add() {}, remove() {} } }),
+    },
+    MutationObserver: class {
+      observe() {}
+      disconnect() {}
+    },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    setInterval: () => 0,
+    clearInterval() {},
+    YT: {
+      Player: class {
+        constructor(_elementId, options) {
+          playerEvents = options.events;
+        }
+
+        mute() {}
+        playVideo() {}
+        isMuted() { return true; }
+        getVolume() { return 0; }
+      },
+    },
+  };
+
+  runInNewContext(script, sandbox);
+  assert.equal(typeof sandbox.onYouTubeIframeAPIReady, 'function');
+  sandbox.onYouTubeIframeAPIReady();
+  playerEvents.onReady();
+  return { posted, appendedScripts };
+}
+
+test('youtube embed bridge accepts exact Tauri origin and no-ops rejected parents', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const allowedResponse = await fetch(
+      `http://127.0.0.1:${port}/api/youtube-embed?videoId=e34xb-Fbl0U&parentOrigin=${encodeURIComponent('https://tauri.localhost')}`,
+    );
+    assert.equal(allowedResponse.status, 200);
+    const allowed = executeYoutubeEmbedHtml(await allowedResponse.text());
+    assert.equal(allowed.appendedScripts.length, 1, 'the YouTube API must still initialize');
+    assert.ok(
+      allowed.posted.some(({ message, targetOrigin }) => message?.type === 'yt-ready' && targetOrigin === 'https://tauri.localhost'),
+      'supported Tauri parent must receive yt-ready at its exact origin',
+    );
+
+    for (const parentOrigin of ['', 'https://evil.example']) {
+      const query = parentOrigin ? `&parentOrigin=${encodeURIComponent(parentOrigin)}` : '';
+      const response = await fetch(
+        `http://127.0.0.1:${port}/api/youtube-embed?videoId=e34xb-Fbl0U${query}`,
+      );
+      assert.equal(response.status, 200);
+      const rejected = executeYoutubeEmbedHtml(await response.text());
+      assert.equal(rejected.appendedScripts.length, 1, 'rejected parents must not abort player setup');
+      assert.deepEqual(rejected.posted, [], 'rejected parents must receive no bridge messages');
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
 
 async function postJsonViaHttp(url, payload, headers = {}) {
   const target = new URL(url);

@@ -12,7 +12,7 @@ const {
   wilsonBounds,
 } = await import('./analytics-health.js');
 
-const WINDOW_COMMANDS = 12;
+const WINDOW_COMMANDS = 15;
 
 /**
  * Shape a pipeline reply the way the endpoint reads it, so a fixture can only
@@ -20,6 +20,7 @@ const WINDOW_COMMANDS = 12;
  */
 function pipelineResults({
   writes,
+  manualTimeoutWrites = 0,
   failures,
   previousWrites = null,
   previousFailures = null,
@@ -34,10 +35,13 @@ function pipelineResults({
   const incrReply = (value) => ({ result: value === null ? null : value + 100_000 });
   return [
     incrReply(writes),
+    incrReply(manualTimeoutWrites),
     incrReply(failures),
     { result: 1 },
     { result: 1 },
+    { result: 1 },
     counter(writes),
+    counter(manualTimeoutWrites),
     counter(failures),
     counter(previousWrites),
     counter(previousFailures),
@@ -84,7 +88,13 @@ async function drive({
   return { recorded, calls, captures };
 }
 
-const REPORT = { cohort: 'event', writes: 1, failures: 1, failureKind: 'network' };
+const REPORT = {
+  cohort: 'event',
+  writes: 1,
+  manualTimeoutWrites: 0,
+  failures: 1,
+  failureKind: 'network',
+};
 
 describe('analytics collector health aggregate', () => {
   it('accepts only bounded allowlisted counter deltas', () => {
@@ -92,6 +102,7 @@ describe('analytics collector health aggregate', () => {
       parseCollectorHealthReport({
         cohort: 'critical-event',
         writes: 4,
+        manualTimeoutWrites: 3,
         failures: 2,
         failureKind: 'missing-receipt',
         bucket: 123,
@@ -99,6 +110,7 @@ describe('analytics collector health aggregate', () => {
       {
         cohort: 'critical-event',
         writes: 4,
+        manualTimeoutWrites: 3,
         failures: 2,
         failureKind: 'missing-receipt',
         bucket: 123,
@@ -107,7 +119,18 @@ describe('analytics collector health aggregate', () => {
     assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 0, failures: 0, failureKind: 'network' }), null);
     assert.deepEqual(
       parseCollectorHealthReport({ cohort: 'event', writes: 20, failures: 0, failureKind: 'none' }),
-      { cohort: 'event', writes: 20, failures: 0, failureKind: 'none' },
+      { cohort: 'event', writes: 20, manualTimeoutWrites: 0, failures: 0, failureKind: 'none' },
+    );
+    assert.equal(
+      parseCollectorHealthReport({
+        cohort: 'event',
+        writes: 2,
+        manualTimeoutWrites: 3,
+        failures: 0,
+        failureKind: 'none',
+      }),
+      null,
+      'the manual-path numerator cannot exceed its write denominator',
     );
     assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 20, failures: 1, failureKind: 'none' }), null);
     assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 2, failures: 3, failureKind: 'network' }), null);
@@ -227,17 +250,26 @@ describe('advanceBreachStreak', () => {
 describe('recordCollectorHealthAggregate', () => {
   it('uses explicit current, previous-window, and previous-day keys', async () => {
     const { calls } = await drive({
-      report: { cohort: 'event', writes: 3, failures: 2, failureKind: 'network' },
+      report: {
+        cohort: 'event',
+        writes: 3,
+        manualTimeoutWrites: 2,
+        failures: 2,
+        failureKind: 'network',
+      },
       bucket: 1_000,
       results: pipelineResults({ writes: 5_000, failures: 10 }),
     });
     const p = 'analytics:collector-health:v1:production';
     assert.deepEqual(calls[0], [
       ['INCRBY', `${p}:1000:event:writes`, '3'],
+      ['INCRBY', `${p}:1000:event:manual-timeout-writes`, '2'],
       ['INCRBY', `${p}:1000:event:failures`, '2'],
       ['EXPIRE', `${p}:1000:event:writes`, '120'],
+      ['EXPIRE', `${p}:1000:event:manual-timeout-writes`, '120'],
       ['EXPIRE', `${p}:1000:event:failures`, '120'],
       ['GET', `${p}:1000:event:writes`],
+      ['GET', `${p}:1000:event:manual-timeout-writes`],
       ['GET', `${p}:1000:event:failures`],
       ['GET', `${p}:999:event:writes`],
       ['GET', `${p}:999:event:failures`],
@@ -346,6 +378,7 @@ describe('recordCollectorHealthAggregate', () => {
       bucket: 1_002,
       results: pipelineResults({
         writes: 200,
+        manualTimeoutWrites: 50,
         failures: 190,
         baselineWrites: 100_000,
         baselineFailures: 61_000,
@@ -359,6 +392,8 @@ describe('recordCollectorHealthAggregate', () => {
     assert.deepEqual(fingerprint, ['analytics-collector', 'environment-noise', 'event']);
     assert.equal(tags.healthCohort, 'event');
     assert.equal(extra.writeCount, 200);
+    assert.equal(extra.manualTimeoutWriteCount, 50);
+    assert.equal(extra.manualTimeoutRate, 0.25);
     assert.equal(extra.failureCount, 190);
     assert.equal(extra.consecutiveBreachedWindows, 3);
     assert.equal(extra.baselineWriteCount, 100_000);

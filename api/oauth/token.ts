@@ -33,7 +33,7 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp } from '../_rate-limit.js';
+import { getClientIp, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
@@ -42,33 +42,163 @@ import { jsonResponse } from '../_json-response.js';
 import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
+// @ts-expect-error — JS module, no declaration file
+import { emitOAuthTokenUsage } from '../_usage-telemetry.js';
+import {
+  REFRESH_TTL_SECONDS,
+  finalizeRefreshAttempt,
+  markRefreshFamilyRevoked,
+  persistRefreshFamilyPointer,
+  rawRedisBeginRefreshAttempt,
+  rawRedisFinalizeRefreshAttempt,
+  rawRedisProtectFailedRefreshAttempt,
+  rawRedisRestoreRefreshAttempt,
+  refreshFamilyPointerKey,
+  refreshFamilyRevocationKey,
+  restoreRefreshAttempt,
+} from './_refresh-recovery';
+import type {
+  PipelineCommand,
+  PipelineResult,
+  RefreshConsumeResult,
+  RefreshRecoveryDeps,
+  RefreshRestoreFailureContext,
+} from './_refresh-recovery';
 
 export const config = { runtime: 'edge' };
 
 const TOKEN_TTL_SECONDS = 3600;
-const REFRESH_TTL_SECONDS = 604800;
 const CLIENT_TTL_SECONDS = 90 * 24 * 3600;
 
 const NO_STORE = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+
+type WaitUntilCtx = { waitUntil: (promise: Promise<unknown>) => void };
+
+interface TokenRateLimiter {
+  limit(identifier: string): Promise<{ success: boolean; reason?: string }>;
+}
+
+type TokenRateLimitDecision =
+  | { kind: 'allow' }
+  | { kind: 'degraded' }
+  | { kind: 'limited'; response: Response };
 
 function jsonResp(body: unknown, status = 200): Response {
   return jsonResponse(body, status, { ...getPublicCorsHeaders('POST, OPTIONS'), ...NO_STORE });
 }
 
+function withRateLimitDegradedHeader(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set('X-RateLimit-Mode', 'degraded');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+// @upstash/redis defaults to 5 retries (~4.3s) before surfacing an unreachable
+// Redis error. Under the node test runner skip retries so fail-open tests that
+// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately. Production
+// (env unset) keeps the resilient default. Mirrors api/_rate-limit.js.
+const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+
 // Tight rate limiter for credential endpoint
-let _rl: Ratelimit | null = null;
-function getRatelimit(): Ratelimit | null {
+let _rl: TokenRateLimiter | null = null;
+let _rlOverride: TokenRateLimiter | null | undefined;
+const DEGRADED_CAPTURE_DEDUP_MS = 60_000;
+const lastDegradedCaptureAtByStage = new Map<string, number>();
+const OAUTH_RATE_LIMIT_KEY_PATTERN = /rl:oauth-token:(?:cid|cred|ip):[^"\\]+/g;
+
+function getRatelimit(): TokenRateLimiter | null {
+  if (_rlOverride !== undefined) return _rlOverride;
   if (_rl) return _rl;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   _rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
     prefix: 'rl:oauth-token',
     analytics: false,
   });
   return _rl;
+}
+
+/**
+ * Test-only limiter injection. `null` forces the unconfigured path; omit via
+ * `__resetOAuthTokenRateLimitForTest` to restore production construction.
+ */
+export function __setOAuthTokenRatelimitForTest(rl: TokenRateLimiter | null): void {
+  _rlOverride = rl;
+}
+
+export function __resetOAuthTokenRateLimitForTest(): void {
+  _rl = null;
+  _rlOverride = undefined;
+  lastDegradedCaptureAtByStage.clear();
+}
+
+/**
+ * Bounded ops signal when the token limiter cannot decide. Deduped per isolate
+ * per stage so an Upstash outage does not mint one Sentry event per POST.
+ * Logs and Sentry extras never include client secrets, codes, refresh tokens,
+ * or full client identifiers (#7270).
+ */
+function boundedGrantTag(grantType: string | null): string {
+  if (
+    grantType === 'authorization_code'
+    || grantType === 'refresh_token'
+    || grantType === 'client_credentials'
+  ) {
+    return grantType;
+  }
+  return grantType ? 'other' : 'none';
+}
+
+/**
+ * `@upstash/redis` embeds the serialized command body in non-2xx errors.
+ * Sliding-window keys contain the full limiter identifier, which must not
+ * reach logs or Sentry (#7270).
+ */
+function sanitizeTokenRateLimitError(err: unknown): Error {
+  const raw = err instanceof Error ? err.message : String(err);
+  const msg = raw.replace(OAUTH_RATE_LIMIT_KEY_PATTERN, 'rl:oauth-token:<redacted>');
+  if (err instanceof Error && msg === raw) return err;
+  const sanitized = new Error(msg);
+  if (err instanceof Error) {
+    sanitized.name = err.name;
+    if (typeof err.stack === 'string') {
+      sanitized.stack = err.stack.split(raw).join(msg);
+    }
+  }
+  return sanitized;
+}
+
+function reportTokenRateLimitDegraded(
+  stage: string,
+  err: unknown,
+  ctx: WaitUntilCtx | undefined,
+  grantType: string | null,
+): void {
+  const now = Date.now();
+  const last = lastDegradedCaptureAtByStage.get(stage);
+  if (last !== undefined && now - last < DEGRADED_CAPTURE_DEDUP_MS) return;
+  lastDegradedCaptureAtByStage.set(stage, now);
+
+  const sanitized = sanitizeTokenRateLimitError(err);
+  const msg = sanitized.message;
+  console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
+  captureSilentError(sanitized, {
+    tags: {
+      surface: 'api',
+      component: 'rate-limit',
+      route: 'api/oauth/token',
+      stage,
+      grant: boundedGrantTag(grantType),
+    },
+    fingerprint: ['rate-limit', 'redis-error', rateLimitFingerprintStage(stage)],
+    ctx,
+    level: rateLimitErrorLevel(stage, sanitized.message),
+  });
 }
 
 async function validateSecret(secret: string | null | undefined): Promise<boolean> {
@@ -81,9 +211,6 @@ async function validateSecret(secret: string | null | undefined): Promise<boolea
 // Production Redis helpers (raw `oauth:*` keys, no env-prefix). Mirror the
 // shape used by `api/oauth/authorize.js` so both sides agree on key bytes.
 // ---------------------------------------------------------------------------
-
-type PipelineCommand = (string | number | unknown)[];
-interface PipelineResult { result?: string; error?: string }
 
 async function rawRedisPipeline(commands: PipelineCommand[]): Promise<PipelineResult[] | null> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -256,60 +383,12 @@ function accessTokenFamilyKey(accessToken: string): string {
   return `oauth:tokenfam:${accessToken}`;
 }
 
-function refreshFamilyPointerKey(refreshToken: string): string {
-  return `oauth:famptr:${refreshToken}`;
-}
-
-function refreshFamilyRevocationKey(familyId: string): string {
-  return `oauth:famrev:${familyId}`;
-}
-
-function pipelineOk(results: PipelineResult[] | null): boolean {
-  return Array.isArray(results) && results.every((r) => r?.result === 'OK');
-}
-
-async function persistRefreshFamilyPointer(
-  deps: TokenHandlerDeps,
-  refreshToken: string,
-  familyId: string,
-): Promise<boolean> {
-  return pipelineOk(await deps.redisPipeline([
-    ['SET', refreshFamilyPointerKey(refreshToken), JSON.stringify(familyId), 'EX', REFRESH_TTL_SECONDS],
-  ]));
-}
-
-async function markRefreshFamilyRevoked(deps: TokenHandlerDeps, familyId: string): Promise<boolean> {
-  return pipelineOk(await deps.redisPipeline([
-    ['SET', refreshFamilyRevocationKey(familyId), '1', 'EX', REFRESH_TTL_SECONDS],
-  ]));
-}
-
-async function restoreConsumedRefreshToken(
-  deps: TokenHandlerDeps,
-  refreshToken: string,
-  refreshData: RefreshDataPro | RefreshDataLegacy,
-): Promise<boolean> {
-  const commands: PipelineCommand[] = [
-    ['SET', `oauth:refresh:${refreshToken}`, JSON.stringify(refreshData), 'EX', REFRESH_TTL_SECONDS],
-  ];
-  if (refreshData.family_id) {
-    commands.push([
-      'SET',
-      refreshFamilyPointerKey(refreshToken),
-      JSON.stringify(refreshData.family_id),
-      'EX',
-      REFRESH_TTL_SECONDS,
-    ]);
-  }
-  return pipelineOk(await deps.redisPipeline(commands));
-}
-
 // ---------------------------------------------------------------------------
 // Inner handler — exported for unit tests with injected deps.
 // ---------------------------------------------------------------------------
 
-export interface TokenHandlerDeps {
-  /** Atomic GETDEL on `oauth:code:<code>` / `oauth:refresh:<token>`. Throws on transport failure. */
+export interface TokenHandlerDeps extends RefreshRecoveryDeps {
+  /** Atomic GETDEL on `oauth:code:<code>`. Throws on transport failure. */
   redisGetDel: (key: string) => Promise<unknown | null>;
   /** Non-consuming parsed read of raw `oauth:*` keys. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
@@ -325,6 +404,10 @@ export interface TokenHandlerDeps {
   validateProMcpToken: typeof validateProMcpToken;
   /** Random UUID — injectable so tests can assert specific ids in the response payload. */
   randomUuid: () => string;
+  /** Attempt id used to fence one consumed refresh-token recovery. */
+  randomPointerId: () => string;
+  /** Optional Vercel isolate context so limiter Sentry/usage survive teardown. */
+  ctx?: WaitUntilCtx;
 }
 
 interface CodeDataPro {
@@ -511,72 +594,67 @@ async function handleRefreshToken(
     );
   }
 
-  // Atomically consume the refresh token (GETDEL — prevents concurrent rotation race).
-  let refreshData: RefreshDataPro | RefreshDataLegacy | null;
+  // Consume the refresh record and create a recovery attempt in one Redis
+  // script. A concurrent miss can then distinguish an in-flight attempt from
+  // proven replay without changing the rollback-compatible family pointer.
+  let consume: RefreshConsumeResult;
   try {
-    refreshData = (await deps.redisGetDel(`oauth:refresh:${refreshToken}`)) as
-      | RefreshDataPro
-      | RefreshDataLegacy
-      | null;
+    consume = await deps.redisBeginRefreshAttempt(refreshToken, deps.randomPointerId());
   } catch {
-    return jsonResp(
-      { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-      503,
-    );
+    return temporaryAuthFailure();
   }
-  if (!refreshData) {
-    // Reuse detection (GHSA-f6gj): a GETDEL-miss on a token that still has a
-    // persistent family pointer means a real, previously-issued token was
-    // presented AFTER it was already consumed — the classic rotation-reuse
-    // signal. Revoke the whole family so both the attacker's rotated token and
-    // the victim's live token are invalidated on their next use (forcing
-    // re-auth). A miss with no famptr is a genuinely expired/garbage token —
-    // nothing to revoke, so an attacker can't revoke a family by guessing
-    // token strings. Redis errors here are retryable security-control
-    // failures: returning invalid_grant without recording famrev would lose
-    // the only reuse signal.
+
+  if (consume.kind === 'miss') {
+    if (consume.recoveryPending) return temporaryAuthFailure();
+
+    // Only a miss with durable family evidence and no active recovery attempt
+    // is a replay. Failed and in-flight attempts remain non-revocation-eligible.
     try {
-      const familyId = await deps.redisGet(refreshFamilyPointerKey(refreshToken));
-      if (typeof familyId === 'string' && familyId) {
-        const revoked = await markRefreshFamilyRevoked(deps, familyId);
-        if (!revoked) {
-          return jsonResp(
-            { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-            503,
-          );
-        }
+      if (consume.familyId && !(await markRefreshFamilyRevoked(deps, consume.familyId))) {
+        return temporaryAuthFailure();
       }
     } catch {
-      return jsonResp(
-        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-        503,
-      );
+      return temporaryAuthFailure();
     }
-    return jsonResp(
-      { error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' },
-      400,
-    );
+    return invalidRefreshGrant();
   }
+
+  const refreshData = consume.refreshData as RefreshDataPro | RefreshDataLegacy;
+  const attemptValue = consume.attemptValue;
+  if (!refreshData || typeof refreshData !== 'object') {
+    return temporaryAuthFailure();
+  }
+
   if (refreshData.client_id !== clientId) {
+    if (!(await finalizeRefreshAttempt(deps, refreshToken, attemptValue))) return temporaryAuthFailure();
     return jsonResp({ error: 'invalid_grant', error_description: 'client_id mismatch' }, 400);
   }
 
-  // Keep a consumed-token family pointer even for tokens issued before this
-  // patch, and extend old-token pointers so near-expiry replay still revokes
-  // any freshly issued descendant token.
-  if (refreshData.family_id) {
-    const pointerStored = await persistRefreshFamilyPointer(deps, refreshToken, refreshData.family_id);
-    if (!pointerStored) {
-      await restoreConsumedRefreshToken(deps, refreshToken, refreshData).catch(() => false);
-      return jsonResp(
-        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-        503,
-      );
+  // New writes always use JSON.stringify(familyId). The old handler at the
+  // merge base reads this exact shape, so rollback and mixed-version traffic
+  // preserve replay revocation.
+  let pointerStored = !refreshData.family_id;
+  try {
+    if (refreshData.family_id) {
+      pointerStored = await persistRefreshFamilyPointer(deps, refreshToken, refreshData.family_id);
     }
+  } catch {
+    pointerStored = false;
+  }
+  if (!pointerStored) {
+    await restoreRefreshAttempt(
+      deps,
+      refreshToken,
+      attemptValue,
+      refreshData,
+      refreshData.family_id,
+      'persist-family-pointer',
+    );
+    return temporaryAuthFailure();
   }
 
   // Reuse-detection containment (GHSA-f6gj): if this token's family was revoked
-  // because a sibling token was replayed, refuse to rotate. The GETDEL above
+  // because a sibling token was replayed, refuse to rotate. The atomic claim
   // already consumed this token, so a revoked family forces the client to
   // re-authorize — this is what kills the attacker's rotated token (and the
   // victim's) once reuse is detected. Unknown revocation state is fail-closed:
@@ -586,22 +664,34 @@ async function handleRefreshToken(
     try {
       familyRevoked = (await deps.redisGet(refreshFamilyRevocationKey(refreshData.family_id))) != null;
     } catch {
-      await restoreConsumedRefreshToken(deps, refreshToken, refreshData).catch(() => false);
-      return jsonResp(
-        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-        503,
+      await restoreRefreshAttempt(
+        deps,
+        refreshToken,
+        attemptValue,
+        refreshData,
+        refreshData.family_id,
+        'read-family-revocation',
       );
+      return temporaryAuthFailure();
     }
     if (familyRevoked) {
-      return jsonResp(
-        { error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' },
-        400,
-      );
+      if (!(await finalizeRefreshAttempt(deps, refreshToken, attemptValue))) return temporaryAuthFailure();
+      return invalidRefreshGrant();
     }
   }
 
   const clientCheck = await checkClientExists(deps, clientId);
-  if (clientCheck) return clientCheck;
+  if (clientCheck) {
+    const restored = await restoreRefreshAttempt(
+      deps,
+      refreshToken,
+      attemptValue,
+      refreshData,
+      refreshData.family_id,
+      'client-validation',
+    );
+    return restored ? clientCheck : temporaryAuthFailure();
+  }
 
   const accessUuid = deps.randomUuid();
   const newRefreshUuid = deps.randomUuid();
@@ -609,8 +699,8 @@ async function handleRefreshToken(
   if (refreshData.kind === 'pro') {
     // F3 (U7+U8 review pass): branch on the discriminated-union result so
     // a transient Convex blip does NOT consume the refresh token. The
-    // GETDEL above already removed the token from Redis; on `transient`
-    // we best-effort write it BACK with the original TTL and return 503,
+    // atomic claim replaced the token with a marker; on `transient` we
+    // best-effort write it BACK with the original TTL and return 503,
     // letting the client retry once Convex recovers.
     //
     // userId-mismatch defensive check on the `valid` branch: if Convex
@@ -620,21 +710,23 @@ async function handleRefreshToken(
     const validation: ProMcpValidateUnion = await deps.validateProMcpToken(refreshData.mcpTokenId);
 
     if (validation.ok === 'transient') {
-      // Best-effort restore: the user's refresh token was just consumed
-      // by GETDEL but Convex hasn't ruled it revoked. Put it back so the
+      // Restore the user's refresh token after the claim because Convex has not
+      // ruled it revoked. Put it back so the
       // next attempt can succeed once the blip clears. Restore the family
       // pointer in the same operation so a restored near-expiry token cannot
       // outlive its replay-detection pointer.
-      try {
-        await restoreConsumedRefreshToken(deps, refreshToken, refreshData);
-      } catch {
-        // Best-effort. If restore fails the user re-authorizes — same
-        // outcome as before this fix; we've not made anything worse.
-      }
-      return jsonResp(
-        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-        503,
+      // If restoration fails, preserve a family-free recovery tombstone. The
+      // retry must not be misclassified as reuse and revoke every sibling
+      // session in the family (GHSA-f6gj).
+      await restoreRefreshAttempt(
+        deps,
+        refreshToken,
+        attemptValue,
+        refreshData,
+        refreshData.family_id,
+        'convex-transient',
       );
+      return temporaryAuthFailure();
     }
 
     if (validation.ok === 'revoked' || validation.userId !== refreshData.userId) {
@@ -642,10 +734,8 @@ async function handleRefreshToken(
       // refresh token is genuinely consumed (GETDEL); collapse to
       // `invalid_grant` so the client re-authorizes. Same opaque error
       // copy in both cases — don't leak revoked vs. cross-user.
-      return jsonResp(
-        { error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' },
-        400,
-      );
+      if (!(await finalizeRefreshAttempt(deps, refreshToken, attemptValue))) return temporaryAuthFailure();
+      return invalidRefreshGrant();
     }
 
     const scope = refreshData.scope ?? 'mcp_pro';
@@ -660,8 +750,17 @@ async function handleRefreshToken(
       refreshData.family_id,
     );
     if (!stored) {
-      return jsonResp({ error: 'server_error', error_description: 'Token storage failed' }, 500);
+      await restoreRefreshAttempt(
+        deps,
+        refreshToken,
+        attemptValue,
+        refreshData,
+        refreshData.family_id,
+        'store-rotated-token',
+      );
+      return temporaryAuthFailure();
     }
+    if (!(await finalizeRefreshAttempt(deps, refreshToken, attemptValue))) return temporaryAuthFailure();
     return jsonResp({
       access_token: accessUuid,
       token_type: 'Bearer',
@@ -683,8 +782,17 @@ async function handleRefreshToken(
     refreshData.family_id,
   );
   if (!stored) {
-    return jsonResp({ error: 'server_error', error_description: 'Token storage failed' }, 500);
+    await restoreRefreshAttempt(
+      deps,
+      refreshToken,
+      attemptValue,
+      refreshData,
+      refreshData.family_id,
+      'store-rotated-token',
+    );
+    return temporaryAuthFailure();
   }
+  if (!(await finalizeRefreshAttempt(deps, refreshToken, attemptValue))) return temporaryAuthFailure();
   return jsonResp({
     access_token: accessUuid,
     token_type: 'Bearer',
@@ -692,6 +800,20 @@ async function handleRefreshToken(
     refresh_token: newRefreshUuid,
     scope,
   });
+}
+
+function temporaryAuthFailure(): Response {
+  return jsonResp(
+    { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+    503,
+  );
+}
+
+function invalidRefreshGrant(): Response {
+  return jsonResp(
+    { error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' },
+    400,
+  );
 }
 
 async function handleClientCredentials(
@@ -742,14 +864,31 @@ async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Prom
   return null;
 }
 
+/**
+ * Abuse budget for POST /oauth/token. All grant types stay fail-open when the
+ * limiter is unconfigured or throws: MCP clients abort the handshake on a 503
+ * here, Redis persistence still fails closed downstream when storage is down,
+ * and `client_credentials` still has the env-key allowlist. The current
+ * fallback must stay operator-visible (#7270) — log + Sentry (deduped),
+ * `X-RateLimit-Mode: degraded` on the response, and a usage `reason`.
+ */
 async function applyRateLimit(
   req: Request,
   grantType: string | null,
   clientSecret: string | null,
   clientId: string | null,
-): Promise<Response | null> {
+  ctx: WaitUntilCtx | undefined,
+): Promise<TokenRateLimitDecision> {
   const rl = getRatelimit();
-  if (!rl) return null;
+  if (!rl) {
+    reportTokenRateLimitDegraded(
+      'oauthToken:missing-config',
+      new Error('Upstash Redis is not configured'),
+      ctx,
+      grantType,
+    );
+    return { kind: 'degraded' };
+  }
   try {
     let rlKey: string;
     if (grantType === 'client_credentials' && clientSecret) {
@@ -759,16 +898,33 @@ async function applyRateLimit(
     } else {
       rlKey = `ip:${getClientIp(req)}`;
     }
-    const { success } = await rl.limit(rlKey);
-    if (!success) {
-      return jsonResp(
-        { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
-        429,
+    const result = await rl.limit(rlKey);
+    // @upstash/ratelimit v2 races Redis against an internal timeout and
+    // RESOLVES `{ success: true, reason: 'timeout' }` rather than rejecting,
+    // so a slow Redis is indistinguishable from a genuine allow unless we
+    // treat timeout as the same fail-open degraded path as a throw (#6412).
+    if (result.reason === 'timeout') {
+      reportTokenRateLimitDegraded(
+        'oauthToken:timeout',
+        new Error('Upstash rate-limit decision timed out'),
+        ctx,
+        grantType,
       );
+      return { kind: 'degraded' };
     }
-    return null;
-  } catch {
-    return null; // graceful degradation
+    if (!result.success) {
+      return {
+        kind: 'limited',
+        response: jsonResp(
+          { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
+          429,
+        ),
+      };
+    }
+    return { kind: 'allow' };
+  } catch (err) {
+    reportTokenRateLimitDegraded('oauthToken', err, ctx, grantType);
+    return { kind: 'degraded' };
   }
 }
 
@@ -782,36 +938,65 @@ export async function tokenHandler(req: Request, deps: TokenHandlerDeps): Promis
     return jsonResp({ error: 'method_not_allowed' }, 405);
   }
 
+  const startedAt = Date.now();
   const params = new URLSearchParams(await req.text().catch(() => ''));
   const grantType = params.get('grant_type');
   const clientSecret = params.get('client_secret');
   const clientId = params.get('client_id');
 
-  const rateLimited = await applyRateLimit(req, grantType, clientSecret, clientId);
-  if (rateLimited) return rateLimited;
+  const rateLimit = await applyRateLimit(req, grantType, clientSecret, clientId, deps.ctx);
+  if (rateLimit.kind === 'limited') {
+    emitOAuthTokenUsage(deps.ctx, req, rateLimit.response, startedAt, 'rate_limit_429');
+    return rateLimit.response;
+  }
 
+  let response: Response;
   if (grantType === 'authorization_code') {
-    return handleAuthorizationCode(params, clientId, deps);
+    response = await handleAuthorizationCode(params, clientId, deps);
+  } else if (grantType === 'refresh_token') {
+    response = await handleRefreshToken(params, clientId, deps);
+  } else if (grantType === 'client_credentials') {
+    response = await handleClientCredentials(clientSecret, deps);
+  } else {
+    response = jsonResp({ error: 'unsupported_grant_type' }, 400);
   }
-  if (grantType === 'refresh_token') {
-    return handleRefreshToken(params, clientId, deps);
+
+  if (rateLimit.kind === 'degraded') {
+    response = withRateLimitDegradedHeader(response);
+    emitOAuthTokenUsage(deps.ctx, req, response, startedAt, 'rate_limit_degraded');
   }
-  if (grantType === 'client_credentials') {
-    return handleClientCredentials(clientSecret, deps);
-  }
-  return jsonResp({ error: 'unsupported_grant_type' }, 400);
+  return response;
 }
 
 // ---------------------------------------------------------------------------
 // Default handler — wires production deps. The Vercel edge entry point.
 // ---------------------------------------------------------------------------
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (promise: Promise<unknown>) => void },
+): Promise<Response> {
   return tokenHandler(req, {
     redisGetDel: rawRedisGetDel,
     redisGet: rawRedisGet,
+    redisBeginRefreshAttempt: rawRedisBeginRefreshAttempt,
+    redisRestoreRefreshAttempt: rawRedisRestoreRefreshAttempt,
+    redisFinalizeRefreshAttempt: rawRedisFinalizeRefreshAttempt,
+    redisProtectFailedRefreshAttempt: rawRedisProtectFailedRefreshAttempt,
     redisPipeline: rawRedisPipeline,
     validateProMcpToken,
     randomUuid: () => crypto.randomUUID(),
+    randomPointerId: () => crypto.randomUUID(),
+    ctx,
+    captureRestoreFailure: (context: RefreshRestoreFailureContext) => {
+      void captureSilentError(new Error('OAuth refresh token restore failed'), {
+        tags: {
+          route: 'api/oauth/token',
+          step: 'refresh-restore',
+          stage: context.stage,
+        },
+        ctx,
+      });
+    },
   });
 }

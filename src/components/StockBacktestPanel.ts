@@ -106,8 +106,9 @@ export class StockBacktestPanel extends Panel {
 
   private rerender(): void {
     if (!this.tableView) return;
-    this.setSafeContent(unsafeRawHtml(this.tableView.render(), 'legacy Panel.setContent() migration'));
-    this.tableView.bind(this.content, () => this.rerender());
+    this.setSafeContent(unsafeRawHtml(this.tableView.render(), 'legacy Panel.setContent() migration'), () => {
+      this.tableView?.bind(this.content, () => this.rerender());
+    });
   }
 
   private renderDetail(item: StockBacktestResult): string {

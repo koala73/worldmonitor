@@ -15,7 +15,7 @@
     "axisPersonal": "Personal",
     "axisPersonalNote": "individual use",
     "axisCommercial": "Commercial",
-    "axisCommercialNote": "work, teams & products",
+    "axisCommercialNote": "робота, клієнти й продукти",
     "promoCodeNote": "Have a promo code? Enter it during checkout.",
     "cta": {
       "checkoutDefault": "Get Started",
@@ -46,7 +46,8 @@
           "Priority data refresh"
         ],
         "highlightFeatures": [
-          "Personal license"
+          "Personal license",
+          "1 іменований користувач"
         ]
       },
       "proBusiness": {
@@ -60,7 +61,8 @@
           "Priority support"
         ],
         "highlightFeatures": [
-          "Commercial license included"
+          "Commercial license included",
+          "1 іменований користувач — не спільний вхід"
         ]
       },
       "api": {
@@ -84,7 +86,7 @@
           "Redistribution rights — embed our data in what you sell",
           "300 requests/minute",
           "10,000 requests/day included",
-          "5 Pro licenses included",
+          "5 ліцензій Pro — запрошуйте користувачів із будь-яким корпоративним доменом електронної пошти",
           "Priority support"
         ],
         "highlightFeatures": [
@@ -99,7 +101,12 @@
           "Dedicated support",
           "Custom integrations",
           "SLA guarantee",
-          "On-premise option"
+          "On-premise option",
+          "Угода про обробку даних (DPA)",
+          "Виставлення рахунків за замовленням",
+          "SAML SSO, SCIM",
+          "Користувацькі параметри безпеки та приватності",
+          "Повністю під вашим брендом — з розподілом доходу або без нього"
         ],
         "cta": "Contact Sales"
       }

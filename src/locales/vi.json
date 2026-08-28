@@ -165,9 +165,7 @@
       "energyMix": "Cơ cấu nguồn điện",
       "coal": "than đá",
       "noMajorDisruptions": "Không có gián đoạn lớn nào được báo cáo",
-      "activeDisruptions_one": "{{count}} gián đoạn đang hoạt động",
       "activeDisruptions_other": "{{count}} gián đoạn đang hoạt động",
-      "activeSignals_one": "{{count}} tín hiệu đang hoạt động",
       "activeSignals_other": "{{count}} tín hiệu đang hoạt động",
       "aviationSource": "Giám sát hàng không",
       "hazardSource": "Tín hiệu tình báo quốc gia",
@@ -363,6 +361,7 @@
     "securityAdvisories": "Cảnh báo An ninh",
     "orefSirens": "Cảnh báo Israel",
     "telegramIntel": "Tình báo Telegram",
+    "xIntel": "X News Accounts",
     "startups": "Khởi nghiệp & Đầu tư mạo hiểm",
     "vcblogs": "Nhận định & Bài viết VC",
     "regionalStartups": "Tin Khởi nghiệp Toàn cầu",
@@ -529,6 +528,7 @@
       "recent": "Tìm kiếm Gần đây",
       "empty": "Tìm dữ liệu hoặc chạy lệnh",
       "noResults": "Không có kết quả",
+      "resultAnnouncement_other": "{{count}} kết quả cho {{query}}",
       "commands": "Lệnh",
       "results": "Kết quả",
       "seeAllCommands": "Xem tất cả lệnh",
@@ -1403,7 +1403,6 @@
       "clusters": "Cụm dữ liệu",
       "alertsLabel": "Cảnh báo",
       "alert": "CẢNH BÁO",
-      "sources_one": "{{count}} nguồn",
       "sources_other": "{{count}} nguồn",
       "briefTech": "TÓM TẮT CÔNG NGHỆ",
       "briefCommodity": "TÓM TẮT HÀNG HÓA",
@@ -1760,6 +1759,21 @@
       "filterGeopolitics": "Địa chính trị",
       "filterCyber": "Mạng"
     },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
     "investments": {
       "infoTooltip": "Cơ sở dữ liệu đầu tư trực tiếp nước ngoài của Ả Rập Saudi và UAE vào hạ tầng quan trọng toàn cầu. Nhấp vào hàng để bay đến vị trí đầu tư trên bản đồ.",
       "searchPlaceholder": "Tìm tài sản, quốc gia, thực thể…",
@@ -2020,17 +2034,12 @@
       },
       "time": {
         "justNow": "vừa xong",
-        "hoursAgo_one": "{{count}}h trước",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_one": "{{count}}d trước",
         "daysAgo_other": "{{count}}d trước"
       },
       "filters": {
-        "alert_one": "{{count}} Cảnh báo",
         "alert_other": "{{count}} Cảnh báo",
-        "warning_one": "{{count}} Cảnh cáo",
         "warning_other": "{{count}} Cảnh cáo",
-        "watch_one": "{{count}} Theo dõi",
         "watch_other": "{{count}} Theo dõi"
       },
       "errors": {
@@ -2193,7 +2202,6 @@
       "rationale": "Lý do:",
       "driver": "Động lực:",
       "appliesToNext": "Áp dụng cho lần tạo lại AI tiếp theo",
-      "signals_one": "{{count}} tín hiệu",
       "signals_other": "{{count}} tín hiệu",
       "disclaimer": "Tín hiệu giao dịch do AI tạo ra cho mục đích thông tin. Không phải lời khuyên đầu tư. Luôn tự nghiên cứu của riêng bạn.",
       "unavailable": "Ý nghĩa thị trường AI được tạo sau mỗi lần chạy dự báo. Vui lòng kiểm tra lại sớm."
@@ -2424,7 +2432,6 @@
         "new": "mới",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}} chỉ định",
       "designations_other": "{{count}} chỉ định",
       "fallbacks": {
         "unattributed": "Không xác định",
@@ -2462,9 +2469,7 @@
         "updated": "Cập nhật {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h trước",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_one": "{{count}}d trước",
         "daysAgo_other": "{{count}}d trước"
       },
       "confidence": {
@@ -2494,7 +2499,6 @@
     "correlation": {
       "loading": "Đang chờ dữ liệu...",
       "empty": "Không phát hiện sự hội tụ hoạt động",
-      "signals_one": "{{count}} tín hiệu",
       "signals_other": "{{count}} tín hiệu",
       "analyzing": "Đang phân tích...",
       "viewOnMap": "Xem trên bản đồ"
@@ -2521,16 +2525,11 @@
         "industrial": "công nghiệp",
         "strategic": "chiến lược"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} nguồn",
       "sources_other": "{{count}} nguồn",
       "age": {
-        "minutesAgo_one": "{{count}}m trước",
         "minutesAgo_other": "{{count}}m trước",
-        "hoursAgo_one": "{{count}}h trước",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_one": "{{count}}d trước",
         "daysAgo_other": "{{count}}d trước"
       }
     },
@@ -2988,7 +2987,11 @@
       "heading": "HƯỚNG BAY",
       "hexCode": "MÃ HEX",
       "squawk": "SQUAWK",
-      "attribution": "Nguồn: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Nguồn: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "TỐC ĐỘ LÊN",
+      "manufacturer": "NHÀ SẢN XUẤT",
+      "owner": "CHỦ SỬ DỤNG",
+      "builtYear": "NĂM SẢN XUẤT"
     },
     "militaryVessel": {
       "aisDark": "MẤT TÍN HIỆU AIS",
@@ -3033,7 +3036,8 @@
       "moreVessels": "+{{count}} tàu khác",
       "vesselsCount": "{{count}} TÀU",
       "vessels": "TÀU",
-      "trackedVessels": "TÀU ĐƯỢC THEO DÕI"
+      "trackedVessels": "TÀU ĐƯỢC THEO DÕI",
+      "showLess": "Hiển thị ít hơn"
     },
     "naturalEvent": {
       "closed": "ĐÃ KẾT THÚC",
@@ -3322,7 +3326,9 @@
     "fontFamily": "Họ phông chữ",
     "fontFamilyDesc": "Monospace cho giao diện kỹ thuật, phông chữ hệ thống mặc định để dễ đọc hơn.",
     "fontMono": "Monospace",
-    "fontSystem": "Phông chữ hệ thống"
+    "fontSystem": "Phông chữ hệ thống",
+    "panelFontScale": "Kích thước chữ",
+    "followGlobalFontScale": "Sử dụng cài đặt toàn cục"
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
@@ -3413,7 +3419,9 @@
       "orefSirens1": "Cảnh báo tên lửa và rocket Israel theo thời gian thực",
       "orefSirens2": "Lập bản đồ vùng còi với phân loại mối đe dọa",
       "telegramIntel1": "Các kênh OSINT Telegram được chọn lọc",
-      "telegramIntel2": "Các cập nhật xung đột và địa chính trị gần thời gian thực"
+      "telegramIntel2": "Các cập nhật xung đột và địa chính trị gần thời gian thực",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

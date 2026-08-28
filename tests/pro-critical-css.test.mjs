@@ -161,37 +161,47 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
 
     it(`${label} re-shows responsive nav/hero reveals so unlayered .hidden can't hide them at all widths`, () => {
       // Regression guard for #4603: the inline critical CSS is UNLAYERED and beats
-      // the @layer-wrapped Tailwind sheet, so `nav .hidden{display:none}` /
-      // `main .hidden{display:none}` permanently hide `hidden lg:flex` desktop nav,
-      // `hidden md:block` tablet nav, and `hidden sm:block` unless each breakpoint
-      // reveal is ALSO inlined here.
+      // the @layer-wrapped Tailwind sheet, so `nav[data-wm-nav] .hidden{display:none}`
+      // / `main .hidden{display:none}` permanently hide `hidden lg:flex` desktop nav,
+      // `hidden md:flex` /pro nav, `hidden md:block` tablet nav, and `hidden sm:block`
+      // unless each breakpoint reveal is ALSO inlined here. The `md:flex` row shipped
+      // without its reveal and was display:none at every width until #6983.
+      //
+      // The nav selectors carry the `[data-wm-nav]` header marker: unscoped, they
+      // reached every nav landmark on the page, and the legal footer row added in
+      // #6982 pinned itself over the header (see deploy-config.test.mjs).
       const html = builtSrc(relPath);
       const criticalCss = inlineStyleTags(html)
         .filter((tag) => html.indexOf(tag) < html.indexOf(deferredStylePreloadTags(html)[0]))
         .join('\n');
 
-      const navHideIdx = criticalCss.indexOf('nav .hidden{display:none}');
+      const nav = 'nav[data-wm-nav]';
+      const navHideIdx = criticalCss.indexOf(`${nav} .hidden{display:none}`);
       const mainHideIdx = criticalCss.indexOf('main .hidden{display:none}');
       const sm640Idx = criticalCss.indexOf('@media (min-width:640px){');
       const md768Idx = criticalCss.indexOf('@media (min-width:768px){');
       const lg1024Idx = criticalCss.indexOf('@media (min-width:1024px){');
-      const tabletNavRevealIdx = criticalCss.indexOf('nav [class~="md:block"]{display:block}');
-      const desktopNavRevealIdx = criticalCss.indexOf('nav [class~="lg:flex"]{display:flex}');
-      const tabletNavHideIdx = criticalCss.indexOf('nav [class~="lg:hidden"]{display:none}');
+      const tabletNavRevealIdx = criticalCss.indexOf(`${nav} [class~="md:block"]{display:block}`);
+      const proNavRevealIdx = criticalCss.indexOf(`${nav} [class~="md:flex"]{display:flex}`);
+      const desktopNavRevealIdx = criticalCss.indexOf(`${nav} [class~="lg:flex"]{display:flex}`);
+      const tabletNavHideIdx = criticalCss.indexOf(`${nav} [class~="lg:hidden"]{display:none}`);
       const smBlockRevealIdx = criticalCss.indexOf('main [class~="sm:block"]{display:block}');
 
       assert.notEqual(navHideIdx, -1, `${relPath} critical CSS should hide plain .hidden nav elements`);
       assert.notEqual(mainHideIdx, -1, `${relPath} critical CSS should hide plain .hidden main elements`);
       assert.notEqual(tabletNavRevealIdx, -1, `${relPath} critical CSS must re-show hidden md:block tablet nav at >=768px`);
+      assert.notEqual(proNavRevealIdx, -1, `${relPath} critical CSS must re-show the hidden md:flex /pro nav row at >=768px`);
       assert.notEqual(desktopNavRevealIdx, -1, `${relPath} critical CSS must re-show hidden lg:flex desktop nav at >=1024px`);
       assert.notEqual(tabletNavHideIdx, -1, `${relPath} critical CSS must hide lg:hidden tablet nav at >=1024px`);
       assert.notEqual(smBlockRevealIdx, -1, `${relPath} critical CSS must re-show hidden sm:block at >=640px`);
       // Equal-specificity rules: each reveal must come AFTER its unlayered hide to win the cascade.
-      assert.ok(tabletNavRevealIdx > navHideIdx, `${relPath} nav md:block reveal must follow nav .hidden to win the cascade`);
-      assert.ok(desktopNavRevealIdx > navHideIdx, `${relPath} nav lg:flex reveal must follow nav .hidden to win the cascade`);
+      assert.ok(tabletNavRevealIdx > navHideIdx, `${relPath} nav md:block reveal must follow ${nav} .hidden to win the cascade`);
+      assert.ok(proNavRevealIdx > navHideIdx, `${relPath} nav md:flex reveal must follow ${nav} .hidden to win the cascade`);
+      assert.ok(desktopNavRevealIdx > navHideIdx, `${relPath} nav lg:flex reveal must follow ${nav} .hidden to win the cascade`);
       assert.ok(smBlockRevealIdx > mainHideIdx, `${relPath} main sm:block reveal must follow main .hidden to win the cascade`);
       // Tablet nav appears in the 768–1023px band; the desktop row replaces it at 1024px.
       assert.ok(md768Idx !== -1 && tabletNavRevealIdx > md768Idx && tabletNavRevealIdx < lg1024Idx, `${relPath} nav md:block reveal must be inside the min-width:768px media block`);
+      assert.ok(proNavRevealIdx > md768Idx && proNavRevealIdx < lg1024Idx, `${relPath} nav md:flex reveal must be inside the min-width:768px media block`);
       assert.ok(lg1024Idx !== -1 && desktopNavRevealIdx > lg1024Idx, `${relPath} nav lg:flex reveal must be inside the min-width:1024px media block`);
       assert.ok(tabletNavHideIdx > lg1024Idx, `${relPath} nav lg:hidden hide must be inside the min-width:1024px media block`);
       // The sm:block reveal must sit inside the >=640px block (between the 640 and 768 media opens).

@@ -10,6 +10,7 @@ import {
   publishBootstrapTier,
   publishTierToKv,
 } from '../scripts/publish-bootstrap-tiers.mjs';
+import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION } from '../shared/bootstrap-tier-envelope.js';
 
 const TEST_ENV = {
   UPSTASH_REDIS_REST_URL: 'https://redis.example.test',
@@ -149,6 +150,7 @@ describe('publishBootstrapTier — KV parity', () => {
   it('writes the SAME envelope to KV and R2, R2 keyed by <tier>.json, KV by bare <tier>', async () => {
     const { result, captured } = await runPublish();
     assert.deepEqual(captured.kv.envelope, captured.r2.envelope, 'KV must get the identical envelope');
+    assert.equal(captured.kv.envelope.schemaVersion, BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION);
     assert.equal(captured.r2.key, 'fast.json');
     assert.equal(captured.kv.key, 'fast', 'KV key is the bare tier so the Worker reads env.KV.get(tier)');
     assert.equal(result.kv.ok, true);

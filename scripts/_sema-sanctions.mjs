@@ -23,13 +23,53 @@ export const SANCTIONS_MAX_CONTENT_AGE_MIN = 30 * DAY_MIN;
 
 const CLOCK_SKEW_MS = 60 * 60 * 1000;
 
-function xmlText(block, tag) {
-  const match = String(block).match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i'));
-  if (!match) return '';
-  return decodeHtmlEntities(match[1])
-    .replace(/\u00a0/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+// Global Affairs Canada renamed every field tag to a bilingual hyphenated form
+// (2026-08): `<Country>` became `<Country-Pays>`, `<Schedule>` became
+// `<Schedule-Annexe>`, and so on. `<record>` itself was untouched, so the block
+// scan kept finding all 5,690 entries while every field read empty — each record
+// then failed the `legalName` check and was dropped, producing SEMA_EMPTY on
+// every run with Canada contributing 0 of 20,558 merged entries.
+//
+// Candidates are listed rather than derived. Two of the renames are not a
+// mechanical suffix: `TitleOrShip` became `TitleOrShipType-...`, so the ENGLISH
+// half changed too, and a prefix rule that stretched far enough to cover it
+// would also let `<Item>` match an unrelated `<ItemNote>`. The old names are
+// kept first: an upstream rename can be reverted or served inconsistently, and
+// dropping them would trade this outage for its mirror image.
+const SEMA_FIELD_TAGS = Object.freeze({
+  Country:       Object.freeze(['Country', 'Country-Pays']),
+  LastName:      Object.freeze(['LastName', 'LastName-NomDeFamille']),
+  GivenName:     Object.freeze(['GivenName', 'GivenName-Prenom']),
+  EntityOrShip:  Object.freeze(['EntityOrShip', 'EntityOrShip-EntiteOuNavire']),
+  ShipIMONumber: Object.freeze(['ShipIMONumber', 'ShipIMONumber-NumeroOMIDuNavire']),
+  Aliases:       Object.freeze(['Aliases', 'Aliases-Alias']),
+  Item:          Object.freeze(['Item', 'Item-NumeroDarticle']),
+  DateOfListing: Object.freeze(['DateOfListing', 'DateOfListing-DateDinscription']),
+  Schedule:      Object.freeze(['Schedule', 'Schedule-Annexe']),
+  TitleOrShip:   Object.freeze(['TitleOrShip', 'TitleOrShipType-TitreOuTypeDeNavire']),
+});
+
+/**
+ * Read a field by its logical name, trying each spelling the feed has used.
+ *
+ * `<Country>` cannot match inside `<Country-Pays>` — the regex requires the
+ * closing angle bracket immediately after the name — so the candidates cannot
+ * shadow one another and order only decides which wins when a block somehow
+ * carries both.
+ */
+function xmlText(block, field) {
+  const candidates = SEMA_FIELD_TAGS[field] || [field];
+  const text = String(block);
+  for (const tag of candidates) {
+    const match = text.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i'));
+    if (!match) continue;
+    const value = decodeHtmlEntities(match[1])
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (value) return value;
+  }
+  return '';
 }
 
 function uniqueSorted(values) {

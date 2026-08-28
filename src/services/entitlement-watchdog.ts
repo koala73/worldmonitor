@@ -18,11 +18,13 @@
  * clock, token source) are injected so the state machine is testable
  * without any DOM or network. See tests/entitlement-watchdog.test.mts.
  *
- * This file MUST be kept byte-identical with
- * pro-test/src/services/entitlement-watchdog.ts. The parity check in
- * tests/entitlement-watchdog-parity.test.mts enforces that. If you
- * change one, change both.
+ * Dashboard-only since #7222. The /pro marketing bundle used to carry a
+ * byte-identical mirror of this file, but its sole consumer was the dormant
+ * `initOverlay`; both were removed, so there is no longer a copy to keep in
+ * lockstep.
  */
+
+import { createTimeoutSignal } from './timeout-signal';
 
 export interface EntitlementWatchdogDeps {
   /** Returns a Bearer token or null if the user isn't signed in yet. */
@@ -93,7 +95,7 @@ export function createEntitlementWatchdog(
       if (!token) return;
       const resp = await deps.fetch(config.endpoint, {
         headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(fetchTimeoutMs),
+        signal: createTimeoutSignal(fetchTimeoutMs),
       });
       if (tickGeneration !== generation || intervalId === null || fired) return;
       if (!resp.ok) return;

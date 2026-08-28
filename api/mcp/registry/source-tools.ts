@@ -31,11 +31,16 @@ interface ManifestEntry {
   status?: string;
   license?: string;
   observed?: boolean;
+  catalogActive?: boolean;
 }
 
 const MANIFEST_ENTRIES = (attributionManifest as { entries: ManifestEntry[] }).entries;
-const ACTIVE_PROVIDERS = MANIFEST_ENTRIES.filter((e) => e.status !== 'excluded');
-const EXCLUDED_COUNT = MANIFEST_ENTRIES.length - ACTIVE_PROVIDERS.length;
+const ACTIVE_PROVIDERS = MANIFEST_ENTRIES.filter((entry) => (
+  entry.observed === true
+  && entry.catalogActive !== false
+  && (entry.status === 'reviewed' || entry.status === 'terms-review')
+));
+const EXCLUDED_COUNT = MANIFEST_ENTRIES.filter((entry) => entry.status === 'excluded').length;
 
 const PROVIDER_HOSTS = new Map<string, string[]>();
 for (const entry of ACTIVE_PROVIDERS) {

@@ -47,8 +47,16 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
     const data = envelope.data as Partial<GetForecastScorecardResponse> | null;
     if (!data) return markNoStoreFallbackResponse(ctx.request, emptyScorecard());
     const fetchedAt = Number(envelope.fetchedAt);
+    // `judgedLane` (#7068) is judged-lane operator observability — attempt
+    // failure classes, SLA and attempt-count metrics. It lives in the Redis
+    // scorecard for the seeder's run summary and for ops, and is deliberately
+    // not part of this typed response: the spread below would otherwise emit an
+    // undeclared field that the proto and generated SDK do not describe, so
+    // typed consumers could not reach it anyway. Publishing it is a separate,
+    // deliberate proto change.
+    const { judgedLane: _judgedLane, ...servedData } = data as Record<string, unknown>;
     return emptyScorecard({
-      ...data,
+      ...servedData,
       totals: data.totals ?? emptyScorecard().totals,
       byDomain: data.byDomain ?? [],
       byGenerationOrigin: data.byGenerationOrigin ?? [],

@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package worldmonitor.safety.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetTorontoSafetyRequest {
+  // Dataset selector. Accepted values: reported_occurrence, annual_aggregate.
+  string dataset = 1 [(sebuf.http.query) = {name: "dataset"}];
+  // Maximum rows to return. The service defaults to 50 and caps this value at 100.
+  int32 limit = 2 [(sebuf.http.query) = {name: "limit"}];
+  // Optional case-insensitive police-division filter.
+  string division = 3 [(sebuf.http.query) = {name: "division"}];
+  // Optional case-insensitive neighbourhood filter.
+  string neighbourhood = 4 [(sebuf.http.query) = {name: "neighbourhood"}];
+  // Optional case-insensitive offence filter for tps_mci.
+  string offence = 5 [(sebuf.http.query) = {name: "offence"}];
+  // Optional event-year filter for tps_calls_attended.
+  int32 year = 6 [(sebuf.http.query) = {name: "year"}];
+}
+
+message TorontoReportedOccurrence {
+  string id = 1;
+  int64 object_id = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string event_unique_id = 3;
+  string report_date = 4;
+  string occurrence_date = 5;
+  string division = 6;
+  string location_type = 7;
+  string premises_type = 8;
+  string offence = 9;
+  string csi_category = 10;
+  string neighbourhood = 11;
+  double longitude = 12;
+  double latitude = 13;
+  bool approximate = 14;
+}
+
+message TorontoAnnualAggregate {
+  string id = 1;
+  int64 object_id = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int32 event_year = 3;
+  string division_original = 4;
+  string division_final = 5;
+  string neighbourhood = 6;
+  double event_count = 7;
+  bool incident_point = 8;
+}
+
+message GetTorontoSafetyResponse {
+  string semantic = 1;
+  string source = 2;
+  string source_label = 3;
+  string attribution = 4;
+  string disclaimer = 5;
+  string source_url = 6;
+  int64 fetched_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 source_edited_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 newest_content_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int32 newest_content_year = 10;
+  bool degraded = 11;
+  bool unavailable = 12;
+  int32 matched = 13;
+  bool truncated = 14;
+  repeated TorontoReportedOccurrence occurrences = 15;
+  repeated TorontoAnnualAggregate aggregates = 16;
+}

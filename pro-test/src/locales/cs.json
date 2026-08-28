@@ -358,7 +358,8 @@
           "Prioritní aktualizace dat"
         ],
         "highlightFeatures": [
-          "Osobní licence"
+          "Osobní licence",
+          "1 pojmenovaný uživatel"
         ]
       },
       "api": {
@@ -383,7 +384,12 @@
           "Vyhrazená podpora",
           "Vlastní integrace",
           "Záruka SLA",
-          "Možnost on-premise"
+          "Možnost on-premise",
+          "Dohoda o zpracování údajů (DPA)",
+          "Fakturace na základě nákupního příkazu",
+          "SAML SSO, SCIM",
+          "Vlastní nastavení bezpečnosti a ochrany soukromí",
+          "Plně vlastní značka — s dělením příjmů nebo bez něj"
         ],
         "cta": "Kontaktujte prodej"
       },
@@ -394,7 +400,7 @@
           "Práva na redistribuci — vložte naše data do toho, co prodáváte",
           "300 požadavků/minutu",
           "10 000 požadavků/den zahrnuto",
-          "5 licencí Pro zahrnuto",
+          "5 licencí Pro — pozvěte uživatele z libovolné firemní e-mailové domény",
           "Prioritní podpora"
         ],
         "highlightFeatures": [
@@ -412,7 +418,8 @@
           "Prioritní podpora"
         ],
         "highlightFeatures": [
-          "Komerční licence v ceně"
+          "Komerční licence v ceně",
+          "1 pojmenovaný uživatel — ne sdílené přihlášení"
         ]
       }
     },
@@ -423,7 +430,7 @@
     "axisPersonal": "Osobní",
     "axisPersonalNote": "individuální použití",
     "axisCommercial": "Komerční",
-    "axisCommercialNote": "práce, týmy a produkty"
+    "axisCommercialNote": "práce, klienti a produkty"
   },
   "welcome": {
     "meta": {

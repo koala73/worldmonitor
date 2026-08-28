@@ -5,6 +5,7 @@ import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usag
 import {
   DEEPSEEK_V4_FLASH_MODEL_PREFIX,
   GROQ_DEFAULT_MODEL,
+  GROQ_REASONING_EXTRA_BODY,
   getLlmAttemptTimeoutMs,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
@@ -109,13 +110,20 @@ export function getProviderCredentials(
   if (provider === 'groq') {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) return null;
+    const model = overrides.model || GROQ_DEFAULT_MODEL;
     return {
       apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-      model: overrides.model || GROQ_DEFAULT_MODEL,
+      model,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      // Groq rejects reasoning_effort for models that do not support it.
+      // Profile model overrides can select any Groq model, so keep this
+      // GPT-OSS-specific instead of attaching it to the provider globally.
+      extraBody: model.startsWith('openai/gpt-oss-')
+        ? GROQ_REASONING_EXTRA_BODY
+        : undefined,
     };
   }
 

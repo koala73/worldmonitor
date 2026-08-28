@@ -31,8 +31,10 @@
 // mcp-quota-no-refund.test.mjs), and each of those is independently runnable at
 // a fraction of the 3k-line suite's cost.
 
+import { readFileSync } from 'node:fs';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { fileURLToPath } from 'node:url';
 
 import {
   BASE_URL,
@@ -42,6 +44,7 @@ import {
   proReq,
   callBody,
 } from './helpers/mcp-pro-deps.mjs';
+import { MCP_QUOTA_RESERVE_SCRIPT } from '../shared/mcp-quota-reserve-script.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -163,6 +166,119 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     const res = await reserveQuota('u1', pipe.pipeline, 250);
     assert.equal(res.ok, false);
     assert.equal(pipe.count, 250, 'clamp target is the resolved plan limit');
+  });
+
+  it('a lower-limit rejection does not SET the shared counter below a higher charged allowance', async () => {
+    // Same user/day key: Pro Business already charged 200 of 250, then a
+    // user_key (50/day) rejection must owner-rollback only — not clamp to 50.
+    const pipe = makePipelineMock({ initialCount: 200, initialLimitFloor: 250 });
+    const res = await reserveQuota('u1', pipe.pipeline, 50);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'cap-exceeded');
+    assert.equal(res.floor, 50, 'the rejecting path still reports its own limit');
+    assert.equal(pipe.count, 200, 'higher-limit reservations must survive the clamp');
+  });
+
+  it('an unlimited reserve marks the floor so a later 50/day rejection cannot clamp', async () => {
+    const pipe = makePipelineMock({ initialCount: 100_000 });
+    const unlimited = await reserveQuota('u1', pipe.pipeline, null);
+    assert.equal(unlimited.ok, true);
+    assert.equal(pipe.limitFloor, -1);
+    const rejected = await reserveQuota('u1', pipe.pipeline, 50);
+    assert.equal(rejected.ok, false);
+    assert.equal(pipe.count, 100_001, 'unlimited metering must not be SET back to 50');
+  });
+
+  it('a successful finite reserve records the charged limit as the clamp floor', async () => {
+    const pipe = makePipelineMock({ initialCount: 10 });
+    const res = await reserveQuota('u1', pipe.pipeline, 250);
+    assert.equal(res.ok, true);
+    assert.equal(pipe.limitFloor, 250);
+  });
+
+  it('concurrent overshoot rejections never clamp below the plan limit (#7272)', async () => {
+    // Reachable interleaving on origin/main: counter already overshot at 52,
+    // limit 50. A and B both INCR, A rollback+clamps an aggregate that still
+    // includes B's live increment, then B rollbacks and the meter lands at 49.
+    const pipe = makePipelineMock({ initialCount: 52 });
+    const results = await Promise.all([
+      reserveQuota('u1', pipe.pipeline, 50),
+      reserveQuota('u1', pipe.pipeline, 50),
+    ]);
+    assert.ok(results.every((r) => r.ok === false && r.reason === 'cap-exceeded'));
+    assert.equal(
+      results[0].floor,
+      50,
+      'plan-driven floor must stay 50',
+    );
+    assert.ok(
+      pipe.count >= 50,
+      `counter must never fall below the limit after concurrent rejection recovery; got ${pipe.count}`,
+    );
+  });
+
+  it('concurrent overshoot rejections on a 250-call plan never clamp below 250', async () => {
+    const pipe = makePipelineMock({ initialCount: 252 });
+    const results = await Promise.all([
+      reserveQuota('u1', pipe.pipeline, 250),
+      reserveQuota('u1', pipe.pipeline, 250),
+    ]);
+    assert.ok(results.every((r) => r.ok === false && r.reason === 'cap-exceeded' && r.floor === 250));
+    assert.ok(
+      pipe.count >= 250,
+      `plan-driven clamp must stay at or above 250; got ${pipe.count}`,
+    );
+  });
+
+  it('unlimited concurrent reserves still meter and never reject (#7272)', async () => {
+    const pipe = makePipelineMock({ initialCount: 100_000 });
+    const results = await Promise.all([
+      reserveQuota('u1', pipe.pipeline, null),
+      reserveQuota('u1', pipe.pipeline, null),
+    ]);
+    assert.ok(results.every((r) => r.ok === true));
+    assert.equal(pipe.count, 100_002, 'unlimited must stay metered under concurrency');
+  });
+
+  it('EVAL/Redis failure still fail-closes before dispatch', async () => {
+    const pipe = makePipelineMock({ throwOnIncr: true });
+    const res = await reserveQuota('u1', pipe.pipeline, 50);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'redis-unavailable');
+    assert.equal(pipe.count, 0, 'a failed EVAL must not move the counter');
+  });
+
+  it('dailyQuotaFloorKey is a date-stable sibling of dailyCounterKey', async () => {
+    const { dailyCounterKey, dailyQuotaFloorKey } = await import('../server/_shared/pro-mcp-token.ts');
+    const date = new Date(Date.UTC(2026, 4, 10, 12, 0, 0));
+    assert.equal(dailyQuotaFloorKey('u1', date), 'mcp:pro-usage-floor:u1:2026-05-10');
+    assert.equal(dailyCounterKey('u1', date), 'mcp:pro-usage:u1:2026-05-10');
+    assert.equal(dailyQuotaFloorKey(''), '', 'empty userId fails closed like the counter key');
+  });
+
+  it('reservation recovery is a single EVAL, not a post-rollback probe clamp', () => {
+    const source = readFileSync(fileURLToPath(new URL('../api/mcp/quota.ts', import.meta.url)), 'utf8');
+    assert.match(source, /RESERVE_QUOTA_SCRIPT/, 'reserveQuota must ship a Redis script');
+    assert.match(source, /dailyQuotaFloorKey/, 'clamp floor must be a sibling of the daily counter');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('INCR'/, 'script must INCR first');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('DECR'/, 'script must owner-rollback on reject');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('GET', KEYS\[2\]/, 'script must read the charged-limit floor');
+    assert.match(MCP_QUOTA_RESERVE_SCRIPT, /redis\.call\('SET'/, 'script must clamp residue atomically');
+    assert.doesNotMatch(
+      source,
+      /postRollbackCount/,
+      'the racy INCR/DECR probe clamp must not return — it undercounts concurrent rollbacks',
+    );
+  });
+
+  it('keeps the Docker redis-rest proxy allowlist copy byte-identical to the reserve EVAL', () => {
+    const proxy = readFileSync(fileURLToPath(new URL('../docker/redis-rest-proxy.mjs', import.meta.url)), 'utf8');
+    const block = proxy.match(/const MCP_QUOTA_RESERVE_SCRIPT = (\[[\s\S]*?\])\.join\('\\n'\);/);
+    assert.ok(block, 'the proxy must carry a pinned MCP quota reserve script copy');
+    const proxyScript = (new Function(`return ${block[1]};`)()).join('\n');
+    assert.equal(proxyScript, MCP_QUOTA_RESERVE_SCRIPT);
+    const allowlist = proxy.match(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[([\s\S]*?)\]\);/);
+    assert.ok(allowlist?.[1]?.includes('MCP_QUOTA_RESERVE_SCRIPT'), 'the pinned quota script must be allowlisted');
   });
 });
 

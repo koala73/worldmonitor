@@ -358,7 +358,8 @@
           "Reîmprospătare prioritară a datelor"
         ],
         "highlightFeatures": [
-          "Licență personală"
+          "Licență personală",
+          "1 utilizator desemnat"
         ]
       },
       "api": {
@@ -383,7 +384,12 @@
           "Suport dedicat",
           "Integrări personalizate",
           "Garanție SLA",
-          "Opțiune on-premise"
+          "Opțiune on-premise",
+          "Acord de prelucrare a datelor (DPA)",
+          "Facturare pe bază de bon de comandă",
+          "SAML SSO, SCIM",
+          "Setări personalizate de securitate și confidențialitate",
+          "Complet personalizat cu branding propriu — cu sau fără participare la venituri"
         ],
         "cta": "Contactați Vânzări"
       },
@@ -394,7 +400,7 @@
           "Drepturi de redistribuire — încorporați datele noastre în ceea ce vindeți",
           "300 cereri/minut",
           "10.000 cereri/zi incluse",
-          "5 licențe Pro incluse",
+          "5 licențe Pro — invitați utilizatori cu orice domeniu de e-mail corporativ",
           "Suport prioritar"
         ],
         "highlightFeatures": [
@@ -412,7 +418,8 @@
           "Suport prioritar"
         ],
         "highlightFeatures": [
-          "Licență comercială inclusă"
+          "Licență comercială inclusă",
+          "1 utilizator desemnat — nu o autentificare partajată"
         ]
       }
     },
@@ -423,7 +430,7 @@
     "axisPersonal": "Personal",
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
-    "axisCommercialNote": "de lucru, echipe și produse"
+    "axisCommercialNote": "muncă, clienți și produse"
   },
   "welcome": {
     "meta": {

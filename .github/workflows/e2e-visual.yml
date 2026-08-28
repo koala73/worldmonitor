@@ -1,7 +1,7 @@
 name: E2E Visual
 
 # Intentionally NOT named "Test". Deploy-gate aggregates every job of Test /
-# Typecheck / Lint Code / Security Audit into the required `gate` check.
+# Typecheck / Lint Code / Security Audit / Stacked Merge Guard into the required `gate` check.
 # Visual goldens and the chrome gallery are evidence, not a merge blocker.
 
 on:

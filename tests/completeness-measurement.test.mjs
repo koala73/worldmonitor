@@ -226,7 +226,10 @@ describe('coverage-ledger and provenance wiring (source-textual)', () => {
   it('digest counts every drop gate and publishes the ledger', () => {
     const src = readSrc('server/worldmonitor/news/v1/list-feed-digest.ts');
     assert.match(src, /droppedFeedCap = Math\.max\(0, matches\.length - ITEMS_PER_FEED\)/);
-    assert.match(src, /ledgerDrops\.perCategoryCap \+= Math\.max\(0, items\.length - MAX_ITEMS_PER_CATEGORY\)/);
+    // #7084: counted off the post-revocation `servable` list, not the raw one —
+    // a revoked item must not occupy a cap slot NOR be counted as having
+    // displaced the item behind it.
+    assert.match(src, /ledgerDrops\.perCategoryCap \+= Math\.max\(0, servable\.length - MAX_ITEMS_PER_CATEGORY\)/);
     assert.match(src, /ledgerDrops\.freshnessFloor = droppedStaleTotal/);
     assert.match(src, /news:coverage-ledger:v1/);
   });

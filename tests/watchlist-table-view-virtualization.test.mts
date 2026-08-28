@@ -102,6 +102,16 @@ describe('WatchlistTableView virtualization', () => {
     assert.match(html, /SYM043/);
     assert.doesNotMatch(html, /SYM044/);
     assert.doesNotMatch(html, /SYM617/);
+    assert.match(html, /<th scope="col"[^>]*data-sortkey="symbol-asc"[^>]*aria-sort="ascending"/);
+    assert.doesNotMatch(html, /data-sortkey="rank-desc"[^>]*aria-sort=/);
+  });
+
+  it('derives aria-sort from the active sort option key suffix', () => {
+    const view = createView();
+    stateOf(view).sort = 'rank-desc';
+    const html = view.render();
+    assert.match(html, /<th scope="col"[^>]*data-sortkey="rank-desc"[^>]*aria-sort="descending"/);
+    assert.doesNotMatch(html, /data-sortkey="symbol-asc"[^>]*aria-sort=/);
   });
 
   it('keeps the full sorted list scrollable by shifting the virtual window', () => {

@@ -72,7 +72,18 @@ function parseStack(stack) {
  */
 function buildEnvelope(err, ctx, runtimeCfg) {
   const errMsg = err instanceof Error ? err.message : String(err);
-  const errType = err instanceof Error ? err.constructor.name : 'Error';
+  // Prefer `err.name` over `err.constructor.name`. Both API bundles ship
+  // minified, so a custom error class's constructor name is a mangled
+  // identifier that changes whenever the bundle is rebuilt: `RpcValidationError`
+  // reached Sentry as type `At` (WORLDMONITOR-Y2, 2026-08-21), titling the issue
+  // `At: get-country-risk HTTP 400`. Every class here sets `this.name`
+  // explicitly, and `api/mcp/error-fingerprint.ts` already keys on it, so
+  // `err.name` is both stable across deploys and the value the code intends.
+  // Native errors are unaffected except DOMException, which reports its reason
+  // (`TimeoutError`) instead of the generic class — strictly more specific.
+  const errType = err instanceof Error
+    ? (err.name || err.constructor.name || 'Error')
+    : 'Error';
   const stack = err instanceof Error && err.stack ? err.stack : undefined;
   const eventId = crypto.randomUUID().replace(/-/g, '');
   const timestamp = new Date().toISOString();

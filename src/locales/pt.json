@@ -67,6 +67,7 @@
     "securityAdvisories": "Alertas de Segurança",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Inteligência Telegram",
+    "xIntel": "X News Accounts",
     "giving": "Doações Globais",
     "supplyChain": "Cadeia de Suprimentos",
     "gulfEconomies": "Economias do Golfo",
@@ -212,6 +213,9 @@
       "recent": "Pesquisas recentes",
       "empty": "Pesquisar dados ou executar comandos",
       "noResults": "No results found",
+      "resultAnnouncement_one": "{{count}} resultado para {{query}}",
+      "resultAnnouncement_many": "{{count}} resultados para {{query}}",
+      "resultAnnouncement_other": "{{count}} resultados para {{query}}",
       "navigate": "navegar",
       "select": "selecione",
       "close": "fechar",
@@ -1113,6 +1117,21 @@
       "live": "AO VIVO",
       "viewSource": "Ver fonte",
       "filterGeopolitics": "Geopolítica",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -2681,7 +2700,11 @@
       "heading": "CABEÇALHO",
       "hexCode": "CÓDIGO HEX.",
       "squawk": "GRANDE",
-      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "TAXA DE SUBIDA",
+      "manufacturer": "FABRICANTE",
+      "owner": "OPERADOR",
+      "builtYear": "ANO DE FABRICAÇÃO"
     },
     "militaryVessel": {
       "aisDark": "AIS ESCURO",
@@ -2726,7 +2749,8 @@
       "moreVessels": "+{{count}} mais embarcações",
       "vesselsCount": "{{count}} NAVIOS",
       "vessels": "NAVIOS",
-      "trackedVessels": "NAVIOS RASTREADOS"
+      "trackedVessels": "NAVIOS RASTREADOS",
+      "showLess": "Mostrar menos"
     },
     "naturalEvent": {
       "closed": "FECHADO",
@@ -3340,7 +3364,9 @@
     "fontFamily": "Família de Fontes",
     "fontFamilyDesc": "Monospace para uma aparência técnica, fonte padrão do sistema para leitura mais fácil.",
     "fontMono": "Monospace",
-    "fontSystem": "Padrão do Sistema"
+    "fontSystem": "Padrão do Sistema",
+    "panelFontScale": "Tamanho do texto",
+    "followGlobalFontScale": "Usar global"
   },
   "contextMenu": {
     "openCountryBrief": "Abrir resumo do país",
@@ -3431,7 +3457,9 @@
       "orefSirens1": "Alertas em tempo real de mísseis e foguetes de Israel",
       "orefSirens2": "Mapeamento de zona de sirene com classificação de ameaça",
       "telegramIntel1": "Canais curados do Telegram OSINT",
-      "telegramIntel2": "Atualizações de conflito e geopolítica em tempo quase real"
+      "telegramIntel2": "Atualizações de conflito e geopolítica em tempo quase real",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {

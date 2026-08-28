@@ -47,9 +47,31 @@ const WORLD_APIS = new Set([
 import { t } from '../services/i18n';
 import { Panel } from './Panel';
 
+/** Compact digest coverage summary rendered as the panel's status row (#7085). */
+export interface DigestCoverageSummary {
+  state: 'complete' | 'partial' | 'stale' | 'unavailable' | 'unknown';
+  itemsServed: number;
+  publisherCount: number;
+  feedsCompleted: number;
+  feedsTotal: number;
+  categoriesCompleted: number;
+  categoriesTotal: number;
+  missingCategories: string[];
+}
+
+const DIGEST_COVERAGE_EXPLANATIONS: Record<DigestCoverageSummary['state'], string> = {
+  complete: 'every configured category was covered in this cycle',
+  partial: 'some categories had no completed feed in this cycle',
+  stale: 'older accepted content is being served after a failed rebuild',
+  unavailable: 'no digest content could be served',
+  unknown: 'the digest did not report coverage',
+};
+
 export class StatusPanel extends Panel {
   private feeds: Map<string, FeedStatus> = new Map();
   private apis: Map<string, ApiStatus> = new Map();
+  private digestCoverage: DigestCoverageSummary | null = null;
+  private digestCoverageRow: HTMLElement | null = null;
   private allowedFeeds!: Set<string>;
   private allowedApis!: Set<string>;
   public onUpdate: (() => void) | null = null;
@@ -78,6 +100,50 @@ export class StatusPanel extends Panel {
 
   public getFeeds(): Map<string, FeedStatus> { return this.feeds; }
   public getApis(): Map<string, ApiStatus> { return this.apis; }
+
+  /**
+   * #7085 digest coverage row: one text line stating what the served digest
+   * covers and why it may be degraded. Text only — never color alone — with
+   * an accessible name and a short explanation, announced politely.
+   */
+  public updateDigestCoverage(coverage: DigestCoverageSummary): void {
+    this.digestCoverage = coverage;
+    const explanation = DIGEST_COVERAGE_EXPLANATIONS[coverage.state];
+    const missing = coverage.missingCategories.length > 0
+      ? ` (no completed feed: ${coverage.missingCategories.slice(0, 4).join(', ')}${coverage.missingCategories.length > 4 ? ', …' : ''})`
+      : '';
+    const text = coverage.state === 'unavailable' || coverage.state === 'unknown'
+      ? `Digest coverage: ${coverage.state} — ${explanation}`
+      : `Digest coverage: ${coverage.state} — ${coverage.publisherCount} publishers, ${coverage.itemsServed} items, feeds ${coverage.feedsCompleted}/${coverage.feedsTotal}, categories ${coverage.categoriesCompleted}/${coverage.categoriesTotal}${missing} (${explanation})`;
+    if (!this.digestCoverageRow) {
+      this.digestCoverageRow = h('div', {
+        className: 'digest-coverage-row',
+        role: 'status',
+        'aria-live': 'polite',
+        'aria-label': 'Digest coverage status',
+      });
+      this.element.appendChild(this.digestCoverageRow);
+    }
+    this.ensureCoverageRowMounted();
+    this.digestCoverageRow.textContent = text;
+  }
+
+  /**
+   * Nothing else mounts this panel — it is otherwise a write-only data sink
+   * (no getElement() callers), so the row must reach the document from here
+   * or it renders into a detached node no user or screen reader can see.
+   * The site footer always exists by the first digest load (layout Phase 1
+   * precedes data loading), so a missing footer only means a non-dashboard
+   * document; the row then stays detached rather than throwing.
+   */
+  private ensureCoverageRowMounted(): void {
+    if (this.element.isConnected) return;
+    document.querySelector('.site-footer')?.appendChild(this.element);
+  }
+
+  public getDigestCoverage(): DigestCoverageSummary | null {
+    return this.digestCoverage;
+  }
 
   public updateFeed(name: string, status: Partial<FeedStatus>): void {
     if (!this.allowedFeeds.has(name)) return;

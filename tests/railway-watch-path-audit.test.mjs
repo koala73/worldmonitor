@@ -823,15 +823,18 @@ describe('planned Railway service lifecycle', () => {
       // planned would exempt the one service most likely to drift — six member
       // scripts behind a single */5 cron — from the watch-path and deploy-drift
       // checks that exist to catch exactly that.
-      // seed-bundle-static-ref-heavy (#6806) is planned until the Railway clone
-      // exists. ONE service carries Arms-Suppliers, Military-Bases and
-      // Mineral-Production; the two 1-section siblings it replaced were never
-      // provisioned. Flip off planned only after provision.
+      // seed-bundle-static-ref-heavy is deliberately ABSENT now: #6889 landed it
+      // planned until the Railway clone existed, and service
+      // 6285c37b-1327-46f1-bfd0-7454612764fb now runs
+      // `node seed-bundle-static-ref-heavy.mjs` on cron 0 4 * * *. ONE service
+      // carries Arms-Suppliers, Military-Bases and Mineral-Production, so
+      // leaving it planned would exempt three low-cadence members behind a
+      // single daily cron from the watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
       'seed-weather-alerts',
-      'seed-bundle-static-ref-heavy',
+      'seed-imd-cyclone-marine',
     ].sort();
     const plannedEntries = RAILWAY_SERVICE_REGISTRY.filter(
       (entry) => entry.lifecycle === 'planned',
@@ -852,6 +855,14 @@ describe('planned Railway service lifecycle', () => {
       ),
       [],
     );
+  });
+
+  it('does not attach watchPatterns to planned seed-imd-cyclone-marine', () => {
+    const imd = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-imd-cyclone-marine');
+    assert.ok(imd, 'seed-imd-cyclone-marine must remain in the Railway registry');
+    assert.equal(imd.lifecycle, 'planned');
+    assert.equal(Object.hasOwn(imd, 'watchPatterns'), false);
+    assert.equal(Object.hasOwn(imd, 'cronSchedule'), false);
   });
 
   it('does not attach watchPatterns to planned seed-weather-alerts (no dual-SET of weather:alerts:v1)', () => {

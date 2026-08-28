@@ -88,6 +88,10 @@ export type AiOverlay = {
 
 type YahooChartResponse = {
   chart?: {
+    error?: {
+      code?: string;
+      description?: string;
+    } | null;
     result?: Array<{
       timestamp?: number[];
       meta?: {
@@ -113,7 +117,7 @@ type YahooChartResponse = {
           volume?: Array<number | null>;
         }>;
       };
-    }>;
+    }> | null;
   };
 };
 
@@ -926,16 +930,31 @@ export async function fetchExtendedHoursQuote(
   }
 }
 
-export async function fetchYahooHistory(symbol: string): Promise<{ candles: Candle[]; currency: string } | null> {
+export type YahooHistoryOutcome =
+  | { status: 'success'; history: { candles: Candle[]; currency: string } }
+  | { status: 'invalid-symbol' }
+  | { status: 'unavailable' };
+
+function isDefinitiveYahooInvalidSymbol(status: number, data: YahooChartResponse | null): boolean {
+  if (status === 404) return true;
+  const code = data?.chart?.error?.code?.toLowerCase() ?? '';
+  const description = data?.chart?.error?.description?.toLowerCase() ?? '';
+  return code === 'not found'
+    || description.includes('no data found')
+    || description.includes('symbol may be delisted');
+}
+
+export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHistoryOutcome> {
   await yahooGate();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=true&events=div,splits`;
   const response = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
-  if (!response.ok) return null;
+  const data = await response.json().catch(() => null) as YahooChartResponse | null;
+  if (isDefinitiveYahooInvalidSymbol(response.status, data)) return { status: 'invalid-symbol' };
+  if (!response.ok || !data) return { status: 'unavailable' };
 
-  const data = await response.json() as YahooChartResponse;
   const result = data.chart?.result?.[0];
   const quote = result?.indicators?.quote?.[0];
   const timestamps = result?.timestamp ?? [];
@@ -966,8 +985,16 @@ export async function fetchYahooHistory(symbol: string): Promise<{ candles: Cand
     });
   }
 
-  if (candles.length < 30) return null;
-  return { candles, currency: result?.meta?.currency || 'USD' };
+  if (candles.length < 30) return { status: 'unavailable' };
+  return {
+    status: 'success',
+    history: { candles, currency: result?.meta?.currency || 'USD' },
+  };
+}
+
+export async function fetchYahooHistory(symbol: string): Promise<{ candles: Candle[]; currency: string } | null> {
+  const outcome = await fetchYahooHistoryOutcome(symbol);
+  return outcome.status === 'success' ? outcome.history : null;
 }
 
 function safeRaw(field: { raw?: number } | undefined): number {

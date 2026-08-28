@@ -14,6 +14,7 @@
 // server is simply the right place to do it once for everyone.
 
 import { getCachedJson } from '../../../_shared/redis';
+import { filterRevokedUrls, readRevokedUrlSet } from '../../../_shared/digest-revocations';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 
 const DIGEST_KEY_EN = 'news:digest:v1:full:en';
@@ -189,8 +190,17 @@ function briefSourceContextLines(sources: SharedBriefSource[]): string[] {
   });
 }
 
-export function buildSharedCountryContext(digest: unknown, countryCode: string): SharedCountryContext {
-  const allItems = flattenDigest(digest).filter(
+export function buildSharedCountryContext(
+  digest: unknown,
+  countryCode: string,
+  revokedUrls: ReadonlySet<string> = new Set(),
+): SharedCountryContext {
+  // #7084: the stored digest body is deliberately UNFILTERED so a lifted
+  // revocation restores its items, which means every reader of
+  // news:digest:v1:* has to apply the operator suppression set itself. Skipping
+  // it here published a revoked URL in this brief's `sources[]` — and the brief
+  // is cached for 6h, so it outlived the digest's own TTL.
+  const allItems = filterRevokedUrls(flattenDigest(digest), revokedUrls).kept.filter(
     (item) => typeof item.title === 'string' && item.title.length > 0,
   );
   if (allItems.length === 0) return EMPTY_CONTEXT;
@@ -224,8 +234,15 @@ export function buildSharedCountryContext(digest: unknown, countryCode: string):
 /** Read the shared digest and build country grounding. Failure → empty context (brief still generates). */
 export async function fetchSharedCountryContext(countryCode: string): Promise<SharedCountryContext> {
   try {
-    const digest = await getCachedJson(DIGEST_KEY_EN, true);
-    return buildSharedCountryContext(digest, countryCode);
+    const [digest, revoked] = await Promise.all([
+      getCachedJson(DIGEST_KEY_EN, true),
+      readRevokedUrlSet(),
+    ]);
+    // Fail CLOSED on an unreadable suppression set, matching the digest
+    // endpoint's own replay tiers: this brief is cached for 6h, so grounding it
+    // on content we could not check would outlive the incident that caused it.
+    if (!revoked.readable) return EMPTY_CONTEXT;
+    return buildSharedCountryContext(digest, countryCode, revoked.urls);
   } catch {
     return EMPTY_CONTEXT;
   }

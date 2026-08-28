@@ -39,7 +39,7 @@ jobs:
     # the deploy gate evaluates main pushes too and `changes` is one of its
     # required names: sharing the name would let this job's result stand in for
     # test.yml's there. Not gated itself — deploy-gate.yml only aggregates Test,
-    # Typecheck, Lint Code and Security Audit.
+    # Typecheck, Lint Code, Security Audit and Stacked Merge Guard.
     name: convex-changes
     runs-on: ubuntu-latest
     outputs:

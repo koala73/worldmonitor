@@ -358,7 +358,8 @@
           "Prioriterad datauppdatering"
         ],
         "highlightFeatures": [
-          "Personlig licens"
+          "Personlig licens",
+          "1 namngiven användare"
         ]
       },
       "api": {
@@ -383,7 +384,12 @@
           "Dedikerad support",
           "Anpassade integreringar",
           "SLA-garanti",
-          "On-premise-alternativ"
+          "On-premise-alternativ",
+          "Databehandlingsavtal (DPA)",
+          "Faktureringsviainköpsorder",
+          "SAML SSO, SCIM",
+          "Anpassade säkerhet- och sekretessinställningar",
+          "Helt vitmärkt — med eller utan intäktsdelning"
         ],
         "cta": "Kontakta försäljning"
       },
@@ -394,7 +400,7 @@
           "Omfördelningsrättigheter — integrera vår data i det du säljer",
           "300 begäranden/minut",
           "10 000 begäranden/dag inkluderat",
-          "5 Pro-licenser inkluderade",
+          "5 Pro-licenser — bjud in användare med valfri företagsdomän för e-post",
           "Prioriterad support"
         ],
         "highlightFeatures": [
@@ -412,7 +418,8 @@
           "Prioriterad support"
         ],
         "highlightFeatures": [
-          "Kommersiell licens inkluderad"
+          "Kommersiell licens inkluderad",
+          "1 namngiven användare — inte en delad inloggning"
         ]
       }
     },
@@ -423,7 +430,7 @@
     "axisPersonal": "Personlig",
     "axisPersonalNote": "individuell användning",
     "axisCommercial": "Kommersiell",
-    "axisCommercialNote": "arbete, team & produkter"
+    "axisCommercialNote": "arbete, klienter och produkter"
   },
   "welcome": {
     "meta": {

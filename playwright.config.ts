@@ -1,11 +1,55 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const requireWebMcp = process.env.WM_REQUIRE_WEBMCP === '1';
+const webMcpProduction = process.env.WM_WEBMCP_PRODUCTION === '1';
+const webMcpProductionUrl = process.env.WM_WEBMCP_PRODUCTION_URL?.trim();
+const webMcpDeployedShaPresent = Object.hasOwn(process.env, 'WM_WEBMCP_DEPLOYED_SHA');
+const webMcpDeployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim();
 const webMcpChromeChannel = process.env.WM_WEBMCP_CHROME_CHANNEL?.trim() || 'chrome';
 const webMcpChromeExecutablePath = process.env.WM_WEBMCP_CHROME_EXECUTABLE_PATH?.trim();
+const validWebMcpDeployedSha = Boolean(
+  webMcpDeployedSha && /^[0-9a-f]{40}$/i.test(webMcpDeployedSha),
+);
+
+if (webMcpProduction) {
+  if (!requireWebMcp) {
+    throw new Error(
+      'WM_WEBMCP_PRODUCTION=1 requires WM_REQUIRE_WEBMCP=1 so only the strict WebMCP smoke can target production.',
+    );
+  }
+  if (webMcpProductionUrl !== 'https://www.worldmonitor.app') {
+    throw new Error(
+      'WM_WEBMCP_PRODUCTION_URL must be https://www.worldmonitor.app for the bounded production smoke.',
+    );
+  }
+  if (!validWebMcpDeployedSha) {
+    throw new Error(
+      'WM_WEBMCP_DEPLOYED_SHA must record the exact 40-character SHA verified in the deployment control plane.',
+    );
+  }
+} else {
+  if (webMcpProductionUrl) {
+    throw new Error('WM_WEBMCP_PRODUCTION_URL requires WM_WEBMCP_PRODUCTION=1.');
+  }
+  if (webMcpDeployedShaPresent && !requireWebMcp) {
+    throw new Error(
+      'WM_WEBMCP_DEPLOYED_SHA requires WM_REQUIRE_WEBMCP=1 outside production mode.',
+    );
+  }
+  if (webMcpDeployedShaPresent && !validWebMcpDeployedSha) {
+    throw new Error(
+      'WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA.',
+    );
+  }
+}
 
 export default defineConfig({
   testDir: './e2e',
+  preserveOutput: 'always',
+  // Production mode is a safety boundary, not merely a base-URL switch. Even
+  // when its complete environment tuple is inherited by another npm script,
+  // only the bounded read-only/denial WebMCP smoke remains eligible.
+  testMatch: webMcpProduction ? '**/webmcp.spec.ts' : undefined,
   // CI: the smoke specs are dominated by fixed settle windows (eight 8 s
   // waits in dashboard-news-request-budget alone), so running them serially
   // just stacks idle sleeps — 4 workers overlap them. Tests already isolate
@@ -35,7 +79,10 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    // Never let a stray production URL retarget ordinary Playwright suites.
+    // The environment validation above makes the remote target reachable only
+    // through the complete, strict production-smoke tuple.
+    baseURL: webMcpProduction ? webMcpProductionUrl : 'http://127.0.0.1:4173',
     viewport: { width: 1280, height: 720 },
     colorScheme: 'dark',
     locale: 'en-US',
@@ -60,17 +107,19 @@ export default defineConfig({
           args: [
             '--use-angle=swiftshader',
             '--use-gl=swiftshader',
-            ...(requireWebMcp ? ['--enable-features=WebMCPTesting'] : []),
+            ...(requireWebMcp && !webMcpProduction ? ['--enable-features=WebMCPTesting'] : []),
           ],
         },
       },
     },
   ],
   snapshotPathTemplate: '{testDir}/{testFileName}-snapshots/{arg}{ext}',
-  webServer: {
-    command: 'VITE_E2E=1 npm run dev -- --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173/tests/map-harness.html',
-    reuseExistingServer: false,
-    timeout: 120000,
-  },
+  webServer: webMcpProduction
+    ? undefined
+    : {
+        command: 'VITE_E2E=1 npm run dev -- --host 127.0.0.1 --port 4173',
+        url: 'http://127.0.0.1:4173/tests/map-harness.html',
+        reuseExistingServer: false,
+        timeout: 120000,
+      },
 });

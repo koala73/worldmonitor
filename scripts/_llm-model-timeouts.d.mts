@@ -4,6 +4,8 @@ export const DEEPSEEK_V4_FLASH_MODEL_PREFIX: string;
 export const OPENROUTER_FREE_PRIMARY_MODEL: string;
 export const OPENROUTER_FREE_BACKUP_MODEL: string;
 export const GROQ_DEFAULT_MODEL: string;
+/** Reasoning control for Groq's gpt-oss models; without it they burn max_tokens on hidden reasoning. */
+export const GROQ_REASONING_EXTRA_BODY: Readonly<{ reasoning_effort: 'low' | 'medium' | 'high' }>;
 export const DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS: number;
 export const DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS: number;
 

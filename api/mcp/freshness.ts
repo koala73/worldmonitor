@@ -1,6 +1,8 @@
 import type { FreshnessCheck } from './types';
 // @ts-expect-error — JS module, no declaration file
 import { buildContentFreshnessAssessment, getActiveContentFreshnessActivationWindow } from '../_content-freshness.js';
+// @ts-expect-error — JS module, no declaration file
+import { assessContentAge } from '../_content-age.js';
 
 function parseFiniteRecordCount(raw: unknown): number | null {
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
@@ -56,6 +58,21 @@ export function evaluateFreshness(
         ? parseFiniteRecordCount((meta as { recordCount: unknown }).recordCount)
         : null;
       stale ||= recordCount == null || recordCount < check.minRecordCount;
+    }
+
+    if (check.honorContentAge) {
+      // House-standard content-age contract (#3845 / #7141). Same shared
+      // assessor api/health.js classifyKey uses, so the two surfaces cannot
+      // drift on parsing, on the future-dated rule, or on re-aging: a fresh
+      // fetchedAt with stale observations is stale on both. Without this MCP
+      // answers stale:false for the exact key health calls STALE_CONTENT —
+      // the #6080 divergence on this simpler newestItemAt clock.
+      //
+      // A key that declares honorContentAge but whose seed-meta carries no
+      // maxContentAgeMin gets `null` back — the producer has not opted into
+      // the contract, so there is nothing to age and the check is a no-op.
+      const contentAge = assessContentAge(meta, now);
+      stale ||= contentAge?.contentStale === true;
     }
 
     if (check.requireContentFreshness) {

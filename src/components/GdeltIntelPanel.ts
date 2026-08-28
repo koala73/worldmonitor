@@ -64,8 +64,14 @@ export class GdeltIntelPanel extends Panel {
 
     const cached = this.topicData.get(topic.id);
     if (cached && Date.now() - cached.fetchedAt.getTime() < 5 * 60 * 1000) {
-      this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
-      this.renderArticles(cached.articles);
+      // Cache replay, not a proven recovery (#6679 instance A). The topic
+      // tabs are siblings of this.content, so they stay clickable while a
+      // topic is in an error state — switching to a cached topic must not
+      // reset the failing topic's backoff rung to the 15s floor.
+      this.withRetryBackoffPreserved(() => {
+        this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
+        this.renderArticles(cached.articles);
+      });
     } else {
       this.loadActiveTopic();
     }
@@ -142,6 +148,9 @@ export class GdeltIntelPanel extends Panel {
 
   private renderArticles(articles: GdeltArticle[]): void {
     if (articles.length === 0) {
+      // An empty article response is an authoritative settled state. It must
+      // clear any visible error and its pending retry just like a non-empty
+      // response does.
       this.setContentNodes(h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
       return;
     }

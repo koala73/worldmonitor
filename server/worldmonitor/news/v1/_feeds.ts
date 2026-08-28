@@ -358,6 +358,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'The Diplomat', url: 'https://thediplomat.com/feed/' },
       // Theater coverage preset (#5956) - Indo-Pacific sources.
       { name: 'Reuters Asia', url: gn('site:reuters.com (China OR Japan OR Taiwan OR Korea) when:3d') },
+      { name: 'Reuters India', url: gn('site:reuters.com India when:3d') },
       { name: 'Japan Today', url: 'https://japantoday.com/feed/atom' },
       { name: 'Nikkei Asia', url: gn('site:asia.nikkei.com when:3d') },
       { name: 'CNA', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml' },
@@ -402,6 +403,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Pajhwok Afghan News', url: gn('site:pajhwok.com Afghanistan when:7d') },
       { name: 'The Daily Star', url: gn('site:thedailystar.net when:14d') },
       { name: 'Dhaka Tribune', url: gn('site:dhakatribune.com when:14d') },
+      { name: 'Times of India', url: 'https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms', lang: 'en' },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },

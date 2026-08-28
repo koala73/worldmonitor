@@ -78,7 +78,7 @@
           "priceCurrency": "USD",
           "availability": "https://schema.org/InStock",
           "url": "https://www.worldmonitor.app/pro#pricing",
-          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license",
+          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license, 1 named user",
           "priceSpecification": {
             "@type": "UnitPriceSpecification",
             "price": "39.99",
@@ -216,7 +216,7 @@
 
     <!-- Theme: apply stored preference before first paint to prevent FOUC. -->
     <script data-wm-map-prepaint>(function(){var mapCollapsed=true;try{mapCollapsed=localStorage.getItem('mobile-map-collapsed')!=='false';}catch(e){}if(mapCollapsed)document.documentElement.classList.add('wm-map-collapsed');else document.documentElement.classList.remove('wm-map-collapsed');})()</script>
-    <script data-wm-prepaint>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';else if(h.startsWith('commodity.'))v='commodity';else if(h.startsWith('energy.'))v='energy';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}var mapCollapsed=localStorage.getItem('mobile-map-collapsed')!=='false';if(mapCollapsed)document.documentElement.classList.add('wm-map-collapsed');var dismissKey='wm-pro-banner-launched-dismissed';var legacyDismissKey='wm-pro-banner-dismissed';localStorage.removeItem(legacyDismissKey);var ts=Number(localStorage.getItem(dismissKey)||0);var dismissed=ts>0&&Date.now()-ts<=604800000;if(ts>0&&!dismissed)localStorage.removeItem(dismissKey);var entitledHint=localStorage.getItem('wm-entitlement-hint')==='pro';if(window.self===window.top&&!dismissed&&!entitledHint)document.documentElement.classList.add('wm-pro-banner-reserved');}catch(e){}document.documentElement.classList.add('no-transition');document.documentElement.classList.add('js');})()</script>
+    <script data-wm-prepaint>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';else if(h.startsWith('commodity.'))v='commodity';else if(h.startsWith('energy.'))v='energy';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.dataset.theme='light';}var mapCollapsed=localStorage.getItem('mobile-map-collapsed')!=='false';if(mapCollapsed)document.documentElement.classList.add('wm-map-collapsed');var dismissKey='wm-pro-banner-launched-dismissed';var legacyDismissKey='wm-pro-banner-dismissed';localStorage.removeItem(legacyDismissKey);var ts=Number(localStorage.getItem(dismissKey)||0);var dismissed=ts>0&&Date.now()-ts<=604800000;if(ts>0&&!dismissed)localStorage.removeItem(dismissKey);var entitledHint=localStorage.getItem('wm-entitlement-hint')==='pro';if(window.self===window.top&&!dismissed&&!entitledHint)document.documentElement.classList.add('wm-pro-banner-reserved');}catch(e){}document.documentElement.classList.add('no-transition');document.documentElement.classList.add('js');})()</script>
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
       :root{--wm-pro-banner-slot-height:40px;--dashboard-panel-row-min:200px;--dashboard-panel-row-max:380px;--dashboard-grid-gap:4px;--dashboard-first-grid-reservation:calc(var(--dashboard-panel-row-min) + var(--dashboard-panel-row-min) + var(--dashboard-grid-gap))}
@@ -283,6 +283,7 @@
       .skeleton-line.w75{width:75%}.skeleton-line.w60{width:60%}.skeleton-line.w50{width:50%}.skeleton-line.w85{width:85%}.skeleton-line.w40{width:40%}
 
       @keyframes skel-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
       /* ---------- skeleton shell (light theme) ---------- */
       [data-theme="light"] .skeleton-shell{background:#f8f9fa}
@@ -501,7 +502,7 @@
       var attempted=false;
       try{if(sessionStorage.getItem(key))return}catch(e){}
       window.addEventListener('error',function(e){
-        var u=e.target&&(e.target.src||e.target.href)||'';
+        var t=e.target;var u=t&&(t.tagName==="SCRIPT"||t.tagName==="LINK")&&(t.src||t.href)||'';
         if(u&&/\/assets\//.test(u)){
           try{sessionStorage.setItem(key,'1')}catch(err){if(attempted)return;attempted=true}
           navigator.serviceWorker.getRegistrations().then(function(regs){

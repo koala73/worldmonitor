@@ -358,7 +358,8 @@
           "Làm mới dữ liệu ưu tiên"
         ],
         "highlightFeatures": [
-          "Giấy phép cá nhân"
+          "Giấy phép cá nhân",
+          "1 người dùng được đặt tên"
         ]
       },
       "api": {
@@ -383,7 +384,12 @@
           "Hỗ trợ chuyên dụng",
           "Tích hợp tùy chỉnh",
           "Bảo đảm SLA",
-          "Tuỳ chọn tại chỗ"
+          "Tuỳ chọn tại chỗ",
+          "Thỏa thuận xử lý dữ liệu (DPA)",
+          "Thanh toán theo đơn đặt hàng",
+          "SAML SSO, SCIM",
+          "Cài đặt bảo mật và quyền riêng tư tùy chỉnh",
+          "Hoàn toàn có nhãn hiệu riêng — có hoặc không chia sẻ doanh thu"
         ],
         "cta": "Liên hệ Phòng bán hàng"
       },
@@ -394,7 +400,7 @@
           "Quyền phân phối lại — nhúng dữ liệu của chúng tôi vào những gì bạn bán",
           "300 yêu cầu/phút",
           "10.000 yêu cầu/ngày được bao gồm",
-          "5 giấy phép Pro được bao gồm",
+          "5 giấy phép Pro — mời người dùng bằng bất kỳ tên miền email doanh nghiệp nào",
           "Hỗ trợ ưu tiên"
         ],
         "highlightFeatures": [
@@ -412,7 +418,8 @@
           "Hỗ trợ ưu tiên"
         ],
         "highlightFeatures": [
-          "Giấy phép thương mại kèm theo"
+          "Giấy phép thương mại kèm theo",
+          "1 người dùng được đặt tên — không phải đăng nhập chung"
         ]
       }
     },
@@ -423,7 +430,7 @@
     "axisPersonal": "Cá nhân",
     "axisPersonalNote": "sử dụng cá nhân",
     "axisCommercial": "Thương mại",
-    "axisCommercialNote": "công việc, nhóm & sản phẩm"
+    "axisCommercialNote": "công việc, khách hàng & sản phẩm"
   },
   "welcome": {
     "meta": {

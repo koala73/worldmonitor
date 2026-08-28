@@ -103,7 +103,7 @@ export class CurrentRouteTab {
     );
     return [
       '<table class="re-current__chokepoints">',
-      '  <thead><tr><th>#</th><th>Chokepoint</th><th>Exposure</th></tr></thead>',
+      '  <thead><tr><th scope="col">#</th><th scope="col">Chokepoint</th><th scope="col">Exposure</th></tr></thead>',
       `  <tbody>${rows.join('')}</tbody>`,
       '</table>',
     ].join('\n');
@@ -117,7 +117,7 @@ export class CurrentRouteTab {
       const select = () => this.opts.onChokepointSelect?.(cpId);
       row.addEventListener('click', select);
       row.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); select(); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); }
       });
     });
   }

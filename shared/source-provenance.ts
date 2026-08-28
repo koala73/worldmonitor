@@ -1,6 +1,7 @@
 // Canonical source provenance registry shared by the browser UI and MCP tools.
 // Keep this module runtime-neutral so it remains safe in both runtimes.
 import { CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS } from './source-provenance-declarations';
+import { X_ACCOUNT_SOURCE_PROPAGANDA_RISK, X_ACCOUNT_SOURCE_TYPES } from './x-account-trust';
 import {
   TELEGRAM_SOURCE_PROPAGANDA_RISK,
   TELEGRAM_SOURCE_TYPES,
@@ -181,12 +182,15 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Libya Herald': 'mainstream', 'Egypt Independent': 'mainstream',
   'Mada Masr': 'mainstream', 'The Daily Star': 'mainstream',
   'Dhaka Tribune': 'mainstream', 'Daily Nation': 'mainstream',
+  'Times of India': 'mainstream',
   'The Guardian Post': 'mainstream', 'Tchadinfos': 'mainstream',
   'Alwihda Info': 'mainstream', 'Radio Ndeke Luka': 'mainstream',
 
   // Telegram channels (#6600). Additive keys keyed by channel display label.
-  // #6654 Track A should append X-account labels the same way — do not rename this spread.
   ...TELEGRAM_SOURCE_TYPES,
+
+  // Curated X news-account overlay (#6654). Additive to Telegram.
+  ...X_ACCOUNT_SOURCE_TYPES,
 };
 
 export function getSourceType(sourceName: string): SourceType {
@@ -434,6 +438,7 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'BBC Middle East': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
   'Guardian World': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
   'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
+  'Times of India': { risk: 'low', note: 'Major Indian national newspaper with an established editorial newsroom' },
   'Fox Business': { risk: 'low', note: 'Commercial U.S. business-news publisher' },
   'Business Insider': { risk: 'low', note: 'Commercial business-news publisher with editorial standards' },
   'Wired': { risk: 'low', note: 'Technology publication with editorial standards' },
@@ -459,8 +464,10 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'The Times of Central Asia': { risk: 'medium', note: 'Independent English-language Central Asia news outlet' },
 
   // Telegram channels (#6600). Additive keys keyed by channel display label.
-  // #6654 Track A should append X-account labels the same way — do not rename this spread.
   ...TELEGRAM_SOURCE_PROPAGANDA_RISK,
+
+  // Curated X news-account overlay (#6654). Additive to Telegram.
+  ...X_ACCOUNT_SOURCE_PROPAGANDA_RISK,
 };
 
 export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {

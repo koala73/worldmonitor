@@ -99,6 +99,154 @@ function metaSetAttempts(resource) {
   ).length;
 }
 
+test('successful bundled run writes the dedicated completion marker last', async () => {
+  const originalFetchForCompletion = globalThis.fetch;
+  const events = [];
+  process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:ordered';
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    if (Array.isArray(body) && body[0] === 'SET') events.push(body[1]);
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'ordered', 'test:ordered:v1', async () => ({ items: [1] }), {
+        validateFn: (data) => data.items.length > 0,
+        ttlSeconds: 3600,
+        declareRecords: (data) => data.items.length,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 720,
+        extraKeys: [{
+          key: 'test:ordered:extra:v1',
+          transform: (data) => data.items,
+          declareRecords: (items) => items.length,
+        }],
+        afterFreshness: async () => { events.push('afterFreshness'); },
+      }),
+    );
+
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    const completionIndex = events.indexOf('seed-completion:test:ordered');
+    assert.ok(completionIndex > events.indexOf('test:ordered:v1'));
+    assert.ok(completionIndex > events.indexOf('test:ordered:extra:v1'));
+    assert.ok(completionIndex > events.indexOf('seed-meta:test:ordered'));
+    assert.ok(completionIndex > events.indexOf('afterFreshness'));
+
+    const canonicalSet = calls.find((call) => call.body?.[0] === 'SET' && call.body[1] === 'test:ordered:v1');
+    const completionSet = calls.find((call) => call.body?.[0] === 'SET' && call.body[1] === 'seed-completion:test:ordered');
+    assert.ok(completionSet, 'completion marker must be written');
+    assert.equal(
+      JSON.parse(completionSet.body[2]).fetchedAt,
+      JSON.parse(canonicalSet.body[2])._seed.fetchedAt,
+      'completion must identify the exact canonical run it attests',
+    );
+  } finally {
+    delete process.env.WM_BUNDLE_COMPLETION_META_KEY;
+    globalThis.fetch = originalFetchForCompletion;
+  }
+});
+
+test('validation skip never refreshes the dedicated completion marker', async () => {
+  const originalFetchForCompletion = globalThis.fetch;
+  process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:skip';
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'skip', 'test:skip:v1', async () => ({ items: [] }), {
+        validateFn: () => false,
+        ttlSeconds: 3600,
+        declareRecords: () => 1,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 720,
+      }),
+    );
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.ok(calls.some((call) => call.body?.[1] === 'seed-meta:test:skip'));
+    assert.equal(calls.some((call) => call.body?.[1] === 'seed-completion:test:skip'), false);
+  } finally {
+    delete process.env.WM_BUNDLE_COMPLETION_META_KEY;
+    globalThis.fetch = originalFetchForCompletion;
+  }
+});
+
+test('completion marker write failure rejects the seed after retries', async () => {
+  const originalFetchForCompletion = globalThis.fetch;
+  process.env.WM_BUNDLE_COMPLETION_META_KEY = 'seed-completion:test:write-failure';
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    if (Array.isArray(body) && body[0] === 'SET' && body[1] === 'seed-completion:test:write-failure') {
+      throw abortError();
+    }
+    return jsonResponse({ result: 'OK' });
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'write-failure', 'test:write-failure:v1', async () => ({ items: [1] }), {
+        validateFn: (data) => data.items.length > 0,
+        ttlSeconds: 3600,
+        declareRecords: (data) => data.items.length,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 720,
+      }),
+    );
+    assert.equal(exitCode, null);
+    assert.equal(threw?.name, 'AbortError', 'a missing final attestation must reject the bundled seed');
+    assert.ok(
+      calls.filter((call) => call.body?.[1] === 'seed-completion:test:write-failure').length >= 3,
+      'the completion marker write must exhaust its retry budget before failing',
+    );
+  } finally {
+    delete process.env.WM_BUNDLE_COMPLETION_META_KEY;
+    globalThis.fetch = originalFetchForCompletion;
+  }
+});
+
+test('malformed post-canonical options fail before the canonical publish', async () => {
+  for (const options of [{ extraKeys: {} }, { afterPublish: true }, { afterFreshness: true }]) {
+    calls.length = 0;
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'invalid-options', 'test:invalid-options:v1', async () => ({ items: [1] }), {
+        ...options,
+        validateFn: (data) => data.items.length > 0,
+        ttlSeconds: 3600,
+        declareRecords: (data) => data.items.length,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 720,
+      }),
+    );
+    assert.equal(threw, null);
+    assert.equal(exitCode, 1);
+    assert.equal(
+      calls.some((call) => call.body?.[0] === 'SET' && call.body[1] === 'test:invalid-options:v1'),
+      false,
+    );
+  }
+});
+
 test('validate-skip path: seed-meta mirror write exhausting retries degrades to exit 0, not FATAL', async () => {
   const { exitCode, threw } = await runWithExitTrap(() =>
     runSeed('test', 'meta-degrade-skip', 'test:meta-degrade-skip:v1',

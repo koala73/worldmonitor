@@ -34,7 +34,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -42,6 +42,7 @@ import { glob } from 'node:fs/promises';
 
 import { isTestRuntime } from '../scripts/_seed-utils.mjs';
 import { stripJsComments } from '../scripts/lib/js-source-structure.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SEED_UTILS_URL = pathToFileURL(join(REPO_ROOT, 'scripts', '_seed-utils.mjs')).href;
@@ -60,7 +61,7 @@ const envFileBody = (url) => `# fixture\nUPSTASH_REDIS_REST_URL=${url}\nUPSTASH_
  * list reached for.
  */
 function makeFixtureCheckout({ withLocalEnvFile, nested = false, only = null }) {
-  const outer = mkdtempSync(join(tmpdir(), 'wm-seed-env-'));
+  const outer = createTempDir('wm-seed-env-');
   // The fixture checkout sits INSIDE a temp dir that also holds a .env.local,
   // so every case doubles as a check that resolution stops at the checkout
   // boundary. `loadEnvFile` used to probe `<checkout>/../.env.local` and really

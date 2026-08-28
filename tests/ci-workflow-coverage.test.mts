@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +44,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/dashboard-news-request-budget.spec.ts',
   'e2e/keyword-spike-flow.spec.ts',
   'e2e/breaking-news-banner-provenance.spec.ts',
+  'e2e/a11y-axe-scan.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -66,13 +67,14 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'desktop-rust',
 ] as const;
 
-const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit'] as const;
+const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit', 'Stacked Merge Guard'] as const;
 
 const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
   'biome',
   'public-docs',
   'security-audit',
+  'stacked-merge-guard',
 ] as const;
 
 // Jobs the deploy gate cannot require under their own name, and the check that
@@ -420,6 +422,10 @@ describe('CI workflow coverage', () => {
         `test:e2e:ci-smoke must pass ${spec} as a live argv token — a spec dropped ` +
           '(or commented out) from this command has no other CI invocation',
       );
+      assert.ok(
+        existsSync(resolve(root, spec)),
+        `${spec} must exist on disk — a missing file would only fail once Playwright starts`,
+      );
     }
     assert.ok(
       argvTokens.includes('VITE_VARIANT=full'),
@@ -675,7 +681,7 @@ describe('CI workflow coverage', () => {
     }
 
     // Every gated job's effective name has to be in `required` (asserted
-    // above), so keying off `required` still covers all four gated workflows
+    // above), so keying off `required` still covers all gated workflows
     // while leaving harmless duplicates alone — two cron-only workflows may
     // both call a job `monitor` without the gate ever reading either.
     //

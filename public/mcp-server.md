@@ -1,8 +1,10 @@
 # World Monitor MCP Server
 
-Last updated: July 7, 2026
+Last updated: August 19, 2026
 
 The World Monitor MCP Server exposes World Monitor's real-time global-intelligence stack over the [Model Context Protocol](https://modelcontextprotocol.io), so any MCP-compatible client — Claude Desktop, Claude web, Cursor, MCP Inspector, or a custom agent — can pull live conflict, market, aviation, maritime, economic, cyber, and forecasting data directly into a model's context. It is the recommended way for AI agents to consume World Monitor data.
+
+This persistent hosted server is distinct from [WorldMonitor WebMCP](https://www.worldmonitor.app/docs/webmcp), an experimental, page-local Chrome interface that operates the visible website. WebMCP does not replace the hosted MCP server; remote, background, headless, and direct-data agents should use the endpoint below.
 
 ## Endpoint
 
@@ -53,6 +55,7 @@ Add the server to Claude Desktop / Cursor via their MCP settings using the URL `
 ## Learn more
 
 - [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) — auth modes, plans, OAuth setup, full tool catalog
+- [WebMCP](https://www.worldmonitor.app/docs/webmcp) — experimental visible-tab browser tools and their security/debugging contract
 - [MCP Apps](https://www.worldmonitor.app/docs/mcp-apps) — interactive `ui://` resources, host flow, view security, and drift checks
 - [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart) · [Tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference) · [JMESPath projection](https://www.worldmonitor.app/docs/mcp-jmespath) · [Error catalog](https://www.worldmonitor.app/docs/mcp-error-catalog)
 - [Developer Portal](https://worldmonitor.app/developers.md) · [REST API OpenAPI spec](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md) · [agents.md](https://worldmonitor.app/agents.md)

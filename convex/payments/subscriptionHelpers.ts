@@ -52,8 +52,10 @@ interface DodoSubscriptionData {
 interface DodoPaymentData {
   payment_id: string;
   customer?: DodoCustomer;
-  total_amount?: number;
-  amount?: number;
+  // Dodo payment payloads typically send these as numbers; dispute payloads
+  // type `amount` as a string (SDK `disputes.retrieve` / webhook `Dispute`).
+  total_amount?: number | string;
+  amount?: number | string;
   currency?: string;
   subscription_id?: string;
   metadata?: Record<string, string>;
@@ -139,6 +141,57 @@ export function isNewerEvent(
   incomingTimestamp: number,
 ): boolean {
   return incomingTimestamp > existingUpdatedAt;
+}
+
+/**
+ * Coerces a Dodo webhook amount into a finite number for `paymentEvents.amount`.
+ *
+ * Dispute payloads send `amount` as a string (`"9999"`). Missing or invalid
+ * values become `0`; non-numeric garbage is not accepted silently.
+ */
+export function coerceAmount(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) return value;
+    console.warn(`[coerceAmount] non-finite amount ${String(value)}; persisting 0`);
+    return 0;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return 0;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+    console.warn(
+      `[coerceAmount] non-numeric amount ${JSON.stringify(value)}; persisting 0`,
+    );
+    return 0;
+  }
+  console.warn(`[coerceAmount] unexpected amount type ${typeof value}; persisting 0`);
+  return 0;
+}
+
+function isUsableAmount(value: unknown): boolean {
+  return (
+    (typeof value === "number" && Number.isFinite(value))
+    || (typeof value === "string"
+      && value.trim() !== ""
+      && Number.isFinite(Number(value)))
+  );
+}
+
+function webhookAmount(data: Pick<DodoPaymentData, "total_amount" | "amount">): number {
+  if (isUsableAmount(data.total_amount)) return coerceAmount(data.total_amount);
+
+  if (isUsableAmount(data.amount)) {
+    // Preserve diagnostics for an invalid primary value while using the valid
+    // fallback Dodo also supplies on some webhook payloads.
+    if (data.total_amount !== undefined && data.total_amount !== null) {
+      coerceAmount(data.total_amount);
+    }
+    return coerceAmount(data.amount);
+  }
+
+  return coerceAmount(data.total_amount ?? data.amount);
 }
 
 // Delay for the second, race-covering entitlement cache sync (#4770 review):
@@ -1763,12 +1816,13 @@ export async function handlePaymentOrRefundEvent(
   // caller is gated by the webhook switch's routed-event cases, and an
   // unexpected value throws (loudly) in derivePaymentEventStatus.
   const status = derivePaymentEventStatus(eventType as RoutedPaymentEvent, data);
+  const amount = webhookAmount(data);
 
   await ctx.db.insert("paymentEvents", {
     userId,
     dodoPaymentId: data.payment_id,
     type,
-    amount: data.total_amount ?? data.amount ?? 0,
+    amount,
     currency: data.currency ?? "USD",
     status,
     dodoSubscriptionId: data.subscription_id ?? undefined,
@@ -1805,7 +1859,7 @@ export async function handlePaymentOrRefundEvent(
       subCancelledAt: sub?.cancelledAt,
       subRawPayload: sub?.rawPayload,
       subUserId: sub?.userId,
-      refundAmount: data.total_amount ?? data.amount ?? 0,
+      refundAmount: amount,
     });
     if (decision.kind === "alert") {
       console.error(
@@ -1932,7 +1986,7 @@ export async function handleDisputeEvent(
     userId,
     dodoPaymentId: data.payment_id,
     type: "charge", // disputes are related to charges
-    amount: data.total_amount ?? data.amount ?? 0,
+    amount: webhookAmount(data),
     currency: data.currency ?? "USD",
     status: disputeStatus,
     dodoSubscriptionId: data.subscription_id ?? undefined,

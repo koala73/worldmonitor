@@ -502,7 +502,7 @@ export async function listBusinessSeats(): Promise<ListBusinessSeatsResult> {
   );
 }
 
-/** Invite up to 4 same-domain teammates to Business Pro seats. */
+/** Invite up to 4 teammates at any corporate email domain to Business Pro seats. */
 export async function inviteBusinessSeats(emails: string[]): Promise<{
   invited: Array<{ email: string; grantId: string; status: 'created' | 'already_pending' | 'already_accepted' }>;
 }> {

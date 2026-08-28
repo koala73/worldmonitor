@@ -119,6 +119,18 @@ describe('OpenAPI webhooks contract', () => {
     assert.equal(result.changed, false, 'run `npm run gen:openapi:webhooks` — committed bundle is stale');
   });
 
+  it('documents a body-agnostic any-2xx acknowledgement', () => {
+    assert.equal(webhook.responses?.['200'], undefined, 'webhook must not invent an exact 200 response');
+    const acknowledgement = webhook.responses?.['2XX'];
+    assert.ok(acknowledgement, 'webhook must document the any-2xx acknowledgement');
+    assert.equal(
+      acknowledgement.content,
+      undefined,
+      'acknowledgement must not require a response body or media type',
+    );
+    assert.match(acknowledgement.description ?? '', /any 2xx/i);
+  });
+
   it('webhooks live at the top level, not under paths (no phantom REST op)', () => {
     assert.ok(!('/webhooks/chokepoint.disruption' in (bundle.paths ?? {})));
     assert.equal(Object.keys(bundle.webhooks).length, 1);

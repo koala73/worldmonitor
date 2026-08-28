@@ -351,11 +351,11 @@ export class HeatmapPanel extends Panel {
     const table = `<div style="overflow-x:auto">
 <table style="width:100%;border-collapse:collapse;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
   <thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
-    <th style="padding:3px 6px;text-align:left;font-weight:500">Sector</th>
-    <th style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
-    <th style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
-    <th style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
-    <th style="padding:3px 6px;text-align:right;font-weight:500">YTD</th>
+    <th scope="col" style="padding:3px 6px;text-align:left;font-weight:500">Sector</th>
+    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
+    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
+    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
+    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">YTD</th>
   </tr></thead>
   <tbody>${tableRows}</tbody>
 </table></div>`;

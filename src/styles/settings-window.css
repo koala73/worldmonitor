@@ -56,6 +56,8 @@
   font-weight: 600;
   color: var(--settings-text);
   letter-spacing: -0.01em;
+  /* Now an <h1> (page title landmark); neutralize the element defaults. */
+  margin: 0;
 }
 
 .settings-header-badge {

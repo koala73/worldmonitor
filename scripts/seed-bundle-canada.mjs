@@ -2,7 +2,7 @@
 
 // Canada ingest bundle.
 //
-// WHY A BUNDLE, NOT EIGHT SERVICES: the Canada pack (#6604-#6659) introduced
+// WHY A BUNDLE, NOT TEN SERVICES: the Canada pack (#6604-#6659) introduced
 // seeders. Provisioned individually they would consume a Railway slot each against
 // a fleet whose own runbook targets 65 services, for a combined measured tick
 // cost of ~33s — 6% of this runner's 570s admission budget. #6670 already made
@@ -12,8 +12,8 @@
 //
 // WHY THE CRON IS */5 WITH PER-MEMBER intervalMs: the runner gates each section
 // on its own `intervalMs` against that section's seed-meta age, so a single
-// service hosts members at different effective cadences. TTC needs 5 minutes;
-// nothing else does. The remaining members declare the cadence their upstream
+// service hosts members at different effective cadences. TTC and Toronto Fire
+// CAD need 5 minutes; nothing else does. The remaining members declare the cadence their upstream
 // actually justifies rather than inheriting TTC's.
 //
 // CADENCES ARE DELIBERATE, NOT INHERITED. Measured payloads per tick (live,
@@ -45,7 +45,7 @@ const CANADA_SECTIONS = [
   // plus a possible 60s wait on the per-host 10-calls/60s token bucket. 240s
   // covers that with margin — if the limiter sleeps past the timeout the section
   // is SIGTERM'd, which is a HARD failure rather than runSeed's graceful path.
-  { label: 'Provincial-511', script: 'seed-provincial-511.mjs', seedMetaKey: 'seed-meta:infra:ontario-511', canonicalKey: 'infra:ontario-511:v1', intervalMs: 15 * MIN, timeoutMs: 240_000 },
+  { label: 'Provincial-511', script: 'seed-provincial-511.mjs', seedMetaKey: 'seed-meta:infra:ontario-511', canonicalKey: 'infra:ontario-511:v1', completionMetaKey: 'seed-completion:infra:ontario-511', intervalMs: 15 * MIN, timeoutMs: 240_000 },
   // 3.62MB body, not strictly valid JSON, sanitized then parsed. Road
   // restrictions are construction permits, not live incidents.
   { label: 'Toronto-Roads', script: 'seed-toronto-road-restrictions.mjs', seedMetaKey: 'seed-meta:infra:toronto-roads', canonicalKey: 'infra:toronto-roads:v1', intervalMs: 2 * HOUR, timeoutMs: 180_000 },
@@ -54,11 +54,11 @@ const CANADA_SECTIONS = [
   { label: 'BC-Open511', script: 'seed-open511.mjs', seedMetaKey: 'seed-meta:infra:bc-open511', canonicalKey: 'infra:bc-open511:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },
   // Emergency alerts stay at 15 minutes: the payload is tiny and the whole point
   // of the layer is timeliness.
-  { label: 'Alberta-Emergency-Alert', script: 'seed-alberta-emergency-alert.mjs', seedMetaKey: 'seed-meta:alerts:alberta-aea', canonicalKey: 'alerts:canada:alberta-aea:v1', intervalMs: 15 * MIN, timeoutMs: 60_000 },
+  { label: 'Alberta-Emergency-Alert', script: 'seed-alberta-emergency-alert.mjs', seedMetaKey: 'seed-meta:alerts:alberta-aea', canonicalKey: 'alerts:canada:alberta-aea:v1', completionMetaKey: 'seed-completion:alerts:alberta-aea', intervalMs: 15 * MIN, timeoutMs: 60_000 },
   // OGL-BC GeoJSON evacuation Alert/Order polygons. The seeder writes a
   // province snapshot, then rebuilds the same canadaAlerts union as Alberta.
-  { label: 'BC-Emergency-Info', script: 'seed-bc-emergency-info.mjs', seedMetaKey: 'seed-meta:alerts:bc-emergency-info', canonicalKey: 'alerts:canada:bc-evacuation:v1', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['Alberta-Emergency-Alert'] },
-  { label: 'SaskAlert', script: 'seed-saskalert.mjs', seedMetaKey: 'seed-meta:alerts:saskalert', canonicalKey: 'alerts:canada:saskalert:v1', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['BC-Emergency-Info'] },
+  { label: 'BC-Emergency-Info', script: 'seed-bc-emergency-info.mjs', seedMetaKey: 'seed-meta:alerts:bc-emergency-info', canonicalKey: 'alerts:canada:bc-evacuation:v1', completionMetaKey: 'seed-completion:alerts:bc-emergency-info', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['Alberta-Emergency-Alert'] },
+  { label: 'SaskAlert', script: 'seed-saskalert.mjs', seedMetaKey: 'seed-meta:alerts:saskalert', canonicalKey: 'alerts:canada:saskalert:v1', completionMetaKey: 'seed-completion:alerts:saskalert', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['BC-Emergency-Info'] },
   // Unofficial mobile JSON. 404 / shape-break degrades to sourceState
   // 'unavailable' and keeps last-good; it never raises SEED_ERROR.
   { label: 'VIA-Rail-Live', script: 'seed-viarail-live.mjs', seedMetaKey: 'seed-meta:transit:viarail-live', canonicalKey: 'transit:viarail:live', intervalMs: 15 * MIN, timeoutMs: 60_000 },
@@ -66,6 +66,13 @@ const CANADA_SECTIONS = [
   // (domain, resource) = ('transit', 'ttc-alerts'). It is NOT the canonical key
   // with :v1 stripped.
   { label: 'TTC-Alerts', script: 'seed-ttc-alerts.mjs', seedMetaKey: 'seed-meta:transit:ttc-alerts', canonicalKey: 'transit:ttc:alerts:v1', intervalMs: 5 * MIN, timeoutMs: 60_000 },
+  // Official TFS live CAD XML. Own key; 5min matches the source update cycle
+  // and a durable activation marker makes the first-deploy health bridge strict
+  // after the first successful canonical publish.
+  { label: 'Toronto-TFS', script: 'seed-toronto-tfs.mjs', seedMetaKey: 'seed-meta:safety:toronto-tfs', canonicalKey: 'safety:toronto-tfs:v1', completionMetaKey: 'seed-completion:safety:toronto-tfs', intervalMs: 5 * MIN, timeoutMs: 60_000 },
+  // Official TPS C4S_Public_NoGO FeatureServer. Own key; privacy exclusions
+  // stay empty. 15min matches the 15–20min map refresh; stale at 45min.
+  { label: 'Toronto-TPS', script: 'seed-toronto-tps.mjs', seedMetaKey: 'seed-meta:safety:toronto-tps', canonicalKey: 'safety:toronto-tps:v1', completionMetaKey: 'seed-completion:safety:toronto-tps', intervalMs: 15 * MIN, timeoutMs: 105_000 },
 ];
 
 // This bundle is registered before its members merge, so on an intermediate

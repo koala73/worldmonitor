@@ -97,6 +97,67 @@ describe('api standalone Idempotency-Key helper', () => {
     assert.equal(out.kind, 'disabled');
   });
 
+  // A missing/empty scope is a wiring bug, so it must fail CLOSED (500, request
+  // refused) and must NOT reuse `disabled` — that is the fail-OPEN value the
+  // Redis-outage test above asserts, and reusing it would silently drop
+  // duplicate-write protection. Both exported entry points are pinned: `peek`
+  // is checked too, so the guard cannot regress into `begin` alone (peek can
+  // return a stored body via `replay`, so an unscoped peek is a cross-tenant
+  // read, not just a duplicate write).
+  const scopeAwareEntryPoints = ['beginStandaloneIdempotency', 'peekStandaloneIdempotency'];
+
+  for (const entryPoint of scopeAwareEntryPoints) {
+    it(`${entryPoint} refuses a missing or empty scope instead of deriving one from request headers`, async () => {
+      for (const scope of [undefined, null, '', '   ']) {
+        const calls = installRedisPipelineMock(() => [{ result: 'OK' }, { result: null }]);
+        const mod = await importFreshIdempotencyModule();
+
+        const request = new Request('https://worldmonitor.app/api/test-write', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'cf-connecting-ip': '198.51.100.10',
+          },
+          body: JSON.stringify({ action: 'write' }),
+        });
+        const out = await mod[entryPoint]({
+          request,
+          pathname: '/api/test-write',
+          scope,
+          idempotencyKey: 'k1',
+          corsHeaders: {},
+        });
+
+        const label = `${entryPoint} scope=${JSON.stringify(scope)}`;
+        assert.equal(out.kind, 'misconfigured', `${label} must not fall through to a fail-open kind`);
+        assert.notEqual(out.kind, 'disabled', `${label} must not reuse the Redis fail-open value`);
+        assert.equal(out.response.status, 500, label);
+        assert.equal((await out.response.json()).error, 'idempotency_scope_missing', label);
+        assert.equal(calls.length, 0, `${label} must not reach Redis`);
+        mock.restoreAll();
+      }
+    });
+  }
+
+  // Positive control for the test above: without it, a harness that silently
+  // stopped reaching fetch would make every `calls.length === 0` assertion pass
+  // vacuously. A valid scope must still claim the key and hit Redis exactly once.
+  it('a valid scope still reaches Redis and claims the key (positive control)', async () => {
+    const calls = installRedisPipelineMock(() => [{ result: 'OK' }, { result: null }]);
+    const { beginStandaloneIdempotency } = await importFreshIdempotencyModule();
+
+    const out = await beginStandaloneIdempotency({
+      request: makeRequest(),
+      pathname: '/api/test-write',
+      scope: 'user:user_1',
+      idempotencyKey: 'k1',
+      corsHeaders: {},
+    });
+
+    assert.equal(out.kind, 'proceed');
+    assert.equal(calls.length, 1);
+  });
+
   it('claims a new key with SET NX EX and returns a store function', async () => {
     const calls = installRedisPipelineMock((commands) => {
       assert.deepEqual(commands[0].slice(0, 2), ['SET', commands[0][1]]);

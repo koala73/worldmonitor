@@ -31,7 +31,8 @@ export async function getFuelShortageDetail(
     };
   }
 
-  const raw = (await getCachedJson(FUEL_SHORTAGES_KEY)) as RawRegistry | null;
+  // Seeder writes via raw key (no env-prefix) — match it on read.
+  const raw = (await getCachedJson(FUEL_SHORTAGES_KEY, true)) as RawRegistry | null;
   const entry = raw?.shortages?.[req.shortageId];
   if (!entry) {
     return {

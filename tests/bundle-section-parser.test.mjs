@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -21,6 +21,7 @@ import {
   resolveExpr,
   stripLineComments,
 } from './helpers/bundle-section-parser.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 // ── Resolver ─────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ test('resolver: follows a relative named import to a sibling module', () => {
   // that section at all. The cycle guard must key on the FILE, not its
   // directory, or importing from a sibling in the same folder looks like a
   // self-reference and resolves to null.
-  const dir = mkdtempSync(join(tmpdir(), 'wm-bundle-parser-'));
+  const dir = createTempDir('wm-bundle-parser-');
   const bundlePath = join(dir, 'seed-bundle-sample.mjs');
   writeFileSync(join(dir, 'seed-thing.mjs'), 'export const THING_TIMEOUT_MS = 300_000;\n');
   const src = "import { THING_TIMEOUT_MS } from './seed-thing.mjs';\n";
@@ -85,7 +86,7 @@ test('resolver: follows a relative named import to a sibling module', () => {
 });
 
 test('resolver: follows a renamed named import', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'wm-bundle-parser-'));
+  const dir = createTempDir('wm-bundle-parser-');
   const bundlePath = join(dir, 'seed-bundle-sample.mjs');
   writeFileSync(join(dir, 'seed-thing.mjs'), 'export const RAW_MS = 120_000;\n');
   const src = "import { RAW_MS as SECTION_MS } from './seed-thing.mjs';\n";
@@ -94,7 +95,7 @@ test('resolver: follows a renamed named import', () => {
 });
 
 test('resolver: a bare package specifier is not followed', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'wm-bundle-parser-'));
+  const dir = createTempDir('wm-bundle-parser-');
   const bundlePath = join(dir, 'seed-bundle-sample.mjs');
   const src = "import { SOME_MS } from 'some-package';\n";
   writeFileSync(bundlePath, src);
@@ -304,7 +305,7 @@ test('stripLineComments: division and keyword-prefixed regexes stay intact', () 
 
 test('resolver: follows a named import from a default-plus-named statement', () => {
   // `import def, { X } from './y.mjs'` used to be invisible to the resolver.
-  const dir = mkdtempSync(join(tmpdir(), 'wm-bundle-parser-'));
+  const dir = createTempDir('wm-bundle-parser-');
   const bundlePath = join(dir, 'seed-bundle-sample.mjs');
   writeFileSync(join(dir, 'seed-thing.mjs'), 'export const THING_MS = 90_000;\n');
   const src = "import defaultThing from './other.mjs';\nimport base, { THING_MS } from './seed-thing.mjs';\n";
@@ -313,7 +314,7 @@ test('resolver: follows a named import from a default-plus-named statement', () 
 });
 
 test('resolver: follows an `export { X } from` re-export', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'wm-bundle-parser-'));
+  const dir = createTempDir('wm-bundle-parser-');
   const bundlePath = join(dir, 'seed-bundle-sample.mjs');
   writeFileSync(join(dir, 'origin.mjs'), 'export const ORIGIN_MS = 45_000;\n');
   writeFileSync(join(dir, 'middle.mjs'), "export { ORIGIN_MS as SHARED_MS } from './origin.mjs';\n");
