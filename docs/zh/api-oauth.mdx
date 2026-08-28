@@ -103,7 +103,7 @@ refresh_token=<from previous exchange>
 client_id=<from DCR>
 ```
 
-**速率限制**:10 次令牌请求 / 分钟。限制器按键依据为:`client_credentials` 按 `client_secret` 哈希,有 `client_id` 时(`authorization_code` 与 `refresh_token`)按 `client_id`,两者均不可用时才回退到调用方 IP。
+**速率限制**:10 次令牌请求 / 分钟。限制器按键依据为:`client_credentials` 按 `client_secret` 哈希,有 `client_id` 时(`authorization_code` 与 `refresh_token`)按 `client_id`,两者均不可用时才回退到调用方 IP。三种授权类型在限流器未配置或抛错时均失败开放；此时响应带有 `X-RateLimit-Mode: degraded`（已列入 `Access-Control-Expose-Headers`），以便运营方与跨域客户端区分健康限流放行与降级放行。Redis 存储故障时令牌持久化仍失败关闭。
 
 **令牌 TTL**:
 
