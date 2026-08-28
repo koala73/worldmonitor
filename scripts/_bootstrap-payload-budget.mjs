@@ -185,6 +185,24 @@ export const BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST = Object.freeze({
   }),
 });
 
+/**
+ * Supported keys that are legal in a published ledger but absent from the
+ * Iran-disabled 2026-08-21 capture. Turning `IRAN_EVENTS_ENABLED` on must not
+ * generate a recurring `unmeasured-key` warning every publish cycle. These
+ * keys still have no frozen size, so they must not become CI pass/fail.
+ */
+export const FEATURE_GATED_UNCAPTURED_KEYS = Object.freeze({
+  iranEvents: Object.freeze({
+    tier: 'fast',
+    gate: 'IRAN_EVENTS_ENABLED',
+    rationale: 'Iran-attacks layer; omitted from the 2026-08-21 public capture because the sunset gate was off.',
+  }),
+});
+
+function isFeatureGatedUncapturedKey(tier, key) {
+  return FEATURE_GATED_UNCAPTURED_KEYS[key]?.tier === tier;
+}
+
 export function materialGrowthAllowanceBytes(capturedBytes, budget) {
   return Math.max(
     budget.materialGrowthFloorBytes,
@@ -237,7 +255,9 @@ export function evaluatePublishedBootstrapVolume(tier, ledger) {
 
     const capturedBytes = CAPTURED_KEY_DECODED_BYTES[key];
     if (!Number.isInteger(capturedBytes)) {
-      alerts.push({ kind: 'unmeasured-key', tier, key, bytes: valueBytes });
+      if (!isFeatureGatedUncapturedKey(tier, key)) {
+        alerts.push({ kind: 'unmeasured-key', tier, key, bytes: valueBytes });
+      }
       continue;
     }
 

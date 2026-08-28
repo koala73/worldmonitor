@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST,
   CAPTURED_KEY_DECODED_BYTES,
+  FEATURE_GATED_UNCAPTURED_KEYS,
   FINAL_TIER_DECODED_BYTE_CEILINGS,
   evaluatePublishedBootstrapVolume,
   materialGrowthAllowanceBytes,
@@ -45,6 +46,31 @@ describe('published bootstrap volume evaluation', () => {
     assert.equal(result.alerts[1].key, 'naturalEvents');
     assert.equal(result.alerts[1].allowanceBytes, allowance);
     assert.equal(result.alerts[2].key, 'mysteryKey');
+  });
+
+  it('does not alert on feature-gated keys omitted from the Iran-disabled capture', () => {
+    const iranBytes = 12_345;
+    const result = evaluatePublishedBootstrapVolume('fast', {
+      totalBytes: iranBytes,
+      keys: [
+        { key: 'iranEvents', valueBytes: iranBytes },
+        { key: 'mysteryKey', valueBytes: 12 },
+      ],
+    });
+    assert.equal(FEATURE_GATED_UNCAPTURED_KEYS.iranEvents.tier, 'fast');
+    assert.deepEqual(result.alerts, [
+      { kind: 'unmeasured-key', tier: 'fast', key: 'mysteryKey', bytes: 12 },
+    ]);
+  });
+
+  it('still treats a gated key on the wrong tier as unmeasured', () => {
+    const result = evaluatePublishedBootstrapVolume('slow', {
+      totalBytes: 99,
+      keys: [{ key: 'iranEvents', valueBytes: 99 }],
+    });
+    assert.deepEqual(result.alerts, [
+      { kind: 'unmeasured-key', tier: 'slow', key: 'iranEvents', bytes: 99 },
+    ]);
   });
 
   it('ignores growth at or under the 5% / 2 KiB floor', () => {

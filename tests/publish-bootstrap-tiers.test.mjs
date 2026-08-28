@@ -145,6 +145,18 @@ describe('publishBootstrapTier', () => {
     assert.equal(result.volume.alerts[0].kind, 'unmeasured-key');
   });
 
+  it('does not warn as unmeasured when the Iran sunset gate publishes iranEvents', async () => {
+    const result = await publishBootstrapTier('fast', {
+      env: TEST_ENV,
+      resolveRegistry: () => ({ fast: { iranEvents: 'conflict:iran-events:v1' } }),
+      fetchFn: async () => pipelineResponse([raw({ events: [] })]),
+      resolveStorage: () => ({ mode: 's3' }),
+      putObject: async () => ({ bytes: 10 }),
+    });
+    assert.equal(result.keyBytes.iranEvents, Buffer.byteLength(JSON.stringify({ events: [] }), 'utf8'));
+    assert.deepEqual(result.volume.alerts, []);
+  });
+
   it('returns only the five largest key-size fields without payload values', async () => {
     const registry = Object.fromEntries(
       ['a', 'b', 'c', 'd', 'e', 'f'].map((key) => [key, `${key}:redis`]),
