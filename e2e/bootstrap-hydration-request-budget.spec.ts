@@ -653,6 +653,10 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
         `an aborted fast tier must leave the ${dataset.key} fallback available`,
       ).toBeGreaterThan(0);
     }
+    expect(
+      log.counts.insights ?? 0,
+      'a hydration miss must issue at most one ?keys=insights request per page load (#7290)',
+    ).toBeLessThanOrEqual(1);
 
     // The abort must not cost the slow tier its reuse contract.
     for (const dataset of HYDRATION_DATASETS.filter((entry) => entry.tier === 'slow')) {

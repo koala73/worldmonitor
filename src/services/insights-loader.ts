@@ -59,6 +59,15 @@ export interface ServerInsights {
 }
 
 let cached: ServerInsights | null = null;
+let inFlight: Promise<ServerInsights | null> | null = null;
+/**
+ * True once this page consumed a hydrated insights payload that failed
+ * validation. The slot is drain-once and this loader is the only
+ * `getHydratedData('insights')` reader, so retrying `?keys=insights` would
+ * repeat the same CDN body. Remember the miss for the page so the three
+ * consumers do not each open that request (#7290).
+ */
+let rejectedHydration = false;
 // Server cron interval: scripts/seed-insights.mjs runs every 30 min
 // (CACHE_TTL=10800s/3h, maxStaleMin: 30). The previous 15-min freshness gate
 // was strictly less than the cron interval, so the panel spent ~50% of every
@@ -77,15 +86,25 @@ function validateInsights(raw: unknown): ServerInsights | null {
   return isAcceptedInsightsSnapshot(raw) ? raw as ServerInsights : null;
 }
 
+function consumeHydration(): ServerInsights | null {
+  if (rejectedHydration) return null;
+  const raw = getHydratedData('insights');
+  if (raw === undefined) return null;
+  const data = validateInsights(raw);
+  if (data) {
+    cached = data;
+    return data;
+  }
+  rejectedHydration = true;
+  return null;
+}
+
 export function getServerInsights(): ServerInsights | null {
   if (cached && isFresh(cached)) {
     return cached;
   }
   cached = null;
-
-  const data = validateInsights(getHydratedData('insights'));
-  if (data) cached = data;
-  return data;
+  return consumeHydration();
 }
 
 /**
@@ -94,9 +113,13 @@ export function getServerInsights(): ServerInsights | null {
  * null because the bootstrap hydration cache is empty — typically:
  *   - mobile fast-tier abort on 4G (bootstrap.ts:179 — 1.2 s budget),
  *   - cached value went stale (>MAX_AGE_MS) with no second bootstrap fetch,
- *   - getHydratedData() was already consumed by an earlier failed validation
- *     (it deletes on read; insights-loader.ts validation drained the slot
- *     without caching, leaving subsequent reads with nothing).
+ *   - hydration never landed (empty slot — not the same as a rejected body,
+ *     which is remembered for the page and does not refetch).
+ *
+ * Concurrent callers share one in-flight promise (cleared on settle — not a
+ * second result cache). A rejected hydration payload is remembered for the
+ * page so the three consumers do not each retry the same CDN body. A settled
+ * network/validation failure does not latch; a later caller may retry.
  *
  * The bootstrap API supports `?keys=insights` filtering (api/bootstrap.js:250)
  * and is CDN-cached (s-maxage=600 for fast tier), so polling is cheap.
@@ -107,26 +130,38 @@ export function getServerInsights(): ServerInsights | null {
  * subsequent getServerInsights() calls return it without re-fetching.
  */
 export async function fetchServerInsights(timeoutMs = 5_000): Promise<ServerInsights | null> {
-  if (cached && isFresh(cached)) return cached;
-  try {
-    const resp = await fetch(toApiUrl('/api/bootstrap?keys=insights'), {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!resp.ok) return null;
-    const payload = (await resp.json()) as { data?: { insights?: unknown } };
-    const data = validateInsights(payload.data?.insights);
-    if (data) cached = data;
-    return data;
-  } catch {
-    return null;
-  }
+  const hydrated = getServerInsights();
+  if (hydrated) return hydrated;
+  if (rejectedHydration) return null;
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
+    try {
+      const resp = await fetch(toApiUrl('/api/bootstrap?keys=insights'), {
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!resp.ok) return null;
+      const payload = (await resp.json()) as { data?: { insights?: unknown } };
+      const data = validateInsights(payload.data?.insights);
+      if (data) cached = data;
+      return data;
+    } catch {
+      return null;
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }
 
 export function setServerInsights(data: ServerInsights): void {
   cached = data;
+  rejectedHydration = false;
 }
 
 /** Test-only: reset module-local cache so suites can exercise the drain-once behavior. */
 export function __resetServerInsightsCacheForTests(): void {
   cached = null;
+  inFlight = null;
+  rejectedHydration = false;
 }

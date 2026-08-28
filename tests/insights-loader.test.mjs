@@ -7,6 +7,7 @@ import {
   getServerInsights,
   __resetServerInsightsCacheForTests,
 } from '../src/services/insights-loader';
+import { __testing__ as bootstrapTesting } from '../src/services/bootstrap';
 
 describe('insights-loader', () => {
   describe('MAX_AGE_MS — server-cadence-aligned freshness window', () => {
@@ -106,11 +107,14 @@ describe('insights-loader', () => {
 
     beforeEach(() => {
       __resetServerInsightsCacheForTests();
+      bootstrapTesting.resetBootstrapForTests();
       originalFetch = globalThis.fetch;
     });
 
     afterEach(() => {
       globalThis.fetch = originalFetch;
+      __resetServerInsightsCacheForTests();
+      bootstrapTesting.resetBootstrapForTests();
     });
 
     it('REGRESSION: recovers when getServerInsights() returns null because bootstrap hydration is missing', async () => {
@@ -182,6 +186,93 @@ describe('insights-loader', () => {
         new Response(JSON.stringify({ data: { insights: stale } }), { status: 200 });
       const result = await fetchServerInsights();
       assert.equal(result, null);
+    });
+
+    it('coalesces concurrent fetches into one network request (#7290)', async () => {
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      let release;
+      const hold = new Promise((resolve) => { release = resolve; });
+      globalThis.fetch = async () => {
+        fetchCount += 1;
+        await hold;
+        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
+      };
+
+      const pending = [
+        fetchServerInsights(),
+        fetchServerInsights(),
+        fetchServerInsights(),
+      ];
+      release();
+      const [first, second, third] = await Promise.all(pending);
+      assert.equal(fetchCount, 1, 'concurrent callers must share one in-flight request');
+      assert.equal(first?.worldBrief, 'Test brief');
+      assert.equal(second, first);
+      assert.equal(third, first);
+    });
+
+    it('does not latch a settled network failure — a later call retries (#7290)', async () => {
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount += 1;
+        return new Response('upstream down', { status: 503 });
+      };
+      assert.equal(await fetchServerInsights(), null);
+      assert.equal(await fetchServerInsights(), null);
+      assert.equal(fetchCount, 2, 'in-flight lock must clear on settle so a later caller can retry');
+    });
+
+    it('does not issue one network request per consumer after invalid hydration (#7290)', async () => {
+      bootstrapTesting.seedHydrationCacheForTests({
+        insights: { ...makeValidInsights(), topStories: [] },
+      });
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount += 1;
+        return new Response(JSON.stringify({ data: { insights: makeValidInsights() } }), { status: 200 });
+      };
+
+      assert.equal(getServerInsights(), null, 'invalid hydration must not be promoted');
+      const [first, second, third] = await Promise.all([
+        fetchServerInsights(),
+        fetchServerInsights(),
+        fetchServerInsights(),
+      ]);
+      assert.equal(first, null);
+      assert.equal(second, null);
+      assert.equal(third, null);
+      assert.equal(fetchCount, 0, 'the drained invalid slot must not be retried per consumer');
+    });
+
+    it('consumes a valid FAST-tier hydration payload without a per-key fetch (#7290)', async () => {
+      const valid = makeValidInsights();
+      bootstrapTesting.seedHydrationCacheForTests({ insights: valid });
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount += 1;
+        return new Response('should not run', { status: 500 });
+      };
+
+      const first = getServerInsights();
+      assert.equal(first?.worldBrief, 'Test brief');
+      assert.equal(getServerInsights(), first, 'later readers must reuse the module cache, not re-drain');
+      assert.equal(await fetchServerInsights(), first);
+      assert.equal(fetchCount, 0, 'accepted FAST-tier hydration must not fall through to ?keys=insights');
+    });
+
+    it('fetchServerInsights consumes unused hydration before opening a network request (#7290)', async () => {
+      const valid = makeValidInsights();
+      bootstrapTesting.seedHydrationCacheForTests({ insights: valid });
+      let fetchCount = 0;
+      globalThis.fetch = async () => {
+        fetchCount += 1;
+        return new Response('should not run', { status: 500 });
+      };
+
+      const fetched = await fetchServerInsights();
+      assert.equal(fetched?.worldBrief, 'Test brief');
+      assert.equal(fetchCount, 0, 'the first fetch path is also a hydration reader');
     });
   });
 });
