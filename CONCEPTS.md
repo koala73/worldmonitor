@@ -636,6 +636,26 @@ having fetched nothing. See also: Section Deferral, Bundle Wall Budget.
 
 The label a market surface is allowed to show for a quote, bar, or stream: unconfigured, delayed, end-of-day, historical, stale, or — only after a separate commercial display/rebroadcast confirmation — licensed live. A configured provider key is not a Tape Claim. `Panel.setDataBadge('live')` means a fresh fetch versus a cache hit, not a licensed tape. Yahoo and seeded Finnhub quotes in this product stay delayed or end-of-day even when their keys exist. See also: Entitlement.
 
+## Forecast Resolution
+
+### Judged Resolution
+
+A published forecast whose outcome is decided by language models reading a news-evidence archive, as opposed to a hard resolution, which is decided by comparing a metric against a threshold in the same feed the forecast was scored from. Both carry a hard deadline; only the judged kind requires evidence retrieval and adjudication after that deadline passes.
+
+Sealing a judged forecast to YES or NO requires two independent judges to agree *and* each to cite an archive item by its identifier with a quote that appears in that item's own text. Both halves are load-bearing: agreement alone admits a shared hallucination, and an uncited outcome admits one manufactured from model text or from instructions planted in the archive, which is untrusted third-party content. A judgment failing either half is downgraded to VOID rather than being trusted — so VOID means *not established*, never *established false*. See also: Archive Horizon, Attempt Class.
+
+### Archive Horizon
+
+The instant past which a judged forecast can never again be resolved, because the evidence window it requires reaches further back than the evidence archive is able to serve.
+
+The horizon exists because two spans are anchored to different clocks: required evidence is measured backward from the forecast's own deadline, while the archive's reach is measured backward from the present. As the present advances, the archive's reach slides forward while the requirement stays pinned — so coverage is lost at a computable instant and is never regained. That monotonicity is what makes crossing it a terminal state rather than a retry: an entry past its horizon is not waiting on anything. Crossing it is counted as a cost-control failure, never as a resolution, and the operational goal is to alert while entries are still short of it. A read that is merely unavailable proves nothing about the horizon and must not be treated as crossing it. See also: Judged Resolution.
+
+### Attempt Class
+
+The named reason a single judge attempt failed, recorded per attempt alongside the stage it failed at — evidence retrieval, either judge call, response normalization, agreement, or the terminal transition.
+
+The vocabulary is closed so attempts aggregate into counts that name a dominant failure rather than an undifferentiated backlog; an instrumented failure is still a failure and never counts as progress. The classes separate distinctions that look alike but demand opposite responses: an archive that could not be read versus one that was read but does not cover the required window, a judge that returned nothing versus one whose answer could not be parsed, and a citation naming an item the judge was never shown versus a real item quoted with invented text. Recorded attempt detail is drawn from a fixed vocabulary rather than from provider error text, which can carry credentials and prompt echoes into durable receipts. See also: Judged Resolution.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.

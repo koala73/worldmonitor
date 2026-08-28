@@ -9,6 +9,7 @@ import {
   composeSynthesizedBrief,
   composeSynthesizedBriefResult,
   BRIEF_REJECTIONS,
+  synthesisRejectionFeedback,
 } from '../scripts/_insights-brief.mjs';
 
 describe('pickBriefCluster', () => {
@@ -1016,5 +1017,33 @@ describe('coordinating and is grammar in the composer (AE2, AE4, AE7)', () => {
     );
     assert.equal(out.brief, null);
     assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+});
+
+
+describe('synthesisRejectionFeedback', () => {
+  it('quotes the rejected phrase back with the repair instruction', () => {
+    const note = synthesisRejectionFeedback({
+      code: BRIEF_REJECTIONS.LEAD_PROPER_NOUN,
+      detail: 'strait of hormuz',
+    });
+    assert.match(note, /"strait of hormuz"/);
+    assert.match(note, /cites the story stating it/);
+  });
+
+  it('bounds and flattens a hostile detail before quoting it into a prompt', () => {
+    const note = synthesisRejectionFeedback({
+      code: BRIEF_REJECTIONS.LEAD_NUMERIC_FACT,
+      detail: `x${'y'.repeat(500)}\nline2\tline3`,
+    });
+    assert.ok(note.length < 300, 'the correction stays bounded');
+    assert.ok(!note.includes('\n'), 'newlines are flattened');
+  });
+
+  it('maps parse and uncited rejections to their own corrections, and null to null', () => {
+    assert.match(synthesisRejectionFeedback({ code: BRIEF_REJECTIONS.PARSE }), /JSON object ONLY/);
+    assert.match(synthesisRejectionFeedback({ code: BRIEF_REJECTIONS.LEAD_UNCITED }), /bracket number/);
+    assert.equal(synthesisRejectionFeedback(null), null);
+    assert.equal(synthesisRejectionFeedback({}), null);
   });
 });

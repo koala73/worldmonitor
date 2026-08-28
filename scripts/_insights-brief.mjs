@@ -73,6 +73,44 @@ export const BRIEF_REJECTIONS = Object.freeze({
  * independent reporting signal — corroboration as a hard requirement, not a
  * tiebreaker.
  */
+// Turn a gate rejection into a bounded correction the NEXT sample can obey.
+//
+// The gates were a filter with no feedback path: the rejection named what was
+// wrong (#6995) and the information went only to the log, so the retry got the
+// identical prompt. At temperature 0.1 with a story set that rotates over
+// hours, the identical prompt returns the identical draft — measured on
+// 2026-08-28 as 25 consecutive INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN rejections
+// on the same phrase, every cycle for four hours, while the brief served an
+// aging LKG. Telling the model what was rejected is the missing half of the
+// gate: rejection becomes repair.
+//
+// The detail is bounded and whitespace-flattened before it is quoted back:
+// it is model-authored text going into a prompt, not a log, but the same
+// no-unbounded-payload rule applies.
+const REJECTION_FEEDBACK_MAX_DETAIL_CHARS = 80;
+
+export function synthesisRejectionFeedback(rejection) {
+  const code = rejection?.code;
+  if (!code) return null;
+  const detail = typeof rejection?.detail === 'string'
+    ? rejection.detail.replace(/\s+/g, ' ').trim().slice(0, REJECTION_FEEDBACK_MAX_DETAIL_CHARS)
+    : '';
+  switch (code) {
+    case BRIEF_REJECTIONS.LEAD_PROPER_NOUN:
+    case BRIEF_REJECTIONS.LEAD_NUMERIC_FACT:
+      if (detail) {
+        return `Correction: your previous draft was rejected because "${detail}" does not appear in any story its sentence cited. Remove it, or move that claim into a sentence that cites the story stating it.`;
+      }
+      return 'Correction: your previous draft was rejected because a lead claim was not supported by the stories its sentence cited. Every name, place and number must appear in a cited story.';
+    case BRIEF_REJECTIONS.LEAD_UNCITED:
+      return 'Correction: your previous draft was rejected because a lead sentence carried no citation. End every lead sentence with the bracket number(s) of the stories it draws from.';
+    case BRIEF_REJECTIONS.PARSE:
+      return 'Correction: your previous response was not the required JSON shape. Respond with the JSON object ONLY — no markdown fences, no commentary.';
+    default:
+      return 'Correction: your previous draft was rejected by an editorial gate. Follow the rules exactly: cite every claim, and use only facts present in the numbered story text.';
+  }
+}
+
 export function pickBriefCluster(topStories) {
   if (!Array.isArray(topStories)) return null;
   return topStories.find(isBriefLeadEligible) ?? null;

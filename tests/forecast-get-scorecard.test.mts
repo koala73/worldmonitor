@@ -71,6 +71,30 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(res.error, '');
   });
 
+  it('does not serve the internal judgedLane block on the typed response (#7068)', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      result: JSON.stringify({
+        _seed: { fetchedAt: Date.now(), recordCount: 1, sourceVersion: 'test', schemaVersion: 1, state: 'OK' },
+        data: {
+          schemaVersion: 1,
+          generatedAt: 456,
+          rollingWindowDays: 180,
+          methodology: 'test methodology',
+          totals: { entries: 1, resolved: 1, pending: 0, pendingJudge: 0, scored: 1, void: 0, voidRate: 0, publicationCoverage: 1 },
+          // Operator observability written by the resolutions seeder. It is not
+          // in the proto, so it must not ride out on this typed response.
+          judgedLane: { pendingJudge: 3, attemptClasses: { archive_incomplete: 9 }, scoredWithinSlaRate: 0.5 },
+        },
+      }),
+    }), { status: 200 })) as typeof fetch;
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.equal(res.totals?.entries, 1, 'declared fields still pass through');
+    assert.equal(JSON.stringify(res).includes('judgedLane'), false);
+    assert.equal(JSON.stringify(res).includes('archive_incomplete'), false);
+  });
+
   it('marks cached scorecards stale when the seed envelope is older than the health budget', async () => {
     globalThis.fetch = (async () => {
       return new Response(JSON.stringify({
