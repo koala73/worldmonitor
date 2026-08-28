@@ -408,7 +408,7 @@ intentionally differ from those digest prose and `whyMatters` surfaces:
 `scripts/regional-snapshot/weekly-brief.mjs`
 tries OpenRouter first with `deepseek/deepseek-v4-flash`, then the fixed free
 OpenRouter models `google/gemma-4-26b-a4b-it:free` and
-`openai/gpt-oss-20b:free`, then Groq `openai/gpt-oss-20b`. It sends every
+`minimax/minimax-m3:free`, then Groq `openai/gpt-oss-20b`. It sends every
 provider temperature `0.3` because the output is structured weekly JSON for regional snapshots
 rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"
