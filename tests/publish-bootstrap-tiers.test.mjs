@@ -160,6 +160,66 @@ describe('publishBootstrapTier', () => {
     assert.equal(JSON.stringify(result.largestKeys).includes('xxxxxx'), false);
   });
 
+  // #7288: the PR gate can only see tier MEMBERSHIP. It looks each key up in
+  // the frozen 2026-08-21 ledger, so a key whose production row count doubles
+  // moves no number the budget suite reads. Between the 08-27 and 08-28
+  // scheduled runs the slow tier grew +223,845 B decoded on desktop and
+  // +133,874 B on mobile with no membership change, pushing mobile past its
+  // 3,000 ms abort. The publisher is the only place that sees the bytes
+  // actually shipped.
+  it('reports a clean byte budget for a payload inside its ceilings (#7288)', async () => {
+    const result = await publishBootstrapTier('fast', {
+      env: TEST_ENV,
+      resolveRegistry: () => ({ fast: { marketQuotes: 'markets:quotes' } }),
+      fetchFn: async () => pipelineResponse([raw({ quotes: [] })]),
+      resolveStorage: () => ({ mode: 's3' }),
+      putObject: async () => ({ bytes: 10 }),
+    });
+
+    assert.equal(result.budget.ok, true);
+    assert.deepEqual(result.budget.violations, []);
+  });
+
+  it('reports a per-key violation when a shipped key outgrows its captured bytes (#7288)', async () => {
+    // marketQuotes was captured at 296,547 B. The manifest's material threshold
+    // is 5% of that, so an order-of-magnitude row-count growth inside one key —
+    // exactly the drift that is invisible to membership — must be named.
+    const bloated = { quotes: Array.from({ length: 20_000 }, (_, index) => ({
+      symbol: `WM${index}`, name: `Representative Equity ${index}`, price: 1000 + index, change: 0.1,
+    })) };
+    const result = await publishBootstrapTier('fast', {
+      env: TEST_ENV,
+      resolveRegistry: () => ({ fast: { marketQuotes: 'markets:quotes' } }),
+      fetchFn: async () => pipelineResponse([raw(bloated)]),
+      resolveStorage: () => ({ mode: 's3' }),
+      putObject: async () => ({ bytes: 10 }),
+    });
+
+    assert.equal(result.budget.ok, false);
+    assert.match(
+      result.budget.violations.join('\n'),
+      /fast\.marketQuotes \d+ B exceeds captured 296547 B/,
+    );
+  });
+
+  it('publishes the payload even when the budget is exceeded (#7288)', async () => {
+    // #7045 forbids turning a mutable production observation into a pass/fail
+    // gate. A budget breach is an alert; refusing to publish would take the
+    // dashboard down over a size regression.
+    let puts = 0;
+    const bloated = { quotes: Array.from({ length: 20_000 }, (_, index) => ({ symbol: `WM${index}` })) };
+    const result = await publishBootstrapTier('fast', {
+      env: TEST_ENV,
+      resolveRegistry: () => ({ fast: { marketQuotes: 'markets:quotes' } }),
+      fetchFn: async () => pipelineResponse([raw(bloated)]),
+      resolveStorage: () => ({ mode: 's3' }),
+      putObject: async () => { puts += 1; return { bytes: 10 }; },
+    });
+
+    assert.equal(puts, 1, 'a budget breach must not block the publish');
+    assert.equal(result.budget.ok, false);
+  });
+
   it('performs no PUT when Redis assembly fails', async () => {
     let puts = 0;
     await assert.rejects(publishBootstrapTier('slow', {
@@ -211,6 +271,36 @@ describe('runPublisherLoop', () => {
     assert.equal(maxActive, 1);
     assert.deepEqual(calls.map(([tier]) => tier), ['fast', 'slow', 'fast', 'fast', 'fast', 'fast']);
     assert.deepEqual(calls.map(([, at]) => at), [0, 30_000, 120_000, 240_000, 360_000, 480_000]);
+  });
+
+  it('warns loudly on a byte-budget violation and stays quiet otherwise (#7288)', async () => {
+    const warnings = [];
+    const infos = [];
+    const results = [
+      { tier: 'fast', generatedAt: 1, budget: { ok: true, violations: [] } },
+      {
+        tier: 'slow',
+        generatedAt: 2,
+        budget: { ok: false, violations: ['slow aggregate 2000000 B exceeds final target 1482865 B'] },
+      },
+    ];
+    let index = 0;
+    await runPublisherLoop({
+      publishTier: async () => results[index++],
+      now: () => 0,
+      sleep: async () => {},
+      maxPublishes: 2,
+      logger: {
+        info: (...args) => infos.push(args),
+        warn: (...args) => warnings.push(args),
+        error() {},
+      },
+    });
+
+    assert.equal(infos.length, 2, 'every publish still logs its normal line');
+    assert.equal(warnings.length, 1, 'only the violating publish warns');
+    assert.match(String(warnings[0][0]), /budget/i);
+    assert.match(String(warnings[0][0]), /exceeds final target/);
   });
 
   it('does not begin another publish after shutdown is requested', async () => {

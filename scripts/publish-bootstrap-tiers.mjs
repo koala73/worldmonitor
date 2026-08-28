@@ -2,6 +2,7 @@
 
 import { pathToFileURL } from 'node:url';
 
+import { bootstrapPayloadBudgetViolations } from '../shared/bootstrap-payload-budget.js';
 import {
   BOOTSTRAP_CACHE_KEYS,
   bootstrapTierKeyNames,
@@ -221,6 +222,7 @@ export async function publishBootstrapTier(tier, options = {}) {
     .sort((left, right) => right.bytes - left.bytes || left.key.localeCompare(right.key))
     .slice(0, PUBLISHER_LARGEST_KEY_LIMIT)
     .map(({ key, bytes }) => ({ key, bytes }));
+  const budget = evaluatePublishedPayloadBudget(tier, payloadLedger);
   const resolveStorage = options.resolveStorage
     ?? (storageEnv => resolveR2StorageConfig(storageEnv, { profile: 'bootstrap' }));
   const storage = resolveStorage(env);
@@ -247,8 +249,41 @@ export async function publishBootstrapTier(tier, options = {}) {
     bytes: write?.bytes ?? null,
     payloadBytes: payloadLedger.totalBytes,
     largestKeys,
+    budget,
     kv,
   };
+}
+
+/**
+ * Measure the payload that was actually published against the frozen ledger
+ * and the tier ceilings (#7288).
+ *
+ * The PR-time budget suite can only see tier MEMBERSHIP: it looks each key up
+ * in `CAPTURED_KEY_DECODED_BYTES`, so a key whose production row count doubles
+ * moves no number it reads, and its 5% per-key growth check runs against
+ * synthetic representative fixtures rather than production volume. Between the
+ * 2026-08-27 and 2026-08-28 scheduled DebugBear runs the slow tier grew
+ * +223,845 B decoded on desktop and +133,874 B on mobile with no membership
+ * change at all, pushing the mobile response past its 3,000 ms abort and
+ * re-triggering 130,357 B of the per-panel fallbacks #7048 removed.
+ *
+ * This is an OBSERVATION, never a gate. #7045's stop conditions forbid putting
+ * mutable production values into a pull-request pass/fail check, and refusing
+ * to publish over a size regression would take the dashboard down to prevent it
+ * being slow. The caller logs; the publish proceeds either way.
+ *
+ * A key with no entry in the frozen ledger is skipped by the evaluator rather
+ * than guessed at — the PR gate is what refuses an unmeasured key into a tier.
+ */
+export function evaluatePublishedPayloadBudget(tier, payloadLedger) {
+  const keyBytes = Object.fromEntries(
+    payloadLedger.keys.map(({ key, bytes }) => [key, bytes]),
+  );
+  const violations = bootstrapPayloadBudgetViolations(tier, {
+    totalBytes: payloadLedger.totalBytes,
+    keyBytes,
+  });
+  return { ok: violations.length === 0, violations };
 }
 
 /**
@@ -323,8 +358,18 @@ export async function runPublisherLoop(options = {}) {
         payloadBytes: result?.payloadBytes ?? null,
         missing: result?.missing ?? null,
         largestKeys: result?.largestKeys ?? [],
+        budget: result?.budget?.ok === false ? 'EXCEEDED' : 'ok',
         kv: kvStatus,
       });
+      // Separate from the info line above so a log-based alert can key on this
+      // string alone. The publish already succeeded; this is the drift signal
+      // no PR gate can produce (#7288).
+      if (result?.budget?.ok === false) {
+        logger.warn?.(
+          `[bootstrap-budget] tier=${tier} published payload exceeds its byte budget: `
+          + result.budget.violations.join('; '),
+        );
+      }
     } catch (error) {
       logger.warn?.(`[bootstrap-r2] publish failed tier=${tier}: ${error?.message ?? String(error)}`);
     } finally {
