@@ -330,7 +330,7 @@ function appendJudgeAttemptRecord(entry, record) {
     normalizeClasses: Array.isArray(record.normalizeClasses) && record.normalizeClasses.length
       ? record.normalizeClasses.filter((name) => JUDGE_ATTEMPT_CLASS_SET.has(name))
       : undefined,
-    provider: cleanString(record.provider) || undefined,
+    provider: truncateText(cleanString(record.provider), 64) || undefined,
     model: truncateText(cleanString(record.model), 120) || undefined,
     coverageStartMs: toFiniteNumber(record.coverageStartMs),
     coverageEndMs: toFiniteNumber(record.coverageEndMs),
@@ -876,7 +876,10 @@ export function buildJudgedResolutionPrompt(entry, archiveItems, nowMs) {
     'A citation must name an archive item id shown below and quote text that appears in that item. Never invent an id or a quote.',
   ].join('\n');
   const archiveText = archiveItems.map((item) => [
-    `[${item.id}] ${new Date(item.publishedAt || nowMs).toISOString()}`,
+    // The id is normally a generated `N<n>` token, but it can fall back to a
+    // field carried on the archive row — so it is untrusted like the rest of
+    // the item and must not be able to close the fence either.
+    `[${sanitizeUntrustedArchiveText(item.id)}] ${new Date(item.publishedAt || nowMs).toISOString()}`,
     item.source ? `source=${sanitizeUntrustedArchiveText(item.source)}` : '',
     sanitizeUntrustedArchiveText(item.title),
     item.url ? `url=${sanitizeUntrustedArchiveText(item.url)}` : '',
@@ -919,8 +922,11 @@ function normalizeJudgment(value, archiveItems) {
   if (!raw || typeof raw !== 'object') {
     return { error: 'json_parse_fail', detail: 'unparsable_judgment' };
   }
-  const provider = cleanString(raw.provider) || undefined;
-  const model = cleanString(raw.model) || undefined;
+  // provider/model can be overridden by the judge's own JSON (parsed values win
+  // over the call-site metadata), so they are model-controlled text and get
+  // bounded like any other. They land in the persistent ledger and R2 receipts.
+  const provider = truncateText(cleanString(raw.provider), 64) || undefined;
+  const model = truncateText(cleanString(raw.model), 120) || undefined;
   const outcome = cleanString(raw.outcome ?? raw.result ?? raw.resolution).toUpperCase();
   if (!['YES', 'NO', 'VOID'].includes(outcome)) {
     return { error: 'invalid_outcome', detail: 'unrecognized_outcome', provider, model };
@@ -1187,7 +1193,10 @@ function cleanString(value) {
 function truncateText(value, maxLength) {
   const text = cleanString(value);
   if (!text || text.length <= maxLength) return text;
-  return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+  // The ellipsis counts toward the cap. Slicing to `maxLength - 1` and then
+  // appending three characters returned `maxLength + 2`, so every caller's
+  // bound was two characters wider than it declared.
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
 function toFiniteMs(value) {
