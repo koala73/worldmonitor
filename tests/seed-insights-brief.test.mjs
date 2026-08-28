@@ -207,6 +207,68 @@ describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
     assert.match(composed.lead, /U\.S\. embassies/, 'the published lead keeps its original text');
   });
 
+  it('a repaired lead survives the aggregate anchor check when the drop took the second anchor (#7253 review)', () => {
+    // Both reviewers found this independently: checkLeadGrounding demands 2
+    // combined anchor hits on a corpus with >=4 anchor tokens — calibrated for
+    // a FULL lead. Here the hallucinated sentence carried the extra anchors;
+    // dropping it leaves a fully-gated survivor with exactly one ("Kuwait"),
+    // which the aggregate check then rejected, discarding the fresh synthesis
+    // the repair had just saved.
+    const richStories = [
+      {
+        primaryTitle: 'GCC condemns Iranian attacks on Kuwait',
+        primarySource: 'The National',
+        primaryLink: 'http://gcc',
+        sources: ['The National', 'Reuters'],
+        memberTitles: ['GCC condemns Iranian attacks on Kuwait'],
+      },
+      {
+        primaryTitle: 'Pakistan Floods Devastate Punjab Province Villages',
+        primarySource: 'Dawn',
+        primaryLink: 'http://floods',
+        sources: ['Dawn', 'BBC World'],
+        memberTitles: ['Pakistan Floods Devastate Punjab Province Villages'],
+      },
+    ];
+    const richLines = [
+      { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+      { n: 2, text: 'Pakistan floods devastate Punjab villages [2]' },
+    ];
+    // Sentence 1 survives with ONE corpus anchor (Kuwait, via story 1).
+    // Sentence 2 invents Venezuela against story 2 and is dropped — taking
+    // Pakistan/Punjab, the anchors that would have satisfied threshold 2.
+    const repairedShort = JSON.stringify({
+      lead: 'Attacks were condemned in Kuwait [1]. Venezuela flooded Punjab villages [2].',
+      lines: richLines,
+    });
+    const composed = composeSynthesizedBrief(repairedShort, richStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'the shortened lead must not be re-rejected by the full-lead threshold');
+    assert.ok(!composed.lead.includes('Venezuela'), 'the invented claim still never publishes');
+    assert.match(composed.lead, /Kuwait \[1\]/);
+    assert.equal(composed.droppedLeadSentences, 1);
+
+    // The anti-mush floor is unconditional: a survivor with ZERO corpus
+    // anchors still rejects, dropped sentences or not. Requirement 1 is what
+    // the relaxed threshold deliberately does not touch.
+    const mushSurvivor = JSON.stringify({
+      lead: 'The situation worsened further overnight [1]. Venezuela flooded Punjab villages [2].',
+      lines: richLines,
+    });
+    const rejected = composeSynthesizedBriefResult(mushSurvivor, richStories, { validatorMode: 'enforce' });
+    assert.equal(rejected.brief, null);
+    assert.equal(rejected.rejection, BRIEF_REJECTIONS.LEAD_GROUNDING);
+
+    // An INTACT lead keeps the original two-hit bar: same corpus, no drops,
+    // single-anchor lead -> still rejected. The relaxation is drop-scoped.
+    const intactSingleAnchor = JSON.stringify({
+      lead: 'Attacks were widely and swiftly condemned across Kuwait [1].',
+      lines: richLines,
+    });
+    const intact = composeSynthesizedBriefResult(intactSingleAnchor, richStories, { validatorMode: 'enforce' });
+    assert.equal(intact.brief, null, 'no drop happened, so the full-lead threshold still applies');
+    assert.equal(intact.rejection, BRIEF_REJECTIONS.LEAD_GROUNDING);
+  });
+
   it('drops a genuinely uncited lead sentence and publishes the cited remainder', () => {
     // Repair policy (2026-08-28): the unverifiable sentence must never reach a
     // reader — but the cited sentence passed every gate, and rejecting the whole

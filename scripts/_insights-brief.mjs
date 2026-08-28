@@ -505,7 +505,21 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   const publishedLead = droppedLeadSentences === 0
     ? leadCheck.text
     : survivingSentences.join(' ');
-  if (!checkLeadGrounding({ lead: publishedLead }, groundingStories, topStories.length)) {
+  // #7253 review (both reviewers, independently): the aggregate anchor check
+  // demands 2 combined hits on a corpus with >=4 anchor tokens — calibrated
+  // for a FULL lead. When the repair dropped a sentence, the drop may have
+  // taken the second anchor with it, and rejecting the fully-gated survivor
+  // here would defeat the repair in exactly the case it exists for. A
+  // shortened lead is held to requirement 1 (>=1 corpus anchor in the
+  // published text — the anti-mush floor) plus a combined threshold of 1;
+  // an intact lead keeps the original bar.
+  const grounded = checkLeadGrounding(
+    { lead: publishedLead },
+    groundingStories,
+    topStories.length,
+    droppedLeadSentences > 0 ? { combinedThreshold: 1 } : {},
+  );
+  if (!grounded) {
     return reject(BRIEF_REJECTIONS.LEAD_GROUNDING);
   }
 

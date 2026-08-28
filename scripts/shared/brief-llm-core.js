@@ -1307,7 +1307,7 @@ export function groundingTokenSet(text) {
 // edge-safe module — callers with a different cap pass it explicitly.
 const DEFAULT_GROUNDING_STORY_CAP = 8;
 
-export function checkLeadGrounding(synthesis, stories, storyCap = DEFAULT_GROUNDING_STORY_CAP) {
+export function checkLeadGrounding(synthesis, stories, storyCap = DEFAULT_GROUNDING_STORY_CAP, { combinedThreshold = null } = {}) {
   if (!Array.isArray(stories) || stories.length === 0) return true;
 
   const storyTokens = new Set();
@@ -1355,7 +1355,14 @@ export function checkLeadGrounding(synthesis, stories, storyCap = DEFAULT_GROUND
       combinedTokens.add(w);
     }
   }
-  const threshold = storyTokens.size >= 4 ? 2 : 1;
+  // combinedThreshold override (#7253 review): the 2-hit requirement is
+  // calibrated for a FULL 2-3 sentence lead. A lead the repair path shortened
+  // may have lost the sentence that carried the second anchor, so its caller
+  // passes 1 — requirement 1 above still stands unconditionally, which is what
+  // keeps an anchor-free mush lead rejected even at the relaxed threshold.
+  const threshold = Number.isInteger(combinedThreshold) && combinedThreshold > 0
+    ? combinedThreshold
+    : (storyTokens.size >= 4 ? 2 : 1);
   let combinedHits = 0;
   for (const tok of storyTokens) {
     if (combinedTokens.has(tok)) {
