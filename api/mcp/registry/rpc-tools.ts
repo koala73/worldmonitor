@@ -262,9 +262,30 @@ type SeededWorldBriefProjection =
   | { value: Record<string, unknown> }
   | { reason: string };
 
-function projectSeededWorldBrief(raw: unknown): SeededWorldBriefProjection {
-  const snapshotRejection = insightsSnapshotRejection(raw);
-  if (snapshotRejection !== null) return { reason: snapshotRejection };
+function projectSeededWorldBrief(raw: unknown, nowMs = Date.now()): SeededWorldBriefProjection {
+  const snapshotRejection = insightsSnapshotRejection(raw, nowMs);
+  // `stale-snapshot` is the ONE rejection that is reported rather than thrown.
+  //
+  // The producer deliberately preserves last-known-good when synthesis fails —
+  // `scripts/seed-insights.mjs` has two explicit branches for it and a whole
+  // LKG_PRESERVED outcome — and this consumer used to throw that work away 60
+  // minutes later, so a Pro caller got a hard error while a complete, valid
+  // brief sat in Redis for another two hours (the key's TTL is 3h; the gate is
+  // 1h). Measured 2026-08-28 during WORLDMONITOR-YJ: 10362s of TTL remaining
+  // against a 60-minute gate. An hour-old world brief, clearly labelled, beats
+  // an error an agent can do nothing with — and the 3h TTL, not this code, is
+  // what bounds how old "stale" can ever get.
+  //
+  // Every OTHER reason still fails closed, because each means the payload is
+  // absent or broken rather than merely old: no stories, no brief text, a
+  // timestamp that is unparseable or in the future (corruption, and with no
+  // trustworthy clock there is no honest age to report), or a producer that
+  // disclaimed its own output via `status`. Age is forgiven only when
+  // everything else about the snapshot is sound.
+  if (snapshotRejection !== null && snapshotRejection !== 'stale-snapshot') {
+    return { reason: snapshotRejection };
+  }
+  const stale = snapshotRejection === 'stale-snapshot';
   if (!isRecord(raw)) return { reason: 'malformed-snapshot' };
   const payload = raw as SeededWorldBriefPayload;
   const brief = typeof payload.worldBrief === 'string' ? payload.worldBrief.trim() : '';
@@ -273,10 +294,16 @@ function projectSeededWorldBrief(raw: unknown): SeededWorldBriefProjection {
 
   // Reuse the dashboard's freshness/shape acceptance, then apply MCP-specific
   // output requirements. Never substitute an on-demand LLM result when the
-  // seeded producer has degraded: an empty or stale snapshot is safer than
-  // returning an ungated brief.
+  // seeded producer has degraded: an empty snapshot is safer than returning an
+  // ungated brief.
   if (!brief) return { reason: 'empty-brief' };
   if (payload.status !== 'ok') return { reason: 'status-not-ok' };
+
+  // Safe by construction: `insightsSnapshotRejection` already rejected a
+  // missing, unparseable, or future `generatedAt`, so the only survivors parse
+  // to a finite past instant. Floored at 0 so clock skew cannot report a
+  // negative age.
+  const ageMinutes = Math.max(0, Math.round((nowMs - Date.parse(generatedAt)) / 60_000));
 
   const headlines: string[] = [];
   const storyCorroboration: McpWorldBriefStory[] = [];
@@ -316,6 +343,11 @@ function projectSeededWorldBrief(raw: unknown): SeededWorldBriefProjection {
     provider,
     model,
     generatedAt,
+    // Reported on EVERY response, not just stale ones. A field that appears
+    // only when something is wrong is one an agent never learns to read, and
+    // its absence would be ambiguous between "fresh" and "old client".
+    stale,
+    ageMinutes,
     sources: sources as McpBriefSource[],
   } };
 }
@@ -996,7 +1028,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_world_brief',
     _outputBudgetBytes: 65536,
-    description: 'Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, and the outlet names themselves. Legacy snapshots omit corroboration fields they did not publish.',
+    description: 'Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, and the outlet names themselves. Legacy snapshots omit corroboration fields they did not publish. When the seeder has not published inside the 60-minute freshness window the last-known-good snapshot is served rather than failing, flagged by stale:true with ageMinutes — the content is unchanged and still fully gated, so weigh its age rather than discarding it. A snapshot that is absent or broken, rather than merely old, still reports the source as unavailable.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1033,6 +1065,8 @@ export const RPC_TOOLS: ToolDef[] = [
         provider: { type: 'string', description: 'LLM provider used by the insights seeder.' },
         model: { type: 'string', description: 'LLM model used by the insights seeder.' },
         generatedAt: { type: ['string', 'number', 'null'] },
+        stale: { type: 'boolean', description: 'True when the snapshot is older than the 60-minute freshness gate and is being served as last-known-good because the seeder has not published since. Always present, on fresh responses too. The content is unchanged and still fully gated — only its age is in question — so weigh it for time-sensitive decisions rather than discarding it.' },
+        ageMinutes: { type: 'number', description: 'Whole minutes between generatedAt and the response. Always present. Bounded in practice by the snapshot key TTL (3h), after which the tool reports the source unavailable instead.' },
         sources: {
           type: 'array',
           description: 'Producer citation records in original order; empty URLs are retained as fallbacks so citation indexes cannot shift.',
