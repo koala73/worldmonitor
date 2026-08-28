@@ -188,6 +188,109 @@ describe('insights-loader', () => {
       assert.equal(result, null);
     });
 
+    it('keeps the coalesced fetch alive for the longest caller budget (#7293)', async () => {
+      // ProActivationInterstitial starts with 2500 ms; InsightsPanel and
+      // ThreatTimelinePanel use the 5000 ms default. Sharing inFlight must
+      // not pin the abort to the first (shorter) caller.
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      let release;
+      const hold = new Promise((resolve) => { release = resolve; });
+      globalThis.fetch = async (_url, init) => {
+        fetchCount += 1;
+        const signal = init?.signal;
+        await Promise.race([
+          hold,
+          new Promise((_, reject) => {
+            const fail = () => {
+              const err = new Error('aborted');
+              err.name = signal?.reason?.name || 'AbortError';
+              reject(err);
+            };
+            if (!signal) return;
+            if (signal.aborted) {
+              fail();
+              return;
+            }
+            signal.addEventListener('abort', fail, { once: true });
+          }),
+        ]);
+        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
+      };
+
+      const short = fetchServerInsights(40);
+      await Promise.resolve();
+      const long = fetchServerInsights(200);
+      await new Promise((resolve) => setTimeout(resolve, 70));
+      release();
+      const [shortResult, longResult] = await Promise.all([short, long]);
+      assert.equal(fetchCount, 1, 'overlapping callers still share one request');
+      assert.equal(longResult?.worldBrief, 'Test brief', 'the 200ms caller must survive the first caller\'s 40ms abort');
+      assert.equal(shortResult, longResult);
+    });
+
+    it('does not shrink an in-flight abort when a shorter caller joins (#7293)', async () => {
+      const valid = makeValidInsights();
+      let fetchCount = 0;
+      let release;
+      const hold = new Promise((resolve) => { release = resolve; });
+      globalThis.fetch = async (_url, init) => {
+        fetchCount += 1;
+        const signal = init?.signal;
+        await Promise.race([
+          hold,
+          new Promise((_, reject) => {
+            const fail = () => {
+              const err = new Error('aborted');
+              err.name = signal?.reason?.name || 'AbortError';
+              reject(err);
+            };
+            if (!signal) return;
+            if (signal.aborted) {
+              fail();
+              return;
+            }
+            signal.addEventListener('abort', fail, { once: true });
+          }),
+        ]);
+        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
+      };
+
+      const long = fetchServerInsights(200);
+      await Promise.resolve();
+      const short = fetchServerInsights(40);
+      await new Promise((resolve) => setTimeout(resolve, 70));
+      release();
+      const [longResult, shortResult] = await Promise.all([long, short]);
+      assert.equal(fetchCount, 1);
+      assert.equal(longResult?.worldBrief, 'Test brief');
+      assert.equal(shortResult, longResult);
+    });
+
+    it('still aborts a solo insights fetch at its own timeout (#7293)', async () => {
+      let aborted = false;
+      globalThis.fetch = async (_url, init) => {
+        await new Promise((_, reject) => {
+          const signal = init?.signal;
+          const fail = () => {
+            aborted = true;
+            const err = new Error('aborted');
+            err.name = signal?.reason?.name || 'AbortError';
+            reject(err);
+          };
+          if (!signal) return;
+          if (signal.aborted) {
+            fail();
+            return;
+          }
+          signal.addEventListener('abort', fail, { once: true });
+        });
+      };
+      const result = await fetchServerInsights(30);
+      assert.equal(result, null);
+      assert.equal(aborted, true);
+    });
+
     it('coalesces concurrent fetches into one network request (#7290)', async () => {
       const valid = makeValidInsights();
       let fetchCount = 0;
@@ -210,37 +313,6 @@ describe('insights-loader', () => {
       assert.equal(first?.worldBrief, 'Test brief');
       assert.equal(second, first);
       assert.equal(third, first);
-    });
-
-    it('keeps a longer coalesced caller alive when a preview times out first (#7290)', async () => {
-      const valid = makeValidInsights();
-      let fetchCount = 0;
-      globalThis.fetch = async (_url, init = {}) => {
-        fetchCount += 1;
-        const signal = init?.signal;
-        await new Promise((resolve, reject) => {
-          const timer = setTimeout(resolve, 80);
-          const abort = () => {
-            clearTimeout(timer);
-            const err = new Error('aborted');
-            err.name = 'AbortError';
-            reject(err);
-          };
-          if (signal?.aborted) {
-            abort();
-            return;
-          }
-          signal?.addEventListener('abort', abort, { once: true });
-        });
-        return new Response(JSON.stringify({ data: { insights: valid } }), { status: 200 });
-      };
-
-      const preview = fetchServerInsights(10);
-      const panel = fetchServerInsights(250);
-      const [previewResult, panelResult] = await Promise.all([preview, panel]);
-      assert.equal(previewResult, null, 'short preview caller should keep its own timeout');
-      assert.equal(panelResult?.worldBrief, 'Test brief', 'longer panel caller should still recover');
-      assert.equal(fetchCount, 1, 'callers with different timeouts still share one network request');
     });
 
     it('does not latch a settled network failure — a later call retries (#7290)', async () => {
