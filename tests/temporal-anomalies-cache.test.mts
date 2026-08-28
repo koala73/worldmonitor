@@ -652,6 +652,23 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     );
   });
 
+  it('fails closed on declared partial FIRMS coverage even when surviving rows are live', () => {
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, 12 * 60_000),
+      satellite_fires: {
+        ...liveFires(NOW, 15 * 60_000),
+        _firmsState: 'ok',
+        _firmsPartial: true,
+      },
+    }, NOW);
+
+    assert.equal(
+      meta,
+      null,
+      'known missing FIRMS regions must not let surviving rows stamp complete coverage as fresh',
+    );
+  });
+
   it('fails closed on a silent FIRMS outage (_firmsState ok, _firmsCount 0)', () => {
     // The shape the canonical merge published BEFORE the #7141 follow-up:
     // fetchAllRegions catches every per-region error and always resolves, so a
@@ -815,6 +832,33 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       mcp.stale,
       true,
       'MCP must not answer stale:false for the key health calls STALE_CONTENT',
+    );
+  });
+
+  it('a partial FIRMS payload does not read green on health or MCP', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now, 20 * 60_000),
+      'wildfire:fires:v1': {
+        ...liveFires(now, 25 * 60_000),
+        _firmsState: 'ok',
+        _firmsPartial: true,
+      },
+    });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'partial FIRMS coverage must still stamp seed-meta');
+    assert.equal(meta.newestItemAt, null);
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'health must surface known partial FIRMS coverage',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must surface known partial FIRMS coverage',
     );
   });
 
@@ -993,6 +1037,74 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       classifyTemporalMeta(meta, now).status,
       'OK',
       'health must stay green through a transient read error',
+    );
+  });
+
+  it('preserves an older prior clock when a readable source is fresh after a read error', async () => {
+    const now = Date.now();
+    const priorNewest = now - 72 * HOUR_MS;
+    const priorOldest = now - 73 * HOUR_MS;
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      'seed-meta:temporal:anomalies': {
+        fetchedAt: now - 20 * 60_000,
+        recordCount: 2,
+        newestItemAt: priorNewest,
+        oldestItemAt: priorOldest,
+        maxContentAgeMin: TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
+      },
+    }, { failedGetKeys: ['news:insights:v1'] });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'the partial rebuild must stamp seed-meta');
+    assert.equal(
+      meta.newestItemAt,
+      priorNewest,
+      'the carried prior newest clock must win over a fresher readable source',
+    );
+    assert.equal(
+      meta.oldestItemAt,
+      priorOldest,
+      'the carried prior oldest clock must win over a fresher readable source',
+    );
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'health must preserve the older prior content age rather than turn green',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must preserve the older prior content age rather than turn fresh',
+    );
+  });
+
+  it('fails closed on health and MCP for a cold partial rebuild after a count-source read error', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      // No seed-meta:temporal:anomalies entry. This is a cold start, so no
+      // last-known-good content clock may be carried over the read error.
+    }, { failedGetKeys: ['news:insights:v1'] });
+
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta, 'the partial rebuild must still stamp its fail-closed seed-meta');
+    assert.equal(
+      meta.newestItemAt,
+      null,
+      'a cold partial rebuild must not use the live source as a complete content clock',
+    );
+    assert.equal(
+      classifyTemporalMeta(meta, now).status,
+      'STALE_CONTENT',
+      'health must not report a cold partial rebuild as healthy',
+    );
+    assert.equal(
+      evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale,
+      true,
+      'MCP must not report a cold partial rebuild as fresh',
     );
   });
 

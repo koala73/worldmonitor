@@ -121,9 +121,9 @@ async function readPriorContentAge(
  *      clocks and it can only make the stamp older, never fresher, so a stale
  *      readable source still surfaces and the carried value can never make the
  *      readable source look healthier than it is.
- *   3. With no prior stamp to carry, fall back to the readable clock, and to
- *      null when there is nothing at all — the correct fail-closed answer when
- *      nothing is known.
+ *   3. With no prior stamp to carry, stamp null. A partial rebuild with an
+ *      unreadable configured source cannot establish complete coverage, even
+ *      when the readable source is live.
  */
 async function resolveContentAge(
   countPayloads: { news?: unknown; satellite_fires?: unknown },
@@ -146,7 +146,12 @@ async function resolveContentAge(
 
   const prior = await readPriorContentAge(erroredSourceTypes);
   if (prior?.newestItemAt == null) {
-    return readable.status === 'ok' ? readable.clock : null;
+    console.warn(
+      `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}) `
+      + 'without a prior content clock; stamping STALE_CONTENT rather than '
+      + 'treating partial coverage as fresh',
+    );
+    return null;
   }
   if (readable.status !== 'ok') return prior;
   return {

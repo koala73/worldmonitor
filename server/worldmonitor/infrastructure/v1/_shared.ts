@@ -158,12 +158,15 @@ function firesContentClock(
   const payload = data as {
     fireDetections?: unknown;
     _firmsState?: unknown;
+    _firmsPartial?: unknown;
     _firmsCount?: unknown;
   };
-  // Canonical wildfire merge preserves `_firmsState: 'failed'` when CWFIS/BC
-  // still publish. That is Canada-only coverage, not a skippable empty FIRMS
-  // window — returning undefined here lets a live news clock hide the outage.
-  if (payload._firmsState === 'failed') return null;
+  // Canonical wildfire merge preserves explicit FIRMS coverage failures even
+  // when CWFIS/BC still publish. A full loss is Canada-only coverage; a partial
+  // loss leaves known regions dark. Neither is a skippable empty FIRMS window —
+  // returning undefined here lets a live news clock hide an incomplete global
+  // source behind a fresh temporal-anomalies clock.
+  if (payload._firmsState === 'failed' || payload._firmsPartial === true) return null;
   // Same outage, older payload shape: before the #7141 follow-up the merge
   // graded FIRMS on promise settlement alone, so a total outage published
   // `{_firmsState: 'ok', _firmsCount: 0}` with Canada-only rows. The producer
