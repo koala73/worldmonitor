@@ -5,6 +5,7 @@
 import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './_client-ip.js';
 
 const AXIOM_INGEST_URL = 'https://api.axiom.co/v1/datasets/wm_api_usage/ingest';
+const TELEMETRY_USER_AGENT = 'worldmonitor-edge/1.0';
 const MAX_HEADER_FIELD_LEN = 512;
 const TELEMETRY_TIMEOUT_MS = 1_500;
 const CB_WINDOW_MS = 5 * 60 * 1_000;
@@ -139,6 +140,7 @@ async function deliver(event) {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'User-Agent': TELEMETRY_USER_AGENT,
       },
       body: JSON.stringify([event]),
       signal: controller.signal,

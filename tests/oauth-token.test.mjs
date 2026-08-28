@@ -1808,6 +1808,7 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     );
     assert.match(src, /X-RateLimit-Mode',\s*'degraded'/);
     assert.match(src, /emitOAuthTokenUsage/);
+    assert.match(src, /captureSilentError\(sanitized\.error/);
   });
 
   it('missing Upstash config fail-opens every grant type with a degraded marker and one ops log', async () => {
@@ -1838,20 +1839,22 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(degradedLogs.length, 1, 'missing-config ops signal must be deduplicated per isolate');
   });
 
-  it('limiter throw fail-opens with a degraded marker and does not log secrets', async () => {
+  it('limiter throw fail-opens with a degraded marker and redacts Upstash command keys', async () => {
     const secret = 'wm_super_secret_value_xyz';
     const clientId = 'full-client-identifier-must-not-log';
     __setOAuthTokenRatelimitForTest({
-      limit: async () => {
-        throw new Error('upstash unreachable');
+      limit: async (identifier) => {
+        throw new Error(
+          `upstash unreachable, command was: [["evalsha","sha","rl:oauth-token:${identifier}:current"]]`,
+        );
       },
     });
     const { deps } = makeDeps();
     const resp = await tokenHandler(
-      makeReq('client_credentials', { client_secret: secret, client_id: clientId }),
+      makeReq('authorization_code', { client_secret: secret, client_id: clientId }),
       deps,
     );
-    assert.equal(resp.status, 401, 'throw path must fail open into credential validation, not 503');
+    assert.equal(resp.status, 400, 'throw path must fail open into grant validation, not 503');
     assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
     assert.ok(
       consoleErrors.some((line) => line.includes('[rate-limit] redis-error') && line.includes('stage=oauthToken')),
@@ -1860,6 +1863,7 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     const joined = consoleErrors.join('\n');
     assert.equal(joined.includes(secret), false, 'client_secret must not appear in ops logs');
     assert.equal(joined.includes(clientId), false, 'full client_id must not appear in ops logs');
+    assert.match(joined, /rl:oauth-token:<redacted>/, 'the redacted key must preserve a stable ops signal');
   });
 
   it('limiter timeout reason fail-opens as degraded, not as a silent allow', async () => {
@@ -1912,7 +1916,9 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     process.env.USAGE_TELEMETRY = '1';
     process.env.AXIOM_API_TOKEN = 'axiom-test-token';
     const events = [];
+    const deliveryHeaders = [];
     globalThis.fetch = async (_input, init) => {
+      deliveryHeaders.push(init.headers);
       events.push(...JSON.parse(init.body));
       return new Response('{}', { status: 200 });
     };
@@ -1933,6 +1939,7 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(JSON.stringify(events).includes(secret), false);
     assert.equal(Object.hasOwn(events[0], 'client_secret'), false);
     assert.equal(Object.hasOwn(events[0], 'client_id'), false);
+    assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
   });
 
   it('limiter 429 emits usage reason rate_limit_429', async () => {

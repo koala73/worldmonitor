@@ -106,6 +106,7 @@ let _rl: TokenRateLimiter | null = null;
 let _rlOverride: TokenRateLimiter | null | undefined;
 const DEGRADED_CAPTURE_DEDUP_MS = 60_000;
 const lastDegradedCaptureAtByStage = new Map<string, number>();
+const OAUTH_RATE_LIMIT_KEY_PATTERN = /rl:oauth-token:(?:cid|cred|ip):[^"\\]+/g;
 
 function getRatelimit(): TokenRateLimiter | null {
   if (_rlOverride !== undefined) return _rlOverride;
@@ -153,6 +154,14 @@ function boundedGrantTag(grantType: string | null): string {
   return grantType ? 'other' : 'none';
 }
 
+function sanitizeTokenRateLimitError(err: unknown): { error: Error; message: string } {
+  const rawMessage = err instanceof Error ? err.message : String(err);
+  const message = rawMessage.replace(OAUTH_RATE_LIMIT_KEY_PATTERN, 'rl:oauth-token:<redacted>');
+  const error = new Error(message);
+  if (err instanceof Error) error.name = err.name;
+  return { error, message };
+}
+
 function reportTokenRateLimitDegraded(
   stage: string,
   err: unknown,
@@ -164,9 +173,9 @@ function reportTokenRateLimitDegraded(
   if (last !== undefined && now - last < DEGRADED_CAPTURE_DEDUP_MS) return;
   lastDegradedCaptureAtByStage.set(stage, now);
 
-  const msg = err instanceof Error ? err.message : String(err);
-  console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
-  captureSilentError(err, {
+  const sanitized = sanitizeTokenRateLimitError(err);
+  console.error(`[rate-limit] redis-error stage=${stage} msg=${sanitized.message}`);
+  captureSilentError(sanitized.error, {
     tags: {
       surface: 'api',
       component: 'rate-limit',
@@ -176,7 +185,7 @@ function reportTokenRateLimitDegraded(
     },
     fingerprint: ['rate-limit', 'redis-error', rateLimitFingerprintStage(stage)],
     ctx,
-    level: rateLimitErrorLevel(stage, msg),
+    level: rateLimitErrorLevel(stage, sanitized.message),
   });
 }
 
