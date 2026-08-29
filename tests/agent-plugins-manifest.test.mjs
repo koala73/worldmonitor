@@ -1,10 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rewriteWellKnownSkillForPlugin } from '../scripts/build-agent-skills-index.mjs';
+import {
+  materializePluginSkills,
+  rewriteWellKnownSkillForPlugin,
+} from '../scripts/build-agent-skills-index.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
@@ -162,6 +166,90 @@ describe('agent readiness: Agent Plugins manifest', () => {
         `skills/${name}/SKILL.md must match the well-known recipe with public-site API origin`,
       );
     }
+  });
+
+  it('prunes a deleted well-known skill and converges writer then checker', (t) => {
+    const root = createTempDir('wm-plugin-skill-prune-', t);
+    const skillsDir = join(root, 'public/.well-known/agent-skills');
+    const pluginSkillsDir = join(root, 'skills');
+    const indexPath = join(skillsDir, 'index.json');
+    mkdirSync(skillsDir, { recursive: true });
+    mkdirSync(pluginSkillsDir, { recursive: true });
+
+    const keepBody = [
+      '---',
+      'name: keep-skill',
+      'description: keep this recipe',
+      '---',
+      '',
+      'GET https://edge.worldmonitor.app/api/keep',
+      '',
+    ].join('\n');
+    const retiredBody = [
+      '---',
+      'name: retired-skill',
+      'description: retire this recipe',
+      '---',
+      '',
+      'GET https://edge.worldmonitor.app/api/retired',
+      '',
+    ].join('\n');
+
+    const writeRecipe = (dir, name, body) => {
+      mkdirSync(join(dir, name), { recursive: true });
+      writeFileSync(join(dir, name, 'SKILL.md'), body);
+    };
+    const writeIndex = (names) => {
+      writeFileSync(indexPath, `${JSON.stringify({
+        $schema: 'https://schemas.agentskills.io/discovery/0.2.0/schema.json',
+        instructions: 'test',
+        skills: names.map((name) => ({
+          name,
+          type: 'skill-md',
+          description: `${name} recipe`,
+          url: `https://worldmonitor.app/.well-known/agent-skills/${name}/SKILL.md`,
+          digest: 'sha256:00',
+        })),
+      }, null, 2)}\n`);
+    };
+
+    writeRecipe(skillsDir, 'keep-skill', keepBody);
+    writeRecipe(skillsDir, 'retired-skill', retiredBody);
+    writeIndex(['keep-skill', 'retired-skill']);
+    const paths = { skillsDir, pluginSkillsDir, indexPath };
+    materializePluginSkills(paths);
+
+    mkdirSync(join(pluginSkillsDir, 'local-scratch'), { recursive: true });
+    writeFileSync(join(pluginSkillsDir, 'local-scratch', 'NOTES.md'), 'do not delete\n');
+    mkdirSync(join(pluginSkillsDir, 'third-party-skill'), { recursive: true });
+    writeFileSync(join(pluginSkillsDir, 'third-party-skill', 'SKILL.md'), 'local install\n');
+
+    rmSync(join(skillsDir, 'retired-skill'), { recursive: true, force: true });
+
+    assert.throws(
+      () => materializePluginSkills({ check: true, ...paths }),
+      /retired-skill/,
+    );
+
+    materializePluginSkills(paths);
+
+    assert.equal(existsSync(join(pluginSkillsDir, 'retired-skill', 'SKILL.md')), false);
+    assert.equal(existsSync(join(pluginSkillsDir, 'retired-skill')), false);
+    assert.equal(
+      readFileSync(join(pluginSkillsDir, 'local-scratch', 'NOTES.md'), 'utf-8'),
+      'do not delete\n',
+    );
+    assert.equal(
+      readFileSync(join(pluginSkillsDir, 'third-party-skill', 'SKILL.md'), 'utf-8'),
+      'local install\n',
+    );
+    assert.equal(
+      readFileSync(join(pluginSkillsDir, 'keep-skill', 'SKILL.md'), 'utf-8'),
+      rewriteWellKnownSkillForPlugin(keepBody),
+    );
+
+    writeIndex(['keep-skill']);
+    assert.doesNotThrow(() => materializePluginSkills({ check: true, ...paths }));
   });
 
   it('rewrites worldmonitor API subdomains to the public site origin', () => {

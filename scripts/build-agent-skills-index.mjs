@@ -18,12 +18,13 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmdirSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { resolve, dirname, join } from 'node:path';
+import { basename, resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 
@@ -128,20 +129,68 @@ export function rewriteWellKnownSkillForPlugin(md) {
   });
 }
 
-export function collectPluginSkillNames() {
-  return readdirSync(SKILLS_DIR, { withFileTypes: true })
+function isOwnedSkillName(name) {
+  return typeof name === 'string'
+    && name.length > 0
+    && name === basename(name)
+    && name !== '.'
+    && name !== '..';
+}
+
+// The committed discovery index is the ownership ledger for generated
+// `skills/<name>/SKILL.md` files. Walk that prior set — not the live
+// `skills/` tree — so a deleted well-known recipe can be pruned without
+// touching ignored local installs (`npx skills add`, scratch notes).
+export function readIndexedPluginSkillNames(indexPath = INDEX_PATH) {
+  if (!existsSync(indexPath)) return [];
+  const parsed = JSON.parse(readFileSync(indexPath, 'utf-8'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.skills)) {
+    throw new Error(`${indexPath} is not a generated agent-skills index`);
+  }
+  const names = [];
+  for (const skill of parsed.skills) {
+    const name = skill && typeof skill === 'object' ? skill.name : null;
+    if (!isOwnedSkillName(name)) {
+      throw new Error(`${indexPath} has an unsafe or missing skill name`);
+    }
+    names.push(name);
+  }
+  return names;
+}
+
+export function collectPluginSkillNames(skillsDir = SKILLS_DIR) {
+  return readdirSync(skillsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
+    .filter(isOwnedSkillName)
     .sort();
 }
 
-export function expectedPluginSkillBody(name) {
-  const canonical = readFileSync(join(SKILLS_DIR, name, 'SKILL.md'), 'utf-8');
+export function expectedPluginSkillBody(name, skillsDir = SKILLS_DIR) {
+  const canonical = readFileSync(join(skillsDir, name, 'SKILL.md'), 'utf-8');
   return rewriteWellKnownSkillForPlugin(canonical);
 }
 
-function pluginSkillPath(name) {
-  return join(PLUGIN_SKILLS_DIR, name, 'SKILL.md');
+function pluginSkillPath(pluginSkillsDir, name) {
+  return join(pluginSkillsDir, name, 'SKILL.md');
+}
+
+function pruneStalePluginSkill(pluginSkillsDir, name, { check }) {
+  const dest = pluginSkillPath(pluginSkillsDir, name);
+  const dir = join(pluginSkillsDir, name);
+  if (check) {
+    return existsSync(dest) ? name : null;
+  }
+  if (existsSync(dest)) {
+    const stat = lstatSync(dest);
+    if (stat.isSymbolicLink() || stat.isFile()) {
+      unlinkSync(dest);
+    }
+  }
+  if (existsSync(dir) && readdirSync(dir).length === 0) {
+    rmdirSync(dir);
+  }
+  return null;
 }
 
 function assertPluginSkillRegularFile(dest, name) {
@@ -159,23 +208,40 @@ function assertPluginSkillRegularFile(dest, name) {
   }
 }
 
-export function materializePluginSkills({ check = false } = {}) {
-  const names = collectPluginSkillNames();
+export function materializePluginSkills({
+  check = false,
+  skillsDir = SKILLS_DIR,
+  pluginSkillsDir = PLUGIN_SKILLS_DIR,
+  indexPath = INDEX_PATH,
+} = {}) {
+  const names = collectPluginSkillNames(skillsDir);
+  const priorNames = readIndexedPluginSkillNames(indexPath);
+  const current = new Set(names);
+  const leftover = [];
+  for (const name of priorNames.filter((prior) => !current.has(prior))) {
+    const stale = pruneStalePluginSkill(pluginSkillsDir, name, { check });
+    if (stale) leftover.push(stale);
+  }
   const drifted = [];
   for (const name of names) {
-    const expected = expectedPluginSkillBody(name);
-    const dest = pluginSkillPath(name);
+    const expected = expectedPluginSkillBody(name, skillsDir);
+    const dest = pluginSkillPath(pluginSkillsDir, name);
     if (check) {
       assertPluginSkillRegularFile(dest, name);
-      const current = readFileSync(dest, 'utf-8');
-      if (current !== expected) drifted.push(name);
+      const body = readFileSync(dest, 'utf-8');
+      if (body !== expected) drifted.push(name);
       continue;
     }
-    mkdirSync(join(PLUGIN_SKILLS_DIR, name), { recursive: true });
+    mkdirSync(join(pluginSkillsDir, name), { recursive: true });
     if (existsSync(dest) && lstatSync(dest).isSymbolicLink()) {
       unlinkSync(dest);
     }
     writeFileSync(dest, expected);
+  }
+  if (check && leftover.length > 0) {
+    throw new Error(
+      `plugin skills/${leftover.join(', ')}/SKILL.md remain after their well-known sources were removed. Run \`npm run build:agent-skills\`.`,
+    );
   }
   if (check && drifted.length > 0) {
     throw new Error(
@@ -304,9 +370,11 @@ function main() {
     process.stdout.write('agent-skills index.json and plugin skills/ are up to date.\n');
     return;
   }
+  // Materialize (and prune) before overwriting the index so the prior
+  // generated ledger is still on disk when stale plugin skills are removed.
+  const names = materializePluginSkills();
   writeFileSync(INDEX_PATH, index);
   writeFileSync(MCP_SKILLS_PATH, mcpModule);
-  const names = materializePluginSkills();
   process.stdout.write(
     `Wrote ${INDEX_PATH}, ${MCP_SKILLS_PATH}, and ${names.length} skills/*/SKILL.md files\n`,
   );
