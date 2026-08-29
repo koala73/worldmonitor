@@ -953,7 +953,7 @@ describe('welcome landing page routing', () => {
     }
   });
 
-  it('keeps variant crawler-stub canonicals aligned with variant metadata', () => {
+  it('keeps variant social-preview canonicals aligned with variant metadata', () => {
     const variantUrls = getVariantUrls();
     const nonFullUrls = Object.entries(variantUrls).filter(([variant]) => variant !== 'full');
 
@@ -961,38 +961,26 @@ describe('welcome landing page routing', () => {
       assert.match(
         middlewareSource,
         new RegExp(`\\b${variant}:\\s*\\{[\\s\\S]*?url:\\s*'${escapeRegExp(url)}'`),
-        `${variant} crawler-stub OG/canonical URL must match variant-meta.ts`
+        `${variant} social-preview OG/canonical URL must match variant-meta.ts`
       );
     }
 
-    assert.ok(
-      middlewareSource.includes(`href="${variantUrls.full}"`),
-      'AI crawler body must link the full dashboard canonical',
-    );
     assert.match(
       middlewareSource,
-      /const AI_CRAWLER_VARIANT_LINKS = Object\.values\(VARIANT_HOST_MAP\)/,
-      'AI crawler body links must be derived from the canonical variant host map',
-    );
-    assert.match(
-      middlewareSource,
-      /const og = VARIANT_OG\[variant\]/,
-      'AI crawler body link labels and URLs must come from variant metadata',
+      /const og = VARIANT_OG\[variant as keyof typeof VARIANT_OG\]/,
+      'social-preview metadata must come from the variant registry',
     );
     assert.match(
       middlewareSource,
       /escHtml\(og\.url\)/,
-      'AI crawler body link URLs must stay HTML-escaped',
+      'social-preview URLs must stay HTML-escaped',
     );
     assert.match(
       middlewareSource,
-      /escHtml\(og\.name\)/,
-      'AI crawler body link labels must stay HTML-escaped',
+      /path === '\/' && SOCIAL_PREVIEW_UA\.test\(ua\)/,
+      'only social preview bots may receive the variant root stub',
     );
-    assert.ok(
-      middlewareSource.includes('${AI_CRAWLER_VARIANT_LINKS}'),
-      'AI crawler body must render the generated variant links',
-    );
+    assert.doesNotMatch(middlewareSource, /AI_CRAWLER_UA|AI_CRAWLER_VARIANT_LINKS/);
   });
 
   it('redirects legacy root map-state deep links to /dashboard before welcome routing', () => {

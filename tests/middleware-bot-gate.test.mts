@@ -52,20 +52,23 @@ function call(pathOrUrl: string, ua: string, headers: Record<string, string> = {
   return middleware(req) as Response | void;
 }
 
-describe('middleware AI crawler variant stub', () => {
-  it('links every web-served variant dashboard', async () => {
-    const res = call('https://tech.worldmonitor.app/', 'Mozilla/5.0 GPTBot/1.1');
+describe('middleware variant root user agents', () => {
+  it('passes browsers and AI crawlers to the same production redirect', () => {
+    for (const variant of WEB_DASHBOARD_VARIANTS) {
+      const root = new URL(VARIANT_META[variant].url).origin;
+      assert.equal(call(root, CHROME_UA), undefined);
+      assert.equal(call(root, 'Mozilla/5.0 GPTBot/1.1'), undefined);
+    }
+  });
+
+  it('keeps social preview metadata variant-specific', async () => {
+    const res = call('https://tech.worldmonitor.app/', SLACKBOT_UA);
     assert.ok(res instanceof Response);
     assert.equal(res.status, 200);
-
     const html = await res.text();
-    for (const variant of WEB_DASHBOARD_VARIANTS) {
-      const { siteName: name, url: dashboardUrl } = VARIANT_META[variant];
-      assert.ok(
-        html.includes(`<li><a href="${dashboardUrl}">${name}</a></li>`),
-        `AI crawler stub must link the ${variant} dashboard`,
-      );
-    }
+    assert.match(html, /<meta property="og:title" content="Tech Monitor/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/tech\.worldmonitor\.app\/dashboard"/);
+    assert.doesNotMatch(html, /application\/ld\+json/);
   });
 });
 

@@ -51,6 +51,7 @@
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
+      "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
       "alternateName": [
         "WorldMonitor",
@@ -61,6 +62,15 @@
       "description": "Open-source real-time global intelligence dashboard aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries. Featured in WIRED.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Web, Windows, macOS, Linux",
+      "publisher": {
+        "@id": "https://www.worldmonitor.app/#organization"
+      },
+      "isPartOf": {
+        "@id": "https://www.worldmonitor.app/#website"
+      },
+      "isBasedOn": {
+        "@id": "https://www.worldmonitor.app/#source"
+      },
       "offers": [
         {
           "@type": "Offer",
@@ -147,53 +157,14 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "World Monitor",
-      "alternateName": "WorldMonitor",
-      "url": "https://www.worldmonitor.app/",
-      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-      "description": "Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries.",
-      "founder": {
-        "@type": "Person",
-        "name": "Elie Habib",
-        "url": "https://x.com/eliehabib",
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
-      },
-      "sameAs": [
-        "https://github.com/koala73/worldmonitor",
-        "https://www.npmjs.com/package/worldmonitor",
-        "https://x.com/worldmonitorai",
-        "https://x.com/eliehabib",
-        "https://discord.gg/re63kWKxaz",
-        "https://www.wired.com/story/world-monitor-elie-habib/"
-      ],
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "customer support",
-        "email": "support@worldmonitor.app",
-        "url": "https://www.worldmonitor.app/pro",
-        "availableLanguage": "English"
-      },
-      "address": {
-        "@type": "PostalAddress",
-        "addressLocality": "Dubai",
-        "addressCountry": "AE"
-      }
-    }
-    </script>
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
       "@type": "WebSite",
+      "@id": "https://www.worldmonitor.app/#website",
       "name": "World Monitor",
       "alternateName": "WorldMonitor",
       "url": "https://www.worldmonitor.app/",
       "description": "Real-time global intelligence dashboard — live news, markets, military tracking, infrastructure monitoring, and geopolitical data.",
       "publisher": {
-        "@type": "Organization",
-        "name": "World Monitor",
-        "url": "https://www.worldmonitor.app/"
+        "@id": "https://www.worldmonitor.app/#organization"
       },
       "potentialAction": {
         "@type": "SearchAction",

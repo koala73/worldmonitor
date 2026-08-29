@@ -28,14 +28,7 @@ const jsonLd = {
   "url": "https://www.worldmonitor.app/blog/",
   "inLanguage": "en-US",
   "publisher": {
-    "@type": "Organization",
-    "@id": "https://www.worldmonitor.app/#organization",
-    "name": "World Monitor",
-    "url": "https://www.worldmonitor.app",
-    "logo": {
-      "@type": "ImageObject",
-      "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
-    }
+    "@id": "https://www.worldmonitor.app/#organization"
   },
   "blogPost": posts.map(post => {
     const authorName = post.data.author || DEFAULT_AUTHOR;

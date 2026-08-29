@@ -32,11 +32,21 @@
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
+      "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
       "applicationCategory": "FinanceApplication",
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
-      "url": "https://worldmonitor.app",
+      "url": "https://www.worldmonitor.app/",
       "description": "AI-native global intelligence platform. WM Analyst chat across live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, custom widget builder, and MCP connectors for Claude, GPT, and custom LLMs.",
+      "publisher": {
+        "@id": "https://www.worldmonitor.app/#organization"
+      },
+      "isPartOf": {
+        "@id": "https://www.worldmonitor.app/#website"
+      },
+      "isBasedOn": {
+        "@id": "https://www.worldmonitor.app/#source"
+      },
       "sameAs": [
         "https://github.com/koala73/worldmonitor",
         "https://www.npmjs.com/package/worldmonitor"
@@ -188,6 +198,26 @@
         }
       ],
       "featureList": "WM Analyst conversational AI, Personalized AI digest with daily/twice-daily/weekly cadence (up to 30 ranked items per send), Real-time alerts for critical events, Custom widget builder (HTML/CSS/JS + AI), MCP connectors for Claude/GPT/custom LLMs, Equity research and stock analysis, Backtesting, Flight search and price comparison, Market watchlist, Macro and central bank tracking, Maritime AIS ship monitoring, Global flight tracking, Infrastructure mapping, Satellite fire detection, Slack/Discord/Telegram/Email/Webhook delivery with AES-256 encryption, Android TV app, localized interfaces"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "@id": "https://www.worldmonitor.app/pro#webpage",
+      "url": "https://www.worldmonitor.app/pro",
+      "name": "World Monitor Pro | AI Intelligence & MCP",
+      "description": "Ask it, subscribe to it, build on it. WM Analyst, AI digest (daily/twice-daily/weekly), custom widget builder, MCP for Claude/GPT. Live services, one key.",
+      "isPartOf": {
+        "@id": "https://www.worldmonitor.app/#website"
+      },
+      "mainEntity": {
+        "@id": "https://www.worldmonitor.app/#software"
+      },
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": ["h1", "#pricing"]
+      }
     }
     </script>
     <script type="application/ld+json">

@@ -58,13 +58,30 @@ function replaceCounted(
 const ONE: CountBounds = { min: 1, max: 1 };
 const TWO: CountBounds = { min: 2, max: 2 };
 
+function removeJsonLdType(html: string, expectedType: string): string {
+  let count = 0;
+  const result = html.replace(
+    /[ \t]*<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>\s*/gi,
+    (script, json: string) => {
+      const type = JSON.parse(json)['@type'];
+      if (type !== expectedType) return script;
+      count += 1;
+      return '';
+    },
+  );
+  if (count !== 1) {
+    throw new Error(
+      `[variant-dashboard-html] JSON-LD type "${expectedType}" matched ${count} time(s), expected 1`,
+    );
+  }
+  return result;
+}
+
 // Derive a variant subdomain dashboard page from the built full-variant
 // dashboard.html. Only identity/meta surfaces change: title/description/
 // keywords/subject/classification metas, canonical + English discovery links,
 // og/twitter cards, the WebApplication JSON-LD block, and the visually
-// hidden <h1>. The Organization/WebSite JSON-LD blocks intentionally keep
-// the World Monitor identity (each variant isPartOf World Monitor — same
-// modelling as the middleware.ts crawler stub).
+// hidden <h1>.
 export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: string): string {
   const meta: VariantMeta | undefined = VARIANT_META[variant];
   if (!meta || variant === 'full') {
@@ -125,10 +142,17 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     'og/twitter image',
   );
 
-  // WebApplication JSON-LD block: name, url, screenshot, featureList.
+  // WebApplication JSON-LD block: id, name, url, screenshot, featureList.
   html = replaceCounted(
     html,
-    /("@type": "WebApplication",\s*"name": )"[^"]*"/g,
+    /("@type": "WebApplication",[\s\S]{0,200}?"@id": )"[^"]*"/g,
+    (_m, a) => `${a}${JSON.stringify(`${meta.url}#software`)}`,
+    ONE,
+    'WebApplication id',
+  );
+  html = replaceCounted(
+    html,
+    /("@type": "WebApplication",[\s\S]{0,300}?"name": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(meta.siteName)}`,
     ONE,
     'WebApplication name',
@@ -148,6 +172,8 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     ONE,
     'WebApplication featureList',
   );
+
+  html = removeJsonLdType(html, 'WebSite');
 
   // Visually-hidden <h1> — the topic signal crawlers read on this page.
   html = replaceCounted(html, /(<h1 class="app-heading">)[^<]*(<\/h1>)/g, (_m, a, b) => `${a}${escHtml(meta.title)}${b}`, ONE, 'app-heading h1');

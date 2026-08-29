@@ -7,12 +7,6 @@ const BOT_UA =
 const SOCIAL_PREVIEW_UA =
   /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
-// AI crawlers / AEO scanners: serve a variant-aware static stub on subdomain
-// roots so each variant (tech / finance / commodity / happy / energy) is
-// indexed under its own identity rather than inheriting the 'full' SPA HTML.
-const AI_CRAWLER_UA =
-  /gptbot|claudebot|ccbot|google-extended|perplexitybot|anthropic-ai|bytespider|cohere-ai|youbot|applebot-extended|amazonbot/i;
-
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
 
@@ -167,16 +161,6 @@ function escHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-// Keep the AI-crawler internal-link graph aligned with the variant host map
-// and metadata. Adding a served variant here automatically adds its link.
-const AI_CRAWLER_VARIANT_LINKS = Object.values(VARIANT_HOST_MAP)
-  .map((variant) => {
-    const og = VARIANT_OG[variant];
-    if (!og) throw new Error(`[middleware] missing crawler metadata for variant "${variant}"`);
-    return `<li><a href="${escHtml(og.url)}">${escHtml(og.name)}</a></li>`;
-  })
-  .join('\n');
-
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
@@ -206,60 +190,16 @@ export default function middleware(request: Request) {
     }
   }
 
-  // Variant-aware crawlable stub for social preview bots AND AI crawlers
-  // (GPTBot, ClaudeBot, PerplexityBot, etc.) when hitting variant subdomain
-  // roots. Social bots get OG-only; AI crawlers additionally get JSON-LD
-  // WebApplication + a body with internal links and external citations so
-  // each variant is indexed under its own identity.
-  if (path === '/') {
-    const isSocial = SOCIAL_PREVIEW_UA.test(ua);
-    const isAI = AI_CRAWLER_UA.test(ua);
-    if (isSocial || isAI) {
-      const variant = VARIANT_HOST_MAP[host];
-      if (variant && isAllowedHost(host)) {
-        const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
-        if (og) {
-          // Pre-escape every VARIANT_OG field used in the template. JSON-LD is
-          // safe via JSON.stringify, but the OG/Twitter/canonical attributes
-          // and the visible <h1>/<p> body need explicit HTML escaping.
-          const eTitle = escHtml(og.title);
-          const eDesc = escHtml(og.description);
-          const eImage = escHtml(og.image);
-          const eUrl = escHtml(og.url);
-          const jsonLd = isAI ? `\n<script type="application/ld+json">${JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'WebApplication',
-            name: og.name,
-            url: og.url,
-            description: og.description,
-            applicationCategory: 'BusinessApplication',
-            operatingSystem: 'Web, Windows, macOS, Linux',
-            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-            screenshot: og.image,
-            isPartOf: {
-              '@type': 'WebSite',
-              name: 'World Monitor',
-              url: 'https://www.worldmonitor.app/',
-            },
-            sameAs: [
-              'https://github.com/koala73/worldmonitor',
-              'https://x.com/worldmonitorai',
-            ],
-          })}</script>` : '';
-          const aiBody = isAI ? `
-<h1>${eTitle}</h1>
-<p>${eDesc}</p>
-<h2>Explore the platform</h2>
-<ul>
-<li><a href="https://www.worldmonitor.app/dashboard">World Monitor — geopolitics &amp; intelligence</a></li>
-${AI_CRAWLER_VARIANT_LINKS}
-<li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a></li>
-<li><a href="https://www.worldmonitor.app/blog/">Blog</a></li>
-<li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub</a></li>
-</ul>
-<h2>Sources</h2>
-<p>Data ingested live from 578+ observed upstream hosts, including <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>. See the <a href="https://www.worldmonitor.app/docs/data-sources">source catalog</a> for coverage by domain and the <a href="https://www.worldmonitor.app/docs/source-attribution">audited attribution ledger</a> for the complete inventory and license posture.</p>` : '';
-          const html = `<!DOCTYPE html><html lang="en"><head>
+  if (path === '/' && SOCIAL_PREVIEW_UA.test(ua)) {
+    const variant = VARIANT_HOST_MAP[host];
+    if (variant && isAllowedHost(host)) {
+      const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
+      if (og) {
+        const eTitle = escHtml(og.title);
+        const eDesc = escHtml(og.description);
+        const eImage = escHtml(og.image);
+        const eUrl = escHtml(og.url);
+        const html = `<!DOCTYPE html><html lang="en"><head>
 <meta property="og:type" content="website"/>
 <meta property="og:title" content="${eTitle}"/>
 <meta property="og:description" content="${eDesc}"/>
@@ -270,17 +210,16 @@ ${AI_CRAWLER_VARIANT_LINKS}
 <meta name="twitter:description" content="${eDesc}"/>
 <meta name="twitter:image" content="${eImage}"/>
 <link rel="canonical" href="${eUrl}"/>
-<title>${eTitle}</title>${jsonLd}
-</head><body>${aiBody}</body></html>`;
-          return new Response(html, {
-            status: 200,
-            headers: {
-              'Content-Type': 'text/html; charset=utf-8',
-              'Cache-Control': 'no-store',
-              'Vary': 'User-Agent, Host',
-            },
-          });
-        }
+<title>${eTitle}</title>
+</head><body></body></html>`;
+        return new Response(html, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+            'Vary': 'User-Agent, Host',
+          },
+        });
       }
     }
   }
