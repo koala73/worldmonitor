@@ -271,7 +271,22 @@
     "fKeyAuth": "金鑰鑑權",
     "fSsoMfa": "SSO/MFA/RBAC/審計",
     "noteBelow": "核心平臺保持免費。付費方案解鎖股票研究、宏觀分析、AI 簡報與組織級使用。",
-    "f50plus": "可用"
+    "f50plus": "可用",
+    "sourcesRow": "資訊源",
+    "followedRow": "關注國家",
+    "tabsRow": "儀表板選項卡",
+    "fUnlimited": "無限",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "所有圖層",
+    "fLayersNoResilience": "除彈性外的所有圖層",
+    "fStandardCadence": "標準",
+    "fQuotes30s": "行情報價：30秒",
+    "panelsRow": "啟用的面板",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "全部"
   },
   "faq": {
     "title": "常見問題",

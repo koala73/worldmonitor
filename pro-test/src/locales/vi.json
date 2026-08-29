@@ -271,7 +271,22 @@
     "fKeyAuth": "Xác thực khóa",
     "fSsoMfa": "SSO/MFA/RBAC/kiểm toán",
     "noteBelow": "Nền tảng cốt lõi vẫn miễn phí. Các gói trả phí mở khóa Equity research, phân tích vĩ mô, bản tóm tắt AI và sử dụng tổ chức.",
-    "f50plus": "Có sẵn"
+    "f50plus": "Có sẵn",
+    "sourcesRow": "Nguồn",
+    "followedRow": "Quốc gia được theo dõi",
+    "tabsRow": "Tab dashboard",
+    "fUnlimited": "Không giới hạn",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Tất cả lớp",
+    "fLayersNoResilience": "Tất cả ngoại trừ Resilience",
+    "fStandardCadence": "Tiêu chuẩn",
+    "fQuotes30s": "Giá thị trường: 30 giây",
+    "panelsRow": "Các panel được bật",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tất cả"
   },
   "faq": {
     "title": "Câu hỏi thường gặp",

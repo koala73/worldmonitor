@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth cu cheie",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Platforma de bază rămâne gratuită. Planurile plătite deblochează equity research, analitică macro, briefinguri IA și utilizare organizațională.",
-    "f50plus": "Disponibil"
+    "f50plus": "Disponibil",
+    "sourcesRow": "Surse",
+    "followedRow": "Țări monitorizate",
+    "tabsRow": "File de tablou de bord",
+    "fUnlimited": "Nelimitat",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Toate straturile",
+    "fLayersNoResilience": "Toate cu excepția Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Citate de piață: 30s",
+    "panelsRow": "Panouri activate",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Toate"
   },
   "faq": {
     "title": "Întrebări frecvente",

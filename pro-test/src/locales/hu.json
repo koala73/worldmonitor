@@ -271,7 +271,22 @@
     "fKeyAuth": "Kulcsalapú auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Az alapplatform ingyenes marad. A fizetős csomagok részvénykutatást, makróanalitikát, AI-briefeket és szervezeti használatot nyitnak meg.",
-    "f50plus": "Elérhető"
+    "f50plus": "Elérhető",
+    "sourcesRow": "Források",
+    "followedRow": "Követett országok",
+    "tabsRow": "Dashboard fülei",
+    "fUnlimited": "Korlátlan",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Összes réteg",
+    "fLayersNoResilience": "Összes, kivéve a Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Piaci árajánlatok: 30s",
+    "panelsRow": "Engedélyezett panelek",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Összes"
   },
   "faq": {
     "title": "Gyakori kérdések",

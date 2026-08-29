@@ -271,7 +271,22 @@
     "fKeyAuth": "Sleutel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik.",
-    "f50plus": "Beschikbaar"
+    "f50plus": "Beschikbaar",
+    "sourcesRow": "Bronnen",
+    "followedRow": "Gevolgde landen",
+    "tabsRow": "Dashboard-tabbladen",
+    "fUnlimited": "Onbeperkt",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alle lagen",
+    "fLayersNoResilience": "Alle behalve Resilience",
+    "fStandardCadence": "Standaard",
+    "fQuotes30s": "Marktkoersen: 30s",
+    "panelsRow": "Panelen ingeschakeld",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alles"
   },
   "faq": {
     "title": "Veelgestelde vragen",

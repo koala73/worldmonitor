@@ -1064,13 +1064,16 @@ const EnterpriseShowcase = () => (
 /* ─── 11. Comparison Table (simplified columns, kept technical rows) ─── */
 const PricingTable = () => {
   const rows = [
-    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.f5_15min'), pro: t('pricingTable.fLt60s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
-    { feature: t('pricingTable.dashboard'), free: t('pricingTable.f50panels'), pro: t('pricingTable.f50panels'), api: "\u2014", ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.fStandardCadence'), pro: t('pricingTable.fQuotes30s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
+    { feature: t('pricingTable.panelsRow'), free: t('pricingTable.f40'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.tabsRow'), free: t('pricingTable.f3'), pro: t('pricingTable.f10'), api: t('pricingTable.f25'), ent: t('pricingTable.fUnlimited') },
+    { feature: t('pricingTable.sourcesRow'), free: t('pricingTable.f80'), pro: t('pricingTable.fAll'), api: t('pricingTable.fAll'), ent: t('pricingTable.fAll') },
+    { feature: t('pricingTable.followedRow'), free: t('pricingTable.f3'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fUnlimited') },
     { feature: t('pricingTable.ai'), free: t('pricingTable.fBYOK'), pro: t('pricingTable.fIncluded'), api: "\u2014", ent: t('pricingTable.fAgentsPersonas') },
     { feature: t('pricingTable.briefsAlerts'), free: "\u2014", pro: t('pricingTable.fDailyFlash'), api: "\u2014", ent: t('pricingTable.fTeamDist') },
     { feature: t('pricingTable.delivery'), free: "\u2014", pro: t('pricingTable.fSlackTgWa'), api: t('pricingTable.fWebhook'), ent: t('pricingTable.fSiemMcp') },
     { feature: t('pricingTable.apiRow'), free: "\u2014", pro: "\u2014", api: t('pricingTable.fRestWebhook'), ent: t('pricingTable.fMcpBulk') },
-    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.f50plus'), pro: t('pricingTable.f50plus'), api: "\u2014", ent: t('pricingTable.fTensOfThousands') },
+    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.fLayersNoResilience'), pro: t('pricingTable.fAllLayers'), api: t('pricingTable.fAllLayers'), ent: t('pricingTable.fTensOfThousands') },
     { feature: t('pricingTable.satellite'), free: t('pricingTable.fLiveTracking'), pro: t('pricingTable.fPassAlerts'), api: "\u2014", ent: t('pricingTable.fImagerySar') },
     { feature: t('pricingTable.connectorsRow'), free: "\u2014", pro: "\u2014", api: "\u2014", ent: t('pricingTable.f100plus') },
     { feature: t('pricingTable.deployment'), free: t('pricingTable.fCloud'), pro: t('pricingTable.fCloud'), api: t('pricingTable.fCloud'), ent: t('pricingTable.fCloudOnPrem') },

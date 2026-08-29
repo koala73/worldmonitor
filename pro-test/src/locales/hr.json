@@ -271,7 +271,22 @@
     "fKeyAuth": "Autentifikacija ključem",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Temeljna platforma ostaje besplatna. Plaćeni planovi otključavaju istraživanje dionica, makro analitiku, AI sažetke i organizacijsku upotrebu.",
-    "f50plus": "Dostupno"
+    "f50plus": "Dostupno",
+    "sourcesRow": "Izvori",
+    "followedRow": "Pratene zemlje",
+    "tabsRow": "Kartice kontrolne ploče",
+    "fUnlimited": "Neograničeno",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Svi slojevi",
+    "fLayersNoResilience": "Svi osim otpornosti",
+    "fStandardCadence": "Standardna",
+    "fQuotes30s": "Tržišne cijene: 30s",
+    "panelsRow": "Paneli omogućeni",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Sve"
   },
   "faq": {
     "title": "Često postavljana pitanja",

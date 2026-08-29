@@ -271,7 +271,22 @@
     "fKeyAuth": "Autenticación por clave",
     "fSsoMfa": "SSO/MFA/RBAC/auditoría",
     "noteBelow": "La plataforma principal sigue siendo gratuita. Los planes de pago desbloquean investigación bursátil, analítica macro, resúmenes IA y uso organizacional.",
-    "f50plus": "Disponible"
+    "f50plus": "Disponible",
+    "sourcesRow": "Fuentes",
+    "followedRow": "Países monitoreados",
+    "tabsRow": "Pestañas del panel",
+    "fUnlimited": "Ilimitado",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Todas las capas",
+    "fLayersNoResilience": "Todas excepto Resilience",
+    "fStandardCadence": "Estándar",
+    "fQuotes30s": "Cotizaciones de mercado: 30s",
+    "panelsRow": "Paneles habilitados",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Todos"
   },
   "faq": {
     "title": "Preguntas frecuentes",

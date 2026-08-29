@@ -271,7 +271,22 @@
     "fKeyAuth": "키 인증",
     "fSsoMfa": "SSO/MFA/RBAC/감사",
     "noteBelow": "핵심 플랫폼은 무료로 유지. 유료 플랜은 Equity research, 매크로 분석, AI 브리핑, 조직 사용을 잠금 해제합니다.",
-    "f50plus": "사용 가능"
+    "f50plus": "사용 가능",
+    "sourcesRow": "출처",
+    "followedRow": "모니터링 국가",
+    "tabsRow": "대시보드 탭",
+    "fUnlimited": "무제한",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "모든 레이어",
+    "fLayersNoResilience": "회복력 제외한 모든 레이어",
+    "fStandardCadence": "표준",
+    "fQuotes30s": "시장 호가: 30초",
+    "panelsRow": "활성화된 패널",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "모두"
   },
   "faq": {
     "title": "자주 묻는 질문",

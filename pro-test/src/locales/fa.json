@@ -390,7 +390,22 @@
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use.",
-    "f50plus": "دردسترس"
+    "f50plus": "دردسترس",
+    "sourcesRow": "منابع",
+    "followedRow": "کشورهای دنبال‌شده",
+    "tabsRow": "تب‌های داشبورد",
+    "fUnlimited": "نامحدود",
+    "f3": "۳",
+    "f10": "۱۰",
+    "f25": "۲۵",
+    "fAllLayers": "تمام لایه‌ها",
+    "fLayersNoResilience": "تمام به‌جز تاب‌آوری",
+    "fStandardCadence": "استاندارد",
+    "fQuotes30s": "نقل‌قول بازار: ۳۰ثانیه",
+    "panelsRow": "پنل‌های فعال",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "همه"
   },
   "faq": {
     "title": "Frequently Asked Questions",

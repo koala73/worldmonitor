@@ -271,7 +271,22 @@
     "fKeyAuth": "Schlüssel-Auth",
     "fSsoMfa": "SSO/MFA/RBAC/Audit",
     "noteBelow": "Die Kernplattform bleibt kostenlos. Bezahlpläne schalten Equity Research, Makroanalytik, KI-Briefings und organisatorische Nutzung frei.",
-    "f50plus": "Verfügbar"
+    "f50plus": "Verfügbar",
+    "sourcesRow": "Quellen",
+    "followedRow": "Überwachte Länder",
+    "tabsRow": "Dashboard-Reiter",
+    "fUnlimited": "Unbegrenzt",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alle Layer",
+    "fLayersNoResilience": "Alle außer Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Marktnotierungen: 30s",
+    "panelsRow": "Panels aktiviert",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alle"
   },
   "faq": {
     "title": "Häufig gestellte Fragen",

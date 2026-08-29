@@ -271,7 +271,22 @@
     "fKeyAuth": "Nyckel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Kärnplattformen förblir gratis. Betalplaner låser upp equity research, makroanalys, AI-briefingar och organisatorisk användning.",
-    "f50plus": "Tillgänglig"
+    "f50plus": "Tillgänglig",
+    "sourcesRow": "Källor",
+    "followedRow": "Övervakade länder",
+    "tabsRow": "Instrumentpanelflikar",
+    "fUnlimited": "Obegränsat",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alla lager",
+    "fLayersNoResilience": "Alla förutom Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Marknadsnoteringar: 30s",
+    "panelsRow": "Paneler aktiverade",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alla"
   },
   "faq": {
     "title": "Vanliga frågor",

@@ -271,7 +271,22 @@
     "fKeyAuth": "Uwierzytelnianie kluczem",
     "fSsoMfa": "SSO/MFA/RBAC/audyt",
     "noteBelow": "Rdzeń platformy pozostaje bezpłatny. Plany płatne odblokowują equity research, analizę makro, briefy AI i użycie organizacyjne.",
-    "f50plus": "Dostępne"
+    "f50plus": "Dostępne",
+    "sourcesRow": "Źródła",
+    "followedRow": "Monitorowane kraje",
+    "tabsRow": "Karty dashboardu",
+    "fUnlimited": "Bez ograniczeń",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Wszystkie warstwy",
+    "fLayersNoResilience": "Wszystkie poza Odpornością",
+    "fStandardCadence": "Standardowa",
+    "fQuotes30s": "Notowania rynkowe: 30s",
+    "panelsRow": "Włączone panele",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Wszystkie"
   },
   "faq": {
     "title": "Najczęściej zadawane pytania",

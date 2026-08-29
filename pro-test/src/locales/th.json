@@ -271,7 +271,22 @@
     "fKeyAuth": "การรับรองด้วยคีย์",
     "fSsoMfa": "SSO/MFA/RBAC/ตรวจสอบ",
     "noteBelow": "แพลตฟอร์มหลักยังคงฟรี แผนแบบชำระเงินปลดล็อก Equity research, การวิเคราะห์มหภาค, บรีฟ AI และการใช้งานระดับองค์กร",
-    "f50plus": "พร้อมใช้งาน"
+    "f50plus": "พร้อมใช้งาน",
+    "sourcesRow": "แหล่งข้อมูล",
+    "followedRow": "ประเทศที่ติดตาม",
+    "tabsRow": "แท็บ Dashboard",
+    "fUnlimited": "ไม่จำกัด",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "ทั้งหมด layers",
+    "fLayersNoResilience": "ทั้งหมด ยกเว้น Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Market quotes: 30s",
+    "panelsRow": "เปิดใช้งาน Panels",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "ทั้งหมด"
   },
   "faq": {
     "title": "คำถามที่พบบ่อย",

@@ -271,7 +271,22 @@
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "मुख्य प्लेटफ़ॉर्म मुफ़्त रहता है। पेड प्लान इक्विटी रिसर्च, मैक्रो एनालिटिक्स, AI ब्रीफ़िंग और संगठनात्मक उपयोग को अनलॉक करते हैं।",
-    "f50plus": "उपलब्ध"
+    "f50plus": "उपलब्ध",
+    "sourcesRow": "स्रोत",
+    "followedRow": "अनुसरण किए गए देश",
+    "tabsRow": "डैशबोर्ड टैब",
+    "fUnlimited": "असीमित",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "सभी लेयर",
+    "fLayersNoResilience": "Resilience को छोड़कर सभी",
+    "fStandardCadence": "मानक",
+    "fQuotes30s": "बाज़ार कोट: 30s",
+    "panelsRow": "पैनल सक्षम",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "सभी"
   },
   "faq": {
     "title": "अक्सर पूछे जाने वाले प्रश्न",

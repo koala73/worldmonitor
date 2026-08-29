@@ -271,7 +271,22 @@
     "fKeyAuth": "密钥鉴权",
     "fSsoMfa": "SSO/MFA/RBAC/审计",
     "noteBelow": "核心平台保持免费。付费方案解锁股票研究、宏观分析、AI 简报与组织级使用。",
-    "f50plus": "可用"
+    "f50plus": "可用",
+    "sourcesRow": "信息源",
+    "followedRow": "关注国家",
+    "tabsRow": "仪表板选项卡",
+    "fUnlimited": "无限",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "所有图层",
+    "fLayersNoResilience": "除弹性外的所有图层",
+    "fStandardCadence": "标准",
+    "fQuotes30s": "行情报价：30秒",
+    "panelsRow": "启用的面板",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "全部"
   },
   "faq": {
     "title": "常见问题",

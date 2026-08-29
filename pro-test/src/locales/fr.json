@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth par clé",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "La plateforme de base reste gratuite. Les offres payantes débloquent recherche actions, analytique macro, briefings IA et usage organisationnel.",
-    "f50plus": "Disponible"
+    "f50plus": "Disponible",
+    "sourcesRow": "Sources",
+    "followedRow": "Pays suivis",
+    "tabsRow": "Onglets du tableau de bord",
+    "fUnlimited": "Illimité",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Toutes les couches",
+    "fLayersNoResilience": "Toutes sauf Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Cotations de marché : 30s",
+    "panelsRow": "Panneaux activés",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tous"
   },
   "faq": {
     "title": "Questions fréquentes",

@@ -271,7 +271,22 @@
     "fKeyAuth": "Anahtar kimlik doğrulama",
     "fSsoMfa": "SSO/MFA/RBAC/denetim",
     "noteBelow": "Temel platform ücretsiz kalır. Ücretli planlar equity research, makro analitik, AI briflerini ve kurumsal kullanımı açar.",
-    "f50plus": "Mevcut"
+    "f50plus": "Mevcut",
+    "sourcesRow": "Kaynaklar",
+    "followedRow": "İzlenen ülkeler",
+    "tabsRow": "Dashboard sekmeler",
+    "fUnlimited": "Sınırsız",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Tüm katmanlar",
+    "fLayersNoResilience": "Dayanıklılık hariç tümü",
+    "fStandardCadence": "Standart",
+    "fQuotes30s": "Pazar teklifleri: 30s",
+    "panelsRow": "Etkin paneller",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tümü"
   },
   "faq": {
     "title": "Sık sorulan sorular",

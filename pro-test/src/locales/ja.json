@@ -271,7 +271,22 @@
     "fKeyAuth": "キー認証",
     "fSsoMfa": "SSO/MFA/RBAC/監査",
     "noteBelow": "コアプラットフォームは無料のまま。有料プランはエクイティリサーチ、マクロアナリティクス、AI ブリーフ、組織利用をアンロック。",
-    "f50plus": "利用可能"
+    "f50plus": "利用可能",
+    "sourcesRow": "情報源",
+    "followedRow": "監視対象国",
+    "tabsRow": "ダッシュボードタブ",
+    "fUnlimited": "無制限",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "全レイヤー",
+    "fLayersNoResilience": "Resilience以外すべて",
+    "fStandardCadence": "標準",
+    "fQuotes30s": "市場相場: 30秒",
+    "panelsRow": "有効なパネル",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "すべて"
   },
   "faq": {
     "title": "よくある質問",

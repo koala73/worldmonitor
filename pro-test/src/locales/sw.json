@@ -390,7 +390,22 @@
     "fKeyAuth": "Uthibitisho wa ufunguo",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Jukwaa la msingi linabaki libre. Mipango ya kulipwa inafungua utafiti wa hisa, uchambuzi wa uchumi mkuu, na arifa za AI, na matumizi ya shirikishi.",
-    "f50plus": "Inapatikana"
+    "f50plus": "Inapatikana",
+    "sourcesRow": "Vyanzo",
+    "followedRow": "Nchi zilizofuatiliwa",
+    "tabsRow": "Kichupo cha dashboard",
+    "fUnlimited": "Bila kikomo",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Safu zote",
+    "fLayersNoResilience": "Zote isipokuwa Upinzani",
+    "fStandardCadence": "Kawaida",
+    "fQuotes30s": "Nukuu za soko: 30s",
+    "panelsRow": "Paneli zilizowezeshwa",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Zote"
   },
   "faq": {
     "title": "Maswali Yanayoulizwa Mara Kwa Mara",

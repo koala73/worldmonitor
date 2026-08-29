@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth με κλειδί",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Η βασική πλατφόρμα παραμένει δωρεάν. Τα επί πληρωμή πλάνα ξεκλειδώνουν equity research, macro αναλυτική, AI briefings και οργανωτική χρήση.",
-    "f50plus": "Διαθέσιμο"
+    "f50plus": "Διαθέσιμο",
+    "sourcesRow": "Πηγές",
+    "followedRow": "Παρακολουθούμενες χώρες",
+    "tabsRow": "Καρτέλες ταμπλό",
+    "fUnlimited": "Απεριόριστο",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Όλα τα επίπεδα",
+    "fLayersNoResilience": "Όλα εκτός Resilience",
+    "fStandardCadence": "Τυπική",
+    "fQuotes30s": "Τιμές αγοράς: 30s",
+    "panelsRow": "Ενεργοποιημένα Panels",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Όλα"
   },
   "faq": {
     "title": "Συχνές ερωτήσεις",

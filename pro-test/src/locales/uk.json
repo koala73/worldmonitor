@@ -390,7 +390,22 @@
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use.",
-    "f50plus": "Доступно"
+    "f50plus": "Доступно",
+    "sourcesRow": "Джерела",
+    "followedRow": "Відстежувані країни",
+    "tabsRow": "Вкладки панелі керування",
+    "fUnlimited": "Без обмежень",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Усі шари",
+    "fLayersNoResilience": "Усі, крім Resilience",
+    "fStandardCadence": "Стандартна",
+    "fQuotes30s": "Котирування ринку: 30 с",
+    "panelsRow": "Увімкнені панелі",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Усі"
   },
   "faq": {
     "title": "Frequently Asked Questions",

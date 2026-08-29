@@ -390,7 +390,22 @@
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use.",
-    "f50plus": "Available"
+    "f50plus": "Available",
+    "sourcesRow": "Sources",
+    "followedRow": "Followed countries",
+    "tabsRow": "Dashboard tabs",
+    "fUnlimited": "Unlimited",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "All layers",
+    "fLayersNoResilience": "All except Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Market quotes: 30s",
+    "panelsRow": "Panels enabled",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "All"
   },
   "faq": {
     "title": "Frequently Asked Questions",

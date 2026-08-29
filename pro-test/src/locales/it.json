@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth per chiave",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "La piattaforma di base resta gratuita. I piani a pagamento sbloccano equity research, analitica macro, briefing IA e uso organizzativo.",
-    "f50plus": "Disponibile"
+    "f50plus": "Disponibile",
+    "sourcesRow": "Fonti",
+    "followedRow": "Paesi monitorati",
+    "tabsRow": "Schede dashboard",
+    "fUnlimited": "Illimitato",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Tutti i layer",
+    "fLayersNoResilience": "Tutti tranne Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Quotazioni di mercato: 30s",
+    "panelsRow": "Panel abilitati",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tutti"
   },
   "faq": {
     "title": "Domande frequenti",

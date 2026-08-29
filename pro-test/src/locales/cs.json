@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth klíčem",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití.",
-    "f50plus": "Dostupné"
+    "f50plus": "Dostupné",
+    "sourcesRow": "Zdroje",
+    "followedRow": "Sledované země",
+    "tabsRow": "Záložky dashboardu",
+    "fUnlimited": "Neomezeno",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Všechny vrstvy",
+    "fLayersNoResilience": "Všechny kromě Resilience",
+    "fStandardCadence": "Standardní",
+    "fQuotes30s": "Tržní kotace: 30s",
+    "panelsRow": "Panely povoleny",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Všechny"
   },
   "faq": {
     "title": "Často kladené otázky",
