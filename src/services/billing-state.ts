@@ -62,7 +62,9 @@ export type BillingStatusTone = 'active' | 'attention' | 'ending' | 'ended' | 'u
  * cancelled-but-paid-through. `expired` never covers, whatever its period end.
  * Boundary differs deliberately from the server helper's `>`: the client keeps
  * the inclusive `>=` this module has always used, so a row landing exactly on
- * `now` never blinks locked between snapshots.
+ * `now` never blinks locked between snapshots. That exception is recorded in
+ * CONCEPTS.md § Covering Subscription — a later dedup of the two helpers has to
+ * preserve both boundaries rather than picking one.
  */
 export function isSubscriptionCoveringAt(
   sub: Pick<BillingSubscriptionSnapshot, 'status' | 'currentPeriodEnd'>,
