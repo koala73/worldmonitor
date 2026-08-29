@@ -43,6 +43,9 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      applyDashboardTabAction: async () => {
+        throw new Error('Unexpected dashboard tab action.');
+      },
       getAccessContext: async () => ({
         accountState: 'signed_out',
         clerk: 'unavailable',
@@ -149,6 +152,9 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      applyDashboardTabAction: async () => {
+        throw new Error('Unexpected dashboard tab action.');
+      },
       getAccessContext: async () => ({
         accountState: 'signed_out',
         clerk: 'unavailable',

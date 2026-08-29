@@ -321,6 +321,7 @@ describe('WebMCP registry behavioral contract', () => {
     );
     let mutationCalls = 0;
     let openCalls = 0;
+    let tabCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
     registerWebMcpTools(createBindings({
@@ -363,6 +364,14 @@ describe('WebMCP registry behavioral contract', () => {
       await executeRegistered(provider, 'set_map_layers', JSON.stringify({ layers: { conflicts: true } })),
       denial,
     );
+    for (const [tool, input] of [
+      ['select_dashboard_tab', { tabId: 'tab-main01-abc123' }],
+      ['create_dashboard_tab', { name: 'Markets' }],
+      ['rename_dashboard_tab', { tabId: 'tab-main01-abc123', name: 'Workspace' }],
+      ['delete_dashboard_tab', { tabId: 'tab-main01-abc123', confirm: true }],
+    ]) {
+      assert.deepEqual(await executeRegistered(provider, tool, JSON.stringify(input)), denial);
+    }
     assert.deepEqual(
       await executeRegistered(
         provider,
@@ -373,6 +382,7 @@ describe('WebMCP registry behavioral contract', () => {
     );
     assert.equal(mutationCalls, 0, 'a gated tool must not reach its binding');
     assert.equal(openCalls, 1, 'result-dependent open_search_result must reach its binding');
+    assert.equal(tabCalls, 0, 'persistent dashboard tab tools must not reach their binding');
   });
 
   it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {

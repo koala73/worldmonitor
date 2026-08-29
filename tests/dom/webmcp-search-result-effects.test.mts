@@ -429,6 +429,9 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      applyDashboardTabAction: async () => {
+        throw new Error('Unexpected dashboard tab action.');
+      },
       getAccessContext: async () => ({
         accountState: 'signed_out',
         clerk: 'unavailable',
