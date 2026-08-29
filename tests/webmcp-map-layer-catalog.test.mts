@@ -18,6 +18,11 @@ import {
   parseMapLayerCatalogArgs,
   type MapLayerCatalogSnapshot,
 } from '../src/services/webmcp-map-layer-catalog.ts';
+import {
+  ALL_MAP_LAYERS_RUNTIME_AVAILABLE,
+  resolveMapLayerRuntimeUnavailableReason,
+  type MapLayerRuntimeAvailability,
+} from '../src/services/map-layer-runtime-availability.ts';
 import type { MapLayers } from '../src/types/index.ts';
 
 const BUDGETS = { targetOutputChars: 1_400 };
@@ -31,8 +36,24 @@ function snapshot(overrides: Partial<MapLayerCatalogSnapshot> = {}): MapLayerCat
     hasPremium: false,
     deckGlActive: true,
     targetCancellationSupported: true,
+    runtimeAvailability: ALL_MAP_LAYERS_RUNTIME_AVAILABLE,
     ...overrides,
   };
+}
+
+function catalogEntry(
+  layerId: keyof MapLayers,
+  overrides: Partial<MapLayerCatalogSnapshot> = {},
+) {
+  const keys = getCompleteLayerCatalogKeys('full');
+  const index = keys.indexOf(layerId);
+  assert.ok(index >= 0, `${layerId} must remain in the complete catalog`);
+  const page = listMapLayerCatalog(snapshot(overrides), {
+    cursor: index > 0 ? keys[index - 1] : undefined,
+    limit: 1,
+  }, BUDGETS);
+  assert.equal(page.ok, true);
+  return page.ok ? page.layers[0] : undefined;
 }
 
 function collectPages(query: Parameters<typeof listMapLayerCatalog>[1] extends infer Q
@@ -301,6 +322,47 @@ describe('listMapLayerCatalog', () => {
     assert.ok(hotspots);
     assert.equal(hotspots.available, false);
     assert.equal(hotspots.reason, 'layer_not_live');
+  });
+
+  it('keeps cyber, AIS, and outages in the catalog when runtime-unavailable', () => {
+    const gated: MapLayerRuntimeAvailability = {
+      cyberLayerEnabled: false,
+      aisConfigured: false,
+      outagesConfigured: false,
+    };
+    const cyber = catalogEntry('cyberThreats', { runtimeAvailability: gated });
+    const ais = catalogEntry('ais', { runtimeAvailability: gated });
+    const outages = catalogEntry('outages', { runtimeAvailability: gated });
+
+    assert.equal(cyber?.id, 'cyberThreats');
+    assert.equal(cyber?.available, false);
+    assert.equal(cyber?.reason, 'layer_feature_disabled');
+    assert.equal(ais?.id, 'ais');
+    assert.equal(ais?.available, false);
+    assert.equal(ais?.reason, 'layer_not_configured');
+    assert.equal(outages?.id, 'outages');
+    assert.equal(outages?.available, false);
+    assert.equal(outages?.reason, 'layer_not_configured');
+
+    assert.equal(
+      resolveMapLayerRuntimeUnavailableReason('cyberThreats', true, gated),
+      'layer_feature_disabled',
+    );
+    assert.equal(
+      resolveMapLayerRuntimeUnavailableReason('ais', true, gated),
+      'layer_not_configured',
+    );
+    assert.equal(
+      resolveMapLayerRuntimeUnavailableReason('outages', true, gated),
+      'layer_not_configured',
+    );
+    assert.equal(
+      resolveMapLayerRuntimeUnavailableReason('outages', true, {
+        ...gated,
+        outagesConfigured: null,
+      }),
+      undefined,
+    );
   });
 
   it('reuses a layer-ID cursor in the new filtered sequence when filters change', () => {

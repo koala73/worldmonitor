@@ -220,6 +220,29 @@ describe('WebMCP live dashboard bindings', () => {
     );
   });
 
+  it('records runtime layer gates without dropping object-membership keys', () => {
+    const ctx = makeContext();
+    ctx.mapLayers.cyberThreats = false;
+    ctx.mapLayers.ais = false;
+    ctx.mapLayers.outages = false;
+    const gated = {
+      cyberLayerEnabled: false,
+      aisConfigured: false,
+      outagesConfigured: false,
+    };
+    const catalogSnapshot = getWebMcpMapLayerCatalogSnapshot(
+      ctx,
+      'full',
+      false,
+      undefined,
+      gated,
+    );
+    assert.ok(catalogSnapshot.liveLayerKeys.includes('cyberThreats'));
+    assert.ok(catalogSnapshot.liveLayerKeys.includes('ais'));
+    assert.ok(catalogSnapshot.liveLayerKeys.includes('outages'));
+    assert.deepEqual(catalogSnapshot.runtimeAvailability, gated);
+  });
+
   it('converts the live globe camera altitude to the dashboard zoom scale', () => {
     assert.equal(globeAltitudeToMapZoom(1.8), 1);
     assert.equal(globeAltitudeToMapZoom(1.2), 2.5);

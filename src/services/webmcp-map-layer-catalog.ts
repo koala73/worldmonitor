@@ -13,6 +13,11 @@ import {
   type MapVariant,
   type RendererKind,
 } from '../config/map-layer-definitions';
+import {
+  ALL_MAP_LAYERS_RUNTIME_AVAILABLE,
+  resolveMapLayerRuntimeUnavailableReason,
+  type MapLayerRuntimeAvailability,
+} from './map-layer-runtime-availability';
 import type { MapLayers } from '../types';
 
 export const WEBMCP_MAP_LAYER_MONITORS = [
@@ -56,6 +61,7 @@ export interface MapLayerCatalogSnapshot {
   rendererKind: RendererKind;
   enabledLayers: readonly string[];
   liveLayerKeys: readonly string[];
+  runtimeAvailability?: MapLayerRuntimeAvailability;
   hasPremium: boolean;
   deckGlActive: boolean;
   /** False when the host cannot deliver a target-side AbortSignal for set_map_layers. */
@@ -145,7 +151,12 @@ function enableUnavailableReason(
   liveKeys: Set<string>,
   pageAllowed: Set<keyof MapLayers>,
 ): string | undefined {
-  if (!liveKeys.has(layerKey)) return 'layer_not_live';
+  const runtimeReason = resolveMapLayerRuntimeUnavailableReason(
+    layerKey,
+    liveKeys.has(layerKey),
+    snapshot.runtimeAvailability ?? ALL_MAP_LAYERS_RUNTIME_AVAILABLE,
+  );
+  if (runtimeReason) return runtimeReason;
   if (!pageAllowed.has(layerKey)) return 'variant_disallowed';
   if (!isLayerEntitled(layerKey, snapshot.hasPremium)) return 'layer_not_entitled';
   if (layerKey === 'resilienceScore' && !snapshot.deckGlActive) return 'layer_not_executable';

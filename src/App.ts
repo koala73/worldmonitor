@@ -1906,6 +1906,11 @@ export class App {
           SITE_VARIANT,
           hasPremiumAccess(getAuthState()),
           t,
+          {
+            cyberLayerEnabled: CYBER_LAYER_ENABLED,
+            aisConfigured: isAisConfigured(),
+            outagesConfigured: isOutagesConfigured(),
+          },
         );
       },
       applyDashboardAction: async (action, execution) => {
@@ -1923,6 +1928,11 @@ export class App {
             applyViewChange: (viewAction) => {
               if (viewAction.view) trackMapViewChange(viewAction.view);
             },
+            getMapLayerRuntimeAvailability: () => ({
+              cyberLayerEnabled: CYBER_LAYER_ENABLED,
+              aisConfigured: isAisConfigured(),
+              outagesConfigured: isOutagesConfigured(),
+            }),
             applyLayerChange: (layer, enabled, source) => (
               this.eventHandlers.applyMapLayerChange(layer, enabled, source)
             ),
