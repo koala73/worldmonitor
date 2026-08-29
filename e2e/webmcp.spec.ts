@@ -280,7 +280,12 @@ test.describe('top-level WebMCP dashboard contract', () => {
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
       expect(tool.schema, `${tool.name} schema`).toMatchObject({ type: 'object' });
       expect(tool.annotations.readOnlyHint, `${tool.name} readOnlyHint`).toBe(
-        ['get_access_context', 'get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        [
+          'get_access_context',
+          'get_dashboard_context',
+          'list_map_layers',
+          'search_dashboard',
+        ].includes(tool.name),
       );
       expect(
         Boolean(tool.annotations.untrustedContentHint),
@@ -464,15 +469,8 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
 
     let visibleMutation: (MutationExecutionProbe & { visible: boolean }) | null = null;
-    let layerListed: unknown = null;
-    let layerCatalogMutation: {
-      firstId: string | null;
-      setResult: MutationExecutionProbe;
-    } | null = null;
-
-    const listed = await executeListMapLayers(page);
-    assertMapLayerListResult(listed, 'list_map_layers');
-    layerListed = listed;
+    const layerListed = await executeListMapLayers(page);
+    assertMapLayerListResult(layerListed, 'list_map_layers');
 
     if (!productionSmoke) {
       const mutation = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
@@ -670,6 +668,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       },
       calls: {
         success: { tool: 'get_dashboard_context', output: coldStart.context },
+        catalog: { tool: 'list_map_layers', output: layerListed },
         denied: {
           tool: 'open_dashboard_panel',
           targetCancellationSupported: coldStart.targetCancellationSupported,
