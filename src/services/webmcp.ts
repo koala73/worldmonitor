@@ -837,7 +837,10 @@ export function buildWebMcpTools(
         const parsed = parseMapLayerCatalogArgs(args);
         if (!parsed.ok) return parsed;
         return listMapLayerCatalog(
-          await app.listMapLayerCatalog(extra),
+          {
+            ...await app.listMapLayerCatalog(extra),
+            targetCancellationSupported: Boolean(extra?.signal),
+          },
           parsed.query,
           { targetOutputChars: TARGET_OUTPUT_CHARS },
         );

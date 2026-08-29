@@ -30,6 +30,7 @@ function snapshot(overrides: Partial<MapLayerCatalogSnapshot> = {}): MapLayerCat
     liveLayerKeys: Object.keys(LAYER_REGISTRY),
     hasPremium: false,
     deckGlActive: true,
+    targetCancellationSupported: true,
     ...overrides,
   };
 }
@@ -236,6 +237,44 @@ describe('listMapLayerCatalog', () => {
     assert.ok(available.ids.includes('conflicts'));
     assert.equal(available.ids.includes('resilienceScore'), false);
     assert.equal(available.ids.includes('startupHubs'), false);
+  });
+
+  it('marks otherwise-available rows unavailable when the host cannot cancel set_map_layers', () => {
+    const page = listMapLayerCatalog(snapshot({ targetCancellationSupported: false }), {
+      limit: MAX_MAP_LAYER_PAGE_SIZE,
+    }, BUDGETS);
+    assert.equal(page.ok, true);
+    if (!page.ok) return;
+    const conflicts = page.layers.find((layer) => layer.id === 'conflicts');
+    assert.ok(conflicts);
+    assert.equal(conflicts.enabled, true);
+    assert.equal(conflicts.available, false);
+    assert.equal(conflicts.reason, 'target_cancellation_unsupported');
+
+    const world = collectPages({ monitor: 'world', limit: MAX_MAP_LAYER_PAGE_SIZE });
+    const cursor = world.ids[world.ids.indexOf('resilienceScore') - 1];
+    const gated = listMapLayerCatalog(snapshot({
+      targetCancellationSupported: false,
+      hasPremium: false,
+    }), {
+      monitor: 'world',
+      cursor,
+      limit: 1,
+    }, BUDGETS);
+    assert.equal(gated.ok, true);
+    if (!gated.ok) return;
+    assert.equal(gated.layers[0]?.id, 'resilienceScore');
+    assert.equal(gated.layers[0]?.available, false);
+    assert.equal(gated.layers[0]?.reason, 'layer_not_entitled');
+
+    const available = listMapLayerCatalog(snapshot({ targetCancellationSupported: false }), {
+      state: 'available',
+      limit: MAX_MAP_LAYER_PAGE_SIZE,
+    }, BUDGETS);
+    assert.equal(available.ok, true);
+    if (!available.ok) return;
+    assert.equal(available.layers.length, 0);
+    assert.equal(available.total, 0);
   });
 
   it('rejects a cursor that is not in the current filtered page sequence', () => {

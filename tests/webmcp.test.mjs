@@ -288,6 +288,20 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(typeof page.nextCursor, 'string');
     assert.equal(page.nextCursor, page.layers.at(-1).id);
     assert.ok(JSON.stringify(page).length <= 1_500);
+    const listedConflicts = page.layers.find((layer) => layer.id === 'conflicts');
+    assert.ok(listedConflicts);
+    assert.equal(listedConflicts.available, true);
+    assert.equal(listedConflicts.reason, undefined);
+
+    const rawList = buildProductionWebMcpTools(createBindings(), () => {})
+      .find((tool) => tool.name === 'list_map_layers');
+    const noSignal = await rawList.execute({});
+    assert.equal(noSignal.ok, true);
+    const noSignalConflicts = noSignal.layers.find((layer) => layer.id === 'conflicts');
+    assert.ok(noSignalConflicts);
+    assert.equal(noSignalConflicts.available, false);
+    assert.equal(noSignalConflicts.reason, 'target_cancellation_unsupported');
+    assert.equal((await rawList.execute({ state: 'available' })).layers.length, 0);
 
     const next = await list.execute({ cursor: page.nextCursor, limit: 3 });
     assert.equal(next.ok, true);

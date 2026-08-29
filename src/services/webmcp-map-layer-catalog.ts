@@ -58,6 +58,8 @@ export interface MapLayerCatalogSnapshot {
   liveLayerKeys: readonly string[];
   hasPremium: boolean;
   deckGlActive: boolean;
+  /** False when the host cannot deliver a target-side AbortSignal for set_map_layers. */
+  targetCancellationSupported?: boolean;
   tFn?: (key: string) => string;
 }
 
@@ -148,6 +150,7 @@ function enableUnavailableReason(
   if (!isLayerEntitled(layerKey, snapshot.hasPremium)) return 'layer_not_entitled';
   if (layerKey === 'resilienceScore' && !snapshot.deckGlActive) return 'layer_not_executable';
   if (!isLayerExecutable(layerKey, snapshot.rendererKind)) return 'layer_not_executable';
+  if (snapshot.targetCancellationSupported !== true) return 'target_cancellation_unsupported';
   return undefined;
 }
 

@@ -58,7 +58,7 @@ type ToolStartMark = {
 
 type MapLayerListResult = {
   count: number;
-  layers: Array<{ available?: boolean; id: string }>;
+  layers: Array<{ available?: boolean; id: string; reason?: string }>;
   nextCursor?: string;
   ok: boolean;
   total: number;
@@ -431,11 +431,13 @@ test.describe('top-level WebMCP dashboard contract', () => {
         const layers = listed && typeof listed === 'object' && 'layers' in listed
           ? (listed as { layers?: Array<{ available?: boolean; id?: string }> }).layers
           : undefined;
-        const chosen = layers?.find((layer) => layer.available === true)?.id ?? null;
+        const chosen = layers?.find((layer) => layer.available === true)?.id
+          ?? layers?.find((layer) => typeof layer.id === 'string')?.id
+          ?? null;
         if (!chosen) {
           return {
             firstId: null,
-            setResult: { ok: false, errorName: 'missing_available_layer', errorMessage: 'Catalog returned no currently available layer IDs.' },
+            setResult: { ok: false, errorName: 'missing_catalog_layer', errorMessage: 'Catalog returned no layer IDs.' },
           };
         }
         try {
@@ -464,12 +466,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
           };
         }
       }, JSON.stringify(listed));
-      expect(
-        (listed as MapLayerListResult).layers.some((layer) => layer.available === true),
-      ).toBe(true);
+      const listedLayers = (listed as MapLayerListResult).layers;
       expect(layerCatalogMutationResult.firstId).toMatch(/^[a-z][A-Za-z0-9_-]*$/);
       expect(layerCatalogMutationResult.setResult.ok).toBe(true);
       if (coldStart.targetCancellationSupported) {
+        expect(listedLayers.some((layer) => layer.available === true)).toBe(true);
         expect(layerCatalogMutationResult.setResult.output).toEqual(expect.objectContaining({
           ok: true,
           status: 'applied',
@@ -481,6 +482,8 @@ test.describe('top-level WebMCP dashboard contract', () => {
           ]),
         }));
       } else {
+        expect(listedLayers.every((layer) => layer.available !== true)).toBe(true);
+        expect(listedLayers.some((layer) => layer.reason === 'target_cancellation_unsupported')).toBe(true);
         expect(layerCatalogMutationResult.setResult.output).toEqual(expect.objectContaining({
           ok: false,
           reason: 'target_cancellation_unsupported',
