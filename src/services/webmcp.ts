@@ -2305,7 +2305,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.listMissionPresets,
       title: 'List Mission Presets',
       description:
-        'List every bundled mission preset for the current monitor. Each item uses a stable preset ID plus view, time range, and panel/layer counts without premium payloads. Includes active, monitorCompatible, entitled, and available flags with a stable unavailableReason when gated.',
+        'List every bundled mission preset for the current monitor. Each item uses a stable preset ID and panel/layer counts without premium payloads. Available rows include intended view and time range. Includes active, monitorCompatible, entitled, and available flags with a stable unavailableReason when gated.',
       inputSchema: {
         type: 'object',
         properties: {

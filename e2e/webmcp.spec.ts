@@ -518,6 +518,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           'list_dashboard_tabs',
           'list_map_layers',
           'list_dashboard_panels',
+          'list_mission_presets',
           'search_dashboard',
         ].includes(tool.name),
       );

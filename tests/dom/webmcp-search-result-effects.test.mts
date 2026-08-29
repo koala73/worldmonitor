@@ -51,7 +51,7 @@ function unusedNavigationResult(
 
 const unusedNavigationBindings: Pick<
   WebMcpAppBindings,
-  'switchMonitor' | 'openSettings' | 'openAlerts'
+  'switchMonitor' | 'openSettings' | 'openAlerts' | 'listMissionPresets' | 'applyMissionPreset' | 'openMissionPicker'
 > = {
   switchMonitor: async () => unusedNavigationResult('full', { navigation: 'none' }),
   openSettings: async () => unusedNavigationResult('settings', {
@@ -61,6 +61,25 @@ const unusedNavigationBindings: Pick<
   openAlerts: async () => unusedNavigationResult('alerts', {
     overlay: 'open',
     tab: 'notifications',
+  }),
+  listMissionPresets: async () => ({
+    ok: true,
+    variant: 'full',
+    activePresetId: null,
+    presets: [],
+    count: 0,
+  }),
+  applyMissionPreset: async () => ({
+    ok: true,
+    status: 'applied',
+    presetId: 'supply-chain-risk',
+    label: 'Supply-Chain Risk',
+    changed: false,
+    monitor: 'full',
+    message: 'Unused mission preset binding.',
+  }),
+  openMissionPicker: async () => unusedNavigationResult('mission_picker', {
+    overlay: 'open',
   }),
 };
 
