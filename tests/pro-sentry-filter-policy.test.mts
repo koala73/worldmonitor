@@ -709,10 +709,15 @@ describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () =
   });
 
   it('drops the same shape served from the absolute document URL', () => {
-    // WebKit sometimes reports the full URL rather than the path.
+    // WebKit sometimes reports the full URL rather than the path. The message
+    // still has to carry the contentWindow evidence — the frame shape alone is
+    // deliberately not enough on this surface.
     const abs = instagramFrames.map((f) =>
       f.filename === '/pro' ? { filename: 'https://www.worldmonitor.app/pro' } : f);
-    assert.equal(marketingBeforeSend(injected('undefined is not an object (evaluating \'s[e]\')', abs)), null);
+    assert.equal(
+      marketingBeforeSend(injected("undefined is not an object (evaluating 'e.contentWindow')", abs)),
+      null,
+    );
   });
 
   it('KEEPS the same message when a marketing bundle chunk is on the stack', () => {
@@ -721,6 +726,26 @@ describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () =
     // the rule and this goes red.
     const withOurs = [...instagramFrames, { filename: '/pro/assets/index-A1b2C3.js' }];
     assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'e.contentWindow.postMessage\')', withOurs)) !== null);
+  });
+
+  it('KEEPS a first-party inline-script TypeError on the same frames', () => {
+    // The control this rule most needs, and the one review caught missing.
+    // These pages ship executable INLINE script — welcome.html's WebMCP
+    // bootstrap and prerender.mjs's DEFERRED_STYLES_SCRIPT, whose
+    // `setTimeout(a, 3000)` arm runs long after Sentry initialises — and WebKit
+    // attributes those to the document URL exactly like an injected one. The
+    // first draft suppressed any TypeError with this frame shape and would have
+    // hidden them. `contentWindow` is what separates the two.
+    for (const value of [
+      "null is not an object (evaluating 'l.rel')",
+      "undefined is not an object (evaluating 'MONITORS.world')",
+      'links.querySelectorAll is not a function',
+    ]) {
+      assert.ok(
+        marketingBeforeSend(injected(value)) !== null,
+        `first-party inline-script error must survive: ${value}`,
+      );
+    }
   });
 
   it('KEEPS a non-TypeError with the same frames', () => {
@@ -745,12 +770,28 @@ describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () =
     assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'a.b\')', [])) !== null);
   });
 
-  it('pins the marketing bundle as contentWindow-free, which licenses the rule', () => {
-    const files = readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })
-      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('sentry-filter-policy'))
-      .map((f) => readFileSync(resolve(root, 'pro-test/src', f), 'utf-8'))
-      .join('\n');
-    assert.ok(!/contentWindow/.test(files),
-      'the marketing bundle now touches an iframe contentWindow — re-derive the WORLDMONITOR-115 rule');
+  it('pins the whole surface as contentWindow-free, inline scripts included', () => {
+    // Review caught that scanning `pro-test/src` alone is not the surface: the
+    // executable inline scripts live in welcome.html and prerender.mjs, and a
+    // scan that skips them cannot license a rule about first-party code.
+    const sources = [
+      ...readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })
+        .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('sentry-filter-policy'))
+        .map((f) => `pro-test/src/${f}`),
+      'pro-test/welcome.html',
+      'pro-test/index.html',
+      'pro-test/prerender.mjs',
+    ];
+    const offenders = sources.filter((rel) => /contentWindow/.test(readFileSync(resolve(root, rel), 'utf-8')));
+    assert.deepEqual(offenders, [],
+      'the marketing surface now touches an iframe contentWindow — re-derive the WORLDMONITOR-115 rule');
+
+    // The scan must actually reach the inline-script files, or the assertion
+    // above passes for the wrong reason.
+    for (const rel of ['pro-test/welcome.html', 'pro-test/prerender.mjs']) {
+      const body = readFileSync(resolve(root, rel), 'utf-8');
+      assert.ok(body.length > 500, `${rel} did not resolve`);
+      assert.match(body, /<script|SCRIPT =/, `${rel} is expected to carry inline script`);
+    }
   });
 });
