@@ -48,9 +48,14 @@ describe('App.destroy lifecycle cleanup contract', () => {
 
     const destroyBody = appDestroyBody();
     const wakePendingTools = destroyBody.indexOf('this.resolveAppDestroyed()');
+    const abortLifecycle = destroyBody.indexOf('this.lifecycleController.abort()');
     const abortRegisteredTools = destroyBody.indexOf('this.webMcpController?.abort()');
     const destroyModules = destroyBody.indexOf('// Destroy all modules in reverse order');
     assert.ok(wakePendingTools >= 0, 'destroy() must wake WebMCP readiness waits');
+    assert.ok(
+      abortLifecycle > wakePendingTools && abortLifecycle < abortRegisteredTools,
+      'destroy() must abort App-owned waiters before unregistering WebMCP tools',
+    );
     assert.ok(
       abortRegisteredTools > wakePendingTools && abortRegisteredTools < destroyModules,
       'destroy() must unregister WebMCP before partial module cleanup can throw',

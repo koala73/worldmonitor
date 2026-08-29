@@ -1643,8 +1643,29 @@ describe('webmcp App.ts binding invariants', () => {
     assert.ok(ts.isObjectLiteralExpression(waitOptions), 'waitUntilPanelLive takes one options object');
     assert.deepEqual(
       waitOptions.properties.map((property) => property.name?.getText(appFile)),
-      ['isLive'],
-      'post-persist wait must not take a cancellation signal',
+      ['isLive', 'signal'],
+      'post-persist wait takes the App lifecycle signal, not the caller signal',
+    );
+    const waitSignal = waitOptions.properties.find((property) => (
+      property.name?.getText(appFile) === 'signal'
+    ));
+    assert.ok(ts.isPropertyAssignment(waitSignal));
+    assert.equal(
+      waitSignal.initializer.getText(appFile),
+      'this.lifecycleController.signal',
+      'post-persist wait must cancel with App.destroy, not the invocation signal',
+    );
+    assert.equal(
+      findNodes(
+        setPanelEnabled,
+        (node) => (
+          ts.isNewExpression(node)
+          && node.expression.getText(appFile) === 'DashboardBindingError'
+          && node.arguments?.[0]?.getText(appFile) === "'app_destroyed'"
+        ),
+      ).length,
+      2,
+      'destroy during the live wait must translate to app_destroyed',
     );
     const abortGuards = findNodes(
       setPanelEnabled,
@@ -1742,6 +1763,12 @@ describe('webmcp App.ts binding invariants', () => {
       'destroyed-state assignment',
     );
     const wakeDestroyed = callByExpression(destroy, appFile, 'this.resolveAppDestroyed');
+    const abortLifecycle = callByExpression(
+      destroy,
+      appFile,
+      'this.lifecycleController.abort',
+      'App lifecycle abort',
+    );
     const abortTools = callByExpression(
       destroy,
       appFile,
@@ -1749,7 +1776,8 @@ describe('webmcp App.ts binding invariants', () => {
       'WebMCP controller abort',
     );
     assert.ok(destroyedAssignment.getStart(appFile) < wakeDestroyed.getStart(appFile));
-    assert.ok(wakeDestroyed.getStart(appFile) < abortTools.getStart(appFile));
+    assert.ok(wakeDestroyed.getStart(appFile) < abortLifecycle.getStart(appFile));
+    assert.ok(abortLifecycle.getStart(appFile) < abortTools.getStart(appFile));
     const clearController = findNode(
       destroy,
       (node) => (

@@ -816,4 +816,57 @@ describe('waitUntilPanelLive', () => {
     controller.abort();
     await assert.rejects(pending, (error: Error) => error.name === 'AbortError');
   });
+
+  it('enable-then-destroy disconnects the observer and clears the timeout immediately', async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    const armed = new Set<ReturnType<typeof setTimeout>>();
+    let stopCount = 0;
+    let live = false;
+    let notify = (): void => {};
+
+    globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      const id = realSetTimeout(handler, timeout, ...args);
+      armed.add(id);
+      return id;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = ((id?: ReturnType<typeof setTimeout>) => {
+      armed.delete(id as ReturnType<typeof setTimeout>);
+      realClearTimeout(id);
+    }) as typeof clearTimeout;
+
+    const lifecycle = new AbortController();
+    try {
+      const pending = waitUntilPanelLive({
+        isLive: () => live,
+        signal: lifecycle.signal,
+        timeoutMs: 30_000,
+        observe: (onChange) => {
+          notify = onChange;
+          return () => {
+            stopCount += 1;
+          };
+        },
+      });
+      await Promise.resolve();
+      assert.equal(armed.size, 1, 'live wait must arm the timeout before destroy');
+      assert.equal(stopCount, 0);
+
+      // App.destroy() aborts the lifecycle signal; the waiter must settle and
+      // drop both the MutationObserver and the 30s timer before replacement
+      // DOM can look live.
+      lifecycle.abort();
+      await assert.rejects(pending, (error: Error) => error.name === 'AbortError');
+      assert.equal(stopCount, 1, 'observer must disconnect on destroy');
+      assert.equal(armed.size, 0, 'timeout must clear on destroy');
+
+      live = true;
+      notify();
+      await Promise.resolve();
+      assert.equal(stopCount, 1, 'late mutations must not re-arm or re-stop the observer');
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+    }
+  });
 });

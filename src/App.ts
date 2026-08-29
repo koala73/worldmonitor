@@ -314,6 +314,10 @@ export class App {
   // triggers it so test harnesses / same-document re-inits don't accumulate
   // duplicate registrations.
   private webMcpController: AbortController | null = null;
+  // Cancels App-owned waits that have already entered a callback. Distinct from
+  // the tool-invocation caller signal, and from webMcpController which only
+  // unregisters tools — aborting registration does not stop an in-flight waiter.
+  private readonly lifecycleController = new AbortController();
   private visiblePanelPrimed = new Set<string>();
   /**
    * Per-pass viewport results, or null outside a pass. See
@@ -1975,7 +1979,10 @@ export class App {
         }
         const result = this.eventHandlers.setPanelEnabledById(panelId, enabled);
         // Map uses #mapSection, not ctx.panels / [data-panel]. After persist,
-        // do not abort: cancellation-required only gates a missing signal.
+        // do not abort on the caller signal: cancellation-required only gates a
+        // missing signal. The App lifecycle signal still cancels this waiter
+        // when destroy() runs, so a same-document re-init cannot wake the
+        // MutationObserver on replacement DOM.
         if (
           result.ok
           && result.changed
@@ -1983,9 +1990,17 @@ export class App {
           && typeof panelId === 'string'
           && panelId !== 'map'
         ) {
-          await waitUntilPanelLive({
-            isLive: () => isCatalogPanelLive(panelId, this.state.panels),
-          });
+          try {
+            await waitUntilPanelLive({
+              isLive: () => isCatalogPanelLive(panelId, this.state.panels),
+              signal: this.lifecycleController.signal,
+            });
+          } catch (error) {
+            if (this.state.isDestroyed || this.lifecycleController.signal.aborted) {
+              throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+            }
+            throw error;
+          }
         }
         return result;
       },
@@ -3042,6 +3057,9 @@ export class App {
     this.latestSearchMilitary = [];
     this.latestSearchAdsbUpdatedAt = 0;
     this.resolveAppDestroyed();
+    // Cancel in-flight App-owned waits before DOM teardown can mutate the
+    // document and wake a waiter that still closes over this instance.
+    this.lifecycleController.abort();
     // Unregister agent entry points before the rest of teardown. In particular,
     // init-failure cleanup may run on a partially initialised App; even if a
     // later module cleanup throws, no WebMCP tool may retain this dead instance.
