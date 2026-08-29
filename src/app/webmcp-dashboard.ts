@@ -226,41 +226,65 @@ export async function applyWebMcpSwitchMonitor(
   };
 }
 
-export function applyWebMcpOpenSettings(
+async function openUnifiedSettingsOverlay(
   ctx: AppContext,
   currentVariant: string,
-): WebMcpNavigationResult {
+  destination: 'settings' | 'alerts',
+  tab: 'settings' | 'notifications',
+): Promise<WebMcpNavigationResult> {
   const context = navigationContext(ctx, currentVariant);
   if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(context);
   if (!ctx.unifiedSettings) {
     return {
       ok: false,
       status: 'denied',
-      destination: 'settings',
+      destination,
       reason: 'unavailable',
-      message: 'Settings are not available on this dashboard.',
+      message: destination === 'alerts'
+        ? 'Alerts are not available on this dashboard.'
+        : 'Settings are not available on this dashboard.',
       context,
     };
   }
-  ctx.unifiedSettings.open('settings');
+  const opened = await Promise.resolve(ctx.unifiedSettings.open(tab));
+  if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(navigationContext(ctx, currentVariant));
+  if (opened === false) {
+    return {
+      ok: false,
+      status: 'denied',
+      destination,
+      reason: 'unavailable',
+      message: destination === 'alerts'
+        ? 'Alerts are not available on this dashboard.'
+        : 'Settings are not available on this dashboard.',
+      context: navigationContext(ctx, currentVariant),
+    };
+  }
   return {
     ok: true,
     status: 'applied',
-    destination: 'settings',
+    destination,
     overlay: 'open',
-    tab: 'settings',
-    message: 'Opened settings.',
-    context,
+    tab,
+    message: destination === 'alerts' ? 'Opened alerts.' : 'Opened settings.',
+    context: navigationContext(ctx, currentVariant),
   };
 }
 
-export function applyWebMcpOpenAlerts(
+export async function applyWebMcpOpenSettings(
   ctx: AppContext,
   currentVariant: string,
-): WebMcpNavigationResult {
+): Promise<WebMcpNavigationResult> {
+  return openUnifiedSettingsOverlay(ctx, currentVariant, 'settings', 'settings');
+}
+
+export async function applyWebMcpOpenAlerts(
+  ctx: AppContext,
+  currentVariant: string,
+): Promise<WebMcpNavigationResult> {
   const context = navigationContext(ctx, currentVariant);
   if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(context);
-  if (ctx.isDesktopApp || !ctx.unifiedSettings) {
+  if (ctx.isDesktopApp) {
     return {
       ok: false,
       status: 'denied',
@@ -270,14 +294,5 @@ export function applyWebMcpOpenAlerts(
       context,
     };
   }
-  ctx.unifiedSettings.open('notifications');
-  return {
-    ok: true,
-    status: 'applied',
-    destination: 'alerts',
-    overlay: 'open',
-    tab: 'notifications',
-    message: 'Opened alerts.',
-    context,
-  };
+  return openUnifiedSettingsOverlay(ctx, currentVariant, 'alerts', 'notifications');
 }

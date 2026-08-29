@@ -349,6 +349,10 @@ describe('webmcp.ts: current API contract', () => {
     const gated = await tools.find((tool) => tool.name === 'open_alerts').execute({ tab: 'billing' });
     assert.equal(gated.reason, 'malformed_arguments');
     assert.deepEqual(calls, ['settings', 'alerts']);
+
+    const gatedSettings = await tools.find((tool) => tool.name === 'open_settings').execute({ tab: 'billing' });
+    assert.equal(gatedSettings.reason, 'malformed_arguments');
+    assert.deepEqual(calls, ['settings', 'alerts']);
   });
 
   it('reports entitlement-style unavailability without account details', async () => {

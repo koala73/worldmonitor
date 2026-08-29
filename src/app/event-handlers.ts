@@ -174,26 +174,32 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.button;
   }
 
-  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending = false): void {
+  open(
+    tab?: UnifiedSettingsTabId,
+    replaceOverlayId?: OverlayId,
+    historyPending = false,
+  ): Promise<boolean> {
     const epoch = ++this.openEpoch;
     const pendingId: OverlayId = 'settings-pending';
     const pendingGate = historyPending
       ? overlayHistory.beginPending(pendingId, replaceOverlayId, () => { this.openEpoch += 1; })
       : null;
-    void this.load().then((settings) => {
-      if (this.destroyed || this.openEpoch !== epoch) return;
-      if (pendingGate && !pendingGate.isCurrent()) return;
+    return this.load().then((settings) => {
+      if (this.destroyed || this.openEpoch !== epoch) return false;
+      if (pendingGate && !pendingGate.isCurrent()) return false;
       settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
+      return true;
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
       // deliberate unmount, not a failure the user should be toasted about.
       // Back can cancel the pending history transition before the lazy chunk
       // rejects; that cancellation is also an expected teardown path.
       const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
-      if (this.destroyed || actionWasCancelled) return;
+      if (this.destroyed || actionWasCancelled) return false;
       console.warn('[settings] Failed to load settings window:', error);
       pendingGate?.cancel();
       showToast(t('common.error'));
+      return false;
     });
   }
 
