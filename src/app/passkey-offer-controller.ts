@@ -29,6 +29,7 @@ import {
   readPasskeySessionFacts,
 } from '@/services/passkeys';
 import { isModalOpen } from '@/utils/open-modal';
+import { recordPasskeyOfferReason } from '@/utils/passkey-offer-trace';
 
 /**
  * Drives the post-sign-in passkey offer.
@@ -294,6 +295,10 @@ export class PasskeyOfferController implements AppModule {
       },
       mount: (id) => this.mountPrompt(id),
     });
+    // Every result is a member of the closed trace vocabulary, so the gate that
+    // stopped the offer is recoverable in one console read instead of inferred
+    // from a later snapshot.
+    recordPasskeyOfferReason(result);
     // Come back when the overlay goes away. Every other non-mount result is
     // genuinely terminal for this emission.
     this.evaluationDeferredByOverlay = result === 'blocked-by-overlay';

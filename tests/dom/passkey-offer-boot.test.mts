@@ -41,6 +41,7 @@ vi.mock('@/app/passkey-offer-controller', () => ({
 
 import type { AppContext } from '@/app/app-context';
 import { PasskeyOfferBoot } from '@/app/passkey-offer-boot';
+import { getPasskeyOfferTrace, resetPasskeyOfferTrace } from '@/utils/passkey-offer-trace';
 
 const ctx = { isDesktopApp: false } as unknown as AppContext;
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -53,6 +54,7 @@ beforeEach(() => {
   loaded.preArmed = [];
   loaded.destroyed = 0;
   loaded.inited = 0;
+  resetPasskeyOfferTrace();
 });
 
 describe('PasskeyOfferBoot', () => {
@@ -150,5 +152,57 @@ describe('PasskeyOfferBoot', () => {
     boot.init();
     expect(() => boot.destroy()).not.toThrow();
     expect(loaded.count).toBe(0);
+  });
+});
+
+describe('diagnostic trace', () => {
+  it('records the cold-hydration suppression that is otherwise invisible', async () => {
+    // This is the whole reason the trace lives in the shim: the controller
+    // never loads on this path, so controller-side instrumentation could never
+    // report it, and the only prior diagnosis was inference from a snapshot.
+    const boot = new PasskeyOfferBoot(ctx);
+    state.userId = 'user_abc';
+    boot.init();
+    authListener?.();
+    await flush();
+    expect(getPasskeyOfferTrace()).toContain('cold-hydration-suppressed');
+    expect(loaded.count).toBe(0);
+    boot.destroy();
+  });
+
+  it('records the arming observation and the handoff, in order', async () => {
+    const boot = new PasskeyOfferBoot(ctx);
+    boot.init();
+    authListener?.();
+    state.userId = 'user_abc';
+    authListener?.();
+    await flush();
+    expect(getPasskeyOfferTrace()).toEqual(['signed-out-observed', 'import-started']);
+    boot.destroy();
+  });
+
+  it('records clerk-absent rather than staying silent', async () => {
+    const boot = new PasskeyOfferBoot(ctx);
+    state.clerkLoaded = false;
+    boot.init();
+    authListener?.();
+    await flush();
+    expect(getPasskeyOfferTrace()).toEqual(['clerk-absent']);
+    boot.destroy();
+  });
+
+  it('records nothing that is not a closed-vocabulary member', async () => {
+    const boot = new PasskeyOfferBoot(ctx);
+    boot.init();
+    authListener?.();
+    state.userId = 'user_abc';
+    authListener?.();
+    await flush();
+    // No account key, user id, or session id may ever reach the trace.
+    for (const entry of getPasskeyOfferTrace()) {
+      expect(entry).not.toContain('user_');
+      expect(entry).not.toContain('acct:');
+    }
+    boot.destroy();
   });
 });
