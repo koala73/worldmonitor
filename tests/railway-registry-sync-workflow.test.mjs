@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -160,7 +161,17 @@ function createAuditFixture() {
   return { directory, startedAtMs, writeFake };
 }
 
-function executeWorkflowShell(run, fixture, { githubEnv, githubStepSummary } = {}) {
+function executeWorkflowShell(run, fixture, {
+  githubEnv,
+  githubOutput,
+  githubStepSummary,
+  // A token the fake CLI does not recognize makes every Railway call fail, which
+  // is how an auth/network/deadline failure reaches the audit: non-zero exit,
+  // no drift verdict.
+  token = 'viewer',
+} = {}) {
+  const runnerTemp = join(fixture.directory, 'runner-temp');
+  mkdirSync(runnerTemp, { recursive: true });
   return spawnSync('bash', [
     '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', run,
   ], {
@@ -172,8 +183,10 @@ function executeWorkflowShell(run, fixture, { githubEnv, githubStepSummary } = {
       ...process.env,
       PATH: `${fixture.directory}:${process.env.PATH}`,
       GITHUB_ENV: githubEnv ?? join(fixture.directory, 'github-env'),
+      GITHUB_OUTPUT: githubOutput ?? join(fixture.directory, 'github-output'),
       GITHUB_STEP_SUMMARY: githubStepSummary ?? join(fixture.directory, 'step-summary'),
-      RAILWAY_API_TOKEN: 'viewer',
+      RUNNER_TEMP: runnerTemp,
+      RAILWAY_API_TOKEN: token,
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS: String(fixture.startedAtMs),
     },
@@ -261,7 +274,13 @@ describe('Railway Registry Sync workflow', () => {
         `${step.name ?? step.uses} must not run the deployment-history check`,
       );
     }
-    assert.doesNotMatch(check.run, /\|\||continue-on-error/);
+    // The step captures the audit's exit status so it can tell a drift verdict
+    // apart from an observation failure, then re-raises it. Assert the re-raise
+    // (and prove non-swallowing behaviorally below) rather than banning `||`,
+    // which the status capture legitimately needs.
+    assert.equal(check.id, 'audit', 'the guidance step gates on this step id');
+    assert.match(check.run, /exit "\$status"/);
+    assert.doesNotMatch(check.run, /continue-on-error/);
   });
 
   it('starts the run budget before every prerequisite', () => {
@@ -290,13 +309,16 @@ describe('Railway Registry Sync workflow', () => {
         workflow.jobs.audit,
         'Audit live Railway configuration against the registry',
       );
-      const result = executeWorkflowShell(check.run, fixture);
+      const githubOutput = join(fixture.directory, 'match-output');
+      writeFileSync(githubOutput, '');
+      const result = executeWorkflowShell(check.run, fixture, { githubOutput });
       assert.equal(
         result.status,
         0,
         `matched configuration must pass\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
       );
       assert.match(result.stdout, /Railway operational-config audit passed/);
+      assert.doesNotMatch(readFileSync(githubOutput, 'utf8'), /drift_detected/);
     } finally {
       rmSync(fixture.directory, { recursive: true, force: true });
     }
@@ -313,7 +335,9 @@ describe('Railway Registry Sync workflow', () => {
         workflow.jobs.audit,
         'Audit live Railway configuration against the registry',
       );
-      const result = executeWorkflowShell(check.run, fixture);
+      const githubOutput = join(fixture.directory, 'drift-output');
+      writeFileSync(githubOutput, '');
+      const result = executeWorkflowShell(check.run, fixture, { githubOutput });
       assert.notEqual(
         result.status,
         0,
@@ -323,6 +347,79 @@ describe('Railway Registry Sync workflow', () => {
         result.stderr,
         new RegExp(`${INCIDENT_SERVICE}: watch paths missing ${INCIDENT_PATTERN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
       );
+      // The step must still echo the audit's own stderr, not swallow it into
+      // the capture file.
+      assert.match(readFileSync(githubOutput, 'utf8'), /drift_detected=true/);
+    } finally {
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps an observation failure on its own diagnosis, not on --apply', () => {
+    const job = workflow.jobs.audit;
+    const diagnosis = stepNamed(job, 'Report that the audit could not observe Railway');
+    assert.equal(
+      diagnosis.if,
+      "failure() && steps.audit.outputs.drift_detected != 'true'",
+    );
+    assert.equal(steps(job).indexOf(diagnosis), steps(job).length - 1);
+    // The two failure arms must be mutually exclusive, so exactly one speaks.
+    const guidance = stepNamed(job, 'Name the operator sync command');
+    assert.equal(
+      guidance.if.replace("== 'true'", ''),
+      diagnosis.if.replace("!= 'true'", ''),
+    );
+
+    const fixture = createAuditFixture();
+    try {
+      const summary = join(fixture.directory, 'diagnosis-summary');
+      writeFileSync(summary, '');
+      const result = executeWorkflowShell(diagnosis.run, fixture, {
+        githubStepSummary: summary,
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const rendered = readFileSync(summary, 'utf8');
+      assert.match(rendered, /No drift is implied and `--apply` is NOT the remedy/);
+      assert.doesNotMatch(
+        rendered,
+        /^\s*node scripts\/audit-railway-watch-paths\.mjs --apply\s*$/m,
+        'the non-verdict arm must not hand over the apply command as an action',
+      );
+    } finally {
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  // The regression for PR #7312 review: an unqualified `failure()` made every
+  // checkout, npm-install, credential, network, and deadline failure claim that
+  // live configuration trails the registry and send an operator to run a
+  // production `--apply` on no evidence. A drift verdict and an observation
+  // failure both exit 1, so the exit code alone cannot gate that guidance.
+  it('fails without claiming drift when the audit cannot observe Railway', () => {
+    const fixture = createAuditFixture();
+    try {
+      fixture.writeFake();
+      const check = stepNamed(
+        workflow.jobs.audit,
+        'Audit live Railway configuration against the registry',
+      );
+      const githubOutput = join(fixture.directory, 'unreadable-output');
+      writeFileSync(githubOutput, '');
+      const result = executeWorkflowShell(check.run, fixture, {
+        githubOutput,
+        token: 'not-the-viewer-token',
+      });
+      assert.notEqual(
+        result.status,
+        0,
+        `an unreadable Railway must still fail the job\nstdout:\n${result.stdout}`,
+      );
+      assert.doesNotMatch(
+        readFileSync(githubOutput, 'utf8'),
+        /drift_detected/,
+        'an observation failure must not be reported as configuration drift',
+      );
+      assert.doesNotMatch(result.stderr, /audit found \d+ drifted service/);
     } finally {
       rmSync(fixture.directory, { recursive: true, force: true });
     }
@@ -331,8 +428,13 @@ describe('Railway Registry Sync workflow', () => {
   it('hands the operator the exact sync command when the audit fails', () => {
     const job = workflow.jobs.audit;
     const guidance = stepNamed(job, 'Name the operator sync command');
-    assert.equal(guidance.if, 'failure()');
-    assert.equal(steps(job).indexOf(guidance), steps(job).length - 1);
+    // Gated on a positive drift verdict, never on bare failure(): a failed
+    // checkout, npm install, credential, or deadline is not evidence of drift
+    // and must not direct an operator at a production --apply.
+    assert.equal(
+      guidance.if,
+      "failure() && steps.audit.outputs.drift_detected == 'true'",
+    );
 
     const fixture = createAuditFixture();
     try {
