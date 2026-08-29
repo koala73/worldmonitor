@@ -249,6 +249,7 @@ export class SearchManager implements AppModule {
       },
       getVariant: () => SITE_VARIANT,
       isMatchExecutable: (match) => this.isSearchMatchExecutable(match),
+      isPanelCurrentlyEnabled: (panelId) => this.ctx.panelSettings[panelId]?.enabled === true,
       selectMatch: (match, signal) => this.searchSelection.selectProgrammaticMatch(
         match,
         () => this.resolveProgrammaticMatchForCommit(match),

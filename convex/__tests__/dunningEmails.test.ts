@@ -11,6 +11,10 @@
  *     (pre-existing holds get a single catch-up email), ledger pre-check
  *   - winback: 30–60d window, skips while still entitled, skips
  *     resubscribed users, one-shot
+ *
+ * Cancellation confirmation, copy, retry-scan, and shared-ledger cases live
+ * in cancellationEmails.test.ts so this file stays on the dunning + winback
+ * lifecycle.
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";

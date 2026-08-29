@@ -170,6 +170,19 @@ const EVENTS = {
   'pro-activation-step-blocked': true,
   'pro-activation-step-failed': true,
   'pro-activation-exit': true,
+  // Passkey offer funnel. Five events, and the boundaries are load-bearing:
+  // `accepted` fires once per MOUNTED offer (not per tap), so a cancel-then-
+  // retry does not read as two accepts against one creation and fabricate an
+  // abandonment rate. `failed` is terminal-only — retryable outcomes
+  // (cancellation, transient/config errors) emit nothing, because they are not
+  // outcomes, they are the user still deciding. `dismissed` means a voluntary
+  // rejection ONLY; letting a technical failure also emit it would inflate the
+  // dismissal guardrail with our own bugs.
+  'passkey-offer-shown': true,
+  'passkey-offer-accepted': true,
+  'passkey-offer-created': true,
+  'passkey-offer-failed': true,
+  'passkey-offer-dismissed': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -756,6 +769,40 @@ export function isLikelyFreshSignup(
 
 export function trackSignOut(): void {
   track('sign-out');
+}
+
+/**
+ * Passkey offer funnel.
+ *
+ * Plain `track()`, deliberately — the same path `trackSignIn`/`trackSignUp`
+ * use. These are steps in the same auth lifecycle, so splitting them onto a
+ * different tracker would make passkey telemetry inconsistent with the sign-in
+ * telemetry beside it for no privacy gain.
+ *
+ * No user id, email, credential material, or passkey identifier in any payload.
+ * That is not a claim of anonymity: `identifyUser()` already attributes every
+ * Umami event to the Clerk id, so these are per-user records of a
+ * security-posture change and should be treated as such.
+ */
+export function trackPasskeyOfferShown(): void {
+  track('passkey-offer-shown');
+}
+
+export function trackPasskeyOfferAccepted(): void {
+  track('passkey-offer-accepted');
+}
+
+export function trackPasskeyOfferCreated(): void {
+  track('passkey-offer-created');
+}
+
+/** `reason` is a coarse closed vocabulary — never a raw Clerk error string. */
+export function trackPasskeyOfferFailed(reason: string): void {
+  track('passkey-offer-failed', { reason });
+}
+
+export function trackPasskeyOfferDismissed(): void {
+  track('passkey-offer-dismissed');
 }
 
 /**

@@ -2646,6 +2646,18 @@
       "rubBase": "러시아 중앙은행 — 단위당 루블",
       "rubPerUnit": "단위당 루블",
       "sourceCbr": "출처: 러시아 중앙은행"
+    },
+    "passkeyOffer": {
+      "title": "패스키를 저장하시겠어요?",
+      "body": "다음에는 지문, 얼굴, 또는 기기 PIN으로 로그인하세요 — 기억할 비밀번호가 없습니다.",
+      "accept": "패스키 저장",
+      "dismiss": "나중에",
+      "close": "닫기",
+      "announce": "다음에 더 빠르게 로그인하려면 패스키를 저장하세요.",
+      "busy": "기기 대기 중…",
+      "succeeded": "패스키가 저장되었습니다. 다음에 로그인할 때 사용할 수 있습니다.",
+      "retryable": "완료되지 않았습니다. 다시 시도할 수 있습니다.",
+      "failed": "이 기기에서 패스키를 저장할 수 없었습니다."
     }
   },
   "popups": {
@@ -3427,7 +3439,8 @@
   "auth": {
     "signIn": "로그인",
     "createAccount": "계정 만들기",
-    "settings": "설정"
+    "settings": "설정",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP 연결",

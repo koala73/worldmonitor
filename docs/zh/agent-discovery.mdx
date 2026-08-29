@@ -47,11 +47,12 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/agent-card.json`](https://worldmonitor.app/.well-known/agent-card.json) | [A2A](https://a2a-protocol.org) | `/a2a` JSON-RPC 接待智能体的 Agent Card（见下文）——传输方式、协议版本、技能，无需认证 |
 | [`/.well-known/http-message-signatures-directory`](https://worldmonitor.app/.well-known/http-message-signatures-directory) | [RFC 9421](https://datatracker.ietf.org/doc/html/rfc9421) / Web Bot Auth | Ed25519 公钥目录（`application/http-message-signatures-directory+json`），供第三方验证源自 WorldMonitor 的签名自动化请求。密钥携带滚动 24 小时 `nbf`/`exp` 窗口；缓存 `public, max-age=3600` |
 | [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | （自定义） | 预打包智能体技能索引（`fetch-country-brief`、`fetch-resilience-score`……）——每个技能都是一份自包含的配方 |
+| [`/plugin.json`](https://worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | World Monitor 智能体插件清单（`name: worldmonitor`）。GitHub 仓库即插件包：根目录 `plugin.json`、`mcp.json` 与常规 `skills/*/SKILL.md` 文件（不是 git 符号链接——Windows 检出和 zip 解压仍能得到 YAML 前置元数据）。插件配方与 well-known 目录一致，只是 REST 示例使用公开站点源 `https://worldmonitor.app` |
 | [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM 友好的 markdown 简报——概述、能力、链接 |
 | [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | （扩展） | 长格式变体，覆盖所有数据层、面板和数据源 |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | （自定义） | 按密钥的种子状态、新鲜度、记录计数——智能体可据此门控抓取 |
 
-头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。
+头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`、`/plugin.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。
 
 ## 智能体前门
 
