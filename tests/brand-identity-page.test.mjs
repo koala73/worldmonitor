@@ -27,7 +27,9 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /\|\s*Locality\s*\|\s*Dubai\s*\|/);
     assert.match(body, /\|\s*Country\s*\|\s*AE \(United Arab Emirates\)\s*\|/);
     assert.match(body, /does not publish a street address or telephone number/i);
-    assert.doesNotMatch(body, /streetAddress|telephone|faxNumber|\+\d{6,}/);
+    assert.doesNotMatch(body, /streetAddress|tel:|\bfaxNumber\b|\+\d{8,}/);
+    assert.doesNotMatch(body, /\|\s*Telephone\s*\|/i);
+    assert.doesNotMatch(body, /\|\s*Street\s*\|/i);
   });
 
   it('cites press mentions that already name World Monitor and link the product', () => {

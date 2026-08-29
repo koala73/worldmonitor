@@ -72,9 +72,15 @@ describe('REST API versioning and deprecation policy', () => {
 
   it('advertises an absolute policy-discovery Link on homepage and /api/(.*) Vercel rules', () => {
     const vercel = JSON.parse(read('vercel.json'));
-    const homepage = vercel.headers.find((rule) => rule.source === '/')?.headers
-      .find((header) => header.key === 'Link')?.value;
-    assert.match(homepage, /<\/api-versioning\.md>; rel="deprecation"; type="text\/markdown"/);
+    const homepageLinks = vercel.headers
+      .filter((rule) => rule.source === '/')
+      .flatMap((rule) => rule.headers ?? [])
+      .filter((header) => header.key === 'Link')
+      .map((header) => header.value);
+    assert.ok(
+      homepageLinks.some((value) => /<\/api-versioning\.md>; rel="deprecation"; type="text\/markdown"/.test(value)),
+      'a / homepage Link header must advertise the static REST deprecation policy',
+    );
 
     const apiRule = vercel.headers.find((rule) => rule.source === '/api/(.*)');
     const apiLink = apiRule?.headers.find((header) => header.key === 'Link')?.value;
