@@ -1213,6 +1213,13 @@ export class PanelLayoutManager implements AppModule {
   // Dashboard tabs — named, persistent panel workspaces
   // ============================================
 
+  /** Live dashboard-tab count for access-context limits. At least one workspace. */
+  public getDashboardTabCount(): number {
+    if (this.tabsState?.tabs.length) return this.tabsState.tabs.length;
+    const stored = loadTabsState();
+    return stored?.tabs.length ?? 1;
+  }
+
   private initPanelTabs(): void {
     const mount = document.getElementById('panelTabsMount');
     if (!mount) return;

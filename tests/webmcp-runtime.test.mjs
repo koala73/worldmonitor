@@ -57,6 +57,22 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
+    getAccessContext: async () => ({
+      accountState: 'signed_out',
+      clerk: 'unavailable',
+      productTier: 'anonymous',
+      capabilities: {
+        premiumAccess: false,
+        apiAccess: false,
+        mcpAccess: false,
+        dataExport: false,
+      },
+      limits: {
+        enabledPanels: { used: 1, cap: 40 },
+        dashboardTabs: { used: 1, cap: 3, canCreate: true },
+      },
+    }),
+    openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     ...overrides,
   };
 }
@@ -355,7 +371,7 @@ describe('WebMCP registry behavioral contract', () => {
 
     // Chrome through 151 passes no target-side signal. These tools only move
     // visible, reversible dashboard view state, so they run anyway rather than
-    // costing 6 of 8 tools on every browser that exists.
+    // costing 7 of 10 tools on every browser that exists.
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
       {

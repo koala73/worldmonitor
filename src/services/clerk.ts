@@ -474,6 +474,61 @@ export function openSignIn(): void {
   openClerkSurface('open-sign-in');
 }
 
+export function isClerkReady(): boolean {
+  return clerkInstance !== null;
+}
+
+/** True when Clerk's sign-in (or other auth) modal is already on screen. */
+export function isClerkSignInOpen(): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    return Boolean(document.querySelector(
+      '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
+    ));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open the existing Clerk sign-in modal and wait for the UI-open retry.
+ * Returns false when Clerk is disabled, failed to load, or the UI surface
+ * could not attach. Does not accept credentials.
+ */
+export async function openSignInAndWait(): Promise<boolean> {
+  if (!isClerkAuthEnabled()) return false;
+  try {
+    await initClerk();
+  } catch {
+    return false;
+  }
+  if (!clerkInstance || typeof clerkInstance.openSignIn !== 'function') return false;
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    let opened = false;
+    runClerkSurfaceOpen(
+      () => {
+        clerkInstance?.openSignIn({ appearance: getAppearance() });
+        opened = true;
+      },
+      () => finish(false),
+      (cb) => {
+        scheduleNextFrame(() => {
+          cb();
+          if (opened) finish(true);
+        });
+      },
+    );
+    if (opened) finish(true);
+  });
+}
+
 /**
  * Open the Clerk sign-up modal.
  *

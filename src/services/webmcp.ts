@@ -16,6 +16,8 @@
 //   6. set_map_layers()           — changes allowed visible map layers.
 //   7. search_dashboard()         — searches the live dashboard index.
 //   8. open_search_result()       — selects an opaque, revalidated result.
+//   9. get_access_context()       — reads signed-out / loading / signed-in access.
+//  10. open_sign_in()            — opens the existing Clerk sign-in dialog.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -71,6 +73,12 @@ export interface WebMcpAppBindings {
     resultKey: string,
     options?: WebMcpExecutionOptions,
   ): DashboardSearchOpenResult | Promise<DashboardSearchOpenResult>;
+  getAccessContext(
+    options?: WebMcpExecutionOptions,
+  ): AccessContextSnapshot | Promise<AccessContextSnapshot>;
+  openSignIn(
+    options?: WebMcpExecutionOptions,
+  ): OpenSignInResult | Promise<OpenSignInResult>;
 }
 
 export interface WebMcpExecutionOptions {
@@ -122,6 +130,31 @@ export interface DashboardContextSnapshot {
     enabled: string[];
   };
 }
+
+export type WebMcpAccountState = 'signed_out' | 'loading' | 'signed_in';
+export type WebMcpClerkState = 'unavailable' | 'loading' | 'ready';
+export type WebMcpProductTier = 'anonymous' | 'free' | 'pro' | 'unknown';
+
+export interface AccessContextSnapshot {
+  accountState: WebMcpAccountState;
+  clerk: WebMcpClerkState;
+  productTier: WebMcpProductTier;
+  capabilities: {
+    premiumAccess: boolean;
+    apiAccess: boolean;
+    mcpAccess: boolean;
+    dataExport: boolean;
+  };
+  limits: {
+    enabledPanels: { used: number; cap: number | null };
+    dashboardTabs: { used: number; cap: number | null; canCreate: boolean };
+  };
+}
+
+export type OpenSignInResult =
+  | { ok: true; status: 'opened' }
+  | { ok: true; status: 'already_open'; reason: 'already_open' }
+  | { ok: false; status: 'denied'; reason: 'clerk_unavailable' };
 
 export type DashboardActionStatus = 'applied' | 'denied' | 'invalid' | 'skipped';
 
@@ -219,14 +252,16 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 //     next human map move.
 //   - 'read-only': nothing to undo.
 //
-// Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
+// Keyed by WebMcpSpaToolName, so adding a tool without a policy entry is
 // a TypeScript error. That is the forcing function: nothing ships unclassified.
 export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'cancellation-required'>
 > = Object.freeze({
   [WEBMCP_SPA_TOOL.getDashboardContext]: 'read-only',
+  [WEBMCP_SPA_TOOL.getAccessContext]: 'read-only',
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
   [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
+  [WEBMCP_SPA_TOOL.openSignIn]: 'view-state',
   [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
   [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
   [WEBMCP_SPA_TOOL.openCountryBrief]: 'cancellation-required',
@@ -286,6 +321,8 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   set_map_layers: 'World Monitor could not update map layers.',
   search_dashboard: 'World Monitor could not search the dashboard.',
   open_search_result: 'World Monitor could not open that search result.',
+  get_access_context: 'World Monitor could not read access context.',
+  open_sign_in: 'World Monitor could not open sign-in.',
 };
 const UNSUPPORTED_MUTATION_MESSAGE =
   'This browser cannot cancel work already running in the page, so World Monitor '
@@ -596,6 +633,52 @@ function boundDashboardContext(snapshot: DashboardContextSnapshot): Record<strin
   return result;
 }
 
+const ACCOUNT_STATES = new Set<WebMcpAccountState>(['signed_out', 'loading', 'signed_in']);
+const CLERK_STATES = new Set<WebMcpClerkState>(['unavailable', 'loading', 'ready']);
+const PRODUCT_TIERS = new Set<WebMcpProductTier>(['anonymous', 'free', 'pro', 'unknown']);
+
+function oneOf<T extends string>(value: unknown, allowed: ReadonlySet<T>, fallback: T): T {
+  return typeof value === 'string' && allowed.has(value as T) ? value as T : fallback;
+}
+
+function optionalCap(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : null;
+}
+
+export function boundWebMcpAccessContext(
+  snapshot: AccessContextSnapshot,
+  targetCancellationSupported: boolean,
+): Record<string, unknown> {
+  const enabledPanels = snapshot.limits?.enabledPanels;
+  const dashboardTabs = snapshot.limits?.dashboardTabs;
+  return {
+    accountState: oneOf(snapshot.accountState, ACCOUNT_STATES, 'loading'),
+    clerk: oneOf(snapshot.clerk, CLERK_STATES, 'unavailable'),
+    productTier: oneOf(snapshot.productTier, PRODUCT_TIERS, 'unknown'),
+    capabilities: {
+      premiumAccess: snapshot.capabilities?.premiumAccess === true,
+      apiAccess: snapshot.capabilities?.apiAccess === true,
+      mcpAccess: snapshot.capabilities?.mcpAccess === true,
+      dataExport: snapshot.capabilities?.dataExport === true,
+    },
+    limits: {
+      enabledPanels: {
+        used: Math.max(0, Math.floor(boundedNumber(enabledPanels?.used))),
+        cap: optionalCap(enabledPanels?.cap),
+      },
+      dashboardTabs: {
+        used: Math.max(0, Math.floor(boundedNumber(dashboardTabs?.used))),
+        cap: optionalCap(dashboardTabs?.cap),
+        canCreate: dashboardTabs?.canCreate === true,
+      },
+    },
+    targetCancellationSupported: targetCancellationSupported === true,
+  };
+}
+
 function boundDashboardActionResult(result: DashboardActionResult): Record<string, unknown> & {
   ok: boolean;
   status: DashboardActionStatus;
@@ -657,6 +740,16 @@ function boundDashboardSearchResult(result: DashboardSearchResponse): DashboardS
     throw new SafeWebMcpError('Dashboard search result exceeded the safe output limit.');
   }
   return bounded;
+}
+
+function boundOpenSignInResult(result: OpenSignInResult): OpenSignInResult {
+  if (result?.ok === true && result.status === 'already_open') {
+    return { ok: true, status: 'already_open', reason: 'already_open' };
+  }
+  if (result?.ok === true && result.status === 'opened') {
+    return { ok: true, status: 'opened' };
+  }
+  return { ok: false, status: 'denied', reason: 'clerk_unavailable' };
 }
 
 function boundSearchOpenResult(result: DashboardSearchOpenResult): DashboardSearchOpenResult {
@@ -1011,6 +1104,42 @@ export function buildWebMcpTools(
           });
         }
         return boundSearchOpenResult(await app.openSearchResult(resultKey, extra));
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.getAccessContext,
+      title: 'Get Access Context',
+      description:
+        'Read whether this tab is signed out, still loading account state, or signed in. Returns product tier, capability flags, panel and dashboard-tab limits, and whether the host can cancel tools. Contains no names, emails, account IDs, tokens, or session details.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getAccessContext, async (_args, extra) => (
+        boundWebMcpAccessContext(await app.getAccessContext(extra), Boolean(extra?.signal))
+      ), trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.openSignIn,
+      title: 'Open Sign In',
+      description:
+        'Open the existing Clerk sign-in dialog on this page. Does not accept credentials, one-time codes, or provider choices. Returns a stable reason when Clerk is unavailable or the dialog is already open.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSignIn, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, [])) {
+          throw new SafeWebMcpError(
+            'open_sign_in does not accept credentials or other arguments.',
+            'validation',
+          );
+        }
+        return boundOpenSignInResult(await app.openSignIn(extra));
       }, trackEvent),
     },
   ];
