@@ -796,6 +796,41 @@ export class Panel {
     btn.title = label;
   }
 
+  /** True when this panel exposes the same collapse control a person uses. */
+  public supportsCollapse(): boolean {
+    return this._collapseBtn !== null;
+  }
+
+  public isCollapsed(): boolean {
+    return this._collapsed;
+  }
+
+  /**
+   * Apply collapse/expand through the visible control path and persist it.
+   * Returns false when the panel has no collapse affordance.
+   */
+  public setCollapsed(collapsed: boolean): boolean {
+    if (!this._collapseBtn) return false;
+    if (this._collapsed === collapsed) return true;
+    this._applyCollapsed(this._collapseBtn, collapsed);
+    savePanelCollapsed(this.panelId, collapsed);
+    return true;
+  }
+
+  /** Override in panels that expose a fullscreen control. */
+  public supportsFullscreen(): boolean {
+    return false;
+  }
+
+  public isFullscreenActive(): boolean {
+    return false;
+  }
+
+  /** Apply fullscreen through the visible control path. Default: unsupported. */
+  public setFullscreen(_fullscreen: boolean): boolean {
+    return false;
+  }
+
   protected appendCollapseButton(): void {
     const btn = h('button', {
       className: 'icon-btn panel-collapse-btn',
@@ -805,8 +840,7 @@ export class Panel {
     }, '▾') as HTMLButtonElement;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._applyCollapsed(btn, !this._collapsed);
-      savePanelCollapsed(this.panelId, this._collapsed);
+      this.setCollapsed(!this._collapsed);
     });
     this._collapseBtn = btn;
     this.header.appendChild(btn);

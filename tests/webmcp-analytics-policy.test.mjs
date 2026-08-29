@@ -144,6 +144,56 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
+
+    getPanelLayout: async () => ({
+      regions: {
+        sidebar: { available: true, panelCount: 1 },
+        bottom: { available: false, panelCount: 0 },
+      },
+      panels: [{
+        id: 'giving',
+        region: 'sidebar',
+        index: 0,
+        collapsed: false,
+        fullscreen: false,
+        collapsible: false,
+        fullscreenCapable: false,
+        fixed: false,
+      }],
+      panelCount: 1,
+    }),
+    setPanelCollapsed: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_collapsed',
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: true,
+      changed: true,
+      message: 'Panel collapsed.',
+      persisted: true,
+    }),
+    movePanel: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'move',
+      panelId: 'giving',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      message: 'Moved panel.',
+      persisted: true,
+    }),
+    setPanelFullscreen: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: 'live-news',
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+      changed: true,
+      message: 'Panel entered fullscreen.',
+    }),
     getAccessContext: async () => ({
       accountState: 'signed_out',
       clerk: 'unavailable',
@@ -266,7 +316,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 23, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 27, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(

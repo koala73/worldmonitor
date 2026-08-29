@@ -2070,6 +2070,38 @@ export class App {
         }
         return result;
       },
+      getPanelLayout: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.getPanelLayoutSnapshot();
+      },
+      setPanelCollapsed: async (panelId, collapsed, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpSetPanelCollapsed(panelId, collapsed);
+      },
+      movePanel: async (panelId, region, index, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpMovePanel(panelId, region, index);
+      },
+      setPanelFullscreen: async (panelId, fullscreen, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpSetPanelFullscreen(panelId, fullscreen);
+      },
       getAccessContext: async (execution) => {
         throwIfWebMcpAborted(execution?.signal);
         if (this.state.isDestroyed) {

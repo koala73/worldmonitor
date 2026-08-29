@@ -88,6 +88,19 @@ import {
   type DashboardTabAction,
   type DashboardTabActionResult,
 } from '@/services/dashboard-tab-actions';
+import {
+  PANEL_LAYOUT_UNAVAILABLE_RESULT,
+  describePanelLayout,
+  mutationApplied as layoutMutationApplied,
+  mutationDenied as layoutMutationDenied,
+  resolveMovePanel,
+  resolveSetPanelCollapsed,
+  resolveSetPanelFullscreen,
+  type PanelLayoutEntry,
+  type PanelLayoutMutationResult,
+  type PanelLayoutRegion,
+  type PanelLayoutSnapshot,
+} from '@/services/panel-layout-actions';
 import { showToast } from '@/utils';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
 import type { McpPanelSpec } from '@/services/mcp-store';
@@ -1383,6 +1396,260 @@ export class PanelLayoutManager implements AppModule {
         }));
       }
     }
+  }
+
+  /** Read the effective panel layout without inspecting the DOM from the agent. */
+  public getPanelLayoutSnapshot(): PanelLayoutSnapshot {
+    const entries = this.collectPanelLayoutEntries();
+    if (!entries) {
+      return describePanelLayout([], false);
+    }
+    return describePanelLayout(entries.panels, entries.bottomAvailable);
+  }
+
+  public applyWebMcpSetPanelCollapsed(
+    panelId: unknown,
+    collapsed: unknown,
+  ): PanelLayoutMutationResult {
+    const entries = this.collectPanelLayoutEntries();
+    if (!entries) {
+      return { ...PANEL_LAYOUT_UNAVAILABLE_RESULT, actionType: 'set_collapsed' };
+    }
+    const resolved = resolveSetPanelCollapsed(entries.panels, panelId, collapsed);
+    if (!resolved.ok) {
+      return layoutMutationDenied('set_collapsed', resolved.reason, resolved.message, {
+        panelId: resolved.panelId,
+        requestedCollapsed: collapsed === true,
+        effectiveCollapsed: false,
+        changed: false,
+      });
+    }
+    if (resolved.unchanged) {
+      return layoutMutationApplied('set_collapsed', {
+        message: resolved.requestedCollapsed ? 'Panel already collapsed.' : 'Panel already expanded.',
+        panelId: resolved.panelId,
+        requestedCollapsed: resolved.requestedCollapsed,
+        effectiveCollapsed: resolved.effectiveCollapsed,
+        changed: false,
+        unchanged: true,
+        persisted: true,
+      });
+    }
+    const panel = this.ctx.panels[resolved.panelId];
+    if (!panel?.supportsCollapse() || !panel.setCollapsed(resolved.requestedCollapsed)) {
+      return layoutMutationDenied(
+        'set_collapsed',
+        'collapse_unsupported',
+        'That panel does not expose a collapse control.',
+        {
+          panelId: resolved.panelId,
+          requestedCollapsed: resolved.requestedCollapsed,
+          effectiveCollapsed: panel?.isCollapsed() === true,
+          changed: false,
+        },
+      );
+    }
+    return layoutMutationApplied('set_collapsed', {
+      message: resolved.requestedCollapsed ? 'Panel collapsed.' : 'Panel expanded.',
+      panelId: resolved.panelId,
+      requestedCollapsed: resolved.requestedCollapsed,
+      effectiveCollapsed: panel.isCollapsed(),
+      changed: true,
+      unchanged: false,
+      persisted: true,
+    });
+  }
+
+  public applyWebMcpSetPanelFullscreen(
+    panelId: unknown,
+    fullscreen: unknown,
+  ): PanelLayoutMutationResult {
+    const entries = this.collectPanelLayoutEntries();
+    if (!entries) {
+      return { ...PANEL_LAYOUT_UNAVAILABLE_RESULT, actionType: 'set_fullscreen' };
+    }
+    const resolved = resolveSetPanelFullscreen(entries.panels, panelId, fullscreen);
+    if (!resolved.ok) {
+      return layoutMutationDenied('set_fullscreen', resolved.reason, resolved.message, {
+        panelId: resolved.panelId,
+        requestedFullscreen: fullscreen === true,
+        effectiveFullscreen: false,
+        changed: false,
+      });
+    }
+    if (resolved.unchanged) {
+      return layoutMutationApplied('set_fullscreen', {
+        message: resolved.requestedFullscreen
+          ? 'Panel already fullscreen.'
+          : 'Panel already exited fullscreen.',
+        panelId: resolved.panelId,
+        requestedFullscreen: resolved.requestedFullscreen,
+        effectiveFullscreen: resolved.effectiveFullscreen,
+        changed: false,
+        unchanged: true,
+      });
+    }
+    const panel = this.ctx.panels[resolved.panelId];
+    if (!panel?.supportsFullscreen() || !panel.setFullscreen(resolved.requestedFullscreen)) {
+      return layoutMutationDenied(
+        'set_fullscreen',
+        'fullscreen_unsupported',
+        'That panel does not expose a fullscreen control.',
+        {
+          panelId: resolved.panelId,
+          requestedFullscreen: resolved.requestedFullscreen,
+          effectiveFullscreen: panel?.isFullscreenActive() === true,
+          changed: false,
+        },
+      );
+    }
+    return layoutMutationApplied('set_fullscreen', {
+      message: resolved.requestedFullscreen ? 'Panel entered fullscreen.' : 'Panel exited fullscreen.',
+      panelId: resolved.panelId,
+      requestedFullscreen: resolved.requestedFullscreen,
+      effectiveFullscreen: panel.isFullscreenActive(),
+      changed: true,
+      unchanged: false,
+    });
+  }
+
+  public applyWebMcpMovePanel(
+    panelId: unknown,
+    region: unknown,
+    index: unknown,
+  ): PanelLayoutMutationResult {
+    const entries = this.collectPanelLayoutEntries();
+    if (!entries) {
+      return { ...PANEL_LAYOUT_UNAVAILABLE_RESULT, actionType: 'move' };
+    }
+    const resolved = resolveMovePanel({
+      panels: entries.panels,
+      panelId,
+      region,
+      index,
+      bottomAvailable: entries.bottomAvailable,
+    });
+    if (!resolved.ok) {
+      return layoutMutationDenied('move', resolved.reason, resolved.message, {
+        panelId: resolved.panelId,
+        region: resolved.region,
+        index: resolved.index,
+        changed: false,
+      });
+    }
+    if (resolved.unchanged) {
+      return layoutMutationApplied('move', {
+        message: 'Panel already at that layout position.',
+        panelId: resolved.panelId,
+        region: resolved.region,
+        index: resolved.index,
+        changed: false,
+        unchanged: true,
+        persisted: true,
+      });
+    }
+
+    const moved = this.movePanelToRegionIndex(resolved.panelId, resolved.region, resolved.index);
+    if (!moved.ok) {
+      return layoutMutationDenied('move', moved.reason, moved.message, {
+        panelId: resolved.panelId,
+        region: resolved.region,
+        index: resolved.index,
+        changed: false,
+      });
+    }
+    this.savePanelOrder();
+    return layoutMutationApplied('move', {
+      message: 'Moved panel.',
+      panelId: resolved.panelId,
+      region: resolved.region,
+      index: resolved.index,
+      changed: true,
+      unchanged: false,
+      persisted: true,
+    });
+  }
+
+  private collectPanelLayoutEntries(): {
+    panels: PanelLayoutEntry[];
+    bottomAvailable: boolean;
+  } | null {
+    const sidebarGrid = document.getElementById('panelsGrid');
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!sidebarGrid || !bottomGrid) return null;
+
+    const bottomAvailable = this.getEffectiveUltraWide();
+    const panels: PanelLayoutEntry[] = [];
+
+    const collectFromGrid = (grid: HTMLElement, region: PanelLayoutRegion): void => {
+      let index = 0;
+      for (const child of Array.from(grid.children)) {
+        if (!(child instanceof HTMLElement) || !child.classList.contains('panel')) continue;
+        const id = child.dataset.panel;
+        if (!id) continue;
+        const instance = this.ctx.panels[id];
+        panels.push({
+          id,
+          region,
+          index,
+          collapsed: instance?.isCollapsed() === true
+            || child.classList.contains('panel-collapsed'),
+          fullscreen: instance?.isFullscreenActive() === true
+            || child.classList.contains('live-news-fullscreen'),
+          collapsible: instance?.supportsCollapse() === true,
+          fullscreenCapable: instance?.supportsFullscreen() === true,
+          fixed: false,
+        });
+        index += 1;
+      }
+    };
+
+    collectFromGrid(sidebarGrid, 'sidebar');
+    if (bottomAvailable) collectFromGrid(bottomGrid, 'bottom');
+    return { panels, bottomAvailable };
+  }
+
+  private movePanelToRegionIndex(
+    panelId: string,
+    region: PanelLayoutRegion,
+    index: number,
+  ): { ok: true } | { ok: false; reason: NonNullable<PanelLayoutMutationResult['reason']>; message: string } {
+    const sidebarGrid = document.getElementById('panelsGrid');
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!sidebarGrid || !bottomGrid) {
+      return {
+        ok: false,
+        reason: 'layout_unavailable',
+        message: 'Dashboard panel layout is not available.',
+      };
+    }
+
+    const panelEl = this.getPanelElementForOrdering(panelId);
+    if (!panelEl || !panelEl.classList.contains('panel')) {
+      return {
+        ok: false,
+        reason: 'panel_not_mounted',
+        message: 'That panel is not mounted in the current layout.',
+      };
+    }
+
+    const targetGrid = region === 'bottom' ? bottomGrid : sidebarGrid;
+    const peers = Array.from(targetGrid.children).filter(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement
+        && child.classList.contains('panel')
+        && child.dataset.panel !== panelId,
+    );
+
+    const reference = peers[index] ?? (
+      region === 'sidebar' ? sidebarGrid.querySelector('.add-panel-block') : null
+    );
+    targetGrid.insertBefore(panelEl, reference);
+
+    if (region === 'bottom') this.bottomSetMemory.add(panelId);
+    else this.bottomSetMemory.delete(panelId);
+
+    return { ok: true };
   }
 
   private tabMutationResult(

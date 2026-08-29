@@ -166,6 +166,56 @@ function createBindings(overrides = {}) {
             activeTabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
           }
     ),
+
+    getPanelLayout: async () => ({
+      regions: {
+        sidebar: { available: true, panelCount: 1 },
+        bottom: { available: false, panelCount: 0 },
+      },
+      panels: [{
+        id: 'giving',
+        region: 'sidebar',
+        index: 0,
+        collapsed: false,
+        fullscreen: false,
+        collapsible: false,
+        fullscreenCapable: false,
+        fixed: false,
+      }],
+      panelCount: 1,
+    }),
+    setPanelCollapsed: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_collapsed',
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: true,
+      changed: true,
+      message: 'Panel collapsed.',
+      persisted: true,
+    }),
+    movePanel: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'move',
+      panelId: 'giving',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      message: 'Moved panel.',
+      persisted: true,
+    }),
+    setPanelFullscreen: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: 'live-news',
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+      changed: true,
+      message: 'Panel entered fullscreen.',
+    }),
     getAccessContext: async () => ({
       accountState: 'signed_out',
       clerk: 'unavailable',
@@ -408,11 +458,13 @@ describe('WebMCP registry behavioral contract', () => {
       [
         'create_dashboard_tab',
         'delete_dashboard_tab',
+        'move_panel',
         'openCountryBrief',
         'rename_dashboard_tab',
         'select_dashboard_tab',
         'set_map_layers',
         'set_map_mode',
+        'set_panel_collapsed',
         'set_panel_enabled',
         'switch_monitor',
       ],
@@ -485,6 +537,22 @@ describe('WebMCP registry behavioral contract', () => {
         provider,
         'set_panel_enabled',
         JSON.stringify({ panelId: 'giving', enabled: true }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'set_panel_collapsed',
+        JSON.stringify({ panelId: 'live-news', collapsed: true }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'move_panel',
+        JSON.stringify({ panelId: 'giving', region: 'sidebar', index: 0 }),
       ),
       denial,
     );

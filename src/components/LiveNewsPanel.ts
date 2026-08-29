@@ -875,14 +875,23 @@ export class LiveNewsPanel extends Panel {
     this.fullscreenBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       track('live-news-fullscreen', { entering: !this.isFullscreen });
-      this.toggleFullscreen();
+      this.setFullscreen(!this.isFullscreen);
     });
     const header = this.element.querySelector('.panel-header');
     header?.appendChild(this.fullscreenBtn);
   }
 
-  private toggleFullscreen(): void {
-    this.isFullscreen = !this.isFullscreen;
+  public override supportsFullscreen(): boolean {
+    return true;
+  }
+
+  public override isFullscreenActive(): boolean {
+    return this.isFullscreen;
+  }
+
+  public override setFullscreen(fullscreen: boolean): boolean {
+    if (this.isFullscreen === fullscreen) return true;
+    this.isFullscreen = fullscreen;
     this.element.classList.toggle('live-news-fullscreen', this.isFullscreen);
     document.body.classList.toggle('live-news-fullscreen-active', this.isFullscreen);
 
@@ -892,10 +901,11 @@ export class LiveNewsPanel extends Panel {
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>'
         : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     }
+    return true;
   }
 
   private boundFullscreenEscHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && this.isFullscreen) this.toggleFullscreen();
+    if (e.key === 'Escape' && this.isFullscreen) this.setFullscreen(false);
   };
 
   private updateMuteIcon(): void {
@@ -1891,7 +1901,7 @@ export class LiveNewsPanel extends Panel {
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
     window.removeEventListener('message', this.boundMessageHandler);
-    if (this.isFullscreen) this.toggleFullscreen();
+    if (this.isFullscreen) this.setFullscreen(false);
     if (this.idleDetectionEnabled) {
       IDLE_ACTIVITY_EVENTS.forEach(event => {
         document.removeEventListener(event, this.boundIdleResetHandler);
