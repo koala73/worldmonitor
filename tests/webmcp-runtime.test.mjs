@@ -43,6 +43,86 @@ function createBindings(overrides = {}) {
       },
       panels: { mounted: ['map'], enabled: ['map'] },
     }),
+    listMapLayerCatalog: async () => ({
+      variant: 'full',
+      rendererKind: 'deck',
+      enabledLayers: [],
+      liveLayerKeys: ['conflicts', 'weather', 'hotspots'],
+      hasPremium: false,
+      deckGlActive: true,
+    }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
+    }),
+    switchMonitor: async (monitor) => ({
+      ok: true,
+      status: 'applied',
+      destination: monitor,
+      navigation: 'none',
+      message: 'Already on that monitor.',
+      context: {
+        variant: monitor,
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openSettings: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'settings',
+      overlay: 'open',
+      tab: 'settings',
+      message: 'Opened settings.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openAlerts: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'alerts',
+      overlay: 'open',
+      tab: 'notifications',
+      message: 'Opened alerts.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
     applyDashboardAction: async (action) => ({
       ok: true,
       status: 'applied',
@@ -66,6 +146,26 @@ function createBindings(overrides = {}) {
       changed: true,
       message: 'Panel enabled.',
     }),
+    applyDashboardTabAction: async (action) => (
+      action.type === 'list'
+        ? {
+            activeTabId: 'tab-main01-abc123',
+            tabs: [{ id: 'tab-main01-abc123', name: 'Main', active: true, canDelete: false }],
+            tabCount: 1,
+            tabsTruncated: false,
+            canCreate: true,
+            cap: null,
+          }
+        : {
+            ok: true,
+            status: 'applied',
+            actionType: action.type,
+            message: 'Applied dashboard tab action.',
+            tabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
+            name: typeof action.name === 'string' ? action.name : 'Main',
+            activeTabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
+          }
+    ),
     getAccessContext: async () => ({
       accountState: 'signed_out',
       clerk: 'unavailable',
@@ -299,17 +399,28 @@ describe('WebMCP registry behavioral contract', () => {
 
   it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
     // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
-    // stream). An uncancellable invocation outlives the session, so it stays
-    // fail-closed while the browser cannot deliver a signal. open_search_result
-    // is result-dependent and must reach its binding so the issued effect
-    // class can decide.
+    // stream). switch_monitor persists and reloads or leaves the current
+    // origin. An uncancellable invocation can outlive the session, so both
+    // stay fail-closed while the browser cannot deliver a signal.
+    // open_search_result is result-dependent and must reach its binding so the
+    // issued effect class can decide.
     assert.deepEqual(
       [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
-      ['openCountryBrief', 'set_map_layers', 'set_panel_enabled'],
-      'the gated set includes persistent layer writes and metered country generation',
+      [
+        'create_dashboard_tab',
+        'delete_dashboard_tab',
+        'openCountryBrief',
+        'rename_dashboard_tab',
+        'select_dashboard_tab',
+        'set_map_layers',
+        'set_panel_enabled',
+        'switch_monitor',
+      ],
+      'the gated set includes navigation, persistent writes, and metered country generation',
     );
     let mutationCalls = 0;
     let openCalls = 0;
+    let tabCalls = 0;
     let panelCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
@@ -321,6 +432,18 @@ describe('WebMCP registry behavioral contract', () => {
       openSearchResult: async () => {
         openCalls += 1;
         return { ok: true, status: 'opened' };
+      },
+      applyDashboardTabAction: async () => {
+        tabCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: 'create',
+          message: 'Applied dashboard tab action.',
+          tabId: 'tab-main01-abc123',
+          name: 'Main',
+          activeTabId: 'tab-main01-abc123',
+        };
       },
       setPanelEnabled: async () => {
         panelCalls += 1;
@@ -361,6 +484,18 @@ describe('WebMCP registry behavioral contract', () => {
       ),
       denial,
     );
+    for (const [tool, input] of [
+      ['select_dashboard_tab', { tabId: 'tab-main01-abc123' }],
+      ['create_dashboard_tab', { name: 'Markets' }],
+      ['rename_dashboard_tab', { tabId: 'tab-main01-abc123', name: 'Workspace' }],
+      ['delete_dashboard_tab', { tabId: 'tab-main01-abc123', confirm: true }],
+    ]) {
+      assert.deepEqual(await executeRegistered(provider, tool, JSON.stringify(input)), denial);
+    }
+    assert.deepEqual(
+      await executeRegistered(provider, 'switch_monitor', JSON.stringify({ monitor: 'tech' })),
+      denial,
+    );
     assert.deepEqual(
       await executeRegistered(
         provider,
@@ -371,6 +506,7 @@ describe('WebMCP registry behavioral contract', () => {
     );
     assert.equal(mutationCalls, 0, 'a gated tool must not reach its binding');
     assert.equal(openCalls, 1, 'result-dependent open_search_result must reach its binding');
+    assert.equal(tabCalls, 0, 'persistent dashboard tab tools must not reach their binding');
     assert.equal(panelCalls, 0, 'persistent panel changes must not reach their binding');
   });
 
@@ -481,6 +617,54 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(JSON.stringify(harness.events).includes('detail'), false);
   });
 
+  it('passes catalog layer IDs into set_map_layers', async () => {
+    const applied = [];
+    const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      listMapLayerCatalog: async () => ({
+        variant: 'full',
+        rendererKind: 'deck',
+        enabledLayers: [],
+        liveLayerKeys: ['conflicts', 'weather', 'hotspots'],
+        hasPremium: true,
+        deckGlActive: true,
+      }),
+      applyDashboardAction: async (action) => {
+        applied.push(action);
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: action.type,
+          message: 'Applied dashboard action.',
+          targets: Object.keys(action.layers ?? {}).map((id) => ({
+            id,
+            status: 'applied',
+          })),
+        };
+      },
+    }), harness.runtime);
+    await settlePromises();
+
+    const listed = await executeRegistered(provider, 'list_map_layers', '{}');
+    assert.equal(listed.ok, true);
+    const layerId = listed.layers.find((layer) => layer.available)?.id
+      ?? listed.layers[0].id;
+    assert.equal(typeof layerId, 'string');
+
+    const controller = new AbortController();
+    const result = await executeRegistered(
+      provider,
+      'set_map_layers',
+      JSON.stringify({ layers: { [layerId]: true } }),
+      { signal: controller.signal },
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(applied, [{
+      type: 'set_layers',
+      layers: { [layerId]: true },
+    }]);
+  });
   it('aborts before a late provider can register', async () => {
     const harness = trackedRuntime(undefined);
     const controller = registerWebMcpTools(createBindings(), harness.runtime);

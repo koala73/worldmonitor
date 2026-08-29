@@ -73,38 +73,30 @@ function would accept, the browser sees a mismatched origin echo and CORS
 rejects the request. Drift between the two is the load-bearing trap this
 package exists to make visible. Update both files together.
 
-### The public bootstrap tiers are the exception
+### Explicit public bootstrap URLs are the exception
 
-`GET /api/bootstrap?tier=<fast|slow>&public=1` is answered with the **public**
-shape — ACAO `*`, no `Access-Control-Allow-Credentials`, no `Vary: Origin` —
-mirroring `api/bootstrap.js#getPublicBootstrapHeaders()`. The payload is the
-shared seed bundle, identical for every caller, so keying it by Origin costs a
-cache entry per origin and buys nothing, and advertising credentialed access on
-a response no credential can change is what #7308 was filed about. Both edge
-paths use it: the KV-served bytes and the origin pass-through, so the shape does
-not depend on which one answered.
+The origin and Worker share `classifyPublicBootstrapRequest()` for these URLs:
 
-**Scope: the tier URLs only.** `api/bootstrap.js` returns the same public shape
-for three more auth kinds — `?keys=weatherAlerts&public=1` and the marked
-single-key on-demand URLs (`isPublicBootstrapKind`, api/bootstrap.js). Those are
-**not** covered here: the Worker still stamps its credentialed bag over them, so
-they carry `Allow-Credentials: true` and an Origin-echoed ACAO in production
-today. Matching the origin on those needs the `ON_DEMAND_KEYS` /
-`PUBLIC_WEATHER_BOOTSTRAP_KEY` membership sets at the edge (`?keys=markets&public=1`
-is *not* public and must not be widened), which is a larger change than #7308
-asked for and touches genuinely CDN-cached URLs — where the `Vary: Origin` the
-Worker adds really does split the CDN entry per origin. Tracked as #7311; do not
-read this section as "the edge and origin shapes now agree everywhere."
+- `?tier=<fast|slow>&public=1`
+- `?keys=weatherAlerts&public=1`
+- `?keys=<on-demand key>&public=1`
+
+They return ACAO `*`, no `Access-Control-Allow-Credentials`, and no
+`Vary: Origin`. The payload is identical for every caller, so an Origin-specific
+cache entry buys nothing. The single-key classifier reads the generated
+bootstrap registry. A registry change therefore deploys the Worker through
+`api/_bootstrap-tier-keys.js`.
+
+The marker does not make an arbitrary key public. For example,
+`?keys=marketQuotes&public=1` stays credentialed and returns 401 without a key.
+The unmarked `?keys=weatherAlerts` URL also stays outside the edge classifier
+because its origin auth kind depends on attached credentials.
 
 Two deliberate carve-outs inside the exception:
 
-- **A disallowed Origin keeps the credentialed bag — but is still served from
-  KV.** The header denial and the routing decision are separate. Its
-  canonical-fallback ACAO is what denies the browser read (not the origin's 403:
-  the public tier ships `CDN-Cache-Control: public, s-maxage=600`, so a warm CDN
-  entry answers before `isDisallowedOrigin` runs). Routing it off KV would buy
-  nothing — the same caller reads the same bytes by omitting the header — while
-  handing anyone a one-header lever for forcing Vercel/Redis load.
+- **A disallowed Origin keeps the credentialed bag.** For tier URLs, the request
+  still uses KV. Header policy and routing remain separate, so an Origin header
+  cannot force Vercel or Redis work.
 - **The KV-served response stays `Cache-Control: no-store` with no
   `CDN-Cache-Control`.** Rationale lives with the code it explains —
   `src/kv-serve.js#serveFromKv`. The origin fallback for the same URL does sit

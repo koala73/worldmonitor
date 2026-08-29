@@ -8,6 +8,11 @@ import {
   type RendererKind,
   type MapVariant,
 } from '@/config/map-layer-definitions';
+import {
+  ALL_MAP_LAYERS_RUNTIME_AVAILABLE,
+  resolveMapLayerRuntimeUnavailableReason,
+  type MapLayerRuntimeAvailability,
+} from '@/services/map-layer-runtime-availability';
 import type { AppContext } from './app-context';
 import type { MapLayers, PanelConfig } from '@/types';
 import {
@@ -48,6 +53,7 @@ export interface AgentBusApplierOptions {
     source: 'programmatic',
   ) => void;
   applyLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
+  getMapLayerRuntimeAvailability?: () => MapLayerRuntimeAvailability;
 }
 
 const DEFAULT_LAYER_RESULT: AgentBusApplyTargetResult[] = [];
@@ -203,6 +209,8 @@ function applySetLayers(ctx: AppContext, action: Extract<AgentBusAction, { type:
   const kind = currentRendererKind(ctx, options);
   const isDeckGLActive = Boolean(ctx.map.isDeckGLActive?.());
   const isPremium = premiumAccess(options);
+  const runtimeAvailability = options.getMapLayerRuntimeAvailability?.()
+    ?? ALL_MAP_LAYERS_RUNTIME_AVAILABLE;
   const nextLayers = { ...ctx.mapLayers };
   const targets: AgentBusApplyTargetResult[] = [];
   let changed = false;
@@ -212,8 +220,13 @@ function applySetLayers(ctx: AppContext, action: Extract<AgentBusAction, { type:
       targets.push({ target: rawKey, status: 'denied', reason: 'unknown_layer' });
       continue;
     }
-    if (!Object.prototype.hasOwnProperty.call(ctx.mapLayers, rawKey)) {
-      targets.push({ target: rawKey, status: 'denied', reason: 'layer_not_live' });
+    const runtimeReason = resolveMapLayerRuntimeUnavailableReason(
+      rawKey,
+      Object.prototype.hasOwnProperty.call(ctx.mapLayers, rawKey),
+      runtimeAvailability,
+    );
+    if (runtimeReason) {
+      targets.push({ target: rawKey, status: 'denied', reason: runtimeReason });
       continue;
     }
     if (!allowed.has(rawKey)) {

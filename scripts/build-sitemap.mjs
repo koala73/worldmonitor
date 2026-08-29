@@ -77,6 +77,8 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
   route(`${SITE_ORIGIN}/mcp-server.md`, 'machine-readable-developer', ['public/mcp-server.md']),
   route(`${SITE_ORIGIN}/openapi.md`, 'machine-readable-developer', ['public/openapi.md']),
   route(`${SITE_ORIGIN}/sdks.md`, 'machine-readable-developer', ['public/sdks.md']),
+  route(`${SITE_ORIGIN}/world-monitor.md`, 'machine-readable-brand', ['public/world-monitor.md']),
+  route(`${SITE_ORIGIN}/api-versioning.md`, 'machine-readable-developer', ['public/api-versioning.md']),
   route(`${SITE_ORIGIN}/llms.txt`, 'machine-readable-developer', ['public/llms.txt']),
   route(`${SITE_ORIGIN}/llms-full.txt`, 'machine-readable-developer', ['public/llms-full.txt']),
   route(`${SITE_ORIGIN}/api/llms.txt`, 'machine-readable-developer', ['public/api/llms.txt']),

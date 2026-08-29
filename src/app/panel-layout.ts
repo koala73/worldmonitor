@@ -74,7 +74,20 @@ import {
   generateTabId,
   buildDefaultTabPanels,
 } from '@/services/tab-store';
-import type { PanelTab, TabsState } from '@/services/tab-store';
+import type { PanelTab, TabsPersistReceipt, TabsState } from '@/services/tab-store';
+import {
+  DASHBOARD_TAB_UNAVAILABLE_RESULT,
+  applyPersistReceipt,
+  describeDashboardTabs,
+  mutationApplied,
+  mutationDenied,
+  resolveCreateDashboardTab,
+  resolveDeleteDashboardTab,
+  resolveRenameDashboardTab,
+  resolveSelectDashboardTab,
+  type DashboardTabAction,
+  type DashboardTabActionResult,
+} from '@/services/dashboard-tab-actions';
 import { showToast } from '@/utils';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
 import type { McpPanelSpec } from '@/services/mcp-store';
@@ -1266,6 +1279,163 @@ export class PanelLayoutManager implements AppModule {
   }
 
   /**
+   * Apply a WebMCP dashboard-tab action through the same persistence and
+   * panel-snapshot paths as the visible tab bar.
+   */
+  public applyWebMcpTabAction(action: DashboardTabAction): DashboardTabActionResult {
+    if (!this.tabsState) {
+      return { ...DASHBOARD_TAB_UNAVAILABLE_RESULT, actionType: action.type };
+    }
+
+    const cap = this.updateTabCapLock();
+    switch (action.type) {
+      case 'list':
+        return describeDashboardTabs(this.tabsState, cap);
+      case 'select': {
+        const resolved = resolveSelectDashboardTab(this.tabsState, action.tabId);
+        if (!resolved.ok) {
+          return mutationDenied('select', resolved.reason, resolved.message);
+        }
+        const persist = resolved.unchanged
+          ? { persisted: true }
+          : this.switchToTab(resolved.tab.id);
+        return this.tabMutationResult(
+          'select',
+          resolved.unchanged ? 'Dashboard tab already selected.' : 'Selected dashboard tab.',
+          resolved.tab,
+          resolved.unchanged,
+          persist,
+        );
+      }
+      case 'create': {
+        const resolved = resolveCreateDashboardTab(this.tabsState, cap, action.name);
+        if (!resolved.ok) {
+          if (resolved.reason === 'tab_cap') trackGateHit('dashboard-tab');
+          return mutationDenied('create', resolved.reason, resolved.message, {
+            ...(resolved.lockReason ? { lockReason: resolved.lockReason } : {}),
+            cap: cap.cap,
+            canCreate: cap.allowed,
+            tabCount: this.tabsState.tabs.length,
+          });
+        }
+        if ('alreadyExisted' in resolved) {
+          const switched = resolved.tab.id !== this.tabsState.activeTabId;
+          const persist = switched ? this.switchToTab(resolved.tab.id) : { persisted: true };
+          return this.tabMutationResult(
+            'create',
+            'Dashboard tab already exists.',
+            resolved.tab,
+            !switched,
+            { alreadyExisted: true, ...persist },
+          );
+        }
+        const created = this.createAndActivateTab(
+          resolved.name || t('dashboardTabs.newTabName'),
+        );
+        showToast(t('dashboardTabs.newTabCreated'));
+        return this.tabMutationResult(
+          'create',
+          'Created dashboard tab.',
+          created.tab,
+          false,
+          created,
+        );
+      }
+      case 'rename': {
+        const resolved = resolveRenameDashboardTab(this.tabsState, action.tabId, action.name);
+        if (!resolved.ok) {
+          return mutationDenied('rename', resolved.reason, resolved.message);
+        }
+        const persist = resolved.unchanged
+          ? { persisted: true }
+          : this.renameTab(resolved.tab.id, resolved.name);
+        const tab = this.tabsState.tabs.find((candidate) => candidate.id === resolved.tab.id)
+          ?? resolved.tab;
+        return this.tabMutationResult(
+          'rename',
+          resolved.unchanged ? 'Dashboard tab already has that name.' : 'Renamed dashboard tab.',
+          tab,
+          resolved.unchanged,
+          persist,
+        );
+      }
+      case 'delete': {
+        const resolved = resolveDeleteDashboardTab(this.tabsState, action.tabId, action.confirm);
+        if (!resolved.ok) {
+          return mutationDenied('delete', resolved.reason, resolved.message, {
+            tabCount: this.tabsState.tabs.length,
+            canCreate: cap.allowed,
+            cap: cap.cap,
+          });
+        }
+        const removedName = resolved.tab.name;
+        const persist = this.deleteTab(resolved.tab.id);
+        const nextCap = this.updateTabCapLock();
+        return applyPersistReceipt(persist, mutationApplied('delete', {
+          message: `Deleted dashboard tab "${removedName}".`,
+          tabId: resolved.tab.id,
+          name: removedName,
+          activeTabId: this.tabsState.activeTabId,
+          unchanged: false,
+          tabCount: this.tabsState.tabs.length,
+          canCreate: nextCap.allowed,
+          cap: nextCap.cap,
+        }));
+      }
+    }
+  }
+
+  private tabMutationResult(
+    actionType: 'select' | 'create' | 'rename',
+    message: string,
+    tab: PanelTab,
+    unchanged: boolean,
+    extra: { alreadyExisted?: boolean; persisted?: boolean } = {},
+  ): DashboardTabActionResult {
+    const cap = this.updateTabCapLock();
+    const persist = { persisted: extra.persisted !== false };
+    return applyPersistReceipt(persist, mutationApplied(actionType, {
+      message,
+      tabId: tab.id,
+      name: tab.name,
+      activeTabId: this.tabsState?.activeTabId ?? tab.id,
+      unchanged,
+      ...(extra.alreadyExisted ? { alreadyExisted: true } : {}),
+      tabCount: this.tabsState?.tabs.length ?? 0,
+      canCreate: cap.allowed,
+      cap: cap.cap,
+    }));
+  }
+
+  private createAndActivateTab(name: string): { tab: PanelTab; persisted: boolean } {
+    if (!this.tabsState) {
+      throw new Error('Dashboard tabs are not available.');
+    }
+    this.snapshotActiveTab();
+    const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
+    const tab: PanelTab = {
+      id: generateTabId(),
+      name,
+      // Same unresolved-tier caveat as applyTabPanelState: clamping a new tab
+      // before the entitlement is known bakes a free-tier layout into a Pro
+      // user's workspace before its ownership marker can be safely reconciled.
+      // The variant default set can also exceed FREE_MAX_PANELS.
+      panelSettings: this.isProTierResolvedOrFallback()
+        ? enforceFreePanelLimit(defaults.panelSettings, isProUser())
+        : defaults.panelSettings,
+      panelOrder: defaults.panelOrder,
+      bottomSet: [],
+    };
+    this.tabsState.tabs.push(tab);
+    this.tabsState.activeTabId = tab.id;
+    const persist = saveTabsState(this.tabsState);
+    this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
+    this.panelTabBar?.refresh();
+    this.updateTabCapLock();
+    return { tab, persisted: persist.persisted };
+  }
+
+  /**
    * Reconcile every stored tab snapshot against the current entitlement.
    *
    * Persisting a free-tier clamp while the tier is still unknown is the same
@@ -1348,17 +1518,18 @@ export class PanelLayoutManager implements AppModule {
     Object.assign(active, this.captureCurrentTabState());
   }
 
-  private switchToTab(tabId: string): void {
-    if (!this.tabsState || tabId === this.tabsState.activeTabId) return;
+  private switchToTab(tabId: string): TabsPersistReceipt {
+    if (!this.tabsState || tabId === this.tabsState.activeTabId) return { persisted: true };
     const target = this.tabsState.tabs.find((t) => t.id === tabId);
-    if (!target) return;
+    if (!target) return { persisted: true };
 
     this.snapshotActiveTab();
     this.tabsState.activeTabId = tabId;
-    saveTabsState(this.tabsState);
+    const persist = saveTabsState(this.tabsState);
 
     this.applyTabPanelState(target.panelSettings, target.panelOrder, target.bottomSet);
     this.panelTabBar?.refresh();
+    return persist;
   }
 
   /**
@@ -1404,65 +1575,41 @@ export class PanelLayoutManager implements AppModule {
       return;
     }
 
-    this.snapshotActiveTab();
-
-    const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
-    // The variant default set can exceed FREE_MAX_PANELS (e.g. 81 panels in the
-    // full variant); clamp it to the free-tier cap so a new tab can't bypass
-    // the limit that settings/search/boot all enforce.
-    const tab: PanelTab = {
-      id: generateTabId(),
-      name: t('dashboardTabs.newTabName'),
-      // Same unresolved-tier caveat as applyTabPanelState: clamping a new tab
-      // before the entitlement is known bakes a free-tier layout into a Pro
-      // user's workspace before its ownership marker can be safely reconciled.
-      // Once the bounded fallback fires, the tier is settled enough to clamp.
-      panelSettings: this.isProTierResolvedOrFallback()
-        ? enforceFreePanelLimit(defaults.panelSettings, isProUser())
-        : defaults.panelSettings,
-      panelOrder: defaults.panelOrder,
-      bottomSet: [],
-    };
-    this.tabsState.tabs.push(tab);
-    this.tabsState.activeTabId = tab.id;
-    saveTabsState(this.tabsState);
-
-    this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
-    this.panelTabBar?.refresh();
-    // The new tab may have consumed the last slot — lock the control now
-    // rather than on the next entitlement emission.
-    this.updateTabCapLock();
+    this.createAndActivateTab(t('dashboardTabs.newTabName'));
     showToast(t('dashboardTabs.newTabCreated'));
   }
 
-  private renameTab(tabId: string, name: string): void {
-    if (!this.tabsState) return;
+  private renameTab(tabId: string, name: string): TabsPersistReceipt {
+    if (!this.tabsState) return { persisted: true };
     const tab = this.tabsState.tabs.find((t) => t.id === tabId);
-    if (!tab) return;
+    if (!tab) return { persisted: true };
     tab.name = name;
-    saveTabsState(this.tabsState);
+    const persist = saveTabsState(this.tabsState);
     this.panelTabBar?.refresh();
+    return persist;
   }
 
-  private deleteTab(tabId: string): void {
-    if (!this.tabsState || this.tabsState.tabs.length <= 1) return;
+  private deleteTab(tabId: string): TabsPersistReceipt {
+    if (!this.tabsState || this.tabsState.tabs.length <= 1) return { persisted: true };
     const idx = this.tabsState.tabs.findIndex((t) => t.id === tabId);
-    if (idx === -1) return;
+    if (idx === -1) return { persisted: true };
     const wasActive = this.tabsState.activeTabId === tabId;
     const [removed] = this.tabsState.tabs.splice(idx, 1);
 
+    let persist: TabsPersistReceipt;
     if (wasActive) {
       const fallback = this.tabsState.tabs[Math.max(0, idx - 1)]!;
       this.tabsState.activeTabId = fallback.id;
-      saveTabsState(this.tabsState);
+      persist = saveTabsState(this.tabsState);
       this.applyTabPanelState(fallback.panelSettings, fallback.panelOrder, fallback.bottomSet);
     } else {
-      saveTabsState(this.tabsState);
+      persist = saveTabsState(this.tabsState);
     }
     this.panelTabBar?.refresh();
     // Deleting frees a slot: a capped user drops back under the limit.
     this.updateTabCapLock();
     showToast(t('dashboardTabs.tabDeleted', { name: removed!.name }));
+    return persist;
   }
 
   /**

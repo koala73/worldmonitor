@@ -17,8 +17,52 @@ import { COMMANDS } from '@/config/commands';
 import { saveToStorage } from '@/utils';
 import {
   buildWebMcpTools,
+  type DashboardContextSnapshot,
+  type WebMcpAppBindings,
+  type WebMcpNavigationResult,
   WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
 } from '@/services/webmcp';
+
+const unusedDashboardContext: DashboardContextSnapshot = {
+  variant: 'full',
+  map: {
+    view: 'global',
+    center: null,
+    zoom: 2,
+    timeRange: '7d',
+    enabledLayers: [],
+  },
+  panels: { mounted: [], enabled: [] },
+};
+
+function unusedNavigationResult(
+  destination: WebMcpNavigationResult['destination'],
+  extras: Partial<WebMcpNavigationResult> = {},
+): WebMcpNavigationResult {
+  return {
+    ok: true,
+    status: 'applied',
+    destination,
+    message: 'Unused in this test.',
+    context: unusedDashboardContext,
+    ...extras,
+  };
+}
+
+const unusedNavigationBindings: Pick<
+  WebMcpAppBindings,
+  'switchMonitor' | 'openSettings' | 'openAlerts'
+> = {
+  switchMonitor: async () => unusedNavigationResult('full', { navigation: 'none' }),
+  openSettings: async () => unusedNavigationResult('settings', {
+    overlay: 'open',
+    tab: 'settings',
+  }),
+  openAlerts: async () => unusedNavigationResult('alerts', {
+    overlay: 'open',
+    tab: 'notifications',
+  }),
+};
 
 function commandMatch(id: string): SearchMatch {
   const command = COMMANDS.find((entry) => entry.id === id);
@@ -405,17 +449,16 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
       openCountryBriefByCode: async () => true,
       resolveCountryName: (code) => code,
       openSearch: async () => true,
-      getDashboardContext: async () => ({
+      getDashboardContext: async () => unusedDashboardContext,
+      listMapLayerCatalog: async () => ({
         variant: 'full',
-        map: {
-          view: 'global',
-          center: null,
-          zoom: 2,
-          timeRange: '7d',
-          enabledLayers: [],
-        },
-        panels: { mounted: [], enabled: [] },
+        rendererKind: 'deck',
+        enabledLayers: [],
+        liveLayerKeys: [],
+        hasPremium: false,
+        deckGlActive: true,
       }),
+      ...unusedNavigationBindings,
       applyDashboardAction: async () => ({
         ok: true,
         status: 'applied',
@@ -431,6 +474,12 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
       setPanelEnabled: async () => {
         throw new Error('Unexpected dashboard panel mutation.');
+      },
+      applyDashboardTabAction: async () => {
+        throw new Error('Unexpected dashboard tab action.');
+      },
+      listDashboardPanels: async () => {
+        throw new Error('Unexpected dashboard panel catalog read.');
       },
       getAccessContext: async () => ({
         accountState: 'signed_out',

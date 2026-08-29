@@ -4,7 +4,12 @@ import { describe, it } from 'node:test';
 
 import {
   applyWebMcpDashboardAction,
+  applyWebMcpOpenAlerts,
+  applyWebMcpOpenSettings,
+  applyWebMcpSwitchMonitor,
   getWebMcpDashboardContext,
+  getWebMcpMapLayerCatalogSnapshot,
+  listWebMcpDashboardPanels,
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '../src/app/webmcp-dashboard.ts';
@@ -14,7 +19,8 @@ import {
   globeAltitudeToMapZoom,
   mapZoomToGlobeAltitude,
 } from '../src/utils/globe-zoom.ts';
-import type { AppContext } from '../src/app/app-context.ts';
+import type { AppContext, UnifiedSettingsController } from '../src/app/app-context.ts';
+import { SITE_VARIANTS } from '../src/config/variant.ts';
 import {
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
@@ -98,6 +104,25 @@ const applierOptions = {
   applyLayerChange: () => {},
 };
 
+function makeSettings(calls: string[] = []): UnifiedSettingsController {
+  return {
+    open(tab?: string) {
+      calls.push(tab ?? 'default');
+    },
+    close() {
+      calls.push('close');
+    },
+    hasPendingChanges: () => false,
+    refreshPanelToggles() {
+      calls.push('refresh');
+    },
+    getButton: () => ({}) as HTMLButtonElement,
+    destroy() {
+      calls.push('destroy');
+    },
+  };
+}
+
 describe('WebMCP live dashboard bindings', () => {
   it('locks the canonical panel defaults for all six variants', () => {
     assert.deepEqual(Object.keys(VARIANT_DEFAULTS).sort(), [...VARIANTS].sort());
@@ -168,6 +193,69 @@ describe('WebMCP live dashboard bindings', () => {
     );
   });
 
+  it('pages live panel catalogs with entitlement and enabled-state differences', () => {
+    const panelSettings = getInitialPanelSettingsForVariant('full');
+    panelSettings.markets = { ...panelSettings.markets!, enabled: false };
+    const enabledDefaults = Object.entries(panelSettings)
+      .filter(([, config]) => config.enabled === true)
+      .map(([panelId]) => panelId);
+    const ctx = makeContext({
+      panels: Object.fromEntries(enabledDefaults.map((panelId) => [panelId, {}])) as AppContext['panels'],
+      panelSettings,
+    });
+
+    const entitled = listWebMcpDashboardPanels(ctx, 'full', { variant: 'full', limit: 8 }, {
+      isPanelAllowed: () => true,
+    });
+    assert.equal(entitled.total, 109);
+    assert.equal(entitled.variant, 'full');
+    assert.equal(entitled.hasMore, true);
+
+    const disabledPages = [];
+    let disabledCursor: string | null = null;
+    do {
+      const page = listWebMcpDashboardPanels(ctx, 'full', {
+        variant: 'full',
+        enabled: false,
+        ...(disabledCursor ? { cursor: disabledCursor } : {}),
+        limit: 8,
+      }, { isPanelAllowed: () => true });
+      disabledPages.push(page);
+      disabledCursor = page.nextCursor;
+    } while (disabledCursor);
+    assert.ok(disabledPages.flatMap((page) => page.panels).some(
+      (panel) => panel.id === 'markets' && panel.unavailableReason === 'panel_disabled',
+    ));
+
+    const pages = [entitled];
+    let cursor = entitled.nextCursor;
+    while (cursor) {
+      const page = listWebMcpDashboardPanels(ctx, 'full', { variant: 'full', cursor, limit: 8 }, {
+        isPanelAllowed: () => true,
+      });
+      pages.push(page);
+      cursor = page.nextCursor;
+    }
+    const ids = pages.flatMap((page) => page.panels.map((panel) => panel.id));
+    assert.equal(new Set(ids).size, 109);
+    assert.ok(ids.includes('windy-webcams'));
+
+    const gatedPages = [];
+    let gatedCursor: string | null = null;
+    do {
+      const page = listWebMcpDashboardPanels(ctx, 'full', {
+        variant: 'full',
+        ...(gatedCursor ? { cursor: gatedCursor } : {}),
+        limit: 8,
+      }, { isPanelAllowed: (panelId) => panelId !== 'strategic-risk' });
+      gatedPages.push(page);
+      gatedCursor = page.nextCursor;
+    } while (gatedCursor);
+    const strategic = gatedPages.flatMap((page) => page.panels).find((panel) => panel.id === 'strategic-risk');
+    assert.equal(strategic?.entitled, false);
+    assert.equal(strategic?.unavailableReason, 'panel_not_entitled');
+  });
+
   it('fails honestly when live dashboard state is unavailable', () => {
     assert.throws(
       () => getWebMcpDashboardContext(makeContext({ map: null }), 'full'),
@@ -181,6 +269,72 @@ describe('WebMCP live dashboard bindings', () => {
         && error.reason === 'app_destroyed'
         && error.message === 'Dashboard is no longer available.',
     );
+    assert.throws(
+      () => listWebMcpDashboardPanels(makeContext({ isDestroyed: true }), 'full', {}, {
+        isPanelAllowed: () => true,
+      }),
+      (error) => error instanceof DashboardBindingError
+        && error.reason === 'app_destroyed',
+    );
+  });
+
+  it('snapshots live map-layer catalog state for list_map_layers', () => {
+    const ctx = makeContext();
+    const catalogSnapshot = getWebMcpMapLayerCatalogSnapshot(ctx, 'full', false);
+    assert.equal(catalogSnapshot.variant, 'full');
+    assert.equal(catalogSnapshot.rendererKind, 'svg');
+    assert.deepEqual(catalogSnapshot.enabledLayers, ['conflicts', 'tradeRoutes']);
+    assert.deepEqual(catalogSnapshot.liveLayerKeys, Object.keys(ctx.mapLayers));
+    assert.equal(catalogSnapshot.hasPremium, false);
+    assert.equal(catalogSnapshot.deckGlActive, false);
+    assert.equal(catalogSnapshot.tFn, undefined);
+
+    const globe = makeContext({
+      map: {
+        ...makeContext().map,
+        isGlobeMode: () => true,
+        isDeckGLActive: () => true,
+      },
+    });
+    const globeSnapshot = getWebMcpMapLayerCatalogSnapshot(globe, 'tech', true);
+    assert.equal(globeSnapshot.rendererKind, 'globe');
+    assert.equal(globeSnapshot.deckGlActive, true);
+    assert.equal(globeSnapshot.hasPremium, true);
+    assert.equal(globeSnapshot.variant, 'tech');
+
+    assert.throws(
+      () => getWebMcpMapLayerCatalogSnapshot(makeContext({ map: null }), 'full', false),
+      (error) => error instanceof DashboardBindingError
+        && error.reason === 'map_unavailable',
+    );
+    assert.throws(
+      () => getWebMcpMapLayerCatalogSnapshot(makeContext({ isDestroyed: true }), 'full', false),
+      (error) => error instanceof DashboardBindingError
+        && error.reason === 'app_destroyed',
+    );
+  });
+
+  it('records runtime layer gates without dropping object-membership keys', () => {
+    const ctx = makeContext();
+    ctx.mapLayers.cyberThreats = false;
+    ctx.mapLayers.ais = false;
+    ctx.mapLayers.outages = false;
+    const gated = {
+      cyberLayerEnabled: false,
+      aisConfigured: false,
+      outagesAvailable: false,
+    };
+    const catalogSnapshot = getWebMcpMapLayerCatalogSnapshot(
+      ctx,
+      'full',
+      false,
+      undefined,
+      gated,
+    );
+    assert.ok(catalogSnapshot.liveLayerKeys.includes('cyberThreats'));
+    assert.ok(catalogSnapshot.liveLayerKeys.includes('ais'));
+    assert.ok(catalogSnapshot.liveLayerKeys.includes('outages'));
+    assert.deepEqual(catalogSnapshot.runtimeAvailability, gated);
   });
 
   it('converts the live globe camera altitude to the dashboard zoom scale', () => {
@@ -377,6 +531,35 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(result.ok, true);
     assert.equal(showCalls, 1);
     assert.equal(rendererReadyCalls, 0);
+  });
+
+  it('opens mixed-case catalog panel IDs through the shared action contract', async () => {
+    let showCalls = 0;
+    const ctx = makeContext({
+      panels: {
+        regionalStartups: {
+          show: () => { showCalls += 1; },
+          getElement: () => ({ scrollIntoView() {} }),
+        } as unknown as AppContext['panels'][string],
+      },
+      panelSettings: {
+        regionalStartups: { name: 'Global Startup News', enabled: true },
+      },
+    });
+
+    const result = await runDashboardActionBinding(
+      ctx,
+      { type: 'open_panel', panelId: 'regionalStartups' },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => new Promise<void>(() => {}),
+        applierOptions,
+        syncUrlStateNow: () => {},
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(showCalls, 1);
   });
 
   it('returns invalid actions without waiting for concrete renderer readiness', async () => {
@@ -765,5 +948,142 @@ describe('WebMCP live dashboard bindings', () => {
       assert.equal(ctx.mapLayers[allowed], true, variant);
       assert.equal(ctx.mapLayers[disallowed], false, variant);
     }
+  });
+
+  it('switches every stable monitor key and overlays the destination on context', async () => {
+    assert.deepEqual([...SITE_VARIANTS], ['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
+    const navigated: string[] = [];
+    for (const monitor of SITE_VARIANTS) {
+      const result = await applyWebMcpSwitchMonitor(
+        makeContext(),
+        'full',
+        monitor,
+        async (variant) => {
+          navigated.push(variant);
+          return variant === 'full' ? 'none' : 'reload';
+        },
+      );
+      assert.equal(result.ok, true, monitor);
+      assert.equal(result.status, 'applied', monitor);
+      assert.equal(result.destination, monitor, monitor);
+      assert.equal(result.context.variant, monitor, monitor);
+      assert.equal(result.navigation, monitor === 'full' ? 'none' : 'reload', monitor);
+      assert.equal(result.message, monitor === 'full' ? 'Already on that monitor.' : 'Switched monitor.', monitor);
+    }
+    assert.deepEqual(navigated, [...SITE_VARIANTS]);
+  });
+
+  it('denies a missing visible monitor link without navigating', async () => {
+    let navigated = false;
+    const result = await applyWebMcpSwitchMonitor(
+      makeContext(),
+      'full',
+      'tech',
+      async () => {
+        navigated = true;
+        return 'unavailable';
+      },
+    );
+    assert.equal(navigated, true);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'unavailable');
+    assert.equal(result.destination, 'tech');
+    assert.equal(result.context.variant, 'full');
+    assert.match(result.message, /not available/i);
+    assert.equal(/user|email|plan|account/i.test(result.message), false);
+  });
+
+  it('denies a blocked monitor switch without account details', async () => {
+    const result = await applyWebMcpSwitchMonitor(
+      makeContext(),
+      'full',
+      'tech',
+      async () => 'blocked',
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'unavailable');
+    assert.equal(result.destination, 'tech');
+    assert.match(result.message, /could not switch monitors/i);
+    assert.equal(/user|email|plan|account/i.test(result.message), false);
+  });
+
+  it('opens settings and alerts without mutating overlay contents', async () => {
+    const calls: string[] = [];
+    const ctx = makeContext({ unifiedSettings: makeSettings(calls), isDesktopApp: false });
+
+    const settings = await applyWebMcpOpenSettings(ctx, 'full');
+    assert.equal(settings.ok, true);
+    assert.equal(settings.destination, 'settings');
+    assert.equal(settings.overlay, 'open');
+    assert.equal(settings.tab, 'settings');
+    assert.deepEqual(calls, ['settings']);
+
+    const alerts = await applyWebMcpOpenAlerts(ctx, 'full');
+    assert.equal(alerts.ok, true);
+    assert.equal(alerts.destination, 'alerts');
+    assert.equal(alerts.overlay, 'open');
+    assert.equal(alerts.tab, 'notifications');
+    assert.deepEqual(calls, ['settings', 'notifications']);
+  });
+
+  it('denies settings when the overlay fails to open', async () => {
+    const ctx = makeContext({
+      unifiedSettings: {
+        ...makeSettings(),
+        open: async () => false,
+      },
+    });
+    const result = await applyWebMcpOpenSettings(ctx, 'full');
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'unavailable');
+    assert.equal(result.destination, 'settings');
+    assert.notEqual(result.overlay, 'open');
+  });
+
+  it('keeps alerts unavailable on desktop without opening settings', async () => {
+    const calls: string[] = [];
+    const result = await applyWebMcpOpenAlerts(
+      makeContext({ unifiedSettings: makeSettings(calls), isDesktopApp: true }),
+      'full',
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'unavailable');
+    assert.equal(result.destination, 'alerts');
+    assert.deepEqual(calls, []);
+    assert.equal(/user|email|plan|account/i.test(result.message), false);
+  });
+
+  it('returns dashboard context without a map and denies destroyed navigation', async () => {
+    const settingsCalls: string[] = [];
+    const settings = await applyWebMcpOpenSettings(makeContext({
+      map: null,
+      unifiedSettings: makeSettings(settingsCalls),
+    }), 'full');
+    assert.equal(settings.ok, true);
+    assert.equal(settings.context.variant, 'full');
+    assert.deepEqual(settings.context.map.enabledLayers, []);
+    assert.deepEqual(settingsCalls, ['settings']);
+
+    let navigated = false;
+    const destroyed = await applyWebMcpSwitchMonitor(
+      makeContext({ isDestroyed: true }),
+      'full',
+      'tech',
+      async () => {
+        navigated = true;
+        return 'reload';
+      },
+    );
+    assert.equal(navigated, false);
+    assert.equal(destroyed.ok, false);
+    assert.equal(destroyed.reason, 'app_destroyed');
+    assert.equal((await applyWebMcpOpenSettings(makeContext({ isDestroyed: true }), 'full')).reason, 'app_destroyed');
+    assert.equal((await applyWebMcpOpenAlerts(makeContext({ isDestroyed: true }), 'full')).reason, 'app_destroyed');
+    assert.equal((await applyWebMcpOpenSettings(makeContext({ unifiedSettings: null }), 'full')).reason, 'unavailable');
+    assert.equal((await applyWebMcpOpenAlerts(makeContext({ unifiedSettings: null }), 'full')).reason, 'unavailable');
   });
 });

@@ -49,6 +49,8 @@ describe('root sitemap generator', () => {
     assert.ok(locations.includes(`${SITE_ORIGIN}/pro`));
     assert.ok(locations.includes('https://worldmonitor.app/mcp'));
     assert.ok(locations.includes(`${SITE_ORIGIN}/pricing.md`));
+    assert.ok(locations.includes(`${SITE_ORIGIN}/world-monitor.md`));
+    assert.ok(locations.includes(`${SITE_ORIGIN}/api-versioning.md`));
     assert.ok(locations.includes('https://tech.worldmonitor.app/dashboard'));
     assert.ok(locations.every((loc) => !new URL(loc).pathname.startsWith('/blog')));
     assert.ok(locations.every((loc) => !new URL(loc).pathname.startsWith('/docs')));

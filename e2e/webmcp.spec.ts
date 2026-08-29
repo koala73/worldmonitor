@@ -8,17 +8,27 @@ const productionSmoke = process.env.WM_WEBMCP_PRODUCTION === '1';
 const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
 
 const DASHBOARD_TOOL_NAMES = [
+  'create_dashboard_tab',
+  'delete_dashboard_tab',
   'get_access_context',
   'get_dashboard_context',
+  'list_dashboard_panels',
+  'list_dashboard_tabs',
+  'list_map_layers',
   'openCountryBrief',
   'openSearch',
+  'open_alerts',
   'open_dashboard_panel',
   'open_search_result',
+  'open_settings',
   'open_sign_in',
+  'rename_dashboard_tab',
   'search_dashboard',
+  'select_dashboard_tab',
   'set_map_layers',
   'set_map_view',
   'set_panel_enabled',
+  'switch_monitor',
 ];
 const HOMEPAGE_TOOL_NAMES = [
   'getWorldMonitorMcpEndpoint',
@@ -49,6 +59,14 @@ type ColdStartContextProbe = {
   uiReadyAtSettlement: boolean;
 };
 
+type DashboardPanelCatalogProbe = {
+  disabledCount: number;
+  pages: number;
+  reasons: Record<string, number>;
+  total: number;
+  uniqueCount: number;
+};
+
 type ToolStartMark = {
   detail?: {
     targetCancellationSupported?: boolean;
@@ -57,6 +75,49 @@ type ToolStartMark = {
   name: string;
   startTime: number;
 };
+
+type MapLayerListResult = {
+  count: number;
+  layers: Array<{ available?: boolean; id: string; reason?: string }>;
+  nextCursor?: string;
+  ok: boolean;
+  total: number;
+};
+
+function assertMapLayerListResult(listed: unknown, label: string): MapLayerListResult {
+  expect(listed, label).toMatchObject({
+    ok: true,
+    layers: expect.any(Array),
+  });
+  const result = listed as MapLayerListResult;
+  expect(result.layers.length, `${label} layers`).toBeGreaterThan(0);
+  if (result.count < result.total) {
+    expect(result.nextCursor, `${label} nextCursor`).toBe(
+      result.layers[result.layers.length - 1]?.id,
+    );
+  }
+  return result;
+}
+
+async function executeListMapLayers(page: Page): Promise<unknown> {
+  return page.evaluate(async (): Promise<unknown> => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const parseOutput = (value: unknown): unknown => {
+      if (typeof value !== 'string') return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    };
+    const provider = document.modelContext as ExecutableModelContext;
+    const listTool = (await provider.getTools()).find((tool) => tool.name === 'list_map_layers');
+    if (!listTool) throw new Error('list_map_layers was not discovered.');
+    return parseOutput(await provider.executeTool(listTool, JSON.stringify({ limit: 8 })));
+  });
+}
 
 async function attachJsonEvidence(
   testInfo: TestInfo,
@@ -68,8 +129,68 @@ async function attachJsonEvidence(
   await testInfo.attach(name, { path, contentType: 'application/json' });
 }
 
+async function executeDashboardTool(
+  page: Page,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<unknown> {
+  return page.evaluate(async ({ toolName, payload }) => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const provider = document.modelContext as ExecutableModelContext | undefined;
+    if (!provider || typeof provider.executeTool !== 'function') {
+      throw new Error('Chrome WebMCP execution API is unavailable.');
+    }
+    const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
+    if (!tool) throw new Error(`${toolName} was not discovered.`);
+    const raw = await provider.executeTool(tool, JSON.stringify(payload));
+    if (typeof raw !== 'string') return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }, { toolName: name, payload: input });
+}
+
 async function installReadinessRecorder(page: Page): Promise<void> {
   await page.addInitScript(() => localStorage.setItem('wm_lcp_debug', '1'));
+}
+
+async function dismissMissionPreset(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+  });
+}
+
+async function closeMissionPresetIfOpen(page: Page): Promise<void> {
+  const closeButton = page.locator('.mission-preset-popover [data-mission-close]');
+  if (await closeButton.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await closeButton.click({ force: true });
+    await expect(page.locator('.mission-preset-popover')).toBeHidden({ timeout: 5_000 });
+  }
+}
+
+async function executeDashboardTabTool(
+  page: Page,
+  name: string,
+  input: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  return page.evaluate(async ({ name, input }) => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const provider = document.modelContext as ExecutableModelContext;
+    const tool = (await provider.getTools()).find((candidate) => candidate.name === name);
+    if (!tool) throw new Error(`${name} was not discovered.`);
+    const raw = await provider.executeTool(tool, JSON.stringify(input));
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) as unknown : raw;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`${name} returned a non-object result.`);
+    }
+    return parsed as Record<string, unknown>;
+  }, { name, input });
 }
 
 async function installColdStartContextProbe(page: Page): Promise<void> {
@@ -187,6 +308,81 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
   });
 }
 
+test.describe('dashboard tab persistence', () => {
+  test.skip(productionSmoke, 'Do not mutate production dashboard tab persistence.');
+
+  test('creates, renames, selects, and deletes a dashboard tab', async ({ page }) => {
+    await dismissMissionPreset(page);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const tabBar = page.locator('.dashboard-tabs-bar');
+    await expect(tabBar).toBeVisible({ timeout: 60_000 });
+    await closeMissionPresetIfOpen(page);
+
+    const labels = page.locator('.dashboard-tab-label');
+    await expect(labels).toHaveCount(1);
+    const originalName = (await labels.first().innerText()).trim();
+    expect(originalName.length).toBeGreaterThan(0);
+
+    if (requireWebMcp) {
+      await expect.poll(async () => page.evaluate(async () => (
+        (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+      )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+      const listed = await executeDashboardTabTool(page, 'list_dashboard_tabs');
+      expect(listed).toMatchObject({
+        tabCount: 1,
+        tabs: [{ name: originalName, active: true, canDelete: false }],
+      });
+      expect((listed.tabs as Array<{ id: string }>)[0]?.id).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
+
+      // Current Chrome still omits the target-side AbortSignal, so persistent
+      // tab mutations fail closed. Prove the denial, then drive persistence
+      // through the visible tab bar like the model-free path.
+      const created = await executeDashboardTabTool(page, 'create_dashboard_tab', {
+        name: 'Draft Workspace',
+      });
+      expect(created).toMatchObject({
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+      });
+      await expect(labels).toHaveCount(1);
+    }
+
+    await page.locator('.dashboard-tab-add').click();
+    await expect(labels).toHaveCount(2);
+    const createdName = (await labels.nth(1).innerText()).trim();
+    expect(createdName).not.toBe(originalName);
+
+    await labels.nth(1).dblclick();
+    const rename = page.locator('.dashboard-tab-rename');
+    await expect(rename).toBeVisible();
+    await rename.fill('WebMCP Workspace');
+    await rename.press('Enter');
+    await expect(labels.nth(1)).toHaveText('WebMCP Workspace');
+    await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
+
+    await labels.first().click();
+    await expect(labels.first()).toHaveAttribute('aria-selected', 'true');
+    await labels.nth(1).click();
+    await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.dashboard-tab-label')).toHaveCount(2);
+    await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveText('WebMCP Workspace');
+    await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveAttribute('aria-selected', 'true');
+    await closeMissionPresetIfOpen(page);
+
+    await page.locator('.dashboard-tab').nth(1).locator('.dashboard-tab-close').click();
+    await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
+    await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
+    await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
+  });
+});
+
 test.describe('top-level WebMCP dashboard contract', () => {
   test.skip(
     !requireWebMcp,
@@ -237,7 +433,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
       expect(tool.schema, `${tool.name} schema`).toMatchObject({ type: 'object' });
       expect(tool.annotations.readOnlyHint, `${tool.name} readOnlyHint`).toBe(
-        ['get_access_context', 'get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        [
+          'get_access_context',
+          'get_dashboard_context',
+          'list_dashboard_tabs',
+          'list_map_layers',
+          'list_dashboard_panels',
+          'search_dashboard',
+        ].includes(tool.name),
       );
       expect(
         Boolean(tool.annotations.untrustedContentHint),
@@ -350,6 +553,61 @@ test.describe('top-level WebMCP dashboard contract', () => {
       }));
     }
 
+    const catalogProbe = await page.evaluate(async (): Promise<DashboardPanelCatalogProbe> => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      };
+      type CatalogItem = {
+        enabled?: boolean;
+        id?: string;
+        unavailableReason?: string;
+      };
+      type CatalogPage = {
+        hasMore?: boolean;
+        nextCursor?: string | null;
+        panels?: CatalogItem[];
+        total?: number;
+      };
+
+      const provider = document.modelContext as ExecutableModelContext | undefined;
+      if (!provider || typeof provider.executeTool !== 'function') {
+        throw new Error('Chrome WebMCP execution API is unavailable.');
+      }
+      const tool = (await provider.getTools())
+        .find((candidate) => candidate.name === 'list_dashboard_panels');
+      if (!tool) throw new Error('list_dashboard_panels was not discovered.');
+
+      const ids = new Set<string>();
+      const reasons: Record<string, number> = {};
+      let cursor: string | undefined;
+      let disabledCount = 0;
+      let pages = 0;
+      let total = 0;
+      for (; pages < 80; pages += 1) {
+        const raw = await provider.executeTool(tool, JSON.stringify({ cursor, limit: 8 }));
+        const page = (typeof raw === 'string' ? JSON.parse(raw) : raw) as CatalogPage;
+        const panels = Array.isArray(page.panels) ? page.panels : [];
+        total = typeof page.total === 'number' ? page.total : total;
+        for (const panel of panels) {
+          if (typeof panel.id !== 'string') throw new Error('Catalog panel is missing its ID.');
+          if (ids.has(panel.id)) throw new Error(`Catalog repeated panel ${panel.id}.`);
+          ids.add(panel.id);
+          if (panel.enabled === false) disabledCount += 1;
+          if (typeof panel.unavailableReason === 'string') {
+            reasons[panel.unavailableReason] = (reasons[panel.unavailableReason] ?? 0) + 1;
+          }
+        }
+        if (page.hasMore !== true) break;
+        if (typeof page.nextCursor !== 'string') {
+          throw new Error('Paginated catalog response is missing its next cursor.');
+        }
+        cursor = page.nextCursor;
+      }
+      if (pages >= 80) throw new Error('Catalog pagination did not terminate.');
+      return { disabledCount, pages: pages + 1, reasons, total, uniqueCount: ids.size };
+    });
+    expect(catalogProbe.uniqueCount).toBe(catalogProbe.total);
+
     const panelProbe = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
       type ExecutableModelContext = WebMCP.ModelContext & {
         executeTool(
@@ -421,6 +679,9 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
 
     let visibleMutation: (MutationExecutionProbe & { visible: boolean }) | null = null;
+    const layerListed = await executeListMapLayers(page);
+    assertMapLayerListResult(layerListed, 'list_map_layers');
+
     if (!productionSmoke) {
       const mutation = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
         type ExecutableModelContext = WebMCP.ModelContext & {
@@ -617,6 +878,15 @@ test.describe('top-level WebMCP dashboard contract', () => {
       },
       calls: {
         success: { tool: 'get_dashboard_context', output: coldStart.context },
+        layerCatalog: { tool: 'list_map_layers', output: layerListed },
+        panelCatalog: {
+          tool: 'list_dashboard_panels',
+          disabledCount: catalogProbe.disabledCount,
+          pages: catalogProbe.pages,
+          reasons: catalogProbe.reasons,
+          total: catalogProbe.total,
+          uniqueCount: catalogProbe.uniqueCount,
+        },
         denied: {
           tool: 'open_dashboard_panel',
           targetCancellationSupported: coldStart.targetCancellationSupported,
@@ -626,6 +896,78 @@ test.describe('top-level WebMCP dashboard contract', () => {
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
         ...(searchResultEffects ? { searchResultEffects } : {}),
       },
+    });
+  });
+
+  test('validates monitor switches and opens settings and alerts through existing UI', async ({ page }, testInfo) => {
+    test.skip(productionSmoke, 'Must not execute switch_monitor against a production origin.');
+    testInfo.setTimeout(120_000);
+    const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    expect(response).not.toBeNull();
+    await expect.poll(async () => page.evaluate(async () => (
+      (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+    )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+
+    const invalid = await executeDashboardTool(page, 'switch_monitor', { monitor: 'World' });
+    expect(invalid).toMatchObject({
+      ok: false,
+      status: 'invalid',
+      reason: 'unknown_monitor',
+    });
+    expect(page.url()).toContain('/dashboard');
+    await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
+
+    const settings = await executeDashboardTool(page, 'open_settings', {});
+    expect(settings).toMatchObject({
+      ok: true,
+      destination: 'settings',
+      overlay: 'open',
+      tab: 'settings',
+    });
+    await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal [data-tab="settings"][aria-selected="true"]')).toBeVisible();
+
+    const alerts = await executeDashboardTool(page, 'open_alerts', {});
+    expect(alerts).toMatchObject({
+      ok: true,
+      destination: 'alerts',
+      overlay: 'open',
+      tab: 'notifications',
+    });
+    await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal [data-tab="notifications"][aria-selected="true"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#unifiedSettingsModal.active')).toHaveCount(0);
+
+    const historyBefore = await page.evaluate(() => window.history.length);
+    const locationBefore = new URL(page.url());
+    const switchResult = await executeDashboardTool(page, 'switch_monitor', { monitor: 'tech' });
+    expect(switchResult).toMatchObject({
+      ok: false,
+      status: 'denied',
+      reason: 'target_cancellation_unsupported',
+    });
+
+    const context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
+      variant?: string;
+    };
+    expect(context.variant).toBe('full');
+    await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
+    const locationAfter = new URL(page.url());
+    expect({ origin: locationAfter.origin, pathname: locationAfter.pathname }).toEqual({
+      origin: locationBefore.origin,
+      pathname: locationBefore.pathname,
+    });
+    expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
+
+    await attachJsonEvidence(testInfo, 'webmcp-navigation.json', {
+      invalid,
+      settings,
+      alerts,
+      switchResult,
+      context,
+      url: page.url(),
+      historyLength: await page.evaluate(() => window.history.length),
     });
   });
 
@@ -841,6 +1183,9 @@ test.describe('top-level WebMCP dashboard contract', () => {
           DASHBOARD_TOOL_NAMES,
         );
 
+        const layerListed = await executeListMapLayers(page);
+        assertMapLayerListResult(layerListed, `${target.origin} list_map_layers`);
+
         const directDocumentUrl = `${target.origin}/dashboard.html`;
         const directDocument = await context.request.get(directDocumentUrl, { maxRedirects: 0 });
         expect(directDocument.status(), `${target.origin}/dashboard.html status`).toBe(200);
@@ -855,6 +1200,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           ...target,
           servedSha,
           rootRedirect,
+          listMapLayers: layerListed,
           dashboard: {
             status: response!.status(),
             url: response!.url(),

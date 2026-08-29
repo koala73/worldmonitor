@@ -31,6 +31,11 @@ import {
   drainRetryableResponse,
   drainSuccessStatusOverride,
 } from './_shared/response-headers';
+import {
+  appendDeprecationPolicyLink,
+  appendDeprecationPolicyLinkToRecord,
+  DEPRECATION_POLICY_LINK,
+} from './_shared/deprecation-policy';
 import { projectJsonResponse } from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
 import {
@@ -728,6 +733,7 @@ function createGatewayAuthErrorResponse(
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
       ...corsHeaders,
+      Link: DEPRECATION_POLICY_LINK,
     },
   });
 }
@@ -1019,6 +1025,12 @@ export function createDomainGateway(
         },
       });
     }
+
+    // RFC 9745 policy discovery on every CORS-bearing response, including
+    // 401/403/404/405 early returns. Idempotent if a handler already set
+    // rel="deprecation". Absolute URL: api.worldmonitor.app would 404 a
+    // root-relative /api-versioning.md.
+    appendDeprecationPolicyLinkToRecord(corsHeaders);
 
     // OPTIONS preflight must succeed even for origins we refuse on the actual
     // request — otherwise the browser never sends POST/GET and origin_403 is
@@ -2163,6 +2175,7 @@ export function createDomainGateway(
         mergedHeaders.set(key, value);
       }
     }
+    appendDeprecationPolicyLink(mergedHeaders);
     const retryableResponse = drainRetryableResponse(request);
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
