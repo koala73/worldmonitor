@@ -163,9 +163,18 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // `/pro/assets/*.js` — the observability blind spot this array exists to
   // avoid. Only the complete Chromium shape is third-party by construction, so
   // only that shape is suppressed; the method name varies per host-app bridge,
-  // so it is matched as an identifier rather than pinned to the one observed
+  // so it is matched by shape rather than pinned to the one observed
   // (PR #7354 review).
-  /^Error invoking [\w$]+: Java object is gone$/,
+  //
+  // The method slot is "anything but whitespace or a colon", NOT `[\w$]+`:
+  // Java identifiers are not ASCII-only (`@JavascriptInterface
+  // obtenirDonnées()` is legal, and Chromium emits the same sentence for it)
+  // while JavaScript's `\w` is, so an ASCII slot silently misses them. Widening
+  // it cannot loosen the rule — the envelope is anchored at both ends and the
+  // reason is fixed, so this matches only if our own bundle emits the whole
+  // Chromium sentence. Java method names hold no colon, so excluding one keeps
+  // the slot off the reason separator (PR #7356 review).
+  /^Error invoking [^\s:]+: Java object is gone$/,
   // iOS in-app WebView native bridge. The host app injects `sendDataToNative` /
   // `sendPageHideMessage` into the document and they dereference
   // `window.webkit.messageHandlers`, which only exists when a WKWebView host
