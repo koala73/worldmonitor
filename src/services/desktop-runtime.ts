@@ -36,29 +36,51 @@ export type RuntimeProbe = {
   locationOrigin: string;
 };
 
+/**
+ * Signals an ordinary web page cannot produce.
+ *
+ * Sole owner of the list. Both public detectors below derive from it, so a
+ * signal added here reaches each of them and the two cannot drift apart —
+ * `tests/dom/desktop-runtime-explicit-signals.test.mts` holds them to that.
+ */
+function hasUnambiguousDesktopSignals(probe: RuntimeProbe): boolean {
+  return probe.hasTauriGlobals
+    || probe.userAgent.includes('Tauri')
+    // Tauri production windows can expose tauri-like hosts/schemes without
+    // always exposing bridge globals at first paint.
+    || probe.locationProtocol === 'tauri:'
+    || probe.locationProtocol === 'asset:'
+    || probe.locationHost === 'tauri.localhost'
+    || probe.locationHost.endsWith('.tauri.localhost')
+    || probe.locationOrigin.startsWith('tauri://');
+}
+
+/**
+ * A bare `https://localhost` origin — which a Tauri window may serve from
+ * before its bridge globals appear, and which a dev server run over HTTPS is
+ * equally entitled to. Desktop-ish, but never proof of desktop on its own.
+ */
+function isSecureLoopbackOrigin(probe: RuntimeProbe): boolean {
+  return probe.locationProtocol === 'https:' && (
+    probe.locationHost === 'localhost' ||
+    probe.locationHost.startsWith('localhost:') ||
+    probe.locationHost === '127.0.0.1' ||
+    probe.locationHost.startsWith('127.0.0.1:')
+  );
+}
+
 export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
-  const tauriInUserAgent = probe.userAgent.includes('Tauri');
-  const secureLocalhostOrigin = (
-    probe.locationProtocol === 'https:' && (
-      probe.locationHost === 'localhost' ||
-      probe.locationHost.startsWith('localhost:') ||
-      probe.locationHost === '127.0.0.1' ||
-      probe.locationHost.startsWith('127.0.0.1:')
-    )
-  );
+  return hasUnambiguousDesktopSignals(probe) || isSecureLoopbackOrigin(probe);
+}
 
-  // Tauri production windows can expose tauri-like hosts/schemes without
-  // always exposing bridge globals at first paint.
-  const tauriLikeLocation = (
-    probe.locationProtocol === 'tauri:' ||
-    probe.locationProtocol === 'asset:' ||
-    probe.locationHost === 'tauri.localhost' ||
-    probe.locationHost.endsWith('.tauri.localhost') ||
-    probe.locationOrigin.startsWith('tauri://') ||
-    secureLocalhostOrigin
-  );
-
-  return probe.hasTauriGlobals || tauriInUserAgent || tauriLikeLocation;
+function currentProbe(): RuntimeProbe {
+  return {
+    hasTauriGlobals: '__TAURI_INTERNALS__' in window || '__TAURI__' in window,
+    userAgent: window.navigator?.userAgent ?? '',
+    locationProtocol: window.location?.protocol ?? '',
+    locationHost: window.location?.host ?? '',
+    locationOrigin: window.location?.origin ?? '',
+  };
 }
 
 /**
@@ -83,20 +105,7 @@ export function hasExplicitDesktopSignals(): boolean {
     return false;
   }
 
-  if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
-    return true;
-  }
-
-  if ((window.navigator?.userAgent ?? '').includes('Tauri')) {
-    return true;
-  }
-
-  const protocol = window.location?.protocol ?? '';
-  const host = window.location?.host ?? '';
-  return protocol === 'tauri:'
-    || protocol === 'asset:'
-    || host === 'tauri.localhost'
-    || host.endsWith('.tauri.localhost');
+  return hasUnambiguousDesktopSignals(currentProbe());
 }
 
 export function isDesktopRuntime(): boolean {
@@ -108,11 +117,5 @@ export function isDesktopRuntime(): boolean {
     return false;
   }
 
-  return detectDesktopRuntime({
-    hasTauriGlobals: '__TAURI_INTERNALS__' in window || '__TAURI__' in window,
-    userAgent: window.navigator?.userAgent ?? '',
-    locationProtocol: window.location?.protocol ?? '',
-    locationHost: window.location?.host ?? '',
-    locationOrigin: window.location?.origin ?? '',
-  });
+  return detectDesktopRuntime(currentProbe());
 }
