@@ -136,6 +136,7 @@ describe('theme text-token contrast', () => {
  */
 describe('billing tone contrast', () => {
   const mainCss = readFile('src/styles/main.css');
+  const happyCss = readFile('src/styles/happy-theme.css');
   const settingsSource = readFile('src/components/UnifiedSettings.ts');
   const tones = [
     '--billing-tone-active',
@@ -207,4 +208,30 @@ describe('billing tone contrast', () => {
       }
     }
   });
+
+  for (const theme of [
+    {
+      name: 'happy light',
+      block: ':root[data-variant="happy"][data-theme="light"] {',
+    },
+    {
+      name: 'happy dark',
+      block: ':root[data-variant="happy"][data-theme="dark"] {',
+    },
+  ]) {
+    it(`${theme.name}: every billing tone clears 4.5:1 on --bg and --surface`, () => {
+      const bg = token(happyCss, theme.block, '--bg');
+      const surface = token(happyCss, theme.block, '--surface');
+      for (const tone of tones) {
+        const color = token(happyCss, theme.block, tone);
+        for (const base of [bg, surface]) {
+          const ratio = contrastRatio(color, base);
+          assert.ok(
+            ratio >= 4.5,
+            `${theme.name} ${tone} (${color}) on ${base} is ${ratio.toFixed(2)}:1, needs >= 4.5:1`,
+          );
+        }
+      }
+    });
+  }
 });
