@@ -1,5 +1,6 @@
 // Base configuration shared across all variants
 import type { PanelConfig, MapLayers } from '@/types';
+import { SITE_VARIANT } from '@/config/variant';
 
 // Shared exports (re-exported by all variants)
 export { SECTORS, COMMODITIES, MARKET_SYMBOLS } from '../markets';
@@ -92,7 +93,12 @@ export const MONITOR_COLORS = [
 
 // Storage keys - shared
 export const STORAGE_KEYS = {
-  panels: 'worldmonitor-panels',
+  // Panel prefs are variant-scoped (fork-side, AALICE:OpenEYE): hosted
+  // variants live on separate subdomains with separate localStorage, but the
+  // self-host monitor switcher serves every variant from one origin — with a
+  // shared key, each variant's reseed-on-switch disables the previous
+  // variant's panels and round-trips come back gutted.
+  panels: SITE_VARIANT === 'full' ? 'worldmonitor-panels' : `worldmonitor-panels-${SITE_VARIANT}`,
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',

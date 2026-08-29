@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "경제 & 무역",
     "panelCatHappyNews": "좋은 소식",
     "panelCatHappyPlanet": "지구 & 기부",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "실시간 뉴스",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "지도 타일을 로드할 위치를 선택하세요.",
     "mapTheme": "지도 테마",
     "mapThemeDesc": "지도 타일의 시각적 스타일.",
-    "globePreset": "시각적 프리셋",
-    "globePresetDesc": "클래식과 향상된 글로브 시각화 간 전환.",
     "fontFamily": "글꼴 패밀리",
     "fontFamilyDesc": "기술적 모양을 위해 모노스페이스, 더 쉬운 읽기를 위해 시스템 기본값.",
     "fontMono": "모노스페이스",

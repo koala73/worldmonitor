@@ -2,7 +2,6 @@ import { LANGUAGES, getCurrentLanguage, changeLanguage, t } from '@/services/i18
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS, getMapTheme, setMapTheme, type MapProvider } from '@/config/basemap';
 import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
-import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
 import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
@@ -187,21 +186,6 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `</select>`;
 
   html += toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
-
-  // 3D Globe Visual Preset
-  const currentPreset = getGlobeVisualPreset();
-  html += `<div class="ai-flow-toggle-row">
-    <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.globePreset')}</div>
-      <div class="ai-flow-toggle-desc">${t('preferences.globePresetDesc')}</div>
-    </div>
-  </div>`;
-  html += `<select class="unified-settings-select" id="us-globe-visual-preset">`;
-  for (const opt of GLOBE_VISUAL_PRESET_OPTIONS) {
-    const selected = opt.value === currentPreset ? ' selected' : '';
-    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
-  }
-  html += `</select>`;
 
   // Language
   html += `<div class="ai-flow-section-label">${t('header.languageLabel')}</div>`;
@@ -424,10 +408,6 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         if (target.id === 'us-stream-quality') {
           setStreamQuality(target.value as StreamQuality);
-          return;
-        }
-        if (target.id === 'us-globe-visual-preset') {
-          setGlobeVisualPreset(target.value as GlobeVisualPreset);
           return;
         }
         if (target.id === 'us-theme') {

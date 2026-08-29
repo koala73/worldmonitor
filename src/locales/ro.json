@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Economie și comerț",
     "panelCatHappyNews": "Știri bune",
     "panelCatHappyPlanet": "Planetă și donații",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Știri Live",
@@ -3020,8 +3023,6 @@
     "mapProviderDesc": "Alegeți sursa dalelor hărții.",
     "mapTheme": "Tema hărții",
     "mapThemeDesc": "Stilul vizual al dalelor hărții.",
-    "globePreset": "Presetare vizuală",
-    "globePresetDesc": "Comută între vizualizări clasice și îmbunătățite ale globului.",
     "fontFamily": "Familie de fonturi",
     "fontFamilyDesc": "Monospace pentru aspect tehnic, font implicit pentru citire mai ușoară.",
     "fontMono": "Monospace",

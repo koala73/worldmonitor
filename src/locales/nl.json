@@ -2854,7 +2854,10 @@
     "panelCatCommodityEcon": "Economie & Handel",
     "panelCatHappyNews": "Goed Nieuws",
     "panelCatHappyPlanet": "Planeet & Geven",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "countryBrief": {
     "identifying": "Land identificeren...",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "Kies waar kaarttegels vandaan worden geladen.",
     "mapTheme": "Kaartthema",
     "mapThemeDesc": "Visuele stijl van de kaarttegels.",
-    "globePreset": "Visuele voorinstelling",
-    "globePresetDesc": "Schakel tussen klassieke en verbeterde globevisuals.",
     "fontFamily": "Lettertype",
     "fontFamilyDesc": "Monospace voor een technische uitstraling, systeemstandaard voor gemakkelijker lezen.",
     "fontMono": "Monospace",

@@ -9,6 +9,7 @@ import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, Polygo
 import maplibregl from 'maplibre-gl';
 import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
 import { registerPMTilesProtocol, getStyleForProvider } from '@/config/basemap-styles';
+import { blocFillColor, blocLineColor, type BlocCountry } from '@/services/bloc-alignment';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -437,7 +438,22 @@ const CHOKEPOINT_PULSE_AMP = 0.3;
 let __deckInterleavedRaceFilterInstalled = false;
 
 const DECK_INTERLEAVED_RACE_MESSAGE_RE = /Cannot read properties of null \(reading 'id'\)|null is not an object \(evaluating '[\w.]+\.id'\)/;
-const DECK_INTERLEAVED_RACE_SOURCE_RE = /(?:^|[/(])deck-stack-[A-Za-z0-9_-]+\.js/;
+/**
+ * Evidence that a null-id throw really came from deck.gl.
+ *
+ * Three spellings, because the same module has three filenames depending on
+ * how it was loaded:
+ *   - `deck-stack-<hash>.js`      the production rollup chunk
+ *   - `@deck__gl_<pkg>.js`        Vite's optimized dev dependency
+ *   - `/node_modules/@deck.gl/`   an un-optimized dev import
+ *
+ * Only the first was listed, so in `npm run dev` the filter below never
+ * matched and this benign race logged an uncaught TypeError on every
+ * affected frame — dozens per session, loud enough to bury real errors in
+ * the console. Matching all three keeps the guard exactly as narrow (deck.gl
+ * must still be in the stack) while making it work in both builds.
+ */
+const DECK_INTERLEAVED_RACE_SOURCE_RE = /(?:^|[/(])deck-stack-[A-Za-z0-9_-]+\.js|@deck__gl_[A-Za-z0-9_-]+\.js|\/node_modules\/@deck\.gl\//;
 
 /**
  * Swallow the well-known deck.gl 9.x + maplibre-gl 5.x interleaved-mode race:
@@ -577,6 +593,10 @@ export class DeckGLMap {
 
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
+  // USA-vs-CHINA bloc alignment (fork-side, AMD-003)
+  private blocByIso: Map<string, BlocCountry> = new Map();
+  private blocNewsActive: Set<string> = new Set();
+  private blocVersion = 0;
   private ciiScoresVersion = 0;
   private resilienceScoresMap: ReturnType<typeof buildResilienceChoroplethMap> = new Map();
   private resilienceScoresVersion = 0;
@@ -2040,6 +2060,11 @@ export class DeckGLMap {
     if (mapLayers.sanctions) {
       const sanctionsLayer = this.createSanctionsChoroplethLayer();
       if (sanctionsLayer) layers.push(sanctionsLayer);
+    }
+    // USA-vs-CHINA bloc alignment choropleth
+    if (mapLayers.blocLean) {
+      const blocLayer = this.createBlocChoroplethLayer();
+      if (blocLayer) layers.push(blocLayer);
     }
     // Scenario heat layer (affected countries tint)
     const scenarioHeat = this.scenarioState ? this.createScenarioHeatLayer() : null;
@@ -4274,6 +4299,40 @@ export class DeckGLMap {
         return [0, 0, 0, 0] as [number, number, number, number];
       },
       pickable: false,
+    });
+  }
+
+  /**
+   * USA-vs-CHINA bloc choropleth (fork-side, AMD-003). The two poles are fixed
+   * red / orange; every other country is gray tinted toward whichever bloc its
+   * equity market co-moves with. A bright outline marks countries whose move
+   * today broke their own abnormal-return distribution while the feed is
+   * talking about them — see services/bloc-alignment.ts for the colour rules.
+   */
+  private createBlocChoroplethLayer(): GeoJsonLayer | null {
+    if (!this.countriesGeoJsonData || this.blocByIso.size === 0) return null;
+    const byIso = this.blocByIso;
+    const active = this.blocNewsActive;
+    return new GeoJsonLayer({
+      id: 'bloc-choropleth-layer',
+      data: this.countriesGeoJsonData,
+      filled: true,
+      stroked: true,
+      getFillColor: (feature: { properties?: Record<string, unknown> }) => {
+        const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        return blocFillColor(code ?? '', byIso);
+      },
+      getLineColor: (feature: { properties?: Record<string, unknown> }) => {
+        const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        return blocLineColor(code ?? '', byIso, active);
+      },
+      getLineWidth: 2,
+      lineWidthMinPixels: 1.5,
+      pickable: true,
+      updateTriggers: {
+        getFillColor: [this.blocVersion],
+        getLineColor: [this.blocVersion],
+      },
     });
   }
 
@@ -6561,6 +6620,13 @@ export class DeckGLMap {
     this.happinessScores = data.scores;
     this.happinessYear = data.year;
     this.happinessSource = data.source;
+    this.render();
+  }
+
+  public setBlocAlignment(byIso: Map<string, BlocCountry>, newsActive: Set<string>): void {
+    this.blocByIso = byIso;
+    this.blocNewsActive = newsActive;
+    this.blocVersion++;
     this.render();
   }
 

@@ -2854,7 +2854,10 @@
     "panelCatCommodityEcon": "Ekonomi & Handel",
     "panelCatHappyNews": "Goda Nyheter",
     "panelCatHappyPlanet": "Planet & Välgörenhet",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "countryBrief": {
     "identifying": "Identifierar land...",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "Välj varifrån kartpaneler laddas.",
     "mapTheme": "Karttema",
     "mapThemeDesc": "Visuell stil för kartpaneler.",
-    "globePreset": "Visuell förinställning",
-    "globePresetDesc": "Växla mellan klassiska och förbättrade globvisualer.",
     "fontFamily": "Teckensnitt",
     "fontFamilyDesc": "Monospace för teknisk stil, systemstandard för lättare läsning.",
     "fontMono": "Monospace",

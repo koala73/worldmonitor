@@ -108,20 +108,96 @@
     display: none !important;
   }
 
-  /* Off the WORLD tab the map yields the whole viewport to the section. */
-  .main-content[data-oe-tab]:not([data-oe-tab='world']) .map-section,
-  .main-content[data-oe-tab]:not([data-oe-tab='world']) .map-width-resize-handle {
+  /*
+   * The map has its own tab now, and appears only there.
+   *
+   * Sharing a screen with the panel grid capped it at roughly 1035x445 — a
+   * thumbnail. A photorealistic globe at that size is a globe you cannot
+   * read: continents are a few dozen pixels, the God's Eye View HUD covers
+   * a third of what is left, and the layer tray has nowhere to go. Given
+   * the whole viewport it becomes the instrument it was built as.
+   */
+  .main-content[data-oe-tab]:not([data-oe-tab='map']) .map-section,
+  .main-content[data-oe-tab] .map-width-resize-handle {
     display: none !important;
+  }
+
+  /*
+   * ...and on that tab it is the only thing there. The grid is hidden rather
+   * than emptied so panels keep their DOM, their scroll positions and their
+   * in-flight fetches — switching tabs must not restart the dashboard.
+   */
+  .main-content[data-oe-tab='map'] .panels-grid {
+    display: none !important;
+  }
+
+  .main-content[data-oe-tab='map'] .map-section {
+    border: none;
+  }
+
+  /*
+   * The "drop panels here" zone below the map is `flex: 1`, the same as
+   * #mapContainer, so an EMPTY drop target was splitting the section
+   * 50/50 — the map got 446px of a 944px column and the other half was a
+   * dashed rectangle. Collapse it to a strip while it is empty: still
+   * visible, still a drop target, no longer half the instrument.
+   */
+  .main-content[data-oe-tab='map'] .map-bottom-grid:empty {
+    flex: 0 0 auto;
+    min-height: 0;
+    height: 54px;
+    padding: 6px 12px;
+  }
+
+  /* With panels in it the zone earns its space, but the map still keeps the
+   * majority — this is the map tab. */
+  .main-content[data-oe-tab='map'] .map-bottom-grid:not(:empty) {
+    flex: 0 1 auto;
+    max-height: 38%;
+  }
+
+  .main-content[data-oe-tab='map'] .map-container {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
+
+/*
+ * Below the widescreen breakpoint .main-content is a flex COLUMN and
+ * .map-section is a fixed `height: 50vh`. On its own tab it should take the
+ * whole column, not half of it.
+ *
+ * Bounded at 1599px on purpose. At 1600+ .main-content becomes a grid whose
+ * first row is `1fr`, and main.css gives .map-section `height: 100%` to fill
+ * it. An unbounded `height: auto` here outranks that rule (two classes and
+ * an attribute beat one class) and collapses the map back to its content
+ * height — which is how it ended up 1728x446: full width, still a strip.
+ */
+@media (min-width: 769px) and (max-width: 1599px) {
+  .main-content[data-oe-tab='map'] .map-section {
+    flex: 1 1 auto;
+    height: auto !important;
+    max-height: none;
+    min-height: 0;
   }
 }
 
 @media (min-width: 1600px) {
-  /* Mirror of .main-content.map-hidden for the tab-driven case. */
-  .main-content[data-oe-tab]:not([data-oe-tab='world']) {
+  /*
+   * At this width .main-content is a three-track grid (map | handle |
+   * panels). Every tab now wants a single track — either the grid alone or
+   * the map alone — so collapse to one column and put whichever survives
+   * into it.
+   */
+  .main-content[data-oe-tab] {
     grid-template-columns: 1fr;
   }
-  .main-content[data-oe-tab]:not([data-oe-tab='world']) .panels-grid {
+  .main-content[data-oe-tab]:not([data-oe-tab='map']) .panels-grid {
     grid-column: 1;
+  }
+  .main-content[data-oe-tab='map'] .map-section {
+    grid-column: 1;
+    grid-row: 1;
   }
 }
 
@@ -150,4 +226,119 @@
 /* Community/Discord call-to-action toast — upstream growth chrome. */
 .community-widget {
   display: none !important;
+}
+
+/* ---- USA vs CHINA — market relationship panel -------------------------- */
+/*
+ * Colour discipline: red is the US pole and orange is the China pole, the same
+ * two hues the map choropleth uses. Nothing else in this panel is allowed to
+ * use them, so a glance at either surface reads the same way.
+ */
+
+.bloc-panel {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  padding: 6px 8px 10px;
+}
+
+.bloc-legs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, rgba(197, 209, 200, 0.14));
+  margin-bottom: 8px;
+}
+
+.bloc-leg {
+  padding: 2px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+
+.bloc-leg-us { color: #ff6b6b; border: 1px solid rgba(220, 38, 38, 0.45); background: rgba(220, 38, 38, 0.09); }
+.bloc-leg-cn { color: #ffa14a; border: 1px solid rgba(249, 115, 22, 0.45); background: rgba(249, 115, 22, 0.09); }
+.bloc-window { margin-left: auto; opacity: 0.55; font-size: 10px; }
+
+.bloc-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 10px 0 5px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent, #ffb454);
+}
+
+.bloc-section-title:first-child { margin-top: 0; }
+.bloc-title-us { color: #ff6b6b; }
+.bloc-title-cn { color: #ffa14a; }
+.bloc-hint { font-size: 9px; letter-spacing: 0; text-transform: none; opacity: 0.5; color: var(--text-secondary, #9aa8a0); }
+
+.bloc-empty {
+  padding: 7px 4px;
+  opacity: 0.45;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.bloc-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.bloc-col { min-width: 0; }
+
+.bloc-row,
+.bloc-react-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  line-height: 1.5;
+}
+
+.bloc-flag { flex: 0 0 auto; font-size: 11px; }
+
+.bloc-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary, #c5d1c8);
+}
+
+/* Fixed-width so the whole column reads as one scale, not ragged bars. */
+.bloc-bar {
+  flex: 0 0 46px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(197, 209, 200, 0.12);
+  overflow: hidden;
+}
+
+.bloc-bar-fill { display: block; height: 100%; border-radius: 2px; }
+.bloc-bar-us { background: #dc2626; }
+.bloc-bar-cn { background: #f97316; }
+
+.bloc-lean { flex: 0 0 38px; text-align: right; font-variant-numeric: tabular-nums; }
+.bloc-lean-us { color: #ff6b6b; }
+.bloc-lean-cn { color: #ffa14a; }
+.bloc-r2 { flex: 0 0 40px; text-align: right; font-size: 9px; opacity: 0.45; font-variant-numeric: tabular-nums; }
+
+.bloc-reacting {
+  border: 1px solid rgba(255, 180, 84, 0.28);
+  border-radius: 4px;
+  padding: 4px 7px;
+  background: rgba(255, 180, 84, 0.05);
+}
+
+.bloc-ar,
+.bloc-z { flex: 0 0 52px; text-align: right; font-variant-numeric: tabular-nums; }
+.bloc-z { flex-basis: 40px; font-size: 10px; opacity: 0.75; }
+.bloc-react-up .bloc-ar { color: #78ffb4; }
+.bloc-react-down .bloc-ar { color: #ff5050; }
+
+@media (max-width: 900px) {
+  .bloc-columns { grid-template-columns: 1fr; }
 }

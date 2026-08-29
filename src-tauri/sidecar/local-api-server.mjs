@@ -1726,8 +1726,40 @@ export async function createLocalApiServer(options = {}) {
   const routes = await buildRouteTable(context.apiDir);
   let unregisterSelfFetchOrigins = null;
 
+  // God's Eye View's 24 upstream proxies, mounted under /api/gev/*.
+  //
+  // The desktop build is the third of three places this same Connect app is
+  // mounted (dev/preview go through the `gev-api` plugin in vite.config.ts;
+  // docker runs it as its own supervisord process). Loading it is optional:
+  // the desktop app must still start if the vendored tree or its bundle is
+  // missing, so a failure here downgrades the globe's data layers rather
+  // than taking the sidecar — and every World Monitor route — with it.
+  let gevApp = null;
+  try {
+    const { createGevApiApp } = await import('../../server/gev/gev-api-server.mjs');
+    const gev = await createGevApiApp({ mode: 'production' });
+    gevApp = gev.app;
+    console.log(`[sidecar] mounted ${gev.routes.length} God's Eye View routes under /api/gev`);
+  } catch (err) {
+    console.warn(
+      "[sidecar] God's Eye View API unavailable — its map layers will not load:",
+      err?.message ?? err,
+    );
+  }
+
   const server = createServer(async (req, res) => {
     const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
+
+    // Hand /api/gev/* to the vendored app before the World Monitor route
+    // table sees it. Its own internal mount paths already carry the prefix,
+    // so req.url is passed through untouched for Connect to strip.
+    if (gevApp && requestUrl.pathname.startsWith('/api/gev/')) {
+      gevApp(req, res, () => {
+        res.writeHead(404, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
+        res.end(JSON.stringify({ error: 'Not found' }));
+      });
+      return;
+    }
 
     if (!requestUrl.pathname.startsWith('/api/')) {
       res.writeHead(404, { 'content-type': 'application/json', ...makeCorsHeaders(req) });

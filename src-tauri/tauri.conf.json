@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "World Monitor",
-  "mainBinaryName": "world-monitor",
+  "productName": "OpenEye",
+  "mainBinaryName": "openeye",
   "version": "2.8.0",
-  "identifier": "app.worldmonitor.desktop",
+  "identifier": "dev.aalice.openeye",
   "build": {
     "beforeDevCommand": "npm run build:sidecar-sebuf && node scripts/build-sidecar-handlers.mjs && npm run dev",
     "beforeBuildCommand": "npm run build:desktop",
@@ -13,17 +13,17 @@
   "app": {
     "windows": [
       {
-        "title": "World Monitor",
-        "width": 1440,
+        "title": "AALICE: OpenEye",
+        "width": 1600,
         "height": 900,
         "minWidth": 1200,
         "minHeight": 720,
         "resizable": true,
         "fullscreen": false,
         "backgroundColor": [
-          26,
-          28,
-          30,
+          0,
+          0,
+          0,
           255
         ]
       }
@@ -42,8 +42,8 @@
       "appimage"
     ],
     "category": "Productivity",
-    "shortDescription": "World Monitor desktop app (supports World and Tech variants)",
-    "longDescription": "World Monitor desktop app for real-time global intelligence. Build with VITE_VARIANT=tech to package Tech Monitor branding and dataset defaults.",
+    "shortDescription": "AALICE:OpenEYE - mission console",
+    "longDescription": "AALICE:OpenEYE - a live mission console: God's Eye View's photorealistic Cesium globe carrying World Monitor's trackers, news, markets and intelligence panels.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

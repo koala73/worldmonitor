@@ -402,6 +402,34 @@ describe('security header guardrails', () => {
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
   });
 
+  it('no shipped CSP grants unsafe-eval', () => {
+    // Cesium's bundled Knockout runs `(0, eval)("this")` at module top level.
+    // Rollup tree-shakes it out of the production build, so nothing shipped
+    // needs real eval — but Vite's dev prebundle DOES execute it, and the
+    // temptation when the globe dies in `npm run dev` is to widen the shared
+    // CSP. vite.config.ts relaxes it for `apply: 'serve'` only; this is the
+    // check that the relaxation never reaches a deployment.
+    //
+    // Token comparison, not substring: 'wasm-unsafe-eval' is legitimate and
+    // ends with the string this is looking for.
+    const csp = getHeaderValue('Content-Security-Policy');
+    const tokens = getCspDirectiveTokens(csp, 'script-src');
+    assert.ok(!tokens.includes("'unsafe-eval'"),
+      "deployed CSP script-src must not grant 'unsafe-eval'");
+
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const metaCsp = indexHtml.match(/http-equiv="Content-Security-Policy"[^>]*content="([^"]*)"/)?.[1] ?? '';
+    assert.ok(metaCsp.length > 0, 'index.html must carry a CSP meta tag');
+    assert.ok(!getCspDirectiveTokens(metaCsp, 'script-src').includes("'unsafe-eval'"),
+      "index.html CSP must not grant 'unsafe-eval'");
+
+    const viteConfig = readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf-8');
+    const block = viteConfig.slice(viteConfig.indexOf("name: 'openeye-dev-csp-unsafe-eval'"));
+    assert.ok(block.length > 0, 'the dev-only CSP plugin must still exist');
+    assert.match(block.slice(0, 200), /apply: 'serve'/,
+      "the dev CSP relaxation must be apply: 'serve' so a build can never emit it");
+  });
+
   it('CSP script-src includes hashes for every inline script in index.html', () => {
     const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
     const csp = getHeaderValue('Content-Security-Policy');
@@ -470,6 +498,16 @@ describe('security header guardrails', () => {
     ];
 
     for (const [label, tokens] of surfaces) {
+      // `frame-ancestors *` (what docker/nginx-security-headers.conf ships)
+      // permits every variant host and then some, so it satisfies what this
+      // test is actually asking. Requiring the hosts to be spelled out made
+      // this fail permanently against a config that is strictly MORE
+      // permissive — a red test that hid real drift rather than catching it.
+      //
+      // Note the wildcard is the looser posture, not the stricter one: it
+      // lets any origin frame the self-hosted deployment. That is a
+      // deployment decision, not something this test should quietly force.
+      if (tokens.includes('*')) continue;
       const missing = variantHosts.filter((host) => !tokens.includes(`https://${host}`));
       assert.deepEqual(
         missing,

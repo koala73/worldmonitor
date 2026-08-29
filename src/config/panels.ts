@@ -2,10 +2,6 @@ import type { PanelConfig, MapLayers, DataSourceId } from '@/types';
 import { SITE_VARIANT } from './variant';
 // boundary-ignore: isDesktopRuntime is a pure env probe with no service dependencies
 import { isDesktopRuntime } from '@/services/runtime';
-// boundary-ignore: getSecretState is a pure env/keychain probe with no service dependencies
-import { getSecretState } from '@/services/runtime-config';
-// boundary-ignore: isEntitled is a pure state check with no side effects
-import { isEntitled } from '@/services/entitlements';
 
 const _desktop = isDesktopRuntime();
 
@@ -61,7 +57,10 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   ai: { name: 'AI/ML', enabled: true, priority: 2 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
-  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  // AALICE:OpenEYE (fork-side, AMD-003) — off by default, see OUT_OF_SCOPE note
+  // below the FULL_PANELS block. Still listed in settings so re-enabling them
+  // is a one-click operation the day the missing dependency lands.
+  'latest-brief': { name: 'Latest Brief', enabled: false, priority: 1, premium: 'locked' as const },
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
   'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 2 },
@@ -91,7 +90,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'fao-food-price-index': { name: 'FAO Food Price Index', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
-  'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
+  'ucdp-events': { name: 'UCDP Conflict Events', enabled: false, priority: 2 }, // OpenEYE: UCDP GED API 401s on every version
+
   'disease-outbreaks': { name: 'Disease Outbreaks', enabled: true, priority: 2 },
   'social-velocity': { name: 'Social Velocity', enabled: true, priority: 2 },
   'wsb-ticker-scanner': { name: 'WSB Ticker Scanner', enabled: true, priority: 75, premium: 'locked' as const },
@@ -105,8 +105,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'defense-patents': { name: 'R&D Signal', enabled: true, priority: 2 },
   'radiation-watch': { name: 'Radiation Watch', enabled: true, priority: 2 },
   'thermal-escalation': { name: 'Thermal Escalation', enabled: true, priority: 2 },
-  'oref-sirens': { name: 'Israel Sirens', enabled: true, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
-  'telegram-intel': { name: 'Telegram Intel', enabled: true, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
+  'oref-sirens': { name: 'Israel Sirens', enabled: false, priority: 2, ...(_desktop && { premium: 'locked' as const }) }, // OpenEYE: needs OREF_PROXY_AUTH
+  'telegram-intel': { name: 'Telegram Intel', enabled: false, priority: 2, ...(_desktop && { premium: 'locked' as const }) }, // OpenEYE: needs a Telegram user session on the relay
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
@@ -290,7 +290,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
-  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  'latest-brief': { name: 'Latest Brief', enabled: false, priority: 1, premium: 'locked' as const }, // OpenEYE: account-bound, see OPENEYE_OUT_OF_SCOPE
   'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
   'ai-regulation': { name: 'AI Regulation Dashboard', enabled: false, priority: 2 },
 };
@@ -490,7 +490,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
-  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  'latest-brief': { name: 'Latest Brief', enabled: false, priority: 1, premium: 'locked' as const }, // OpenEYE: account-bound, see OPENEYE_OUT_OF_SCOPE
 };
 
 const FINANCE_MAP_LAYERS: MapLayers = {
@@ -797,7 +797,7 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   polymarket: { name: 'Commodity Predictions', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
-  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  'latest-brief': { name: 'Latest Brief', enabled: false, priority: 1, premium: 'locked' as const }, // OpenEYE: account-bound, see OPENEYE_OUT_OF_SCOPE
 };
 
 const COMMODITY_MAP_LAYERS: MapLayers = {
@@ -961,7 +961,7 @@ const ENERGY_PANELS: Record<string, PanelConfig> = {
   // Tracking
   monitors: { name: 'My Monitors', enabled: true, priority: 3 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 3 },
-  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  'latest-brief': { name: 'Latest Brief', enabled: false, priority: 1, premium: 'locked' as const }, // OpenEYE: account-bound, see OPENEYE_OUT_OF_SCOPE
 };
 
 const ENERGY_MAP_LAYERS: MapLayers = {
@@ -1089,7 +1089,57 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
 // UNIFIED PANEL REGISTRY
 // ============================================
 
-type PanelVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
+
+// ============================================
+// USA vs CHINA VARIANT (AALICE:OpenEYE, fork-side per AMD-003)
+// ============================================
+// A bloc-competition tracker, not a general news monitor: the news panels are
+// restricted to AI infrastructure, space/science and engineering, and the map
+// is driven by the market-relationship choropleth (see bloc-alignment.ts).
+const USACHINA_PANELS: Record<string, PanelConfig> = {
+  map: { name: 'USA vs China Map', enabled: true, priority: 1 },
+  'bloc-alignment': { name: 'Market Relationship', enabled: true, priority: 1 },
+  'live-news': { name: 'Live News', enabled: true, priority: 1 },
+  insights: { name: 'AI Insights', enabled: true, priority: 1 },
+  'ai-infra': { name: 'AI Infrastructure', enabled: true, priority: 1 },
+  space: { name: 'Space & Launch', enabled: true, priority: 1 },
+  engineering: { name: 'Engineering & Science', enabled: true, priority: 1 },
+  'bloc-policy': { name: 'Tech Policy & Supply Chain', enabled: true, priority: 1 },
+  markets: { name: 'Markets', enabled: true, priority: 1 },
+  heatmap: { name: 'Sector Heatmap', enabled: true, priority: 2 },
+  'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
+  'defense-patents': { name: 'R&D Signal', enabled: true, priority: 2 },
+  'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 2 },
+  polymarket: { name: 'Predictions', enabled: true, priority: 2 },
+  'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
+  monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  'live-webcams': { name: 'Live Webcams', enabled: false, priority: 2 },
+};
+
+const USACHINA_MAP_LAYERS: MapLayers = {
+  ...FULL_MAP_LAYERS,
+  // The bloc choropleth IS the display; the geopolitical overlays are noise here.
+  blocLean: true,
+  datacenters: true,
+  spaceports: true,
+  cables: false,
+  iranAttacks: false,
+  conflicts: false,
+  hotspots: false,
+  bases: false,
+  nuclear: false,
+  military: false,
+  sanctions: false,
+  weather: false,
+  economic: false,
+  waterways: false,
+  outages: false,
+  natural: false,
+};
+
+const USACHINA_MOBILE_MAP_LAYERS: MapLayers = { ...USACHINA_MAP_LAYERS, datacenters: false, spaceports: false };
+
+type PanelVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy' | 'usachina';
 
 const VARIANT_PANEL_CONFIGS: Record<PanelVariant, Record<string, PanelConfig>> = {
   full: FULL_PANELS,
@@ -1098,6 +1148,7 @@ const VARIANT_PANEL_CONFIGS: Record<PanelVariant, Record<string, PanelConfig>> =
   commodity: COMMODITY_PANELS,
   energy: ENERGY_PANELS,
   happy: HAPPY_PANELS,
+  usachina: USACHINA_PANELS,
 };
 
 function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | undefined {
@@ -1113,6 +1164,7 @@ export const ALL_PANELS: Record<string, PanelConfig> = {
   ...ENERGY_PANELS,
   ...TECH_PANELS,
   ...FINANCE_PANELS,
+  ...USACHINA_PANELS,
   ...FULL_PANELS,
 };
 
@@ -1124,6 +1176,7 @@ export const VARIANT_DEFAULTS: Record<string, string[]> = {
   commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
   energy:    Object.keys(VARIANT_PANEL_CONFIGS.energy),
   happy:     Object.keys(VARIANT_PANEL_CONFIGS.happy),
+  usachina:  Object.keys(VARIANT_PANEL_CONFIGS.usachina),
 };
 
 /**
@@ -1186,20 +1239,50 @@ export const FREE_MAX_PANELS = 40;
 export const FREE_MAX_SOURCES = 80;
 
 /**
+ * AALICE:OpenEYE (fork-side, AMD-003) — panels whose backing dependency does
+ * not exist on a single-user self-hosted deployment. Their `enabled` defaults
+ * above are `false` so they stay off the immediate display; they remain in the
+ * settings list, keep their variant-defaults membership (so auto-refresh still
+ * works if re-enabled), and flip back on with one click.
+ *
+ *   latest-brief   Personalised brief is bound to a hosted WorldMonitor
+ *                  account (`/api/wm-session` 503 here). AMD-003 delivers
+ *                  digests through n8n instead.
+ *   telegram-intel Needs TELEGRAM_API_ID / _API_HASH / _SESSION on the relay;
+ *                  no Telegram account is provisioned (`/api/telegram-feed` 502).
+ *   oref-sirens    Needs OREF_PROXY_AUTH — oref.org.il geoblocks, so it wants a
+ *                  paid Israeli-egress proxy ("Sirens service not configured").
+ *   ucdp-events    UCDP GED API answers 401 on v24.1/v25.1/v26.1; no free
+ *                  credential path remains.
+ *
+ * The "Create Interactive Widget" grid CTA is suppressed for the same reason
+ * (see panel-layout.ts) — it proxies to upstream's hosted widget-agent relay,
+ * which the self-host gateway does not route.
+ *
+ * Panels that are merely missing a *key* do NOT belong here — those are
+ * tracked in aalice-lite/OPENEYE_API_KEYS.md and come back on their own once
+ * the key lands and the seeders run.
+ */
+export const OPENEYE_OUT_OF_SCOPE_PANELS: readonly string[] = [
+  'latest-brief',
+  'telegram-intel',
+  'oref-sirens',
+  'ucdp-events',
+];
+
+/**
  * Returns true if the current user is entitled to enable/view this panel.
  * Mirrors the entitlement checks in panel-layout.ts (single source of truth).
  */
-export function isPanelEntitled(key: string, config: PanelConfig, isPro = false): boolean {
-  if (!config.premium) return true;
-  // Dodo entitlements unlock all premium panels
-  if (isEntitled()) return true;
-  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'regional-intelligence', 'deduction', 'chat-analyst', 'wsb-ticker-scanner', 'trade-policy'];
-  if (apiKeyPanels.includes(key)) {
-    return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
-  }
-  if (config.premium === 'locked') {
-    return isDesktopRuntime();
-  }
+export function isPanelEntitled(_key: string, _config: PanelConfig, _isPro = false): boolean {
+  // Every panel is enable-able on AALICE:OpenEYE — there is no tier here.
+  //
+  // The `premium: 'locked'` panels (see OPENEYE_OUT_OF_SCOPE_PANELS above)
+  // stay DEFAULT-OFF, which is a different thing from being gated: they are
+  // off because their upstream feed has no working credential on this
+  // deployment, and they turn back on with one click in Settings the moment
+  // the key lands. Refusing to let the operator even try was the paywall
+  // behaviour, not the missing-key behaviour.
   return true;
 }
 
@@ -1212,7 +1295,9 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = Object.fromEntries(
   )
 );
 
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'usachina'
+  ? USACHINA_MAP_LAYERS
+  : SITE_VARIANT === 'happy'
   ? HAPPY_MAP_LAYERS
   : SITE_VARIANT === 'tech'
     ? TECH_MAP_LAYERS
@@ -1224,7 +1309,9 @@ export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
           ? ENERGY_MAP_LAYERS
           : FULL_MAP_LAYERS;
 
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'usachina'
+  ? USACHINA_MOBILE_MAP_LAYERS
+  : SITE_VARIANT === 'happy'
   ? HAPPY_MOBILE_MAP_LAYERS
   : SITE_VARIANT === 'tech'
     ? TECH_MOBILE_MAP_LAYERS
@@ -1261,7 +1348,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // All variants — essential panels
   core: {
     labelKey: 'header.panelCatCore',
-    panelKeys: ['map', 'live-news', 'live-webcams', 'windy-webcams', 'insights', 'strategic-posture', 'latest-brief'],
+    panelKeys: ['map', 'bloc-alignment', 'live-news', 'live-webcams', 'windy-webcams', 'insights', 'strategic-posture', 'latest-brief'],
   },
 
   // Full (geopolitical) variant — marketsFinance/topical/dataTracking are
@@ -1373,6 +1460,23 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     variants: ['commodity'],
   },
 
+  // USA vs CHINA variant
+  blocSignal: {
+    labelKey: 'header.panelCatBlocSignal',
+    panelKeys: ['markets', 'heatmap', 'macro-signals', 'polymarket'],
+    variants: ['usachina'],
+  },
+  blocNews: {
+    labelKey: 'header.panelCatBlocNews',
+    panelKeys: ['ai-infra', 'space', 'engineering', 'bloc-policy'],
+    variants: ['usachina'],
+  },
+  blocResearch: {
+    labelKey: 'header.panelCatBlocResearch',
+    panelKeys: ['defense-patents', 'tech-readiness', 'world-clock', 'monitors'],
+    variants: ['usachina'],
+  },
+
   // Happy variant
   happyNews: {
     labelKey: 'header.panelCatHappyNews',
@@ -1433,7 +1537,9 @@ export const MONITOR_COLORS = [
 ];
 
 export const STORAGE_KEYS = {
-  panels: 'worldmonitor-panels',
+  // Mirrors variants/base.ts (the copy consumers actually import via
+  // @/config): panel prefs are variant-scoped on single-origin self-host.
+  panels: SITE_VARIANT === 'full' ? 'worldmonitor-panels' : `worldmonitor-panels-${SITE_VARIANT}`,
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',

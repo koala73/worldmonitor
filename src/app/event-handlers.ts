@@ -101,6 +101,7 @@ export interface EventHandlerCallbacks {
   waitForAisData: () => void;
   syncDataFreshnessWithLayers: () => void;
   ensureCorrectZones: () => void;
+  refreshPanelNavs?: () => void;
   applySavedPanelOrder?: (panelOrder?: string[]) => void;
   refreshCiiAfterFocalPointsReady?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
@@ -694,7 +695,12 @@ export class EventHandlerManager implements AppModule {
       this.openMissionPresetPopover(document.getElementById('hamburgerBtn'), true);
     });
 
+    // Every MISSION_PRESETS entry is a full-variant workspace (Crisis Desk,
+    // Energy Security, …) built from `full`'s panel keys. On the USA-vs-CHINA
+    // monitor none of them apply — the picker would open over the map on first
+    // load offering seven workspaces that all belong to a different monitor.
     const shouldPrompt =
+      SITE_VARIANT !== 'usachina' &&
       !this.ctx.isMobile &&
       !window.location.search &&
       !loadStoredMissionPreset() &&
@@ -2088,5 +2094,13 @@ export class EventHandlerManager implements AppModule {
       const panel = this.ctx.panels[key];
       panel?.toggle(config.enabled);
     });
+    // Panel.toggle() only clears `.hidden`; the tab bar / mobile nav still hold
+    // the membership list they were last built from and keep their own hidden
+    // class on anything outside it. Skipping this made "+ Add Panel" → Save
+    // look like a no-op: the panel mounted but was filtered out of every tab
+    // until the next reload. PanelLayoutManager.applyPanelSettings() has always
+    // rebuilt them; this duplicate implementation on the settings-save path
+    // did not.
+    this.callbacks.refreshPanelNavs?.();
   }
 }

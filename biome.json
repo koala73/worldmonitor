@@ -18,6 +18,14 @@
 			"linter": { "enabled": false }
 		},
 		{
+			"includes": ["src/gev/**"],
+			"linter": { "enabled": false }
+		},
+		{
+			"includes": ["src/styles/gev.css"],
+			"linter": { "enabled": false }
+		},
+		{
 			"includes": ["public/**"],
 			"linter": { "enabled": false }
 		},

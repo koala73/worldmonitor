@@ -11,11 +11,6 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
-import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
-import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
-import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
-import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
@@ -44,7 +39,7 @@ export interface UnifiedSettingsConfig {
   onMapProviderChange?: (provider: MapProvider) => void;
 }
 
-type TabId = 'settings' | 'panels' | 'sources' | 'notifications' | 'api-keys' | 'mcp-clients';
+type TabId = 'settings' | 'panels' | 'sources' | 'notifications';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -61,26 +56,6 @@ export class UnifiedSettings {
   private draftPanelSettings: Record<string, PanelConfig> = {};
   private panelsJustSaved = false;
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
-  private apiKeys: ApiKeyInfo[] = [];
-  private apiKeysLoading = false;
-  private apiKeysError = '';
-  private newlyCreatedKey: string | null = null;
-  // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
-  private mcpClients: McpClientInfo[] = [];
-  private mcpClientsLoading = false;
-  private mcpClientsError = '';
-  private mcpQuota: McpQuota | null = null;
-  /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
-  private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
-  private unsubscribeEntitlement: (() => void) | null = null;
-  // Bounded "entitlement snapshot might still arrive" window. Starts false
-  // on open() when currentState is null, flips true on first snapshot OR
-  // after a fallback timeout so signed-in free users aren't stranded on an
-  // empty placeholder when Convex is disabled / auth times out / init
-  // silently fails (all of which leave currentState === null forever — see
-  // src/services/entitlements.ts:41,47,58,78).
-  private entitlementReady = false;
-  private entitlementReadyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -107,31 +82,6 @@ export class UnifiedSettings {
 
       if (target.closest('.unified-settings-close')) {
         this.close();
-        return;
-      }
-
-      if (target.closest('.upgrade-pro-cta')) {
-        this.handleUpgradeClick();
-        return;
-      }
-
-      if (target.closest('.manage-billing-btn')) {
-        // Pre-reserve the portal tab synchronously inside the click
-        // handler so the popup blocker doesn't suppress the eventual
-        // window.open inside openBillingPortal (which runs after an
-        // await of the Convex action).
-        const reservedWin = prereserveBillingPortalTab();
-        void openBillingPortal(reservedWin).then((result) => {
-          // NO_CUSTOMER: user is entitled but has no Dodo customer row
-          // (comp grant, restore race, or post-purge cancellation). Send
-          // them somewhere actionable instead of leaving them in a
-          // generic Dodo portal that won't recognise them.
-          if (result.outcome === 'no-customer') {
-            showToast(
-              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
-            );
-          }
-        });
         return;
       }
 
@@ -208,54 +158,6 @@ export class UnifiedSettings {
         return;
       }
 
-      if (target.closest('.api-keys-create-btn')) {
-        void this.handleCreateApiKey();
-        return;
-      }
-
-      const revokeBtn = target.closest<HTMLElement>('.api-keys-revoke-btn');
-      if (revokeBtn?.dataset.keyId) {
-        void this.handleRevokeApiKey(revokeBtn.dataset.keyId);
-        return;
-      }
-
-      if (target.closest('.api-keys-copy-btn')) {
-        const key = this.newlyCreatedKey;
-        if (key) {
-          void navigator.clipboard.writeText(key).then(() => {
-            const btn = this.overlay.querySelector<HTMLElement>('.api-keys-copy-btn');
-            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
-          });
-        }
-        return;
-      }
-
-      const mcpRevokeBtn = target.closest<HTMLElement>('.mcp-clients-revoke-btn');
-      if (mcpRevokeBtn?.dataset.tokenId) {
-        void this.handleRevokeMcpClient(mcpRevokeBtn.dataset.tokenId);
-        return;
-      }
-
-      const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
-      if (mcpCopyUrlBtn?.dataset.copyValue) {
-        const value = mcpCopyUrlBtn.dataset.copyValue;
-        // navigator.clipboard is async + can reject (insecure context, perms);
-        // fall back gracefully so the button never silently no-ops.
-        const showCopied = () => {
-          mcpCopyUrlBtn.textContent = 'Copied!';
-          setTimeout(() => { mcpCopyUrlBtn.textContent = 'Copy URL'; }, 1500);
-        };
-        if (navigator.clipboard?.writeText) {
-          void navigator.clipboard.writeText(value).then(showCopied).catch(() => {
-            mcpCopyUrlBtn.textContent = 'Copy failed';
-            setTimeout(() => { mcpCopyUrlBtn.textContent = 'Copy URL'; }, 1500);
-          });
-        } else {
-          mcpCopyUrlBtn.textContent = 'Copy unavailable';
-          setTimeout(() => { mcpCopyUrlBtn.textContent = 'Copy URL'; }, 1500);
-        }
-        return;
-      }
     });
 
     this.overlay.addEventListener('input', (e) => {
@@ -277,64 +179,13 @@ export class UnifiedSettings {
   public open(tab?: TabId): void {
     if (tab) this.activeTab = tab;
     this.resetPanelDraft();
-    // Seed entitlementReady BEFORE render() so the first paint of
-    // renderUpgradeSection branches on the current snapshot state, not the
-    // stale value left over from a previous open/close cycle.
-    this.entitlementReady = getEntitlementState() !== null;
     this.render();
     this.overlay.classList.add('active');
     localStorage.setItem('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
     track('settings-open', { tab: tab ?? 'default' });
-
-    // Re-render API Keys panel when entitlements arrive (cold-load race:
-    // hasFeature('apiAccess') returns false until the Convex subscription
-    // delivers data, so a paid API Starter user sees the upgrade CTA briefly).
-    this.unsubscribeEntitlement?.();
-    this.unsubscribeEntitlement = onEntitlementChange(() => {
-      this.entitlementReady = true;
-      const panel = this.overlay.querySelector<HTMLElement>('[data-panel-id="api-keys"]');
-      if (panel) {
-        setTrustedHtml(panel, trustedHtml(this.renderApiKeysContent(), "legacy direct innerHTML migration"));
-        // Re-attach CTA and input handlers for the refreshed content
-        this.attachApiKeysHandlers();
-        if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
-          void this.loadApiKeys();
-        }
-      }
-      this.replaceUpgradeSection();
-    });
-    // Bounded fallback: the entitlement listener can legitimately never
-    // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
-    // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
-    // Without this timer, the signed-in-free branch of renderUpgradeSection
-    // would show a blank placeholder for the entire session. 12s > the 10s
-    // auth timeout so the healthy-but-slow path lands on the real state;
-    // any later path falls back to "Upgrade to Pro" with handleUpgradeClick
-    // defensively re-checking isEntitled() at click time.
-    if (this.entitlementReadyTimer) clearTimeout(this.entitlementReadyTimer);
-    if (!this.entitlementReady) {
-      this.entitlementReadyTimer = setTimeout(() => {
-        this.entitlementReadyTimer = null;
-        if (this.entitlementReady) return;
-        this.entitlementReady = true;
-        this.replaceUpgradeSection();
-      }, 12_000);
-    }
   }
 
-  /**
-   * Swap the .upgrade-pro-section wrapper in place. Click handlers are
-   * delegated at overlay level, so replacing the node needs no rebind.
-   */
-  private replaceUpgradeSection(): void {
-    const upgradeSection = this.overlay.querySelector('.upgrade-pro-section');
-    if (!upgradeSection) return;
-    const fresh = document.createElement('template');
-    setTrustedHtml(fresh, trustedHtml(this.renderUpgradeSection().trim(), "legacy direct innerHTML migration"));
-    const next = fresh.content.firstElementChild;
-    if (next) upgradeSection.replaceWith(next);
-  }
 
   public close(): void {
     if (this.hasPendingPanelChanges() && !confirm(t('header.unsavedChanges'))) return;
@@ -344,13 +195,6 @@ export class UnifiedSettings {
     this.notifCleanup?.();
     this.notifCleanup = null;
     this.pendingNotifs = null;
-    this.unsubscribeEntitlement?.();
-    this.unsubscribeEntitlement = null;
-    if (this.entitlementReadyTimer) {
-      clearTimeout(this.entitlementReadyTimer);
-      this.entitlementReadyTimer = null;
-    }
-    this.stopMcpQuotaPolling();
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -378,18 +222,6 @@ export class UnifiedSettings {
     this.notifCleanup?.();
     this.notifCleanup = null;
     this.pendingNotifs = null;
-    this.unsubscribeEntitlement?.();
-    this.unsubscribeEntitlement = null;
-    // Mirror close() — without this, a destroy() during the 12s fallback
-    // window leaves the timer live; it fires after teardown and calls
-    // replaceUpgradeSection() against a detached overlay (no-op via the
-    // querySelector early return, but a stray async callback + DOM
-    // reference alive longer than intended).
-    if (this.entitlementReadyTimer) {
-      clearTimeout(this.entitlementReadyTimer);
-      this.entitlementReadyTimer = null;
-    }
-    this.stopMcpQuotaPolling();
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
   }
@@ -424,12 +256,9 @@ export class UnifiedSettings {
           <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
           ${showNotificationsTab ? `<button class="${tabClass('notifications')}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
-          <button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
-          ${hasFeature('mcpAccess') ? `<button class="${tabClass('mcp-clients')}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
-          ${this.renderUpgradeSection()}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
           <div class="unified-settings-region-wrapper">
@@ -464,14 +293,6 @@ export class UnifiedSettings {
           ${notifs.html}
         </div>
         ` : ''}
-        <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
-          ${this.renderApiKeysContent()}
-        </div>
-        ${hasFeature('mcpAccess') ? `
-        <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
-          ${this.renderMcpClientsContent()}
-        </div>
-        ` : ''}
       </div>
     `, "legacy direct innerHTML migration"));
 
@@ -500,14 +321,6 @@ export class UnifiedSettings {
     this.renderSourcesGrid();
     this.updateSourcesCounter();
 
-    this.attachApiKeysHandlers();
-    if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
-      void this.loadApiKeys();
-    }
-    if (this.activeTab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
-      void this.loadMcpClients();
-      this.startMcpQuotaPolling();
-    }
   }
 
   private switchTab(tab: TabId): void {
@@ -523,19 +336,6 @@ export class UnifiedSettings {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
     });
 
-    if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
-      void this.loadApiKeys();
-    }
-
-    if (tab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
-      void this.loadMcpClients();
-      this.startMcpQuotaPolling();
-    } else {
-      // Stop polling when switching away — no need to keep the timer running
-      // for a hidden tab.
-      this.stopMcpQuotaPolling();
-    }
-
     if (tab === 'notifications') {
       this.attachNotificationsTab();
     }
@@ -549,128 +349,7 @@ export class UnifiedSettings {
     }
   }
 
-  private renderUpgradeSection(): string {
-    // Non-Dodo premium (API key / tester key / Clerk pro role without a
-    // Convex subscription): neither "Upgrade" nor "Manage Billing" is
-    // actionable. Checked FIRST so these users don't get stuck on the
-    // loading placeholder below — their Convex entitlement snapshot may
-    // never arrive at all.
-    if (!isEntitled() && hasPremiumAccess()) {
-      return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
-    }
-    // Signed-in user whose Convex entitlement snapshot has not arrived yet
-    // AND whose bounded-wait window has not expired. Rendering "Upgrade to
-    // Pro" in this window is how paying users click through to
-    // /api/create-checkout and hit 409 duplicate_subscription — same race
-    // as the 2026-04-17/18 panel-overlay incident fixed in panel-gating.ts,
-    // different surface. The entitlementReady flag is flipped either by
-    // the onEntitlementChange listener (healthy path) or by a 12s fallback
-    // timer in open() (Convex-disabled / auth-timeout / init-fail paths
-    // where currentState would otherwise stay null forever and strand a
-    // signed-in free user on an empty placeholder).
-    if (!this.entitlementReady && getAuthState().user && getEntitlementState() === null) {
-      // `hidden` so the browser's default `[hidden] { display: none }`
-      // suppresses the empty card — without it, the base `.upgrade-pro-
-      // section` styles (margin + padding + border + surface background
-      // in main.css:22833) paint a visibly empty bordered box during the
-      // Convex cold-load window, which is exactly the state we're trying
-      // to clean up. Element stays queryable for the replaceWith swap in
-      // open().
-      return '<div class="upgrade-pro-section upgrade-pro-loading" hidden aria-hidden="true"></div>';
-    }
-    if (isEntitled()) {
-      const sub = getSubscription();
-      const planName = sub?.displayName ?? 'Pro';
-      const statusColor = sub?.status === 'active' ? '#22c55e' : sub?.status === 'on_hold' ? '#eab308' : '#ef4444';
-      const statusBorderColor = sub?.status === 'active' ? '#22c55e33' : sub?.status === 'on_hold' ? '#eab30833' : '#ef444433';
-      const statusBgColor = sub?.status === 'active' ? '#22c55e0a' : sub?.status === 'on_hold' ? '#eab3080a' : '#ef44440a';
 
-      let statusLine = '';
-      if (sub?.currentPeriodEnd) {
-        const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
-        if (sub.status === 'active') {
-          statusLine = `Renews: ${dateStr}`;
-        } else if (sub.status === 'on_hold') {
-          statusLine = 'On hold -- please update payment method';
-        } else if (sub.status === 'cancelled') {
-          statusLine = `Cancelled -- access until ${dateStr}`;
-        } else if (sub.status === 'expired') {
-          statusLine = 'Expired';
-        }
-      }
-
-      return `
-        <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>
-            <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(planName)}</span>
-          </div>
-          ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
-          <button class="manage-billing-btn">Manage Billing</button>
-        </div>
-      `;
-    }
-
-    // Fallback branch: 12s timer fired but Convex never delivered a
-    // snapshot. entitlementReady===true does NOT prove the user is free —
-    // it just means we've given up waiting. A paying user whose auth/query
-    // is simply very slow (beyond the 10s waitForConvexAuth timeout) would
-    // otherwise race into in-modal startCheckout here and reproduce the
-    // 409 duplicate_subscription cascade this PR exists to eliminate.
-    // Render the card with a plain anchor to /pro instead: /pro has its
-    // own entitlement gating on fresh page load, and navigating away is a
-    // no-op for backend subscription state. The `upgrade-pro-cta-link`
-    // class does NOT match the `.upgrade-pro-cta` delegated click handler
-    // (line ~95), so the browser handles the navigation natively.
-    if (getAuthState().user && getEntitlementState() === null) {
-      return `
-        <div class="upgrade-pro-section upgrade-pro-fallback">
-          <div class="upgrade-pro-title">Upgrade to Pro</div>
-          <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
-          <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="upgrade-pro-section">
-        <div class="upgrade-pro-title">Upgrade to Pro</div>
-        <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
-        <button class="upgrade-pro-cta">Upgrade to Pro</button>
-      </div>
-    `;
-  }
-
-  private handleUpgradeClick(): void {
-    // Defense in depth: the upgrade CTA can only be clicked when either (a)
-    // the user is genuinely free-tier, or (b) the 12s fallback timer fired
-    // before the Convex snapshot arrived. In (b), the snapshot might land
-    // AFTER the timer but BEFORE the click — re-check isEntitled() here so
-    // a late-arriving "you're a paying user" state routes to the billing
-    // portal instead of triggering /api/create-checkout against an active
-    // subscription (which would 409 and re-enter the duplicate_subscription
-    // → getCustomerPortalUrl cascade this PR is trying to eliminate).
-    if (isEntitled()) {
-      this.close();
-      const reservedWin = prereserveBillingPortalTab();
-      void openBillingPortal(reservedWin).then((result) => {
-        if (result.outcome === 'no-customer') {
-          showToast(
-            'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
-          );
-        }
-      });
-      return;
-    }
-    this.close();
-    if (this.config.isDesktopApp) {
-      window.open('https://worldmonitor.app/pro', '_blank');
-      return;
-    }
-    import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-      window.open('https://worldmonitor.app/pro', '_blank');
-    });
-  }
 
   private categoryMatchesVariant(catDef: { variants?: string[] }): boolean {
     return !catDef.variants || catDef.variants.includes(SITE_VARIANT);
@@ -936,425 +615,30 @@ export class UnifiedSettings {
   // API Keys tab
   // ---------------------------------------------------------------------------
 
-  private attachApiKeysHandlers(): void {
-    // Enter to submit (only exists when entitled user sees full UI)
-    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
-    if (apiKeyInput) {
-      apiKeyInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') void this.handleCreateApiKey();
-      });
-    }
 
-    // Gate CTA click (sign-in for anonymous, checkout for free)
-    const gateBtn = this.overlay.querySelector<HTMLElement>('.api-keys-gate-btn');
-    if (gateBtn) {
-      gateBtn.addEventListener('click', () => {
-        if (!getAuthState().user) {
-          this.close();
-          import('@/services/clerk').then(m => m.openSignIn()).catch(() => {});
-        } else {
-          this.close();
-          import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DODO_PRODUCTS.API_STARTER_MONTHLY))).catch(() => {
-            window.open('https://worldmonitor.app/pro', '_blank');
-          });
-        }
-      });
-    }
-  }
 
-  private renderApiKeysContent(): string {
-    const authState = getAuthState();
 
-    if (!authState.user) {
-      const lockIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
-      return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${lockIcon}</div>
-          <div class="panel-locked-desc">Sign in to unlock API Keys</div>
-          <button class="panel-locked-cta api-keys-gate-btn">Sign In</button>
-        </div>`;
-    }
 
-    if (!hasFeature('apiAccess')) {
-      const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
-      return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${upgradeIcon}</div>
-          <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
-          <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
-        </div>`;
-    }
 
-    return `
-      <div class="api-keys-section">
-        <div class="api-keys-header">
-          <p class="api-keys-desc">Create API keys to access WorldMonitor data programmatically. Keys are shown once on creation — store them securely.</p>
-        </div>
-        <div class="api-keys-create-form">
-          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" maxlength="64" />
-          <button class="btn btn-primary api-keys-create-btn">Create Key</button>
-        </div>
-        <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>
-        <div class="api-keys-error" id="usApiKeysError" style="display:none;"></div>
-        <div class="api-keys-list" id="usApiKeysList">
-          <div class="api-keys-loading">Loading...</div>
-        </div>
-      </div>`;
-  }
 
-  private async loadApiKeys(): Promise<void> {
-    this.apiKeysLoading = true;
-    this.apiKeysError = '';
-    this.renderApiKeysList();
 
-    try {
-      this.apiKeys = await listApiKeys();
-    } catch (err) {
-      this.apiKeysError = err instanceof Error ? err.message : 'Failed to load keys';
-    } finally {
-      this.apiKeysLoading = false;
-      this.renderApiKeysList();
-    }
-  }
 
-  private async handleCreateApiKey(): Promise<void> {
-    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
-    const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
-    const name = input?.value.trim();
-    if (!name || !input || !btn) return;
-
-    btn.disabled = true;
-    btn.textContent = 'Creating...';
-    this.apiKeysError = '';
-    this.newlyCreatedKey = null;
-    this.hideBanner();
-
-    try {
-      const result = await createApiKey(name);
-      this.newlyCreatedKey = result.key;
-      input.value = '';
-      this.showCreatedBanner(result.key);
-      await this.loadApiKeys();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create key';
-      this.apiKeysError = msg.includes('KEY_LIMIT_REACHED')
-        ? 'Maximum of 5 active keys reached. Revoke an existing key first.'
-        : msg.includes('API_ACCESS_REQUIRED')
-        ? 'API keys require an API access subscription (API Starter or higher).'
-        : msg;
-      this.renderApiKeysError();
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Create Key';
-    }
-  }
-
-  private async handleRevokeApiKey(keyId: string): Promise<void> {
-    const keyInfo = this.apiKeys.find(k => k.id === keyId);
-    const keyName = keyInfo?.name ?? 'this key';
-    if (!confirm(`Revoke "${keyName}"? This cannot be undone. Any applications using this key will stop working.`)) return;
-
-    try {
-      await revokeApiKey(keyId);
-      await this.loadApiKeys();
-    } catch (err) {
-      this.apiKeysError = err instanceof Error ? err.message : 'Failed to revoke key';
-      this.renderApiKeysError();
-    }
-  }
-
-  private showCreatedBanner(key: string): void {
-    const banner = this.overlay.querySelector<HTMLElement>('#usApiKeysBanner');
-    if (!banner) return;
-
-    banner.style.display = 'block';
-    setTrustedHtml(banner, trustedHtml(`
-      <div class="api-keys-banner-title">Key created — copy it now, it won't be shown again</div>
-      <div class="api-keys-banner-key">
-        <code class="api-keys-key-value">${escapeHtml(key)}</code>
-        <button class="btn btn-secondary api-keys-copy-btn">Copy</button>
-      </div>
-    `, "legacy direct innerHTML migration"));
-  }
-
-  private hideBanner(): void {
-    const banner = this.overlay.querySelector<HTMLElement>('#usApiKeysBanner');
-    if (banner) {
-      banner.style.display = 'none';
-      setTrustedHtml(banner, trustedHtml('', "legacy direct innerHTML migration"));
-    }
-  }
-
-  private renderApiKeysError(): void {
-    const el = this.overlay.querySelector<HTMLElement>('#usApiKeysError');
-    if (!el) return;
-    if (this.apiKeysError) {
-      el.style.display = 'block';
-      el.textContent = this.apiKeysError;
-    } else {
-      el.style.display = 'none';
-      el.textContent = '';
-    }
-  }
-
-  private renderApiKeysList(): void {
-    const container = this.overlay.querySelector('#usApiKeysList');
-    if (!container) return;
-
-    if (this.apiKeysLoading && this.apiKeys.length === 0) {
-      setTrustedHtml(container, trustedHtml('<div class="api-keys-loading">Loading...</div>', "legacy direct innerHTML migration"));
-      return;
-    }
-
-    this.renderApiKeysError();
-
-    const active = this.apiKeys.filter(k => !k.revokedAt);
-    const revoked = this.apiKeys.filter(k => k.revokedAt);
-
-    if (active.length === 0 && revoked.length === 0) {
-      setTrustedHtml(container, trustedHtml('<div class="api-keys-empty">No API keys yet. Create one above to get started.</div>', "legacy direct innerHTML migration"));
-      return;
-    }
-
-    const formatDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-
-    const renderKey = (k: ApiKeyInfo) => {
-      const isRevoked = !!k.revokedAt;
-      return `
-        <div class="api-keys-item${isRevoked ? ' revoked' : ''}">
-          <div class="api-keys-item-main">
-            <span class="api-keys-item-name">${escapeHtml(k.name)}</span>
-            <code class="api-keys-item-prefix">${escapeHtml(k.keyPrefix)}${'*'.repeat(8)}</code>
-          </div>
-          <div class="api-keys-item-meta">
-            <span>Created ${formatDate(k.createdAt)}</span>
-            ${k.lastUsedAt ? `<span>Last used ${formatDate(k.lastUsedAt)}</span>` : ''}
-            ${isRevoked ? `<span class="api-keys-item-revoked-badge">Revoked ${formatDate(k.revokedAt!)}</span>` : ''}
-          </div>
-          ${!isRevoked ? `<button class="btn btn-ghost api-keys-revoke-btn" data-key-id="${escapeHtml(k.id)}">Revoke</button>` : ''}
-        </div>
-      `;
-    };
-
-    setTrustedHtml(container, trustedHtml(active.map(renderKey).join('')
-      + (revoked.length > 0 ? `<div class="api-keys-revoked-section"><div class="api-keys-revoked-label">Revoked</div>${revoked.map(renderKey).join('')}</div>` : ''), "legacy direct innerHTML migration"));
-  }
 
   // ---------------------------------------------------------------------------
   // Connected MCP clients tab (plan 2026-05-10-001 U9)
   //
-  // Distinct from the API Keys tab above (gated on `apiAccess`). This tab is
-  // gated on `mcpAccess` so Pro users (where `apiAccess === false`) see ONLY
-  // this tab. API Starter+ users (`apiAccess && mcpAccess`) see BOTH tabs;
   // they manage independent surfaces (manual API keys vs auto-issued OAuth
   // tokens for Claude Desktop / Cursor / etc).
   // ---------------------------------------------------------------------------
 
-  private renderMcpClientsContent(): string {
-    const authState = getAuthState();
 
-    if (!authState.user) {
-      const lockIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
-      return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${lockIcon}</div>
-          <div class="panel-locked-desc">Sign in to manage connected MCP clients</div>
-        </div>`;
-    }
 
-    if (!hasFeature('mcpAccess')) {
-      // Defensive — if the user lost mcpAccess (subscription lapsed) but the
-      // tab was still rendered, show an upgrade CTA. Normal flow hides the
-      // tab entirely.
-      const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
-      return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${upgradeIcon}</div>
-          <div class="panel-locked-desc">Connect Claude Desktop and other AI clients to your WorldMonitor account.</div>
-        </div>`;
-    }
 
-    return `
-      <div class="mcp-clients-section">
-        <div class="mcp-clients-header">
-          <p class="mcp-clients-desc">Connect Claude Desktop, Cursor, and other AI clients to your WorldMonitor account. Each client gets its own credential — revoke any time.</p>
-        </div>
-        <div class="mcp-clients-quota" id="usMcpQuota" aria-live="polite">${this.renderMcpQuotaText()}</div>
-        <div class="mcp-clients-error" id="usMcpClientsError" style="display:none;"></div>
-        <div class="mcp-clients-list" id="usMcpClientsList">
-          <div class="mcp-clients-loading">Loading...</div>
-        </div>
-      </div>`;
-  }
 
-  private renderMcpQuotaText(): string {
-    const q = this.mcpQuota;
-    if (!q) {
-      return `<span class="mcp-clients-quota-loading">Loading quota...</span>`;
-    }
-    const reset = this.formatQuotaReset(q.resetsAt);
-    return `<span class="mcp-clients-quota-label">MCP daily quota:</span>
-      <strong>${q.used} / ${q.limit}</strong>
-      <span class="mcp-clients-quota-reset">used today, resets ${escapeHtml(reset)}</span>`;
-  }
 
-  private formatQuotaReset(iso: string): string {
-    const ts = Date.parse(iso);
-    if (!Number.isFinite(ts)) return 'at next UTC midnight';
-    const ms = ts - Date.now();
-    if (ms <= 0) return 'momentarily';
-    const totalSec = Math.floor(ms / 1000);
-    const hrs = Math.floor(totalSec / 3600);
-    const mins = Math.floor((totalSec % 3600) / 60);
-    if (hrs > 0) return `in ${hrs}h ${mins}m`;
-    if (mins > 0) return `in ${mins}m`;
-    return 'in under a minute';
-  }
 
-  private async loadMcpClients(): Promise<void> {
-    this.mcpClientsLoading = true;
-    this.mcpClientsError = '';
-    this.renderMcpClientsList();
 
-    try {
-      this.mcpClients = await listMcpClients();
-    } catch (err) {
-      this.mcpClientsError = err instanceof Error ? err.message : 'Failed to load MCP clients';
-    } finally {
-      this.mcpClientsLoading = false;
-      this.renderMcpClientsList();
-    }
 
-    // Kick a fresh quota fetch alongside the list so the user sees current
-    // numbers immediately on tab open (the polling timer takes 30s otherwise).
-    void this.refreshMcpQuota();
-  }
 
-  private async refreshMcpQuota(): Promise<void> {
-    try {
-      this.mcpQuota = await fetchMcpQuota();
-    } catch {
-      // fetchMcpQuota already returns sane fallbacks, but defensive catch.
-      this.mcpQuota = null;
-    }
-    this.renderMcpQuotaInPlace();
-  }
 
-  private renderMcpQuotaInPlace(): void {
-    const el = this.overlay.querySelector<HTMLElement>('#usMcpQuota');
-    if (el) setTrustedHtml(el, trustedHtml(this.renderMcpQuotaText(), "legacy direct innerHTML migration"));
-  }
-
-  /**
-   * Auto-refresh the quota counter every 30s while the tab is visible.
-   * Cleared on tab-switch, close(), and destroy() — see stopMcpQuotaPolling.
-   */
-  private startMcpQuotaPolling(): void {
-    if (this.mcpQuotaTimer) return; // idempotent
-    this.mcpQuotaTimer = setInterval(() => {
-      // Skip silently if the tab is no longer visible — can happen if the
-      // overlay was hidden via display:none rather than full destroy().
-      if (this.activeTab !== 'mcp-clients') return;
-      void this.refreshMcpQuota();
-    }, 30_000);
-  }
-
-  private stopMcpQuotaPolling(): void {
-    if (this.mcpQuotaTimer) {
-      clearInterval(this.mcpQuotaTimer);
-      this.mcpQuotaTimer = null;
-    }
-  }
-
-  private async handleRevokeMcpClient(tokenId: string): Promise<void> {
-    const client = this.mcpClients.find(c => c.id === tokenId);
-    const label = client?.name?.trim() ? `"${client.name}"` : 'this client';
-    if (!confirm(`Revoke ${label}? The connected AI client will need to re-authorize before its next request.`)) return;
-
-    try {
-      await revokeMcpClient(tokenId);
-      // Refresh both list (Convex query result cached locally) and quota
-      // (revoke does not change the daily counter, but the user might have
-      // crossed the boundary while the modal was open).
-      await this.loadMcpClients();
-    } catch (err) {
-      this.mcpClientsError = err instanceof Error ? err.message : 'Failed to revoke MCP client';
-      this.renderMcpClientsError();
-    }
-  }
-
-  private renderMcpClientsError(): void {
-    const el = this.overlay.querySelector<HTMLElement>('#usMcpClientsError');
-    if (!el) return;
-    if (this.mcpClientsError) {
-      el.style.display = 'block';
-      el.textContent = this.mcpClientsError;
-    } else {
-      el.style.display = 'none';
-      el.textContent = '';
-    }
-  }
-
-  private renderMcpClientsList(): void {
-    const container = this.overlay.querySelector('#usMcpClientsList');
-    if (!container) return;
-
-    if (this.mcpClientsLoading && this.mcpClients.length === 0) {
-      setTrustedHtml(container, trustedHtml('<div class="mcp-clients-loading">Loading...</div>', "legacy direct innerHTML migration"));
-      return;
-    }
-
-    this.renderMcpClientsError();
-
-    const active = this.mcpClients.filter(c => !c.revokedAt);
-    const revoked = this.mcpClients.filter(c => c.revokedAt);
-
-    if (active.length === 0 && revoked.length === 0) {
-      const mcpUrl = 'https://api.worldmonitor.app/mcp';
-      setTrustedHtml(container, trustedHtml(`
-        <div class="mcp-clients-empty">
-          <div class="mcp-clients-empty-title">No connected MCP clients yet</div>
-          <div class="mcp-clients-empty-desc">To connect Claude Desktop or another AI client, paste this URL into the client's MCP server settings and sign in with your WorldMonitor Pro account:</div>
-          <div class="mcp-clients-empty-url">
-            <code>${escapeHtml(mcpUrl)}</code>
-            <button class="btn btn-secondary mcp-clients-copy-url-btn" data-copy-value="${escapeHtml(mcpUrl)}">Copy URL</button>
-          </div>
-        </div>`, "legacy direct innerHTML migration"));
-      return;
-    }
-
-    const formatDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    const formatRelative = (ts: number): string => {
-      const ms = Date.now() - ts;
-      const sec = Math.floor(ms / 1000);
-      if (sec < 60) return 'just now';
-      const min = Math.floor(sec / 60);
-      if (min < 60) return `${min}m ago`;
-      const hrs = Math.floor(min / 60);
-      if (hrs < 24) return `${hrs}h ago`;
-      return formatDate(ts);
-    };
-
-    const renderClient = (c: McpClientInfo) => {
-      const isRevoked = !!c.revokedAt;
-      const name = c.name?.trim() || 'Connected MCP client';
-      const lastUsed = c.lastUsedAt ? formatRelative(c.lastUsedAt) : 'never';
-      return `
-        <div class="mcp-clients-item${isRevoked ? ' revoked' : ''}">
-          <div class="mcp-clients-item-main">
-            <span class="mcp-clients-item-name">${escapeHtml(name)}</span>
-          </div>
-          <div class="mcp-clients-item-meta">
-            <span>Connected ${formatDate(c.createdAt)}</span>
-            <span>Last used ${escapeHtml(lastUsed)}</span>
-            ${isRevoked ? `<span class="mcp-clients-item-revoked-badge">Revoked ${formatDate(c.revokedAt!)}</span>` : ''}
-          </div>
-          ${!isRevoked ? `<button class="btn btn-ghost mcp-clients-revoke-btn" data-token-id="${escapeHtml(c.id)}">Revoke</button>` : ''}
-        </div>
-      `;
-    };
-
-    setTrustedHtml(container, trustedHtml(active.map(renderClient).join('')
-      + (revoked.length > 0 ? `<div class="mcp-clients-revoked-section"><div class="mcp-clients-revoked-label">Revoked</div>${revoked.map(renderClient).join('')}</div>` : ''), "legacy direct innerHTML migration"));
-  }
 }

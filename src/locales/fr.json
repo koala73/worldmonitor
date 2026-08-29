@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Économie & Commerce",
     "panelCatHappyNews": "Bonnes Nouvelles",
     "panelCatHappyPlanet": "Planète & Solidarité",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Actualités en direct",
@@ -3020,8 +3023,6 @@
     "mapProviderDesc": "Choisissez la source des tuiles de carte.",
     "mapTheme": "Thème de carte",
     "mapThemeDesc": "Style visuel des tuiles de carte.",
-    "globePreset": "Préréglage visuel",
-    "globePresetDesc": "Basculer entre les visuels classiques et améliorés du globe.",
     "fontFamily": "Famille de polices",
     "fontFamilyDesc": "Monospace pour un look technique, police système par défaut pour une lecture plus facile.",
     "fontMono": "Monospace",

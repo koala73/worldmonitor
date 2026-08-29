@@ -79,8 +79,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
     html += `</div>`;
   } else {
     html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
-    html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
-    html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
+    // Alert delivery (Telegram / Slack / Discord / Email) is stored and
+    // dispatched by the hosted WorldMonitor account service, which this
+    // self-hosted console does not run. State the dependency plainly rather
+    // than showing an upsell for a product that isn't for sale here —
+    // AALICE:OpenEYE delivers digests through n8n instead (see AMD-003).
+    html += `<div class="ai-flow-toggle-desc">Alert delivery to Telegram, Slack, Discord, and Email is handled by the hosted WorldMonitor account service, which this self-hosted deployment does not run. Digests are delivered through n8n instead.</div>`;
     html += `</div>`;
   }
 
@@ -91,20 +95,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       const { signal } = ac;
 
       if (!isPro) {
-        const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
-        if (upgradeBtn) {
-          upgradeBtn.addEventListener('click', () => {
-            if (!host.isSignedIn) {
-              import('@/services/clerk').then(m => m.openSignIn()).catch(() => {
-                window.open('https://worldmonitor.app/pro', '_blank');
-              });
-              return;
-            }
-            import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-              window.open('https://worldmonitor.app/pro', '_blank');
-            });
-          }, { signal });
-        }
         return () => ac.abort();
       }
 

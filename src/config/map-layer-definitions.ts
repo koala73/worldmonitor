@@ -3,7 +3,7 @@ import type { MapLayers } from '@/types';
 import { isDesktopRuntime } from '@/services/runtime';
 
 export type MapRenderer = 'flat' | 'globe';
-export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
+export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy' | 'usachina';
 
 const _desktop = isDesktopRuntime();
 
@@ -16,7 +16,7 @@ export interface LayerDefinition {
   premium?: 'locked' | 'enhanced';
   /**
    * When true, this layer only renders under DeckGL — neither the SVG/mobile
-   * fallback in Map.ts nor the WebGL GlobeMap has a code path for its data.
+   * fallback in Map.ts nor the Cesium globe has a code path for its data.
    * `renderers: ['flat']` is not sufficient because `'flat'` covers both
    * DeckGL-flat and SVG-flat. Consumers (layer picker, CMD+K dispatcher)
    * must additionally gate on `isDeckGLActive()` for these layers.
@@ -90,6 +90,9 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   // on SVG/mobile fallback.
   resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['flat'], 'locked', true),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['flat']),
+  // USA-vs-CHINA bloc alignment choropleth (fork-side, AMD-003). DeckGL-only:
+  // neither the SVG fallback nor the Cesium globe has a render path for it.
+  blocLean:                 def('blocLean',                 '&#9878;',   'blocLean',                 'Bloc Alignment', ['flat'], undefined, true),
   sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['flat']),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs'),
   techHQs:                  def('techHQs',                  '&#127970;', 'techHQs',                  'Tech HQs'),
@@ -113,8 +116,8 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   // weatherRadar removed — radar tiles now auto-start when Weather Alerts layer is toggled on
   diseaseOutbreaks:         def('diseaseOutbreaks',         '&#129440;', 'diseaseOutbreaks',         'Disease Outbreaks', ['flat'], undefined, true),
   // DeckGL-only layers. `renderers: ['flat']` hides them from the globe
-  // picker (GlobeMap has no branch in ensureStaticDataForLayer / no entry
-  // in the layer-channel map). `deckGLOnly: true` also hides them from
+  // picker: the Cesium globe's bridge has no spec for them, see
+  // src/components/gev-bridge/markerSpecs.ts). `deckGLOnly: true` also hides them from
   // the SVG/mobile fallback's CMD+K dispatch (Map.ts has no SVG render
   // path for either marker/pin type). Restore to `['flat', 'globe']`
   // without `deckGLOnly` once both renderers gain real support.
@@ -321,6 +324,13 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'minerals', 'pipelines', 'waterways', 'tradeRoutes',
     'ais', 'economic', 'fires', 'climate',
     'resilienceScore', 'natural', 'weather', 'outages', 'sanctions', 'dayNight',
+  ],
+  usachina: [
+    // Bloc alignment first — it is the point of this monitor.
+    'blocLean', 'datacenters', 'spaceports', 'cables',
+    'techHQs', 'cloudRegions', 'startupHubs',
+    'tradeRoutes', 'minerals', 'economic', 'waterways',
+    'outages', 'cyberThreats', 'sanctions', 'dayNight',
   ],
   energy: [
     // Core energy infrastructure — mirror of ENERGY_MAP_LAYERS in panels.ts

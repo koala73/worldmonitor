@@ -278,7 +278,10 @@
     "panelCatCommodityEcon": "अर्थव्यवस्था और व्यापार",
     "panelCatHappyNews": "अच्छी खबरें",
     "panelCatHappyPlanet": "प्लैनेट और दान",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "ताजा खबरें",
@@ -3077,8 +3080,6 @@
     "mapProviderDesc": "मैप टाइल कहाँ से लोड होंगी चुनें। ऑटो अपने सर्वर से PMTiles और OpenFreeMap का बैकअप इस्तेमाल करता है।",
     "mapTheme": "मैप थीम",
     "mapThemeDesc": "मैप टाइल्स की दिखावट। प्रदाता के हिसाब से विकल्प बदलते हैं।",
-    "globePreset": "दृश्य प्राथमिकता",
-    "globePresetDesc": "क्लासिक और बेहतर ग्लोब दृश्य के बीच स्विच करें और तुलना करें।",
     "fontFamily": "फॉन्ट परिवार",
     "fontFamilyDesc": "तकनीकी लुक के लिए मोनोस्पेस, आसानी से पढ़ने के लिए सिस्टम डिफ़ॉल्ट।",
     "fontMono": "मोनोस्पेस",

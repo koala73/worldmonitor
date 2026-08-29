@@ -23,6 +23,11 @@ COPY . .
 # Output is api/**/*.js alongside the source .ts files
 RUN node docker/build-handlers.mjs
 
+# Bundle God's Eye View's API (the 24 upstream proxies) the same way, into one
+# self-contained ESM file. Vite and vite-plugin-cesium are aliased to shims so
+# they stay out of the runtime image — see scripts/build-gev-api.mjs.
+RUN node scripts/build-gev-api.mjs --outfile dist-gev-api/gev-api-server.mjs
+
 # Build Vite frontend (outputs to dist/)
 # Skip blog build — blog-site has its own deps not installed here
 RUN npx tsc && npx vite build
@@ -64,6 +69,14 @@ COPY --from=runtime-deps /app/node_modules ./node_modules
 
 # API handler modules (JS originals + compiled TS bundles)
 COPY --from=builder /app/api ./api
+
+# God's Eye View API — one bundled file, no node_modules needed. Run as its
+# own supervisord program; nginx routes /api/gev/* to it.
+COPY --from=builder /app/dist-gev-api/gev-api-server.mjs ./gev-api-server.mjs
+
+# God's Eye View's CCTV source packs, read from disk by the cctv proxy at
+# runtime (CCTV_SOURCES_FILE defaults into this directory).
+COPY --from=builder /app/src/gev/config ./src/gev/config
 
 # Static data files used by handlers at runtime
 COPY --from=builder /app/data ./data

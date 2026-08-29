@@ -138,9 +138,16 @@ describe('UI consumers handle the "unknown" severity (#3707)', () => {
     assert.match(deck, /d\.severity === ['"]unknown['"]/);
   });
 
-  it('GlobeMap flightDelay marker handles severity === "unknown"', () => {
-    const globe = readFileSync(resolve(root, 'src/components/GlobeMap.ts'), 'utf-8');
-    assert.match(globe, /d\.severity === ['"]unknown['"]/);
+  it('the 3D globe colours an unknown severity grey, not green', () => {
+    // 'unknown' means no telemetry reached us (#3707). Drawing it in the
+    // green "minor / normal" tier tells the user the airport is fine when
+    // the truth is that nobody knows. GlobeMap carried this branch in its
+    // marker builder; the bridge's spec table carries it now.
+    const specs = readFileSync(resolve(root, 'src/components/gev-bridge/markerSpecs.ts'), 'utf-8');
+    assert.match(specs, /r\.severity === 'unknown' \? '#7d7d8a'/);
+    // ...and the setter still reaches the bridge at all.
+    const globe = readFileSync(resolve(root, 'src/components/CesiumGlobeMap.ts'), 'utf-8');
+    assert.match(globe, /public setFlightDelays\(v: unknown\[\]\): void \{ this\.push\('flightDelays', v\); \}/);
   });
 
   it('MapPopup renders "NO DATA" for unknown severity (not "UNKNOWN" / not the green NORMAL pill)', () => {

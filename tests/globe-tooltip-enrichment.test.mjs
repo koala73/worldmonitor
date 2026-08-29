@@ -92,50 +92,64 @@ describe('headingToCompass', () => {
 });
 
 // ========================================================================
-// 2. Source-level assertions on GlobeMap.ts tooltip code
+// 2. Marker tooltips on the Cesium globe
 // ========================================================================
+//
+// This section used to grep GlobeMap.ts for tooltip markup — the flight
+// heading line, the conflict eventType field, the per-kind hide delays. That
+// renderer built every marker as a DOM node and got hover text free from the
+// browser's `title` attribute.
+//
+// Cesium markers are WebGL, so there is no node to hang a `title` on and the
+// tooltip has to be drawn. That makes it ours again, and the thing worth
+// guarding is no longer which fields it prints (the spec table in
+// gev-bridge/markerSpecs.ts owns that, and tests/gev-tracker-bridge.test.mts
+// covers it) but that it cannot become an injection sink: every string it
+// shows arrived from a feed.
+//
+// The compass maths above is kept because it is ours and pure.
 
-describe('GlobeMap tooltip enrichment', () => {
-  const src = readSrc('src/components/GlobeMap.ts');
+describe('globe marker tooltip', () => {
+  const src = readSrc('src/components/CesiumGlobeMap.ts');
 
-  it('uses 280px base max-width for all tooltips', () => {
-    assert.match(src, /max-width:280px/, 'base max-width should be 280px');
+  it('renders tooltip text as text, never as markup', () => {
+    // Marker titles are feed data — headlines, vessel names, place names.
+    // One innerHTML here and a crafted headline is script execution.
+    assert.match(
+      src, /this\.tooltipEl\.textContent = text/,
+      'tooltip content must go through textContent',
+    );
+    assert.doesNotMatch(
+      src, /tooltipEl[^\n]*innerHTML/,
+      'tooltip must never take an HTML path',
+    );
   });
 
-  it('conflict tooltip renders eventType when available', () => {
-    assert.ok(src.includes('esc(d.eventType)'), 'conflict tooltip must escape eventType');
+  it('moves the tooltip on the compositor rather than through layout', () => {
+    // MOUSE_MOVE fires at pointer rate; top/left would relayout the panel on
+    // every one of those while Cesium is trying to hold a frame budget.
+    assert.match(src, /tooltipEl\.style\.transform = `translate\(/);
   });
 
-  it('flight tooltip includes compass direction from heading', () => {
-    assert.ok(src.includes('compass'), 'flight tooltip must compute compass direction');
-    assert.ok(src.includes('Heading:'), 'flight tooltip must display Heading label');
+  it('hides the tooltip when the pointer leaves a marker', () => {
+    // A tooltip that only ever appears is worse than none: it follows the
+    // cursor over empty ocean showing the last thing hovered.
+    assert.match(src, /if \(!marker\) \{ this\.hideTooltip\(\); return; \}/);
   });
 
-  it('GPS jamming tooltip uses human-readable satellite label', () => {
-    assert.ok(src.includes('Avg satellites visible'), 'gpsjam must show readable label');
-    assert.ok(!src.includes('NP avg:'), 'gpsjam must not use cryptic NP avg label');
+  it('still exposes the click callbacks MapContainer registers', () => {
+    for (const name of ['setOnHotspotClick', 'setOnCountryClick', 'setOnMapContextMenu']) {
+      assert.match(
+        src, new RegExp(`public ${name}\\(`),
+        `${name} must survive the renderer swap — MapContainer calls it`,
+      );
+    }
   });
 
-  it('extends hide delay to 6s for rich tooltip kinds', () => {
-    assert.match(src, /richKinds\.has\(d\._kind\) \? 6000 : 3500/,
-      'hide delay should be 6000 for rich kinds, 3500 for others');
-  });
-
-  it('richKinds includes repairShip and aisDisruption', () => {
-    const richLine = src.match(/const richKinds = new Set\(\[([^\]]+)\]\)/);
-    assert.ok(richLine, 'richKinds set must exist');
-    const kinds = richLine[1];
-    assert.ok(kinds.includes("'repairShip'"), 'richKinds must include repairShip');
-    assert.ok(kinds.includes("'aisDisruption'"), 'richKinds must include aisDisruption');
-  });
-
-  it('widens content-heavy tooltip types to 300px', () => {
-    const wideLine = src.match(/const wideKinds = new Set\(\[([^\]]+)\]\)/);
-    assert.ok(wideLine, 'wideKinds set must exist');
-    const kinds = wideLine[1];
-    assert.ok(kinds.includes("'flightDelay'"), 'wideKinds must include flightDelay');
-    assert.ok(kinds.includes("'conflictZone'"), 'wideKinds must include conflictZone');
-    assert.ok(kinds.includes("'cableAdvisory'"), 'wideKinds must include cableAdvisory');
-    assert.ok(kinds.includes("'satellite'"), 'wideKinds must include satellite');
+  it('routes hotspot clicks to the dashboard, not to a map popup', () => {
+    // The hotspot panel drives off this callback; sending hotspots to
+    // MapPopup instead would leave the panel dead on the globe.
+    assert.match(src, /if \(marker\.kind === 'hotspot'\) \{/);
+    assert.match(src, /this\.onHotspotClickCb\?\.\(marker\.row as Hotspot\)/);
   });
 });

@@ -7,6 +7,7 @@ import type { TimeRange } from '@/components';
 import {
   FEEDS,
   CANONICAL_FEEDS,
+  FORK_ONLY_FEED_CATEGORIES,
   INTEL_SOURCES,
   SECTORS,
   COMMODITIES,
@@ -205,6 +206,8 @@ import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRisk
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
+import { loadBlocSnapshot, indexByIso, newsActiveCountries } from '@/services/bloc-alignment';
+import type { BlocAlignmentPanel } from '@/components/BlocAlignmentPanel';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
 import { fetchShippingStress } from '@/services/supply-chain';
@@ -363,6 +366,25 @@ export class DataLoaderManager implements AppModule {
     return cached?.cii.length ? cached : null;
   }
 
+  /**
+   * USA-vs-CHINA bloc alignment (fork-side, AMD-003). The regression is done
+   * daily by scripts/seed-bloc-markets.mjs; this only fetches the artifact and
+   * hands it to the map and the panel. The news-active set is recomputed here
+   * rather than in the map so both consumers see the same story sample.
+   */
+  private async loadBlocAlignment(): Promise<void> {
+    const snapshot = await loadBlocSnapshot();
+    if (!snapshot) {
+      this.ctx.map?.setLayerReady('blocLean', false);
+      return;
+    }
+    const byIso = indexByIso(snapshot);
+    const active = newsActiveCountries(this.ctx.allNews);
+    this.ctx.map?.setBlocAlignment(byIso, active);
+    this.ctx.map?.setLayerReady('blocLean', byIso.size > 0);
+    await (this.ctx.panels['bloc-alignment'] as BlocAlignmentPanel | undefined)?.refresh();
+  }
+
   private applyCiiScoresToMap(scores: CountryScore[]): void {
     this.ctx.map?.setCIIScores(scores.map(s => ({ code: s.code, score: s.score, level: s.level })));
     this.ctx.map?.setLayerReady('ciiChoropleth', scores.length > 0);
@@ -514,6 +536,9 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'simulation-outcome', task: runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
       }
       if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
+      if (SITE_VARIANT === 'usachina') {
+        tasks.push({ name: 'blocAlignment', task: runGuarded('blocAlignment', () => this.loadBlocAlignment()) });
+      }
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
@@ -1240,7 +1265,7 @@ export class DataLoaderManager implements AppModule {
       FEEDS,
       CANONICAL_FEEDS,
       enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings),
-    );
+    ).map((c) => (FORK_ONLY_FEED_CATEGORIES.has(c.key) ? { ...c, isCustom: true } : c));
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));

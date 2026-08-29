@@ -523,7 +523,15 @@ export function installWebApiRedirect(): void {
    */
   const enrichInitForPremium = async (pathWithQuery: string, init?: RequestInit): Promise<RequestInit | undefined> => {
     const path = pathWithQuery.split('?')[0] ?? pathWithQuery;
-    if (!WEB_PREMIUM_API_PATHS.has(path)) return init;
+    // Self-host (fork-side): the bundled gateway validates EVERY /api route
+    // against WORLDMONITOR_VALID_KEYS — origin-based keyless access only
+    // exists for worldmonitor.app browser origins. When the operator key is
+    // injected (docker/entrypoint.sh → __WM_RUNTIME_ENV__), authenticate all
+    // same-origin API calls, not just the premium subset, or every panel
+    // fetch 401s and the dashboard renders empty.
+    const selfHostEnv = (globalThis as { __WM_RUNTIME_ENV__?: Record<string, unknown> }).__WM_RUNTIME_ENV__;
+    const selfHostKey = typeof selfHostEnv?.WORLDMONITOR_API_KEY === 'string' && selfHostEnv.WORLDMONITOR_API_KEY.trim().length > 0;
+    if (!WEB_PREMIUM_API_PATHS.has(path) && !selfHostKey) return init;
     const headers = new Headers(init?.headers);
     // Don't overwrite existing auth headers
     if (headers.has('Authorization') || headers.has('X-WorldMonitor-Key')) return init;

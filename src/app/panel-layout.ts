@@ -27,6 +27,7 @@ import {
   EnergyComplexPanel,
   OilInventoriesPanel,
   GdeltIntelPanel,
+  BlocAlignmentPanel,
   LiveNewsPanel,
   getDefaultLiveChannels,
   loadChannelsFromStorage,
@@ -115,7 +116,7 @@ import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
@@ -162,23 +163,6 @@ const WEB_PREMIUM_PANELS = new Set([
   'trade-policy',
 ]);
 
-/**
- * Panels that require a Clerk-authenticated PRO account specifically.
- * Desktop API key / browser tester keys do NOT satisfy the gate because
- * these panels are bound to a Clerk userId server-side (e.g. the Brief
- * is stored at brief:{clerkUserId}:{date} in Redis — no Clerk user, no
- * brief to fetch).
- *
- * Without this extra gate, API-key + free-Clerk users would see the
- * panel "unlocked" by hasPremiumAccess() and then hit a 403 when the
- * server re-checks entitlement from the JWT. This set promotes the
- * inconsistency to the layout gating layer so the user sees the
- * correct "Upgrade to Pro" CTA instead of a doomed fetch.
- */
-const WEB_CLERK_PRO_ONLY_PANELS = new Set([
-  'latest-brief',
-]);
-
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
@@ -201,8 +185,6 @@ export class PanelLayoutManager implements AppModule {
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
-  private proBlockUnsubscribe: (() => void) | null = null;
-  private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
@@ -365,10 +347,6 @@ export class PanelLayoutManager implements AppModule {
     this.applyTimeRangeFilterDebounced.cancel();
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
-    this.proBlockUnsubscribe?.();
-    this.proBlockUnsubscribe = null;
-    this.proBlockEntitlementUnsubscribe?.();
-    this.proBlockEntitlementUnsubscribe = null;
     if (this.boundWidgetCreatorHandler) {
       this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
       this.boundWidgetCreatorHandler = null;
@@ -446,15 +424,6 @@ export class PanelLayoutManager implements AppModule {
       // failed. Affirmative-denial-only is the right shape: never
       // over-gate, accept the one-doomed-fetch-per-session cost
       // for API-key-only + free-Clerk users as the lesser harm.
-      if (
-        reason === PanelGateReason.NONE &&
-        WEB_CLERK_PRO_ONLY_PANELS.has(key) &&
-        getEntitlementState() !== null &&
-        !hasTier(1)
-      ) {
-        reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
-      }
-
       if (reason === PanelGateReason.NONE) {
         // User has access -- unlock if previously locked
         (panel as Panel).unlockPanel();
@@ -866,6 +835,20 @@ export class PanelLayoutManager implements AppModule {
       const panel = this.ctx.panels[key];
       panel?.toggle(config.enabled);
     });
+    this.refreshPanelNavs();
+  }
+
+  /**
+   * Rebuild the panel-visibility filters from current panel settings.
+   *
+   * Both navs cache a membership list built from `panelSettings` and hide any
+   * grid panel outside it. Enabling a panel only clears `.hidden`; without this
+   * rebuild the stale list keeps `.oe-tab-hidden` / `.mobile-cat-hidden` on the
+   * newly enabled panel, so it stays invisible on every tab until a reload.
+   * EventHandlerManager owns the settings-save path and reaches this through
+   * the `refreshPanelNavs` callback.
+   */
+  refreshPanelNavs(): void {
     this.mobilePanelNav?.refresh();
     this.openEyeTabBar?.refresh();
   }
@@ -1079,6 +1062,10 @@ export class PanelLayoutManager implements AppModule {
     }
 
     this.createPanel('gdelt-intel', () => new GdeltIntelPanel());
+
+    // USA-vs-CHINA monitor (fork-side, AMD-003). shouldCreatePanel() gates on
+    // panelSettings, so this is a no-op on every other variant.
+    this.createPanel('bloc-alignment', () => new BlocAlignmentPanel(() => this.ctx.allNews));
 
     // Two-arg `.then(onFulfilled, onRejected)` so the rejection handler ONLY catches
     // the dynamic-import promise itself (already suppressed in main.ts beforeSend) and
@@ -1606,31 +1593,15 @@ export class PanelLayoutManager implements AppModule {
     });
     panelsGrid.appendChild(addPanelBlock);
 
-    // Always create Pro and MCP add-panel blocks — show/hide reactively via auth state.
-    const proBlock = document.createElement('button');
-    proBlock.className = 'add-panel-block ai-widget-block ai-widget-block-pro';
-    proBlock.setAttribute('aria-label', t('widgets.createInteractive'));
-    const proIcon = document.createElement('span');
-    proIcon.className = 'add-panel-block-icon';
-    proIcon.textContent = '\u26a1';
-    const proLabel = document.createElement('span');
-    proLabel.className = 'add-panel-block-label';
-    proLabel.textContent = t('widgets.createInteractive');
-    const proBadge = document.createElement('span');
-    proBadge.className = 'widget-pro-badge';
-    proBadge.textContent = t('widgets.proBadge');
-    proBlock.appendChild(proIcon);
-    proBlock.appendChild(proLabel);
-    proBlock.appendChild(proBadge);
-    proBlock.addEventListener('click', () => {
-      openWidgetChatModal({
-        mode: 'create',
-        tier: 'pro',
-        onComplete: (spec) => this.addCustomWidget(spec),
-      });
-    });
-    panelsGrid.appendChild(proBlock);
-
+    // AALICE:OpenEYE (fork-side, AMD-003): the "Create Interactive Widget"
+    // tile is gone. It was a hosted-SaaS surface — api/widget-agent.ts is a
+    // Vercel edge function proxying to upstream's Railway relay with
+    // server-side WIDGET_AGENT_KEY secrets, and the self-host gateway routes
+    // no such path, so the CTA could only ever answer "Widget agent is
+    // temporarily unavailable".
+    //
+    // "Connect MCP" below is the opposite case and is kept: it talks to
+    // whatever server URL you give it and needs nothing hosted.
     const mcpBlock = document.createElement('button');
     mcpBlock.className = 'add-panel-block mcp-panel-block';
     mcpBlock.setAttribute('aria-label', t('mcp.connectPanel'));
@@ -1640,12 +1611,8 @@ export class PanelLayoutManager implements AppModule {
     const mcpLabel = document.createElement('span');
     mcpLabel.className = 'add-panel-block-label';
     mcpLabel.textContent = t('mcp.connectPanel');
-    const mcpBadge = document.createElement('span');
-    mcpBadge.className = 'widget-pro-badge';
-    mcpBadge.textContent = t('widgets.proBadge');
     mcpBlock.appendChild(mcpIcon);
     mcpBlock.appendChild(mcpLabel);
-    mcpBlock.appendChild(mcpBadge);
     mcpBlock.addEventListener('click', () => {
       openMcpConnectModal({
         onComplete: (spec) => this.addMcpPanel(spec),
@@ -1653,32 +1620,16 @@ export class PanelLayoutManager implements AppModule {
     });
     panelsGrid.appendChild(mcpBlock);
 
-    // Reactively show/hide Pro-only UI blocks ("Create Interactive Widget" +
-    // "Connect MCP" CTAs) based on premium access.
+    // "Connect MCP" is always available on AALICE:OpenEYE.
     //
-    // hasPremiumAccess() folds in isEntitled() (Convex Dodo entitlement) per
-    // panel-gating.ts:11-27 — so a paying subscriber whose Clerk publicMetadata
-    // is never written by the webhook still resolves to true once the Convex
-    // snapshot lands. BUT: the snapshot lands AFTER auth state stabilises, and
-    // Convex updates do NOT necessarily fire a fresh subscribeAuthState event.
-    // Subscribing only to subscribeAuthState meant these CTAs stayed
-    // display:none for the whole page lifetime for paying users — exactly the
-    // shape PR #3505 chased on the server side, repeated here on the client.
-    //
-    // Subscribe to BOTH auth state and entitlement changes; whichever fires
-    // last (typically entitlements) is the one that flips the CTAs visible.
-    // Mirrors the same dual-subscription wiring used by updatePanelGating
-    // for existing panels (see lines ~259 and ~282).
-    const proBlocks = [proBlock, mcpBlock];
-    const applyProBlockGating = (isPro: boolean) => {
-      for (const block of proBlocks) {
-        block.style.display = isPro ? '' : 'none';
-      }
-    };
-    const reapply = () => applyProBlockGating(hasPremiumAccess(getAuthState()));
-    reapply();
-    this.proBlockUnsubscribe = subscribeAuthState(reapply);
-    this.proBlockEntitlementUnsubscribe = onEntitlementChange(reapply);
+    // This is where "it says I need Pro to add MCPs" actually came from:
+    // upstream hid the tile with display:none whenever hasPremiumAccess()
+    // was false, and hasPremiumAccess() only became true once an operator
+    // key reached the browser (docker) or a Convex entitlement snapshot
+    // landed (hosted). In every other runtime the tile was simply absent, so
+    // openMcpConnectModal() was unreachable — while the tile still carried a
+    // PRO badge wherever it did render. Both are gone: the modal talks to
+    // whatever server URL you give it and needs no entitlement at all.
 
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {

@@ -33,9 +33,18 @@ describe('variant env guards', () => {
     );
   });
 
-  it('reuses buildVariant for SSR, Tauri, and localhost fallback paths', () => {
-    const buildVariantUses = variantSrc.match(/return buildVariant;/g) ?? [];
-    assert.equal(buildVariantUses.length, 3, `Expected three buildVariant fallbacks, got ${buildVariantUses.length}`);
-    assert.ok(variantSrc.includes("if (typeof window === 'undefined') return buildVariant;"), 'SSR should fall back to buildVariant');
+  it('reuses buildVariant for SSR, Tauri, and self-hosted fallback paths', () => {
+    // Counts fallback USES, not one literal spelling. Two of the three paths
+    // now read `storedVariant() ?? buildVariant` — the stored override moved
+    // into a guarded helper because an unguarded top-level localStorage read
+    // throws outright in Safari's "Block All Cookies" and in a partitioned
+    // iframe, which took the whole app down before first paint. What this
+    // test is actually protecting is that no path invents its own default.
+    const fallbacks = variantSrc.match(/(?:return|\?\?) buildVariant/g) ?? [];
+    assert.equal(fallbacks.length, 3, `Expected three buildVariant fallbacks, got ${fallbacks.length}`);
+    assert.ok(variantSrc.includes("if (typeof window === 'undefined') return buildVariant;"),
+      'SSR should fall back to buildVariant');
+    assert.match(variantSrc, /if \(isTauri\) return storedVariant\(\) \?\? buildVariant;/,
+      'Tauri should prefer the stored override, then buildVariant');
   });
 });

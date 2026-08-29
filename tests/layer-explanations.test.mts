@@ -240,7 +240,11 @@ describe('map layer explanation control wiring', () => {
   const componentSources = new Map([
     ['SVG map', readFileSync(resolve(root, 'src/components/Map.ts'), 'utf8')],
     ['DeckGL map', readFileSync(resolve(root, 'src/components/DeckGLMap.ts'), 'utf8')],
-    ['Globe map', readFileSync(resolve(root, 'src/components/GlobeMap.ts'), 'utf8')],
+    // The Cesium globe carries World Monitor's own tray alongside God's Eye
+    // View's — the same markup the 2D map uses, so switching projections
+    // does not mean relearning the control. That is why it belongs in this
+    // parity check rather than being excused from it.
+    ['Cesium globe', readFileSync(resolve(root, 'src/components/CesiumGlobeMap.ts'), 'utf8')],
   ]);
   const rendererSource = readFileSync(resolve(root, 'src/utils/layer-explanation-card.ts'), 'utf8');
 

@@ -676,6 +676,13 @@ export interface MapLayers {
   ciiChoropleth: boolean;
   // Resilience choropleth layer
   resilienceScore: boolean;
+  // USA-vs-CHINA bloc alignment choropleth (fork-side, AMD-003).
+  // Optional on purpose: every one of the ~20 MapLayers literals across the
+  // upstream variant configs would otherwise need a `blocLean: false` line,
+  // and this monitor is the only variant that renders it. Optional keeps the
+  // fork's diff inside fork-owned files (AMD-003: low upstream-merge friction)
+  // while still satisfying `Record<keyof MapLayers, …>` in LAYER_REGISTRY.
+  blocLean?: boolean;
   // Overlay layers
   dayNight: boolean;
   // Commodity variant layers

@@ -13,7 +13,9 @@ import {
   getEffectivePanelConfig,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
+  OPENEYE_OUT_OF_SCOPE_PANELS,
 } from '@/config';
+import { VARIANT_META } from '@/config/variant-meta';
 import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import {
@@ -92,7 +94,6 @@ import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
-import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
@@ -778,6 +779,29 @@ export class App {
       localStorage.setItem(PANEL_PRUNE_KEY, 'done');
     }
 
+    // One-time migration (fork-side, AALICE:OpenEYE): turn off panels whose
+    // backing dependency doesn't exist on this deployment. Changing the
+    // `enabled` defaults only reaches fresh profiles — a browser that already
+    // has stored panel settings would keep showing the sign-in wall and the
+    // "not configured" placeholders forever. Runs once; re-enabling any of
+    // them from settings afterwards sticks.
+    const OPENEYE_SCOPE_PRUNE_KEY = 'openeye-scope-prune-v1';
+    if (!localStorage.getItem(OPENEYE_SCOPE_PRUNE_KEY)) {
+      let scopePruned = false;
+      for (const key of OPENEYE_OUT_OF_SCOPE_PANELS) {
+        const entry = panelSettings[key];
+        if (entry?.enabled) {
+          entry.enabled = false;
+          scopePruned = true;
+        }
+      }
+      if (scopePruned) {
+        saveToStorage(STORAGE_KEYS.panels, panelSettings);
+        console.log('[OpenEYE] Disabled out-of-scope panels:', OPENEYE_OUT_OF_SCOPE_PANELS.join(', '));
+      }
+      localStorage.setItem(OPENEYE_SCOPE_PRUNE_KEY, 'done');
+    }
+
     // One-time migration: clear stale panel ordering and sizing state
     const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
     if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {
@@ -947,6 +971,7 @@ export class App {
       waitForAisData: () => this.dataLoader.waitForAisData(),
       syncDataFreshnessWithLayers: () => this.dataLoader.syncDataFreshnessWithLayers(),
       ensureCorrectZones: () => this.panelLayout.ensureCorrectZones(),
+      refreshPanelNavs: () => this.panelLayout.refreshPanelNavs(),
       applySavedPanelOrder: (panelOrder?: string[]) => this.panelLayout.applySavedPanelOrder(panelOrder),
       refreshCiiAfterFocalPointsReady: () => this.dataLoader.refreshCiiAfterFocalPointsReady(),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
@@ -1002,18 +1027,20 @@ export class App {
     startFlightHistoryCleanup();
     startVesselHistoryCleanup();
     await initI18n();
-    // Localize the static index.html shell — <title>, meta description, and
-    // sr-only <h1> are baked in English so search crawlers see something
-    // before JS runs; once i18n is ready we swap them to the user's locale.
-    document.title = t('shell.documentTitle');
+    // Localize the static index.html shell — meta description and sr-only
+    // <h1> swap to the user's locale. The <title> stays variant-meta driven
+    // (AALICE:OpenEYE rebrand): the locale pass must not stomp it with the
+    // upstream-branded shell.documentTitle string.
+    const brandTitle = (VARIANT_META[SITE_VARIANT] ?? VARIANT_META.full).title;
+    document.title = brandTitle;
     const setMeta = (sel: string, val: string) => {
       const el = document.querySelector(sel);
       if (el) el.setAttribute('content', val);
     };
     setMeta('meta[name="description"]', t('shell.metaDescription'));
-    setMeta('meta[property="og:title"]', t('shell.documentTitle'));
+    setMeta('meta[property="og:title"]', brandTitle);
     setMeta('meta[property="og:description"]', t('shell.metaDescription'));
-    setMeta('meta[name="twitter:title"]', t('shell.documentTitle'));
+    setMeta('meta[name="twitter:title"]', brandTitle);
     setMeta('meta[name="twitter:description"]', t('shell.metaDescription'));
     // Mirror of OG_LOCALE in pro-test/src/i18n.ts. The two packages have
     // separate Vite roots and bundlers and can't share an import — keep the
@@ -1027,7 +1054,7 @@ export class App {
     const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
     setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
     const srH1 = document.querySelector('body > h1');
-    if (srH1) srH1.textContent = t('shell.documentTitle');
+    if (srH1) srH1.textContent = brandTitle;
     const aiFlow = getAiFlowSettings();
     if (aiFlow.browserModel || isDesktopRuntime()) {
       await mlWorker.init();
@@ -1223,7 +1250,6 @@ export class App {
     // init() is async so the dynamic MapContainer import can resolve before
     // downstream code (e.g. mobileGeoCoords→state.map.setCenter) reads ctx.map.
     await this.panelLayout.init();
-    showProBanner(this.state.container);
     this.updateConnectivityUi();
     window.addEventListener('online', this.handleConnectivityChange);
     window.addEventListener('offline', this.handleConnectivityChange);

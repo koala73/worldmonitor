@@ -1,6 +1,4 @@
 import type { AuthSession } from './auth-state';
-import { getSecretState } from './runtime-config';
-import { isProUser } from './widget-store';
 
 export enum PanelGateReason {
   NONE = 'none',           // show content (pro user, or desktop with API key, or non-premium panel)
@@ -10,44 +8,32 @@ export enum PanelGateReason {
 
 /**
  * Single source of truth for premium access.
- * Covers all access paths: desktop API key, tester keys (wm-pro-key / wm-widget-key),
- * Clerk Pro role, and Convex Dodo entitlement (the latter two via isProUser).
  *
- * The Convex entitlement check is the authoritative signal for paying
- * customers — Clerk `publicMetadata.plan` is NOT written by our webhook
- * pipeline, so a user with a valid Dodo subscription would otherwise show
- * as free here even though isPanelEntitled() already allowed them past
- * the panel-rendering gate. That split caused paying users to see the
- * "Upgrade to Pro" paywall overlay on top of panels they were entitled to,
- * reproducing the 2026-04-17/18 duplicate-subscription incident.
+ * AALICE:OpenEYE is a single-user self-hosted console with no subscription
+ * behind it, so this is unconditionally true. Upstream this was a union of
+ * four signals (operator API key, tester keys, Clerk Pro role, Convex Dodo
+ * entitlement); three of those depend on hosted services the fork does not
+ * run, so on this deployment the union collapsed to "whatever docker
+ * injected" — and to false everywhere else.
  *
- * isEntitled() is folded into isProUser() (see widget-store.ts) so every
- * call site that checks isProUser — widgets, search, event handlers —
- * agrees with panel gating. That keeps this function a thin union of
- * signals that aren't already covered by isProUser.
+ * Keeping the function (rather than deleting it and its ~40 call sites) is
+ * deliberate: it stays the one place to look if this fork ever needs a real
+ * gate again, and it keeps the diff against upstream small enough to rebase.
  */
-export function hasPremiumAccess(authState?: AuthSession): boolean {
-  if (getSecretState('WORLDMONITOR_API_KEY').present) return true;
-  if (isProUser()) return true;
-  if (authState?.user?.role === 'pro') return true;
-  return false;
+export function hasPremiumAccess(_authState?: AuthSession): boolean {
+  return true;
 }
 
 /**
  * Determine gating reason for a premium panel given current auth state.
- * Non-premium panels always return NONE.
+ *
+ * Always NONE on this fork — nothing is gated. ANONYMOUS and FREE_TIER
+ * remain in the enum so the panels/widgets that switch on this type keep
+ * compiling; their branches are simply unreachable.
  */
 export function getPanelGateReason(
-  authState: AuthSession,
-  isPremium: boolean,
+  _authState: AuthSession,
+  _isPremium: boolean,
 ): PanelGateReason {
-  // Non-premium panels are never gated
-  if (!isPremium) return PanelGateReason.NONE;
-
-  // API key, tester key, or Clerk Pro: always unlocked
-  if (hasPremiumAccess(authState)) return PanelGateReason.NONE;
-
-  // Web gating based on Clerk auth state
-  if (!authState.user) return PanelGateReason.ANONYMOUS;
-  return PanelGateReason.FREE_TIER;
+  return PanelGateReason.NONE;
 }

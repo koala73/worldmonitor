@@ -50,6 +50,7 @@ export {
   isPanelEntitled,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
+  OPENEYE_OUT_OF_SCOPE_PANELS,
 } from './panels';
 
 // ============================================
@@ -68,7 +69,7 @@ export {
 // references all *_FEEDS consts, so unlike FEEDS it is NOT tree-shaken per
 // variant (~10KB gz). Required so a panel customized in from another variant
 // can resolve its feeds. See src/config/feed-resolution.ts.
-export { CANONICAL_FEEDS } from './feeds';
+export { CANONICAL_FEEDS, FORK_ONLY_FEED_CATEGORIES } from './feeds';
 
 export {
   INTEL_HOTSPOTS,

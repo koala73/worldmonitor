@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Οικονομία & Εμπόριο",
     "panelCatHappyNews": "Καλές Ειδήσεις",
     "panelCatHappyPlanet": "Πλανήτης & Δωρεές",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Ζωντανές Ειδήσεις",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "Επιλέξτε πηγή φόρτωσης πλακιδίων χάρτη.",
     "mapTheme": "Θέμα χάρτη",
     "mapThemeDesc": "Οπτικό στυλ των πλακιδίων χάρτη.",
-    "globePreset": "Οπτική προεπιλογή",
-    "globePresetDesc": "Εναλλαγή μεταξύ κλασικής και βελτιωμένης απεικόνισης.",
     "fontFamily": "Οικογένεια Γραμματοσειράς",
     "fontFamilyDesc": "Monospace για τεχνικό περιβάλλον, προεπιλογή συστήματος για ευκολότερη ανάγνωση.",
     "fontMono": "Monospace",

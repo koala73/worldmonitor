@@ -43,87 +43,92 @@ describe('MapContainer globe routing', () => {
 });
 
 // ========================================================================
-// 2. GlobeMap AIS implementation
+// 2. CesiumGlobeMap accepts every pushed tracker
 // ========================================================================
+//
+// This replaces a set of assertions that grepped GlobeMap.ts for globe.gl
+// marker internals (AisDisruptionMarker interface shape, buildMarkerElement
+// colour branches, tooltip HTML). That renderer is gone — CesiumGlobeMap
+// forwards to God's Eye View's Cesium viewer instead.
+//
+// What is worth guarding at this layer is the contract MapContainer depends
+// on: every setter it delegates exists, data pushed before the async Cesium
+// boot finishes is not dropped, and each payload reaches the bridge. What
+// each tracker then LOOKS like is the spec table's business and is covered
+// by tests/gev-tracker-bridge.test.mts.
 
-describe('GlobeMap AIS ship traffic markers', () => {
-  const src = readSrc('src/components/GlobeMap.ts');
+describe('CesiumGlobeMap tracker intake', () => {
+  const src = readSrc('src/components/CesiumGlobeMap.ts');
 
-  it('imports AisDisruptionEvent and AisDisruptionType from @/types', () => {
-    assert.match(src, /AisDisruptionEvent.*AisDisruptionType/,
-      'GlobeMap should import AIS types');
+  it('implements every setter MapContainer delegates in globe mode', () => {
+    const container = readSrc('src/components/MapContainer.ts');
+    const delegated = new Set(
+      [...container.matchAll(/globeMap\?\.([a-zA-Z]+)/g)].map((m) => m[1]),
+    );
+    assert.ok(delegated.size > 50, `expected MapContainer to delegate widely, saw ${delegated.size}`);
+
+    const missing = [...delegated].filter(
+      (name) => !new RegExp(`\\bpublic (?:async )?${name}\\s*[(<]`).test(src),
+    );
+    assert.deepStrictEqual(
+      missing, [],
+      `CesiumGlobeMap is missing members MapContainer calls: ${missing.join(', ')}`,
+    );
   });
 
-  it('defines AisDisruptionMarker interface with required fields', () => {
-    assert.match(src, /interface AisDisruptionMarker extends BaseMarker/,
-      'AisDisruptionMarker interface must exist');
-    assert.match(src, /_kind: 'aisDisruption'/,
-      'AisDisruptionMarker must have _kind discriminator');
-    assert.match(src, /type: AisDisruptionType/,
-      'AisDisruptionMarker must carry type field');
-    assert.match(src, /severity: AisDisruptionEvent\['severity'\]/,
-      'AisDisruptionMarker must carry severity field');
+  it('records pushed payloads so nothing is lost during the async boot', () => {
+    // Cesium construction + Google 3D Tiles is async, but MapContainer
+    // constructs the map synchronously and starts pushing immediately.
+    assert.match(src, /private push\(layer: string, data: unknown\): void/);
+    assert.match(src, /this\.payloads\[layer\] = data/);
+    // ...and the boot replays them.
+    assert.match(src, /for \(const \[layer, data\] of Object\.entries\(this\.payloads\)\)/);
   });
 
-  it('includes AisDisruptionMarker in GlobeMarker union', () => {
-    // Union spans multiple lines — check that AisDisruptionMarker appears in the union block
-    const unionMatch = src.match(/type GlobeMarker =[\s\S]*?;/);
-    assert.ok(unionMatch, 'GlobeMarker union must exist');
-    assert.ok(unionMatch[0].includes('AisDisruptionMarker'),
-      'GlobeMarker union must include AisDisruptionMarker');
+  it('routes AIS disruptions and density through one payload', () => {
+    assert.match(src, /setAisData\([^)]*\): void \{\s*this\.push\('ais', \{ disruptions, density \}\)/s);
   });
 
-  it('flushMarkers gates aisMarkers behind layers.ais', () => {
-    assert.match(src, /if \(this\.layers\.ais\)[^\n]*this\.aisMarkers/,
-      'aisMarkers must be gated behind layers.ais in flushMarkers');
+  it('hands every recorded payload to the bridge rather than drawing inline', () => {
+    // The failure this catches is a setter that grew its own Cesium code:
+    // one renderer path means one place where a tracker can be wrong.
+    assert.match(src, /const spec = BRIDGE_SPECS\[layer\]/);
+    assert.match(src, /this\.renderer\.setMarkers\(layer, resolveMarkers\(spec, data\)\)/);
   });
 
-  it('setAisData maps disruptions to aisMarkers with correct fields', () => {
-    assert.match(src, /this\.aisMarkers = \(disruptions/,
-      'setAisData must populate this.aisMarkers');
-    assert.match(src, /_kind: 'aisDisruption' as const/,
-      'setAisData must set _kind to aisDisruption');
-    assert.match(src, /type: d\.type/,
-      'setAisData must copy type field');
-    assert.match(src, /severity: d\.severity/,
-      'setAisData must copy severity field');
-    assert.match(src, /description: d\.description/,
-      'setAisData must copy description field');
-  });
-
-  it('buildMarkerElement renders aisDisruption with severity-appropriate color', () => {
-    assert.match(src, /d\._kind === 'aisDisruption'/,
-      'buildMarkerElement must handle aisDisruption case');
-    // Color is severity-based
-    assert.match(src, /d\.severity === 'high'.*#ff2020.*d\.severity === 'elevated'.*#ff8800/s,
-      'aisDisruption marker should use red for high, orange for elevated');
-  });
-
-  it('showMarkerTooltip renders aisDisruption with name/type/severity fields', () => {
-    // Find the aisDisruption tooltip block
-    const tooltipIdx = src.indexOf("d._kind === 'aisDisruption'", src.indexOf('showMarkerTooltip'));
-    assert.ok(tooltipIdx !== -1, 'showMarkerTooltip must handle aisDisruption');
-    const tooltipBlock = src.slice(tooltipIdx, tooltipIdx + 400);
-    assert.ok(tooltipBlock.includes('typeLabel'), 'tooltip must show type label');
-    assert.ok(tooltipBlock.includes('d.name'), 'tooltip must show vessel name');
-    assert.ok(tooltipBlock.includes('d.severity'), 'tooltip must show severity');
+  it('materialises the built-in site catalogues only once their layer is on', () => {
+    // Military bases, nuclear sites and the rest are thousands of static
+    // rows. Building them at boot for a user who never opens the layer is
+    // startup cost with no payoff — GlobeMap deferred them for this reason.
+    assert.match(src, /if \(enabled\) this\.ensureStaticLayer\(key\)/);
+    assert.match(src, /if \(!this\.renderer \|\| this\.staticLoaded\.has\(layer\)\) return/);
   });
 });
 
 // ========================================================================
-// 3. dayNight toggle excluded via layer catalog (renderers: ['flat'])
+// 3. Layers the globe cannot draw are forced off
 // ========================================================================
 
-describe('dayNight disabled on globe', () => {
-  const src = readSrc('src/components/GlobeMap.ts');
+describe('flat-only layers are suppressed on the globe', () => {
+  const src = readSrc('src/components/CesiumGlobeMap.ts');
 
-  it('setLayers forces dayNight to false', () => {
-    assert.match(src, /dayNight:\s*false/,
-      'GlobeMap should force dayNight: false (globe does not support day/night overlay)');
+  it('derives the suppression set from the layer catalog, not a hardcoded list', () => {
+    assert.match(src, /FLAT_ONLY_LAYERS/);
+    assert.match(src, /LAYER_REGISTRY/);
+    assert.match(src, /!d\.renderers\.includes\('globe'\)/);
   });
 
-  it('hideLayerToggle is called for dayNight', () => {
-    assert.match(src, /hideLayerToggle\(['"]dayNight['"]\)/,
-      'GlobeMap should hide the dayNight toggle from UI');
+  it('setLayers forces those layers off rather than showing a toggle that lies', () => {
+    assert.match(src, /for \(const key of CesiumGlobeMap\.FLAT_ONLY_LAYERS\)/);
+    assert.match(src, /if \(next\[key\]\) next = \{ \.\.\.next, \[key\]: false \}/);
+  });
+
+  it('Day/Night is still catalogued as flat-only (the layer that motivated this)', () => {
+    const registry = readSrc('src/config/map-layer-definitions.ts');
+    assert.match(
+      registry,
+      /dayNight:\s*def\('dayNight',[^)]*\['flat'\]\)/,
+      "dayNight must stay renderers: ['flat'] — no globe has a day/night terminator",
+    );
   });
 });

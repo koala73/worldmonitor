@@ -197,6 +197,12 @@ export const COMMANDS: Command[] = [
   { id: 'panel:liquidity-shifts', keywords: ['liquidity', 'liquidity shifts', 'oil gold silver', 'top stocks', 'positioning'], label: 'Panel: Liquidity Shifts', icon: '\u{1F4B0}', category: 'panels' },
   { id: 'panel:positioning-247', keywords: ['positioning', '24/7', 'perp', 'perpetual', 'hyperliquid', 'funding rate', 'open interest', 'derivatives stress'], label: 'Panel: 24/7 Positioning', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:macro-tiles', keywords: ['macro tiles', 'macro indicators', 'macro overview'], label: 'Panel: Macro Indicators', icon: '\u{1F9E9}', category: 'panels' },
+  // AALICE:OpenEYE — USA vs CHINA monitor panels (fork-side, AMD-003)
+  { id: 'panel:bloc-alignment', keywords: ['bloc alignment', 'market relationship', 'usa vs china', 'us china coupling', 'country beta'], label: 'Panel: Market Relationship', icon: '\u{2696}', category: 'panels' },
+  { id: 'panel:ai-infra', keywords: ['ai infrastructure', 'ai chips', 'gpu cluster', 'datacenter', 'semiconductors'], label: 'Panel: AI Infrastructure', icon: '\u{1F5A5}', category: 'panels' },
+  { id: 'panel:space', keywords: ['space', 'rocket launch', 'satellite', 'nasa', 'lunar mission'], label: 'Panel: Space & Launch', icon: '\u{1F680}', category: 'panels' },
+  { id: 'panel:engineering', keywords: ['engineering', 'science discoveries', 'research breakthrough', 'quantum', 'fusion'], label: 'Panel: Engineering & Science', icon: '\u{2699}', category: 'panels' },
+  { id: 'panel:bloc-policy', keywords: ['tech policy', 'export controls', 'chips act', 'supply chain', 'decoupling'], label: 'Panel: Tech Policy & Supply Chain', icon: '\u{1F4DC}', category: 'panels' },
   { id: 'panel:defense-patents', keywords: ['defense patents', 'r&d signal', 'military research', 'defense r&d'], label: 'Panel: R&D Signal', icon: '\u{1F9EA}', category: 'panels' },
   { id: 'panel:climate-news', keywords: ['climate news', 'climate headlines', 'environment news', 'climate intelligence', 'carbon brief', 'copernicus'], label: 'Panel: Climate News', icon: '\u{1F30D}', category: 'panels' },
   { id: 'panel:disease-outbreaks', keywords: ['disease outbreaks', 'outbreaks', 'who alerts', 'epidemic', 'health alerts', 'promed'], label: 'Panel: Disease Outbreaks', icon: '\u{1F9A0}', category: 'panels' },

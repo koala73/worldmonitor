@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Економија & Трговија",
     "panelCatHappyNews": "Добри Вести",
     "panelCatHappyPlanet": "Планета & Давање",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Живи новини",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "Изберете откъде да се зареждат картните плочки.",
     "mapTheme": "Тема на картата",
     "mapThemeDesc": "Визуален стил на картните плочки.",
-    "globePreset": "Визуален предварителен набор",
-    "globePresetDesc": "Превключване между класически и подобрени визуализации.",
     "fontFamily": "Семейство шрифтове",
     "fontFamilyDesc": "Монопространствен за технически вид, системен по подразбиране за по-лесно четене.",
     "fontMono": "Монопространствен",

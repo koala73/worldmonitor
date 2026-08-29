@@ -288,7 +288,10 @@
     "panelCatCommodityEcon": "Ekonomija i trgovina",
     "panelCatHappyNews": "Dobre vijesti",
     "panelCatHappyPlanet": "Planet i pomoć",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Vijesti uživo",
@@ -3290,8 +3293,6 @@
     "mapProviderDesc": "Odaberite odakle se učitavaju pločice karte. Automatski koristi samoposlužujući PMTiles s OpenFreeMap rezervom.",
     "mapTheme": "Tema Karte",
     "mapThemeDesc": "Vizualni stil pločica karte. Opcije se razlikuju ovisno o pružatelju.",
-    "globePreset": "Vizualni Predpreset",
-    "globePresetDesc": "Prebacujte se između klasičnog i poboljšanog prikaza globusa za usporedbu.",
     "fontFamily": "Obitelj Fonta",
     "fontFamilyDesc": "Monospace za tehnički izgled, zadanu vrijednost sustava za lakše čitanje.",
     "fontMono": "Monospace",

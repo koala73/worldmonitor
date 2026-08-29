@@ -992,6 +992,55 @@ const ENERGY_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+
+// ── AALICE:OpenEYE — USA vs CHINA monitor (fork-side, AMD-003) ──────────────
+// Deliberately narrow: AI infrastructure, space/science, and engineering only.
+// This monitor is not a general news reader — the whole point is that every
+// story in it is plausibly a driver of the two blocs' technology markets.
+const USACHINA_FEEDS: Record<string, Feed[]> = {
+  'ai-infra': [
+    { name: 'Data Center Dynamics', url: rss('https://www.datacenterdynamics.com/en/rss/') },
+    { name: 'AI Chips',      url: rss('https://news.google.com/rss/search?q=("AI+chip"+OR+"GPU+cluster"+OR+"AI+accelerator"+OR+"HBM"+OR+"foundry")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'AI Datacenters', url: rss('https://news.google.com/rss/search?q=("AI+data+center"+OR+"datacenter+capex"+OR+"compute+cluster"+OR+"gigawatt+campus")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Export Controls', url: rss('https://news.google.com/rss/search?q=("export+controls"+OR+"chip+ban"+OR+"entity+list"+OR+"semiconductor+sanctions")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Tom\u2019s Hardware', url: rss('https://www.tomshardware.com/feeds/all') },
+    { name: 'ArXiv AI',      url: rss('https://export.arxiv.org/rss/cs.AI') },
+  ],
+  space: [
+    { name: 'NASA',          url: rss('https://www.nasa.gov/news-release/feed/') },
+    { name: 'SpaceNews',     url: rss('https://spacenews.com/feed/') },
+    { name: 'Spaceflight Now', url: rss('https://spaceflightnow.com/feed/') },
+    { name: 'ESA',           url: rss('https://www.esa.int/rssfeed/Our_Activities/Space_News') },
+    { name: 'Space Launch',  url: rss('https://news.google.com/rss/search?q=("rocket+launch"+OR+"satellite+constellation"+OR+"lunar+mission"+OR+"space+station"+OR+"CNSA"+OR+"Chang%27e")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  engineering: [
+    { name: 'IEEE Spectrum', url: rss('https://spectrum.ieee.org/feeds/feed.rss') },
+    { name: 'Ars Technica',  url: rss('https://feeds.arstechnica.com/arstechnica/technology-lab') },
+    { name: 'ScienceDaily',  url: rss('https://www.sciencedaily.com/rss/all.xml') },
+    { name: 'Nature News',   url: rss('https://feeds.nature.com/nature/rss/current') },
+    { name: 'Advanced Mfg',  url: rss('https://news.google.com/rss/search?q=("advanced+manufacturing"+OR+"fusion+energy"+OR+"quantum+computing"+OR+"robotics+breakthrough"+OR+"battery+technology")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  'bloc-policy': [
+    { name: 'Tech Policy',   url: rss('https://news.google.com/rss/search?q=("US+China+tech"+OR+"technology+competition"+OR+"CHIPS+Act"+OR+"tech+decoupling"+OR+"industrial+policy")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Supply Chain',  url: rss('https://news.google.com/rss/search?q=("chip+supply+chain"+OR+"rare+earth"+OR+"critical+minerals"+OR+"reshoring")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+};
+
+
+/**
+ * Categories that exist only in this fork (AALICE:OpenEYE, AMD-003).
+ *
+ * The server digest at /api/news/v1/list-feed-digest is built from the hosted
+ * variants' feed maps and silently answers an unknown `?variant=` with the
+ * `full` category set — verified 2026-08-04. So these keys are never in the
+ * digest, yet resolveNewsCategories() marks them `isCustom: false` because
+ * they ARE in the active variant's preset. That combination lands them in a
+ * gap: routed down the digest path, found missing, rendered "No news
+ * available". Operationally `isCustom` means "the digest can't serve this,
+ * fetch it client-side", which is exactly their situation.
+ */
+export const FORK_ONLY_FEED_CATEGORIES: ReadonlySet<string> = new Set(Object.keys(USACHINA_FEEDS));
+
 // Variant-aware exports
 export const FEEDS = SITE_VARIANT === 'tech'
   ? TECH_FEEDS
@@ -1003,7 +1052,9 @@ export const FEEDS = SITE_VARIANT === 'tech'
         ? COMMODITY_FEEDS
         : SITE_VARIANT === 'energy'
           ? ENERGY_FEEDS
-          : FULL_FEEDS;
+          : SITE_VARIANT === 'usachina'
+            ? USACHINA_FEEDS
+            : FULL_FEEDS;
 
 // Canonical category→feeds map: the union of every variant's feed set.
 // `FEEDS` (above) is just the active variant's PRESET; users freely customize
@@ -1018,6 +1069,7 @@ export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
   FINANCE_FEEDS,
   COMMODITY_FEEDS,
   ENERGY_FEEDS,
+  USACHINA_FEEDS,
   HAPPY_FEEDS,
 ]);
 
@@ -1057,6 +1109,10 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
 export const INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)
   { name: 'Defense One', url: rss('https://www.defenseone.com/rss/all/'), type: 'defense' },
+  // Listed in SOURCE_CATEGORY_MAP and DEFAULT_ENABLED but the feed itself was
+  // missing, so it was on by default and silently produced nothing. The DEV
+  // guard at the bottom of this file has been reporting it; this is the feed.
+  { name: 'Breaking Defense', url: rss('https://breakingdefense.com/feed/'), type: 'defense' },
   { name: 'The War Zone', url: rss('https://www.twz.com/feed'), type: 'defense' },
   { name: 'Defense News', url: rss('https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
   { name: 'Janes', url: rss('https://news.google.com/rss/search?q=site:janes.com+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },

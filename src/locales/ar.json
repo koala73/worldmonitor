@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "الاقتصاد والتجارة",
     "panelCatHappyNews": "أخبار إيجابية",
     "panelCatHappyPlanet": "الكوكب والعطاء",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "أخبار مباشرة",
@@ -3068,8 +3071,6 @@
     "mapProviderDesc": "اختر مصدر تحميل بلاطات الخريطة.",
     "mapTheme": "سمة الخريطة",
     "mapThemeDesc": "النمط البصري لبلاطات الخريطة.",
-    "globePreset": "الإعداد البصري",
-    "globePresetDesc": "التبديل بين المرئيات الكلاسيكية والمحسنة للكرة الأرضية.",
     "fontFamily": "عائلة الخط",
     "fontFamilyDesc": "خط أحادي المسافة للمظهر التقني، أو الخط الافتراضي للقراءة الأسهل.",
     "fontMono": "أحادي المسافة",

@@ -2870,7 +2870,10 @@
     "panelCatCommodityEcon": "Economia & Comércio",
     "panelCatHappyNews": "Boas Notícias",
     "panelCatHappyPlanet": "Planeta & Doações",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "countryBrief": {
     "identifying": "Identificando país...",
@@ -3020,8 +3023,6 @@
     "mapProviderDesc": "Escolha de onde os tiles do mapa são carregados.",
     "mapTheme": "Tema do mapa",
     "mapThemeDesc": "Estilo visual dos tiles do mapa.",
-    "globePreset": "Predefinição visual",
-    "globePresetDesc": "Alternar entre visuais clássicos e aprimorados do globo.",
     "fontFamily": "Família de Fontes",
     "fontFamilyDesc": "Monospace para uma aparência técnica, fonte padrão do sistema para leitura mais fácil.",
     "fontMono": "Monospace",

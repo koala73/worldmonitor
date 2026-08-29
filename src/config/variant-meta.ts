@@ -12,6 +12,24 @@ export interface VariantMeta {
 }
 
 export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
+  usachina: {
+    title: 'AALICE:OpenEYE — USA vs CHINA',
+    description: 'Bloc technology competition tracker: AI infrastructure, space and engineering news, with a market-relationship map of how the rest of the world couples to each bloc.',
+    keywords: 'US China tech competition, AI infrastructure, semiconductors, export controls, space race, market correlation, bloc alignment, country ETF beta',
+    url: 'https://www.worldmonitor.app/',
+    siteName: 'AALICE:OpenEYE',
+    shortName: 'AALICE:OpenEYE',
+    subject: 'US-China Technology Competition and Market Coupling',
+    classification: 'Intelligence Dashboard, Market Analytics',
+    categories: ['news', 'finance'],
+    features: [
+      'AI infrastructure news',
+      'Space and launch tracking',
+      'Engineering and science discoveries',
+      'Bloc market-coupling choropleth',
+      'Abnormal-return event detection',
+    ],
+  },
   full: {
     title: 'AALICE:OpenEYE — News Intelligence',
     description: 'Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view.',

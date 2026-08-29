@@ -560,11 +560,16 @@ describe('panel guardrails — cw- prefix handling', () => {
     );
   });
 
-  it('panel-layout AI button is gated by hasPremiumAccess', () => {
-    const hasCheck = layout.includes('hasPremiumAccess') || layout.includes('isProUser');
-    const buttonIdx = layout.indexOf('ai-widget-block');
-    assert.ok(hasCheck, 'hasPremiumAccess (or isProUser) not found in panel-layout');
-    assert.ok(buttonIdx !== -1, 'AI widget button not found in panel-layout');
+  it('panel-layout ships no AI widget-builder button at all', () => {
+    // OpenEYE hides the widget builder outright (OPENEYE_HIDE_WIDGET_BUILDER
+    // was a constant `true` in this fork), so the branch that rendered the
+    // free and PRO create buttons was dead code and has been collapsed.
+    // Asserting the buttons are GONE is what stops the Pro tier being
+    // reintroduced by someone restoring "missing" markup.
+    assert.ok(!layout.includes('ai-widget-block'),
+      'the AI widget-builder button belongs to the removed Pro tier');
+    assert.ok(!layout.includes('ai-widget-block-pro'),
+      'the PRO create button belongs to the removed Pro tier');
   });
 
   it('panel-layout DEV warning excludes cw- panels', () => {
@@ -1536,26 +1541,22 @@ describe('PRO widget — modal and layout integration', () => {
     );
   });
 
-  it('layout has PRO create button when hasPremiumAccess', () => {
-    assert.ok(
-      layout.includes('hasPremiumAccess') || layout.includes('isProUser'),
-      'panel-layout must import/call hasPremiumAccess (or isProUser)',
-    );
-    assert.ok(
-      layout.includes('ai-widget-block-pro'),
-      'panel-layout must render PRO create button (.ai-widget-block-pro)',
-    );
+  it('layout renders no PRO create button', () => {
+    // See the note above: the whole widget-builder block is gone in OpenEYE,
+    // and with it the two-tier free/PRO create buttons.
+    assert.ok(!layout.includes('ai-widget-block-pro'),
+      'panel-layout must not render a PRO create button');
   });
 
-  it('layout PRO button opens modal with tier: pro', () => {
-    const proButtonIdx = layout.indexOf('ai-widget-block-pro');
-    assert.ok(proButtonIdx !== -1);
-    // Use 1200 chars to cover the full button element including the click handler
-    const proButtonRegion = layout.slice(proButtonIdx, proButtonIdx + 1200);
-    assert.ok(
-      proButtonRegion.includes("tier: 'pro'") || proButtonRegion.includes("tier:'pro'") || proButtonRegion.includes('"pro"'),
-      "PRO button must open modal with tier: 'pro'",
-    );
+  it('the add-panel tiles are not gated on entitlement', () => {
+    // This is the bug that started the Pro removal: "Connect MCP" was hidden
+    // with display:none for anyone without a Pro entitlement, on a
+    // single-operator self-hosted console where the tier does not exist.
+    // The tile must render unconditionally.
+    assert.ok(layout.includes('mcp-panel-block'),
+      'the Connect MCP tile must still exist');
+    assert.ok(!layout.includes('applyProBlockGating'),
+      'the add-panel tiles must not be gated behind an entitlement check');
   });
 });
 
@@ -1859,34 +1860,28 @@ describe('panel-layout — Pro add-block gating reacts to entitlement updates', 
     );
   });
 
-  it('proBlock + mcpBlock gating subscribes to BOTH auth and entitlement changes', () => {
-    // Anchor on the gating function to scope the search to its surroundings.
-    const gateFnIdx = layout.indexOf('applyProBlockGating');
-    assert.ok(gateFnIdx !== -1, 'applyProBlockGating not found in panel-layout');
-    const region = layout.slice(gateFnIdx, gateFnIdx + 1500);
-    assert.ok(
-      region.includes('subscribeAuthState'),
-      'Pro CTA gating must subscribe to subscribeAuthState (legacy auth-driven path)',
-    );
-    assert.ok(
-      region.includes('onEntitlementChange'),
-      'Pro CTA gating MUST subscribe to onEntitlementChange so paying Dodo users flip from hidden->visible when the Convex entitlement snapshot lands',
-    );
+  it('the Pro CTA gating and its subscriptions are gone', () => {
+    // Nothing left to re-evaluate: with no Pro tier there is no CTA to flip
+    // from hidden to visible. Both the gate and the subscription it needed
+    // were removed together — a leftover subscription driving a function
+    // that no longer exists is how this kind of removal half-happens.
+    for (const symbol of ['applyProBlockGating', 'proBlockUnsubscribe',
+      'proBlockEntitlementUnsubscribe', 'widget-pro-badge']) {
+      assert.ok(!layout.includes(symbol), `${symbol} belongs to the removed Pro tier`);
+    }
   });
 
-  it('teardown clears the entitlement subscription so a destroyed layout does not leak callbacks', () => {
-    assert.ok(
-      layout.includes('proBlockEntitlementUnsubscribe'),
-      'panel-layout must hold a proBlockEntitlementUnsubscribe handle and clear it in destroy()',
-    );
-    // Look for the destroy() block
+  it('still re-runs ordinary panel gating on entitlement snapshots', () => {
+    // The Pro CTA gating is gone; the general subscription is NOT. Convex
+    // entitlements still decide which panels a signed-in account may see,
+    // and its teardown still has to be released or a destroyed layout leaks
+    // the callback across init/destroy cycles.
+    assert.ok(layout.includes('onEntitlementChange('),
+      'panel gating must still react to entitlement snapshots');
     const destroyIdx = layout.indexOf('destroy(): void {');
     assert.ok(destroyIdx !== -1, 'destroy() not found');
-    const destroyRegion = layout.slice(destroyIdx, destroyIdx + 2000);
-    assert.ok(
-      destroyRegion.includes('proBlockEntitlementUnsubscribe'),
-      'destroy() must invoke proBlockEntitlementUnsubscribe to avoid leaking callbacks across layout init/destroy cycles',
-    );
+    assert.ok(layout.slice(destroyIdx, destroyIdx + 2000).includes('unsubscribeEntitlementChange'),
+      'destroy() must release the entitlement subscription');
   });
 });
 

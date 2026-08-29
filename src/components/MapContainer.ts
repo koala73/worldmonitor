@@ -1,7 +1,8 @@
 /**
  * MapContainer - Conditional map renderer
  * Renders DeckGLMap (WebGL) on desktop, fallback to D3/SVG MapComponent on mobile.
- * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
+ * Supports an optional 3D globe mode (God's Eye View's Cesium globe,
+ * see CesiumGlobeMap) selectable from Settings.
  */
 // MapContainer is dynamic-imported from panel-layout, so this CSS rides into
 // the lazy chunk instead of blocking the entry HTML — it's 98% unused at first
@@ -11,7 +12,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { isMobileDevice } from '@/utils';
 import { MapComponent } from './Map';
 import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
-import { GlobeMap } from './GlobeMap';
+import { CesiumGlobeMap } from './CesiumGlobeMap';
 import type {
   MapLayers,
   Hotspot,
@@ -44,6 +45,7 @@ import type { HappinessData } from '@/services/happiness-data';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { ResilienceRankingItem } from '@/services/resilience';
+import type { BlocCountry } from '@/services/bloc-alignment';
 import type { RadiationObservation } from '@/services/radiation';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
@@ -97,7 +99,7 @@ export class MapContainer {
   private isMobile: boolean;
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
-  private globeMap: GlobeMap | null = null;
+  private globeMap: CesiumGlobeMap | null = null;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
@@ -147,6 +149,7 @@ export class MapContainer {
   private cachedKindnessData: KindnessPoint[] | null = null;
   private cachedHappinessScores: HappinessData | null = null;
   private cachedCIIScores: CIIScore[] | null = null;
+  private cachedBlocAlignment: { byIso: Map<string, BlocCountry>; newsActive: Set<string> } | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
   private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
@@ -207,8 +210,8 @@ export class MapContainer {
 
   private init(): void {
     if (this.useGlobe) {
-      console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
-      this.globeMap = new GlobeMap(this.container, this.initialState);
+      console.log("[MapContainer] Initializing 3D globe (God's Eye View / Cesium)");
+      this.globeMap = new CesiumGlobeMap(this.container, this.initialState);
     } else if (this.useDeckGL) {
       console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
       try {
@@ -246,7 +249,7 @@ export class MapContainer {
     this.destroyFlatMap();
     this.useGlobe = true;
     this.useDeckGL = false;
-    this.globeMap = new GlobeMap(this.container, this.initialState);
+    this.globeMap = new CesiumGlobeMap(this.container, this.initialState);
     this.restoreViewport(snapshot, center);
     this.rehydrateActiveMap();
   }
@@ -318,6 +321,7 @@ export class MapContainer {
     if (this.cachedKindnessData) this.setKindnessData(this.cachedKindnessData);
     if (this.cachedHappinessScores) this.setHappinessScores(this.cachedHappinessScores);
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
+    if (this.cachedBlocAlignment) this.setBlocAlignment(this.cachedBlocAlignment.byIso, this.cachedBlocAlignment.newsActive);
     if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
@@ -689,6 +693,16 @@ export class MapContainer {
     this.cachedCIIScores = scores;
     if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
+  }
+
+  /**
+   * USA-vs-CHINA bloc choropleth (fork-side, AMD-003). DeckGL-only — the SVG
+   * fallback and the Cesium globe have no render path for it, so the cache exists to
+   * re-apply after a renderer swap back to DeckGL.
+   */
+  public setBlocAlignment(byIso: Map<string, BlocCountry>, newsActive: Set<string>): void {
+    this.cachedBlocAlignment = { byIso, newsActive };
+    if (this.useDeckGL) this.deckGLMap?.setBlocAlignment(byIso, newsActive);
   }
 
   public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {

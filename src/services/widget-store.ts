@@ -177,8 +177,24 @@ export function isProWidgetEnabled(): boolean {
   return proSessionHint;
 }
 
+// Self-host premium unlock (fork-side). AALICE:OpenEYE is a single-user
+// console — there is no tier to be on and nothing to sell, so this is
+// unconditionally true rather than conditional on the operator key.
+//
+// It used to read `__WM_RUNTIME_ENV__.WORLDMONITOR_API_KEY`, which
+// docker/entrypoint.sh injects before the bundle loads. That works in docker
+// but leaves every other way of running the fork — `npm run dev`, `vite
+// preview`, the Tauri desktop build — reporting free, which is what put a
+// paywall in front of features on a deployment with no payment path at all.
+// Returning true here keeps every downstream gate (isProUser →
+// hasPremiumAccess → getPanelGateReason) agreeing across all four runtimes.
+function hasSelfHostUnlock(): boolean {
+  return true;
+}
+
 export function isProUser(): boolean {
   return (
+    hasSelfHostUnlock() ||
     isWidgetFeatureEnabled() ||
     isProWidgetEnabled() ||
     getAuthState().user?.role === 'pro' ||

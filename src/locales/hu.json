@@ -278,7 +278,10 @@
     "panelCatCommodityEcon": "Gazdaság & Kereskedelem",
     "panelCatHappyNews": "Jó Hírek",
     "panelCatHappyPlanet": "Bolygó & Adományozás",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Élő Hírek",
@@ -3077,8 +3080,6 @@
     "mapProviderDesc": "Válassza ki, honnan töltődjenek be a térképcsempék. Az Automatikus beállítás az önálló PMTiles-t használja OpenFreeMap tartalékkal.",
     "mapTheme": "Térkép témája",
     "mapThemeDesc": "A térképcsempék vizuális stílusa. Az opciók a szolgáltatótól függően változnak.",
-    "globePreset": "Vizuális előbeállítás",
-    "globePresetDesc": "Váltson a klasszikus és továbbfejlesztett földgömb vizuális effektusok között az összehasonlításhoz.",
     "fontFamily": "Betűtípus család",
     "fontFamilyDesc": "Monospace a technikai megjelenéshez, rendszer alapértelmezés az olvashatóság kedvéért.",
     "fontMono": "Monospace",

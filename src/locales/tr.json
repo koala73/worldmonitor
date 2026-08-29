@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Ekonomi & Ticaret",
     "panelCatHappyNews": "İyi Haberler",
     "panelCatHappyPlanet": "Gezegen & Hayırseverlik",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Canli Haberler",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "Harita döşemelerinin yükleneceği kaynağı seçin.",
     "mapTheme": "Harita teması",
     "mapThemeDesc": "Harita döşemelerinin görsel stili.",
-    "globePreset": "Görsel ön ayar",
-    "globePresetDesc": "Klasik ve geliştirilmiş küre görselleri arasında geçiş yapın.",
     "fontFamily": "Yazı Tipi Ailesi",
     "fontFamilyDesc": "Teknik görünüş için Monospace, daha kolay okuma için sistem varsayılanı.",
     "fontMono": "Monospace",

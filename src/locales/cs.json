@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Ekonomika a obchod",
     "panelCatHappyNews": "Dobré zprávy",
     "panelCatHappyPlanet": "Planeta a dárcovství",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Živé zprávy",
@@ -3036,8 +3039,6 @@
     "mapProviderDesc": "Zvolte zdroj dlaždic mapy.",
     "mapTheme": "Motiv mapy",
     "mapThemeDesc": "Vizuální styl dlaždic mapy.",
-    "globePreset": "Vizuální předvolba",
-    "globePresetDesc": "Přepínejte mezi klasickým a vylepšeným zobrazením globálu.",
     "fontFamily": "Typ písma",
     "fontFamilyDesc": "Monospace pro technický vzhled, systémové výchozí pro snazší čtení.",
     "fontMono": "Monospace",

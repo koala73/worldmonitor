@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Экономика и торговля",
     "panelCatHappyNews": "Хорошие новости",
     "panelCatHappyPlanet": "Планета и благотворительность",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Новости в реальном времени",
@@ -3036,8 +3039,6 @@
     "mapProviderDesc": "Выберите источник загрузки тайлов карты.",
     "mapTheme": "Тема карты",
     "mapThemeDesc": "Визуальный стиль тайлов карты.",
-    "globePreset": "Визуальный пресет",
-    "globePresetDesc": "Переключение между классической и улучшенной визуализацией глобуса.",
     "fontFamily": "Шрифт",
     "fontFamilyDesc": "Моноширинный для технического вида, системный по умолчанию для удобства чтения.",
     "fontMono": "Моноширинный",

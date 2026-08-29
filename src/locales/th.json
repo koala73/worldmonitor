@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "เศรษฐกิจและการค้า",
     "panelCatHappyNews": "ข่าวดี",
     "panelCatHappyPlanet": "โลกและการให้กำลังใจ",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "ข่าวสด",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "เลือกแหล่งโหลดไทล์แผนที่",
     "mapTheme": "ธีมแผนที่",
     "mapThemeDesc": "สไตล์ภาพของไทล์แผนที่",
-    "globePreset": "พรีเซ็ตภาพ",
-    "globePresetDesc": "สลับระหว่างภาพลูกโลกแบบคลาสสิกและปรับปรุง",
     "fontFamily": "ตระกูลฟอนต์",
     "fontFamilyDesc": "Monospace สำหรับลักษณะเทคนิค ฟอนต์เริ่มต้นของระบบสำหรับการอ่านที่ง่ายกว่า",
     "fontMono": "Monospace",

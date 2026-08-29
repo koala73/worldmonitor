@@ -42,7 +42,13 @@ function toPosix(filePath) {
 function walk(dir, files = []) {
   if (!existsSync(dir)) return files;
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'dist' || entry === 'generated') continue;
+    // `gev` is the vendored God's Eye View tree (src/gev/UPSTREAM.md).
+    // It is upstream code we do not author, its innerHTML sites are its own
+    // static template strings, and rewriting them to this repo's
+    // trustedHtml() helper would make every future re-vendor a merge
+    // conflict. Excluded for the same reason as `generated`.
+    if (entry === 'node_modules' || entry === 'dist' || entry === 'generated'
+        || entry === 'gev') continue;
     const fullPath = path.join(dir, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {

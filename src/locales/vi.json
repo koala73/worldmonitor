@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Kinh tế & Thương mại",
     "panelCatHappyNews": "Tin tốt",
     "panelCatHappyPlanet": "Hành tinh & Trao tặng",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Tin tức Trực tiếp",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "Chọn nơi tải tile bản đồ.",
     "mapTheme": "Giao diện bản đồ",
     "mapThemeDesc": "Kiểu hiển thị của tile bản đồ.",
-    "globePreset": "Cài đặt trước hình ảnh",
-    "globePresetDesc": "Chuyển đổi giữa chế độ cổ điển và nâng cao của quả địa cầu.",
     "fontFamily": "Họ phông chữ",
     "fontFamilyDesc": "Monospace cho giao diện kỹ thuật, phông chữ hệ thống mặc định để dễ đọc hơn.",
     "fontMono": "Monospace",

@@ -98,7 +98,12 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
     payload = null;
   }
   if (!payload || (!resp.ok && !isRedisOutageStatus(payload.status))) {
-    throw new Error(`health freshness fetch failed: ${resp.status}`);
+    // Distinguish the two ways this fails. A bad status explains itself; an
+    // unparseable body on a 200 does not, and "fetch failed: 200" reads like
+    // a contradiction to whoever finds it in a console.
+    throw new Error(payload
+      ? `health freshness fetch failed: ${resp.status}`
+      : `health freshness fetch failed: ${resp.status} with an unparseable body`);
   }
   const checkedAtMs = payload.checkedAt ? Date.parse(payload.checkedAt) : Date.now();
   const checkedAt = Number.isFinite(checkedAtMs) ? checkedAtMs : Date.now();

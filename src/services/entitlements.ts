@@ -160,14 +160,19 @@ export function hasTier(minTier: number): boolean {
 
 /**
  * Simple "is this a paying user" check.
- * Returns true if entitlement data exists, plan is not free, and hasn't expired.
+ *
+ * Unconditionally true on AALICE:OpenEYE. There is no Dodo subscription and
+ * usually no VITE_CONVEX_URL, so `currentState` stays null forever and the
+ * upstream implementation reported free for every user of this fork.
+ *
+ * NOTE: this is deliberately NOT folded into `hasFeature()`. That function
+ * still reads the real (null) entitlement snapshot, because the flags it
+ * gates — `apiAccess`, `mcpAccess` — control settings tabs whose backends
+ * are Convex-only. Forcing those true would surface tabs that cannot work.
+ * See src/components/UnifiedSettings.ts.
  */
 export function isEntitled(): boolean {
-  return (
-    currentState !== null &&
-    currentState.planKey !== 'free' &&
-    currentState.validUntil >= Date.now()
-  );
+  return true;
 }
 
 /**

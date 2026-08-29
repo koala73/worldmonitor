@@ -27,6 +27,7 @@ export * from './MobileWarningModal';
 export * from './MobilePanelNav';
 export * from './PizzIntIndicator';
 export * from './LlmStatusIndicator';
+export * from './BlocAlignmentPanel';
 export * from './GdeltIntelPanel';
 export * from './LiveNewsPanel';
 export * from './LiveWebcamsPanel';

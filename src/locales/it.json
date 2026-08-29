@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Economia e Commercio",
     "panelCatHappyNews": "Buone Notizie",
     "panelCatHappyPlanet": "Pianeta e Beneficenza",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Notizie in diretta",
@@ -3020,8 +3023,6 @@
     "mapProviderDesc": "Scegli da dove caricare le tile della mappa.",
     "mapTheme": "Tema mappa",
     "mapThemeDesc": "Stile visivo delle tile della mappa.",
-    "globePreset": "Preset visivo",
-    "globePresetDesc": "Passa tra visuali classici e migliorati del globo.",
     "fontFamily": "Famiglia di Caratteri",
     "fontFamilyDesc": "Monospace per un aspetto tecnico, predefinito di sistema per una lettura più agevole.",
     "fontMono": "Monospace",

@@ -22,6 +22,12 @@ services:
       - "${WM_PORT:-3000}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      # Daily artifacts produced by host-side seeders and served same-origin.
+      # Lands outside /assets|/data|/map-styles|/textures, so nginx's SPA
+      # catch-all serves it with no-cache — which is what a file that changes
+      # daily needs (/data/ is Cache-Control immutable).
+      - ./data-live:/usr/share/nginx/html/live:ro
     environment:
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
       UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
@@ -48,6 +54,19 @@ services:
       NASA_FIRMS_API_KEY: "${NASA_FIRMS_API_KEY:-}"
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       AVIATIONSTACK_API: "${AVIATIONSTACK_API:-}"
+      # Keys read at runtime by the in-container API routes (server/worldmonitor/*) —
+      # without these the .env values never reach the app in docker mode.
+      COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
+      ICAO_API_KEY: "${ICAO_API_KEY:-}"
+      WINDY_API_KEY: "${WINDY_API_KEY:-}"
+      WTO_API_KEY: "${WTO_API_KEY:-}"
+      OTX_API_KEY: "${OTX_API_KEY:-}"
+      URLHAUS_AUTH_KEY: "${URLHAUS_AUTH_KEY:-}"
+      ABUSEIPDB_API_KEY: "${ABUSEIPDB_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      WINGBITS_API_KEY: "${WINGBITS_API_KEY:-}"
+      # stock-news-search reads the plural form; .env carries a single key.
+      EXA_API_KEYS: "${EXA_API_KEY:-}"
       # Warm-ping / seed-refresh auth — gateway validates against these (gateway.ts).
       WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       WORLDMONITOR_SEED_REFRESH_KEY: "${WORLDMONITOR_SEED_REFRESH_KEY:-}"
@@ -57,6 +76,27 @@ services:
       # browser sends X-WorldMonitor-Key on premium paths and panel gating opens.
       WORLDMONITOR_VALID_KEYS: "${WORLDMONITOR_VALID_KEYS:-}"
       WORLDMONITOR_API_KEY: "${WORLDMONITOR_API_KEY:-}"
+      # ── God's Eye View (src/gev/, served at /api/gev/*) ─────────────────
+      # GEV_GOOGLE_API_KEY and GEV_TOMTOM_API_KEY keep the fork's existing
+      # .env spelling; server/gev/gev-api-paths.mjs maps them to the names
+      # upstream reads (GOOGLE_MAPS_API_KEY / TOMTOM_API_KEY), and the root
+      # vite.config.ts does the same for the browser half.
+      #
+      # GOOGLE + CESIUM are CLIENT-EXPOSED by design — Google's Map Tiles API
+      # and Cesium ion are called from the browser. Restrict them at the
+      # provider (HTTP referrer for Google; a public assets:read ion token
+      # with URL restrictions) rather than trying to hide them.
+      GEV_GOOGLE_API_KEY: "${GEV_GOOGLE_API_KEY:-}"
+      CESIUM_ION_TOKEN: "${CESIUM_ION_TOKEN:-}"
+      # Server-side only — the browser fetches /api/gev/* and never sees these.
+      GEV_TOMTOM_API_KEY: "${GEV_TOMTOM_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENSKY_CLIENT_ID: "${OPENSKY_CLIENT_ID:-}"
+      OPENSKY_CLIENT_SECRET: "${OPENSKY_CLIENT_SECRET:-}"
+      # Opt-in per-IP throttles on the two endpoints that spend real money.
+      # Unset means unlimited; set these whenever the stack is not localhost.
+      GEV_RATELIMIT_GOOGLE_PER_MIN: "${GEV_RATELIMIT_GOOGLE_PER_MIN:-}"
+      GEV_RATELIMIT_OPENAI_PER_MIN: "${GEV_RATELIMIT_OPENAI_PER_MIN:-}"
     # Docker secrets (recommended for API keys — keeps them out of docker inspect).
     # Create secrets/ dir with one file per key, then uncomment below.
     # See SELF_HOSTING.md or docker-compose.override.yml for details.
@@ -90,6 +130,9 @@ services:
     container_name: worldmonitor-ais-relay
     environment:
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
+      # OpenSky OAuth for the relay's /opensky proxy (military flights panel).
+      OPENSKY_CLIENT_ID: "${OPENSKY_CLIENT_ID:-}"
+      OPENSKY_CLIENT_SECRET: "${OPENSKY_CLIENT_SECRET:-}"
       RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
       # Authenticates the relay's warm-pings to the gateway (matches gateway's key).
       WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"

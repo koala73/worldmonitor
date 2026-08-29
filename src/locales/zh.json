@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "经济与贸易",
     "panelCatHappyNews": "好消息",
     "panelCatHappyPlanet": "地球与慈善",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "实时新闻",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "选择地图图块的加载来源。",
     "mapTheme": "地图主题",
     "mapThemeDesc": "地图图块的视觉风格。",
-    "globePreset": "视觉预设",
-    "globePresetDesc": "在经典和增强的地球视觉之间切换。",
     "fontFamily": "字体",
     "fontFamilyDesc": "等宽字体用于技术外观，系统默认字体便于阅读。",
     "fontMono": "等宽字体",

@@ -14,23 +14,48 @@ const MONITORS: Array<{ key: string; label: string }> = [
   { key: 'commodity', label: 'COMMODITY' },
   { key: 'energy', label: 'ENERGY' },
   { key: 'happy', label: 'GOOD NEWS' },
+  { key: 'usachina', label: 'USA vs CHINA' },
 ];
 
 /**
  * AALICE:OpenEYE desktop tab bar (fork-side, AMD-003).
  *
- * Desktop counterpart of MobilePanelNav: partitions the dashboard into a
- * WORLD tab (map + core panels) and one tab per populated panel category,
- * hiding out-of-tab grid panels via `.oe-tab-hidden` and gating the map
- * section through `data-oe-tab` on `.main-content`. Panels stay mounted, so
- * settings visibility (`.hidden`) and the mobile nav's `.mobile-cat-hidden`
- * compose with this filter instead of fighting it.
+ * Desktop counterpart of MobilePanelNav: partitions the dashboard into MAP
+ * (the map alone, full-bleed, and where the app opens), LIVE (the moving
+ * feeds) and one tab per populated panel category. Out-of-tab grid panels
+ * are hidden via `.oe-tab-hidden`; the map section is gated by `data-oe-tab`
+ * on `.main-content`. Panels stay mounted, so settings visibility
+ * (`.hidden`) and the mobile nav's `.mobile-cat-hidden` compose with this
+ * filter instead of fighting it.
+ *
+ * Switching tabs fires a `resize` event — a panel that laid itself out while
+ * display:none comes back at zero width otherwise, and the map needs to
+ * re-measure its canvas when it goes from hidden to full-bleed.
  */
 export class OpenEyeTabBar {
   private element: HTMLElement;
   private tabRow: HTMLElement;
   private tabs: OpenEyeTab[] = [];
-  private activeKey: string = localStorage.getItem(STORAGE_KEY) || 'world';
+  /**
+   * Tabs that no longer exist, mapped to where their content went.
+   *
+   * `world` was the original single tab (map + core panels); `home` was the
+   * reading surface left after the map and the live feeds were split out,
+   * and it is gone because what remained was a leftovers drawer rather than
+   * a subject. Both resolve to MAP, which is now where the app opens.
+   * Migrating rather than dropping means an existing install does not land
+   * on a tab it never chose.
+   */
+  private static readonly RETIRED_TABS: Readonly<Record<string, string>> = {
+    world: 'map',
+    home: 'map',
+  };
+
+  private activeKey: string = (() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return 'map';
+    return OpenEyeTabBar.RETIRED_TABS[stored] ?? stored;
+  })();
   private getPanelSettings: () => Record<string, PanelConfig>;
 
   // Search / breaking-alert navigation dispatches wm:reveal-panel; switch to
@@ -70,7 +95,11 @@ export class OpenEyeTabBar {
   /** Rebuild tabs from current panel settings, then re-apply the filter. */
   public refresh(): void {
     this.tabs = buildOpenEyeTabs(this.getPanelSettings(), SITE_VARIANT);
-    if (!this.tabs.some((tab) => tab.key === this.activeKey)) this.activeKey = 'world';
+    // Disabling every panel in a section removes its tab; fall back rather
+    // than filtering the grid against a tab that no longer exists.
+    if (!this.tabs.some((tab) => tab.key === this.activeKey)) {
+      this.activeKey = this.tabs[0]?.key ?? 'map';
+    }
     this.tabRow.replaceChildren(...this.tabs.map((tab) => {
       const btn = document.createElement('button');
       btn.className = 'openeye-tab';
@@ -115,7 +144,7 @@ export class OpenEyeTabBar {
     select.addEventListener('change', () => {
       if (select.value === SITE_VARIANT) return;
       localStorage.setItem('worldmonitor-variant', select.value);
-      localStorage.setItem(STORAGE_KEY, 'world');
+      localStorage.setItem(STORAGE_KEY, 'map');
       location.reload();
     });
     wrap.append(label, select);

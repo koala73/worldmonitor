@@ -160,6 +160,13 @@ describe('Product ID guard', () => {
     const result = execSync(
       `grep -rn 'pdt_' --include='*.ts' --include='*.tsx' --include='*.mjs' --include='*.js' . ` +
       `| grep -v node_modules ` +
+      // Build output. The comment above already lists "built assets" as an
+      // allowed path, but the filter was missing — so this guard failed for
+      // anyone who ran `vite build` before the test suite, blaming a bundled
+      // copy of src/config/products.generated.ts for the very ids that file
+      // is allowed to hold.
+      `| grep -v '^\./dist/' ` +
+      `| grep -v '/dist/' ` +
       `| grep -v '.claude/worktrees/' ` +
       `| grep -v 'convex/_generated/' ` +
       `| grep -v 'convex/config/productCatalog' ` +

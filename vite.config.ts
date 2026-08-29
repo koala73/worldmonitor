@@ -1,5 +1,7 @@
+import { applyCssTokens as applyBootCssTokens } from './src/boot/css-tokens';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import cesium from 'vite-plugin-cesium';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
@@ -757,6 +759,16 @@ function gpsjamDevPlugin(): Plugin {
   };
 }
 
+/**
+ * The contents of /wm-runtime-env.js — the same shape docker/entrypoint.sh
+ * writes. Only keys that the SPA is meant to see belong here.
+ */
+function runtimeEnvScript(): string {
+  const key = process.env.WORLDMONITOR_API_KEY ?? '';
+  const payload = key ? { WORLDMONITOR_API_KEY: key } : {};
+  return `window.__WM_RUNTIME_ENV__=${JSON.stringify(payload)};\n`;
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
@@ -780,8 +792,188 @@ export default defineConfig(({ mode }) => {
       // detects the marker and skips the comparison so dev tabs don't
       // reload on every focus.
       __BUILD_HASH__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
+
+      // ── God's Eye View keys ───────────────────────────────────────────
+      // src/gev/ reads `import.meta.env.GOOGLE_MAPS_API_KEY` and
+      // `import.meta.env.CESIUM_ION_TOKEN` (upstream's names). This fork's
+      // .env carries the Google and TomTom keys under GEV_-prefixed names,
+      // so the mapping happens here rather than by editing the vendored
+      // tree — that keeps upstream diffs applying cleanly on a re-vendor.
+      //
+      // Both of these DO reach the browser, by design: Google's Map Tiles
+      // API and Cesium ion are called client-side. Restrict them at the
+      // provider (HTTP referrer for Google, URL restrictions on a public
+      // `assets:read` ion token) rather than trying to hide them.
+      // TomTom is server-side only — the client fetches /api/gev/tomtom/*
+      // — so it is deliberately NOT defined here.
+      'import.meta.env.GOOGLE_MAPS_API_KEY': JSON.stringify(
+        process.env.GEV_GOOGLE_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? '',
+      ),
+      'import.meta.env.CESIUM_ION_TOKEN': JSON.stringify(
+        process.env.CESIUM_ION_TOKEN ?? '',
+      ),
     },
     plugins: [
+      // God's Eye View's 24 API proxies (OpenSky, CelesTrak, CCTV, AIS,
+      // TomTom, FIRMS, Overpass, terrain, OpenAI realtime, …), served under
+      // /api/gev/*.
+      //
+      // Upstream ships these as middleware inside its own vite.config.js,
+      // which means they exist in `vite dev` and nowhere else — `vite
+      // preview`, docker and Tauri all got a UI whose every data layer 404s.
+      // server/gev/gev-api-server.mjs lifts them into a plain Connect app so
+      // all four runtimes serve the same routes; this plugin is just the dev
+      // and preview mount of that app.
+      //
+      // Registered on BOTH hooks deliberately — the preview server is where
+      // the extraction earns its keep, since that is the case upstream's
+      // design could not cover.
+      (() => {
+        let mounted: unknown = null;
+        const mount = async (server: {
+          middlewares: { use: (fn: unknown) => void };
+          httpServer?: unknown;
+        }) => {
+          const { createGevApiApp } = await import('./server/gev/gev-api-server.mjs');
+          const { app, routes } = await createGevApiApp({
+            httpServer: server.httpServer ?? null,
+            mode,
+          });
+          mounted = app;
+          server.middlewares.use(app);
+          console.log(`[gev] mounted ${routes.length} API routes under /api/gev`);
+        };
+        return {
+          name: 'gev-api',
+          configureServer: mount,
+          configurePreviewServer: mount,
+          // Surfaced for tests/debugging; not part of Vite's contract.
+          get _app() { return mounted; },
+        } as Plugin;
+      })(),
+      // Cesium ships its engine assets (workers, shaders, Assets/, Widgets/)
+      // as files that must sit at a known base URL, not as bundled modules.
+      // This plugin copies them into the build and sets CESIUM_BASE_URL.
+      // Required by src/gev/ — see src/gev/UPSTREAM.md.
+      cesium(),
+      // AALICE:OpenEYE — expose WORLDMONITOR_API_KEY to the SPA in every
+      // runtime, not just docker.
+      //
+      // docker/entrypoint.sh writes /wm-runtime-env.js at container start and
+      // sed-injects a <script> tag for it, because the web build has no
+      // keyring and no build-time env. runtime-config.ts:readEnvSecret then
+      // finds the key on window.__WM_RUNTIME_ENV__ and premiumFetch attaches
+      // it as X-WorldMonitor-Key.
+      //
+      // Outside docker — `npm run dev`, `vite preview`, and the Tauri desktop
+      // build — nothing wrote that file, so premiumFetch had no key to send
+      // and every premium-path call (notably /api/mcp-proxy, which backs the
+      // "Connect MCP" panel builder) came back 401 "Pro authentication
+      // required". This plugin closes that gap using the same mechanism and
+      // the same global, so all four runtimes behave identically.
+      //
+      // entrypoint.sh's `grep -q wm-runtime-env.js` guard means the two
+      // compose safely in docker: the tag is already present from the build,
+      // and the container overwrites the file with the runtime key.
+      //
+      // NOTE: as upstream already documents, this hands the key to anyone who
+      // can load the page. That is intended for a single-operator deployment
+      // where the key's only power is unlocking this same server.
+      {
+        name: 'wm-inject-runtime-env',
+        transformIndexHtml(html: string) {
+          if (html.includes('wm-runtime-env.js')) return html;
+          return html.replace(
+            '<head>',
+            '<head>\n    <script src="/wm-runtime-env.js"></script>',
+          );
+        },
+        configureServer(server: { middlewares: { use: (p: string, fn: unknown) => void } }) {
+          server.middlewares.use('/wm-runtime-env.js', ((
+            _req: unknown,
+            res: { setHeader: (k: string, v: string) => void; end: (b: string) => void },
+          ) => {
+            res.setHeader('Content-Type', 'application/javascript');
+            res.setHeader('Cache-Control', 'no-store');
+            res.end(runtimeEnvScript());
+          }) as unknown);
+        },
+        configurePreviewServer(server: { middlewares: { use: (p: string, fn: unknown) => void } }) {
+          server.middlewares.use('/wm-runtime-env.js', ((
+            _req: unknown,
+            res: { setHeader: (k: string, v: string) => void; end: (b: string) => void },
+          ) => {
+            res.setHeader('Content-Type', 'application/javascript');
+            res.setHeader('Cache-Control', 'no-store');
+            res.end(runtimeEnvScript());
+          }) as unknown);
+        },
+        generateBundle() {
+          // Emit the file even when the key is absent at build time, so the
+          // <script> tag never 404s. In docker the entrypoint overwrites it.
+          (this as unknown as { emitFile: (f: unknown) => void }).emitFile({
+            type: 'asset',
+            fileName: 'wm-runtime-env.js',
+            source: runtimeEnvScript(),
+          });
+        },
+      },
+      // ── OpenEye boot ceremony ────────────────────────────────────────────
+      //
+      // Two substitutions, both solving the same problem: neither HTML nor
+      // CSS can import TypeScript, so without them the palette would be
+      // hand-copied into a stylesheet and an <style> block — two more copies
+      // of a value that fails silently when it drifts.
+      //
+      // src/boot/theme.ts stays the only place a boot colour or a shared
+      // animation duration is written down; src/boot/css-tokens.ts owns the
+      // placeholder map so its drift guard checks the SAME map the build
+      // uses.
+      {
+        name: 'openeye-inject-boot-theme',
+        transformIndexHtml(html: string) {
+          // The anti-flash background: first paint is the terminal's own
+          // black before any module has executed.
+          return applyBootCssTokens(html);
+        },
+        transform(code: string, id: string) {
+          // Scoped to src/boot/ — the dashboard's own stylesheets are large
+          // and carry no OpenEye placeholders, so running the substitution
+          // over them would be pure cost.
+          if (!id.includes('/src/boot/') || !id.includes('.css')) return null;
+          const out = applyBootCssTokens(code);
+          return out === code ? null : { code: out, map: null };
+        },
+      },
+      // ── Dev-only CSP relaxation for Cesium ───────────────────────────────
+      //
+      // `@cesium/widgets` bundles Knockout 3.5.1, which runs
+      // `(0, eval)("this")` at module top level to find the global object.
+      // Production never executes it: Rollup tree-shakes Knockout out of the
+      // build (verified — `dist/` contains no `eval)("this")`), because the
+      // Viewer is constructed with every knockout-backed widget disabled.
+      //
+      // Vite's dev server cannot tree-shake. `optimizeDeps` prebundles the
+      // whole `cesium` package into one file that executes top to bottom, so
+      // that eval runs, the CSP kills it, and the ENTIRE cesium module fails
+      // to evaluate — taking the globe with it. `npm run dev` shows an empty
+      // map panel and one EvalError.
+      //
+      // Excluding cesium from prebundling does not help: the same ESM graph
+      // still loads @cesium/widgets. So the relaxation belongs here, scoped
+      // as tightly as it can be — `apply: 'serve'` means this plugin is not
+      // even constructed during a build, and tests/deploy-config.test.mjs
+      // asserts no shipped CSP carries 'unsafe-eval'.
+      {
+        name: 'openeye-dev-csp-unsafe-eval',
+        apply: 'serve',
+        transformIndexHtml(html: string) {
+          return html.replace(
+            /(<meta http-equiv="Content-Security-Policy"[^>]*content="[^"]*?script-src )/,
+            "$1'unsafe-eval' ",
+          );
+        },
+      },
       // Emit dist/build-hash.txt with the deployed SHA so the running bundle
       // can fetch /build-hash.txt at tab-focus time and force-reload itself
       // if it's running an older bundle (see src/bootstrap/stale-bundle-check.ts).
@@ -835,7 +1027,16 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js', '**/clerk-*.js'],
+          // Cesium ships a ~6 MB engine plus its Workers/, Assets/, ThirdParty/
+          // and Widgets/ trees. Precaching that would push a 6 MB download
+          // onto every visitor at service-worker install time, including the
+          // ones who never open the globe — it is lazily loaded on purpose.
+          // It is served same-origin and cached by the runtimeCaching rules
+          // below like any other static asset.
+          globIgnores: [
+            '**/ml*.js', '**/onnx*.wasm', '**/locale-*.js', '**/clerk-*.js',
+            'cesium/**',
+          ],
           // globe.gl + three.js grows main bundle past the 2 MiB default limit
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           navigateFallback: null,

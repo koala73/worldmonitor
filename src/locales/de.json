@@ -210,7 +210,10 @@
     "panelCatCommodityEcon": "Wirtschaft & Handel",
     "panelCatHappyNews": "Gute Nachrichten",
     "panelCatHappyPlanet": "Planet & Spenden",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatBlocSignal": "Market Signal",
+    "panelCatBlocNews": "Bloc News",
+    "panelCatBlocResearch": "Research & Index"
   },
   "panels": {
     "liveNews": "Live-Nachrichten",
@@ -3004,8 +3007,6 @@
     "mapProviderDesc": "Wählen Sie aus, woher die Kartenkacheln geladen werden.",
     "mapTheme": "Karten-Design",
     "mapThemeDesc": "Visueller Stil der Kartenkacheln.",
-    "globePreset": "Visuelle Voreinstellung",
-    "globePresetDesc": "Zwischen klassischer und verbesserter Globus-Darstellung wechseln.",
     "fontFamily": "Schriftfamilie",
     "fontFamilyDesc": "Monospace für technisches Aussehen, Systemstandard für leichtere Lesbarkeit.",
     "fontMono": "Monospace",

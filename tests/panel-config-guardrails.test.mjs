@@ -9,7 +9,7 @@ const panelLayoutSrc = readFileSync(resolve(__dirname, '../src/app/panel-layout.
 const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
 const commandsSrc = readFileSync(resolve(__dirname, '../src/config/commands.ts'), 'utf-8');
 
-const VARIANT_FILES = ['full', 'tech', 'finance', 'commodity', 'energy', 'happy'];
+const VARIANT_FILES = ['full', 'tech', 'finance', 'commodity', 'energy', 'happy', 'usachina'];
 
 // Depth-aware extraction of the TOP-LEVEL keys of a `const X_PANELS = { ... }`
 // object literal — i.e. the panel ids, not nested config keys like
@@ -162,53 +162,48 @@ describe('panel-config guardrails', () => {
     );
   });
 
-  it('every API-key-entitled premium panel is in WEB_PREMIUM_PANELS (anon lock-CTA invariant)', () => {
-    // Background: src/config/panels.ts has TWO premium-related lists:
+  it('premium gating stays unconditional (AALICE:OpenEYE has no tier)', () => {
+    // Replaces the upstream "anon lock-CTA invariant" guard, which checked
+    // that every API-key-entitled panel also appeared in WEB_PREMIUM_PANELS
+    // so anonymous/free web users got a "Sign In to Unlock" CTA instead of a
+    // half-rendered panel.
     //
-    //   (a) `apiKeyPanels` — panels that an API-key holder OR a Pro user
-    //       can access. Lives inside isPanelEntitled().
-    //   (b) `WEB_PREMIUM_PANELS` — panels that the web layout's
-    //       updatePanelGating() drives through Panel.showGatedCta() to
-    //       render the "Sign In to Unlock" / "Upgrade to Pro" CTA.
-    //
-    // If a panel is in (a) but NOT (b), API-key users can see it, but
-    // anonymous web users see the panel mount and run its loader (writing
-    // empty/loading/error UI directly into the body) instead of the lock
-    // CTA. The PRO badge still renders, producing a "PRO + visible loader"
-    // shape that looks broken to the user.
-    //
-    // Concrete regression that motivated this test: PR #3578 added a soft
-    // empty state to RegionalIntelligenceBoard. For anonymous users it
-    // wrote "Regional intelligence is being refreshed" into the body
-    // because regional-intelligence was in apiKeyPanels (so isPanelEntitled
-    // mounted it) but missing from WEB_PREMIUM_PANELS (so showGatedCta
-    // never fired). See todos/257-pending-p2-anon-broken-panels-sweep.md
-    // item 8.
-    const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
+    // This fork has no anonymous tier, no subscription and no Convex
+    // entitlement snapshot, so that invariant is not just unnecessary — the
+    // lists it compared no longer exist. What IS worth guarding is the
+    // replacement: the four choke points must stay unconditional, because
+    // re-introducing a condition in any one of them silently restores a
+    // paywall across ~40 downstream call sites that never mention "pro".
+    const gatingSrc = readFileSync(
+      resolve(__dirname, '../src/services/panel-gating.ts'), 'utf-8');
+    const entitlementsSrc = readFileSync(
+      resolve(__dirname, '../src/services/entitlements.ts'), 'utf-8');
+    const widgetStoreSrc = readFileSync(
+      resolve(__dirname, '../src/services/widget-store.ts'), 'utf-8');
 
-    // Accept both quote styles — biome currently enforces single quotes
-    // across the repo, but this guard is meant to outlive style drift.
-    // A double-quoted entry slipping past the regex would silently
-    // shrink the verified set and let an orphan re-appear.
-    const QUOTED = /['"]([^'"]+)['"]/g;
+    const unconditional = [
+      ['hasPremiumAccess', gatingSrc,
+       /export function hasPremiumAccess\([^)]*\): boolean \{\s*return true;\s*\}/],
+      ['isEntitled', entitlementsSrc,
+       /export function isEntitled\(\): boolean \{\s*return true;\s*\}/],
+      ['hasSelfHostUnlock', widgetStoreSrc,
+       /function hasSelfHostUnlock\(\): boolean \{\s*return true;\s*\}/],
+      ['isPanelEntitled', panelsSrc,
+       /export function isPanelEntitled\([\s\S]*?\): boolean \{[\s\S]*?return true;\s*\}/],
+    ];
 
-    const apiKeyPanelsMatch = panelsSrc.match(/const apiKeyPanels = \[([^\]]+)\];/);
-    assert.ok(apiKeyPanelsMatch, 'apiKeyPanels array not found in panels.ts');
-    const apiKeyPanels = [...apiKeyPanelsMatch[1].matchAll(QUOTED)].map(m => m[1]);
-    assert.ok(apiKeyPanels.length > 0, 'apiKeyPanels parse returned no entries');
+    for (const [name, src, re] of unconditional) {
+      assert.ok(
+        re.test(src),
+        `${name}() must return true unconditionally on this fork. ` +
+        'Re-adding a condition here restores the Pro paywall app-wide.',
+      );
+    }
 
-    const webPremiumMatch = panelLayoutSrc.match(/const WEB_PREMIUM_PANELS = new Set\(\[([\s\S]*?)\]\);/);
-    assert.ok(webPremiumMatch, 'WEB_PREMIUM_PANELS not found in panel-layout.ts');
-    const webPremium = new Set([...webPremiumMatch[1].matchAll(QUOTED)].map(m => m[1]));
-    assert.ok(webPremium.size > 0, 'WEB_PREMIUM_PANELS parse returned no entries');
-
-    const orphans = apiKeyPanels.filter(k => !webPremium.has(k));
-    assert.deepStrictEqual(
-      orphans,
-      [],
-      `apiKeyPanels members missing from WEB_PREMIUM_PANELS: ${orphans.join(', ')}\n` +
-      `Add these keys to src/app/panel-layout.ts WEB_PREMIUM_PANELS so anonymous/free users see the\n` +
-      `"Sign In to Unlock" CTA instead of the panel's own internal loading/empty/error state.`,
+    // And the upsell chrome must stay gone.
+    assert.ok(
+      !panelLayoutSrc.includes('WEB_CLERK_PRO_ONLY_PANELS'),
+      'WEB_CLERK_PRO_ONLY_PANELS re-gates panels past hasPremiumAccess() — keep it removed.',
     );
   });
 
