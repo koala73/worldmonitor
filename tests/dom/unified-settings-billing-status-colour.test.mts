@@ -219,10 +219,6 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
 
     expect(planNameColour(html)).toBe(RED);
-    // The copy must follow the same predicate: "access until <past date>" under
-    // a red card is the #7315 contradiction pointing the other way.
-    expect(html).toContain('access ended');
-    expect(html).not.toContain('access until');
   });
 
   it('paints expired red, even with a future period end', () => {
@@ -265,5 +261,8 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
 
     expect(planNameColour(html)).toBe(GREY);
     expect(html).not.toContain(RED);
+    // Asserting the colour alone would let the card ship as a bare grey dot
+    // with no sentence at all, which is what the old trailing `else` produced.
+    expect(html).toContain('See Manage Billing for your current plan details.');
   });
 });

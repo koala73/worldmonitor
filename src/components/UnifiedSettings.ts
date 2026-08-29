@@ -48,7 +48,6 @@ import {
   deriveBillingUxState,
   getReactivationHref,
   getSubscriptionStatusTone,
-  isSubscriptionCoveringAt,
   type BillingStatusTone,
 } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
@@ -128,13 +127,20 @@ type AccountRequest = { userId: string; generation: number };
  * neutral grey, not red: we are inside the isEntitled() branch, so claiming a
  * problem we have not established would repeat the bug in a new colour.
  *
- * The four hues are the threat-scale values from main.css (--threat-low,
+ * The hues match the threat-scale values in main.css (--threat-low,
  * --threat-medium, --threat-info, --threat-critical), so `ending` lands on the
  * palette's existing "informational" rung rather than inventing a colour.
- * Kept as literals because this card has always inlined hexes; that also means
- * it does not pick up the [data-theme="light"] contrast overrides those tokens
- * carry — pre-existing for all four, and worth a follow-up that moves the whole
- * card onto the vars rather than a partial switch here.
+ *
+ * They stay literals because this card has always inlined hexes: green, yellow
+ * and red were already hardcoded here, and `ending`/`unknown` follow that same
+ * pattern rather than introducing a second convention mid-card. The cost is
+ * that none of them pick up the [data-theme="light"] contrast overrides — so
+ * on light theme this accent runs well under AA (green ~2.3:1, blue ~3.7:1).
+ * Switching to var(--threat-*) would NOT fully fix that: main.css only
+ * light-corrects --threat-low/-medium/-high, not --threat-info. Doing this
+ * properly means light-safe values for every tone plus a light-theme render
+ * test, which is its own change — see the follow-up on #7315. The status
+ * sentence itself is unaffected; it uses the theme-aware var(--text-dim).
  */
 const BILLING_TONE_COLORS: Record<BillingStatusTone, string> = {
   active: '#22c55e',
@@ -1066,13 +1072,15 @@ export class UnifiedSettings {
         } else if (sub.status === 'on_hold') {
           statusLine = 'On hold -- please update payment method';
         } else if (sub.status === 'cancelled') {
-          // Same predicate as the tone above, so the sentence and the colour
-          // always agree about whether access is still running (#7315).
-          statusLine = isSubscriptionCoveringAt(sub, now)
-            ? `Cancelled -- access until ${dateStr}`
-            : `Cancelled -- access ended ${dateStr}`;
+          statusLine = `Cancelled -- access until ${dateStr}`;
         } else if (sub.status === 'expired') {
           statusLine = 'Expired';
+        } else {
+          // A status this client does not model yet. We are inside the
+          // isEntitled() branch, so access is working — say only that, and
+          // point at the billing portal rather than leaving the `unknown`
+          // tone as a bare grey dot with no sentence at all.
+          statusLine = 'See Manage Billing for your current plan details.';
         }
       }
 

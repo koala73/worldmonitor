@@ -42,13 +42,20 @@ export type BillingUxState =
 export type BillingStatusTone = 'active' | 'attention' | 'ending' | 'ended' | 'unknown';
 
 /**
- * Whether a subscription row still grants access at `at`.
+ * Whether this row's status/period FIELDS say it covers `at`.
  *
- * The one coverage predicate on the client: `deriveBillingUxState` and
- * `getSubscriptionStatusTone` both read it, so the gating verdict and the
- * colour a user sees cannot disagree (#7315 — the settings panel had its own
- * inline status ternary and painted a cancelled-but-paid-through plan the same
- * red as a dead one).
+ * NOT an access decision, and never safe as an entitlement gate. `active` and
+ * `on_hold` return true regardless of `currentPeriodEnd`, so a row whose
+ * renewal webhook was missed still "covers" here while `deriveBillingUxState`
+ * correctly routes it to `renewal_verification_*`/`lapsed` — the exact case
+ * this module was built for (#4770/#4771). Anything deciding access must call
+ * `deriveBillingUxState`; this only answers the narrower field-level question.
+ *
+ * Its purpose is to be the single shared spelling of that question, so the
+ * cancelled-but-paid-through rule cannot be re-derived from status-string
+ * intuition in one place and not another (#7315 — the settings panel had its
+ * own inline ternary and painted a paid-through plan the same red as a dead
+ * one). `deriveBillingUxState` and `getSubscriptionStatusTone` both read it.
  *
  * Mirrors `isCoveringAt` in convex/payments/subscriptionHelpers.ts: active,
  * on_hold (retry window keeps entitlement per business policy), or
