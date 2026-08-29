@@ -208,18 +208,24 @@ describe('docs i18n parity', () => {
     assert.doesNotMatch(errors, /`-32002`[^\n]*例如订阅已失效/);
   });
 
-  it('documents the ChatGPT Atlas WebMCP test flow without presenting mobile chat as a browser agent', () => {
+  it('documents the current ChatGPT desktop Site tools flow and host limits', () => {
     const webMcp = readFileSync(join(DOCS_DIR, 'webmcp.mdx'), 'utf8');
     const zhWebMcp = readZhDoc('webmcp');
 
     for (const content of [webMcp, zhWebMcp]) {
-      assert.match(content, /### ChatGPT Atlas/);
       assert.match(content, /https:\/\/learn\.chatgpt\.com\/docs\/webmcp/);
-      assert.match(content, /Agent mode/);
+      assert.match(content, /ChatGPT Work/);
+      assert.match(content, /Codex/);
       assert.match(content, /document\.modelContext/);
+      assert.match(content, /search_procurement/);
+      assert.doesNotMatch(content, /ChatGPT Atlas|Agent mode/);
       assert.doesNotMatch(content, /Settings → Apps & Connectors → Advanced settings/);
     }
-    assert.match(webMcp, /ChatGPT mobile app screenshot flow is not a WebMCP test/);
-    assert.match(zhWebMcp, /ChatGPT 移动应用流程并不是 WebMCP 测试/);
+    assert.match(webMcp, /### ChatGPT desktop built-in browser/);
+    assert.match(webMcp, /Site tools/);
+    assert.match(webMcp, /does not discover declarative form tools or tools inside frames/);
+    assert.match(zhWebMcp, /### ChatGPT 桌面应用内置浏览器/);
+    assert.match(zhWebMcp, /站点工具/);
+    assert.match(zhWebMcp, /不发现声明式表单工具，也不发现 frame 内的工具/);
   });
 });

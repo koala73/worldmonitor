@@ -1,16 +1,16 @@
 ---
 title: "WebMCP: browser tools for WorldMonitor"
-description: "Use WorldMonitor's experimental, tab-bound WebMCP tools in Chrome, inspect their schemas, and verify their visible UI, security, and compatibility contracts."
+description: "Use WorldMonitor's experimental site tools in the ChatGPT desktop built-in browser or Chrome, inspect their schemas, and verify their visible UI and security contracts."
 ---
 
 WebMCP lets a browser agent discover and invoke tools exposed by the WorldMonitor page that is open in the current tab. Those tools operate the existing homepage or dashboard UI; they are not a separate data API.
 
 <Warning>
-WebMCP is an experimental proposed web standard available through a Chrome 149 origin trial. Its API and browser behavior can change. WorldMonitor supports it only in a visible, human-in-the-loop browser tab.
+WebMCP is an experimental proposed web standard. Chrome offers it through an origin trial that started in Chrome 149. ChatGPT desktop implements a current subset as **Site tools** in its built-in browser. APIs and host behavior can change. WorldMonitor supports WebMCP only in a visible browser page with a person in the loop.
 
 **WebMCP does not replace the [hosted WorldMonitor MCP server](/mcp-overview).** Use the hosted server for persistent, remote, background, or headless agents and for direct access to WorldMonitor data.
 
-**To test with ChatGPT, use ChatGPT Atlas Agent mode while the WorldMonitor page is open in that Atlas tab.** WebMCP is a browser-agent integration; it is not activated by asking a normal chat on chatgpt.com or in the ChatGPT iOS/Android app to visit a URL. Those clients do not own the page's `document.modelContext`, which is why they report that no callable WebMCP capability is exposed. See [OpenAI's WebMCP guide](https://learn.chatgpt.com/docs/webmcp).
+**To test with ChatGPT, open WorldMonitor in the built-in browser in the ChatGPT desktop app.** ChatGPT Work and Codex can discover the top-level imperative tools there. A normal chat on chatgpt.com or in the mobile app does not own the WorldMonitor page and cannot discover its tools. See [OpenAI's Site tools guide](https://learn.chatgpt.com/docs/webmcp) for current model, workspace, and rollout support.
 </Warning>
 
 ## Choose the right surface
@@ -59,26 +59,43 @@ Boolean(document.modelContext?.registerTool)
 
 The local flag replaces origin-trial enrollment for development. WorldMonitor still sends the origin-isolation and permissions-policy headers needed by the API.
 
-### ChatGPT Atlas
+### ChatGPT desktop built-in browser
 
-Follow OpenAI's [WebMCP testing flow](https://learn.chatgpt.com/docs/webmcp), not the hosted-MCP custom-app flow:
+Follow OpenAI's [Site tools flow](https://learn.chatgpt.com/docs/webmcp), not the hosted-MCP custom-app flow:
 
-1. Open `https://www.worldmonitor.app/` in ChatGPT Atlas. Use `/dashboard` when testing the dashboard tool inventory.
-2. Start **Agent mode in that same tab** so the agent shares the document that registered the tools.
-3. Ask Atlas to use the page's WorldMonitor tools. The homepage exposes `launchWorldMonitor` and `getWorldMonitorMcpEndpoint`; `/dashboard` exposes the dashboard inventory below.
-4. If Atlas sees no tools, reload the page after Agent mode/WebMCP is available and verify the exact page in DevTools with `Boolean(document.modelContext?.registerTool)`.
+1. Update the ChatGPT desktop app, then select a model and workspace that currently support Site tools.
+2. Open `https://www.worldmonitor.app/` in the built-in browser. Use `/dashboard` to test the dashboard inventory.
+3. Select **Site tools** in the browser address bar, then select **Available site tools**. The homepage lists two imperative tools. The dashboard lists twenty-four.
+4. Ask ChatGPT Work or Codex to use a WorldMonitor tool while that page remains open.
+5. If no tools appear, reload the page in the built-in browser and inspect **Available site tools** again.
 
-The ChatGPT mobile app screenshot flow is not a WebMCP test: it starts a standalone conversation with no WorldMonitor document attached. Registering `https://worldmonitor.app/mcp` as a ChatGPT custom app tests the separate hosted MCP transport, not these tab-bound tools.
+ChatGPT's built-in browser currently discovers top-level imperative tools only. It does not discover declarative form tools or tools inside frames. As a result, `search_procurement` does not appear there even when its form is eligible. Use Chrome or another host that implements the declarative API to test that tool.
+
+A normal chat or mobile screenshot flow is not a WebMCP test because no WorldMonitor document is attached. Registering `https://worldmonitor.app/mcp` as a ChatGPT custom app tests the separate hosted MCP transport, not these page-bound tools.
+
+### Host support and cancellation
+
+| Host | WorldMonitor tools it can discover | Current limits |
+|---|---|---|
+| ChatGPT desktop built-in browser | Top-level homepage and dashboard imperative tools | Declarative tools and tools inside frames are not supported. The browser reviews each invocation before the page runs it. |
+| Chrome with the origin trial or local testing flag | Imperative tools and the eligible declarative `search_procurement` form | Recorded Chrome 149–151 builds do not pass the invocation's `AbortSignal` to the page callback. |
+
+WorldMonitor registers the full dashboard inventory, then applies one cancellation class at invocation time:
+
+| Class | Tools | Behavior when the host omits the target-side `AbortSignal` |
+|---|---|---|
+| `read-only` | `get_dashboard_context`, `get_access_context`, `list_map_layers`, `list_dashboard_panels`, `search_dashboard`, `list_dashboard_tabs` | Runs normally. |
+| `view-state` | `openSearch`, `open_settings`, `open_alerts`, `open_sign_in`, `open_dashboard_panel`, `set_map_view`, `set_time_range`, `focus_country` | Runs normally, but caller cancellation cannot stop a visible change that is already in progress. |
+| `cancellation-required` | `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_map_layers`, `set_map_mode`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, `delete_dashboard_tab` | Returns `target_cancellation_unsupported` before starting the action. |
+| `result-dependent` | `open_search_result` | Runs a view-state result. Rejects a persistent, quota-consuming, or external-navigation result. |
 
 <Warning>
 On the origin-trial build, do not touch `document.modelContext` **at all** until the page has finished registering its tools. Any access taken before then — a bare property read, not just a `getTools()` call — wedges the page's registration itself: the tools never appear, and every later `getTools()` stays pending forever. A `getTools()` that resolves with an empty inventory is a symptom of that, not the cause. `executeTool()` is unaffected, and a tool descriptor obtained before the wedge stays usable. This is a browser-side behavior, reproducible on Chrome 151.0.7922.174 against an origin-trial-enrolled page and absent when the same page is enabled through `chrome://flags/#enable-webmcp-testing`. An agent attaching at page load should wait for the document to finish loading before its first access, and should not poll.
 </Warning>
 
-Chrome 149–151 exposes `registerTool()` but invokes the registered callback with the input alone, not the documented `execute(input, { signal })` shape. Aborting the signal you pass to `executeTool()` rejects *your* promise with an `AbortError`, but the browser cannot tell the page, so work already running there continues and its effect still lands. An operation you cancelled can therefore still complete.
+Chrome 149–151 exposes `registerTool()` but invokes the registered callback with the input alone, not the documented `execute(input, { signal })` shape. Aborting the signal passed to `executeTool()` rejects the caller's promise with `AbortError`, but the browser cannot tell the page. Work already running on the page continues, and its effect can still land.
 
-WorldMonitor still runs read-only tools and reversible dashboard view changes on these versions. `openSearch`, `open_dashboard_panel`, `set_map_view`, `set_time_range`, and `focus_country` work normally. `set_map_view`, `set_time_range`, and `focus_country` write the address bar through `history.replaceState`, producing the same share URL the page's link-copy control produces and that the dashboard restores on reload; that write is visible in the address bar and is overwritten by the next human map move.
-
-`openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_map_layers`, `set_map_mode`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, and `delete_dashboard_tab` stay gated and reject as unavailable. `openCountryBrief` can start server-side LLM generation (`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`) that consumes the caller's daily allowance even if the browser later cancels the caller-side promise. `switch_monitor` can persist a desktop variant and reload or navigate the current tab to another origin. `set_panel_enabled`, `set_map_layers`, and `set_map_mode` persist dashboard state to browser storage. Enabling the AIS layer also opens a network stream, and a map-mode change can persist a `resilienceScore` compatibility change. Dashboard tab mutations persist `worldmonitor-tabs-v1` plus the live panel workspace. `open_search_result` is a selector: it runs a view-state result such as opening an already-enabled panel with no tab deep-link, and still rejects persistent, quota-consuming, or external-navigation results. Tab deep-links such as `panel:consumer-prices@world` persist panel settings, so they stay blocked without a target-side signal. These effects can outlive cancellation, so they become available only on a browser that supplies the target-side signal. The read-only `list_map_layers` and `list_dashboard_tabs` catalogs stay available.
+The cancellation-required tools persist browser state, can navigate away, or can consume server-side allowance. The gate prevents those effects from starting when the host cannot cancel them. The view-state tools remain available. `set_map_view`, `set_time_range`, and `focus_country` also update the address bar through `history.replaceState`, which creates the same reloadable share state as the dashboard controls.
 
 <Note>
 Browsers without the current API, including the Tauri desktop webview when it does not expose WebMCP, safely do nothing. WorldMonitor does not install a browser polyfill and does not fall back to an older draft API.
@@ -99,9 +116,7 @@ The static `https://www.worldmonitor.app/` welcome page registers two imperative
 
 ### Dashboard imperative tools
 
-Every dashboard variant registers the same twenty-four imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
-
-On a browser that omits the target-side invocation signal, the reversible view-state tools still run. Such a browser cannot cancel them, so an invocation you abort still completes and its visible dashboard change still lands. `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_map_layers`, `set_map_mode`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, and `delete_dashboard_tab` reject as unavailable there instead. `open_search_result` still runs a view-state result, such as opening an already-enabled live-webcam panel, and rejects a persistent, quota-consuming, or external-navigation result. The country tool can consume daily LLM allowance after caller cancellation. Monitor switching can persist and reload or navigate to another origin. Panel, layer, mode, and tab writes persist beyond the session. The read-only `list_map_layers` and `list_dashboard_tabs` catalogs still run. See [Availability](#availability).
+Every dashboard variant registers the same twenty-four imperative tools. Registration is stable across sign-in and entitlement changes. Each invocation rechecks live state and the [host's cancellation support](#host-support-and-cancellation).
 
 | Tool | Input schema | Visible result |
 |---|---|---|
@@ -136,6 +151,8 @@ On a browser that omits the target-side invocation signal, the reversible view-s
 
 The Global Procurement panel can expose one [declarative WebMCP tool](https://developer.chrome.com/docs/ai/webmcp/declarative-api):
 
+This tool requires a host that implements the declarative API. It does not appear in ChatGPT's built-in browser.
+
 | Tool | Form-derived inputs | Availability |
 |---|---|---|
 | `search_procurement` | Optional `query` and `buyer` text, each at most 160 characters; optional `country` of exactly two ASCII letters (`^[A-Za-z]{2}$`), normalized to uppercase; `source` is `""` (All sources), `sam`, `ted`, `contracts-finder`, `canada-buys`, `gets`, or `world-bank`; `sort` is `closing_soon`, `newest`, `estimated_value`, or `relevance`; `techRelevant` is boolean. | Included in the fresh default layouts for full, tech, and finance. Because panels are cross-addressable, it can also appear after the entitled panel is explicitly enabled on another variant. In every case, the panel and form must be connected, visible, data-ready, and idle. |
@@ -168,7 +185,7 @@ Discover the inventory only after the page has finished registering tools. Then 
 | Open a country brief | `openCountryBrief` | Use an uppercase ISO alpha-2 code. This path can consume the signed-in person's daily LLM allowance and is unavailable when the browser cannot deliver target-side cancellation. |
 | Identify whether this tab is signed out, loading, or signed in | `get_access_context` | Use `accountState`, `clerk`, `productTier`, capability flags, and limits. The result never includes names, emails, account IDs, tokens, or session details. |
 | Open the existing sign-in dialog | `get_access_context` → `open_sign_in` when `accountState` is `signed_out` and `clerk` is not `unavailable` | `open_sign_in` never accepts credentials, one-time codes, or provider choices. If Clerk is unavailable or already open, use the returned reason. Do not collect a password or OTP through WebMCP. |
-| Search procurement | `list_dashboard_panels` → enable the Global Procurement panel with `set_panel_enabled` if needed, or ask the person to enable it → discover `search_procurement` → invoke it | `open_dashboard_panel` cannot enable a disabled panel. The declarative tool exists only while the entitled form is connected, visible, data-ready, and idle. Its disappearance is a state change, not a registration failure. |
+| Search procurement | On a declarative-capable host, use `list_dashboard_panels` → enable the Global Procurement panel with `set_panel_enabled` if needed, or ask the person to enable it → discover `search_procurement` → invoke it | `open_dashboard_panel` cannot enable a disabled panel. The declarative tool exists only while the entitled form is connected, visible, data-ready, and idle. Its disappearance is a state change, not a registration failure. |
 | List dashboard workspaces | `list_dashboard_tabs` | Use returned tab IDs, not display names. When `tabsTruncated` is true, pass `nextCursor` until every ID is listed. |
 | Switch dashboard workspace | `list_dashboard_tabs` → `select_dashboard_tab` | Pass a current tab ID. Selecting the active tab is a successful no-op. |
 | Create or reuse a named workspace | `list_dashboard_tabs` → `create_dashboard_tab` | A name that already exists returns that tab. A cap or entitlement lock returns `tab_cap`. |
@@ -278,7 +295,7 @@ The Inspector's natural-language workflow sends prompts to an external Gemini mo
 | `document.modelContext` is absent | The browser does not implement WebMCP, the local testing flag is off, the trial is unavailable, or the route is intentionally not enrolled | Confirm the Chrome version and flag, then use an enrolled top-level homepage or dashboard route. Preview, docs, `/?mode=agent`, and embed routes are not WebMCP surfaces. |
 | `getTools()` hangs or an origin-trial page settles with no inventory | The page provider may have been touched before registration completed | Reload the page, wait for document load and WorldMonitor registration to settle, then perform one inventory read. Do not poll `document.modelContext`. |
 | Only the homepage inventory is visible | The agent is on the static homepage | Invoke `launchWorldMonitor` or navigate to `/dashboard` for the imperative dashboard inventory. |
-| The imperative dashboard inventory is visible but `search_procurement` is absent | The conditional declarative form is not currently eligible | Open and enable the Global Procurement panel, satisfy entitlement, wait for data to settle, and ensure the form is visible and idle. |
+| The imperative dashboard inventory is visible but `search_procurement` is absent | The host does not support declarative tools, or the conditional form is not eligible | In ChatGPT's built-in browser, this is expected. In Chrome, open and enable the Global Procurement panel, satisfy entitlement, wait for data to settle, and ensure the form is visible and idle. |
 | A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_map_layers`, `set_map_mode`, or dashboard tab mutations. For `open_search_result`, choose a view-state result or wait for a host that can cancel persistent work. |
 | A panel or layer is denied | The current page state failed a live variant, renderer, enabled-state, or entitlement check | Read `reason` and each target status. Change state through normal visible controls or ask the person; do not force a hidden path. |
 | `open_search_result` reports an invalid, expired, changed, or unavailable key | The one-use capability is stale or the dashboard changed after search | Run `search_dashboard` again and present the new result before opening it. Never reinterpret a key as a URL. |
@@ -287,127 +304,15 @@ The Inspector's natural-language workflow sends prompts to an external Gemini mo
 | The caller sees `AbortError` but the UI changes later | The browser cancelled the caller-side promise but did not cancel page execution | Treat the visible page as authoritative. Wait for it to settle before a follow-up action and record the browser version in a bug report. |
 | Tools work on the top-level page but not in `/embed` or a cross-origin frame | The security boundary is working | No recovery is expected. Use the top-level WorldMonitor page or the hosted MCP server for the intended integration. |
 
-For a report, include the exact page URL, Chrome version, tool names from the single post-load inventory read, safe result or error, and the visible UI outcome. Do not include arguments that contain private data, credentials, result keys, or returned third-party content.
+For a report, include the exact page URL, host and version, tool names from one post-load inventory read, safe result or error, and the visible UI outcome. Do not include arguments that contain private data, credentials, result keys, or returned third-party content.
 
-## Release smoke checklist
+## Maintain and release this contract
 
-Test the exact commit that will ship. Record its 40-character Git SHA and use that same checkout for the local proof:
-
-### Local, same SHA
-
-```bash
-(
-  set -euo pipefail
-  WEBMCP_SHA="$(git rev-parse --verify HEAD)"
-  test "${#WEBMCP_SHA}" -eq 40
-  test -z "$(git status --porcelain --untracked-files=normal)"
-  printf 'Testing WebMCP at %s\n' "$WEBMCP_SHA"
-  WM_WEBMCP_DEPLOYED_SHA="$WEBMCP_SHA" npm run test:e2e:webmcp
-)
-```
-
-These commands resolve and print the exact commit, then fail if the worktree has tracked, staged, or untracked changes. Passing `WM_WEBMCP_DEPLOYED_SHA` makes the local evidence artifact record that SHA; the suite does not independently prove a deployment-to-SHA mapping. It launches Chrome with the WebMCP testing feature and exercises that clean checkout. In addition to the automated proof, use `getTools()` or the Inspector to verify each dashboard variant and the visible/hidden procurement states when the release changes those surfaces. If the release changes the homepage, run `npm run build:pro` before verifying `/pro/welcome.html`.
-
-### Production, same SHA
-
-First verify in the deployment control plane that the target URL is serving the intended SHA. The runner also fetches `/build-hash.txt` from every enrolled dashboard origin and fails if any served build does not match `WM_WEBMCP_DEPLOYED_SHA`.
-
-Run the opt-in headed production suite without the local testing flag so it exercises the real origin trial:
-
-```bash
-WM_WEBMCP_PRODUCTION_URL=https://www.worldmonitor.app \
-WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
-npm run test:e2e:webmcp:production
-```
-
-The suite asserts the served build SHA; the `Origin-Trial`, `Origin-Agent-Cluster`, and `Permissions-Policy` headers; the inventory and schemas; an invocation started immediately after discovery and completed after UI readiness; caller-side cancellation and the phantom-completion invariant — the page's work completes and its visible effect lands even when the caller's own call sees `AbortError` — for the tested browser; the cancellation-required denial for `openCountryBrief`, `switch_monitor`, `set_map_layers`, and dashboard tab mutations; per-result cancellation for `open_search_result`; all six enrolled dashboard inventories; specialized-root redirects; and a cross-origin embed denial. On a target-signal-capable browser it also proves the denied unavailable-panel path. The local strict suite separately proves a visible mutation without changing production state. The production suite writes durable `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` files below `test-results/`; preserve those files with the release evidence. Its guard intentionally accepts only the canonical `https://www.worldmonitor.app` base target, while the reviewed matrix uses fixed absolute URLs for the other enrolled origins.
-
-Also verify `/embed` and `/embed.html` return `tools=()`, and that `/?mode=agent`, preview deployments, docs, and embed pages do not gain the top-level inventory. Treat the deployment control-plane SHA check, headers, inventory, UI behavior, and terminal outcomes as separate assertions; a successful deploy or registration log alone is not acceptance.
-
-## Maintain the WebMCP contract
-
-Treat a WebMCP change as a public UI contract change, even when the implementation is only a few lines. The tool name, description, schema, annotation, output, visible effect, cancellation policy, security headers, tests, evals, and both language guides must stay aligned.
-
-### Change checklist
-
-1. Add or change the canonical name and inventory in `src/config/webmcp.ts`. Do not create a second name registry.
-2. Define each imperative descriptor and bounded execution path in `src/services/webmcp.ts`. Reuse an existing human UI path; do not add a privileged backend shortcut.
-3. Classify the tool as `read-only`, `view-state`, `cancellation-required`, or `result-dependent`. A new imperative tool must have an explicit cancellation policy before TypeScript can accept the inventory.
-4. Set accurate `readOnlyHint` and `untrustedContentHint` annotations. Keep names, descriptions, parameter descriptions, schemas, outputs, and errors within `WEBMCP_TOOL_BUDGETS`.
-5. Recheck authentication, entitlement, variant, renderer, mounted state, and capability state at invocation time. Discovery must not grant durable authority.
-6. For a declarative tool, expose attributes only while the real form is connected and usable. Remove them during pending, hidden, reset, teardown, or ineligible states.
-7. Update `docs/webmcp.mdx` and `docs/zh/webmcp.mdx` together. Update the MCP overview, agent discovery, public developer pointers, and navigation if the product boundary or entry points change.
-8. Extend deterministic lifecycle and UI tests. Add direct, ambiguous, wrong-tool, alternate-order, and mid-chain-failure eval cases when tool selection or chaining changes.
-9. If an enrolled route or origin changes, update and test Vercel, Docker, local Vite, origin-trial, same-origin, and embed-denial headers as one security boundary.
-10. Run the local same-SHA proof, then the production same-SHA smoke. Do not infer production acceptance from unit tests or a deployment status alone.
-
-### Source map
-
-| Source | Owns |
-|---|---|
-| `src/config/webmcp.ts` | Canonical homepage, dashboard, declarative, and per-variant inventories; shared schema and output budgets. |
-| `src/services/webmcp.ts` | Imperative tool descriptors, schemas, registration lifecycle, safe result/error boundaries, telemetry, and cancellation policy. |
-| `src/services/webmcp-map-layer-catalog.ts` | Paginated map-layer catalog derivation, filters, and availability reasons aligned with `set_map_layers`. |
-| `src/services/webmcp-panel-catalog.ts` | Canonical panel catalog pagination, filters, entitlement overlay, and stable unavailable reasons. |
-| `src/App.ts` and `src/app/webmcp-dashboard.ts` | Startup ordering, UI-readiness gate, teardown, dashboard context, catalog snapshots, and human-path action binding. |
-| `src/config/panel-enablement.ts` and `src/app/panel-enablement.ts` | Panel enablement policy and the existing settings persist/apply path used by `set_panel_enabled`. |
-| `src/app/webmcp-access.ts` and `src/services/webmcp-access-snapshot.ts` | Live access-context reader, PII-free snapshot builder, and Clerk sign-in open. |
-| `src/app/webmcp-search-controller.ts`, `src/app/webmcp-search-effects.ts`, and `src/app/search-selection-dispatcher.ts` | Opaque search capabilities, bound result effect classes, invalidation, live-state revalidation, and visible result selection. |
-| `src/app/panel-layout.ts`, `src/services/tab-store.ts`, and `src/services/dashboard-tab-actions.ts` | Dashboard-tab persistence, name and ID limits, and WebMCP list/select/create/rename/delete actions. |
-| `src/components/GlobalProcurementPanel.ts` | Conditional declarative `search_procurement` form, visible pending state, reset, cancellation, and bounded result. |
-| `pro-test/welcome.html` | Zero-import homepage registration for `launchWorldMonitor` and `getWorldMonitorMcpEndpoint`. |
-| `vercel.json`, `docker/nginx-security-headers.conf`, `docker/nginx-embed-security-headers.conf`, `vite.config.ts`, and `pro-test/vite.config.ts` | Trial enrollment, origin isolation, same-origin permission, local testing parity, and explicit embed denial. |
-| `tests/webmcp*.test.*`, `tests/dom/*webmcp*.test.*`, and `tests/deploy-config.test.mjs` | Deterministic inventory, schema, lifecycle, UI, telemetry, and deployment-boundary contracts. |
-| `tests/fixtures/webmcp/evals.v1.json` and `scripts/evaluate-webmcp-evals.mjs` | Offline tool-selection and multi-step journey evaluation contract. |
-| `e2e/webmcp.spec.ts`, `e2e/webmcp-cancellation.spec.ts`, and `e2e/embed.spec.ts` | Browser discovery, invocation, cancellation, production matrix, and cross-origin denial evidence. |
-
-### Verification ladder
-
-Run focused checks sequentially in a Node.js 24 worktree:
-
-```bash
-npm run docs:check
-./node_modules/.bin/tsx --test --test-concurrency=1 \
-  tests/docs-i18n-parity.test.mjs \
-  tests/webmcp-inventory.test.mts \
-  tests/webmcp.test.mjs \
-  tests/webmcp-map-layer-catalog.test.mts \
-  tests/webmcp-search-effects.test.mts \
-  tests/webmcp-dashboard.test.mts \
-  tests/dashboard-tab-actions.test.mts \
-  tests/webmcp-panel-catalog.test.mts \
-  tests/agent-bus-actions.test.mts \
-  tests/agent-bus-applier.test.mts \
-  tests/country-map-focus.test.mts \
-  tests/webmcp-runtime.test.mjs \
-  tests/webmcp-analytics-policy.test.mjs \
-  tests/webmcp-evals.test.mjs \
-  tests/webmcp-access.test.mts \
-  tests/webmcp-panel-enablement.test.mts \
-  tests/deploy-config.test.mjs
-npm run typecheck
-```
-
-For a browser-facing contract change, also run `npm run test:dom` and `npm run test:e2e:webmcp`. For a release, complete the production same-SHA smoke above and preserve its JSON evidence files. A missing browser, origin-trial token, credential, or deployed SHA is a named verification gate; it is not permission to weaken the suite.
-
-## Compatibility and removal policy
-
-WorldMonitor targets the current `document.modelContext.registerTool()` API and feature-detects it. It does not ship `navigator.modelContext`, `provideContext`, or a draft compatibility shim.
-
-If a future browser transition requires a temporary fallback, the change must:
-
-1. Name the exact browser/API gap and keep the current API as the preferred path.
-2. Preserve same-origin policy, visible UI behavior, auth/entitlement checks, bounded outputs, privacy rules, and cancellation.
-3. Have contract tests for both native and fallback paths plus an explicit removal owner and Chrome milestone or production verification condition.
-4. Be removed once the supported current API is verified in production; a fallback must never become an undocumented permanent API.
-
-The hosted MCP server remains the supported alternative when WebMCP is unavailable. It is a separate product surface, not a browser fallback implementation.
-
-Chrome documentation can announce milestone-specific lifecycle changes, such as newer unregistration behavior, without proving that a released browser delivers target-side invocation cancellation. WorldMonitor's one-argument callback observation above is pinned to its recorded Chrome 149–151 evidence. Re-run the production smoke on each new browser milestone and update this page with observed results; do not infer cancellation support from a version number or API presence alone.
+If you change the tool inventory, UI behavior, security boundary, or release checks, follow [Maintain and release WebMCP](/webmcp-maintenance). That guide owns the source map, focused verification command, same-SHA smoke checks, and compatibility policy.
 
 ## Feedback and official references
 
-Report WorldMonitor inventory, UI, permission, or entitlement problems through [GitHub Issues](https://github.com/koala73/worldmonitor/issues) or [WorldMonitor support](/support). Include the page URL, Chrome version, visible tool names, expected UI effect, actual bounded result/error, and whether the behavior reproduced in the Inspector. Never include credentials or private dashboard content.
+Report WorldMonitor inventory, UI, permission, or entitlement problems through [GitHub Issues](https://github.com/koala73/worldmonitor/issues) or [WorldMonitor support](/support). Include the page URL, host and version, visible tool names, expected UI effect, actual bounded result or error, and whether the behavior reproduced in the Inspector when Chrome was the host. Never include credentials or private dashboard content.
 
 - [Chrome WebMCP overview](https://developer.chrome.com/docs/ai/webmcp)
 - [Imperative API](https://developer.chrome.com/docs/ai/webmcp/imperative-api)
@@ -418,4 +323,4 @@ Report WorldMonitor inventory, UI, permission, or entitlement problems through [
 - [Evaluation guidance](https://developer.chrome.com/docs/ai/webmcp/evals)
 - [Chrome 149 origin-trial announcement](https://developer.chrome.com/blog/ai-webmcp-origin-trial)
 - [Chrome DevTools 149 WebMCP inspector](https://developer.chrome.com/blog/new-in-devtools-149)
-- [OpenAI: WebMCP in ChatGPT Atlas](https://learn.chatgpt.com/docs/webmcp)
+- [OpenAI: Site tools](https://learn.chatgpt.com/docs/webmcp)
