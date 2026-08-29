@@ -6,7 +6,9 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { relative } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
 import {
@@ -29,6 +31,7 @@ import {
 
 const NOW = Date.parse('2026-08-10T12:00:00Z');
 const HOUR = 60 * 60 * 1000;
+const REPO_ROOT = fileURLToPath(new URL('../', import.meta.url));
 
 function run(overrides = {}) {
   return {
@@ -1214,7 +1217,11 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
         // Only runtime imports matter — a type-only import is erased and never
         // reaches the bundle.
         for (const match of source.matchAll(/^\s*import\s+(?!type\s)[^;]*?from\s+["'](\.\.\/\.\.\/[^"']+)["']/gm)) {
-          escaping.add(new URL(match[1], child).pathname.replace(/^.*\/replicated-mixing-cerf\//, ''));
+          // Relative to the repo root, so the derived paths are comparable to
+          // the pathspec on any checkout. Resolving to an absolute path here
+          // would compare against a machine-specific prefix and vacuously pass
+          // wherever that prefix happened to be stripped.
+          escaping.add(relative(REPO_ROOT, fileURLToPath(new URL(match[1], child))));
         }
       }
     };
