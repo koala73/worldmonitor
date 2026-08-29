@@ -1805,6 +1805,6 @@ export function runSourceAttribution({
   return 0;
 }
 
-if (process.argv[1] && process.argv[1].endsWith('scripts/source-attribution.mjs')) {
+if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('scripts/source-attribution.mjs')) {
   process.exitCode = runSourceAttribution({ args: process.argv.slice(2) });
 }
