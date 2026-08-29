@@ -25,6 +25,8 @@ export interface WebMcpAccessContextInput {
   enabledPanelUsed: number;
   dashboardTabCount: number;
   freePanelCap: number;
+  /** True after FreeTierGate's AUTH_SETTLE_GRACE_MS backstop has fired. */
+  freeTierFallbackActive: boolean;
   dataExport: boolean;
 }
 
@@ -80,7 +82,11 @@ export function buildWebMcpAccessContext(
 
   const features = input.entitlement?.features;
   const deferLimits = accountState === 'loading' || entitlementUnknown;
-  const panelCap = deferLimits || input.premiumAccess ? null : input.freePanelCap;
+  // Panel enforcement stops deferring at the 8s backstop even when the
+  // Convex snapshot never arrives. Tab caps stay deferred: evaluateTabCap
+  // remains uncapped while features are still null.
+  const deferPanelCap = deferLimits && !input.freeTierFallbackActive;
+  const panelCap = deferPanelCap || input.premiumAccess ? null : input.freePanelCap;
   const tabCap = deferLimits ? null : input.tabCap.cap;
 
   return {

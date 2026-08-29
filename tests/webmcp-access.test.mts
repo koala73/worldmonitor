@@ -41,6 +41,7 @@ function signedOutInput(
     enabledPanelUsed: 12,
     dashboardTabCount: 1,
     freePanelCap: FREE_MAX_PANELS,
+    freeTierFallbackActive: false,
     dataExport: false,
     ...overrides,
   };
@@ -186,6 +187,21 @@ describe('buildWebMcpAccessContext', () => {
     assert.equal(snapshot.accountState, 'signed_in');
     assert.equal(snapshot.productTier, 'unknown');
     assert.equal(snapshot.limits.enabledPanels.cap, null);
+    assert.equal(snapshot.limits.dashboardTabs.cap, null);
+    assert.equal(snapshot.limits.dashboardTabs.canCreate, true);
+  });
+
+  it('reports the free panel cap after the settle backstop when entitlement stays null', () => {
+    const snapshot = buildWebMcpAccessContext(signedOutInput({
+      auth: FREE_AUTH,
+      premiumAccess: false,
+      entitlement: null,
+      freeTierFallbackActive: true,
+      tabCap: { allowed: false, cap: FREE_TAB_CAP, reason: 'free_tier' },
+    }));
+    assert.equal(snapshot.accountState, 'signed_in');
+    assert.equal(snapshot.productTier, 'unknown');
+    assert.equal(snapshot.limits.enabledPanels.cap, FREE_MAX_PANELS);
     assert.equal(snapshot.limits.dashboardTabs.cap, null);
     assert.equal(snapshot.limits.dashboardTabs.canCreate, true);
   });

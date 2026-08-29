@@ -36,6 +36,7 @@ function currentOpenSignInDecision(loadFailed = false): OpenSignInDecision {
 export function getWebMcpAccessContext(options: {
   enabledPanelUsed: number;
   dashboardTabCount: number;
+  freeTierFallbackActive: boolean;
 }): AccessContextSnapshot {
   const auth = getAuthState();
   return buildWebMcpAccessContext({
@@ -48,6 +49,7 @@ export function getWebMcpAccessContext(options: {
     enabledPanelUsed: options.enabledPanelUsed,
     dashboardTabCount: options.dashboardTabCount,
     freePanelCap: FREE_MAX_PANELS,
+    freeTierFallbackActive: options.freeTierFallbackActive === true,
     dataExport: evaluateExportGate(auth).locked === false,
   });
 }

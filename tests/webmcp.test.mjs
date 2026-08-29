@@ -1680,6 +1680,10 @@ describe('webmcp App.ts binding invariants', () => {
       assert.equal(text.includes('waitForDashboardReady'), false, `${name} must not wait for the map`);
     }
     callByExpression(getAccessContext, appFile, 'getWebMcpAccessContext');
+    assert.match(
+      getAccessContext.getText(appFile),
+      /freeTierFallbackActive:\s*this\.freeTierGate\.authSettleDeadlineExceeded/,
+    );
     assertCallArguments(
       callByExpression(openSignIn, appFile, 'openWebMcpSignIn'),
       appFile,

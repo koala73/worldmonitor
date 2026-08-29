@@ -1976,6 +1976,7 @@ export class App {
         return getWebMcpAccessContext({
           enabledPanelUsed: countFreePanelCapUsage(this.state.panelSettings),
           dashboardTabCount: this.panelLayout.getDashboardTabCount(),
+          freeTierFallbackActive: this.freeTierGate.authSettleDeadlineExceeded,
         });
       },
       openSignIn: async (execution) => {
