@@ -55,12 +55,19 @@ function countryMatch(): SearchMatch {
 function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boolean> = {}) {
   const mapLayers = { conflicts: false };
   const enableLayer = vi.fn();
-  const enablePanel = vi.fn(() => true);
   const closeForProgrammaticSelection = vi.fn();
   const openCountryBriefByCode = vi.fn(() => true);
+  const openSettings = vi.fn();
   const panelSettings = Object.fromEntries(
     Object.entries(enabledPanels).map(([panelId, enabled]) => [panelId, { enabled }]),
   );
+  const enablePanel = vi.fn((panelId: string) => {
+    const settings = panelSettings[panelId] ?? { enabled: false };
+    settings.enabled = true;
+    panelSettings[panelId] = settings;
+    saveToStorage(STORAGE_KEYS.panels, panelSettings);
+    return true;
+  });
   const modal = {
     search: vi.fn(() => ({ orderedMatches: matches })),
     resolveMatchByIdentity: vi.fn((identity: string) => (
@@ -84,6 +91,7 @@ function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boo
       },
       panelSettings,
       newsPanels: {},
+      unifiedSettings: { open: openSettings },
     } as never,
     getVariant: () => 'full',
     hasPremiumAccess: () => false,
@@ -131,6 +139,7 @@ function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boo
     mapLayers,
     modal,
     openCountryBriefByCode,
+    openSettings,
     panelSettings,
   };
 }
@@ -225,6 +234,42 @@ describe('open_search_result evaluates cancellation per issued effect', () => {
     expect(enableLayer).toHaveBeenCalledWith('conflicts');
     expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.mapLayers)!))
       .toStrictEqual({ conflicts: true });
+
+    controller.destroy();
+    dispatcher.destroy();
+  });
+
+  it('does not run a persistent result advertised under a capable host when open omits the signal', async () => {
+    const { controller, dispatcher, enableLayer } = createHarness(
+      [commandMatch('layer:conflicts')],
+    );
+    const host = new AbortController();
+
+    const response = await controller.search('conflicts', 'map', 10, host.signal);
+    expect(response.results[0]?.executable).toBe(true);
+
+    await expect(controller.open(response.results[0]!.key, async () => {})).resolves.toStrictEqual(
+      cancellationDenial,
+    );
+    expect(enableLayer).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.mapLayers)).toBeNull();
+
+    controller.destroy();
+    dispatcher.destroy();
+  });
+
+  it('blocks an external-navigation settings result without a target-side signal', async () => {
+    const { controller, closeForProgrammaticSelection, dispatcher, openSettings } = createHarness(
+      [commandMatch('view:settings')],
+    );
+
+    const response = await controller.search('settings', 'actions', 10);
+    expect(response.results[0]?.executable).toBe(false);
+    await expect(controller.open(response.results[0]!.key, async () => {})).resolves.toStrictEqual(
+      cancellationDenial,
+    );
+    expect(openSettings).not.toHaveBeenCalled();
+    expect(closeForProgrammaticSelection).not.toHaveBeenCalled();
 
     controller.destroy();
     dispatcher.destroy();

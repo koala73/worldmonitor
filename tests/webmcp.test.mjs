@@ -202,6 +202,17 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(tool.description, /does not enable/i);
   });
 
+  it('documents per-result cancellation on search_dashboard and open_search_result', () => {
+    const tools = buildWebMcpTools(createBindings(), () => {});
+    const search = tools.find((candidate) => candidate.name === 'search_dashboard');
+    const open = tools.find((candidate) => candidate.name === 'open_search_result');
+    assert.match(search.description, /executable/);
+    assert.match(search.description, /bound effect/);
+    assert.match(open.description, /bound effect class/);
+    assert.match(open.description, /target_cancellation_unsupported/);
+    assert.match(open.description, /View-state/);
+  });
+
   it('advertises mutually exclusive named-view and coordinate inputs', () => {
     const tools = buildWebMcpTools(createBindings(), () => {});
     const schema = tools.find((tool) => tool.name === 'set_map_view').inputSchema;

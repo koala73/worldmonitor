@@ -911,7 +911,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.searchDashboard,
       title: 'Search Dashboard',
       description:
-        'Search the current World Monitor country, signal, map, panel, finance, and action indexes without opening the command palette or changing the dashboard.',
+        'Search the current World Monitor country, signal, map, panel, finance, and action indexes without opening the command palette or changing the dashboard. executable is true only when live dashboard state and this host’s cancellation support both allow the bound effect.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -994,7 +994,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.openSearchResult,
       title: 'Open Search Result',
       description:
-        'Open one result previously issued by search_dashboard after rechecking that it is still live, allowed, compatible, and entitled.',
+        'Open one result previously issued by search_dashboard after rechecking that it is still live, allowed, compatible, and entitled. Cancellation uses the bound effect class, which callers cannot supply or downgrade. View-state results run without a target-side AbortSignal; persistent, quota-consuming, and external-navigation results require one and may return target_cancellation_unsupported.',
       inputSchema: {
         type: 'object',
         properties: {
