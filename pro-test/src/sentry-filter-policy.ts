@@ -177,9 +177,9 @@ const MODULE_LOAD_FAILURE =
  */
 const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
 /**
- * A frame that is not a script file: the page document URL itself (`/pro`,
- * `https://www.worldmonitor.app/pro`) or any http(s) resource served without a
- * recognized script extension.
+ * A marketing document frame: `/`, `/pro`, or an absolute URL on any production,
+ * preview, or custom host with one of those paths. Query strings, hashes, and a
+ * trailing slash do not change the document identity.
  *
  * WebKit attributes a MAIN-world injected script — in-app-browser chrome,
  * WKUserScript content scripts, bookmarklets — to the DOCUMENT URL rather than
@@ -192,9 +192,8 @@ const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
  * document URL too. So this is one necessary signal among several at the call
  * site, never the whole licence on its own.
  */
-const NON_SCRIPT_URL_FRAME = (filename: string) =>
-  !/\.(?:m|c)?[jt]sx?(?:[?#]|$)/.test(filename)
-  && (/^\/(?!\/)/.test(filename) || /^https?:\/\//.test(filename));
+const MARKETING_DOCUMENT_FRAME =
+  /^(?:https?:\/\/[^/?#]+)?\/(?:pro\/?)?(?:[?#]|$)/;
 
 /**
  * Safari's placeholder for a script it refuses to attribute to a real document
@@ -249,7 +248,8 @@ const JSON_RPC_RESERVED_MAX = -32000;
  * message text alone, with no access to frames).
  */
 export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
-  const msg = event.exception?.values?.[0]?.value ?? '';
+  const exceptionValues = event.exception?.values ?? [];
+  const msg = exceptionValues[0]?.value ?? '';
 
   // A message that is nothing but a 1-3 character identifier (`ga`, `Ba`) is an
   // injected in-app-browser/extension script rethrowing its own minified
@@ -260,7 +260,7 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // (WORLDMONITOR-ZZ, -ZW).
   if (msg.length <= 3 && BARE_SYMBOL_MESSAGE.test(msg)) return null;
 
-  const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
+  const frames = exceptionValues[0]?.stacktrace?.frames ?? [];
   const nonInfraFrames = frames.filter(
     (f) =>
       f.filename &&
@@ -325,7 +325,7 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // `TypeError`/`Error` families a first-party bug would raise, the empty stack
   // excludes every in-bundle `JSON.parse` (those carry the calling frame), and
   // `!hasFirstParty` excludes anything attributable to `/pro/assets/*.js`.
-  const excType = event.exception?.values?.[0]?.type ?? '';
+  const excType = exceptionValues[0]?.type ?? '';
   const action = event.tags?.action;
   if (!hasFirstParty
       && frames.length === 0
@@ -404,10 +404,11 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // have come from injected code. `tests/pro-sentry-filter-policy.test.mts`
   // pins that across all three file kinds, so the licence cannot rot.
   if ((excType === 'TypeError' || /^TypeError:/.test(msg))
+      && exceptionValues.length === 1
       && !hasFirstParty
       && /\bcontentWindow\b/.test(msg)
       && nonInfraFrames.length > 0
-      && nonInfraFrames.every((f) => NON_SCRIPT_URL_FRAME(f.filename ?? ''))) return null;
+      && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? ''))) return null;
 
   return event;
 }

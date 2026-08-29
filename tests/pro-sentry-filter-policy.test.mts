@@ -13,6 +13,50 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
+const MARKETING_INLINE_SCRIPT_FILES = [
+  'pro-test/welcome.html',
+  'pro-test/index.html',
+  'pro-test/prerender.mjs',
+] as const;
+
+let marketingSourceCache: { rel: string; code: string }[] | undefined;
+
+/**
+ * Every first-party source file the marketing bundle can execute.
+ *
+ * `pro-test/src` alone is NOT the bundle's boundary: `App.tsx` and `main.tsx`
+ * import leaf modules out of the repo-root `shared/` tree, and the HTML and
+ * prerender entrypoints contain inline scripts. The out-of-tree imports are
+ * resolved from the source so a new one is covered when it is added.
+ *
+ * Third-party package code is deliberately out of scope: `node_modules` is
+ * neither reviewable nor stable enough to assert on.
+ */
+function marketingFirstPartySources(): { rel: string; code: string }[] {
+  if (marketingSourceCache) return marketingSourceCache;
+
+  const seen = new Map<string, string>();
+  for (const f of readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })) {
+    if (!/\.(ts|tsx)$/.test(f)) continue;
+    const rel = `pro-test/src/${f}`;
+    seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+  }
+  // `from '../../shared/<mod>'` → `shared/<mod>.ts`. The shared modules in use
+  // today are import-free leaves, so one hop is the whole closure; the
+  // reachability test below keeps that assumption visible.
+  for (const code of [...seen.values()]) {
+    for (const m of code.matchAll(/from '\.\.\/\.\.\/(shared\/[\w./-]+)'/g)) {
+      const rel = `${m[1]}.ts`;
+      if (!seen.has(rel)) seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+    }
+  }
+  for (const rel of MARKETING_INLINE_SCRIPT_FILES) {
+    seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+  }
+
+  marketingSourceCache = [...seen].map(([rel, code]) => ({ rel, code }));
+  return marketingSourceCache;
+}
 
 /**
  * The marketing surface (`/` and `/pro`) runs its own `@sentry/react` client,
@@ -598,43 +642,6 @@ describe('marketing beforeSend — wallet JSON-RPC rejection (WORLDMONITOR-107)'
     }
   });
 
-  /**
-   * Every first-party source file the marketing bundle can execute.
-   *
-   * `pro-test/src` alone is NOT the bundle's boundary: `App.tsx` and `main.tsx`
-   * import leaf modules out of the repo-root `shared/` tree, so a scan stopping
-   * at `pro-test/src` stays green on JSON-RPC introduced there (greptile
-   * review, PR #7241). The out-of-tree imports are RESOLVED from the source
-   * rather than hardcoded, so a new one is covered the day it is added instead
-   * of silently widening the suppression it licenses.
-   *
-   * Third-party package code is deliberately out of scope: `node_modules` is
-   * neither reviewable nor stable enough to assert on, and the only SDK this
-   * surface loads is Clerk, which is REST. A dependency that both spoke
-   * JSON-RPC and rejected a reserved-range `{code}` into the page's
-   * `onunhandledrejection` would defeat the rule — an accepted, named limit of
-   * the tripwire rather than an oversight.
-   */
-  function marketingFirstPartySources(): { rel: string; code: string }[] {
-    const seen = new Map<string, string>();
-    for (const f of readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })) {
-      if (!/\.(ts|tsx)$/.test(f)) continue;
-      const rel = `pro-test/src/${f}`;
-      seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
-    }
-    // `from '../../shared/<mod>'` → `shared/<mod>.ts`. The shared modules in use
-    // today are import-free leaves, so one hop is the whole closure; one that
-    // grew imports of its own would need this widened, which is what the
-    // reachability test below exists to keep visible.
-    for (const code of [...seen.values()]) {
-      for (const m of code.matchAll(/from '\.\.\/\.\.\/(shared\/[\w./-]+)'/g)) {
-        const rel = `${m[1]}.ts`;
-        if (!seen.has(rel)) seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
-      }
-    }
-    return [...seen].map(([rel, code]) => ({ rel, code }));
-  }
-
   it('pins the marketing bundle as JSON-RPC-free, which is what licenses the rule', () => {
     // If a JSON-RPC client is ever added to this surface, the reserved-range
     // discriminator stops proving third-party origin and this suppression must
@@ -654,39 +661,22 @@ describe('marketing beforeSend — wallet JSON-RPC rejection (WORLDMONITOR-107)'
     const files = marketingFirstPartySources().map((f) => f.rel);
     assert.ok(files.length > 20, `walk must reach the real tree, got ${files.length} files`);
     assert.ok(files.includes('pro-test/src/App.tsx'), 'walk must include the app root');
+    for (const rel of MARKETING_INLINE_SCRIPT_FILES) {
+      assert.ok(files.includes(rel), `walk must include ${rel}`);
+    }
     const shared = files.filter((f) => f.startsWith('shared/'));
     assert.ok(shared.length >= 3,
       `walk must follow the out-of-tree imports, got ${JSON.stringify(shared)}`);
+    const nestedSharedImports = marketingFirstPartySources()
+      .filter((f) => f.rel.startsWith('shared/'))
+      .flatMap((f) => [...f.code.matchAll(/(?:import|export).*from ['"](\.[^'"]+)['"]/g)]
+        .map((match) => `${f.rel}: ${match[1]}`));
+    assert.deepEqual(nestedSharedImports, [],
+      'shared leaves gained relative imports; make the source inventory recursive');
   });
 });
 
-// ─── WORLDMONITOR-115: injected scripts attributed to the document URL ────────
-//
-// Instagram's in-app browser injects its own chrome into the page and its
-// script references a null iframe: `TypeError: null is not an object
-// (evaluating 'e.contentWindow.postMessage')`, on `https://www.worldmonitor.app/pro`,
-// browser tag `Instagram 435.1.0`, with breadcrumbs naming its own bridge
-// (`hxp-chat-suppression Sending message to native bridge` / `Message sent via
-// IAB unified bridge`).
-//
-// WebKit attributes a MAIN-world injected script to the DOCUMENT URL, not to a
-// distinct `.js` file — so every frame reads `/pro:1` / `/pro:37` with minified
-// names (`T`, `w`, `i`, `sendMessageToIFrames`). None of them is a
-// `/pro/assets/*.js` chunk, so `hasFirstParty` is already false; what was
-// missing is a rule that treats "all frames are non-script URLs" as positive
-// evidence of injection.
-//
-// The dashboard has carried exactly this rule since WORLDMONITOR-V8. Porting
-// the MECHANISM rather than the message is the point: this is the sixth
-// instance of the same dashboard-filters-it / marketing-does-not gap
-// (WORLDMONITOR-15, -102, -108, -10N, -10T, -107), and each previous fix added
-// one more string. A frame-shape rule retires the class.
-//
-// Safe here for a stronger reason than on the dashboard: `pro-test/src`
-// contains no `contentWindow` reference at all, so this bundle cannot touch an
-// iframe's content window — asserted below so the claim cannot rot.
 describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () => {
-  /** Verbatim frame shape from the production event. */
   const instagramFrames = [
     { filename: '/pro' },
     { filename: '/pro' },
@@ -709,9 +699,6 @@ describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () =
   });
 
   it('drops the same shape served from the absolute document URL', () => {
-    // WebKit sometimes reports the full URL rather than the path. The message
-    // still has to carry the contentWindow evidence — the frame shape alone is
-    // deliberately not enough on this surface.
     const abs = instagramFrames.map((f) =>
       f.filename === '/pro' ? { filename: 'https://www.worldmonitor.app/pro' } : f);
     assert.equal(
@@ -720,22 +707,60 @@ describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () =
     );
   });
 
+  it('drops the same shape on every marketing document route variant', () => {
+    for (const filename of [
+      '/',
+      '/?utm_source=test',
+      '/pro/',
+      '/pro#pricing',
+      'https://preview.example.com/',
+      'https://custom.example.com/pro/?utm_source=test#pricing',
+    ]) {
+      assert.equal(marketingBeforeSend(injected(
+        "null is not an object (evaluating 'e.contentWindow.postMessage')",
+        [{ filename }],
+      )), null, filename);
+    }
+  });
+
+  it('drops a TypeError-prefixed value when Sentry omits the exception type', () => {
+    const ev: PolicyEvent = {
+      exception: {
+        values: [{
+          value: "TypeError: null is not an object (evaluating 'e.contentWindow.postMessage')",
+          stacktrace: { frames: instagramFrames },
+        }],
+      },
+    };
+    assert.equal(marketingBeforeSend(ev), null);
+  });
+
   it('KEEPS the same message when a marketing bundle chunk is on the stack', () => {
-    // The load-bearing control. A real first-party TypeError rides
-    // /pro/assets/*.js and must still report — delete the hasFirstParty half of
-    // the rule and this goes red.
     const withOurs = [...instagramFrames, { filename: '/pro/assets/index-A1b2C3.js' }];
     assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'e.contentWindow.postMessage\')', withOurs)) !== null);
   });
 
+  it('KEEPS a linked event with a first-party parent exception', () => {
+    const ev: PolicyEvent = {
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            value: "null is not an object (evaluating 'e.contentWindow.postMessage')",
+            stacktrace: { frames: instagramFrames },
+          },
+          {
+            type: 'Error',
+            value: 'checkout failed',
+            stacktrace: { frames: [{ filename: '/pro/assets/index-A1b2C3.js' }] },
+          },
+        ],
+      },
+    };
+    assert.ok(marketingBeforeSend(ev) !== null);
+  });
+
   it('KEEPS a first-party inline-script TypeError on the same frames', () => {
-    // The control this rule most needs, and the one review caught missing.
-    // These pages ship executable INLINE script — welcome.html's WebMCP
-    // bootstrap and prerender.mjs's DEFERRED_STYLES_SCRIPT, whose
-    // `setTimeout(a, 3000)` arm runs long after Sentry initialises — and WebKit
-    // attributes those to the document URL exactly like an injected one. The
-    // first draft suppressed any TypeError with this frame shape and would have
-    // hidden them. `contentWindow` is what separates the two.
     for (const value of [
       "null is not an object (evaluating 'l.rel')",
       "undefined is not an object (evaluating 'MONITORS.world')",
@@ -749,47 +774,51 @@ describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () =
   });
 
   it('KEEPS a non-TypeError with the same frames', () => {
-    // Scoped to the family WebKit reports for injected-script faults; a
-    // first-party Error thrown from an inline handler is not covered.
     const ev: PolicyEvent = {
-      exception: { values: [{ type: 'Error', value: 'checkout failed', stacktrace: { frames: instagramFrames } }] },
+      exception: {
+        values: [{
+          type: 'Error',
+          value: "null is not an object (evaluating 'e.contentWindow.postMessage')",
+          stacktrace: { frames: instagramFrames },
+        }],
+      },
     };
     assert.ok(marketingBeforeSend(ev) !== null);
   });
 
   it('KEEPS a TypeError whose frames are real script files', () => {
-    // Absence of a `.js` frame is the evidence; a stack full of them is not
-    // injection, wherever it came from.
     const scripts = [{ filename: 'https://cdn.example.com/widget.js' }, { filename: '/pro/assets/x-Ab12Cd.js' }];
-    assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'x.y\')', scripts)) !== null);
+    assert.ok(marketingBeforeSend(injected(
+      "null is not an object (evaluating 'e.contentWindow.postMessage')",
+      scripts,
+    )) !== null);
+  });
+
+  it('KEEPS the same message on extensionless non-document script URLs', () => {
+    for (const filename of ['/widget', 'https://cdn.example.com/widget']) {
+      assert.ok(marketingBeforeSend(injected(
+        "null is not an object (evaluating 'e.contentWindow.postMessage')",
+        [{ filename }],
+      )) !== null, filename);
+    }
   });
 
   it('KEEPS a TypeError with no frames at all', () => {
-    // Zero frames is not "all frames are non-script URLs". Other rules own the
-    // frameless cases; this one must not quietly widen to them.
-    assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'a.b\')', [])) !== null);
+    assert.ok(marketingBeforeSend(injected(
+      "null is not an object (evaluating 'e.contentWindow.postMessage')",
+      [],
+    )) !== null);
   });
 
   it('pins the whole surface as contentWindow-free, inline scripts included', () => {
-    // Review caught that scanning `pro-test/src` alone is not the surface: the
-    // executable inline scripts live in welcome.html and prerender.mjs, and a
-    // scan that skips them cannot license a rule about first-party code.
-    const sources = [
-      ...readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })
-        .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('sentry-filter-policy'))
-        .map((f) => `pro-test/src/${f}`),
-      'pro-test/welcome.html',
-      'pro-test/index.html',
-      'pro-test/prerender.mjs',
-    ];
-    const offenders = sources.filter((rel) => /contentWindow/.test(readFileSync(resolve(root, rel), 'utf-8')));
+    const sources = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'));
+    const offenders = sources.filter((f) => /contentWindow/.test(f.code)).map((f) => f.rel);
     assert.deepEqual(offenders, [],
       'the marketing surface now touches an iframe contentWindow — re-derive the WORLDMONITOR-115 rule');
 
-    // The scan must actually reach the inline-script files, or the assertion
-    // above passes for the wrong reason.
     for (const rel of ['pro-test/welcome.html', 'pro-test/prerender.mjs']) {
-      const body = readFileSync(resolve(root, rel), 'utf-8');
+      const body = sources.find((f) => f.rel === rel)?.code ?? '';
       assert.ok(body.length > 500, `${rel} did not resolve`);
       assert.match(body, /<script|SCRIPT =/, `${rel} is expected to carry inline script`);
     }
