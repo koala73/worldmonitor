@@ -18,9 +18,8 @@
 //     allowed origin → browsers reject as mismatched).
 //   - Worker bypassed entirely (Vercel fallback served instead — would still
 //     pass on healthy days but blow up if/when the Worker is re-enabled).
-//   - The public bootstrap tier served with the credentialed header shape
-//     (#7308) — the origin's own guard cannot see this, because the bytes are
-//     minted at the edge and never pass through api/bootstrap.js.
+//   - Public bootstrap URLs served with the credentialed header shape at the
+//     edge (#7308, #7311), which the origin's own guard cannot see.
 //
 // This test deliberately mirrors what a real browser does for CORS preflight,
 // so a failure here is a strong signal of a real user-facing outage.
