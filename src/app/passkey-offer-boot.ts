@@ -2,9 +2,9 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import { subscribeAuthState } from '@/services/auth-state';
 import { getClerk } from '@/services/clerk';
 import {
+  accountOfferCapReached,
   createOfferMemory,
   derivePasskeyAccountKey,
-  hasAccountOfferRecord,
   hasBeenOffered,
   type OfferMemory,
   type OfferStorage,
@@ -34,11 +34,10 @@ export interface BootDecisionInput {
   accountKey: string | null;
   /** An authoritative signed-out state was seen earlier this page life. */
   armed: boolean;
-  existingPasskeyCount: number;
-  /** Durable, account-scoped, server-backed. */
-  offeredOnAccount: boolean;
-  /** Local, origin-scoped, best effort. */
+  /** Offered on THIS device before. Local, origin-scoped, best effort. */
   offeredLocally: boolean;
+  /** Lifetime account cap spent. Durable, server-backed, the nag backstop. */
+  capReached: boolean;
 }
 
 /**
@@ -52,9 +51,8 @@ export interface BootDecisionInput {
 export type BootDecision =
   | 'clerk-absent'
   | 'signed-out-observed'
-  | 'already-has-passkey'
-  | 'already-offered-account'
   | 'already-offered'
+  | 'offer-cap-reached'
   | 'load-sign-in'
   | 'load-returning-session';
 
@@ -66,24 +64,25 @@ export function decisionLoads(decision: BootDecision): boolean {
 /**
  * Decide from injected facts alone.
  *
- * Ordering is behavioural. Every suppression runs BEFORE either load branch, so
- * a user who already has a passkey, or who has already been asked on any
- * device, never pays for the dynamic import. That is what keeps the first-paint
- * saving intact now that returning sessions are eligible: the chunk is fetched
- * only for someone who is actually about to be offered.
+ * Ordering is behavioural. Both suppressions run BEFORE either load branch, so
+ * someone who will not be offered never pays for the dynamic import. That keeps
+ * the first-paint saving intact even though returning sessions are eligible.
  *
- * The durable check precedes the local one because it is the authoritative
- * answer; the local tiers exist to answer the same question without a network
- * round trip, not to overrule it.
+ * The device record is checked before the cap because it is the primary
+ * suppression and the common answer; the cap is the backstop for a browser that
+ * cannot keep a device record at all.
+ *
+ * Note what is NOT here: the account's passkey count. An account-wide count
+ * says nothing about whether a credential is usable on THIS browser, and gating
+ * on it left people with a Mac passkey unable to be offered one on Windows.
  */
 export function decideBootAction(input: BootDecisionInput): BootDecision {
   // A user-null reading while the SDK is absent proves nothing about whether
   // anyone is signed in, so it must not arm.
   if (!input.clerkLoaded) return 'clerk-absent';
   if (input.accountKey === null) return 'signed-out-observed';
-  if (input.existingPasskeyCount > 0) return 'already-has-passkey';
-  if (input.offeredOnAccount) return 'already-offered-account';
   if (input.offeredLocally) return 'already-offered';
+  if (input.capReached) return 'offer-cap-reached';
   return input.armed ? 'load-sign-in' : 'load-returning-session';
 }
 
@@ -91,16 +90,9 @@ export function decideBootAction(input: BootDecisionInput): BootDecision {
 // The shim
 // ---------------------------------------------------------------------------
 
-/**
- * A Clerk user, read through the narrow slice this shim needs.
- *
- * Deliberately NOT `countPasskeys` from `@/services/passkeys`: importing that
- * module here would drag the whole passkey service back into the eager chunk
- * and undo the split this file exists to create.
- */
+/** A Clerk user, read through the narrow slice this shim needs. */
 type ShimUser = {
   id?: string;
-  passkeys?: unknown;
   unsafeMetadata?: Record<string, unknown> | null;
 } | null;
 
@@ -139,17 +131,15 @@ export class PasskeyOfferBoot implements AppModule {
     if (this.real || this.loading || this.destroyed) return;
     const user = (getClerk() as { user?: ShimUser } | null)?.user ?? null;
     const accountKey = derivePasskeyAccountKey(user?.id ?? null);
-    const passkeys = user?.passkeys;
 
     const decision = decideBootAction({
       clerkLoaded: getClerk() !== null,
       accountKey,
       armed: this.armed,
-      existingPasskeyCount: Array.isArray(passkeys) ? passkeys.length : 0,
-      offeredOnAccount: hasAccountOfferRecord(user),
       // NOT gated on a non-null handle: when localStorage throws on access
       // `storage` is null, and gating here would discard the in-memory tier.
       offeredLocally: hasBeenOffered(this.storage, this.memory, accountKey),
+      capReached: accountOfferCapReached(user),
     });
 
     recordPasskeyOfferReason(decision);

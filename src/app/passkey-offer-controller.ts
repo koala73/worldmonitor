@@ -11,9 +11,9 @@ import { subscribeAuthState } from '@/services/auth-state';
 import { getClerk } from '@/services/clerk';
 import {
   type AccountOfferWriter,
+  accountOfferCapReached,
   createOfferMemory,
   derivePasskeyAccountKey,
-  hasAccountOfferRecord,
   hasBeenOffered,
   type OfferMemory,
   type OfferStorage,
@@ -23,7 +23,6 @@ import {
   shouldOfferPasskey,
 } from '@/services/passkey-offer-state';
 import {
-  countPasskeys,
   createPasskey,
   hasPlatformAuthenticator,
   isPasskeyEnvironmentEligible,
@@ -82,8 +81,10 @@ export interface PasskeyEvaluationDeps {
   armed: () => boolean;
   readEnvironment: () => { isDesktopApp: boolean; inIframe: boolean; hasPublicKeyCredential: boolean };
   readIdentity: () => PasskeyIdentity;
-  passkeyCount: () => number;
+  /** Offered on THIS device before. */
   alreadyOffered: (accountKey: string | null) => boolean;
+  /** Lifetime account cap spent. */
+  capReached: () => boolean;
   /** Async, and deliberately last among the capability checks. */
   platformAuthenticator: () => Promise<boolean>;
   blockedByOverlay: () => boolean;
@@ -100,8 +101,8 @@ export type PasskeyEvaluationResult =
   | 'not-armed'
   | 'not-ready'
   | 'ineligible-environment'
-  | 'already-has-passkey'
   | 'already-offered'
+  | 'offer-cap-reached'
   | 'no-platform-authenticator'
   | 'blocked-by-overlay'
   | 'superseded';
@@ -127,14 +128,14 @@ export async function evaluatePasskeyOffer(deps: PasskeyEvaluationDeps): Promise
   const env = deps.readEnvironment();
   if (!isPasskeyEnvironmentEligible(env)) return 'ineligible-environment';
 
-  const passkeyCount = deps.passkeyCount();
+  const offeredHere = deps.alreadyOffered(identity.accountKey);
   if (!shouldOfferPasskey({
     environmentEligible: true,
     sessionReady: true,
-    existingPasskeyCount: passkeyCount,
-    alreadyOffered: deps.alreadyOffered(identity.accountKey),
+    alreadyOffered: offeredHere,
+    capReached: deps.capReached(),
   })) {
-    return passkeyCount > 0 ? 'already-has-passkey' : 'already-offered';
+    return offeredHere ? 'already-offered' : 'offer-cap-reached';
   }
 
   // Overlay check BEFORE the frame defer, and again after — an overlay can open
@@ -287,16 +288,13 @@ export class PasskeyOfferController implements AppModule {
       armed: () => this.armed,
       readEnvironment: () => readPasskeyEnvironmentFacts(this.ctx.isDesktopApp),
       readIdentity: () => this.readIdentity(),
-      passkeyCount: () => countPasskeys(getClerk()?.user as { passkeys?: unknown } | null),
-      // All three tiers. The durable one is checked here as well as in the boot
-      // shim because the controller can be constructed directly, and because a
-      // sibling device may have written it after this page loaded.
       // NOT gated on a non-null handle: when localStorage throws on access
       // `storage` is null, and gating here would discard the in-memory tier
       // that is the entire fallback (KTD3d).
-      alreadyOffered: (key) =>
-        hasAccountOfferRecord(getClerk()?.user as AccountOfferWriter | null)
-        || hasBeenOffered(this.storage, this.memory, key),
+      alreadyOffered: (key) => hasBeenOffered(this.storage, this.memory, key),
+      // Re-read at evaluation time rather than at construction: a sibling
+      // device may have spent the cap after this page loaded.
+      capReached: () => accountOfferCapReached(getClerk()?.user as AccountOfferWriter | null),
       platformAuthenticator: () => hasPlatformAuthenticator(),
       blockedByOverlay: () => this.blockedByOverlay(),
       deferFrame: () => new Promise<void>((resolve) => this.scheduleFrame(() => resolve())),

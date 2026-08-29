@@ -41,8 +41,8 @@ function deps(overrides: Partial<PasskeyEvaluationDeps> = {}) {
     armed: () => true,
     readEnvironment: () => ({ isDesktopApp: false, inIframe: false, hasPublicKeyCredential: true }),
     readIdentity: () => READY,
-    passkeyCount: () => 0,
     alreadyOffered: () => false,
+    capReached: () => false,
     platformAuthenticator: probe,
     blockedByOverlay: () => false,
     deferFrame: async () => {},
@@ -120,11 +120,31 @@ describe('evaluatePasskeyOffer — capability gates', () => {
     expect(probe).not.toHaveBeenCalled();
   });
 
-  it('does not mount when the account already has a passkey (AE4)', async () => {
-    const { d, mount, probe } = deps({ passkeyCount: () => 1 });
-    expect(await evaluatePasskeyOffer(d)).toBe('already-has-passkey');
+  it('DOES mount on a new device even though the account has a passkey', async () => {
+    // AE4 reversed deliberately. A platform passkey lives in one authenticator:
+    // Touch ID on a Mac syncs to that person's Apple devices and nowhere else.
+    // The old account-wide passkey gate meant a Mac passkey blocked the offer
+    // on Windows, where no usable credential exists. The per-device record is
+    // now the only suppression, so this evaluation must reach a mount.
+    const { d, mount } = deps({ alreadyOffered: () => false, capReached: () => false });
+    expect(await evaluatePasskeyOffer(d)).toBe('mounted');
+    expect(mount).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mount once the lifetime account cap is spent', async () => {
+    // The backstop for a browser that cannot keep a device record at all and
+    // would otherwise be prompted on every single page load.
+    const { d, mount, probe } = deps({ capReached: () => true });
+    expect(await evaluatePasskeyOffer(d)).toBe('offer-cap-reached');
     expect(probe).not.toHaveBeenCalled();
     expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('reports the DEVICE record ahead of the cap when both would suppress', async () => {
+    // Diagnosis depends on telling these apart: one means "asked here before",
+    // the other means "asked too many times overall".
+    const { d } = deps({ alreadyOffered: () => true, capReached: () => true });
+    expect(await evaluatePasskeyOffer(d)).toBe('already-offered');
   });
 
   it('does not mount when the ledger already holds this account (AE6)', async () => {

@@ -20,12 +20,15 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  ACCOUNT_OFFER_METADATA_KEY,
+  ACCOUNT_OFFER_CAP,
+  ACCOUNT_OFFER_COUNT_KEY,
+  accountOfferCapReached,
   createOfferMemory,
   derivePasskeyAccountKey,
-  hasAccountOfferRecord,
   hasBeenOffered,
+  LEGACY_ACCOUNT_OFFER_KEY,
   passkeyOfferStorageKey,
+  readAccountOfferCount,
   recordAccountOffer,
   recordOffered,
   shouldOfferPasskey,
@@ -190,16 +193,12 @@ describe('shouldOfferPasskey', () => {
   const OFFERABLE = {
     environmentEligible: true,
     sessionReady: true,
-    existingPasskeyCount: 0,
     alreadyOffered: false,
+    capReached: false,
   };
 
-  it('offers when the environment is eligible, no passkey exists, and no record (AE1)', () => {
+  it('offers when the environment is eligible and nothing suppresses (AE1)', () => {
     assert.equal(shouldOfferPasskey(OFFERABLE), true);
-  });
-
-  it('does not offer when the account already has a passkey (AE4)', () => {
-    assert.equal(shouldOfferPasskey({ ...OFFERABLE, existingPasskeyCount: 1 }), false);
   });
 
   it('does not offer when the environment is ineligible, whatever else is true', () => {
@@ -210,23 +209,75 @@ describe('shouldOfferPasskey', () => {
     assert.equal(shouldOfferPasskey({ ...OFFERABLE, sessionReady: false }), false);
   });
 
-  it('does not offer when a ledger record exists, even with zero passkeys (AE6)', () => {
+  it('does not offer when this DEVICE already holds a record (AE6)', () => {
     assert.equal(shouldOfferPasskey({ ...OFFERABLE, alreadyOffered: true }), false);
+  });
+
+  it('does not offer once the lifetime account cap is spent', () => {
+    assert.equal(shouldOfferPasskey({ ...OFFERABLE, capReached: true }), false);
+  });
+
+  it('takes NO account-wide passkey count, which is the multi-device fix', () => {
+    // AE4 deliberately gone. A platform passkey lives in one authenticator, so
+    // an account-wide count cannot answer "is a credential usable on THIS
+    // browser". Gating on it left a Mac passkey suppressing the offer on
+    // Windows. If a count field is ever reintroduced here, this fails.
+    assert.equal(Object.hasOwn(OFFERABLE, 'existingPasskeyCount'), false);
+    assert.equal(shouldOfferPasskey(OFFERABLE), true);
   });
 });
 
-describe('the durable account tier', () => {
-  it('reads a record written on any device', () => {
-    assert.equal(hasAccountOfferRecord({ unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 1 } }), true);
+describe('the durable account cap', () => {
+  it('reads the count written on any device', () => {
+    assert.equal(readAccountOfferCount({ unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: 2 } }), 2);
   });
 
-  it('treats a missing, null, or non-numeric value as not offered', () => {
-    assert.equal(hasAccountOfferRecord(null), false);
-    assert.equal(hasAccountOfferRecord({}), false);
-    assert.equal(hasAccountOfferRecord({ unsafeMetadata: null }), false);
-    assert.equal(hasAccountOfferRecord({ unsafeMetadata: {} }), false);
-    assert.equal(hasAccountOfferRecord({ unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 'yes' } }), false);
-    assert.equal(hasAccountOfferRecord({ unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 0 } }), false);
+  it('treats a missing, null, or non-numeric value as zero', () => {
+    assert.equal(readAccountOfferCount(null), 0);
+    assert.equal(readAccountOfferCount({}), 0);
+    assert.equal(readAccountOfferCount({ unsafeMetadata: null }), 0);
+    assert.equal(readAccountOfferCount({ unsafeMetadata: {} }), 0);
+    assert.equal(readAccountOfferCount({ unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: 'two' } }), 0);
+    assert.equal(readAccountOfferCount({ unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: -1 } }), 0);
+  });
+
+  it('MIGRATES the legacy single-shot record as one offer, not zero', () => {
+    // Anyone suppressed under the old "once per account, ever" policy must not
+    // restart from zero and collect a fresh run of prompts.
+    const legacy = { unsafeMetadata: { [LEGACY_ACCOUNT_OFFER_KEY]: 1_700_000_000_000 } };
+    assert.equal(readAccountOfferCount(legacy), 1);
+    assert.equal(accountOfferCapReached(legacy), false);
+  });
+
+  it('prefers a real count over the legacy record', () => {
+    const both = {
+      unsafeMetadata: {
+        [LEGACY_ACCOUNT_OFFER_KEY]: 1_700_000_000_000,
+        [ACCOUNT_OFFER_COUNT_KEY]: 3,
+      },
+    };
+    assert.equal(readAccountOfferCount(both), 3);
+  });
+
+  it('reports the cap reached only AT the cap, not below it', () => {
+    const at = (n: number) => ({ unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: n } });
+    assert.equal(accountOfferCapReached(at(ACCOUNT_OFFER_CAP - 1)), false);
+    assert.equal(accountOfferCapReached(at(ACCOUNT_OFFER_CAP)), true);
+    assert.equal(accountOfferCapReached(at(ACCOUNT_OFFER_CAP + 1)), true);
+  });
+
+  it('INCREMENTS rather than overwriting, so the cap can be reached', () => {
+    // A write that set a constant would leave the cap permanently one away and
+    // the storage-disabled browser nagging forever.
+    let patch: Record<string, unknown> | null = null;
+    const user = {
+      unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: 1 },
+      update: async (params: { unsafeMetadata: Record<string, unknown> }) => { patch = params.unsafeMetadata; },
+    };
+    return recordAccountOffer(user).then((ok) => {
+      assert.equal(ok, true);
+      assert.equal(patch![ACCOUNT_OFFER_COUNT_KEY], 2);
+    });
   });
 
   it('PRESERVES every other unsafeMetadata key when writing', async () => {
@@ -244,12 +295,12 @@ describe('the durable account tier', () => {
     assert.equal(await recordAccountOffer(user), true);
     assert.equal(patch!.theme, 'dark');
     assert.equal(patch!.onboardingStep, 3);
-    assert.equal(typeof patch![ACCOUNT_OFFER_METADATA_KEY], 'number');
+    assert.equal(patch![ACCOUNT_OFFER_COUNT_KEY], 1);
   });
 
   it('resolves false rather than throwing when the write rejects', async () => {
     // This runs at mount. A rejected metadata write must not break a prompt
-    // that is already on screen; the local tiers still suppress the repeat.
+    // that is already on screen; the device record still suppresses the repeat.
     const user = {
       unsafeMetadata: {},
       update: async () => { throw new Error('network'); },
@@ -260,15 +311,5 @@ describe('the durable account tier', () => {
   it('resolves false when there is no user or no update method', async () => {
     assert.equal(await recordAccountOffer(null), false);
     assert.equal(await recordAccountOffer({ unsafeMetadata: {} }), false);
-  });
-
-  it('does not re-write a record that already exists', async () => {
-    let calls = 0;
-    const user = {
-      unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 42 },
-      update: async () => { calls += 1; },
-    };
-    assert.equal(await recordAccountOffer(user), true);
-    assert.equal(calls, 0);
   });
 });
