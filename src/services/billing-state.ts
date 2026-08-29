@@ -87,6 +87,12 @@ export function isSubscriptionCoveringAt(
  * `unknown` is the explicit escape for a provider status this client does not
  * model yet. It exists so a new Dodo status cannot be swallowed into the
  * end-of-coverage tone and assert to an entitled user that their plan is dead.
+ *
+ * The `default` arm is a RUNTIME escape only. Left bare it would also silence
+ * the compiler: widening the status union (convex/schema.ts keeps it to these
+ * four) would then typecheck clean and ship as a permanently unexplained grey
+ * card. The `never` assignment keeps the runtime fallback while making that
+ * widening a build error, so a new status has to be given a tone deliberately.
  */
 export function getSubscriptionStatusTone(
   sub: Pick<BillingSubscriptionSnapshot, 'status' | 'currentPeriodEnd'>,
@@ -101,8 +107,11 @@ export function getSubscriptionStatusTone(
       return isSubscriptionCoveringAt(sub, at) ? 'ending' : 'ended';
     case 'expired':
       return 'ended';
-    default:
+    default: {
+      const unhandled: never = sub.status;
+      void unhandled;
       return 'unknown';
+    }
   }
 }
 

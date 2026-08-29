@@ -127,20 +127,28 @@ type AccountRequest = { userId: string; generation: number };
  * neutral grey, not red: we are inside the isEntitled() branch, so claiming a
  * problem we have not established would repeat the bug in a new colour.
  *
- * The hues match the threat-scale values in main.css (--threat-low,
- * --threat-medium, --threat-info, --threat-critical), so `ending` lands on the
- * palette's existing "informational" rung rather than inventing a colour.
+ * Three of these are threat-scale hexes from main.css (--threat-low,
+ * --threat-medium, --threat-critical); `ending` borrows --threat-info, and
+ * `unknown` is not on that scale at all — the scale has no grey rung.
  *
  * They stay literals because this card has always inlined hexes: green, yellow
  * and red were already hardcoded here, and `ending`/`unknown` follow that same
  * pattern rather than introducing a second convention mid-card. The cost is
- * that none of them pick up the [data-theme="light"] contrast overrides — so
- * on light theme this accent runs well under AA (green ~2.3:1, blue ~3.7:1).
- * Switching to var(--threat-*) would NOT fully fix that: main.css only
- * light-corrects --threat-low/-medium/-high, not --threat-info. Doing this
- * properly means light-safe values for every tone plus a light-theme render
- * test, which is its own change — see the follow-up on #7315. The status
- * sentence itself is unaffected; it uses the theme-aware var(--text-dim).
+ * that none of them pick up the [data-theme="light"] overrides, and all five
+ * are under the AA 4.5:1 floor on the light background for the 13px-bold plan
+ * name (measured with src/utils/contrast.ts against --bg #f8f9fa): #22c55e
+ * 2.16, #eab308 1.82, #3b82f6 3.49, #ef4444 3.57, #9ca3af 2.41. The first two
+ * are the very numbers main.css records next to its light overrides, so this
+ * is a bypass of a correction the team already made, not an unnoticed gap.
+ *
+ * Moving to var(--threat-*) is NOT sufficient on its own: the light block
+ * overrides only --threat-high/-medium/-low, so --threat-info and
+ * --threat-critical resolve to the same failing hexes in both themes and the
+ * fix would look landed while `ending` and `ended` still failed. Closing this
+ * needs light overrides for those two tokens (compare --defcon-4 #0284c7, the
+ * sky-600 the light theme already uses for blue) plus a light-safe grey, and a
+ * light-theme render test — its own change, see the follow-up on #7315.
+ * The status sentence is unaffected; it uses the theme-aware var(--text-dim).
  */
 const BILLING_TONE_COLORS: Record<BillingStatusTone, string> = {
   active: '#22c55e',
