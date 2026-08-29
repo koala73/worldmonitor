@@ -10,6 +10,7 @@ import {
   normalizeCatalogVariant,
   type MapLayerCatalogSnapshot,
 } from '@/services/webmcp-map-layer-catalog';
+import type { MapLayerRuntimeAvailability } from '@/services/map-layer-runtime-availability';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
 import type { RendererKind } from '@/config/map-layer-definitions';
 
@@ -84,6 +85,7 @@ export function getWebMcpMapLayerCatalogSnapshot(
   variant: string,
   hasPremium: boolean,
   tFn?: (key: string) => string,
+  runtimeAvailability?: MapLayerRuntimeAvailability,
 ): MapLayerCatalogSnapshot {
   if (ctx.isDestroyed) {
     throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
@@ -103,6 +105,7 @@ export function getWebMcpMapLayerCatalogSnapshot(
       .filter(([, enabled]) => enabled === true)
       .map(([layer]) => layer),
     liveLayerKeys: Object.keys(ctx.mapLayers),
+    ...(runtimeAvailability ? { runtimeAvailability } : {}),
     hasPremium,
     deckGlActive: Boolean(ctx.map.isDeckGLActive?.()),
     ...(tFn ? { tFn } : {}),
