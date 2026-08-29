@@ -129,7 +129,10 @@ jobs:
           # source and fails if this list stops covering it.
           if git diff --name-only "$BEFORE" "$AFTER" -- \
               'convex/' \
-              'shared/' \
+              'shared/mcp-attribution.ts' \
+              'shared/company-monitoring-contract.ts' \
+              'shared/company-monitoring-evidence.ts' \
+              'shared/legal.ts' \
               'scripts/lib/company-monitoring-classification.mjs' \
               'src/utils/country-codes.ts' | grep -q .; then
             echo "convex=true" >> "$GITHUB_OUTPUT"

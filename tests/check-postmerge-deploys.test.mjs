@@ -1221,9 +1221,14 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     walk(convexDir);
     assert.ok(escaping.size > 0, 'the deriver must actually find the known cross-boundary imports');
 
-    const covered = (target) => CONVEX.skipProofPaths.some(
-      (p) => (p.endsWith('/') ? target.startsWith(p) : target === p || target.startsWith(`${p}.`)),
-    );
+    // Import specifiers usually omit the extension (`shared/mcp-attribution`)
+    // while the pathspec must name the real file (`shared/mcp-attribution.ts`),
+    // so match in both directions as well as by directory prefix.
+    const covered = (target) => CONVEX.skipProofPaths.some((p) => (
+      p.endsWith('/')
+        ? target.startsWith(p)
+        : target === p || p.startsWith(`${target}.`) || target.startsWith(`${p}.`)
+    ));
     const uncovered = [...escaping].filter((target) => !covered(target));
     assert.deepEqual(
       uncovered,

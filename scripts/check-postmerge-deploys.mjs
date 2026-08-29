@@ -65,9 +65,19 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // silent-staleness class as #7359, through a different door. Pinned by
     // 'the convex skip proof covers every path the bundle is built from', which
     // derives the real list from the source rather than trusting this copy.
+    // Listed file-by-file rather than as whole directories on purpose: `shared/`
+    // holds plenty the bundle never sees (manifests, frontend-only helpers), and
+    // a directory filter would deploy production on every unrelated touch —
+    // adding deploy churn to the very monitor this exists to keep quiet. The
+    // derived test is what makes that precision safe: a NEW cross-boundary
+    // import fails CI until it is added here, which is exactly the moment to
+    // think about it.
     skipProofPaths: Object.freeze([
       'convex/',
-      'shared/',
+      'shared/mcp-attribution.ts',
+      'shared/company-monitoring-contract.ts',
+      'shared/company-monitoring-evidence.ts',
+      'shared/legal.ts',
       'scripts/lib/company-monitoring-classification.mjs',
       'src/utils/country-codes.ts',
     ]),
