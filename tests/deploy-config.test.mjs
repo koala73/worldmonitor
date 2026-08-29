@@ -1884,6 +1884,21 @@ describe('security header guardrails', () => {
     assert.match(webMcpCancellationE2eSource, /window\.addEventListener\('unhandledrejection'/);
     assert.match(webMcpCancellationE2eSource, /lateLeakWindowMs/);
     assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
+    assert.match(
+      webMcpE2eSource,
+      /const unconfiguredLocalFixture =\s*!productionSmoke && accessSnapshot\.clerk === 'unavailable'/,
+      'clerk_unavailable is only valid on the local unconfigured Clerk fixture',
+    );
+    assert.match(
+      webMcpE2eSource,
+      /production smoke must open the real Clerk sign-in modal/,
+      'production WebMCP smoke must require the real Clerk modal',
+    );
+    assert.match(
+      webMcpE2eSource,
+      /signIn: \{ tool: 'open_sign_in'/,
+      'production smoke must attach open_sign_in modal evidence',
+    );
     assert.match(webMcpE2eSource, /testInfo\.outputPath\(name\)/);
     assert.match(webMcpE2eSource, /writeFile\(path/);
     assert.match(webMcpE2eSource, /testInfo\.attach\(name, \{ path/);

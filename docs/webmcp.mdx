@@ -50,7 +50,7 @@ For discovery and read-only dashboard tools, use Chrome 149 or newer:
 1. Open `chrome://flags/#enable-webmcp-testing`.
 2. Set **WebMCP for testing** to **Enabled**.
 3. Relaunch Chrome completely.
-4. Start WorldMonitor locally. Open `/dashboard` for the eight-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
+4. Start WorldMonitor locally. Open `/dashboard` for the ten-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
 5. Confirm feature detection in DevTools:
 
 ```js
@@ -99,7 +99,7 @@ The static `https://www.worldmonitor.app/` welcome page registers two imperative
 
 ### Dashboard imperative tools
 
-Every dashboard variant registers the same eight imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
+Every dashboard variant registers the same ten imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
 
 On a browser that omits the target-side invocation signal, the reversible view-state tools still run: because such a browser cannot cancel them, an invocation you abort still completes and its visible dashboard change still lands. `openCountryBrief` and `set_map_layers` reject as unavailable there instead. `open_search_result` still runs a view-state result (for example opening an already-enabled live-webcam panel) and rejects a persistent, quota-consuming, or external-navigation result, including a panel tab deep-link that writes settings. The country tool can consume daily LLM allowance after caller cancellation, while layer writes persist selection beyond the session. See [Availability](#availability).
 
@@ -113,6 +113,8 @@ On a browser that omits the target-side invocation signal, the reversible view-s
 | `set_map_layers` | Required object `layers` with 1–10 boolean entries. Keys are 1–30 characters and match `^[a-z][A-Za-z0-9_-]*$`; no additional top-level properties. | Enables or disables allowed visible layers and returns a per-layer outcome. |
 | `search_dashboard` | Required string `query`, 1–160 characters. Optional `scope`: `all`, `signals`, `map`, `panels`, or `actions` (default `all`). Optional integer `limit`: 1–10 (default 8). No additional properties. | Read-only bounded search of current country, signal, map, panel, finance, and action indexes. Returned content is marked untrusted. |
 | `open_search_result` | Required string `resultKey`, pattern `^sr_[a-f0-9]{32}$`; no additional properties. | Opens one result previously returned on this page after rechecking availability, compatibility, auth, entitlement, and the result's bound effect class. |
+| `get_access_context` | Empty object; no additional properties. | Read-only snapshot of whether this tab is signed out, still loading account state, or signed in, plus product tier, capability flags, panel and dashboard-tab limits, and whether the host can cancel tools. Contains no names, emails, account IDs, tokens, or session details. |
+| `open_sign_in` | Empty object; no additional properties. | Opens the existing Clerk sign-in dialog. Does not accept credentials, one-time codes, or provider choices. Returns a stable reason when Clerk is unavailable or the dialog is already open. |
 
 `search_dashboard` returns concise descriptors rather than raw hidden dashboard state. Its opaque result keys are one-use, expire after two minutes, are bounded to the most recent 64 entries, and are invalidated when relevant runtime, authentication, entitlement, variant, or widget access changes. A stale or invalid key is denied instead of being treated as a URL or command. `executable` is true only when the live dashboard can run the result *and* the host signal on that `search_dashboard` call can satisfy the bound effect's cancellation requirement. `open_search_result` re-checks the host signal on the open call, so a later open without a target-side `AbortSignal` is still denied for persistent, quota-consuming, and external-navigation results. The effect class is bound to the opaque token at issuance; callers cannot supply or downgrade it.
 
@@ -140,6 +142,8 @@ Discover the inventory only after the page has finished registering tools. Then 
 | Disable a currently enabled map layer | `get_dashboard_context` → `set_map_layers` | `get_dashboard_context` returns only enabled layer IDs. Pass one of those exact IDs to `set_map_layers`, and inspect every target result because one request can apply allowed layers and deny other layers. |
 | Find and enable a disabled map layer | `search_dashboard` with `scope: "map"` → present the exact result → `open_search_result` | Use the exact one-use `resultKey` returned by search. Use `set_map_layers` only when the person or trusted current state supplied the exact layer ID; never guess an ID. |
 | Open a country brief | `openCountryBrief` | Use an uppercase ISO alpha-2 code. This path can consume the signed-in person's daily LLM allowance and is unavailable when the browser cannot deliver target-side cancellation. |
+| Identify whether this tab is signed out, loading, or signed in | `get_access_context` | Use `accountState`, `clerk`, `productTier`, capability flags, and limits. The result never includes names, emails, account IDs, tokens, or session details. |
+| Open the existing sign-in dialog | `get_access_context` → `open_sign_in` when `accountState` is `signed_out` and `clerk` is not `unavailable` | `open_sign_in` never accepts credentials, one-time codes, or provider choices. If Clerk is unavailable or already open, use the returned reason. Do not collect a password or OTP through WebMCP. |
 | Search procurement | `get_dashboard_context` → open the enabled Global Procurement panel, or ask the person to enable it → discover `search_procurement` → invoke it | `open_dashboard_panel` cannot enable a disabled panel. The declarative tool exists only while the entitled form is connected, visible, data-ready, and idle. Its disappearance is a state change, not a registration failure. |
 
 Do not guess panel IDs, layer IDs, result keys, entitlements, or hidden data. Read the current page state, invoke one bounded action, inspect its result and visible effect, then continue.
@@ -175,6 +179,7 @@ WorldMonitor follows the browser's origin-isolated, same-origin model:
 - WorldMonitor does not grant WebMCP access to another origin with `fromOrigins`, `exposedTo`, or an iframe `allow="tools"` delegation.
 - `/embed` and `/embed.html` explicitly send `tools=()`. An embedded WorldMonitor panel must expose no WebMCP tools, even when its parent page has WebMCP access.
 - WebMCP uses the person's existing browser session. It does not accept a new API key through tool arguments or weaken panel and data entitlements.
+- `get_access_context` reports only account state, product tier, capability flags, and limits. It never includes names, emails, account IDs, tokens, or session details. `open_sign_in` opens the existing Clerk dialog and never accepts credentials.
 - Dashboard search results are treated as untrusted content and are revalidated before selection.
 - Dashboard operational telemetry is bounded: `webmcp-registered` records `toolCount`, `pageSurface`, and the API bucket; `webmcp-registration-failed` records the tool and a stable reason; `webmcp-tool-invoked` records the tool, outcome, and terminal reason. Dashboard search may additionally record query length, result count, and allowlisted result-type buckets. These WebMCP-specific custom properties must not include arguments, search text, result keys, returned content, URLs, tender content, or user identity. The events still use WorldMonitor's normal Umami page and session envelope, which includes page context and may be associated with the signed-in dashboard identity; the restricted path omits automatic content-attribution properties, not normal analytics session metadata.
 
@@ -312,6 +317,7 @@ Treat a WebMCP change as a public UI contract change, even when the implementati
 | `src/config/webmcp.ts` | Canonical homepage, dashboard, declarative, and per-variant inventories; shared schema and output budgets. |
 | `src/services/webmcp.ts` | Imperative tool descriptors, schemas, registration lifecycle, safe result/error boundaries, telemetry, and cancellation policy. |
 | `src/App.ts` and `src/app/webmcp-dashboard.ts` | Startup ordering, UI-readiness gate, teardown, dashboard context, and human-path action binding. |
+| `src/app/webmcp-access.ts` and `src/services/webmcp-access-snapshot.ts` | Live access-context reader, PII-free snapshot builder, and Clerk sign-in open. |
 | `src/app/webmcp-search-controller.ts`, `src/app/webmcp-search-effects.ts`, and `src/app/search-selection-dispatcher.ts` | Opaque search capabilities, bound result effect classes, invalidation, live-state revalidation, and visible result selection. |
 | `src/components/GlobalProcurementPanel.ts` | Conditional declarative `search_procurement` form, visible pending state, reset, cancellation, and bounded result. |
 | `pro-test/welcome.html` | Zero-import homepage registration for `launchWorldMonitor` and `getWorldMonitorMcpEndpoint`. |
@@ -335,6 +341,7 @@ npm run docs:check
   tests/webmcp-runtime.test.mjs \
   tests/webmcp-analytics-policy.test.mjs \
   tests/webmcp-evals.test.mjs \
+  tests/webmcp-access.test.mts \
   tests/deploy-config.test.mjs
 npm run typecheck
 ```

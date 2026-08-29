@@ -8,11 +8,13 @@ const productionSmoke = process.env.WM_WEBMCP_PRODUCTION === '1';
 const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
 
 const DASHBOARD_TOOL_NAMES = [
+  'get_access_context',
   'get_dashboard_context',
   'openCountryBrief',
   'openSearch',
   'open_dashboard_panel',
   'open_search_result',
+  'open_sign_in',
   'search_dashboard',
   'set_map_layers',
   'set_map_view',
@@ -234,12 +236,117 @@ test.describe('top-level WebMCP dashboard contract', () => {
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
       expect(tool.schema, `${tool.name} schema`).toMatchObject({ type: 'object' });
       expect(tool.annotations.readOnlyHint, `${tool.name} readOnlyHint`).toBe(
-        ['get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        ['get_access_context', 'get_dashboard_context', 'search_dashboard'].includes(tool.name),
       );
       expect(
         Boolean(tool.annotations.untrustedContentHint),
         `${tool.name} untrustedContentHint`,
       ).toBe(tool.name === 'search_dashboard');
+    }
+
+    const accessContract = discoveredContracts.find((tool) => tool.name === 'get_access_context');
+    const signInContract = discoveredContracts.find((tool) => tool.name === 'open_sign_in');
+    expect(accessContract?.schema).toMatchObject({ type: 'object', additionalProperties: false });
+    expect(accessContract?.schema.properties ?? {}).toEqual({});
+    expect(signInContract?.schema).toMatchObject({ type: 'object', additionalProperties: false });
+    expect(Object.keys(signInContract?.schema.properties ?? {})).toEqual([]);
+    expect(JSON.stringify(signInContract?.schema ?? {})).not.toMatch(
+      /password|otp|one[-_]?time|credential|provider/i,
+    );
+
+    const accessAndSignIn = await page.evaluate(async () => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(
+          tool: WebMCP.RegisteredTool,
+          input: string,
+          options?: { signal?: AbortSignal },
+        ): Promise<unknown>;
+      };
+      const provider = document.modelContext as ExecutableModelContext | undefined;
+      if (!provider || typeof provider.executeTool !== 'function') {
+        throw new Error('Chrome WebMCP execution API is unavailable.');
+      }
+      const parseOutput = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
+      };
+      const tools = await provider.getTools();
+      const byName = new Map(tools.map((tool) => [tool.name, tool]));
+      const accessTool = byName.get('get_access_context');
+      const signInTool = byName.get('open_sign_in');
+      if (!accessTool || !signInTool) {
+        throw new Error('Expected access and sign-in tools were not discovered.');
+      }
+      const access = parseOutput(await provider.executeTool(accessTool, JSON.stringify({})));
+      let signInError: { message?: string; name?: string } | null = null;
+      let signInResult: unknown;
+      try {
+        signInResult = parseOutput(await provider.executeTool(signInTool, JSON.stringify({})));
+      } catch (error) {
+        signInError = {
+          name: error instanceof Error ? error.name : undefined,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      return {
+        access,
+        clerkModalPresent: Boolean(document.querySelector(
+          '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
+        )),
+        signInError,
+        signInResult,
+      };
+    });
+    expect(accessAndSignIn.access).toEqual(expect.objectContaining({
+      accountState: expect.stringMatching(/^(signed_out|loading|signed_in)$/),
+      clerk: expect.stringMatching(/^(unavailable|loading|ready)$/),
+    }));
+    expect(JSON.stringify(accessAndSignIn.access)).not.toMatch(
+      /@|user_|pk_test_|sk_live_|Bearer |sessionId|"email"|"name"|"token"/i,
+    );
+    if (accessAndSignIn.signInError) {
+      throw new Error(
+        `open_sign_in must return a bounded result, not throw: ${accessAndSignIn.signInError.name}: ${accessAndSignIn.signInError.message}`,
+      );
+    }
+    const signInResult = accessAndSignIn.signInResult as {
+      ok?: boolean;
+      reason?: string;
+      status?: string;
+    };
+    const accessSnapshot = accessAndSignIn.access as { clerk?: string };
+    const signInEvidence = {
+      clerk: accessSnapshot.clerk ?? null,
+      clerkModalPresent: accessAndSignIn.clerkModalPresent,
+      signInResult,
+    };
+    // Production must prove the real Clerk modal. The clerk_unavailable
+    // denial is only valid on the local Vite fixture, where Clerk is
+    // explicitly unconfigured (`clerk: unavailable`).
+    const unconfiguredLocalFixture =
+      !productionSmoke && accessSnapshot.clerk === 'unavailable';
+    if (unconfiguredLocalFixture) {
+      expect(signInResult).toEqual({
+        ok: false,
+        status: 'denied',
+        reason: 'clerk_unavailable',
+      });
+      expect(accessAndSignIn.clerkModalPresent).toBe(false);
+    } else {
+      expect(
+        accessAndSignIn.clerkModalPresent,
+        productionSmoke
+          ? 'production smoke must open the real Clerk sign-in modal'
+          : 'configured Clerk must open the real sign-in modal',
+      ).toBe(true);
+      expect(signInResult).toEqual(expect.objectContaining({
+        ok: true,
+        status: expect.stringMatching(/^(opened|already_open)$/),
+      }));
     }
 
     const panelProbe = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
@@ -514,6 +621,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           targetCancellationSupported: coldStart.targetCancellationSupported,
           ...panelProbe,
         },
+        signIn: { tool: 'open_sign_in', ...signInEvidence },
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
         ...(searchResultEffects ? { searchResultEffects } : {}),
       },
