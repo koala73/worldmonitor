@@ -50,6 +50,14 @@ function createBindings(overrides: Record<string, unknown> = {}) {
       },
       panels: { mounted: ['map'], enabled: ['map'] },
     }),
+    listMapLayerCatalog: async () => ({
+      variant: 'full',
+      rendererKind: 'deck',
+      enabledLayers: ['weather'],
+      liveLayerKeys: ['conflicts', 'weather', 'hotspots', 'resilienceScore'],
+      hasPremium: false,
+      deckGlActive: true,
+    }),
     applyDashboardAction: async (action: { type: 'open_panel' | 'set_view' | 'set_layers' }) => ({
       ok: true,
       status: 'applied' as const,
@@ -77,6 +85,7 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   openCountryBrief: { iso2: 'DE' },
   openSearch: {},
   get_dashboard_context: {},
+  list_map_layers: {},
   open_dashboard_panel: { panelId: 'markets' },
   set_map_view: { view: 'eu', zoom: 4 },
   set_map_layers: { layers: { weather: true } },
@@ -101,6 +110,7 @@ const HOMEPAGE_VALID_INPUTS: Record<string, Record<string, unknown>> = {
 const WEBMCP_MAINTAINER_SOURCES = [
   'src/config/webmcp.ts',
   'src/services/webmcp.ts',
+  'src/services/webmcp-map-layer-catalog.ts',
   'src/App.ts',
   'src/app/webmcp-dashboard.ts',
   'src/app/webmcp-search-controller.ts',
@@ -126,6 +136,7 @@ const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
   'tests/docs-i18n-parity.test.mjs',
   'tests/webmcp-inventory.test.mts',
   'tests/webmcp.test.mjs',
+  'tests/webmcp-map-layer-catalog.test.mts',
   'tests/webmcp-dashboard.test.mts',
   'tests/webmcp-runtime.test.mjs',
   'tests/webmcp-analytics-policy.test.mjs',
@@ -405,7 +416,7 @@ describe('WebMCP imperative schema and budget contract', () => {
     }
   });
 
-  it('applies uniform metadata, schema, output, and error budgets to all eight tools', async () => {
+  it('applies uniform metadata, schema, output, and error budgets to all dashboard tools', async () => {
     const tools = buildWebMcpTools(createBindings(), () => {});
     for (const tool of tools) {
       assert.ok(tool.name.length <= WEBMCP_TOOL_BUDGETS.nameChars, `${tool.name}: name`);
@@ -436,6 +447,7 @@ describe('WebMCP imperative schema and budget contract', () => {
       openCountryBriefByCode: async () => { throw privateError; },
       openSearch: async () => { throw privateError; },
       getDashboardContext: async () => { throw privateError; },
+      listMapLayerCatalog: async () => { throw privateError; },
       applyDashboardAction: async () => { throw privateError; },
       searchDashboard: async () => { throw privateError; },
       openSearchResult: async () => { throw privateError; },

@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import {
   applyWebMcpDashboardAction,
   getWebMcpDashboardContext,
+  getWebMcpMapLayerCatalogSnapshot,
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '../src/app/webmcp-dashboard.ts';
@@ -180,6 +181,45 @@ describe('WebMCP live dashboard bindings', () => {
       (error) => error instanceof DashboardBindingError
         && error.reason === 'app_destroyed'
         && error.message === 'Dashboard is no longer available.',
+    );
+  });
+
+  it('snapshots live map-layer catalog state for list_map_layers', () => {
+    const ctx = makeContext();
+    assert.deepEqual(
+      getWebMcpMapLayerCatalogSnapshot(ctx, 'full', false),
+      {
+        variant: 'full',
+        rendererKind: 'svg',
+        enabledLayers: ['conflicts', 'tradeRoutes'],
+        liveLayerKeys: Object.keys(ctx.mapLayers),
+        hasPremium: false,
+        deckGlActive: false,
+      },
+    );
+
+    const globe = makeContext({
+      map: {
+        ...makeContext().map,
+        isGlobeMode: () => true,
+        isDeckGLActive: () => true,
+      },
+    });
+    const globeSnapshot = getWebMcpMapLayerCatalogSnapshot(globe, 'tech', true);
+    assert.equal(globeSnapshot.rendererKind, 'globe');
+    assert.equal(globeSnapshot.deckGlActive, true);
+    assert.equal(globeSnapshot.hasPremium, true);
+    assert.equal(globeSnapshot.variant, 'tech');
+
+    assert.throws(
+      () => getWebMcpMapLayerCatalogSnapshot(makeContext({ map: null }), 'full', false),
+      (error) => error instanceof DashboardBindingError
+        && error.reason === 'map_unavailable',
+    );
+    assert.throws(
+      () => getWebMcpMapLayerCatalogSnapshot(makeContext({ isDestroyed: true }), 'full', false),
+      (error) => error instanceof DashboardBindingError
+        && error.reason === 'app_destroyed',
     );
   });
 

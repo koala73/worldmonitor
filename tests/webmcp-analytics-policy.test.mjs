@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import { CONTENT_ATTRIBUTION_STORAGE_KEY } from '../shared/content-attribution.ts';
 import { FakeWebMcpModelContext } from './helpers/fake-webmcp-model-context.mjs';
 import { resetAnalyticsForTesting } from '../src/services/analytics.ts';
+import { WEBMCP_SPA_TOOL_NAMES } from '../src/config/webmcp.ts';
 import {
   DashboardBindingError,
   buildWebMcpTools as buildProductionWebMcpTools,
@@ -48,6 +49,14 @@ function createBindings(overrides = {}) {
         enabledLayers: [],
       },
       panels: { mounted: ['map'], enabled: ['map'] },
+    }),
+    listMapLayerCatalog: async () => ({
+      variant: 'full',
+      rendererKind: 'deck',
+      enabledLayers: [],
+      liveLayerKeys: ['conflicts', 'weather'],
+      hasPremium: false,
+      deckGlActive: true,
     }),
     applyDashboardAction: async (action) => ({
       ok: true,
@@ -168,7 +177,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: WEBMCP_SPA_TOOL_NAMES.length - 1, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(

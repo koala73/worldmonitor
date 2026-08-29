@@ -6,7 +6,12 @@ import {
   type DashboardActionResult,
   type DashboardContextSnapshot,
 } from '@/services/webmcp';
+import {
+  normalizeCatalogVariant,
+  type MapLayerCatalogSnapshot,
+} from '@/services/webmcp-map-layer-catalog';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
+import type { RendererKind } from '@/config/map-layer-definitions';
 
 const APP_DESTROYED_RESULT: DashboardActionResult = {
   ok: false,
@@ -71,6 +76,34 @@ export function getWebMcpDashboardContext(
         .filter(([, config]) => config.enabled === true)
         .map(([panelId]) => panelId),
     },
+  };
+}
+
+export function getWebMcpMapLayerCatalogSnapshot(
+  ctx: AppContext,
+  variant: string,
+  hasPremium: boolean,
+): MapLayerCatalogSnapshot {
+  if (ctx.isDestroyed) {
+    throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+  }
+  if (!ctx.map) {
+    throw new DashboardBindingError('map_unavailable', 'Map is not available.');
+  }
+
+  const mapState = ctx.map.getState();
+  const rendererKind: RendererKind = ctx.map.isGlobeMode?.()
+    ? 'globe'
+    : ctx.map.isDeckGLActive?.() ? 'deck' : 'svg';
+  return {
+    variant: normalizeCatalogVariant(variant),
+    rendererKind,
+    enabledLayers: Object.entries(mapState.layers)
+      .filter(([, enabled]) => enabled === true)
+      .map(([layer]) => layer),
+    liveLayerKeys: Object.keys(ctx.mapLayers),
+    hasPremium,
+    deckGlActive: Boolean(ctx.map.isDeckGLActive?.()),
   };
 }
 

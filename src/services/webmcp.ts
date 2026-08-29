@@ -11,11 +11,12 @@
 //   1. openCountryBrief({ iso2 }) — opens the country deep-dive panel.
 //   2. openSearch()               — opens the global command palette.
 //   3. get_dashboard_context()    — reads bounded visible dashboard state.
-//   4. open_dashboard_panel()     — opens an already-live panel.
-//   5. set_map_view()             — moves the visible map.
-//   6. set_map_layers()           — changes allowed visible map layers.
-//   7. search_dashboard()         — searches the live dashboard index.
-//   8. open_search_result()       — selects an opaque, revalidated result.
+//   4. list_map_layers()          — pages the canonical map-layer catalog.
+//   5. open_dashboard_panel()     — opens an already-live panel.
+//   6. set_map_view()             — moves the visible map.
+//   7. set_map_layers()           — changes allowed visible map layers.
+//   8. search_dashboard()         — searches the live dashboard index.
+//   9. open_search_result()       — selects an opaque, revalidated result.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -41,6 +42,16 @@ import {
   MAX_LAYER_ACTION_TARGET_ID_LENGTH,
   MAX_LAYER_ACTION_TARGETS,
 } from '../../shared/agent-bus-contract';
+import {
+  DEFAULT_MAP_LAYER_PAGE_SIZE,
+  MAX_MAP_LAYER_PAGE_SIZE,
+  WEBMCP_MAP_LAYER_MONITORS,
+  WEBMCP_MAP_LAYER_RENDERERS,
+  WEBMCP_MAP_LAYER_STATES,
+  listMapLayerCatalog,
+  parseMapLayerCatalogArgs,
+  type MapLayerCatalogSnapshot,
+} from './webmcp-map-layer-catalog';
 
 export interface WebMcpAppBindings {
   openCountryBriefByCode(
@@ -57,6 +68,9 @@ export interface WebMcpAppBindings {
   getDashboardContext(
     options?: WebMcpExecutionOptions,
   ): DashboardContextSnapshot | Promise<DashboardContextSnapshot>;
+  listMapLayerCatalog(
+    options?: WebMcpExecutionOptions,
+  ): MapLayerCatalogSnapshot | Promise<MapLayerCatalogSnapshot>;
   applyDashboardAction(
     action: unknown,
     options?: WebMcpExecutionOptions,
@@ -219,12 +233,13 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 //     next human map move.
 //   - 'read-only': nothing to undo.
 //
-// Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
+// Keyed by WebMcpSpaToolName, so adding a tenth tool without a policy entry is
 // a TypeScript error. That is the forcing function: nothing ships unclassified.
 export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'cancellation-required'>
 > = Object.freeze({
   [WEBMCP_SPA_TOOL.getDashboardContext]: 'read-only',
+  [WEBMCP_SPA_TOOL.listMapLayers]: 'read-only',
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
   [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
   [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
@@ -281,6 +296,7 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   openCountryBrief: 'World Monitor could not open that country brief.',
   openSearch: 'World Monitor could not open search.',
   get_dashboard_context: 'World Monitor could not read dashboard context.',
+  list_map_layers: 'World Monitor could not list map layers.',
   open_dashboard_panel: 'World Monitor could not open that dashboard panel.',
   set_map_view: 'World Monitor could not move the map.',
   set_map_layers: 'World Monitor could not update map layers.',
@@ -484,6 +500,11 @@ const VALIDATION_DENIAL_REASONS = new Set([
   'malformed_arguments',
   'invalid_action',
   'not_dashboard_control',
+  'invalid_monitor',
+  'invalid_renderer',
+  'invalid_state',
+  'invalid_limit',
+  'invalid_cursor',
 ]);
 const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_not_entitled',
@@ -770,6 +791,57 @@ export function buildWebMcpTools(
       execute: withInvocationLogging(WEBMCP_SPA_TOOL.getDashboardContext, async (_args, extra) => (
         boundDashboardContext(await app.getDashboardContext(extra))
       ), trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.listMapLayers,
+      title: 'List Map Layers',
+      description:
+        'Page the canonical map-layer catalog, including disabled layers. Each result has the stable ID, label, enabled state, monitor availability, renderer compatibility, entitlement, and a machine-readable reason when set_map_layers cannot enable it. Does not load map datasets.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          monitor: {
+            type: 'string',
+            description: 'Optional monitor catalog. Defaults to every registered layer.',
+            enum: [...WEBMCP_MAP_LAYER_MONITORS],
+          },
+          renderer: {
+            type: 'string',
+            description: 'Optional 2d or 3d renderer compatibility filter.',
+            enum: [...WEBMCP_MAP_LAYER_RENDERERS],
+          },
+          state: {
+            type: 'string',
+            description: 'Optional enabled or currently available filter.',
+            enum: [...WEBMCP_MAP_LAYER_STATES],
+          },
+          cursor: {
+            type: 'string',
+            description: 'Previous page last layer ID; omit to start.',
+            minLength: 1,
+            maxLength: MAX_LAYER_ACTION_TARGET_ID_LENGTH,
+            pattern: DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
+          },
+          limit: {
+            type: 'integer',
+            description: `Page size from 1 to ${MAX_MAP_LAYER_PAGE_SIZE}.`,
+            minimum: 1,
+            maximum: MAX_MAP_LAYER_PAGE_SIZE,
+            default: DEFAULT_MAP_LAYER_PAGE_SIZE,
+          },
+        },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listMapLayers, async (args, extra) => {
+        const parsed = parseMapLayerCatalogArgs(args);
+        if (!parsed.ok) return parsed;
+        return listMapLayerCatalog(
+          await app.listMapLayerCatalog(extra),
+          parsed.query,
+          { targetOutputChars: TARGET_OUTPUT_CHARS },
+        );
+      }, trackEvent),
     },
     {
       name: WEBMCP_SPA_TOOL.openDashboardPanel,

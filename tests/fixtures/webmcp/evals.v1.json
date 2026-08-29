@@ -6,6 +6,7 @@
       "openCountryBrief",
       "openSearch",
       "get_dashboard_context",
+      "list_map_layers",
       "open_dashboard_panel",
       "set_map_view",
       "set_map_layers",
@@ -34,6 +35,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "open_dashboard_panel",
         "set_map_view",
         "set_map_layers",
@@ -58,6 +60,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "open_dashboard_panel",
         "set_map_view",
         "set_map_layers",
@@ -84,6 +87,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "search_dashboard",
         "open_search_result",
         "search_procurement"
@@ -127,6 +131,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "search_dashboard",
         "open_search_result",
         "search_procurement"
@@ -145,6 +150,35 @@
               "layers": {
                 "earthquakes": true,
                 "flights": false
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "list_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_layers_catalog_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List the map layers on this dashboard, then enable the conflicts layer.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_map_layers",
+            "arguments": {}
+          },
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "conflicts": true
               }
             }
           }
@@ -174,6 +208,7 @@
       ],
       "forbiddenTools": [
         "openSearch",
+        "list_map_layers",
         "search_dashboard",
         "open_search_result",
         "search_procurement"
@@ -210,6 +245,7 @@
       ],
       "forbiddenTools": [
         "openSearch",
+        "list_map_layers",
         "search_procurement"
       ]
     },
@@ -231,6 +267,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "open_dashboard_panel",
         "open_search_result",
         "search_procurement"
@@ -262,6 +299,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "open_dashboard_panel",
         "search_procurement"
       ]
@@ -287,6 +325,7 @@
       ],
       "forbiddenTools": [
         "openSearch",
+        "list_map_layers",
         "search_dashboard",
         "open_search_result"
       ]
@@ -310,6 +349,7 @@
       ],
       "forbiddenTools": [
         "openSearch",
+        "list_map_layers",
         "search_dashboard",
         "open_search_result"
       ]
@@ -326,6 +366,7 @@
         "openCountryBrief",
         "openSearch",
         "get_dashboard_context",
+        "list_map_layers",
         "open_dashboard_panel",
         "set_map_view",
         "set_map_layers",
@@ -358,6 +399,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "open_dashboard_panel",
         "search_procurement"
       ],
@@ -395,6 +437,7 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "list_map_layers",
         "search_dashboard",
         "open_search_result",
         "search_procurement"
@@ -428,6 +471,7 @@
       ],
       "forbiddenTools": [
         "openSearch",
+        "list_map_layers",
         "search_dashboard",
         "open_search_result"
       ],

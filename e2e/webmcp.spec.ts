@@ -9,6 +9,7 @@ const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
 
 const DASHBOARD_TOOL_NAMES = [
   'get_dashboard_context',
+  'list_map_layers',
   'openCountryBrief',
   'openSearch',
   'open_dashboard_panel',
@@ -234,7 +235,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
       expect(tool.schema, `${tool.name} schema`).toMatchObject({ type: 'object' });
       expect(tool.annotations.readOnlyHint, `${tool.name} readOnlyHint`).toBe(
-        ['get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        ['get_dashboard_context', 'list_map_layers', 'search_dashboard'].includes(tool.name),
       );
       expect(
         Boolean(tool.annotations.untrustedContentHint),
@@ -313,6 +314,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
 
     let visibleMutation: (MutationExecutionProbe & { visible: boolean }) | null = null;
+    let layerCatalogChain: {
+      firstId: string | null;
+      listed: unknown;
+      setResult: MutationExecutionProbe;
+    } | null = null;
     if (!productionSmoke) {
       const mutation = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
         type ExecutableModelContext = WebMCP.ModelContext & {
@@ -352,6 +358,79 @@ test.describe('top-level WebMCP dashboard contract', () => {
       visibleMutation = { ...mutation, visible: true };
       await page.keyboard.press('Escape');
       await expect(page.locator('.search-overlay')).toHaveCount(0);
+
+      const layerCatalogChainResult = await page.evaluate(async (): Promise<{
+        firstId: string | null;
+        listed: unknown;
+        setResult: MutationExecutionProbe;
+      }> => {
+        type ExecutableModelContext = WebMCP.ModelContext & {
+          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+        };
+        const parseOutput = (value: unknown): unknown => {
+          if (typeof value !== 'string') return value;
+          try {
+            return JSON.parse(value);
+          } catch {
+            return value;
+          }
+        };
+        const provider = document.modelContext as ExecutableModelContext;
+        const tools = await provider.getTools();
+        const byName = new Map(tools.map((tool) => [tool.name, tool]));
+        const listTool = byName.get('list_map_layers');
+        const setTool = byName.get('set_map_layers');
+        if (!listTool || !setTool) throw new Error('Expected layer catalog tools were not discovered.');
+        const listed = parseOutput(await provider.executeTool(listTool, JSON.stringify({ limit: 8 })));
+        const layers = listed && typeof listed === 'object' && 'layers' in listed
+          ? (listed as { layers?: Array<{ available?: boolean; id?: string }> }).layers
+          : undefined;
+        const chosen = layers?.find((layer) => layer.available)?.id ?? layers?.[0]?.id ?? null;
+        if (!chosen) {
+          return {
+            firstId: null,
+            listed,
+            setResult: { ok: false, errorName: 'missing_layer', errorMessage: 'Catalog returned no layer IDs.' },
+          };
+        }
+        try {
+          return {
+            firstId: chosen,
+            listed,
+            setResult: {
+              ok: true,
+              output: parseOutput(await provider.executeTool(
+                setTool,
+                JSON.stringify({ layers: { [chosen]: true } }),
+              )),
+            },
+          };
+        } catch (error) {
+          return {
+            firstId: chosen,
+            listed,
+            setResult: {
+              errorMessage: error && typeof error === 'object' && 'message' in error
+                ? String(error.message).slice(0, 500)
+                : String(error).slice(0, 500),
+              errorName: error && typeof error === 'object' && 'name' in error
+                ? String(error.name)
+                : 'unknown',
+              ok: false,
+            },
+          };
+        }
+      });
+      expect(layerCatalogChainResult.listed).toMatchObject({
+        ok: true,
+        layers: expect.any(Array),
+      });
+      expect(layerCatalogChainResult.firstId).toMatch(/^[a-z][A-Za-z0-9_-]*$/);
+      expect(layerCatalogChainResult.setResult.ok).toBe(true);
+      expect(layerCatalogChainResult.setResult.output).toEqual(expect.objectContaining({
+        ok: expect.any(Boolean),
+      }));
+      layerCatalogChain = layerCatalogChainResult;
     }
 
     await attachJsonEvidence(testInfo, 'webmcp-smoke.json', {
@@ -381,6 +460,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
           ...panelProbe,
         },
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
+        ...(layerCatalogChain ? {
+          layerCatalog: {
+            tool: 'list_map_layers',
+            firstId: layerCatalogChain.firstId,
+            listed: layerCatalogChain.listed,
+            setMapLayers: layerCatalogChain.setResult,
+          },
+        } : {}),
       },
     });
   });

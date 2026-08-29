@@ -62,6 +62,14 @@ function createBindings(overrides = {}) {
         enabled: ['map', 'markets'],
       },
     }),
+    listMapLayerCatalog: async () => ({
+      variant: 'full',
+      rendererKind: 'deck',
+      enabledLayers: ['conflicts'],
+      liveLayerKeys: ['conflicts', 'weather', 'hotspots', 'resilienceScore', 'startupHubs'],
+      hasPremium: false,
+      deckGlActive: true,
+    }),
     applyDashboardAction: async (action) => ({
       ok: true,
       status: 'applied',
@@ -135,6 +143,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openCountryBrief/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearch/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.getDashboardContext/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.listMapLayers/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openDashboardPanel/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapView/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapLayers/);
@@ -184,7 +193,7 @@ describe('webmcp.ts: current API contract', () => {
       assert.ok(tool.title.length > 0);
       assert.equal(
         tool.annotations?.readOnlyHint,
-        ['get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        ['get_dashboard_context', 'list_map_layers', 'search_dashboard'].includes(tool.name),
       );
       const properties = tool.inputSchema?.properties ?? {};
       for (const property of Object.values(properties)) {
@@ -239,6 +248,69 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(layers.propertyNames.maxLength, 30);
     assert.equal(layers.propertyNames.pattern, DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN);
     assert.deepEqual(layers.additionalProperties, { type: 'boolean' });
+  });
+
+  it('pages the map-layer catalog and rejects invalid filters with structured errors', async () => {
+    const tools = buildWebMcpTools(createBindings(), () => {});
+    const list = tools.find((tool) => tool.name === 'list_map_layers');
+
+    assert.deepEqual(list.annotations, { readOnlyHint: true });
+    assert.equal(list.inputSchema.additionalProperties, false);
+    assert.deepEqual(Object.keys(list.inputSchema.properties), [
+      'monitor',
+      'renderer',
+      'state',
+      'cursor',
+      'limit',
+    ]);
+    assert.deepEqual(list.inputSchema.properties.monitor.enum, [
+      'world',
+      'tech',
+      'finance',
+      'commodity',
+      'energy',
+      'happy',
+    ]);
+    assert.deepEqual(list.inputSchema.properties.renderer.enum, ['2d', '3d']);
+    assert.deepEqual(list.inputSchema.properties.state.enum, ['enabled', 'available']);
+    assert.equal(list.inputSchema.properties.cursor.pattern, DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN);
+    assert.equal(list.inputSchema.properties.limit.minimum, 1);
+    assert.equal(list.inputSchema.properties.limit.maximum, 8);
+    assert.equal(list.inputSchema.properties.limit.default, 6);
+
+    const page = await list.execute({});
+    assert.equal(page.ok, true);
+    assert.equal(page.variant, 'full');
+    assert.equal(page.renderer, '2d');
+    assert.ok(Array.isArray(page.layers));
+    assert.ok(page.layers.length > 0);
+    assert.ok(page.layers.length <= 6);
+    assert.equal(typeof page.nextCursor, 'string');
+    assert.equal(page.nextCursor, page.layers.at(-1).id);
+    assert.ok(JSON.stringify(page).length <= 1_500);
+
+    const next = await list.execute({ cursor: page.nextCursor, limit: 3 });
+    assert.equal(next.ok, true);
+    assert.notEqual(next.layers[0].id, page.layers[0].id);
+
+    assert.deepEqual(await list.execute({ monitor: 'full' }), {
+      ok: false,
+      status: 'invalid',
+      reason: 'invalid_monitor',
+      message: 'monitor must be one of: world, tech, finance, commodity, energy, happy.',
+    });
+    assert.deepEqual(await list.execute({ renderer: 'deck' }), {
+      ok: false,
+      status: 'invalid',
+      reason: 'invalid_renderer',
+      message: 'renderer must be 2d or 3d.',
+    });
+    assert.deepEqual(await list.execute({ cursor: 'not-in-this-page' }), {
+      ok: false,
+      status: 'invalid',
+      reason: 'invalid_cursor',
+      message: 'cursor must be a catalog layer ID from a previous list_map_layers page.',
+    });
   });
 
   it('publishes narrow search schemas with explicit trust and mutation annotations', () => {
@@ -539,10 +611,18 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
       getDashboardContext: async () => {
         throw new DashboardBindingError('map_unavailable', 'Map is not available.');
       },
+      listMapLayerCatalog: async () => {
+        throw new DashboardBindingError('map_unavailable', 'Map is not available.');
+      },
     }), () => {});
 
     await assert.rejects(
       tools.find((tool) => tool.name === 'get_dashboard_context').execute({}),
+      (error) => error.name === 'WebMcpToolError'
+        && error.message === 'Dashboard unavailable: Map is not available. Reason: map_unavailable.',
+    );
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'list_map_layers').execute({}),
       (error) => error.name === 'WebMcpToolError'
         && error.message === 'Dashboard unavailable: Map is not available. Reason: map_unavailable.',
     );
@@ -998,7 +1078,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     await settlePromises();
     assert.deepEqual(harness.events, [{
       event: 'webmcp-registered',
-      data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
+      data: { toolCount: DASHBOARD_TOOL_NAMES.length, pageSurface: 'dashboard', api: 'document-current' },
     }]);
 
     controller.abort();
@@ -1025,7 +1105,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
       },
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: DASHBOARD_TOOL_NAMES.length - 1, pageSurface: 'dashboard', api: 'document-current' },
       },
     ]);
     assert.ok(!JSON.stringify(harness.events).includes('raw duplicate detail'));
@@ -1452,6 +1532,19 @@ describe('webmcp App.ts binding invariants', () => {
     const authStateCall = premiumAccessCall.arguments[0];
     assert.ok(ts.isCallExpression(authStateCall));
     assert.equal(authStateCall.expression.getText(appFile), 'getAuthState');
+
+    const listMapLayerCatalog = objectPropertyInitializer(bindings, appFile, 'listMapLayerCatalog');
+    assertCallArguments(
+      callByExpression(listMapLayerCatalog, appFile, 'this.waitForDashboardReady'),
+      appFile,
+      ['true', 'execution?.signal'],
+    );
+    callByExpression(
+      listMapLayerCatalog,
+      appFile,
+      'getWebMcpMapLayerCatalogSnapshot',
+      'map-layer catalog snapshot',
+    );
 
     const syncUrlStateNow = objectPropertyInitializer(options, appFile, 'syncUrlStateNow');
     callByExpression(

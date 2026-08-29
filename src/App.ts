@@ -169,6 +169,7 @@ import {
 } from '@/services/webmcp';
 import {
   getWebMcpDashboardContext,
+  getWebMcpMapLayerCatalogSnapshot,
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '@/app/webmcp-dashboard';
@@ -1896,6 +1897,15 @@ export class App {
         await this.waitForDashboardReady(true, execution?.signal);
         throwIfWebMcpAborted(execution?.signal);
         return getWebMcpDashboardContext(this.state, SITE_VARIANT);
+      },
+      listMapLayerCatalog: async (execution) => {
+        await this.waitForDashboardReady(true, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return getWebMcpMapLayerCatalogSnapshot(
+          this.state,
+          SITE_VARIANT,
+          hasPremiumAccess(getAuthState()),
+        );
       },
       applyDashboardAction: async (action, execution) => {
         return runDashboardActionBinding(this.state, action, {
