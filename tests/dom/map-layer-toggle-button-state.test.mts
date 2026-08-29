@@ -21,21 +21,24 @@ import { describe, expect, it, vi } from 'vitest';
 import { MapComponent } from '@/components/Map';
 import type { MapLayers } from '@/types';
 
-type TogglePrivates = {
+// Standalone rather than `MapComponent & …`: `container` is private on the
+// class, so intersecting the two reduces the whole type to `never`.
+type LayerPicker = {
   canToggleLayer: () => boolean;
   container: HTMLElement;
   createLayerToggles: () => HTMLElement;
   layerZoomOverrides: Record<string, boolean>;
   scheduleRender: () => void;
   state: { layers: Partial<MapLayers>; zoom: number };
+  toggleLayer: (layer: keyof MapLayers, source?: 'user' | 'programmatic') => void;
 };
 
 /**
  * Builds the picker through the component's own DOM builder, on a prototype
  * instance so the constructor's d3/ResizeObserver/network work stays out of it.
  */
-function createPicker(layers: Partial<MapLayers>): MapComponent & TogglePrivates {
-  const map = Object.create(MapComponent.prototype) as MapComponent & TogglePrivates;
+function createPicker(layers: Partial<MapLayers>): LayerPicker {
+  const map = Object.create(MapComponent.prototype) as unknown as LayerPicker;
   map.container = document.createElement('div');
   map.state = { layers: { ...layers }, zoom: 4 };
   map.layerZoomOverrides = {};
@@ -46,7 +49,7 @@ function createPicker(layers: Partial<MapLayers>): MapComponent & TogglePrivates
   return map;
 }
 
-const chip = (map: TogglePrivates, layer: string): HTMLButtonElement => {
+const chip = (map: LayerPicker, layer: string): HTMLButtonElement => {
   const button = map.container.querySelector<HTMLButtonElement>(
     `button.layer-toggle[data-layer="${layer}"]`,
   );
