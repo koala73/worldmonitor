@@ -5,9 +5,54 @@ import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
 import {
   buildWebMcpTools,
+  type DashboardContextSnapshot,
   type WebMcpAppBindings,
   type WebMcpExecutionOptions,
+  type WebMcpNavigationResult,
 } from '@/services/webmcp';
+
+const unusedDashboardContext: DashboardContextSnapshot = {
+  variant: 'full',
+  map: {
+    view: 'global',
+    center: { lat: 0, lon: 0 },
+    zoom: 2,
+    timeRange: '7d',
+    enabledLayers: [],
+  },
+  panels: { mounted: [], enabled: [] },
+};
+
+function unusedNavigationResult(
+  destination: WebMcpNavigationResult['destination'],
+  extras: Partial<WebMcpNavigationResult> = {},
+): WebMcpNavigationResult {
+  return {
+    ok: true,
+    status: 'applied',
+    destination,
+    message: 'Unused in this test.',
+    context: unusedDashboardContext,
+    ...extras,
+  };
+}
+
+function unusedNavigationBindings(): Pick<
+  WebMcpAppBindings,
+  'switchMonitor' | 'openSettings' | 'openAlerts'
+> {
+  return {
+    switchMonitor: async () => unusedNavigationResult('full', { navigation: 'none' }),
+    openSettings: async () => unusedNavigationResult('settings', {
+      overlay: 'open',
+      tab: 'settings',
+    }),
+    openAlerts: async () => unusedNavigationResult('alerts', {
+      overlay: 'open',
+      tab: 'notifications',
+    }),
+  };
+}
 
 describe('App WebMCP country binding cold start', () => {
   it('rejects a no-signal country open before the App binding starts', async () => {
@@ -19,17 +64,23 @@ describe('App WebMCP country binding cold start', () => {
       },
       resolveCountryName: () => 'France',
       openSearch: async () => true,
-      getDashboardContext: async () => ({
+      getDashboardContext: async () => unusedDashboardContext,
+      listMapLayerCatalog: async () => ({
         variant: 'full',
-        map: {
-          view: 'global',
-          center: { lat: 0, lon: 0 },
-          zoom: 2,
-          timeRange: '7d',
-          enabledLayers: [],
-        },
-        panels: { mounted: [], enabled: [] },
+        rendererKind: 'deck',
+        enabledLayers: [],
+        liveLayerKeys: [],
+        hasPremium: false,
+        deckGlActive: true,
       }),
+      listDashboardPanels: async () => ({
+        variant: 'full',
+        total: 0,
+        hasMore: false,
+        nextCursor: null,
+        panels: [],
+      }),
+      ...unusedNavigationBindings(),
       applyDashboardAction: async () => ({
         ok: true,
         status: 'applied',
@@ -128,17 +179,23 @@ describe('App WebMCP country binding cold start', () => {
       ),
       resolveCountryName: () => 'France',
       openSearch: async () => true,
-      getDashboardContext: async () => ({
+      getDashboardContext: async () => unusedDashboardContext,
+      listMapLayerCatalog: async () => ({
         variant: 'full',
-        map: {
-          view: 'global',
-          center: { lat: 0, lon: 0 },
-          zoom: 2,
-          timeRange: '7d',
-          enabledLayers: [],
-        },
-        panels: { mounted: [], enabled: [] },
+        rendererKind: 'deck',
+        enabledLayers: [],
+        liveLayerKeys: [],
+        hasPremium: false,
+        deckGlActive: true,
       }),
+      listDashboardPanels: async () => ({
+        variant: 'full',
+        total: 0,
+        hasMore: false,
+        nextCursor: null,
+        panels: [],
+      }),
+      ...unusedNavigationBindings(),
       applyDashboardAction: async () => ({
         ok: true,
         status: 'applied',

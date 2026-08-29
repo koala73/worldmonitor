@@ -43,6 +43,86 @@ function createBindings(overrides = {}) {
       },
       panels: { mounted: ['map'], enabled: ['map'] },
     }),
+    listMapLayerCatalog: async () => ({
+      variant: 'full',
+      rendererKind: 'deck',
+      enabledLayers: [],
+      liveLayerKeys: ['conflicts', 'weather', 'hotspots'],
+      hasPremium: false,
+      deckGlActive: true,
+    }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
+    }),
+    switchMonitor: async (monitor) => ({
+      ok: true,
+      status: 'applied',
+      destination: monitor,
+      navigation: 'none',
+      message: 'Already on that monitor.',
+      context: {
+        variant: monitor,
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openSettings: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'settings',
+      overlay: 'open',
+      tab: 'settings',
+      message: 'Opened settings.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openAlerts: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'alerts',
+      overlay: 'open',
+      tab: 'notifications',
+      message: 'Opened alerts.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
     applyDashboardAction: async (action) => ({
       ok: true,
       status: 'applied',
@@ -310,14 +390,23 @@ describe('WebMCP registry behavioral contract', () => {
 
   it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
     // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
-    // stream). An uncancellable invocation outlives the session, so it stays
-    // fail-closed while the browser cannot deliver a signal. open_search_result
-    // is result-dependent and must reach its binding so the issued effect
-    // class can decide.
+    // stream). switch_monitor persists and reloads or leaves the current
+    // origin. An uncancellable invocation can outlive the session, so both
+    // stay fail-closed while the browser cannot deliver a signal.
+    // open_search_result is result-dependent and must reach its binding so the
+    // issued effect class can decide.
     assert.deepEqual(
       [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
-      ['create_dashboard_tab', 'delete_dashboard_tab', 'openCountryBrief', 'rename_dashboard_tab', 'select_dashboard_tab', 'set_map_layers'],
-      'the gated set includes persistent layer writes and metered country generation',
+      [
+        'create_dashboard_tab',
+        'delete_dashboard_tab',
+        'openCountryBrief',
+        'rename_dashboard_tab',
+        'select_dashboard_tab',
+        'set_map_layers',
+        'switch_monitor',
+      ],
+      'the gated set includes navigation, persistent writes, and metered country generation',
     );
     let mutationCalls = 0;
     let openCalls = 0;
@@ -372,6 +461,10 @@ describe('WebMCP registry behavioral contract', () => {
     ]) {
       assert.deepEqual(await executeRegistered(provider, tool, JSON.stringify(input)), denial);
     }
+    assert.deepEqual(
+      await executeRegistered(provider, 'switch_monitor', JSON.stringify({ monitor: 'tech' })),
+      denial,
+    );
     assert.deepEqual(
       await executeRegistered(
         provider,
@@ -492,6 +585,54 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(JSON.stringify(harness.events).includes('detail'), false);
   });
 
+  it('passes catalog layer IDs into set_map_layers', async () => {
+    const applied = [];
+    const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      listMapLayerCatalog: async () => ({
+        variant: 'full',
+        rendererKind: 'deck',
+        enabledLayers: [],
+        liveLayerKeys: ['conflicts', 'weather', 'hotspots'],
+        hasPremium: true,
+        deckGlActive: true,
+      }),
+      applyDashboardAction: async (action) => {
+        applied.push(action);
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: action.type,
+          message: 'Applied dashboard action.',
+          targets: Object.keys(action.layers ?? {}).map((id) => ({
+            id,
+            status: 'applied',
+          })),
+        };
+      },
+    }), harness.runtime);
+    await settlePromises();
+
+    const listed = await executeRegistered(provider, 'list_map_layers', '{}');
+    assert.equal(listed.ok, true);
+    const layerId = listed.layers.find((layer) => layer.available)?.id
+      ?? listed.layers[0].id;
+    assert.equal(typeof layerId, 'string');
+
+    const controller = new AbortController();
+    const result = await executeRegistered(
+      provider,
+      'set_map_layers',
+      JSON.stringify({ layers: { [layerId]: true } }),
+      { signal: controller.signal },
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(applied, [{
+      type: 'set_layers',
+      layers: { [layerId]: true },
+    }]);
+  });
   it('aborts before a late provider can register', async () => {
     const harness = trackedRuntime(undefined);
     const controller = registerWebMcpTools(createBindings(), harness.runtime);

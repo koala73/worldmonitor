@@ -201,6 +201,21 @@ describe('X-RateLimit-Mode is readable cross-origin (#7270)', () => {
   }
 });
 
+describe('RFC 9745 / RFC 8594 lifecycle headers are readable cross-origin', () => {
+  const LIFECYCLE_HEADERS = ['Link', 'Deprecation', 'Sunset'];
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} exposes Link, Deprecation, and Sunset`, () => {
+      const exposed = new Set(exposedHeaders(build()));
+      for (const name of LIFECYCLE_HEADERS) {
+        assert.ok(
+          exposed.has(name),
+          `${label} must expose ${name} so agents can read policy-discovery and sunset signals`,
+        );
+      }
+    });
+  }
+});
+
 describe('IETF RateLimit headers are readable across every CORS surface', () => {
   const IETF_RATE_LIMIT_HEADERS = [
     'RateLimit',

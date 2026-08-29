@@ -11,6 +11,11 @@ import {
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 import {
+  listDashboardPanelCatalog,
+  DASHBOARD_PANEL_ID_PATTERN,
+} from '../src/services/webmcp-panel-catalog.ts';
+import { getInitialPanelSettingsForVariant } from '../src/config/panels.ts';
+import {
   WEBMCP_HOMEPAGE_TOOL_NAMES,
   WEBMCP_SPA_TOOL_NAMES,
 } from '../src/config/webmcp.ts';
@@ -44,23 +49,74 @@ function buildWebMcpTools(app, track) {
 }
 
 function createBindings(overrides = {}) {
+  const context = {
+    variant: 'full',
+    map: {
+      view: 'global',
+      center: { lat: 1.25, lon: 2.5 },
+      zoom: 3,
+      timeRange: '7d',
+      enabledLayers: ['conflicts'],
+    },
+    panels: {
+      mounted: ['map', 'markets'],
+      enabled: ['map', 'markets'],
+    },
+  };
   return {
     openCountryBriefByCode: async () => true,
     resolveCountryName: (code) => `Country ${code}`,
     openSearch: async () => true,
-    getDashboardContext: async () => ({
+    getDashboardContext: async () => context,
+    switchMonitor: async (monitor) => ({
+      ok: true,
+      status: 'applied',
+      destination: monitor,
+      navigation: monitor === context.variant ? 'none' : 'reload',
+      message: monitor === context.variant ? 'Already on that monitor.' : 'Switched monitor.',
+      context: { ...context, variant: monitor },
+    }),
+    openSettings: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'settings',
+      overlay: 'open',
+      tab: 'settings',
+      message: 'Opened settings.',
+      context,
+    }),
+    openAlerts: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'alerts',
+      overlay: 'open',
+      tab: 'notifications',
+      message: 'Opened alerts.',
+      context,
+    }),
+    listMapLayerCatalog: async () => ({
       variant: 'full',
-      map: {
-        view: 'global',
-        center: { lat: 1.25, lon: 2.5 },
-        zoom: 3,
-        timeRange: '7d',
-        enabledLayers: ['conflicts'],
-      },
-      panels: {
-        mounted: ['map', 'markets'],
-        enabled: ['map', 'markets'],
-      },
+      rendererKind: 'deck',
+      enabledLayers: ['conflicts'],
+      liveLayerKeys: ['conflicts', 'weather', 'hotspots', 'resilienceScore', 'startupHubs'],
+      hasPremium: false,
+      deckGlActive: true,
+    }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
     }),
     applyDashboardAction: async (action) => ({
       ok: true,
@@ -151,6 +207,11 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openCountryBrief/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearch/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.getDashboardContext/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.listMapLayers/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.listDashboardPanels/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.switchMonitor/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSettings/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openAlerts/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openDashboardPanel/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapView/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapLayers/);
@@ -158,6 +219,15 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearchResult/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.getAccessContext/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSignIn/);
+  });
+
+  it('switches monitors through the visible header variant path', () => {
+    const eventHandlersSrc = readFileSync(resolve(ROOT, 'src/app/event-handlers.ts'), 'utf-8');
+    const appSrc = readFileSync(resolve(ROOT, 'src/App.ts'), 'utf-8');
+    assert.match(eventHandlersSrc, /public async navigateToVisibleVariant\(/);
+    assert.match(eventHandlersSrc, /\.variant-option\[data-variant="\$\{variant\}"\]/);
+    assert.match(appSrc, /navigateToVisibleVariant\(variant\)/);
+    assert.match(appSrc, /waitForDashboardReady\(false,/);
   });
 
   it('classifies structured denials by exact reason codes', () => {
@@ -202,7 +272,14 @@ describe('webmcp.ts: current API contract', () => {
       assert.ok(tool.title.length > 0);
       assert.equal(
         tool.annotations?.readOnlyHint,
-        ['get_access_context', 'get_dashboard_context', 'list_dashboard_tabs', 'search_dashboard']
+        [
+          'get_access_context',
+          'get_dashboard_context',
+          'list_map_layers',
+          'list_dashboard_panels',
+          'list_dashboard_tabs',
+          'search_dashboard',
+        ]
           .includes(tool.name),
       );
       const properties = tool.inputSchema?.properties ?? {};
@@ -212,6 +289,259 @@ describe('webmcp.ts: current API contract', () => {
         }
       }
     }
+  });
+
+  it('switches every monitor key and rejects unknown or malformed destinations', async () => {
+    const switches = [];
+    const tools = buildWebMcpTools(createBindings({
+      switchMonitor: async (monitor) => {
+        switches.push(monitor);
+        return {
+          ok: true,
+          status: 'applied',
+          destination: monitor,
+          navigation: monitor === 'full' ? 'none' : 'reload',
+          message: monitor === 'full' ? 'Already on that monitor.' : 'Switched monitor.',
+          context: {
+            variant: monitor,
+            map: {
+              view: 'global',
+              center: { lat: 1.25, lon: 2.5 },
+              zoom: 3,
+              timeRange: '7d',
+              enabledLayers: ['conflicts'],
+            },
+            panels: { mounted: ['map', 'markets'], enabled: ['map', 'markets'] },
+          },
+        };
+      },
+    }), () => {});
+    const tool = tools.find((candidate) => candidate.name === 'switch_monitor');
+    assert.ok(tool);
+    assert.deepEqual(tool.inputSchema.properties.monitor.enum, [
+      'full', 'tech', 'finance', 'happy', 'commodity', 'energy',
+    ]);
+    assert.equal(tool.annotations.readOnlyHint, false);
+
+    const signal = new AbortController().signal;
+    for (const monitor of ['full', 'tech', 'finance', 'commodity', 'energy', 'happy']) {
+      const result = await tool.execute({ monitor }, { signal });
+      assert.equal(result.ok, true, monitor);
+      assert.equal(result.destination, monitor, monitor);
+      assert.equal(result.context.variant, monitor, monitor);
+      assert.equal(result.navigation, monitor === 'full' ? 'none' : 'reload', monitor);
+    }
+    assert.deepEqual(switches, ['full', 'tech', 'finance', 'commodity', 'energy', 'happy']);
+
+    const unknown = await tool.execute({ monitor: 'World' }, {});
+    assert.deepEqual(
+      { ok: unknown.ok, status: unknown.status, reason: unknown.reason },
+      { ok: false, status: 'invalid', reason: 'unknown_monitor' },
+    );
+    assert.equal(unknown.context.variant, 'full');
+    assert.equal(switches.length, 6);
+
+    const extra = await tool.execute({ monitor: 'tech', url: 'https://example.invalid' }, {});
+    assert.equal(extra.reason, 'malformed_arguments');
+    assert.equal(switches.length, 6);
+
+    const unsupported = await tool.execute({ monitor: 'tech' }, {});
+    assert.equal(
+      unsupported.reason,
+      'target_cancellation_unsupported',
+      JSON.stringify(unsupported),
+    );
+    assert.equal(switches.length, 6);
+  });
+
+  it('opens settings and alerts without mutating their contents', async () => {
+    const calls = [];
+    const tools = buildWebMcpTools(createBindings({
+      openSettings: async () => {
+        calls.push('settings');
+        return {
+          ok: true,
+          status: 'applied',
+          destination: 'settings',
+          overlay: 'open',
+          tab: 'settings',
+          message: 'Opened settings.',
+          context: {
+            variant: 'full',
+            map: {
+              view: 'global',
+              center: { lat: 1.25, lon: 2.5 },
+              zoom: 3,
+              timeRange: '7d',
+              enabledLayers: ['conflicts'],
+            },
+            panels: { mounted: ['map', 'markets'], enabled: ['map', 'markets'] },
+          },
+        };
+      },
+      openAlerts: async () => {
+        calls.push('alerts');
+        return {
+          ok: true,
+          status: 'applied',
+          destination: 'alerts',
+          overlay: 'open',
+          tab: 'notifications',
+          message: 'Opened alerts.',
+          context: {
+            variant: 'full',
+            map: {
+              view: 'global',
+              center: { lat: 1.25, lon: 2.5 },
+              zoom: 3,
+              timeRange: '7d',
+              enabledLayers: ['conflicts'],
+            },
+            panels: { mounted: ['map', 'markets'], enabled: ['map', 'markets'] },
+          },
+        };
+      },
+    }), () => {});
+
+    const settings = await tools.find((tool) => tool.name === 'open_settings').execute({});
+    const alerts = await tools.find((tool) => tool.name === 'open_alerts').execute({});
+    assert.equal(settings.destination, 'settings');
+    assert.equal(settings.tab, 'settings');
+    assert.equal(settings.overlay, 'open');
+    assert.equal(alerts.destination, 'alerts');
+    assert.equal(alerts.tab, 'notifications');
+    assert.deepEqual(calls, ['settings', 'alerts']);
+
+    const gated = await tools.find((tool) => tool.name === 'open_alerts').execute({ tab: 'billing' });
+    assert.equal(gated.reason, 'malformed_arguments');
+    assert.deepEqual(calls, ['settings', 'alerts']);
+
+    const gatedSettings = await tools.find((tool) => tool.name === 'open_settings').execute({ tab: 'billing' });
+    assert.equal(gatedSettings.reason, 'malformed_arguments');
+    assert.deepEqual(calls, ['settings', 'alerts']);
+  });
+
+  it('reserves navigation envelope space when dashboard context is already near the output target', async () => {
+    const manyIds = Array.from({ length: 200 }, (_, index) => (
+      `panel-${String(index).padStart(3, '0')}-${'x'.repeat(80)}`
+    ));
+    const hostileContext = {
+      variant: 'full',
+      map: {
+        view: 'global',
+        center: { lat: 40.7128, lon: -74.006 },
+        zoom: 4,
+        timeRange: '24h',
+        enabledLayers: manyIds,
+      },
+      panels: { mounted: manyIds, enabled: manyIds },
+    };
+
+    const freshContexts = Object.fromEntries(
+      ['full', 'finance', 'commodity'].map((variant) => {
+        const enabled = Object.entries(getInitialPanelSettingsForVariant(variant))
+          .filter(([, config]) => config.enabled === true)
+          .map(([panelId]) => panelId);
+        return [variant, {
+          variant,
+          map: {
+            view: 'global',
+            center: { lat: 1.25, lon: 2.5 },
+            zoom: 3,
+            timeRange: '7d',
+            enabledLayers: ['conflicts', 'tradeRoutes'],
+          },
+          panels: { mounted: enabled, enabled },
+        }];
+      }),
+    );
+
+    const applied = [];
+    const executeNavigation = async (context, monitor = 'tech') => {
+      const tools = buildWebMcpTools(createBindings({
+        switchMonitor: async (destination) => {
+          applied.push(`switch:${destination}`);
+          return {
+            ok: true,
+            status: 'applied',
+            destination,
+            navigation: 'reload',
+            message: 'Switched monitor.',
+            context: { ...context, variant: destination },
+          };
+        },
+        openSettings: async () => {
+          applied.push('settings');
+          return {
+            ok: true,
+            status: 'applied',
+            destination: 'settings',
+            overlay: 'open',
+            tab: 'settings',
+            message: 'Opened settings.',
+            context,
+          };
+        },
+        openAlerts: async () => {
+          applied.push('alerts');
+          return {
+            ok: true,
+            status: 'applied',
+            destination: 'alerts',
+            overlay: 'open',
+            tab: 'notifications',
+            message: 'Opened alerts.',
+            context,
+          };
+        },
+      }), () => {});
+      return {
+        settings: await tools.find((tool) => tool.name === 'open_settings').execute({}),
+        alerts: await tools.find((tool) => tool.name === 'open_alerts').execute({}),
+        switched: await tools.find((tool) => tool.name === 'switch_monitor').execute({ monitor }),
+      };
+    };
+
+    const contexts = [hostileContext, ...Object.values(freshContexts)];
+    for (const context of contexts) {
+      const { settings, alerts, switched } = await executeNavigation(context);
+      for (const result of [settings, alerts, switched]) {
+        assert.equal(result.ok, true, context.variant);
+        assert.equal(result.status, 'applied', context.variant);
+        assert.ok(JSON.stringify(result).length <= 1_500, context.variant);
+      }
+      assert.equal(switched.destination, 'tech');
+      assert.equal(switched.context.variant, 'tech');
+    }
+    assert.equal(applied.length, contexts.length * 3);
+  });
+
+  it('reports entitlement-style unavailability without account details', async () => {
+    const tools = buildWebMcpTools(createBindings({
+      openAlerts: async () => ({
+        ok: false,
+        status: 'denied',
+        destination: 'alerts',
+        reason: 'unavailable',
+        message: 'Alerts are not available on this dashboard.',
+        context: {
+          variant: 'full',
+          map: {
+            view: 'global',
+            center: { lat: 1.25, lon: 2.5 },
+            zoom: 3,
+            timeRange: '7d',
+            enabledLayers: ['conflicts'],
+          },
+          panels: { mounted: ['map', 'markets'], enabled: ['map', 'markets'] },
+        },
+      }),
+    }), () => {});
+    const result = await tools.find((tool) => tool.name === 'open_alerts').execute({});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'unavailable');
+    assert.equal(result.message.includes('@'), false);
+    assert.equal(/user|email|plan|account/i.test(result.message), false);
   });
 
   it('documents that open_dashboard_panel does not enable a disabled panel', () => {
@@ -269,6 +599,83 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(layers.propertyNames.maxLength, 30);
     assert.equal(layers.propertyNames.pattern, DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN);
     assert.deepEqual(layers.additionalProperties, { type: 'boolean' });
+  });
+
+  it('pages the map-layer catalog and rejects invalid filters with structured errors', async () => {
+    const tools = buildWebMcpTools(createBindings(), () => {});
+    const list = tools.find((tool) => tool.name === 'list_map_layers');
+
+    assert.deepEqual(list.annotations, { readOnlyHint: true });
+    assert.equal(list.inputSchema.additionalProperties, false);
+    assert.deepEqual(Object.keys(list.inputSchema.properties), [
+      'monitor',
+      'renderer',
+      'state',
+      'cursor',
+      'limit',
+    ]);
+    assert.deepEqual(list.inputSchema.properties.monitor.enum, [
+      'world',
+      'tech',
+      'finance',
+      'commodity',
+      'energy',
+      'happy',
+    ]);
+    assert.deepEqual(list.inputSchema.properties.renderer.enum, ['2d', '3d']);
+    assert.deepEqual(list.inputSchema.properties.state.enum, ['enabled', 'available']);
+    assert.equal(list.inputSchema.properties.cursor.pattern, DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN);
+    assert.equal(list.inputSchema.properties.limit.minimum, 1);
+    assert.equal(list.inputSchema.properties.limit.maximum, 8);
+    assert.equal(list.inputSchema.properties.limit.default, 6);
+
+    const page = await list.execute({});
+    assert.equal(page.ok, true);
+    assert.equal(page.variant, 'full');
+    assert.equal(page.renderer, '2d');
+    assert.ok(Array.isArray(page.layers));
+    assert.ok(page.layers.length > 0);
+    assert.ok(page.layers.length <= 6);
+    assert.equal(typeof page.nextCursor, 'string');
+    assert.equal(page.nextCursor, page.layers.at(-1).id);
+    assert.ok(JSON.stringify(page).length <= 1_500);
+    const listedConflicts = page.layers.find((layer) => layer.id === 'conflicts');
+    assert.ok(listedConflicts);
+    assert.equal(listedConflicts.available, true);
+    assert.equal(listedConflicts.reason, undefined);
+
+    const rawList = buildProductionWebMcpTools(createBindings(), () => {})
+      .find((tool) => tool.name === 'list_map_layers');
+    const noSignal = await rawList.execute({});
+    assert.equal(noSignal.ok, true);
+    const noSignalConflicts = noSignal.layers.find((layer) => layer.id === 'conflicts');
+    assert.ok(noSignalConflicts);
+    assert.equal(noSignalConflicts.available, false);
+    assert.equal(noSignalConflicts.reason, 'target_cancellation_unsupported');
+    assert.equal((await rawList.execute({ state: 'available' })).layers.length, 0);
+
+    const next = await list.execute({ cursor: page.nextCursor, limit: 3 });
+    assert.equal(next.ok, true);
+    assert.notEqual(next.layers[0].id, page.layers[0].id);
+
+    assert.deepEqual(await list.execute({ monitor: 'full' }), {
+      ok: false,
+      status: 'invalid',
+      reason: 'invalid_monitor',
+      message: 'monitor must be one of: world, tech, finance, commodity, energy, happy.',
+    });
+    assert.deepEqual(await list.execute({ renderer: 'deck' }), {
+      ok: false,
+      status: 'invalid',
+      reason: 'invalid_renderer',
+      message: 'renderer must be 2d or 3d.',
+    });
+    assert.deepEqual(await list.execute({ cursor: 'not-in-this-page' }), {
+      ok: false,
+      status: 'invalid',
+      reason: 'invalid_cursor',
+      message: 'cursor must be a catalog layer ID from a previous list_map_layers page.',
+    });
   });
 
   it('publishes narrow search schemas with explicit trust and mutation annotations', () => {
@@ -690,12 +1097,150 @@ describe('webmcp.ts: current API contract', () => {
       ['delete_dashboard_tab', 'denied', 'validation'],
     ]);
   });
+
+  it('publishes a paginated panel catalog schema and rejects invalid filters', async () => {
+    const events = [];
+    const panelSettings = getInitialPanelSettingsForVariant('full');
+    const tools = buildWebMcpTools(createBindings({
+      listDashboardPanels: async (query) => listDashboardPanelCatalog({
+        currentVariant: 'full',
+        panelSettings,
+        mountedIds: new Set(
+          Object.entries(panelSettings)
+            .filter(([, config]) => config.enabled)
+            .map(([panelId]) => panelId),
+        ),
+        isPanelAllowed: () => true,
+      }, query),
+    }), (event, data) => events.push({ event, data }));
+    const tool = tools.find((candidate) => candidate.name === 'list_dashboard_panels');
+
+    assert.deepEqual(tool.annotations, { readOnlyHint: true });
+    assert.equal(tool.inputSchema.additionalProperties, false);
+    assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), [
+      'available',
+      'category',
+      'cursor',
+      'enabled',
+      'limit',
+      'variant',
+    ]);
+    assert.equal(tool.inputSchema.properties.limit.minimum, 1);
+    assert.equal(tool.inputSchema.properties.limit.maximum, 8);
+    assert.equal(tool.inputSchema.properties.limit.default, 6);
+    assert.equal(tool.inputSchema.properties.cursor.pattern, DASHBOARD_PANEL_ID_PATTERN);
+
+    const open = tools.find((candidate) => candidate.name === 'open_dashboard_panel');
+    assert.equal(open.inputSchema.properties.panelId.pattern, DASHBOARD_PANEL_ID_PATTERN);
+    assert.match('regionalStartups', new RegExp(DASHBOARD_PANEL_ID_PATTERN));
+    assert.match('gccNews', new RegExp(DASHBOARD_PANEL_ID_PATTERN));
+
+    const page = await tool.execute({ variant: 'full', limit: 4 });
+    assert.equal(page.variant, 'full');
+    assert.equal(page.total, 109);
+    assert.equal(page.hasMore, true);
+    assert.equal(typeof page.nextCursor, 'string');
+    assert.equal(page.panels.length, 4);
+    const next = await tool.execute({ variant: 'full', limit: 4, cursor: page.nextCursor });
+    assert.notEqual(next.panels[0].id, page.panels[0].id);
+    assert.ok(JSON.stringify(page).length <= 1500);
+
+    await assert.rejects(
+      tool.execute({ unknown: true }),
+      (error) => error.name === 'WebMcpToolError'
+        && /accepts only/.test(error.message),
+    );
+    await assert.rejects(
+      tool.execute({ cursor: 'not-a-panel' }),
+      (error) => error.name === 'WebMcpToolError'
+        && error.message === 'cursor is not a valid catalog cursor.',
+    );
+    assert.deepEqual(
+      events.filter(({ data }) => data.tool === 'list_dashboard_panels').map(({ data }) => (
+        [data.outcome, data.reason]
+      )),
+      [
+        ['success', 'completed'],
+        ['success', 'completed'],
+        ['failure', 'validation'],
+        ['failure', 'validation'],
+      ],
+    );
+    const serialized = JSON.stringify(events);
+    assert.equal(serialized.includes('not-a-panel'), false);
+    assert.equal(serialized.includes(page.panels[0].id), false);
+  });
   it('runs reversible view-state tools and gates effects that can outlive cancellation', async () => {
     let mutationCalls = 0;
     const events = [];
     const tools = buildProductionWebMcpTools(createBindings({
       openCountryBriefByCode: async () => { mutationCalls += 1; return true; },
       openSearch: async () => { mutationCalls += 1; return true; },
+      switchMonitor: async (monitor) => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          destination: monitor,
+          navigation: 'reload',
+          message: 'Switched monitor.',
+          context: {
+            variant: monitor,
+            map: {
+              view: 'global',
+              center: { lat: 1.25, lon: 2.5 },
+              zoom: 3,
+              timeRange: '7d',
+              enabledLayers: ['conflicts'],
+            },
+            panels: { mounted: ['map', 'markets'], enabled: ['map', 'markets'] },
+          },
+        };
+      },
+      openSettings: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          destination: 'settings',
+          overlay: 'open',
+          tab: 'settings',
+          message: 'Opened settings.',
+          context: {
+            variant: 'full',
+            map: {
+              view: 'global',
+              center: { lat: 1.25, lon: 2.5 },
+              zoom: 3,
+              timeRange: '7d',
+              enabledLayers: ['conflicts'],
+            },
+            panels: { mounted: ['map', 'markets'], enabled: ['map', 'markets'] },
+          },
+        };
+      },
+      openAlerts: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          destination: 'alerts',
+          overlay: 'open',
+          tab: 'notifications',
+          message: 'Opened alerts.',
+          context: {
+            variant: 'full',
+            map: {
+              view: 'global',
+              center: { lat: 1.25, lon: 2.5 },
+              zoom: 3,
+              timeRange: '7d',
+              enabledLayers: ['conflicts'],
+            },
+            panels: { mounted: ['map', 'markets'], enabled: ['map', 'markets'] },
+          },
+        };
+      },
       applyDashboardAction: async (action) => {
         mutationCalls += 1;
         return {
@@ -739,6 +1284,9 @@ describe('webmcp.ts: current API contract', () => {
     const validInputs = {
       openCountryBrief: { iso2: 'DE' },
       openSearch: {},
+      switch_monitor: { monitor: 'tech' },
+      open_settings: {},
+      open_alerts: {},
       open_dashboard_panel: { panelId: 'markets' },
       set_map_view: { view: 'eu' },
       set_map_layers: { layers: { conflicts: true } },
@@ -768,7 +1316,8 @@ describe('webmcp.ts: current API contract', () => {
     );
 
     // openCountryBrief can consume daily LLM allowance after caller
-    // cancellation. set_map_layers persists STORAGE_KEYS.mapLayers. Both stay
+    // cancellation. set_map_layers persists STORAGE_KEYS.mapLayers, while
+    // switch_monitor persists and reloads or navigates away. All three stay
     // fail-closed without a target signal. open_search_result is
     // result-dependent: the tool wrapper must reach the binding so the issued
     // effect class can decide. The remaining dashboard-changing tools only
@@ -781,6 +1330,7 @@ describe('webmcp.ts: current API contract', () => {
     // there is nothing environment-dependent left to hedge against.
     const gated = [
       'openCountryBrief',
+      'switch_monitor',
       'set_map_layers',
       'select_dashboard_tab',
       'create_dashboard_tab',
@@ -807,6 +1357,63 @@ describe('webmcp.ts: current API contract', () => {
     const expected = {
       openCountryBrief: denial,
       openSearch: 'Opened search palette.',
+      switch_monitor: denial,
+      open_settings: {
+        ok: true,
+        status: 'applied',
+        destination: 'settings',
+        overlay: 'open',
+        tab: 'settings',
+        message: 'Opened settings.',
+        context: {
+          variant: 'full',
+          map: {
+            view: 'global',
+            center: { lat: 1.25, lon: 2.5 },
+            zoom: 3,
+            timeRange: '7d',
+            enabledLayers: ['conflicts'],
+            enabledLayerCount: 1,
+            layersTruncated: false,
+          },
+          panels: {
+            mounted: ['map', 'markets'],
+            enabled: ['map', 'markets'],
+            mountedCount: 2,
+            enabledCount: 2,
+            mountedTruncated: false,
+            enabledTruncated: false,
+          },
+        },
+      },
+      open_alerts: {
+        ok: true,
+        status: 'applied',
+        destination: 'alerts',
+        overlay: 'open',
+        tab: 'notifications',
+        message: 'Opened alerts.',
+        context: {
+          variant: 'full',
+          map: {
+            view: 'global',
+            center: { lat: 1.25, lon: 2.5 },
+            zoom: 3,
+            timeRange: '7d',
+            enabledLayers: ['conflicts'],
+            enabledLayerCount: 1,
+            layersTruncated: false,
+          },
+          panels: {
+            mounted: ['map', 'markets'],
+            enabled: ['map', 'markets'],
+            mountedCount: 2,
+            enabledCount: 2,
+            mountedTruncated: false,
+            enabledTruncated: false,
+          },
+        },
+      },
       open_dashboard_panel: appliedAction('open_panel'),
       set_map_view: appliedAction('set_view'),
       set_map_layers: denial,
@@ -1001,10 +1608,18 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
       getDashboardContext: async () => {
         throw new DashboardBindingError('map_unavailable', 'Map is not available.');
       },
+      listMapLayerCatalog: async () => {
+        throw new DashboardBindingError('map_unavailable', 'Map is not available.');
+      },
     }), () => {});
 
     await assert.rejects(
       tools.find((tool) => tool.name === 'get_dashboard_context').execute({}),
+      (error) => error.name === 'WebMcpToolError'
+        && error.message === 'Dashboard unavailable: Map is not available. Reason: map_unavailable.',
+    );
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'list_map_layers').execute({}),
       (error) => error.name === 'WebMcpToolError'
         && error.message === 'Dashboard unavailable: Map is not available. Reason: map_unavailable.',
     );
@@ -1914,6 +2529,29 @@ describe('webmcp App.ts binding invariants', () => {
     const authStateCall = premiumAccessCall.arguments[0];
     assert.ok(ts.isCallExpression(authStateCall));
     assert.equal(authStateCall.expression.getText(appFile), 'getAuthState');
+
+    const listMapLayerCatalog = objectPropertyInitializer(bindings, appFile, 'listMapLayerCatalog');
+    assertCallArguments(
+      callByExpression(listMapLayerCatalog, appFile, 'this.waitForDashboardReady'),
+      appFile,
+      ['true', 'execution?.signal'],
+    );
+    const catalogSnapshotCall = callByExpression(
+      listMapLayerCatalog,
+      appFile,
+      'getWebMcpMapLayerCatalogSnapshot',
+      'map-layer catalog snapshot',
+    );
+    assert.equal(
+      catalogSnapshotCall.arguments[4]?.getText(appFile),
+      'this.getMapLayerRuntimeAvailability()',
+    );
+    assert.equal(
+      objectPropertyInitializer(applierOptions, appFile, 'getMapLayerRuntimeAvailability')
+        .getText(appFile),
+      'this.getMapLayerRuntimeAvailability',
+      'catalog and setter must share the App runtime-availability source',
+    );
 
     const syncUrlStateNow = objectPropertyInitializer(options, appFile, 'syncUrlStateNow');
     callByExpression(

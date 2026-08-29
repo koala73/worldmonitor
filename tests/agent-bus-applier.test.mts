@@ -401,4 +401,44 @@ describe('agent bus applier', () => {
       ['ciiChoropleth', true, 'programmatic'],
     ]);
   });
+
+  it('denies feature-disabled cyber and unconfigured AIS/outages even when keys exist', () => {
+    const ctx = makeCtx();
+    ctx.mapLayers.cyberThreats = false;
+    ctx.mapLayers.ais = false;
+    ctx.mapLayers.outages = false;
+    const result = applyAgentBusAction(ctx, {
+      type: 'set_layers',
+      layers: {
+        conflicts: true,
+        cyberThreats: true,
+        ais: true,
+        outages: true,
+      },
+    }, {
+      ...entitled,
+      getMapLayerRuntimeAvailability: () => ({
+        cyberLayerEnabled: false,
+        aisConfigured: false,
+        outagesAvailable: false,
+      }),
+    });
+    const mapCalls = (ctx.map as never as { _calls: { setLayersCalls: MapLayers[] } })._calls;
+
+    assert.equal(result.ok, true);
+    assert.equal(ctx.mapLayers.conflicts, true);
+    assert.equal(ctx.mapLayers.cyberThreats, false);
+    assert.equal(ctx.mapLayers.ais, false);
+    assert.equal(ctx.mapLayers.outages, false);
+    assert.equal(mapCalls.setLayersCalls.length, 1);
+    assert.deepEqual(
+      result.targets.map((target) => [target.target, target.status, target.reason ?? '']),
+      [
+        ['conflicts', 'applied', ''],
+        ['cyberThreats', 'denied', 'layer_feature_disabled'],
+        ['ais', 'denied', 'layer_not_configured'],
+        ['outages', 'denied', 'layer_not_configured'],
+      ],
+    );
+  });
 });

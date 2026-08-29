@@ -17,12 +17,14 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from './_cors.js';
+import { appendDeprecationPolicyLinkToRecord } from '../server/_shared/deprecation-policy';
 import { buildMarkdownTwinResponse, isMarkdownTwinPath } from './_md-url-twin';
 
 export default function handler(req: Request): Response | Promise<Response> {
   const corsHeaders = getPublicCorsHeaders('GET, POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
+    appendDeprecationPolicyLinkToRecord(corsHeaders);
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
@@ -53,15 +55,17 @@ export default function handler(req: Request): Response | Promise<Response> {
     documentation: 'https://www.worldmonitor.app/docs/api-reference',
   };
 
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    // The body echoes the requested pathname (JSON-escaped, so no injection);
+    // nosniff stops a client from content-type-sniffing it to HTML anyway.
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'no-store',
+    ...corsHeaders,
+  };
+  appendDeprecationPolicyLinkToRecord(headers);
   return new Response(JSON.stringify(body), {
     status: 404,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      // The body echoes the requested pathname (JSON-escaped, so no injection);
-      // nosniff stops a client from content-type-sniffing it to HTML anyway.
-      'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'no-store',
-      ...corsHeaders,
-    },
+    headers,
   });
 }

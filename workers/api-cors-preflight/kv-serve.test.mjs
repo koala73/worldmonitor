@@ -95,6 +95,26 @@ test('served CORS headers are identical to the origin pass-through the Worker wo
 // for public auth kinds, and `?tier=<t>&public=1` is exactly one of them; the
 // edge previously made no such distinction, so an unauthenticated seed payload
 // went out with Allow-Credentials: true alongside Timing-Allow-Origin: *.
+test('KV-served public bootstrap carries the same deprecation policy Link as origin', async () => {
+  // maybeServeBootstrapFromKv returns serveFromKv() and never enters
+  // passThroughToOrigin, which is where the origin path appends the policy
+  // Link. Production BOOTSTRAP_KV_SERVE="all" would otherwise omit it on the
+  // bytes clients actually receive.
+  const restore = installFetch();
+  try {
+    const passthru = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'off', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    const served = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(served.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assert.match(served.headers.get('link') ?? '', /rel="deprecation"/);
+    assert.match(served.headers.get('link') ?? '', /https:\/\/www\.worldmonitor\.app\/api-versioning\.md/);
+    assert.equal(
+      served.headers.get('link'),
+      passthru.headers.get('link'),
+      'KV and origin pass-through must advertise the same policy Link',
+    );
+  } finally { restore(); }
+});
+
 test('the KV-served public tier carries the origin public header shape (#7308)', async () => {
   const restore = installFetch();
   try {
@@ -121,6 +141,7 @@ test('a disallowed Origin is still KV-served, but under the credentialed fallbac
       'the canonical fallback echo is what denies the browser read',
     );
     assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
+    assert.match(res.headers.get('link') ?? '', /rel="deprecation"/);
   } finally { restore(); }
 });
 

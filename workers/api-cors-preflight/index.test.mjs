@@ -36,7 +36,7 @@ function makeRequest(method, url, headers = {}) {
 const CANONICAL_FALLBACK = 'https://worldmonitor.app';
 const KNOWN_GOOD = 'https://www.worldmonitor.app';
 const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
-const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 // Must be a superset of every method any api/* route advertises. Notably
 // includes DELETE for api/product-catalog.js — pinning this prevents the
 // regression that PR review caught (Worker omitted DELETE → product-catalog
@@ -143,6 +143,8 @@ test('OPTIONS preflight returns 204 with Access-Control-Allow-Credentials: true'
   assert.equal(resp.headers.get('access-control-allow-headers'), ACAH_EXPECTED);
   assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
   assert.equal(resp.headers.get('vary'), 'Origin');
+  assert.match(resp.headers.get('link') ?? '', /rel="deprecation"/);
+  assert.match(resp.headers.get('link') ?? '', /api-versioning\.md/);
 });
 
 test('OPTIONS preflight to /api/product-catalog preserves the endpoint-owned DELETE policy', async () => {
@@ -666,6 +668,61 @@ test('the credentialed bootstrap URL (no public=1) keeps the Origin-echoing shap
     const resp = await worker.fetch(
       makeRequest('GET', 'https://api.worldmonitor.app/api/bootstrap?tier=fast', { Origin: KNOWN_GOOD }),
     );
+    assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
+    assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+    assert.match(resp.headers.get('vary') || '', /Origin/i);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+const PUBLIC_SINGLE_KEY_URLS = [
+  ['weather', 'https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1'],
+  ['on-demand', 'https://api.worldmonitor.app/api/bootstrap?keys=forecasts&public=1'],
+];
+
+for (const [label, url] of PUBLIC_SINGLE_KEY_URLS) {
+  test(`marked ${label} bootstrap pass-through keeps the public shape`, async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', {
+      status: 200,
+      headers: {
+        'Cache-Control': 'max-age=300',
+        'CDN-Cache-Control': 'public, s-maxage=600',
+        'Timing-Allow-Origin': '*',
+      },
+    });
+    try {
+      const resp = await worker.fetch(makeRequest('GET', url, { Origin: KNOWN_GOOD }));
+      assertPublicBootstrapCorsHeaders({ assert, resp, label: `${label} pass-through` });
+      assert.equal(resp.headers.get('cdn-cache-control'), 'public, s-maxage=600');
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test(`marked ${label} bootstrap preflight matches its GET`, async () => {
+    const resp = await worker.fetch(makeRequest('OPTIONS', url, {
+      Origin: KNOWN_GOOD,
+      'Access-Control-Request-Method': 'GET',
+    }));
+    assert.equal(resp.status, 204);
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+    assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+    assert.equal(resp.headers.get('vary'), null);
+  });
+}
+
+test('a marked non-public bootstrap key keeps the credentialed shape', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"error":"Invalid API key"}', { status: 401 });
+  try {
+    const resp = await worker.fetch(makeRequest(
+      'GET',
+      'https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes&public=1',
+      { Origin: KNOWN_GOOD },
+    ));
+    assert.equal(resp.status, 401);
     assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
     assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
     assert.match(resp.headers.get('vary') || '', /Origin/i);

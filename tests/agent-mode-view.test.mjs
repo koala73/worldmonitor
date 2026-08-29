@@ -75,6 +75,7 @@ describe('agent-mode view (/?mode=agent)', () => {
       ['application/json', 'https://www.worldmonitor.app/?mode=agent'],
       ['text/plain', '/llms.txt'],
       ['text/markdown', '/index.md'],
+      ['text/markdown', '/world-monitor.md'],
     ];
     for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
       const html = readFileSync(join(ROOT, path), 'utf-8');

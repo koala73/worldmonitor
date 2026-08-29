@@ -174,26 +174,32 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.button;
   }
 
-  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending = false): void {
+  open(
+    tab?: UnifiedSettingsTabId,
+    replaceOverlayId?: OverlayId,
+    historyPending = false,
+  ): Promise<boolean> {
     const epoch = ++this.openEpoch;
     const pendingId: OverlayId = 'settings-pending';
     const pendingGate = historyPending
       ? overlayHistory.beginPending(pendingId, replaceOverlayId, () => { this.openEpoch += 1; })
       : null;
-    void this.load().then((settings) => {
-      if (this.destroyed || this.openEpoch !== epoch) return;
-      if (pendingGate && !pendingGate.isCurrent()) return;
+    return this.load().then((settings) => {
+      if (this.destroyed || this.openEpoch !== epoch) return false;
+      if (pendingGate && !pendingGate.isCurrent()) return false;
       settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
+      return true;
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
       // deliberate unmount, not a failure the user should be toasted about.
       // Back can cancel the pending history transition before the lazy chunk
       // rejects; that cancellation is also an expected teardown path.
       const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
-      if (this.destroyed || actionWasCancelled) return;
+      if (this.destroyed || actionWasCancelled) return false;
       console.warn('[settings] Failed to load settings window:', error);
       pendingGate?.cancel();
       showToast(t('common.error'));
+      return false;
     });
   }
 
@@ -338,7 +344,9 @@ export class EventHandlerManager implements AppModule {
     this.callbacks = callbacks;
     this.mobilePrimaryNav = new MobilePrimaryNav(ctx, {
       openSearch: (options) => this.callbacks.openSearch(options),
-      navigateToVariant: (variant, options) => this.navigateToVariant(variant, options),
+      navigateToVariant: async (variant, options) => {
+        await this.navigateToVariant(variant, options);
+      },
       openMission: (anchor) => this.openMissionPresetPopover(anchor, true),
     });
   }
@@ -1606,26 +1614,43 @@ export class EventHandlerManager implements AppModule {
   private async navigateToVariant(
     variant: string,
     options: { href?: string; isLocalDev: boolean },
-  ): Promise<void> {
+  ): Promise<'reload' | 'assign' | 'blocked'> {
     trackVariantSwitch(SITE_VARIANT, variant);
     await this.exitFullscreenForNavigation();
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
       if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
         window.location.reload();
+        return 'reload';
       }
-      return;
+      return 'blocked';
     }
 
     const target = options.href || VARIANT_META[variant]?.url;
-    if (!target) return;
+    if (!target) return 'blocked';
     try {
       const parsed = new URL(target, window.location.href);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'blocked';
       window.location.href = parsed.toString();
+      return 'assign';
     } catch {
-      return;
+      return 'blocked';
     }
+  }
+
+  public async navigateToVisibleVariant(
+    variant: string,
+  ): Promise<'none' | 'reload' | 'assign' | 'blocked' | 'unavailable'> {
+    if (variant === SITE_VARIANT) return 'none';
+    const link = this.ctx.container.querySelector<HTMLAnchorElement>(
+      `.variant-option[data-variant="${variant}"]`,
+    );
+    if (!link) return 'unavailable';
+    const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    return this.navigateToVariant(variant, {
+      href: link.href,
+      isLocalDev,
+    });
   }
 
   toggleFullscreen(): void {

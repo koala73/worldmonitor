@@ -5,8 +5,22 @@ import {
   throwIfWebMcpAborted,
   type DashboardActionResult,
   type DashboardContextSnapshot,
+  type WebMcpMonitorKey,
+  type WebMcpNavigationResult,
 } from '@/services/webmcp';
+import {
+  normalizeCatalogVariant,
+  type MapLayerCatalogSnapshot,
+} from '@/services/webmcp-map-layer-catalog';
+import type { MapLayerRuntimeAvailability } from '@/services/map-layer-runtime-availability';
+import {
+  listDashboardPanelCatalog,
+  type DashboardPanelCatalogPage,
+  type DashboardPanelCatalogQuery,
+} from '@/services/webmcp-panel-catalog';
+import type { PanelConfig } from '@/types';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
+import type { RendererKind } from '@/config/map-layer-definitions';
 
 const APP_DESTROYED_RESULT: DashboardActionResult = {
   ok: false,
@@ -72,6 +86,55 @@ export function getWebMcpDashboardContext(
         .map(([panelId]) => panelId),
     },
   };
+}
+
+export function getWebMcpMapLayerCatalogSnapshot(
+  ctx: AppContext,
+  variant: string,
+  hasPremium: boolean,
+  tFn?: (key: string) => string,
+  runtimeAvailability?: MapLayerRuntimeAvailability,
+): MapLayerCatalogSnapshot {
+  if (ctx.isDestroyed) {
+    throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+  }
+  if (!ctx.map) {
+    throw new DashboardBindingError('map_unavailable', 'Map is not available.');
+  }
+
+  const mapState = ctx.map.getState();
+  const rendererKind: RendererKind = ctx.map.isGlobeMode?.()
+    ? 'globe'
+    : ctx.map.isDeckGLActive?.() ? 'deck' : 'svg';
+  return {
+    variant: normalizeCatalogVariant(variant),
+    rendererKind,
+    enabledLayers: Object.entries(mapState.layers)
+      .filter(([, enabled]) => enabled === true)
+      .map(([layer]) => layer),
+    liveLayerKeys: Object.keys(ctx.mapLayers),
+    ...(runtimeAvailability ? { runtimeAvailability } : {}),
+    hasPremium,
+    deckGlActive: Boolean(ctx.map.isDeckGLActive?.()),
+    ...(tFn ? { tFn } : {}),
+  };
+}
+
+export function listWebMcpDashboardPanels(
+  ctx: AppContext,
+  variant: string,
+  query: DashboardPanelCatalogQuery,
+  options: { isPanelAllowed: (panelId: string, config: PanelConfig) => boolean },
+): DashboardPanelCatalogPage {
+  if (ctx.isDestroyed) {
+    throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+  }
+  return listDashboardPanelCatalog({
+    currentVariant: variant,
+    panelSettings: ctx.panelSettings,
+    mountedIds: new Set(Object.keys(ctx.panels)),
+    isPanelAllowed: options.isPanelAllowed,
+  }, query);
 }
 
 export async function waitForWebMcpUiReady(
@@ -154,4 +217,143 @@ export async function applyWebMcpDashboardAction(
   }
   throwIfWebMcpAborted(signal);
   return result;
+}
+
+const EMPTY_NAV_CONTEXT: DashboardContextSnapshot = {
+  variant: '',
+  map: {
+    view: '',
+    center: null,
+    zoom: 0,
+    timeRange: '',
+    enabledLayers: [],
+  },
+  panels: {
+    mounted: [],
+    enabled: [],
+  },
+};
+
+function navigationContext(ctx: AppContext, variant: string): DashboardContextSnapshot {
+  try {
+    return getWebMcpDashboardContext(ctx, variant);
+  } catch {
+    return { ...EMPTY_NAV_CONTEXT, variant };
+  }
+}
+
+const APP_DESTROYED_NAV_RESULT = (
+  context: DashboardContextSnapshot,
+): WebMcpNavigationResult => ({
+  ok: false,
+  status: 'denied',
+  reason: 'app_destroyed',
+  message: 'Dashboard is no longer available.',
+  context,
+});
+
+export type WebMcpVisibleMonitorNavigation = 'none' | 'reload' | 'assign' | 'blocked' | 'unavailable';
+
+export async function applyWebMcpSwitchMonitor(
+  ctx: AppContext,
+  currentVariant: string,
+  monitor: WebMcpMonitorKey,
+  navigate: (variant: WebMcpMonitorKey) => Promise<WebMcpVisibleMonitorNavigation>,
+): Promise<WebMcpNavigationResult> {
+  const context = navigationContext(ctx, currentVariant);
+  if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(context);
+
+  const navigation = await navigate(monitor);
+  if (navigation === 'unavailable' || navigation === 'blocked') {
+    return {
+      ok: false,
+      status: 'denied',
+      destination: monitor,
+      reason: 'unavailable',
+      message: navigation === 'unavailable'
+        ? 'That monitor is not available on this dashboard.'
+        : 'World Monitor could not switch monitors.',
+      context,
+    };
+  }
+
+  return {
+    ok: true,
+    status: 'applied',
+    destination: monitor,
+    navigation,
+    message: navigation === 'none' ? 'Already on that monitor.' : 'Switched monitor.',
+    context: { ...navigationContext(ctx, currentVariant), variant: monitor },
+  };
+}
+
+async function openUnifiedSettingsOverlay(
+  ctx: AppContext,
+  currentVariant: string,
+  destination: 'settings' | 'alerts',
+  tab: 'settings' | 'notifications',
+): Promise<WebMcpNavigationResult> {
+  const context = navigationContext(ctx, currentVariant);
+  if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(context);
+  if (!ctx.unifiedSettings) {
+    return {
+      ok: false,
+      status: 'denied',
+      destination,
+      reason: 'unavailable',
+      message: destination === 'alerts'
+        ? 'Alerts are not available on this dashboard.'
+        : 'Settings are not available on this dashboard.',
+      context,
+    };
+  }
+  const opened = await Promise.resolve(ctx.unifiedSettings.open(tab));
+  if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(navigationContext(ctx, currentVariant));
+  if (opened === false) {
+    return {
+      ok: false,
+      status: 'denied',
+      destination,
+      reason: 'unavailable',
+      message: destination === 'alerts'
+        ? 'Alerts are not available on this dashboard.'
+        : 'Settings are not available on this dashboard.',
+      context: navigationContext(ctx, currentVariant),
+    };
+  }
+  return {
+    ok: true,
+    status: 'applied',
+    destination,
+    overlay: 'open',
+    tab,
+    message: destination === 'alerts' ? 'Opened alerts.' : 'Opened settings.',
+    context: navigationContext(ctx, currentVariant),
+  };
+}
+
+export async function applyWebMcpOpenSettings(
+  ctx: AppContext,
+  currentVariant: string,
+): Promise<WebMcpNavigationResult> {
+  return openUnifiedSettingsOverlay(ctx, currentVariant, 'settings', 'settings');
+}
+
+export async function applyWebMcpOpenAlerts(
+  ctx: AppContext,
+  currentVariant: string,
+): Promise<WebMcpNavigationResult> {
+  const context = navigationContext(ctx, currentVariant);
+  if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(context);
+  if (ctx.isDesktopApp) {
+    return {
+      ok: false,
+      status: 'denied',
+      destination: 'alerts',
+      reason: 'unavailable',
+      message: 'Alerts are not available on this dashboard.',
+      context,
+    };
+  }
+  return openUnifiedSettingsOverlay(ctx, currentVariant, 'alerts', 'notifications');
 }

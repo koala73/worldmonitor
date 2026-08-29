@@ -14,6 +14,11 @@ import {
   type HydrationRequestLog,
   waitForHydrationRequestQuiescence,
 } from './helpers/hydration-request-quiescence';
+import {
+  LOAD_ALL_DATA_END_MARK,
+  LOAD_ALL_DATA_START_MARK,
+  waitForLoadAllDataFanOut as waitForLoadAllDataFanOutMarks,
+} from './helpers/load-all-data-fan-out';
 
 // ---------------------------------------------------------------------------
 // #7045 U5 — prove the transfer work removed requests rather than data.
@@ -209,9 +214,6 @@ const HYDRATION_DATASET_KEYS = HYDRATION_DATASETS.map((dataset) => dataset.key);
 
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
-/** Mark data-loader emits around runLoadAllData — proves a fan-out ran and drained. */
-const LOAD_ALL_DATA_START_MARK = 'wm:data:load-all-start';
-const LOAD_ALL_DATA_END_MARK = 'wm:data:load-all-end';
 
 async function installHydrationRequestAccounting(
   page: Page,
@@ -366,24 +368,20 @@ function countMarks(page: Page, markName: string): Promise<number> {
   }, markName);
 }
 
-/** Prove a second `runLoadAllData` fan-out ran and drained after the baseline. */
+/** Prove a second `runLoadAllData` fan-out ran and drained after the baseline.
+ * START vs drain budgets live in helpers/load-all-data-fan-out.ts — do not reuse
+ * REPEAT_LOAD_SETTLE_MS for drain (CI 99074126316: START fired, END did not). */
 async function waitForLoadAllDataFanOut(
   page: Page,
   marksBefore: { start: number; end: number },
   message: string,
 ): Promise<void> {
-  await expect
-    .poll(() => countMarks(page, LOAD_ALL_DATA_START_MARK), {
-      message,
-      timeout: REPEAT_LOAD_SETTLE_MS,
-    })
-    .toBeGreaterThan(marksBefore.start);
-  await expect
-    .poll(() => countMarks(page, LOAD_ALL_DATA_END_MARK), {
-      message: `${message} (fan-out did not drain)`,
-      timeout: REPEAT_LOAD_SETTLE_MS,
-    })
-    .toBeGreaterThan(marksBefore.end);
+  await waitForLoadAllDataFanOutMarks(
+    page,
+    () => snapshotLoadAllDataMarks(page),
+    marksBefore,
+    { message },
+  );
 }
 
 async function snapshotLoadAllDataMarks(page: Page): Promise<{ start: number; end: number }> {

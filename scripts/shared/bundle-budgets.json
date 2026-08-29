@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1603179
+    "raw": 1649293
   },
   "chunks": {
     "analytics": {
-      "raw": 118604,
+      "raw": 119361,
       "files": 1
     },
     "cached-risk-scores": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 16727,
+      "raw": 18223,
       "files": 1
     },
     "continuous": {
@@ -39,7 +39,7 @@
       "files": 1
     },
     "embed-url": {
-      "raw": 62546,
+      "raw": 62670,
       "files": 1
     },
     "font-settings": {
@@ -59,11 +59,11 @@
       "files": 1
     },
     "main": {
-      "raw": 855123,
+      "raw": 898577,
       "files": 1
     },
     "panel-gating": {
-      "raw": 2849,
+      "raw": 3132,
       "files": 1
     },
     "panels": {
