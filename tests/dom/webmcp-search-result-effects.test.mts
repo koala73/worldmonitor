@@ -464,6 +464,9 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      listDashboardPanels: async () => {
+        throw new Error('Unexpected dashboard panel catalog read.');
+      },
       getAccessContext: async () => ({
         accountState: 'signed_out',
         clerk: 'unavailable',

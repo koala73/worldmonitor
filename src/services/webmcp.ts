@@ -11,16 +11,17 @@
 //   1. openCountryBrief({ iso2 }) — opens the country deep-dive panel.
 //   2. openSearch()               — opens the global command palette.
 //   3. get_dashboard_context()    — reads bounded visible dashboard state.
-//   4. switch_monitor()           — switches World/Tech/Finance/Commodity/Energy/Good News.
-//   5. open_settings()            — opens the settings overlay.
-//   6. open_alerts()              — opens the alerts/notifications tab.
-//   7. open_dashboard_panel()     — opens an already-live panel.
-//   8. set_map_view()             — moves the visible map.
-//   9. set_map_layers()           — changes allowed visible map layers.
-//  10. search_dashboard()         — searches the live dashboard index.
-//  11. open_search_result()       — selects an opaque, revalidated result.
-//  12. get_access_context()       — reads signed-out / loading / signed-in access.
-//  13. open_sign_in()             — opens the existing Clerk sign-in dialog.
+//   4. list_dashboard_panels()    — pages the canonical panel catalog.
+//   5. switch_monitor()           — switches World/Tech/Finance/Commodity/Energy/Good News.
+//   6. open_settings()            — opens the settings overlay.
+//   7. open_alerts()              — opens the alerts/notifications tab.
+//   8. open_dashboard_panel()     — opens an already-live panel.
+//   9. set_map_view()             — moves the visible map.
+//  10. set_map_layers()           — changes allowed visible map layers.
+//  11. search_dashboard()         — searches the live dashboard index.
+//  12. open_search_result()       — selects an opaque, revalidated result.
+//  13. get_access_context()       — reads signed-out / loading / signed-in access.
+//  14. open_sign_in()             — opens the existing Clerk sign-in dialog.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -40,6 +41,21 @@ import {
   type WebMcpSpaToolName,
 } from '../config/webmcp';
 import { SITE_VARIANTS, isSiteVariant, type SiteVariant } from '../config/variant';
+import {
+  DASHBOARD_PANEL_CATALOG_CATEGORY_KEYS,
+  DASHBOARD_PANEL_CATALOG_DEFAULT_LIMIT,
+  DASHBOARD_PANEL_CATALOG_MAX_LIMIT,
+  DASHBOARD_PANEL_CATALOG_OUTPUT_TARGET_CHARS,
+  DASHBOARD_PANEL_CATEGORY_MAX_CHARS,
+  DASHBOARD_PANEL_ID_MAX_CHARS,
+  DASHBOARD_PANEL_ID_PATTERN,
+  DASHBOARD_PANEL_LABEL_MAX_CHARS,
+  DashboardPanelCatalogError,
+  type DashboardPanelCatalogItem,
+  type DashboardPanelCatalogPage,
+  type DashboardPanelCatalogQuery,
+  type DashboardPanelUnavailableReason,
+} from './webmcp-panel-catalog';
 import {
   DASHBOARD_MAP_MAX_LATITUDE,
   DASHBOARD_MAP_VIEWS,
@@ -63,6 +79,10 @@ export interface WebMcpAppBindings {
   getDashboardContext(
     options?: WebMcpExecutionOptions,
   ): DashboardContextSnapshot | Promise<DashboardContextSnapshot>;
+  listDashboardPanels(
+    query: DashboardPanelCatalogQuery,
+    options?: WebMcpExecutionOptions,
+  ): DashboardPanelCatalogPage | Promise<DashboardPanelCatalogPage>;
   switchMonitor(
     monitor: SiteVariant,
     options?: WebMcpExecutionOptions,
@@ -304,6 +324,7 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
 > = Object.freeze({
   [WEBMCP_SPA_TOOL.getDashboardContext]: 'read-only',
   [WEBMCP_SPA_TOOL.getAccessContext]: 'read-only',
+  [WEBMCP_SPA_TOOL.listDashboardPanels]: 'read-only',
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
   [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
   [WEBMCP_SPA_TOOL.switchMonitor]: 'cancellation-required',
@@ -364,6 +385,7 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   openCountryBrief: 'World Monitor could not open that country brief.',
   openSearch: 'World Monitor could not open search.',
   get_dashboard_context: 'World Monitor could not read dashboard context.',
+  list_dashboard_panels: 'World Monitor could not list dashboard panels.',
   switch_monitor: 'World Monitor could not switch monitors.',
   open_settings: 'World Monitor could not open settings.',
   open_alerts: 'World Monitor could not open alerts.',
@@ -557,6 +579,9 @@ function withInvocationLogging(
           'unavailable',
         );
       }
+      if (error instanceof DashboardPanelCatalogError) {
+        throw new SafeWebMcpError(error.message, 'validation');
+      }
       throw new SafeWebMcpError(TOOL_FAILURE_MESSAGES[name]);
     }
   };
@@ -623,6 +648,7 @@ function classifyInvocationResult(result: unknown): {
 function classifyInvocationError(error: unknown): WebMcpInvocationReason {
   if (error instanceof SafeWebMcpError) return error.analyticsReason;
   if (error instanceof DashboardBindingError) return 'unavailable';
+  if (error instanceof DashboardPanelCatalogError) return 'validation';
   if (isWebMcpAbortError(error)) return 'cancelled';
   return 'internal';
 }
@@ -699,6 +725,55 @@ function boundDashboardContext(
   result.panels.mountedTruncated = mounted.length < result.panels.mountedCount;
   result.panels.enabledTruncated = enabled.length < result.panels.enabledCount;
   return result;
+}
+
+function boundUnavailableReason(value: unknown): DashboardPanelUnavailableReason | undefined {
+  if (value === 'panel_not_entitled' || value === 'panel_disabled' || value === 'panel_not_live') {
+    return value;
+  }
+  return undefined;
+}
+
+function boundDashboardPanelCatalog(result: DashboardPanelCatalogPage): DashboardPanelCatalogPage {
+  const panels = (Array.isArray(result.panels) ? result.panels : []).map((panel) => {
+    const available = panel?.available === true;
+    const unavailableReason = available ? undefined : boundUnavailableReason(panel?.unavailableReason);
+    const bounded: DashboardPanelCatalogItem = {
+      id: boundedText(panel?.id, DASHBOARD_PANEL_ID_MAX_CHARS),
+      label: boundedText(panel?.label, DASHBOARD_PANEL_LABEL_MAX_CHARS),
+      category: boundedText(panel?.category, DASHBOARD_PANEL_CATEGORY_MAX_CHARS),
+      variants: Array.isArray(panel?.variants)
+        ? panel.variants
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => value.slice(0, 32))
+        : [],
+      enabled: panel?.enabled === true,
+      mounted: panel?.mounted === true,
+      entitled: panel?.entitled === true,
+      available,
+      ...(unavailableReason ? { unavailableReason } : {}),
+    };
+    return bounded;
+  });
+  const bounded: DashboardPanelCatalogPage = {
+    variant: boundedText(result.variant, 32),
+    total: Math.max(0, Math.floor(boundedNumber(result.total))),
+    hasMore: result.hasMore === true,
+    nextCursor: result.nextCursor ? boundedText(result.nextCursor, DASHBOARD_PANEL_ID_MAX_CHARS) : null,
+    panels,
+  };
+  while (
+    JSON.stringify(bounded).length > DASHBOARD_PANEL_CATALOG_OUTPUT_TARGET_CHARS
+    && bounded.panels.length > 1
+  ) {
+    bounded.panels.pop();
+    bounded.hasMore = true;
+    bounded.nextCursor = bounded.panels[bounded.panels.length - 1]?.id ?? null;
+  }
+  if (JSON.stringify(bounded).length > MAX_OUTPUT_CHARS) {
+    throw new SafeWebMcpError('Dashboard panel catalog exceeded the safe output limit.');
+  }
+  return bounded;
 }
 
 const ACCOUNT_STATES = new Set<WebMcpAccountState>(['signed_out', 'loading', 'signed_in']);
@@ -1015,6 +1090,75 @@ export function buildWebMcpTools(
       ), trackEvent),
     },
     {
+      name: WEBMCP_SPA_TOOL.listDashboardPanels,
+      title: 'List Dashboard Panels',
+      description:
+        'Page the canonical dashboard panel catalog for this tab, including disabled and unmounted panels. Optional variant, category, enabled, and available filters. Follow nextCursor until hasMore is false. Does not return panel data or enable panels. Gated panels include a stable unavailableReason.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          variant: {
+            type: 'string',
+            description: 'Monitor variant to list. Omit to include every canonical panel ID.',
+            enum: [...SITE_VARIANTS],
+          },
+          category: {
+            type: 'string',
+            description: 'Settings category key, such as core or marketsFinance.',
+            enum: [...DASHBOARD_PANEL_CATALOG_CATEGORY_KEYS],
+          },
+          enabled: {
+            type: 'boolean',
+            description: 'If set, keep panels whose enabled state matches.',
+          },
+          available: {
+            type: 'boolean',
+            description: 'If set, keep panels the current session can open.',
+          },
+          cursor: {
+            type: 'string',
+            description: 'Catalog cursor from the previous page nextCursor.',
+            minLength: 1,
+            maxLength: DASHBOARD_PANEL_ID_MAX_CHARS,
+            pattern: DASHBOARD_PANEL_ID_PATTERN,
+          },
+          limit: {
+            type: 'integer',
+            description: 'Maximum panels in this page, from 1 to 8.',
+            minimum: 1,
+            maximum: DASHBOARD_PANEL_CATALOG_MAX_LIMIT,
+            default: DASHBOARD_PANEL_CATALOG_DEFAULT_LIMIT,
+          },
+        },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listDashboardPanels, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['variant', 'category', 'enabled', 'available', 'cursor', 'limit'])) {
+          throw new SafeWebMcpError(
+            'list_dashboard_panels accepts only variant, category, enabled, available, cursor, and limit.',
+            'validation',
+          );
+        }
+        const query: DashboardPanelCatalogQuery = {};
+        if (args.variant !== undefined) query.variant = args.variant as string;
+        if (args.category !== undefined) query.category = args.category as string;
+        if (args.enabled !== undefined) query.enabled = args.enabled as boolean;
+        if (args.available !== undefined) query.available = args.available as boolean;
+        if (args.cursor !== undefined) query.cursor = args.cursor as string;
+        if (args.limit !== undefined) query.limit = args.limit as number;
+        return boundDashboardPanelCatalog(await app.listDashboardPanels(query, extra));
+      }, trackEvent, {
+        successMetadata: (_args, value) => {
+          const result = value as DashboardPanelCatalogPage;
+          return {
+            resultCount: result.panels.length,
+            hasMore: result.hasMore === true,
+          };
+        },
+      }),
+    },
+    {
       name: WEBMCP_SPA_TOOL.switchMonitor,
       title: 'Switch Monitor',
       description:
@@ -1113,7 +1257,7 @@ export function buildWebMcpTools(
             description: 'Dashboard panel ID, such as "markets" or "strategic-risk".',
             minLength: 1,
             maxLength: 96,
-            pattern: '^[a-z0-9][a-z0-9@_-]*$',
+            pattern: DASHBOARD_PANEL_ID_PATTERN,
           },
         },
         required: ['panelId'],

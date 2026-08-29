@@ -8,6 +8,7 @@ import {
   applyWebMcpOpenSettings,
   applyWebMcpSwitchMonitor,
   getWebMcpDashboardContext,
+  listWebMcpDashboardPanels,
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '../src/app/webmcp-dashboard.ts';
@@ -191,6 +192,69 @@ describe('WebMCP live dashboard bindings', () => {
     );
   });
 
+  it('pages live panel catalogs with entitlement and enabled-state differences', () => {
+    const panelSettings = getInitialPanelSettingsForVariant('full');
+    panelSettings.markets = { ...panelSettings.markets!, enabled: false };
+    const enabledDefaults = Object.entries(panelSettings)
+      .filter(([, config]) => config.enabled === true)
+      .map(([panelId]) => panelId);
+    const ctx = makeContext({
+      panels: Object.fromEntries(enabledDefaults.map((panelId) => [panelId, {}])) as AppContext['panels'],
+      panelSettings,
+    });
+
+    const entitled = listWebMcpDashboardPanels(ctx, 'full', { variant: 'full', limit: 8 }, {
+      isPanelAllowed: () => true,
+    });
+    assert.equal(entitled.total, 109);
+    assert.equal(entitled.variant, 'full');
+    assert.equal(entitled.hasMore, true);
+
+    const disabledPages = [];
+    let disabledCursor: string | null = null;
+    do {
+      const page = listWebMcpDashboardPanels(ctx, 'full', {
+        variant: 'full',
+        enabled: false,
+        ...(disabledCursor ? { cursor: disabledCursor } : {}),
+        limit: 8,
+      }, { isPanelAllowed: () => true });
+      disabledPages.push(page);
+      disabledCursor = page.nextCursor;
+    } while (disabledCursor);
+    assert.ok(disabledPages.flatMap((page) => page.panels).some(
+      (panel) => panel.id === 'markets' && panel.unavailableReason === 'panel_disabled',
+    ));
+
+    const pages = [entitled];
+    let cursor = entitled.nextCursor;
+    while (cursor) {
+      const page = listWebMcpDashboardPanels(ctx, 'full', { variant: 'full', cursor, limit: 8 }, {
+        isPanelAllowed: () => true,
+      });
+      pages.push(page);
+      cursor = page.nextCursor;
+    }
+    const ids = pages.flatMap((page) => page.panels.map((panel) => panel.id));
+    assert.equal(new Set(ids).size, 109);
+    assert.ok(ids.includes('windy-webcams'));
+
+    const gatedPages = [];
+    let gatedCursor: string | null = null;
+    do {
+      const page = listWebMcpDashboardPanels(ctx, 'full', {
+        variant: 'full',
+        ...(gatedCursor ? { cursor: gatedCursor } : {}),
+        limit: 8,
+      }, { isPanelAllowed: (panelId) => panelId !== 'strategic-risk' });
+      gatedPages.push(page);
+      gatedCursor = page.nextCursor;
+    } while (gatedCursor);
+    const strategic = gatedPages.flatMap((page) => page.panels).find((panel) => panel.id === 'strategic-risk');
+    assert.equal(strategic?.entitled, false);
+    assert.equal(strategic?.unavailableReason, 'panel_not_entitled');
+  });
+
   it('fails honestly when live dashboard state is unavailable', () => {
     assert.throws(
       () => getWebMcpDashboardContext(makeContext({ map: null }), 'full'),
@@ -203,6 +267,13 @@ describe('WebMCP live dashboard bindings', () => {
       (error) => error instanceof DashboardBindingError
         && error.reason === 'app_destroyed'
         && error.message === 'Dashboard is no longer available.',
+    );
+    assert.throws(
+      () => listWebMcpDashboardPanels(makeContext({ isDestroyed: true }), 'full', {}, {
+        isPanelAllowed: () => true,
+      }),
+      (error) => error instanceof DashboardBindingError
+        && error.reason === 'app_destroyed',
     );
   });
 
@@ -400,6 +471,35 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(result.ok, true);
     assert.equal(showCalls, 1);
     assert.equal(rendererReadyCalls, 0);
+  });
+
+  it('opens mixed-case catalog panel IDs through the shared action contract', async () => {
+    let showCalls = 0;
+    const ctx = makeContext({
+      panels: {
+        regionalStartups: {
+          show: () => { showCalls += 1; },
+          getElement: () => ({ scrollIntoView() {} }),
+        } as unknown as AppContext['panels'][string],
+      },
+      panelSettings: {
+        regionalStartups: { name: 'Global Startup News', enabled: true },
+      },
+    });
+
+    const result = await runDashboardActionBinding(
+      ctx,
+      { type: 'open_panel', panelId: 'regionalStartups' },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => new Promise<void>(() => {}),
+        applierOptions,
+        syncUrlStateNow: () => {},
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(showCalls, 1);
   });
 
   it('returns invalid actions without waiting for concrete renderer readiness', async () => {

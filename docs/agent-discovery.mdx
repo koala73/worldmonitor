@@ -41,7 +41,8 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | [RFC 9727](https://datatracker.ietf.org/doc/html/rfc9727) | JSON linkset bundling every other discovery URL — start here if you want one fetch and a map |
 | [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | Single bundled spec covering **every** REST service (Conflict, Resilience, Market, Economic, Maritime, Aviation, Climate, …) — feed it to any code-generator |
 | [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | Minified JSON bundle for tooling and scanners that only parse JSON. Same operations, parameters, request bodies and responses as `/openapi.yaml`; shared structures are `$ref`-collapsed and component schemas no operation can reach are omitted, to stay under scanner body caps |
-| [`/docs/api-versioning`](https://www.worldmonitor.app/docs/api-versioning) | Policy | REST compatibility, deprecation notice, and sunset-header contract |
+| [`/api-versioning.md`](https://www.worldmonitor.app/api-versioning.md) | Policy | Static markdown REST compatibility, deprecation, and sunset contract (RFC 9745 `Link rel="deprecation"`) |
+| [`/docs/api-versioning`](https://www.worldmonitor.app/docs/api-versioning) | Policy | HTML twin of the same REST compatibility, deprecation notice, and sunset-header contract |
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, streaming, capability flags |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 authorization-server metadata (PKCE, DCR, token endpoints) |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for `https://worldmonitor.app/mcp` |
@@ -165,6 +166,6 @@ The point isn't novelty — RFCs 8414, 8288, 9727, 9728 are old. The point is th
 - [WebMCP](/webmcp) — experimental tools discovered from the current browser page, not through the MCP server card
 - [Agent Skills Catalog](/agent-skills) — human-readable catalog of the public agent recipes
 - [API Reference](/api-reference) — human-readable service catalog and MCP→REST tool mapping
-- [API versioning and deprecation](/api-versioning) — compatibility guarantees and retirement signals
+- [API versioning and deprecation](/api-versioning) — compatibility guarantees and retirement signals ([static markdown](https://www.worldmonitor.app/api-versioning.md))
 - [Authentication](/usage-auth) — browser, API key, and OAuth modes
 - [Quickstart](/usage-quickstart) — first call in under a minute

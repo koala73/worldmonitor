@@ -3,6 +3,7 @@ import {
   DASHBOARD_MAP_MAX_LATITUDE,
   DASHBOARD_MAP_VIEWS,
   DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
+  DASHBOARD_PANEL_ACTION_ID_PATTERN,
   MAX_LAYER_ACTION_TARGET_ID_LENGTH,
   MAX_LAYER_ACTION_TARGETS,
 } from './agent-bus-contract';
@@ -31,7 +32,7 @@ export const suggestWidgetActionSchema = z.object({
 export const openPanelActionSchema = z.object({
   type: z.literal('open_panel'),
   label: labelSchema,
-  panelId: z.string().trim().min(1).max(96).regex(/^[a-z0-9][a-z0-9@_-]*$/),
+  panelId: z.string().trim().min(1).max(96).regex(new RegExp(DASHBOARD_PANEL_ACTION_ID_PATTERN)),
   reason: reasonSchema,
 }).strict();
 

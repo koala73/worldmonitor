@@ -49,6 +49,22 @@ function createBindings(overrides = {}) {
       },
       panels: { mounted: ['map'], enabled: ['map'] },
     }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
+    }),
     switchMonitor: async (monitor) => ({
       ok: true,
       status: 'applied',
@@ -212,6 +228,7 @@ describe('WebMCP analytics privacy policy', () => {
     await settlePromises();
 
     await executeRegistered(provider, 'openSearch');
+    await executeRegistered(provider, 'list_dashboard_panels', JSON.stringify({ limit: 1 }));
     await executeRegistered(provider, 'search_dashboard', JSON.stringify({
       query: 'PRIVATE_QUERY_TEXT',
       scope: 'all',
@@ -225,7 +242,7 @@ describe('WebMCP analytics privacy policy', () => {
       'webmcp-registered': new Set(['toolCount', 'pageSurface', 'api']),
       'webmcp-registration-failed': new Set(['tool', 'reason']),
       'webmcp-tool-invoked': new Set([
-        'tool', 'outcome', 'reason', 'queryLength', 'resultCount', 'resultTypes',
+        'tool', 'outcome', 'reason', 'queryLength', 'resultCount', 'resultTypes', 'hasMore',
       ]),
     };
     for (const call of collected) {
@@ -240,7 +257,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 12, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 13, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(
@@ -248,6 +265,19 @@ describe('WebMCP analytics privacy policy', () => {
       {
         event: 'webmcp-registration-failed',
         data: { tool: 'set_map_view', reason: 'aborted' },
+      },
+    );
+    assert.deepEqual(
+      collected.find(({ data }) => data?.tool === 'list_dashboard_panels'),
+      {
+        event: 'webmcp-tool-invoked',
+        data: {
+          tool: 'list_dashboard_panels',
+          outcome: 'success',
+          reason: 'completed',
+          resultCount: 1,
+          hasMore: false,
+        },
       },
     );
     assert.deepEqual(

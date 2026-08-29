@@ -8,6 +8,12 @@ import {
   type WebMcpMonitorKey,
   type WebMcpNavigationResult,
 } from '@/services/webmcp';
+import {
+  listDashboardPanelCatalog,
+  type DashboardPanelCatalogPage,
+  type DashboardPanelCatalogQuery,
+} from '@/services/webmcp-panel-catalog';
+import type { PanelConfig } from '@/types';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
 
 const APP_DESTROYED_RESULT: DashboardActionResult = {
@@ -74,6 +80,23 @@ export function getWebMcpDashboardContext(
         .map(([panelId]) => panelId),
     },
   };
+}
+
+export function listWebMcpDashboardPanels(
+  ctx: AppContext,
+  variant: string,
+  query: DashboardPanelCatalogQuery,
+  options: { isPanelAllowed: (panelId: string, config: PanelConfig) => boolean },
+): DashboardPanelCatalogPage {
+  if (ctx.isDestroyed) {
+    throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+  }
+  return listDashboardPanelCatalog({
+    currentVariant: variant,
+    panelSettings: ctx.panelSettings,
+    mountedIds: new Set(Object.keys(ctx.panels)),
+    isPanelAllowed: options.isPanelAllowed,
+  }, query);
 }
 
 export async function waitForWebMcpUiReady(

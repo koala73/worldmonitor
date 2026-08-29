@@ -14,9 +14,17 @@
  *   - Two tabs can both read an empty ledger and mount. A read-then-write is
  *     not an atomic claim.
  *
- * A true account-wide guarantee needs server-backed state, which would put a
- * write on the sign-in path for a cosmetic property of a prompt. Deliberately
- * not done.
+ * Those limits are why a THIRD tier exists below. `hasAccountOfferRecord` and
+ * `recordAccountOffer` keep the flag on the Clerk user itself, which is
+ * account-scoped and server-backed and therefore immune to all three.
+ * Production forced this. The offer only ever fired on a sign-in transition, so
+ * the whole already-signed-in population was never asked, and relaxing that
+ * guard is only safe once "already offered" survives a browser with storage
+ * disabled.
+ *
+ * The local tiers are not redundant with it. They answer synchronously, before
+ * any network read, which is what lets the eager boot shim skip its dynamic
+ * import outright on the common repeat visit.
  *
  * Every decision here is pure and every storage handle is injected, so the
  * tests need no jsdom and no globals.
@@ -143,6 +151,75 @@ function parseOfferRecord(raw: string): { at: number } | null {
     if (!parsed || typeof parsed !== 'object') return null;
     const at = (parsed as { at?: unknown }).at;
     return typeof at === 'number' && Number.isFinite(at) ? { at } : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The durable tier: account-scoped state on the Clerk user
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the durable record lives inside `user.unsafeMetadata`.
+ *
+ * `unsafeMetadata` is user-writable by design, which is right for a cosmetic
+ * "we already asked" flag and wrong for anything security bearing. Forging it
+ * can only suppress an offer for the forger.
+ */
+export const ACCOUNT_OFFER_METADATA_KEY = 'wmPasskeyOfferedAt';
+
+/** The read side of the Clerk user this module touches. */
+export interface AccountOfferReader {
+  unsafeMetadata?: Record<string, unknown> | null;
+}
+
+/** The write side. Clerk's `User.update` resolves once the patch is persisted. */
+export interface AccountOfferWriter extends AccountOfferReader {
+  update?: (params: { unsafeMetadata: Record<string, unknown> }) => Promise<unknown>;
+}
+
+/** Whether this account has been offered on ANY device or origin. */
+export function hasAccountOfferRecord(user: AccountOfferReader | null | undefined): boolean {
+  const at = user?.unsafeMetadata?.[ACCOUNT_OFFER_METADATA_KEY];
+  return typeof at === 'number' && Number.isFinite(at) && at > 0;
+}
+
+/**
+ * Persist the durable record. Resolves to whether it actually landed.
+ *
+ * The spread is load bearing. Clerk REPLACES `unsafeMetadata` wholesale rather
+ * than merging, so writing a bare `{ [KEY]: ... }` would silently delete every
+ * other key the app or a future feature keeps there.
+ *
+ * Never throws and never rejects. This runs at mount, and a failed metadata
+ * write must not break a prompt already on screen. The local tiers still
+ * suppress the repeat on this browser, which is the pre-existing behaviour
+ * rather than a regression.
+ */
+export async function recordAccountOffer(user: AccountOfferWriter | null | undefined): Promise<boolean> {
+  if (!user || typeof user.update !== 'function') return false;
+  if (hasAccountOfferRecord(user)) return true;
+  try {
+    await user.update({
+      unsafeMetadata: { ...(user.unsafeMetadata ?? {}), [ACCOUNT_OFFER_METADATA_KEY]: Date.now() },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `localStorage` when reachable, null in private modes that throw on ACCESS.
+ *
+ * Shared by the eager boot shim and the controller so both consult the same
+ * handle. Two independent helpers would be free to diverge on which failure
+ * modes degrade to null.
+ */
+export function safeLocalStorage(): OfferStorage | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
   } catch {
     return null;
   }

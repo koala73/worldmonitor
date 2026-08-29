@@ -31,3 +31,4 @@ All developer surfaces share one tool inventory and one subscription auth model 
 
 - [Site-wide llms.txt](https://worldmonitor.app/llms.txt) · [API section](https://worldmonitor.app/api/llms.txt) · [Docs section](https://www.worldmonitor.app/docs/llms.txt) · [Blog section](https://www.worldmonitor.app/blog/llms.txt)
 - [Developer portal (human)](https://worldmonitor.app/developers.md) · [agents.md](https://worldmonitor.app/agents.md)
+- [World Monitor brand identity](https://worldmonitor.app/world-monitor.md) · [REST versioning and deprecation](https://worldmonitor.app/api-versioning.md)

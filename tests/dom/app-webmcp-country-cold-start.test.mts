@@ -65,6 +65,13 @@ describe('App WebMCP country binding cold start', () => {
       resolveCountryName: () => 'France',
       openSearch: async () => true,
       getDashboardContext: async () => unusedDashboardContext,
+      listDashboardPanels: async () => ({
+        variant: 'full',
+        total: 0,
+        hasMore: false,
+        nextCursor: null,
+        panels: [],
+      }),
       ...unusedNavigationBindings(),
       applyDashboardAction: async () => ({
         ok: true,
@@ -162,6 +169,13 @@ describe('App WebMCP country binding cold start', () => {
       resolveCountryName: () => 'France',
       openSearch: async () => true,
       getDashboardContext: async () => unusedDashboardContext,
+      listDashboardPanels: async () => ({
+        variant: 'full',
+        total: 0,
+        hasMore: false,
+        nextCursor: null,
+        panels: [],
+      }),
       ...unusedNavigationBindings(),
       applyDashboardAction: async () => ({
         ok: true,

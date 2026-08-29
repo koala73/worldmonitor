@@ -50,6 +50,22 @@ function createBindings(overrides: Record<string, unknown> = {}) {
       },
       panels: { mounted: ['map'], enabled: ['map'] },
     }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
+    }),
     switchMonitor: async (monitor) => ({
       ok: true,
       status: 'applied' as const,
@@ -149,6 +165,7 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   openCountryBrief: { iso2: 'DE' },
   openSearch: {},
   get_dashboard_context: {},
+  list_dashboard_panels: {},
   switch_monitor: { monitor: 'tech' },
   open_settings: {},
   open_alerts: {},
@@ -177,8 +194,9 @@ const HOMEPAGE_VALID_INPUTS: Record<string, Record<string, unknown>> = {
 
 const WEBMCP_MAINTAINER_SOURCES = [
   'src/config/webmcp.ts',
-  'src/services/webmcp.ts',
-  'src/App.ts',
+    'src/services/webmcp.ts',
+    'src/services/webmcp-panel-catalog.ts',
+    'src/App.ts',
   'src/app/webmcp-dashboard.ts',
   'src/app/webmcp-access.ts',
   'src/services/webmcp-access-snapshot.ts',
@@ -208,6 +226,7 @@ const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
   'tests/webmcp.test.mjs',
   'tests/webmcp-search-effects.test.mts',
   'tests/webmcp-dashboard.test.mts',
+  'tests/webmcp-panel-catalog.test.mts',
   'tests/webmcp-runtime.test.mjs',
   'tests/webmcp-analytics-policy.test.mjs',
   'tests/webmcp-evals.test.mjs',
@@ -477,7 +496,8 @@ describe('WebMCP canonical inventories', () => {
 describe('WebMCP imperative schema and budget contract', () => {
   it('compiles every input schema under JSON Schema 2020-12 and accepts its canonical input', () => {
     const ajv = new Ajv2020({ allErrors: true, strict: true });
-    for (const tool of buildWebMcpTools(createBindings(), () => {})) {
+    const tools = buildWebMcpTools(createBindings(), () => {});
+    for (const tool of tools) {
       const validate = ajv.compile(tool.inputSchema ?? {});
       assert.equal(
         validate(VALID_INPUTS[tool.name]),
@@ -485,6 +505,10 @@ describe('WebMCP imperative schema and budget contract', () => {
         `${tool.name}: ${ajv.errorsText(validate.errors)}`,
       );
     }
+    const open = tools.find((tool) => tool.name === 'open_dashboard_panel');
+    const validateOpen = ajv.compile(open?.inputSchema ?? {});
+    assert.equal(validateOpen({ panelId: 'regionalStartups' }), true, ajv.errorsText(validateOpen.errors));
+    assert.equal(validateOpen({ panelId: 'gccNews' }), true, ajv.errorsText(validateOpen.errors));
   });
 
   it('applies uniform metadata, schema, output, and error budgets to all dashboard tools', async () => {
@@ -518,6 +542,7 @@ describe('WebMCP imperative schema and budget contract', () => {
       openCountryBriefByCode: async () => { throw privateError; },
       openSearch: async () => { throw privateError; },
       getDashboardContext: async () => { throw privateError; },
+      listDashboardPanels: async () => { throw privateError; },
       switchMonitor: async () => { throw privateError; },
       openSettings: async () => { throw privateError; },
       openAlerts: async () => { throw privateError; },

@@ -10,6 +10,7 @@ const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
 const DASHBOARD_TOOL_NAMES = [
   'get_access_context',
   'get_dashboard_context',
+  'list_dashboard_panels',
   'openCountryBrief',
   'openSearch',
   'open_alerts',
@@ -49,6 +50,14 @@ type ColdStartContextProbe = {
   settledAt: number;
   targetCancellationSupported: boolean;
   uiReadyAtSettlement: boolean;
+};
+
+type DashboardPanelCatalogProbe = {
+  disabledCount: number;
+  pages: number;
+  reasons: Record<string, number>;
+  total: number;
+  uniqueCount: number;
 };
 
 type ToolStartMark = {
@@ -264,7 +273,12 @@ test.describe('top-level WebMCP dashboard contract', () => {
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
       expect(tool.schema, `${tool.name} schema`).toMatchObject({ type: 'object' });
       expect(tool.annotations.readOnlyHint, `${tool.name} readOnlyHint`).toBe(
-        ['get_access_context', 'get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        [
+          'get_access_context',
+          'get_dashboard_context',
+          'list_dashboard_panels',
+          'search_dashboard',
+        ].includes(tool.name),
       );
       expect(
         Boolean(tool.annotations.untrustedContentHint),
@@ -376,6 +390,61 @@ test.describe('top-level WebMCP dashboard contract', () => {
         status: expect.stringMatching(/^(opened|already_open)$/),
       }));
     }
+
+    const catalogProbe = await page.evaluate(async (): Promise<DashboardPanelCatalogProbe> => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      };
+      type CatalogItem = {
+        enabled?: boolean;
+        id?: string;
+        unavailableReason?: string;
+      };
+      type CatalogPage = {
+        hasMore?: boolean;
+        nextCursor?: string | null;
+        panels?: CatalogItem[];
+        total?: number;
+      };
+
+      const provider = document.modelContext as ExecutableModelContext | undefined;
+      if (!provider || typeof provider.executeTool !== 'function') {
+        throw new Error('Chrome WebMCP execution API is unavailable.');
+      }
+      const tool = (await provider.getTools())
+        .find((candidate) => candidate.name === 'list_dashboard_panels');
+      if (!tool) throw new Error('list_dashboard_panels was not discovered.');
+
+      const ids = new Set<string>();
+      const reasons: Record<string, number> = {};
+      let cursor: string | undefined;
+      let disabledCount = 0;
+      let pages = 0;
+      let total = 0;
+      for (; pages < 80; pages += 1) {
+        const raw = await provider.executeTool(tool, JSON.stringify({ cursor, limit: 8 }));
+        const page = (typeof raw === 'string' ? JSON.parse(raw) : raw) as CatalogPage;
+        const panels = Array.isArray(page.panels) ? page.panels : [];
+        total = typeof page.total === 'number' ? page.total : total;
+        for (const panel of panels) {
+          if (typeof panel.id !== 'string') throw new Error('Catalog panel is missing its ID.');
+          if (ids.has(panel.id)) throw new Error(`Catalog repeated panel ${panel.id}.`);
+          ids.add(panel.id);
+          if (panel.enabled === false) disabledCount += 1;
+          if (typeof panel.unavailableReason === 'string') {
+            reasons[panel.unavailableReason] = (reasons[panel.unavailableReason] ?? 0) + 1;
+          }
+        }
+        if (page.hasMore !== true) break;
+        if (typeof page.nextCursor !== 'string') {
+          throw new Error('Paginated catalog response is missing its next cursor.');
+        }
+        cursor = page.nextCursor;
+      }
+      if (pages >= 80) throw new Error('Catalog pagination did not terminate.');
+      return { disabledCount, pages: pages + 1, reasons, total, uniqueCount: ids.size };
+    });
+    expect(catalogProbe.uniqueCount).toBe(catalogProbe.total);
 
     const panelProbe = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
       type ExecutableModelContext = WebMCP.ModelContext & {
@@ -644,6 +713,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
       },
       calls: {
         success: { tool: 'get_dashboard_context', output: coldStart.context },
+        catalog: {
+          tool: 'list_dashboard_panels',
+          disabledCount: catalogProbe.disabledCount,
+          pages: catalogProbe.pages,
+          reasons: catalogProbe.reasons,
+          total: catalogProbe.total,
+          uniqueCount: catalogProbe.uniqueCount,
+        },
         denied: {
           tool: 'open_dashboard_panel',
           targetCancellationSupported: coldStart.targetCancellationSupported,

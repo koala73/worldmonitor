@@ -97,6 +97,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     triggerPaths: Object.freeze([
       'workers/api-cors-preflight/**',
       'api/_bootstrap-public-tier.js',
+      'api/_bootstrap-tier-keys.js',
       'tests/cors-preflight-live.test.mjs',
       'tests/helpers/public-bootstrap-contract.mjs',
       '.github/workflows/deploy-worker.yml',

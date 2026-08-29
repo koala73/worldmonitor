@@ -17,7 +17,10 @@
 //      ~/.claude/skills/worldmonitor-architecture-gotchas/reference/
 //        cloudflare-worker-overrides-vercel-cors-for-preflight.md
 
-import { bootstrapTierFromPublicRequest, bootstrapTierFromPublicUrl } from '../../../api/_bootstrap-public-tier.js';
+import {
+  classifyPublicBootstrapRequest,
+  classifyPublicBootstrapUrl,
+} from '../../../api/_bootstrap-public-tier.js';
 import { maybeShadowKvRead } from './kv-shadow.js';
 import { maybeServeBootstrapFromKv } from './kv-serve.js';
 
@@ -42,7 +45,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
-const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -54,6 +57,25 @@ const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempoten
 //     Allow-Methods, but listing it costs nothing and avoids a different
 //     preflight from a stricter future client.
 const ALLOW_METHODS = 'GET, POST, DELETE, HEAD, OPTIONS';
+
+// Absolute URL: this Worker serves api.worldmonitor.app, where a
+// root-relative /api-versioning.md would 404. Keep in sync with
+// server/_shared/deprecation-policy.ts.
+const DEPRECATION_POLICY_LINK =
+  '<https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"';
+const DEPRECATION_REL = /(?:^|,)\s*<[^>]+>\s*;[^,]*\brel="deprecation"/;
+
+function appendDeprecationPolicyLink(headers) {
+  if (headers instanceof Headers) {
+    const existing = headers.get('Link');
+    if (existing && DEPRECATION_REL.test(existing)) return;
+    headers.set('Link', existing ? `${existing}, ${DEPRECATION_POLICY_LINK}` : DEPRECATION_POLICY_LINK);
+    return;
+  }
+  const existing = headers.Link;
+  if (existing && DEPRECATION_REL.test(existing)) return;
+  headers.Link = existing ? `${existing}, ${DEPRECATION_POLICY_LINK}` : DEPRECATION_POLICY_LINK;
+}
 
 // Paths whose Vercel functions own a DIFFERENT CORS policy than this Worker
 // (intentionally wider — e.g. MCP/OAuth endpoints accept https://claude.ai +
@@ -231,7 +253,7 @@ function buildPublicBootstrapCorsHeaders() {
  * disallowed Origin, whose echo is load-bearing for observing origin_403 (#6411).
  */
 function preflightsPublicBootstrapShape(request, url, origin) {
-  if (bootstrapTierFromPublicUrl(url) === null) return false;
+  if (classifyPublicBootstrapUrl(url) === null) return false;
   if ((request.headers.get('Access-Control-Request-Method') || '').toUpperCase() !== 'GET') return false;
   return !origin || isAllowedOrigin(origin);
 }
@@ -328,6 +350,7 @@ async function passThroughToOrigin(request, url, corsHeadersForStatus) {
         mergeHeaderNames(EXPOSE_HEADERS, originExposedHeaders),
       );
     }
+    appendDeprecationPolicyLink(newHeaders);
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
@@ -337,9 +360,11 @@ async function passThroughToOrigin(request, url, corsHeadersForStatus) {
     const corsHeaders = typeof corsHeadersForStatus === 'function'
       ? corsHeadersForStatus(502)
       : corsHeadersForStatus;
+    const errorHeaders = { 'Content-Type': 'application/json', ...corsHeaders };
+    appendDeprecationPolicyLink(errorHeaders);
     return new Response(JSON.stringify({ error: 'Origin unavailable' }), {
       status: 502,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      headers: errorHeaders,
     });
   }
 }
@@ -375,26 +400,26 @@ export default {
       const headers = preflightsPublicBootstrapShape(request, url, origin)
         ? buildPublicBootstrapCorsHeaders()
         : buildPreflightCorsHeaders(origin);
+      appendDeprecationPolicyLink(headers);
       return new Response(null, { status: 204, headers });
     }
 
-    // `?tier=<fast|slow>&public=1` is answered by api/bootstrap.js with the public shape, so the
-    // edge reproduces it on BOTH paths (#7308). One CORS shape for one URL: the KV-served bytes and
-    // the origin fallback answer the same request, and a response whose CORS shape depends on which
-    // path won the hedge is the harder thing to reason about, not the safer one. A fixed bag rather
-    // than a status-dependent builder — public is public at every status here.
-    //
     // Scoped to CORS on purpose. The browser CACHE directive still differs by path (KV `no-store`,
     // origin `TIER_CACHE[tier]`) and that is deliberate, for reasons that belong to the KV path
     // rather than this one — see kv-serve.js#serveFromKv. Do not read this as a caching invariant.
-    const publicTier = bootstrapTierFromPublicRequest(request, url);
-    const publicBootstrapShape = publicTier !== null && (!origin || isAllowedOrigin(origin));
+    const publicBootstrap = classifyPublicBootstrapRequest(request, url);
+    const publicBootstrapShape = publicBootstrap !== null && (!origin || isAllowedOrigin(origin));
+    const publicTier = publicBootstrap?.authKind === 'public-tier' ? publicBootstrap.tier : null;
     const corsPolicy = publicBootstrapShape
       ? buildPublicBootstrapCorsHeaders()
       : (status) => buildResponseCorsHeaders(origin, status);
     // KV always mints a 200, and serveFromKv spreads what it is handed — resolve the union here so
     // the bag it receives is a bag, never a status function whose spread would yield no CORS at all.
     const kvCorsHeaders = publicBootstrapShape ? corsPolicy : buildCorsHeaders(origin);
+    // serveFromKv spreads this bag and never enters passThroughToOrigin, so the
+    // policy Link has to live on the bag itself. Production is
+    // BOOTSTRAP_KV_SERVE="all".
+    appendDeprecationPolicyLink(kvCorsHeaders);
     // The single origin path for this request. maybeServeBootstrapFromKv (U-K4) may invoke it once
     // internally when it hedges/falls back; every other request runs it directly below. Either way
     // origin is fetched at most once.

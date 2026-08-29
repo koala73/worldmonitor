@@ -42,6 +42,19 @@ describe('markdown URL-fallback helpers', () => {
 });
 
 describe('api/md-twin.ts', () => {
+  it('returns the deprecation policy Link on OPTIONS preflights', async () => {
+    const res = await buildMarkdownTwinResponse(
+      new Request('https://www.worldmonitor.app/dashboard.md', { method: 'OPTIONS' }),
+      '/dashboard.md',
+    );
+
+    assert.equal(res.status, 204);
+    assert.equal(await res.text(), '');
+    assert.equal(res.headers.get('access-control-allow-origin'), '*');
+    assert.match(res.headers.get('link') ?? '', /rel="deprecation"/);
+    assert.match(res.headers.get('link') ?? '', /https:\/\/www\.worldmonitor\.app\/api-versioning\.md/);
+  });
+
   it('returns heading-led markdown for a 200 HTML sibling', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input, init) => {
@@ -58,6 +71,8 @@ describe('api/md-twin.ts', () => {
       assert.equal(res.status, 200);
       assert.match(res.headers.get('content-type') ?? '', /text\/markdown/);
       assert.equal(res.headers.get('access-control-allow-origin'), '*');
+      assert.match(res.headers.get('link') ?? '', /rel="canonical"/);
+      assert.match(res.headers.get('link') ?? '', /rel="deprecation"/);
       const body = await res.text();
       assert.match(body, /^# /m);
       assert.match(body, /Dashboard|World Monitor/);

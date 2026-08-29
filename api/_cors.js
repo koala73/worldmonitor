@@ -66,6 +66,12 @@ const EXPOSED_HEADERS = [
   'X-WorldMonitor-Bbox-Missing',
   'X-WorldMonitor-Bbox-Invalid',
   'X-Military-Bbox',
+  // RFC 9745 / RFC 8594 lifecycle signals. Link rel="deprecation" is present
+  // on current responses for policy discovery; Deprecation and Sunset appear
+  // only when a surface is actually deprecated.
+  'Link',
+  'Deprecation',
+  'Sunset',
 ].join(', ');
 
 /**
