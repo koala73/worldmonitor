@@ -20,10 +20,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  ACCOUNT_OFFER_METADATA_KEY,
   createOfferMemory,
   derivePasskeyAccountKey,
+  hasAccountOfferRecord,
   hasBeenOffered,
   passkeyOfferStorageKey,
+  recordAccountOffer,
   recordOffered,
   shouldOfferPasskey,
 } from '../src/services/passkey-offer-state.ts';
@@ -209,5 +212,63 @@ describe('shouldOfferPasskey', () => {
 
   it('does not offer when a ledger record exists, even with zero passkeys (AE6)', () => {
     assert.equal(shouldOfferPasskey({ ...OFFERABLE, alreadyOffered: true }), false);
+  });
+});
+
+describe('the durable account tier', () => {
+  it('reads a record written on any device', () => {
+    assert.equal(hasAccountOfferRecord({ unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 1 } }), true);
+  });
+
+  it('treats a missing, null, or non-numeric value as not offered', () => {
+    assert.equal(hasAccountOfferRecord(null), false);
+    assert.equal(hasAccountOfferRecord({}), false);
+    assert.equal(hasAccountOfferRecord({ unsafeMetadata: null }), false);
+    assert.equal(hasAccountOfferRecord({ unsafeMetadata: {} }), false);
+    assert.equal(hasAccountOfferRecord({ unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 'yes' } }), false);
+    assert.equal(hasAccountOfferRecord({ unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 0 } }), false);
+  });
+
+  it('PRESERVES every other unsafeMetadata key when writing', async () => {
+    // Clerk REPLACES unsafeMetadata wholesale rather than merging it, so a bare
+    // `{ [KEY]: ... }` patch would silently delete everything else the app
+    // keeps there. Nothing else in the suite would notice.
+    let patch: Record<string, unknown> | null = null;
+    const user = {
+      unsafeMetadata: { theme: 'dark', onboardingStep: 3 },
+      update: async (params: { unsafeMetadata: Record<string, unknown> }) => {
+        patch = params.unsafeMetadata;
+      },
+    };
+
+    assert.equal(await recordAccountOffer(user), true);
+    assert.equal(patch!.theme, 'dark');
+    assert.equal(patch!.onboardingStep, 3);
+    assert.equal(typeof patch![ACCOUNT_OFFER_METADATA_KEY], 'number');
+  });
+
+  it('resolves false rather than throwing when the write rejects', async () => {
+    // This runs at mount. A rejected metadata write must not break a prompt
+    // that is already on screen; the local tiers still suppress the repeat.
+    const user = {
+      unsafeMetadata: {},
+      update: async () => { throw new Error('network'); },
+    };
+    assert.equal(await recordAccountOffer(user), false);
+  });
+
+  it('resolves false when there is no user or no update method', async () => {
+    assert.equal(await recordAccountOffer(null), false);
+    assert.equal(await recordAccountOffer({ unsafeMetadata: {} }), false);
+  });
+
+  it('does not re-write a record that already exists', async () => {
+    let calls = 0;
+    const user = {
+      unsafeMetadata: { [ACCOUNT_OFFER_METADATA_KEY]: 42 },
+      update: async () => { calls += 1; },
+    };
+    assert.equal(await recordAccountOffer(user), true);
+    assert.equal(calls, 0);
   });
 });

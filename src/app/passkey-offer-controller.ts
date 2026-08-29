@@ -10,12 +10,16 @@ import {
 import { subscribeAuthState } from '@/services/auth-state';
 import { getClerk } from '@/services/clerk';
 import {
+  type AccountOfferWriter,
   createOfferMemory,
   derivePasskeyAccountKey,
+  hasAccountOfferRecord,
   hasBeenOffered,
   type OfferMemory,
   type OfferStorage,
+  recordAccountOffer,
   recordOffered,
+  safeLocalStorage,
   shouldOfferPasskey,
 } from '@/services/passkey-offer-state';
 import {
@@ -191,15 +195,18 @@ export class PasskeyOfferController implements AppModule {
   private observedBanner: Element | null = null;
 
   /**
-   * Whether an authoritative signed-out state has been seen this page life.
+   * Whether this controller may evaluate at all.
    *
-   * This is the whole cookie-hydration guard. Auth state starts
-   * `{ user: null, isPending: true }` and becomes a user when an existing
-   * cookie hydrates, so a naive null-to-user detector fires on EVERY page load
-   * for an already-signed-in user. And "signed out" must be authoritative:
-   * a failed Clerk SDK load deliberately publishes `{user: null, isPending:
-   * false}` — byte-identical to a real signed-out session — while keeping
-   * subscribers queued for a retry.
+   * It no longer means "a sign-in transition happened". The boot shim decides
+   * reach now, and it hands off for a returning session too, so it constructs
+   * this controller `preArmed`. What remains here is the guard for a controller
+   * constructed directly: an authoritative signed-out state, where "signed out"
+   * must be vouched for by the SDK, because a failed Clerk load deliberately
+   * publishes `{user: null, isPending: false}` — byte-identical to a real
+   * signed-out session — while keeping subscribers queued for a retry.
+   *
+   * Repeat suppression does NOT rest on this flag. It rests on the three ledger
+   * tiers, the durable one of which is account-scoped and server-backed.
    */
   private armed: boolean;
   private prompt: PasskeyOfferPrompt | null = null;
@@ -281,10 +288,15 @@ export class PasskeyOfferController implements AppModule {
       readEnvironment: () => readPasskeyEnvironmentFacts(this.ctx.isDesktopApp),
       readIdentity: () => this.readIdentity(),
       passkeyCount: () => countPasskeys(getClerk()?.user as { passkeys?: unknown } | null),
+      // All three tiers. The durable one is checked here as well as in the boot
+      // shim because the controller can be constructed directly, and because a
+      // sibling device may have written it after this page loaded.
       // NOT gated on a non-null handle: when localStorage throws on access
       // `storage` is null, and gating here would discard the in-memory tier
       // that is the entire fallback (KTD3d).
-      alreadyOffered: (key) => hasBeenOffered(this.storage, this.memory, key),
+      alreadyOffered: (key) =>
+        hasAccountOfferRecord(getClerk()?.user as AccountOfferWriter | null)
+        || hasBeenOffered(this.storage, this.memory, key),
       platformAuthenticator: () => hasPlatformAuthenticator(),
       blockedByOverlay: () => this.blockedByOverlay(),
       deferFrame: () => new Promise<void>((resolve) => this.scheduleFrame(() => resolve())),
@@ -330,6 +342,11 @@ export class PasskeyOfferController implements AppModule {
     // The offer is spent at MOUNT, not at answer — otherwise closing the tab
     // with the card open earns a second offer.
     recordOffered(this.storage, this.memory, identity.accountKey);
+    // Not awaited: the local tiers above already suppress the repeat on this
+    // browser, so the card must not wait on a network write to appear. The
+    // durable tier is what carries the suppression to the user's other devices
+    // and to a browser that cannot keep localStorage at all.
+    void recordAccountOffer(getClerk()?.user as AccountOfferWriter | null);
     this.broadcastMounted(identity.accountKey);
     trackPasskeyOfferShown();
   }
@@ -512,15 +529,6 @@ export class PasskeyOfferController implements AppModule {
   private broadcastMounted(accountKey: string | null): void {
     if (!accountKey) return;
     try { this.channel?.postMessage({ accountKey }); } catch { /* channel closed */ }
-  }
-}
-
-/** `localStorage` when reachable. Null in private modes that throw on access. */
-function safeLocalStorage(): OfferStorage | null {
-  try {
-    return typeof localStorage !== 'undefined' ? localStorage : null;
-  } catch {
-    return null;
   }
 }
 

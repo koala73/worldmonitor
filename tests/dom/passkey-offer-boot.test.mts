@@ -6,24 +6,37 @@
  * But deferring it introduces exactly one way to break the feature silently —
  * losing the arming observation.
  *
- * The detector may only arm on an AUTHORITATIVE signed-out state (Clerk loaded,
- * no session). So the shim must subscribe eagerly, not on idle: a user who
- * signs in quickly would otherwise be seen as already-signed-in with no prior
- * signed-out reading, and would never be offered. These tests pin that, plus
- * the two states that must NOT arm.
+ * The shim also owns the reach decision, because that decision determines
+ * whether the chunk is worth fetching at all. It hands off both for a fresh
+ * sign-in and for a returning session, and runs every suppression BEFORE either
+ * one so a user who is not going to be offered never pays for the import.
+ *
+ * These tests pin that ordering, the three suppression tiers, and the states
+ * that must not arm.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let authListener: (() => void) | null = null;
-const state = { clerkLoaded: true, userId: null as string | null };
+const state = {
+  clerkLoaded: true,
+  userId: null as string | null,
+  passkeys: [] as unknown[],
+  unsafeMetadata: {} as Record<string, unknown>,
+};
 
 vi.mock('@/services/auth-state', () => ({
   subscribeAuthState: (cb: () => void) => { authListener = cb; return () => { authListener = null; }; },
 }));
 
 vi.mock('@/services/clerk', () => ({
-  getClerk: () => (state.clerkLoaded ? { user: state.userId ? { id: state.userId } : null } : null),
+  getClerk: () => (state.clerkLoaded
+    ? {
+        user: state.userId
+          ? { id: state.userId, passkeys: state.passkeys, unsafeMetadata: state.unsafeMetadata }
+          : null,
+      }
+    : null),
 }));
 
 const loaded = { count: 0, preArmed: [] as (boolean | undefined)[], destroyed: 0, inited: 0 };
@@ -41,6 +54,7 @@ vi.mock('@/app/passkey-offer-controller', () => ({
 
 import type { AppContext } from '@/app/app-context';
 import { PasskeyOfferBoot } from '@/app/passkey-offer-boot';
+import { derivePasskeyAccountKey, passkeyOfferStorageKey } from '@/services/passkey-offer-state';
 import { getPasskeyOfferTrace, resetPasskeyOfferTrace } from '@/utils/passkey-offer-trace';
 
 const ctx = { isDesktopApp: false } as unknown as AppContext;
@@ -50,6 +64,9 @@ beforeEach(() => {
   authListener = null;
   state.clerkLoaded = true;
   state.userId = null;
+  state.passkeys = [];
+  state.unsafeMetadata = {};
+  localStorage.clear();
   loaded.count = 0;
   loaded.preArmed = [];
   loaded.destroyed = 0;
@@ -94,22 +111,75 @@ describe('PasskeyOfferBoot', () => {
     boot.destroy();
   });
 
-  it('does NOT hand off on a cold cookie hydration', async () => {
-    // No signed-out state was ever observed — this is a page load completing,
-    // not a sign-in, and is the case that would otherwise prompt every visit.
+  it('DOES hand off for a returning session that has never been offered', async () => {
+    // The production regression. This user is already signed in on page load,
+    // so no signed-out state is ever observed. Under the old arming guard the
+    // shim stopped here and the entire already-signed-in population was never
+    // asked; the live trace read
+    // ['clerk-absent', 'cold-hydration-suppressed' x3].
     const boot = new PasskeyOfferBoot(ctx);
     state.userId = 'user_abc';
     boot.init();
     authListener?.();
     await flush();
+
+    expect(loaded.count).toBe(1);
+    expect(loaded.preArmed).toEqual([true]);
+    boot.destroy();
+  });
+
+  it('does NOT hand off when the account already carries the durable record', async () => {
+    // Server-backed suppression is what makes reaching returning sessions safe:
+    // it survives a browser that cannot keep localStorage, where the local
+    // tiers would re-offer on every single load.
+    const boot = new PasskeyOfferBoot(ctx);
+    state.userId = 'user_abc';
+    state.unsafeMetadata = { wmPasskeyOfferedAt: 1_700_000_000_000 };
+    boot.init();
+    authListener?.();
+    await flush();
+
     expect(loaded.count).toBe(0);
+    expect(getPasskeyOfferTrace()).toContain('already-offered-account');
+    boot.destroy();
+  });
+
+  it('does NOT pay for the import when the user already has a passkey', async () => {
+    // The check is in the shim rather than the controller so this user never
+    // fetches a ~12 KB chunk that would only bail out.
+    const boot = new PasskeyOfferBoot(ctx);
+    state.userId = 'user_abc';
+    state.passkeys = [{ id: 'pk_1' }];
+    boot.init();
+    authListener?.();
+    await flush();
+
+    expect(loaded.count).toBe(0);
+    expect(getPasskeyOfferTrace()).toContain('already-has-passkey');
+    boot.destroy();
+  });
+
+  it('does NOT hand off when the local ledger already holds the account', async () => {
+    const boot = new PasskeyOfferBoot(ctx);
+    state.userId = 'user_abc';
+    localStorage.setItem(
+      passkeyOfferStorageKey(derivePasskeyAccountKey('user_abc') as string),
+      JSON.stringify({ at: Date.now() }),
+    );
+    boot.init();
+    authListener?.();
+    await flush();
+
+    expect(loaded.count).toBe(0);
+    expect(getPasskeyOfferTrace()).toContain('already-offered');
     boot.destroy();
   });
 
   it('does NOT arm on a user-null reading while Clerk is absent', async () => {
     // A failed SDK load publishes a user-null state indistinguishable from a
-    // real signed-out session. Arming on it would fire the offer when the
-    // retry hydrates an existing cookie.
+    // real signed-out session. The retry that hydrates an existing cookie is a
+    // returning session, not a sign-in, and must be recorded as one — arming
+    // here would misattribute every Clerk load failure as a fresh sign-in.
     const boot = new PasskeyOfferBoot(ctx);
     boot.init();
     state.clerkLoaded = false;
@@ -118,7 +188,12 @@ describe('PasskeyOfferBoot', () => {
     state.userId = 'user_abc';
     authListener?.();            // retry succeeds and hydrates the cookie
     await flush();
-    expect(loaded.count).toBe(0);
+
+    expect(getPasskeyOfferTrace()).toEqual([
+      'clerk-absent',
+      'load-returning-session',
+      'import-started',
+    ]);
     boot.destroy();
   });
 
@@ -156,17 +231,16 @@ describe('PasskeyOfferBoot', () => {
 });
 
 describe('diagnostic trace', () => {
-  it('records the cold-hydration suppression that is otherwise invisible', async () => {
-    // This is the whole reason the trace lives in the shim: the controller
-    // never loads on this path, so controller-side instrumentation could never
-    // report it, and the only prior diagnosis was inference from a snapshot.
+  it('distinguishes a returning session from a fresh sign-in', async () => {
+    // The trace lives in the shim because on a suppressed path the controller
+    // never loads, so controller-side instrumentation could never report it.
+    // These two reasons are what let a live trace answer HOW the user arrived.
     const boot = new PasskeyOfferBoot(ctx);
     state.userId = 'user_abc';
     boot.init();
     authListener?.();
     await flush();
-    expect(getPasskeyOfferTrace()).toContain('cold-hydration-suppressed');
-    expect(loaded.count).toBe(0);
+    expect(getPasskeyOfferTrace()).toEqual(['load-returning-session', 'import-started']);
     boot.destroy();
   });
 
@@ -177,7 +251,7 @@ describe('diagnostic trace', () => {
     state.userId = 'user_abc';
     authListener?.();
     await flush();
-    expect(getPasskeyOfferTrace()).toEqual(['signed-out-observed', 'import-started']);
+    expect(getPasskeyOfferTrace()).toEqual(['signed-out-observed', 'load-sign-in', 'import-started']);
     boot.destroy();
   });
 

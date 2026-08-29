@@ -1,33 +1,113 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { subscribeAuthState } from '@/services/auth-state';
 import { getClerk } from '@/services/clerk';
+import {
+  createOfferMemory,
+  derivePasskeyAccountKey,
+  hasAccountOfferRecord,
+  hasBeenOffered,
+  type OfferMemory,
+  type OfferStorage,
+  safeLocalStorage,
+} from '@/services/passkey-offer-state';
 import { recordPasskeyOfferReason } from '@/utils/passkey-offer-trace';
 
 /**
  * Eager shim that keeps the passkey offer OUT of the first-paint bundle.
  *
- * The offer cannot fire until someone signs in, and the overwhelming majority
- * of page loads never do — yet a static import pulled the controller, the
- * prompt component, and the passkey services into the `main` chunk, costing
- * ~12 KB on every first paint. This module is the small part that must be
- * eager; everything else loads on demand.
+ * A static import pulled the controller, the prompt component, and the passkey
+ * services into the `main` chunk, costing ~12 KB on every first paint. This
+ * module is the small part that must be eager; everything else loads on demand.
  *
- * Two things have to stay eager for the feature to remain correct:
- *
- *   1. **The arming observation.** The detector may only arm on an
- *      authoritative signed-out state (Clerk loaded, no session). If we waited
- *      for an idle callback to subscribe, a user who signs in quickly would be
- *      seen as already-signed-in with no prior signed-out observation, and
- *      would never be offered. Subscribing here costs one listener.
- *   2. **Nothing else.** The moment a signed-in transition arrives on an armed
- *      shim, the real controller is imported and takes over permanently.
- *
- * The handoff replays the transition: `subscribeAuthState` fires the callback
- * immediately on subscribe, so the controller sees the current session as soon
- * as it attaches and evaluates it the same way it would have live.
+ * It also owns the reach decision, because that decision is what determines
+ * whether the chunk is worth fetching at all.
  */
+
+// ---------------------------------------------------------------------------
+// The load decision (pure, testable)
+// ---------------------------------------------------------------------------
+
+/** Everything the decision reads, resolved by the caller. */
+export interface BootDecisionInput {
+  /** Has the Clerk SDK loaded? A user-null reading is meaningless without it. */
+  clerkLoaded: boolean;
+  accountKey: string | null;
+  /** An authoritative signed-out state was seen earlier this page life. */
+  armed: boolean;
+  existingPasskeyCount: number;
+  /** Durable, account-scoped, server-backed. */
+  offeredOnAccount: boolean;
+  /** Local, origin-scoped, best effort. */
+  offeredLocally: boolean;
+}
+
+/**
+ * What the shim does with one auth emission.
+ *
+ * The two `load-*` members differ only in how the user arrived; both hand off
+ * to the same controller. Keeping them distinct is what makes the trace able to
+ * answer "was this a fresh sign-in or a returning session?" without a second
+ * signal.
+ */
+export type BootDecision =
+  | 'clerk-absent'
+  | 'signed-out-observed'
+  | 'already-has-passkey'
+  | 'already-offered-account'
+  | 'already-offered'
+  | 'load-sign-in'
+  | 'load-returning-session';
+
+/** Whether a decision means "fetch the controller chunk". */
+export function decisionLoads(decision: BootDecision): boolean {
+  return decision === 'load-sign-in' || decision === 'load-returning-session';
+}
+
+/**
+ * Decide from injected facts alone.
+ *
+ * Ordering is behavioural. Every suppression runs BEFORE either load branch, so
+ * a user who already has a passkey, or who has already been asked on any
+ * device, never pays for the dynamic import. That is what keeps the first-paint
+ * saving intact now that returning sessions are eligible: the chunk is fetched
+ * only for someone who is actually about to be offered.
+ *
+ * The durable check precedes the local one because it is the authoritative
+ * answer; the local tiers exist to answer the same question without a network
+ * round trip, not to overrule it.
+ */
+export function decideBootAction(input: BootDecisionInput): BootDecision {
+  // A user-null reading while the SDK is absent proves nothing about whether
+  // anyone is signed in, so it must not arm.
+  if (!input.clerkLoaded) return 'clerk-absent';
+  if (input.accountKey === null) return 'signed-out-observed';
+  if (input.existingPasskeyCount > 0) return 'already-has-passkey';
+  if (input.offeredOnAccount) return 'already-offered-account';
+  if (input.offeredLocally) return 'already-offered';
+  return input.armed ? 'load-sign-in' : 'load-returning-session';
+}
+
+// ---------------------------------------------------------------------------
+// The shim
+// ---------------------------------------------------------------------------
+
+/**
+ * A Clerk user, read through the narrow slice this shim needs.
+ *
+ * Deliberately NOT `countPasskeys` from `@/services/passkeys`: importing that
+ * module here would drag the whole passkey service back into the eager chunk
+ * and undo the split this file exists to create.
+ */
+type ShimUser = {
+  id?: string;
+  passkeys?: unknown;
+  unsafeMetadata?: Record<string, unknown> | null;
+} | null;
+
 export class PasskeyOfferBoot implements AppModule {
   private readonly ctx: AppContext;
+  private readonly storage: OfferStorage | null = safeLocalStorage();
+  private readonly memory: OfferMemory = createOfferMemory();
   private unsubscribe: (() => void) | null = null;
   /** An authoritative signed-out state has been observed this page life. */
   private armed = false;
@@ -40,6 +120,10 @@ export class PasskeyOfferBoot implements AppModule {
   }
 
   init(): void {
+    // Eagerly, not on idle: a user who signs in quickly would otherwise be seen
+    // as already-signed-in with no prior signed-out observation. That still
+    // yields an offer now, but it would be recorded as a returning session and
+    // arrive a beat later than the sign-in it belongs to.
     this.unsubscribe = subscribeAuthState(() => this.onAuthChange());
   }
 
@@ -53,24 +137,24 @@ export class PasskeyOfferBoot implements AppModule {
 
   private onAuthChange(): void {
     if (this.real || this.loading || this.destroyed) return;
-    const clerk = getClerk() as { user?: { id?: string } | null } | null;
-    // Clerk absent means the SDK has not loaded (or failed to). A user-null
-    // reading then proves nothing about whether anyone is signed in, so it must
-    // not arm — see the controller's own KTD3c note.
-    if (!clerk) { recordPasskeyOfferReason('clerk-absent'); return; }
-    if (!clerk.user?.id) {
-      this.armed = true;
-      recordPasskeyOfferReason('signed-out-observed');
-      return;
-    }
-    // Signed in, and we saw them signed out first: this is a real sign-in, so
-    // the offer is now plausible and the real controller is worth its bytes.
-    if (this.armed) { void this.load(); return; }
-    // Signed in with no prior signed-out observation — a cold cookie
-    // hydration. This is the branch that is otherwise completely invisible:
-    // the controller never loads, so controller-side instrumentation can never
-    // report it.
-    recordPasskeyOfferReason('cold-hydration-suppressed');
+    const user = (getClerk() as { user?: ShimUser } | null)?.user ?? null;
+    const accountKey = derivePasskeyAccountKey(user?.id ?? null);
+    const passkeys = user?.passkeys;
+
+    const decision = decideBootAction({
+      clerkLoaded: getClerk() !== null,
+      accountKey,
+      armed: this.armed,
+      existingPasskeyCount: Array.isArray(passkeys) ? passkeys.length : 0,
+      offeredOnAccount: hasAccountOfferRecord(user),
+      // NOT gated on a non-null handle: when localStorage throws on access
+      // `storage` is null, and gating here would discard the in-memory tier.
+      offeredLocally: hasBeenOffered(this.storage, this.memory, accountKey),
+    });
+
+    recordPasskeyOfferReason(decision);
+    if (decision === 'signed-out-observed') this.armed = true;
+    if (decisionLoads(decision)) void this.load();
   }
 
   private async load(): Promise<void> {
@@ -83,6 +167,9 @@ export class PasskeyOfferBoot implements AppModule {
       // on the same emission.
       this.unsubscribe?.();
       this.unsubscribe = null;
+      // The shim already ran every gate the controller's arming guard exists to
+      // enforce, so re-deriving it there would drop the very offer this handoff
+      // delivers.
       const controller = new PasskeyOfferController(this.ctx, { preArmed: true });
       this.real = controller;
       controller.init();

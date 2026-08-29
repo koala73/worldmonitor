@@ -32,14 +32,23 @@
 /**
  * Every reason the offer can reach a decision, and nothing else.
  *
- * The first five are the eager shim's; the rest mirror
- * `PasskeyEvaluationResult` in the controller.
+ * The first block is the eager shim's `BootDecision`; the rest mirror
+ * `PasskeyEvaluationResult` in the controller. Both halves pass their result
+ * straight to `recordPasskeyOfferReason`, whose parameter is this type, so
+ * adding a decision without a vocabulary entry fails typecheck at that call
+ * rather than silently recording nothing.
+ *
+ * `already-has-passkey` and `already-offered` are shared by both halves on
+ * purpose. The shim now checks them too, cheaply, so it can skip its dynamic
+ * import entirely rather than paying for a chunk that only bails out.
  */
 export const PASSKEY_OFFER_REASONS = [
   // Boot shim
   'clerk-absent',
   'signed-out-observed',
-  'cold-hydration-suppressed',
+  'already-offered-account',
+  'load-sign-in',
+  'load-returning-session',
   'import-started',
   'import-failed',
   // Controller evaluation
