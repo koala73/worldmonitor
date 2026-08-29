@@ -6,6 +6,9 @@
       "openCountryBrief",
       "openSearch",
       "get_dashboard_context",
+      "switch_monitor",
+      "open_settings",
+      "open_alerts",
       "open_dashboard_panel",
       "set_map_view",
       "set_map_layers",
@@ -43,7 +46,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -69,7 +75,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -146,7 +155,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -191,7 +203,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -218,7 +233,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -268,7 +286,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -304,7 +325,10 @@
         "openSearch",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -329,7 +353,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -361,7 +388,10 @@
         "open_dashboard_panel",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -388,7 +418,10 @@
         "search_dashboard",
         "open_search_result",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -413,7 +446,10 @@
         "search_dashboard",
         "open_search_result",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -435,7 +471,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ]
     },
     {
@@ -465,7 +504,10 @@
         "open_dashboard_panel",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ],
       "failure": {
         "atStep": 2,
@@ -505,7 +547,10 @@
         "open_search_result",
         "search_procurement",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ],
       "failure": {
         "atStep": 2,
@@ -539,7 +584,10 @@
         "search_dashboard",
         "open_search_result",
         "get_access_context",
-        "open_sign_in"
+        "open_sign_in",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts"
       ],
       "failure": {
         "atStep": 1,
@@ -551,6 +599,114 @@
           "search_dashboard"
         ]
       }
+    },
+    {
+      "id": "switch_monitor_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Switch the dashboard to the Tech monitor.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "switch_monitor",
+            "arguments": {
+              "monitor": "tech"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "open_settings",
+        "open_alerts"
+      ]
+    },
+    {
+      "id": "switch_monitor_ambiguous",
+      "category": "dashboard_control",
+      "promptKind": "ambiguous",
+      "prompt": "Take me to Good News.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "switch_monitor",
+            "arguments": {
+              "monitor": "happy"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "open_settings",
+        "open_alerts"
+      ]
+    },
+    {
+      "id": "open_settings_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the dashboard settings overlay.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_settings",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "switch_monitor",
+        "open_alerts"
+      ]
+    },
+    {
+      "id": "open_alerts_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the dashboard alerts overlay.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_alerts",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "switch_monitor",
+        "open_settings"
+      ]
     }
   ]
 }

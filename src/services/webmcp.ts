@@ -11,13 +11,16 @@
 //   1. openCountryBrief({ iso2 }) — opens the country deep-dive panel.
 //   2. openSearch()               — opens the global command palette.
 //   3. get_dashboard_context()    — reads bounded visible dashboard state.
-//   4. open_dashboard_panel()     — opens an already-live panel.
-//   5. set_map_view()             — moves the visible map.
-//   6. set_map_layers()           — changes allowed visible map layers.
-//   7. search_dashboard()         — searches the live dashboard index.
-//   8. open_search_result()       — selects an opaque, revalidated result.
-//   9. get_access_context()       — reads signed-out / loading / signed-in access.
-//  10. open_sign_in()            — opens the existing Clerk sign-in dialog.
+//   4. switch_monitor()           — switches World/Tech/Finance/Commodity/Energy/Good News.
+//   5. open_settings()            — opens the settings overlay.
+//   6. open_alerts()              — opens the alerts/notifications tab.
+//   7. open_dashboard_panel()     — opens an already-live panel.
+//   8. set_map_view()             — moves the visible map.
+//   9. set_map_layers()           — changes allowed visible map layers.
+//  10. search_dashboard()         — searches the live dashboard index.
+//  11. open_search_result()       — selects an opaque, revalidated result.
+//  12. get_access_context()       — reads signed-out / loading / signed-in access.
+//  13. open_sign_in()             — opens the existing Clerk sign-in dialog.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -36,6 +39,7 @@ import {
   WEBMCP_TOOL_BUDGETS,
   type WebMcpSpaToolName,
 } from '../config/webmcp';
+import { SITE_VARIANTS, isSiteVariant, type SiteVariant } from '../config/variant';
 import {
   DASHBOARD_MAP_MAX_LATITUDE,
   DASHBOARD_MAP_VIEWS,
@@ -59,6 +63,16 @@ export interface WebMcpAppBindings {
   getDashboardContext(
     options?: WebMcpExecutionOptions,
   ): DashboardContextSnapshot | Promise<DashboardContextSnapshot>;
+  switchMonitor(
+    monitor: SiteVariant,
+    options?: WebMcpExecutionOptions,
+  ): WebMcpNavigationResult | Promise<WebMcpNavigationResult>;
+  openSettings(
+    options?: WebMcpExecutionOptions,
+  ): WebMcpNavigationResult | Promise<WebMcpNavigationResult>;
+  openAlerts(
+    options?: WebMcpExecutionOptions,
+  ): WebMcpNavigationResult | Promise<WebMcpNavigationResult>;
   applyDashboardAction(
     action: unknown,
     options?: WebMcpExecutionOptions,
@@ -131,6 +145,24 @@ export interface DashboardContextSnapshot {
     mounted: string[];
     enabled: string[];
   };
+}
+
+export const WEBMCP_MONITOR_KEYS = SITE_VARIANTS;
+
+export type WebMcpMonitorKey = SiteVariant;
+export type WebMcpNavDestination = WebMcpMonitorKey | 'settings' | 'alerts';
+export type WebMcpMonitorNavigation = 'none' | 'reload' | 'assign';
+
+export interface WebMcpNavigationResult {
+  ok: boolean;
+  status: 'applied' | 'denied' | 'invalid';
+  destination?: WebMcpNavDestination;
+  navigation?: WebMcpMonitorNavigation;
+  overlay?: 'open' | 'closed';
+  tab?: string;
+  reason?: string;
+  message: string;
+  context: DashboardContextSnapshot;
 }
 
 export type WebMcpAccountState = 'signed_out' | 'loading' | 'signed_in';
@@ -254,6 +286,9 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 //     whole. View-state results (opening an already-enabled panel with no tab
 //     deep-link, moving the map) run without a target-side signal; persistent,
 //     quota-consuming, and external-navigation results stay blocked.
+//   - 'cancellation-required': switch_monitor can persist a desktop variant
+//     selection and reload, or navigate the tab to another origin. Neither
+//     effect is a reversible dashboard-only view change.
 //   - 'view-state': set_map_view also writes share-URL state via
 //     history.replaceState — visible in the address bar and overwritten by the
 //     next human map move.
@@ -271,6 +306,9 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.getAccessContext]: 'read-only',
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
   [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
+  [WEBMCP_SPA_TOOL.switchMonitor]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.openSettings]: 'view-state',
+  [WEBMCP_SPA_TOOL.openAlerts]: 'view-state',
   [WEBMCP_SPA_TOOL.openSignIn]: 'view-state',
   [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
   [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
@@ -326,6 +364,9 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   openCountryBrief: 'World Monitor could not open that country brief.',
   openSearch: 'World Monitor could not open search.',
   get_dashboard_context: 'World Monitor could not read dashboard context.',
+  switch_monitor: 'World Monitor could not switch monitors.',
+  open_settings: 'World Monitor could not open settings.',
+  open_alerts: 'World Monitor could not open alerts.',
   open_dashboard_panel: 'World Monitor could not open that dashboard panel.',
   set_map_view: 'World Monitor could not move the map.',
   set_map_layers: 'World Monitor could not update map layers.',
@@ -443,6 +484,17 @@ export async function raceWebMcpAbort<T>(
   });
 }
 
+interface WebMcpInvocationHooks {
+  preflight?: (
+    args: Record<string, unknown>,
+    extra?: WebMcpToolExecutionContext,
+  ) => Promise<unknown | undefined> | unknown | undefined;
+  successMetadata?: (
+    args: Record<string, unknown>,
+    result: unknown,
+  ) => Record<string, unknown>;
+}
+
 function withInvocationLogging(
   name: WebMcpSpaToolName,
   fn: (
@@ -450,28 +502,30 @@ function withInvocationLogging(
     extra?: { signal?: AbortSignal },
   ) => Promise<unknown> | unknown,
   trackEvent: WebMcpAnalytics,
-  successMetadata?: (
-    args: Record<string, unknown>,
-    result: unknown,
-  ) => Record<string, unknown>,
+  hooks: WebMcpInvocationHooks = {},
 ): DashboardWebMcpTool['execute'] {
   return async (args, extra?: WebMcpToolExecutionContext) => {
     const signal = isAbortSignal(extra?.signal) ? extra.signal : undefined;
+    const execution = signal ? { signal } : undefined;
     markLcpDebug('wm:webmcp:tool-start', {
       tool: name,
       targetCancellationSupported: Boolean(signal),
     });
     try {
+      throwIfWebMcpAborted(signal);
+      const preflightResult = await hooks.preflight?.(args, execution);
+      throwIfWebMcpAborted(signal);
       let result: unknown;
-      if (CANCELLATION_REQUIRED_WEBMCP_TOOLS.has(name) && !signal) {
+      if (preflightResult !== undefined) {
+        result = preflightResult;
+      } else if (CANCELLATION_REQUIRED_WEBMCP_TOOLS.has(name) && !signal) {
         // This tool declared that a phantom completion would be unsafe, and
         // the host cannot deliver the target-side signal. Return a structured
         // denial because some hosts erase the name and message of errors
         // raised by the page callback.
         result = unsupportedCancellationResult();
       } else {
-        throwIfWebMcpAborted(signal);
-        result = await fn(args, signal ? { signal } : undefined);
+        result = await fn(args, execution);
         // Browser cancellation rejects executeTool independently of this
         // callback. Re-check here so late work cannot publish success telemetry
         // after the host has already cancelled the invocation.
@@ -482,7 +536,7 @@ function withInvocationLogging(
       reportWebMcpEvent(trackEvent, 'webmcp-tool-invoked', {
         tool: name,
         ...invocation,
-        ...(successMetadata?.(args, result) ?? {}),
+        ...(hooks.successMetadata?.(args, result) ?? {}),
       });
       return result;
     } catch (error) {
@@ -531,6 +585,7 @@ const VALIDATION_DENIAL_REASONS = new Set([
   'malformed_arguments',
   'invalid_action',
   'not_dashboard_control',
+  'unknown_monitor',
 ]);
 const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_not_entitled',
@@ -595,7 +650,10 @@ function normalizeIdentifiers(values: unknown, maxLength: number): string[] {
     .sort();
 }
 
-function boundDashboardContext(snapshot: DashboardContextSnapshot): Record<string, unknown> {
+function boundDashboardContext(
+  snapshot: DashboardContextSnapshot,
+  maxChars = TARGET_OUTPUT_CHARS,
+): Record<string, unknown> {
   const enabledLayers = normalizeIdentifiers(snapshot.map?.enabledLayers, 80);
   const mounted = normalizeIdentifiers(snapshot.panels?.mounted, 96);
   const enabled = normalizeIdentifiers(snapshot.panels?.enabled, 96);
@@ -626,7 +684,7 @@ function boundDashboardContext(snapshot: DashboardContextSnapshot): Record<strin
   };
 
   const collections = [enabled, mounted, enabledLayers];
-  while (JSON.stringify(result).length > TARGET_OUTPUT_CHARS) {
+  while (JSON.stringify(result).length > maxChars) {
     const candidate = collections
       .filter((collection) => collection.length > 0)
       .sort((left, right) => (
@@ -779,12 +837,90 @@ function boundSearchOpenResult(result: DashboardSearchOpenResult): DashboardSear
   };
 }
 
+const EMPTY_NAV_CONTEXT: DashboardContextSnapshot = {
+  variant: '',
+  map: {
+    view: '',
+    center: null,
+    zoom: 0,
+    timeRange: '',
+    enabledLayers: [],
+  },
+  panels: {
+    mounted: [],
+    enabled: [],
+  },
+};
+
+async function currentNavigationContext(
+  app: WebMcpAppBindings,
+  options?: WebMcpExecutionOptions,
+): Promise<DashboardContextSnapshot> {
+  try {
+    return await app.getDashboardContext(options);
+  } catch {
+    return EMPTY_NAV_CONTEXT;
+  }
+}
+
+function boundDashboardNavigationResult(result: WebMcpNavigationResult): Record<string, unknown> {
+  const envelope = {
+    ok: result.ok === true,
+    status: result.status,
+    ...(result.destination ? { destination: boundedText(result.destination, 32) } : {}),
+    ...(result.navigation ? { navigation: boundedText(result.navigation, 16) } : {}),
+    ...(result.overlay ? { overlay: boundedText(result.overlay, 16) } : {}),
+    ...(result.tab ? { tab: boundedText(result.tab, 32) } : {}),
+    ...(result.reason ? { reason: boundedText(result.reason, 64) } : {}),
+    message: boundedText(result.message, 240),
+    context: {},
+  };
+  const envelopeChars = JSON.stringify(envelope).length;
+  // `"context":{}` is already in the envelope; the empty object is 2 chars.
+  const contextBudget = Math.max(0, MAX_OUTPUT_CHARS - envelopeChars + 2);
+  const bounded = {
+    ...envelope,
+    context: boundDashboardContext(result.context ?? EMPTY_NAV_CONTEXT, contextBudget),
+  };
+  if (JSON.stringify(bounded).length > MAX_OUTPUT_CHARS) {
+    throw new SafeWebMcpError('Dashboard navigation result exceeded the safe output limit.');
+  }
+  return bounded;
+}
+
 function hasOnlyOwnKeys(
   value: Record<string, unknown>,
   allowedKeys: readonly string[],
 ): boolean {
   const allowed = new Set(allowedKeys);
   return Object.keys(value).every((key) => allowed.has(key));
+}
+
+type SwitchMonitorInput =
+  | { ok: true; monitor: SiteVariant }
+  | {
+    ok: false;
+    reason: 'malformed_arguments' | 'unknown_monitor';
+    message: string;
+  };
+
+function validateSwitchMonitorInput(args: Record<string, unknown>): SwitchMonitorInput {
+  if (!hasOnlyOwnKeys(args, ['monitor'])) {
+    return {
+      ok: false,
+      reason: 'malformed_arguments',
+      message: 'switch_monitor accepts only a monitor key.',
+    };
+  }
+  const monitor = typeof args.monitor === 'string' ? args.monitor : '';
+  if (!isSiteVariant(monitor)) {
+    return {
+      ok: false,
+      reason: 'unknown_monitor',
+      message: 'Unknown monitor.',
+    };
+  }
+  return { ok: true, monitor };
 }
 
 async function applyDashboardAction(
@@ -877,6 +1013,92 @@ export function buildWebMcpTools(
       execute: withInvocationLogging(WEBMCP_SPA_TOOL.getDashboardContext, async (_args, extra) => (
         boundDashboardContext(await app.getDashboardContext(extra))
       ), trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.switchMonitor,
+      title: 'Switch Monitor',
+      description:
+        'Switch the visible dashboard to World (full), Tech (tech), Finance (finance), Commodity (commodity), Energy (energy), or Good News (happy) through the header variant switcher. Use those stable keys, not display labels. Returns the selected destination and effective dashboard state.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          monitor: {
+            type: 'string',
+            description: 'Stable monitor key: full, tech, finance, commodity, energy, or happy.',
+            enum: [...SITE_VARIANTS],
+          },
+        },
+        required: ['monitor'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.switchMonitor, async (args, extra) => {
+        const input = validateSwitchMonitorInput(args);
+        if (!input.ok) {
+          throw new SafeWebMcpError('switch_monitor input preflight did not run.');
+        }
+        return boundDashboardNavigationResult(await app.switchMonitor(input.monitor, extra));
+      }, trackEvent, {
+        preflight: async (args, extra) => {
+          const input = validateSwitchMonitorInput(args);
+          if (input.ok) return undefined;
+          return boundDashboardNavigationResult({
+            ok: false,
+            status: 'invalid',
+            reason: input.reason,
+            message: input.message,
+            context: await currentNavigationContext(app, extra),
+          });
+        },
+      }),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.openSettings,
+      title: 'Open Settings',
+      description:
+        'Open the dashboard settings overlay through the same header gear path a person uses. Opening settings does not change its contents. Returns the selected destination and effective dashboard state.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSettings, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, [])) {
+          return boundDashboardNavigationResult({
+            ok: false,
+            status: 'invalid',
+            reason: 'malformed_arguments',
+            message: 'open_settings does not accept arguments.',
+            context: await currentNavigationContext(app, extra),
+          });
+        }
+        return boundDashboardNavigationResult(await app.openSettings(extra));
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.openAlerts,
+      title: 'Open Alerts',
+      description:
+        'Open the alerts notifications tab through the same settings path the visible UI uses. Opening alerts does not change their contents. Unavailable dashboards return a stable reason without account details.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openAlerts, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, [])) {
+          return boundDashboardNavigationResult({
+            ok: false,
+            status: 'invalid',
+            reason: 'malformed_arguments',
+            message: 'open_alerts does not accept arguments.',
+            context: await currentNavigationContext(app, extra),
+          });
+        }
+        return boundDashboardNavigationResult(await app.openAlerts(extra));
+      }, trackEvent),
     },
     {
       name: WEBMCP_SPA_TOOL.openDashboardPanel,
@@ -1072,15 +1294,17 @@ export function buildWebMcpTools(
           Number(limit),
           extra,
         ));
-      }, trackEvent, (args, value) => {
-        const result = value as DashboardSearchResponse;
-        return {
-          queryLength: typeof args.query === 'string' ? args.query.trim().length : 0,
-          resultCount: result.resultCount,
-          resultTypes: [...new Set(
-            result.results.map((match) => searchResultTypeBucket(match.type)),
-          )].sort(),
-        };
+      }, trackEvent, {
+        successMetadata: (args, value) => {
+          const result = value as DashboardSearchResponse;
+          return {
+            queryLength: typeof args.query === 'string' ? args.query.trim().length : 0,
+            resultCount: result.resultCount,
+            resultTypes: [...new Set(
+              result.results.map((match) => searchResultTypeBucket(match.type)),
+            )].sort(),
+          };
+        },
       }),
     },
     {

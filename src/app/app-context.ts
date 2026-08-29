@@ -26,7 +26,11 @@ import type { UnifiedSettingsTabId } from '@/components/settings-types';
 export type { UnifiedSettingsTabId };
 
 export interface UnifiedSettingsController {
-  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending?: boolean): void;
+  open(
+    tab?: UnifiedSettingsTabId,
+    replaceOverlayId?: OverlayId,
+    historyPending?: boolean,
+  ): void | Promise<boolean>;
   close(): void;
   hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
