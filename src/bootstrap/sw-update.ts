@@ -1,4 +1,5 @@
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { isModalOpen } from '@/utils/open-modal';
 interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -68,43 +69,10 @@ export interface SwUpdateHandlerOptions {
 export const SW_DEBUG_LOG_KEY = 'wm-sw-debug-log';
 const SW_DEBUG_LOG_MAX = 30;
 
-// Selectors that identify a modal/dialog candidate. Many site modals mount
-// at app startup and stay in the DOM (e.g. UnifiedSettings sets
-// role="dialog" in its constructor), so a raw selector match alone would
-// permanently disable auto-reload. We only treat a match as "open" when
-// the element is actually rendered — see isModalOpen() below.
-export const OPEN_MODAL_SELECTOR =
-  '[aria-modal="true"], [role="dialog"], .cl-modalBackdrop, .modal-overlay, dialog[open]';
-
-/**
- * Any candidate that's actually visible → a real open modal.
- *
- * Preferred: `element.checkVisibility()` (Chrome 105+, Safari 17.4+, FF 125+).
- *
- * Fallback for older engines: `getClientRects().length > 0`. This returns 0
- * when the element has `display: none` (exactly how persistent overlays
- * hide — see main.css `.modal-overlay { display: none }` /
- * `.active { display: flex }`) and non-zero for rendered elements,
- * including `position: fixed` overlays. We cannot use `offsetParent` here:
- * MDN specifies it returns `null` for every `position: fixed` element
- * regardless of visibility, so it would false-negative on the Story overlay
- * (main.css:3442), the active Country Intel overlay (main.css:18415), and
- * `.modal-overlay` itself — all of which are fixed-positioned.
- */
-function isModalOpen(doc: DocumentLike): boolean {
-  for (const el of doc.querySelectorAll(OPEN_MODAL_SELECTOR)) {
-    const checkVisibility = el.checkVisibility;
-    if (typeof checkVisibility === 'function') {
-      if (checkVisibility.call(el)) return true;
-      continue;
-    }
-    const getClientRects = el.getClientRects;
-    if (typeof getClientRects === 'function' && getClientRects.call(el).length > 0) {
-      return true;
-    }
-  }
-  return false;
-}
+// Modal detection moved to src/utils/open-modal.ts so the passkey offer
+// controller shares one predicate with this updater. Re-exported because the
+// selector is part of this module's existing public surface.
+export { OPEN_MODAL_SELECTOR } from '@/utils/open-modal';
 
 function appendDebugLog(entry: Record<string, unknown>): void {
   try {

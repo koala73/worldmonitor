@@ -2734,6 +2734,18 @@
       "rubBase": "Bank of Russia — RUB per 1 unit",
       "rubPerUnit": "RUB per unit",
       "sourceCbr": "Source: Bank of Russia"
+    },
+    "passkeyOffer": {
+      "title": "Hifadhi passkey?",
+      "body": "Ingia kwa haraka inayofuata kwa kutumia kidole chako, uso, au PIN ya kifaa — hakuna nenosiri la kukumbuka.",
+      "accept": "Hifadhi passkey",
+      "dismiss": "Sio sasa",
+      "close": "Funga",
+      "announce": "Hifadhi passkey ili kuingia kwa haraka inayofuata.",
+      "busy": "Kusubiri kifaa chako…",
+      "succeeded": "Passkey imehifadhiwa. Unaweza kuitumia wakati wa kuingia inayofuata.",
+      "retryable": "Hiyo haikumalizia. Unaweza kujaribu tena.",
+      "failed": "Hatuwezi kuhifadhi passkey kwenye kifaa hiki."
     }
   },
   "popups": {
@@ -3446,7 +3458,8 @@
   "auth": {
     "signIn": "Ingia",
     "createAccount": "Fungua akaunti",
-    "settings": "Mipangilio"
+    "settings": "Mipangilio",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Unganisha MCP",
