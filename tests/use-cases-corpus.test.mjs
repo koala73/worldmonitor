@@ -8,11 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
-import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
+import {
+  buildCorpus,
+  CORPUS_GENERATOR_CONTENT_VERSION,
+} from '../scripts/build-crawlable-corpus.mjs';
 import {
   HANDOFF_PRESERVE_SCRIPT,
   USE_CASE_PAGES,
-  USE_CASES_CONTENT_VERSION,
 } from '../scripts/build-use-cases.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -158,7 +160,7 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
       assert.match(html, /name="robots" content="index, follow"/);
       const [ld] = jsonLdObjects(html);
       assert.notEqual(ld['@type'], 'BlogPosting');
-      assert.match(html, new RegExp(`<meta name="lastmod" content="${USE_CASES_CONTENT_VERSION}">`));
+      assert.match(html, new RegExp(`<meta name="lastmod" content="${CORPUS_GENERATOR_CONTENT_VERSION}">`));
     }
 
     const [hubLd] = jsonLdObjects(hubHtml);
