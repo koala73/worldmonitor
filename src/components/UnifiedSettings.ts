@@ -602,13 +602,16 @@ export class UnifiedSettings {
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = onSubscriptionChange(() => {
       this.replaceUpgradeSection();
-      const sub = getSubscription();
-      if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+      // Ask for seats whenever the account has ANY subscription row, and let
+      // the server decide who owns seats. Filtering here on the display row's
+      // plan/status would miss an owner whose Business row is outranked by
+      // another subscription (see BusinessSeatsSection.businessSubscriptionId);
+      // free accounts have no row at all, so they still never query.
+      if (getSubscription() !== null) {
         void this.businessSeatsSection.load();
       }
     });
-    const sub = getSubscription();
-    if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+    if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
     }
   }
@@ -1082,7 +1085,7 @@ export class UnifiedSettings {
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
           ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
-        ${sub?.planKey === 'api_business' && sub?.status === 'active' ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
+        ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
     }
 
