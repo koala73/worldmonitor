@@ -318,17 +318,35 @@ test.describe('top-level WebMCP dashboard contract', () => {
       reason?: string;
       status?: string;
     };
-    if (accessAndSignIn.clerkModalPresent) {
-      expect(signInResult).toEqual(expect.objectContaining({
-        ok: true,
-        status: expect.stringMatching(/^(opened|already_open)$/),
-      }));
-    } else {
+    const accessSnapshot = accessAndSignIn.access as { clerk?: string };
+    const signInEvidence = {
+      clerk: accessSnapshot.clerk ?? null,
+      clerkModalPresent: accessAndSignIn.clerkModalPresent,
+      signInResult,
+    };
+    // Production must prove the real Clerk modal. The clerk_unavailable
+    // denial is only valid on the local Vite fixture, where Clerk is
+    // explicitly unconfigured (`clerk: unavailable`).
+    const unconfiguredLocalFixture =
+      !productionSmoke && accessSnapshot.clerk === 'unavailable';
+    if (unconfiguredLocalFixture) {
       expect(signInResult).toEqual({
         ok: false,
         status: 'denied',
         reason: 'clerk_unavailable',
       });
+      expect(accessAndSignIn.clerkModalPresent).toBe(false);
+    } else {
+      expect(
+        accessAndSignIn.clerkModalPresent,
+        productionSmoke
+          ? 'production smoke must open the real Clerk sign-in modal'
+          : 'configured Clerk must open the real sign-in modal',
+      ).toBe(true);
+      expect(signInResult).toEqual(expect.objectContaining({
+        ok: true,
+        status: expect.stringMatching(/^(opened|already_open)$/),
+      }));
     }
 
     const panelProbe = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
@@ -469,6 +487,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           targetCancellationSupported: coldStart.targetCancellationSupported,
           ...panelProbe,
         },
+        signIn: { tool: 'open_sign_in', ...signInEvidence },
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
       },
     });
