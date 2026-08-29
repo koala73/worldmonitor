@@ -1328,9 +1328,24 @@ describe('convex deploy diff fallbacks execute fail-closed (#7359)', () => {
     .replace(/\$\{\{ github\.event_name \}\}/g, 'push')
     .replace(/\$\{\{ github\.event\.after \}\}/g, '"$AFTER_SHA"');
 
+  // A git hook exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE, and a child
+  // git inherits them — they override `-C`, so under the pre-push hook these
+  // commands would operate on the REAL repository (or refuse: "this operation
+  // must be run in a work tree"). Strip every GIT_* var so the temp repo is
+  // genuinely isolated from whatever invoked the suite.
+  const cleanEnv = (extra = {}) => {
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+    );
+    return { ...env, ...extra };
+  };
+
   function inTempRepo(fn) {
     const dir = mkdtempSync(join(tmpdir(), 'wm-convex-deploy-'));
-    const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+    const git = (...args) => execFileSync('git', ['-C', dir, ...args], {
+      encoding: 'utf8',
+      env: cleanEnv(),
+    }).trim();
     try {
       git('init', '-q', '-b', 'main');
       git('config', 'user.email', 'test@example.com');
@@ -1348,16 +1363,17 @@ describe('convex deploy diff fallbacks execute fail-closed (#7359)', () => {
   function decide({ dir, tagAt, afterSha }) {
     const outputFile = join(dir, 'gh-output');
     writeFileSync(outputFile, '');
-    if (tagAt) execFileSync('git', ['-C', dir, 'tag', '-f', 'convex-deployed', tagAt]);
+    if (tagAt) execFileSync('git', ['-C', dir, 'tag', '-f', 'convex-deployed', tagAt], { env: cleanEnv() });
     execFileSync('bash', ['-c', shell], {
       cwd: dir,
       encoding: 'utf8',
-      env: {
-        ...process.env,
+      // Same scrub: the workflow shell runs git itself, so an inherited GIT_DIR
+      // would point it at the real repo and the assertions would be meaningless.
+      env: cleanEnv({
         GITHUB_OUTPUT: outputFile,
         DEPLOYED_TAG: 'convex-deployed',
         AFTER_SHA: afterSha,
-      },
+      }),
     });
     return readFileSync(outputFile, 'utf8').trim();
   }
