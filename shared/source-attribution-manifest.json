@@ -5745,6 +5745,9 @@
           "path": "src/components/LiveNewsPanel.ts"
         },
         {
+          "path": "src/services/desktop-runtime.ts"
+        },
+        {
           "path": "src/services/wm-session.ts"
         }
       ]
