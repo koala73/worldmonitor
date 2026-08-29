@@ -2,6 +2,8 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
+> Version: 2.10.0 · Last updated: 2026-08-30
+
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
 A single codebase produces specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), positive news (Happy Monitor), and energy (Energy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
@@ -12,8 +14,8 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 Reach for World Monitor when a task needs live, correlated, machine-readable global-intelligence data — and you want structured JSON to reason over, not prose to re-parse. Best-fit jobs an agent should route here:
 
-- [Country situation brief](https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR): a fresh, source-attributed strategic read on one country (geopolitics, economy, security). MCP tool `get_country_brief`; agent skill `fetch-country-brief`.
-- [Country risk & resilience](https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE): the composite resilience score (0–100) with per-domain/pillar breakdown, 30-day trend, and confidence band. MCP tool `get_country_risk`; ranked list via `/api/resilience/v1/get-resilience-ranking`; agent skill `fetch-resilience-score`.
+- [Country situation brief sample](https://www.worldmonitor.app/sandbox/get-country-intel-brief.json): a key-free, source-attributed example for one country. The live REST route requires an API key. MCP tool `get_country_brief`; agent skill `fetch-country-brief`.
+- [Country risk and resilience sample](https://www.worldmonitor.app/sandbox/get-resilience-score.json): a key-free example with the composite resilience score, domain breakdown, trend, and confidence band. The live REST route requires an API key. MCP tool `get_country_risk`; agent skill `fetch-resilience-score`.
 - **"Does this event move markets?"** — check whether a conflict, sanction, or chokepoint disruption has a plausible market-transmission path. MCP tools `get_conflict_events`, `get_sanctions_data`, `get_chokepoint_status`, `get_market_data`, `get_maritime_activity`.
 - **Commodity & supply-chain disruption** — correlate physical supply signals with traded prices. MCP tools `get_supply_chain_data`, `get_energy_intelligence`, `get_commodity_geo`, `get_maritime_activity`.
 - **Live situational awareness** — the current world brief plus classified live signals. MCP tools `get_world_brief`, `get_news_intelligence`, `get_natural_disasters`, `get_cyber_threats`, `get_aviation_status`.
@@ -25,11 +27,11 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - [MCP server (recommended)](https://worldmonitor.app/mcp): Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. See the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json), [official MCP registry](https://registry.modelcontextprotocol.io/), [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp), and [mcp.so](https://mcp.so/server/world-monitor).
 - [Docs MCP server](https://www.worldmonitor.app/docs/mcp): public Streamable HTTP search and retrieval over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
-- [REST API](https://api.worldmonitor.app): use the same `X-WorldMonitor-Key` header; the contract is the [OpenAPI specification](https://worldmonitor.app/openapi.yaml).
+- [REST API](https://api.worldmonitor.app): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://worldmonitor.app/openapi.yaml), which is 2,730,669 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples.
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the command. `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks): official zero-dependency clients for Python ([PyPI](https://pypi.org/project/worldmonitor-sdk/)), Ruby ([RubyGems](https://rubygems.org/gems/worldmonitor)), Go ([pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go)), and JavaScript via the npm package.
 - [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor).
-- [Agent Plugin](https://worldmonitor.app/plugin.json): Agent Plugins 1.0.0 package (`plugin.json` + `mcp.json` + `skills/`) for clients that load [Agent Plugins](https://agent-plugins.org) plugins.
+- [Agent Plugin metadata](https://worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install the package from the [World Monitor repository](https://github.com/koala73/worldmonitor).
 - [Keys, plans, and limits](https://worldmonitor.app/pricing.md): also see the public [product catalog](https://www.worldmonitor.app/api/product-catalog), [authentication matrix](https://www.worldmonitor.app/docs/usage-auth), [rate limits](https://www.worldmonitor.app/docs/usage-rate-limits.md), and [key signup](https://worldmonitor.app/pro).
 - [Accounts and signup guide](https://www.worldmonitor.app/docs/accounts.md): the free dashboard needs no account; Pro and API accounts are created through the [browser signup](https://worldmonitor.app/pro).
 - [Support and contact](https://worldmonitor.app/support.md): support@worldmonitor.app for general help and enterprise@worldmonitor.app for sales; see [service status](https://status.worldmonitor.app) and [GitHub issues](https://github.com/koala73/worldmonitor/issues).
