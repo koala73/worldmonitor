@@ -51,9 +51,16 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // The job id IS the check-run name here: convex-deploy.yml writes
     // `deploy:` with no `name:` override, and the jobs API publishes the id.
     deployJobName: 'deploy',
-    // What a legitimate skip of the deploy job means for this workflow: the
-    // run must not have changed anything under convex/.
+    // What a legitimate skip of the deploy job means for this workflow:
+    // production must already have every convex/ change on main. Proven against
+    // the deployed baseline below, NOT against the run's own push diff — the
+    // per-push question is what let #7359 strand a merge behind green badges.
     skipProofPath: 'convex/',
+    // The git tag convex-deploy.yml moves after each successful deploy. Reading
+    // the workflow's own marker keeps ONE source of truth for "what is live";
+    // re-deriving it from the Actions API drifts from the tag whenever a
+    // post-deploy seed step fails (#7359 review).
+    deployedTagRef: 'convex-deployed',
     // Convex Deploy fires on EVERY push to main (no path filter; the changes
     // job decides whether to deploy). So "no run in the window"
     // means "no merge to main in the window". The observed max gap across the
@@ -127,6 +134,8 @@ const GH_CALL_TIMEOUT_MS = 30_000;
 // Retries AFTER the first attempt, so the worst case is 3 calls. Sized against
 // the workflow's `timeout-minutes: 10`: a transport failure returns in about a
 // second, so 3 workflows x 2 reads x 3 attempts costs seconds, not minutes.
+// The deployed-baseline read adds nothing here: it is a local `git rev-parse`
+// of the tag the deploy workflow writes, not a GitHub call.
 export const GH_READ_RETRY_ATTEMPTS = 2;
 export const GH_READ_RETRY_BASE_MS = 500;
 export const GH_READ_RETRY_MAX_MS = 4_000;
@@ -377,74 +386,42 @@ export function diffTouchesPaths({ git, baseSha, headSha, paths }) {
   return result.trim().length > 0;
 }
 
-// How many successful runs back the deployed-baseline walk will look before it
-// gives up. Each candidate costs one jobs read, so this bounds the API spend
-// against the monitor's `timeout-minutes: 10`. The #7359 incident sat five runs
-// back; 30 leaves room for a much longer burst without pretending an unknown
-// baseline is a known one.
-export const DEPLOY_BASELINE_MAX_RUNS = 30;
-
 /**
- * The head SHA of the most recent run whose deploy job actually SUCCEEDED —
- * i.e. what production is currently running. (#7359)
+ * The commit the deploy workflow last recorded as live in production. (#7359)
  *
- * This is deliberately NOT "the newest run's head". A run can be green with its
- * deploy job skipped, and a queued run can be cancelled outright by the
- * concurrency group during a merge burst; neither put anything in production.
- * Treating either as the baseline is what let a stranded `convex/` change prove
- * every later skip legitimate.
+ * This reads the SAME marker `convex-deploy.yml` writes — its `convex-deployed`
+ * tag, moved immediately after `npx convex deploy` returns. Deriving the answer
+ * independently from the Actions API instead was a second source of truth that
+ * drifted from the first: the tag moves BEFORE the post-deploy seed steps (so a
+ * seed failure still reds the run without forcing a redundant redeploy), which
+ * means a run whose deploy JOB concluded `failure` can still have put that code
+ * in production. An API walk keyed on job conclusion rejects exactly that run as
+ * a baseline and then reports "production is behind" about code that IS live —
+ * every tick, until some later change deploys fully green. A chronically red
+ * monitor is a blind spot, which would defeat the point of #7359.
  *
- * Throws when no run in the budget deployed: an unknown baseline is a read
- * failure the caller must resolve to ALARM, never a healthy pass. Runs that did
- * not conclude `success` are skipped without spending a jobs read — their deploy
- * job cannot have succeeded.
+ * Reading the tag also removes the walk's ~30 GitHub reads from the tick
+ * entirely, so the monitor's read budget stays as its header describes.
+ *
+ * Throws on an unreadable tag. A MISSING tag is distinguished via
+ * `deployedBaselineUnset` so the caller can report UNKNOWN rather than claim a
+ * failed deploy: before the first deploy after this landed there is legitimately
+ * nothing to compare against, and that state clears itself on the next deploy.
  */
-export function readLastDeployedSha({
-  gh,
-  repository,
-  workflowFile,
-  deployJobName = 'deploy',
-  maxRuns = DEPLOY_BASELINE_MAX_RUNS,
-}) {
-  const payload = JSON.parse(readGithub(gh, [
-    'api',
-    `repos/${repository}/actions/workflows/${workflowFile}/runs?branch=main&per_page=100`,
-  ]));
-  const runs = payload?.workflow_runs;
-  if (!Array.isArray(runs)) {
-    throw new Error(`the run listing for ${workflowFile} was not an object with a workflow_runs array`);
+export function readDeployedBaselineSha({ git, tagRef }) {
+  if (typeof tagRef !== 'string' || tagRef.length === 0) {
+    throw new Error('the deployed-baseline tag ref is missing');
   }
-  const ordered = [...runs].sort((left, right) => {
-    const leftMs = parseTimestamp(left?.created_at);
-    const rightMs = parseTimestamp(right?.created_at);
-    if (leftMs === null && rightMs === null) return 0;
-    if (leftMs === null) return 1;
-    if (rightMs === null) return -1;
-    return rightMs - leftMs;
-  });
-
-  let inspected = 0;
-  for (const candidate of ordered) {
-    if (candidate?.conclusion !== 'success') continue;
-    if (inspected >= maxRuns) break;
-    inspected += 1;
-    const jobs = readRunJobs({
-      gh,
-      repository,
-      runId: candidate.id,
-      runAttempt: candidate.run_attempt ?? 1,
-    });
-    if (jobs.get(deployJobName)?.conclusion !== 'success') continue;
-    const headSha = candidate.head_sha;
-    if (typeof headSha !== 'string' || headSha.length === 0) {
-      throw new Error(`run ${candidate.id} of ${workflowFile} deployed but has no readable head_sha`);
-    }
-    return headSha;
+  // `^{commit}` dereferences, so an annotated tag resolves to its commit.
+  const sha = git(['rev-parse', '--verify', '--quiet', `refs/tags/${tagRef}^{commit}`]).trim();
+  if (sha.length === 0) {
+    const error = new Error(
+      `the ${tagRef} tag does not exist locally — production's deployed commit is not yet recorded`,
+    );
+    error.deployedBaselineUnset = true;
+    throw error;
   }
-  throw new Error(
-    `no run of ${workflowFile} on main deployed within the last ${inspected} successful run(s) — `
-    + 'the deployed baseline is unknown',
-  );
+  return sha;
 }
 
 /**
@@ -595,6 +572,27 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
       try {
         skipLegitimate = skipProof();
       } catch (error) {
+        // Swallowing every throw was correct while the proof was local-git
+        // only: "Local proof failures (git, missing gh) ... are ALARM" (see the
+        // file header). Deriving the baseline from the Actions API put a NETWORK
+        // read on this path, and the same header requires transport
+        // unreadability to be UNKNOWN and to NOT fail the job. Re-throw those so
+        // checkPostmergeDeploys' handler classifies them; a TLS blip must never
+        // page on-call claiming production is behind. Everything else (git, 4xx)
+        // still falls through to ALARM.
+        if (isGithubRecordUnreadability(error)) throw error;
+        // No baseline recorded yet (the tag is created by the first deploy
+        // after this landed). There is legitimately nothing to compare against,
+        // and it clears itself on the next deploy — a visible UNKNOWN, not a
+        // claim that production is behind.
+        if (error?.deployedBaselineUnset === true) {
+          return {
+            state: 'UNKNOWN',
+            verdict: 'DEPLOY_BASELINE_UNSET',
+            runId: run.runId,
+            detail: `run ${run.runId} skipped the deploy and ${error.message}`,
+          };
+        }
         skipLegitimate = null;
       }
       if (skipLegitimate === true) {
@@ -674,18 +672,13 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
       const skipProof = workflow.skipProofPath
         ? () => {
           // "Is production behind main?", not "did this push touch the path?"
-          // (#7359). The baseline is the head of the last run that actually
-          // deployed, so a stranded change stays visible no matter how many
-          // later pushes legitimately skip. The checkout has full history with
-          // no blobs (see the workflow), so `git diff --name-only` needs only
+          // (#7359). The baseline is the commit the deploy workflow recorded as
+          // live, so a stranded change stays visible no matter how many later
+          // pushes legitimately skip. The checkout has full history with no
+          // blobs (see the workflow), so `git diff --name-only` needs only
           // trees. An unreadable baseline throws, and the caller resolves the
           // skip to ALARM rather than healthy.
-          const baseSha = readLastDeployedSha({
-            gh,
-            repository,
-            workflowFile: workflow.file,
-            deployJobName: workflow.deployJobName,
-          });
+          const baseSha = readDeployedBaselineSha({ git, tagRef: workflow.deployedTagRef });
           return !diffTouchesPaths({
             git,
             baseSha,

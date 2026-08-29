@@ -133,6 +133,19 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # This job now holds `contents: write`, and checkout would otherwise
+          # leave the token in .git/config as an http.extraheader for the WHOLE
+          # job — including `npm ci` below, whose dependency lifecycle scripts
+          # (preinstall/postinstall/prepare) `--no-audit --no-fund` do not
+          # disable. A compromised transitive dep could then push with repo-wide
+          # write, including force-moving DEPLOYED_TAG to suppress future
+          # deploys. The tag step supplies the token explicitly instead, so no
+          # ambient credential exists while third-party code runs. Same
+          # treatment CONVEX_DEPLOY_KEY already gets (step-scoped `env:`), and
+          # the convention railway-deploy-trigger.yml and railway-registry-sync.yml
+          # already follow.
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -156,10 +169,27 @@ jobs:
         # Force-moved deliberately — it is a pointer to the current deployment,
         # not release history. `--force` on the push too: a moved tag is not a
         # fast-forward.
+        env:
+          # Scoped to this step only — see the checkout note above.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git tag -f "$DEPLOYED_TAG" "$GITHUB_SHA"
-          git push --force origin "refs/tags/$DEPLOYED_TAG"
+          git push --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/$DEPLOYED_TAG" \
+            || {
+              echo "::warning::could not move $DEPLOYED_TAG to $GITHUB_SHA — the deploy SUCCEEDED; the next push will redeploy redundantly until this recovers"
+              exit 1
+            }
+        # The deploy already reached production by this point. A transient push
+        # failure must not restate that success as a failed run: the monitor
+        # judges a non-success conclusion as RUN_FAILED and would page on-call
+        # for a deploy that actually worked. Failing to RECORD the deploy is
+        # self-healing and cheap — the tag stays put, so the next push simply
+        # redeploys — so it is a warning, not a job failure. Same treatment the
+        # post-deploy seed steps below already get.
+        continue-on-error: true
       - id: seed_dodo_webhook_failure_summary
         name: Seed Dodo webhook failure summary (idempotent)
         # Failure recording uses this pre-seeded aggregate row as its
