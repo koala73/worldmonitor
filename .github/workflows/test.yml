@@ -203,6 +203,11 @@ jobs:
         run: node scripts/docs-stats.mjs --check
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
+      - name: Every entitlement gate is classified
+        # Fails when a new free-vs-paid gate ships without a capability id or a
+        # documented exclusion (exit 1), or when the tree is missing a source the
+        # sweep expects (exit 2) — a partial sweep must never certify as complete.
+        run: node scripts/generate-entitlement-crosswalk.mjs --check
 
   unit:
     needs: changes
