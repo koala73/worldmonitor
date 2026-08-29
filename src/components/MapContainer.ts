@@ -124,6 +124,12 @@ export type ViewportTransitionFailureReason =
   | 'renderer_changed'
   | 'viewport_interrupted';
 
+export interface MapRendererSwitchResult {
+  renderer: 'globe' | 'deck' | 'svg';
+  mode: 'globe' | 'flat';
+  fallback: boolean;
+}
+
 export class ViewportTransitionError extends Error {
   public constructor(public readonly reason: ViewportTransitionFailureReason) {
     super(reason === 'viewport_superseded'
@@ -678,18 +684,20 @@ export class MapContainer {
   }
 
   /** Switch to 3D globe mode at runtime (called from Settings). */
-  public switchToGlobe(): void {
-    if (this.useGlobe) return;
-    const snapshot = this.getState();
-    const center = this.getCenter();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.destroyFlatMap();
-    this.useGlobe = true;
-    this.useDeckGL = false;
-    this.initialState = snapshot;
-    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
-    void this.init();
+  public switchToGlobe(): Promise<MapRendererSwitchResult> {
+    if (!this.useGlobe) {
+      const snapshot = this.getState();
+      const center = this.getCenter();
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = null;
+      this.destroyFlatMap();
+      this.useGlobe = true;
+      this.useDeckGL = false;
+      this.initialState = snapshot;
+      this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+      void this.init();
+    }
+    return this.waitForRendererSwitch('globe');
   }
 
   /** Reload basemap style (called when map provider changes in Settings). */
@@ -698,27 +706,29 @@ export class MapContainer {
   }
 
   /** Switch back to flat map at runtime (called from Settings). */
-  public switchToFlat(): void {
-    if (!this.useGlobe) return;
-    const snapshot = this.getState();
-    const center = this.getCenter();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.globeInitToken++;
-    this.globeMap?.destroy();
-    this.globeMap = null;
-    this.useGlobe = false;
-    this.useDeckGL = this.shouldUseDeckGL();
-    this.initialState = !this.useDeckGL && snapshot.layers.resilienceScore
-      ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
-      : snapshot;
-    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
-    // Cancel any pending deck demand gate from a prior flat init before
-    // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
-    // the new init during the afterFirstPaint() window.
-    this.rendererDemandCleanup?.();
-    this.rendererDemandCleanup = null;
-    void this.init();
+  public switchToFlat(): Promise<MapRendererSwitchResult> {
+    if (this.useGlobe) {
+      const snapshot = this.getState();
+      const center = this.getCenter();
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = null;
+      this.globeInitToken++;
+      this.globeMap?.destroy();
+      this.globeMap = null;
+      this.useGlobe = false;
+      this.useDeckGL = this.shouldUseDeckGL();
+      this.initialState = !this.useDeckGL && snapshot.layers.resilienceScore
+        ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
+        : snapshot;
+      this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+      // Cancel any pending deck demand gate from a prior flat init before
+      // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
+      // the new init during the afterFirstPaint() window.
+      this.rendererDemandCleanup?.();
+      this.rendererDemandCleanup = null;
+      void this.init();
+    }
+    return this.waitForRendererSwitch('flat');
   }
 
   private rehydrateActiveMap(): void {
@@ -790,6 +800,20 @@ export class MapContainer {
     for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
+  }
+
+  private currentRendererSwitchResult(requested: 'globe' | 'flat'): MapRendererSwitchResult {
+    const renderer = this.useGlobe ? 'globe' : this.useDeckGL ? 'deck' : 'svg';
+    return {
+      renderer,
+      mode: this.useGlobe ? 'globe' : 'flat',
+      fallback: requested === 'globe' ? !this.useGlobe : this.useGlobe,
+    };
+  }
+
+  private async waitForRendererSwitch(requested: 'globe' | 'flat'): Promise<MapRendererSwitchResult> {
+    await this.whenRendererReady();
+    return this.currentRendererSwitchResult(requested);
   }
 
   public isGlobeMode(): boolean {

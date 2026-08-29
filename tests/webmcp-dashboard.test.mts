@@ -85,9 +85,13 @@ function makeContext(
         layers: liveMapLayers ?? mapLayers,
       }),
       getCenter: () => ({ lat: 29.5, lon: 47.5 }),
-      setCenter: () => {},
+      setCenter: () => 1,
       setView: () => {},
       setLayers: () => {},
+      setTimeRange: () => {},
+      getTimeRange: () => '24h',
+      switchToGlobe: () => {},
+      switchToFlat: () => {},
       whenRendererReady: () => Promise.resolve(),
       whenViewportSettled: () => Promise.resolve(),
       isDeckGLActive: () => false,
@@ -183,6 +187,16 @@ describe('WebMCP live dashboard bindings', () => {
     assert.deepEqual(
       getWebMcpDashboardContext(ctx, 'full').map.enabledLayers,
       ['weather'],
+    );
+    assert.equal(getWebMcpDashboardContext(ctx, 'full').map.mode, '2d');
+    assert.equal(
+      getWebMcpDashboardContext(makeContext({
+        map: {
+          ...makeContext().map,
+          isGlobeMode: () => true,
+        },
+      }), 'full').map.mode,
+      '3d',
     );
     assert.deepEqual(
       Object.entries(ctx.mapLayers)
@@ -1085,5 +1099,160 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal((await applyWebMcpOpenAlerts(makeContext({ isDestroyed: true }), 'full')).reason, 'app_destroyed');
     assert.equal((await applyWebMcpOpenSettings(makeContext({ unifiedSettings: null }), 'full')).reason, 'unavailable');
     assert.equal((await applyWebMcpOpenAlerts(makeContext({ unifiedSettings: null }), 'full')).reason, 'unavailable');
+  });
+
+  it('waits for the map, then syncs URL for time range without waiting for viewport settlement', async () => {
+    const events: string[] = [];
+    const ctx = makeContext();
+    Object.assign(ctx.map!, {
+      setTimeRange: () => { events.push('set_time_range'); },
+      whenViewportSettled: async () => { events.push('wait_settlement'); },
+    });
+
+    const result = await runDashboardActionBinding(
+      ctx,
+      { type: 'set_time_range', timeRange: '6h' },
+      {
+        waitForUiReady: async () => { events.push('wait_ui'); },
+        waitForMapReady: async () => { events.push('wait_map'); },
+        applierOptions,
+        syncUrlStateNow: () => { events.push('sync_url'); },
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.requested, { timeRange: '6h' });
+    assert.deepEqual(events, ['wait_ui', 'wait_map', 'set_time_range', 'sync_url']);
+  });
+
+  it('treats focus_country as a viewport action that settles before URL sync', { timeout: 5_000 }, async () => {
+    const events: string[] = [];
+    let resolveSettlementWaitStarted!: () => void;
+    const settlementWaitStarted = new Promise<void>((resolve) => {
+      resolveSettlementWaitStarted = resolve;
+    });
+    let resolveSettled!: () => void;
+    const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+    const ctx = makeContext();
+    Object.assign(ctx.map!, {
+      setView: () => { events.push('set_view'); },
+      setCenter: () => {
+        events.push('set_center');
+        return 7;
+      },
+      whenViewportSettled: async (token?: number) => {
+        events.push(`wait_settlement:${token}`);
+        resolveSettlementWaitStarted();
+        await settled;
+        events.push('settled');
+      },
+    });
+
+    const pending = runDashboardActionBinding(
+      ctx,
+      { type: 'focus_country', iso2: 'DE' },
+      {
+        waitForUiReady: async () => { events.push('wait_ui'); },
+        waitForMapReady: async () => { events.push('wait_map'); },
+        preloadCountryGeometry: async () => { events.push('preload_geometry'); },
+        applierOptions: {
+          ...applierOptions,
+          getCountryMapFocus: (iso2) => iso2 === 'DE'
+            ? { iso2: 'DE', lat: 51, lon: 10, zoom: 5, bbox: [6, 47, 15, 55] }
+            : null,
+        },
+        syncUrlStateNow: () => { events.push('sync_url'); },
+      },
+    );
+
+    await settlementWaitStarted;
+    assert.equal(events.includes('sync_url'), false);
+    resolveSettled();
+    const result = await pending;
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.effective, { iso2: 'DE', lat: 51, lon: 10, zoom: 5 });
+    assert.deepEqual(events, [
+      'wait_ui',
+      'wait_map',
+      'preload_geometry',
+      'set_view',
+      'set_center',
+      'wait_settlement:7',
+      'settled',
+      'sync_url',
+    ]);
+  });
+
+  it('does not sync URL after set_map_mode', async () => {
+    let syncCalls = 0;
+    const ctx = makeContext();
+    Object.assign(ctx.map!, {
+      switchToGlobe: () => { (ctx.map as { isGlobeMode: () => boolean }).isGlobeMode = () => true; },
+    });
+
+    const result = await runDashboardActionBinding(
+      ctx,
+      { type: 'set_map_mode', mode: '3d' },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => Promise.resolve(),
+        applierOptions,
+        syncUrlStateNow: () => { syncCalls += 1; },
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(syncCalls, 0);
+    assert.deepEqual(result.requested, { mode: '3d' });
+    assert.equal(result.effective?.mode, '3d');
+  });
+
+  it('does not apply a stale focus_country after newer map interaction during readiness', async () => {
+    let resolveRendererReady!: () => void;
+    const rendererReady = new Promise<void>((resolve) => {
+      resolveRendererReady = resolve;
+    });
+    let resolveRendererWaitStarted!: () => void;
+    const rendererWaitStarted = new Promise<void>((resolve) => {
+      resolveRendererWaitStarted = resolve;
+    });
+    let authorityToken = 4;
+    let setCenterCalls = 0;
+    const ctx = makeContext();
+    ctx.map!.setCenter = (() => {
+      setCenterCalls += 1;
+      return 5;
+    }) as typeof ctx.map.setCenter;
+
+    const pending = runDashboardActionBinding(
+      ctx,
+      { type: 'focus_country', iso2: 'DE' },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => {
+          resolveRendererWaitStarted();
+          return rendererReady;
+        },
+        preloadCountryGeometry: async () => {},
+        getMapAuthorityToken: () => authorityToken,
+        applierOptions: {
+          ...applierOptions,
+          getCountryMapFocus: () => ({
+            iso2: 'DE', lat: 51, lon: 10, zoom: 5, bbox: [6, 47, 15, 55],
+          }),
+        },
+        syncUrlStateNow: () => {},
+      },
+    );
+
+    await rendererWaitStarted;
+    authorityToken += 1;
+    resolveRendererReady();
+
+    const result = await pending;
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'viewport_superseded');
+    assert.equal(setCenterCalls, 0);
   });
 });

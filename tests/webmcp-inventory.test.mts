@@ -18,7 +18,10 @@ import {
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
 } from '../src/config/panels.ts';
-import { buildWebMcpTools as buildProductionWebMcpTools } from '../src/services/webmcp.ts';
+import {
+  WEBMCP_TOOL_CANCELLATION_POLICY,
+  buildWebMcpTools as buildProductionWebMcpTools,
+} from '../src/services/webmcp.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -130,7 +133,9 @@ function createBindings(overrides: Record<string, unknown> = {}) {
         panels: { mounted: ['map'], enabled: ['map'] },
       },
     }),
-    applyDashboardAction: async (action: { type: 'open_panel' | 'set_view' | 'set_layers' }) => ({
+    applyDashboardAction: async (action: {
+      type: 'open_panel' | 'set_view' | 'set_layers' | 'set_time_range' | 'focus_country' | 'set_map_mode';
+    }) => ({
       ok: true,
       status: 'applied' as const,
       actionType: action.type,
@@ -211,6 +216,9 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   set_panel_enabled: { panelId: 'giving', enabled: true },
   set_map_view: { view: 'eu', zoom: 4 },
   set_map_layers: { layers: { weather: true } },
+  set_time_range: { timeRange: '24h' },
+  focus_country: { iso2: 'DE' },
+  set_map_mode: { mode: '2d' },
   search_dashboard: { query: 'germany' },
   open_search_result: { resultKey: `sr_${'a'.repeat(32)}` },
   list_dashboard_tabs: {},
@@ -243,14 +251,22 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'src/services/webmcp-panel-catalog.ts',
   'src/App.ts',
   'src/app/webmcp-dashboard.ts',
+  'src/app/dashboard-action-binding.ts',
+  'shared/agent-bus-actions.ts',
+  'shared/agent-bus-contract.ts',
+  'src/app/agent-bus-applier.ts',
+  'src/app/country-map-focus.ts',
+  'src/app/map-dimension-control.ts',
   'src/config/panel-enablement.ts',
   'src/app/panel-enablement.ts',
   'src/app/webmcp-access.ts',
   'src/services/webmcp-access-snapshot.ts',
+  'src/services/clerk.ts',
   'src/app/webmcp-search-controller.ts',
   'src/app/webmcp-search-effects.ts',
   'src/app/search-selection-dispatcher.ts',
   'src/app/panel-layout.ts',
+  'src/components/PanelTabBar.ts',
   'src/services/tab-store.ts',
   'src/services/dashboard-tab-actions.ts',
   'src/components/GlobalProcurementPanel.ts',
@@ -279,6 +295,9 @@ const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
   'tests/webmcp-dashboard.test.mts',
   'tests/dashboard-tab-actions.test.mts',
   'tests/webmcp-panel-catalog.test.mts',
+  'tests/agent-bus-actions.test.mts',
+  'tests/agent-bus-applier.test.mts',
+  'tests/country-map-focus.test.mts',
   'tests/webmcp-runtime.test.mjs',
   'tests/webmcp-analytics-policy.test.mjs',
   'tests/webmcp-evals.test.mjs',
@@ -290,8 +309,8 @@ const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
 function sectionBetween(guide: string, startHeading: string, endHeading: string): string {
   const start = guide.indexOf(startHeading);
   const end = guide.indexOf(endHeading, start + startHeading.length);
-  assert.notEqual(start, -1, `public WebMCP guide is missing ${startHeading}`);
-  assert.notEqual(end, -1, `public WebMCP guide is missing ${endHeading}`);
+  assert.notEqual(start, -1, `WebMCP guide is missing ${startHeading}`);
+  assert.notEqual(end, -1, `WebMCP guide is missing ${endHeading}`);
   return guide.slice(start, end);
 }
 
@@ -304,6 +323,29 @@ function visibleMdx(section: string): string {
 
 function renderedTableNames(section: string): string[] {
   return [...visibleMdx(section).matchAll(/^\| `([^`]+)` \|/gm)].map((match) => match[1]);
+}
+
+const WEBMCP_CANCELLATION_CLASSES = [
+  'read-only',
+  'view-state',
+  'cancellation-required',
+  'result-dependent',
+] as const;
+
+function assertCancellationTable(guide: string, startHeading: string, endHeading: string) {
+  const section = visibleMdx(sectionBetween(guide, startHeading, endHeading));
+  for (const cancellationClass of WEBMCP_CANCELLATION_CLASSES) {
+    const row = section.match(new RegExp('^\\| `' + cancellationClass + '` \\| ([^|]+) \\|', 'm'));
+    assert.ok(row, `WebMCP guide is missing the ${cancellationClass} cancellation row`);
+    const documentedNames = [...(row[1] ?? '').matchAll(/`([^`]+)`/g)]
+      .map((match) => match[1])
+      .sort();
+    const expectedNames = Object.entries(WEBMCP_TOOL_CANCELLATION_POLICY)
+      .filter(([, policy]) => policy === cancellationClass)
+      .map(([name]) => name)
+      .sort();
+    assert.deepEqual(documentedNames, expectedNames, `${cancellationClass} documentation drift`);
+  }
 }
 
 function assertMaintainerSourceExists(source: string) {
@@ -321,43 +363,49 @@ function assertMaintainerSourceExists(source: string) {
 }
 
 function assertGuideContract(
-  guide: string,
+  publicGuide: string,
+  maintainerGuide: string,
   headings: {
     homepage: string;
     dashboard: string;
     declarative: string;
     journeys: string;
+    cancellation: string;
+    cancellationEnd: string;
     sourceMap: string;
     verification: string;
     verificationEnd: string;
   },
 ) {
   assert.deepEqual(
-    renderedTableNames(sectionBetween(guide, headings.homepage, headings.dashboard)),
+    renderedTableNames(sectionBetween(publicGuide, headings.homepage, headings.dashboard)),
     WEBMCP_HOMEPAGE_TOOL_NAMES,
   );
   assert.deepEqual(
-    renderedTableNames(sectionBetween(guide, headings.dashboard, headings.declarative)),
+    renderedTableNames(sectionBetween(publicGuide, headings.dashboard, headings.declarative)),
     WEBMCP_SPA_TOOL_NAMES,
   );
   assert.deepEqual(
-    renderedTableNames(sectionBetween(guide, headings.declarative, headings.journeys)),
+    renderedTableNames(sectionBetween(publicGuide, headings.declarative, headings.journeys)),
     WEBMCP_DECLARATIVE_TOOL_NAMES,
   );
+  assertCancellationTable(publicGuide, headings.cancellation, headings.cancellationEnd);
 
-  const sourceMap = visibleMdx(sectionBetween(guide, headings.sourceMap, headings.verification));
+  const sourceMap = visibleMdx(sectionBetween(maintainerGuide, headings.sourceMap, headings.verification));
   const sourcePaths = [...sourceMap.matchAll(/^\| ([^|]+) \|/gm)].flatMap((row) =>
     [...(row[1] ?? '').matchAll(/`([^`]+)`/g)].map((match) => match[1]),
   );
   assert.deepEqual(sourcePaths, WEBMCP_MAINTAINER_SOURCES);
   for (const source of sourcePaths) assertMaintainerSourceExists(source);
-  const verification = sectionBetween(guide, headings.verification, headings.verificationEnd);
+  const verification = sectionBetween(maintainerGuide, headings.verification, headings.verificationEnd);
   const focusedTestPaths = [...verification.matchAll(/^\s{2}(tests\/[^\s\\]+)(?:\s+\\)?$/gm)]
     .map((match) => match[1]);
   assert.deepEqual(focusedTestPaths, WEBMCP_FOCUSED_VERIFICATION_TESTS);
-  assert.match(guide, /target_cancellation_unsupported/);
-  assert.match(guide, /WebMcpToolError/);
-  assert.match(guide, /--test-concurrency=1/);
+  assert.match(publicGuide, /target_cancellation_unsupported/);
+  assert.match(publicGuide, /WebMcpToolError/);
+  assert.match(publicGuide, /webmcp-maintenance/);
+  assert.match(maintainerGuide, /\/webmcp/);
+  assert.match(maintainerGuide, /--test-concurrency=1/);
 }
 
 function homepageTools(): HomepageTool[] {
@@ -475,73 +523,106 @@ describe('WebMCP canonical inventories', () => {
     }
   });
 
-  it('keeps both public guides aligned with the canonical inventory and maintainer map', () => {
+  it('keeps both public and maintainer guides aligned with the canonical contract', () => {
     const guides = [
       {
-        guide: readFileSync(resolve(ROOT, 'docs/webmcp.mdx'), 'utf8'),
+        publicGuide: readFileSync(resolve(ROOT, 'docs/webmcp.mdx'), 'utf8'),
+        maintainerGuide: readFileSync(resolve(ROOT, 'docs/webmcp-maintenance.mdx'), 'utf8'),
         headings: {
           homepage: '### Homepage tools',
           dashboard: '### Dashboard imperative tools',
           declarative: '### Declarative procurement tool',
           journeys: '## Common browser-agent journeys',
-          sourceMap: '### Source map',
-          verification: '### Verification ladder',
-          verificationEnd: '## Compatibility and removal policy',
+          cancellation: '### Host support and cancellation',
+          cancellationEnd: '<Warning>',
+          sourceMap: '## Source map',
+          verification: '## Verification ladder',
+          verificationEnd: '## Release smoke checklist',
         },
       },
       {
-        guide: readFileSync(resolve(ROOT, 'docs/zh/webmcp.mdx'), 'utf8'),
+        publicGuide: readFileSync(resolve(ROOT, 'docs/zh/webmcp.mdx'), 'utf8'),
+        maintainerGuide: readFileSync(resolve(ROOT, 'docs/zh/webmcp-maintenance.mdx'), 'utf8'),
         headings: {
           homepage: '### 首页工具',
           dashboard: '### 仪表板命令式工具',
           declarative: '### 声明式采购工具',
           journeys: '## 常见浏览器智能体流程',
-          sourceMap: '### 源文件图',
-          verification: '### 验证阶梯',
-          verificationEnd: '## 兼容与移除策略',
+          cancellation: '### 宿主支持与取消',
+          cancellationEnd: '<Warning>',
+          sourceMap: '## 源文件图',
+          verification: '## 验证阶梯',
+          verificationEnd: '## 发布冒烟检查清单',
         },
       },
     ];
 
-    for (const { guide, headings } of guides) {
-      assertGuideContract(guide, headings);
+    for (const { publicGuide, maintainerGuide, headings } of guides) {
+      assertGuideContract(publicGuide, maintainerGuide, headings);
     }
   });
 
   it('fails the guide contract when a row disappears, drifts, or cannot be extracted', () => {
-    const guide = readFileSync(resolve(ROOT, 'docs/webmcp.mdx'), 'utf8');
+    const publicGuide = readFileSync(resolve(ROOT, 'docs/webmcp.mdx'), 'utf8');
+    const maintainerGuide = readFileSync(resolve(ROOT, 'docs/webmcp-maintenance.mdx'), 'utf8');
     const headings = {
       homepage: '### Homepage tools',
       dashboard: '### Dashboard imperative tools',
       declarative: '### Declarative procurement tool',
       journeys: '## Common browser-agent journeys',
-      sourceMap: '### Source map',
-      verification: '### Verification ladder',
-      verificationEnd: '## Compatibility and removal policy',
+      cancellation: '### Host support and cancellation',
+      cancellationEnd: '<Warning>',
+      sourceMap: '## Source map',
+      verification: '## Verification ladder',
+      verificationEnd: '## Release smoke checklist',
     };
-    assert.throws(() => assertGuideContract(guide.replace(/^\| `openSearch` .*$/m, ''), headings));
-    assert.throws(() => assertGuideContract(guide.replace(/^\| `src\/App\.ts` .*$/m, ''), headings));
+    assert.throws(() => assertGuideContract(
+      publicGuide.replace(/^\| `openSearch` .*$/m, ''),
+      maintainerGuide,
+      headings,
+    ));
+    assert.throws(() => assertGuideContract(
+      publicGuide.replace(/^\| `view-state` .*$/m, ''),
+      maintainerGuide,
+      headings,
+    ));
+    assert.throws(() => assertGuideContract(
+      publicGuide,
+      maintainerGuide.replace(/^\| [^\n]*`src\/App\.ts`.*$/m, ''),
+      headings,
+    ));
     assert.throws(() =>
       assertGuideContract(
-        guide.replace('| Tool | Input schema | Behavior |', '| Tool | Input schema | Behavior |\n| `stale_tool` | Empty object | Stale entry. |'),
+        publicGuide.replace('| Tool | Input schema | Behavior |', '| Tool | Input schema | Behavior |\n| `stale_tool` | Empty object | Stale entry. |'),
+        maintainerGuide,
         headings,
       ),
     );
     assert.throws(() =>
       assertGuideContract(
-        guide.replace(/^\| `openSearch` (.*)$/m, '{/* | `openSearch` $1 */}'),
+        publicGuide.replace(/^\| `openSearch` (.*)$/m, '{/* | `openSearch` $1 */}'),
+        maintainerGuide,
         headings,
       ),
     );
     assert.throws(() =>
       assertGuideContract(
-        guide.replace(/^\| `src\/App\.ts` (.*)$/m, '{/* | `src/App.ts` $1 */}'),
+        publicGuide,
+        maintainerGuide.replace(/^\| ([^\n]*`src\/App\.ts`.*)$/m, '{/* | $1 */}'),
         headings,
       ),
     );
-    assert.throws(() => assertGuideContract(guide.replace('### Source map', '### Sources'), headings));
+    assert.throws(() => assertGuideContract(
+      publicGuide,
+      maintainerGuide.replace('## Source map', '## Sources'),
+      headings,
+    ));
     assert.throws(() =>
-      assertGuideContract(guide.replace(/^\s{2}tests\/webmcp-dashboard\.test\.mts \\\n/m, ''), headings),
+      assertGuideContract(
+        publicGuide,
+        maintainerGuide.replace(/^\s{2}tests\/webmcp-dashboard\.test\.mts \\\n/m, ''),
+        headings,
+      ),
     );
   });
 });

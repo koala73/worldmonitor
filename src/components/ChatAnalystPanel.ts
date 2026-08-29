@@ -105,7 +105,9 @@ interface DashboardControlResult {
   targets: Array<{ target: string; status: DashboardControlStatus; reason?: string }>;
 }
 
-type DashboardActionHandler = (action: DashboardControlAction) => DashboardControlResult;
+type DashboardActionHandler = (
+  action: DashboardControlAction,
+) => DashboardControlResult | Promise<DashboardControlResult>;
 
 // Narrow allowlist: text formatting + tables only. No img/a/iframe so
 // prompt-injected or hallucinated URLs cannot trigger third-party requests.
@@ -432,7 +434,7 @@ export class ChatAnalystPanel extends Panel {
 
     const parsedAction = parsed.action;
     if (isDashboardControlAction(parsedAction)) {
-      this.renderDashboardControlAction(bubble, parsedAction);
+      void this.renderDashboardControlAction(bubble, parsedAction);
       return;
     }
     if (parsedAction.type !== 'suggest-widget') return;
@@ -451,7 +453,7 @@ export class ChatAnalystPanel extends Panel {
     else bubble.appendChild(chip);
   }
 
-  private renderDashboardControlAction(bubble: HTMLElement, action: DashboardControlAction): void {
+  private async renderDashboardControlAction(bubble: HTMLElement, action: DashboardControlAction): Promise<void> {
     let result: DashboardControlResult;
     if (!this.dashboardControlEnabled) {
       result = this.skippedDashboardAction(action, 'control_disabled', 'Dashboard control is off.');
@@ -460,7 +462,7 @@ export class ChatAnalystPanel extends Panel {
     } else if (!this.dashboardActionHandler) {
       result = this.skippedDashboardAction(action, 'context_unavailable', 'Dashboard context is unavailable.');
     } else {
-      result = this.dashboardActionHandler(action);
+      result = await this.dashboardActionHandler(action);
     }
 
     if (result.actionType) {

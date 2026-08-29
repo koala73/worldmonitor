@@ -10,6 +10,7 @@ const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
 const DASHBOARD_TOOL_NAMES = [
   'create_dashboard_tab',
   'delete_dashboard_tab',
+  'focus_country',
   'get_access_context',
   'get_dashboard_context',
   'list_dashboard_panels',
@@ -26,8 +27,10 @@ const DASHBOARD_TOOL_NAMES = [
   'search_dashboard',
   'select_dashboard_tab',
   'set_map_layers',
+  'set_map_mode',
   'set_map_view',
   'set_panel_enabled',
+  'set_time_range',
   'switch_monitor',
 ];
 const HOMEPAGE_TOOL_NAMES = [
@@ -191,6 +194,79 @@ async function executeDashboardTabTool(
     }
     return parsed as Record<string, unknown>;
   }, { name, input });
+}
+
+async function waitForDashboardTools(page: Page): Promise<void> {
+  await expect.poll(async () => page.evaluate(async () => {
+    const provider = document.modelContext;
+    if (!provider) return [];
+    return (await provider.getTools()).map((tool) => tool.name).sort();
+  }), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+}
+
+async function executeDashboardToolProbe(
+  page: Page,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<MutationExecutionProbe> {
+  return page.evaluate(async ({ toolName, inputJson }) => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const provider = document.modelContext as ExecutableModelContext | undefined;
+    if (!provider || typeof provider.executeTool !== 'function') {
+      throw new Error('Chrome WebMCP execution API is unavailable.');
+    }
+    const parseOutput = (value: unknown): unknown => {
+      if (typeof value !== 'string') return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    };
+    const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
+    if (!tool) throw new Error(`${toolName} was not discovered.`);
+    try {
+      return { ok: true, output: parseOutput(await provider.executeTool(tool, inputJson)) };
+    } catch (error) {
+      return {
+        errorMessage: error && typeof error === 'object' && 'message' in error
+          ? String(error.message).slice(0, 500)
+          : String(error).slice(0, 500),
+        errorName: error && typeof error === 'object' && 'name' in error
+          ? String(error.name)
+          : 'unknown',
+        ok: false,
+      };
+    }
+  }, { toolName: name, inputJson: JSON.stringify(input) });
+}
+
+async function storedMapMode(page: Page): Promise<string | null> {
+  const raw = await page.evaluate(() => localStorage.getItem('worldmonitor-map-mode'));
+  if (raw == null) return null;
+  return JSON.parse(raw) as string;
+}
+
+async function waitForCountryGeometry(page: Page): Promise<void> {
+  await expect.poll(async () => page.evaluate(() => {
+    const marks = (window as Window & {
+      __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string }> } };
+    }).__wmLcpDebug?.getSnapshot?.().marks ?? [];
+    if (marks.some((mark) => mark.name === 'wm:data:country-geometry-fetch-error')) return 'error';
+    if (marks.some((mark) => mark.name === 'wm:data:country-geometry-fetch-ready')) return 'ready';
+    return 'pending';
+  }), { timeout: 60_000 }).toMatch(/^(ready|error)$/);
+  expect(
+    await page.evaluate(() => {
+      const marks = (window as Window & {
+        __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string }> } };
+      }).__wmLcpDebug?.getSnapshot?.().marks ?? [];
+      return marks.some((mark) => mark.name === 'wm:data:country-geometry-fetch-ready');
+    }),
+    'country geometry must load before focus_country',
+  ).toBe(true);
 }
 
 async function installColdStartContextProbe(page: Page): Promise<void> {
@@ -1102,6 +1178,98 @@ test.describe('top-level WebMCP dashboard contract', () => {
     const enabledPanels = (afterReload.context as { panels?: { enabled?: string[] } })
       .panels?.enabled ?? [];
     expect(enabledPanels).toContain('giving');
+  });
+
+  test('applies time range and country focus, and gates 2D/3D without target cancellation', async ({ page }, testInfo) => {
+    test.skip(productionSmoke, 'Local view-state mutations stay off the production origin.');
+    testInfo.setTimeout(180_000);
+    await installReadinessRecorder(page);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await waitForDashboardTools(page);
+
+    const timeRange = await executeDashboardToolProbe(page, 'set_time_range', { timeRange: '6h' });
+    expect(timeRange).toMatchObject({
+      ok: true,
+      output: {
+        ok: true,
+        status: 'applied',
+        actionType: 'set_time_range',
+        requested: { timeRange: '6h' },
+        effective: { timeRange: '6h' },
+        compatibility: { adjusted: false },
+      },
+    });
+    await expect.poll(() => new URL(page.url()).searchParams.get('timeRange')).toBe('6h');
+    await expect(page.locator('.time-btn.active[data-range="6h"]')).toBeVisible();
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForDashboardTools(page);
+    expect(new URL(page.url()).searchParams.get('timeRange')).toBe('6h');
+    await expect(page.locator('.time-btn.active[data-range="6h"]')).toBeVisible();
+
+    await waitForCountryGeometry(page);
+    const focus = await executeDashboardToolProbe(page, 'focus_country', { iso2: 'DE' });
+    expect(focus).toMatchObject({
+      ok: true,
+      output: {
+        ok: true,
+        status: 'applied',
+        actionType: 'focus_country',
+        requested: { iso2: 'DE' },
+        effective: { iso2: 'DE' },
+        compatibility: { adjusted: false },
+      },
+    });
+    const afterFocus = new URL(page.url()).searchParams;
+    expect(afterFocus.get('view')).toBe('global');
+    expect(afterFocus.get('country')).toBeNull();
+    const lat = Number(afterFocus.get('lat'));
+    const lon = Number(afterFocus.get('lon'));
+    expect(lat).toBeGreaterThan(45);
+    expect(lat).toBeLessThan(56);
+    expect(lon).toBeGreaterThan(5);
+    expect(lon).toBeLessThan(16);
+    await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#country-deep-dive-panel')).not.toHaveClass(/active/);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForDashboardTools(page);
+    const afterFocusReload = new URL(page.url()).searchParams;
+    expect(afterFocusReload.get('timeRange')).toBe('6h');
+    expect(afterFocusReload.get('view')).toBe('global');
+    expect(afterFocusReload.get('country')).toBeNull();
+    expect(Number(afterFocusReload.get('lat'))).toBeCloseTo(lat, 3);
+    expect(Number(afterFocusReload.get('lon'))).toBeCloseTo(lon, 3);
+    await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
+
+    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
+    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).toBeVisible();
+
+    // Chrome 149–151 invokes the page callback with the input alone, even when
+    // executeTool() is given `{ signal }`. set_map_mode stays gated there.
+    // Do not click the 2D/3D control as a substitute: that would hide a broken
+    // cancellation gate. Binding tests cover the apply path with a real signal.
+    const to3d = await executeDashboardToolProbe(page, 'set_map_mode', { mode: '3d' });
+    expect(to3d).toMatchObject({
+      ok: true,
+      output: {
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+      },
+    });
+    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
+    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).not.toHaveClass(/active/);
+    expect(new URL(page.url()).searchParams.get('mapMode')).toBeNull();
+    expect(new URL(page.url()).searchParams.get('timeRange')).toBe('6h');
+    expect(await storedMapMode(page)).not.toBe('globe');
+
+    await attachJsonEvidence(testInfo, 'webmcp-map-view-state.json', {
+      timeRange,
+      focus,
+      to3d,
+      urlAfterFocus: afterFocus.toString(),
+    });
   });
 
   // Production collection is intentionally restricted to this spec. Keep a

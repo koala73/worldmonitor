@@ -9,6 +9,24 @@ export const DASHBOARD_MAP_VIEWS = [
   'oceania',
 ] as const;
 
+export const DASHBOARD_TIME_RANGES = [
+  '1h',
+  '6h',
+  '24h',
+  '48h',
+  '7d',
+  'all',
+] as const;
+
+// Public WebMCP/agent-bus grammar. The visible dashboard buttons are labeled
+// 2D/3D; storage still uses the internal flat/globe preference.
+export const DASHBOARD_MAP_MODES = ['2d', '3d'] as const;
+
+export type DashboardTimeRange = (typeof DASHBOARD_TIME_RANGES)[number];
+export type DashboardMapMode = (typeof DASHBOARD_MAP_MODES)[number];
+
+export const DASHBOARD_COUNTRY_CODE_PATTERN = '^[A-Z]{2}$';
+
 // Keep coordinate actions portable across every dashboard renderer. The flat
 // map uses Web Mercator, whose finite latitude extent ends at this value; the
 // globe can render the same range without renderer-specific normalization.

@@ -22,6 +22,9 @@ import {
   type DashboardControlAction,
   type DashboardControlActionType,
 } from '../../shared/agent-bus-actions';
+import { isCountryGeometryLoaded } from '@/services/country-geometry';
+import { getCountryMapFocus, type CountryMapFocus } from './country-map-focus';
+import { applyVisibleMapDimension } from './map-dimension-control';
 
 export type AgentBusApplyStatus = 'applied' | 'denied' | 'invalid' | 'skipped';
 
@@ -29,6 +32,26 @@ export interface AgentBusApplyTargetResult {
   target: string;
   status: AgentBusApplyStatus;
   reason?: string;
+}
+
+export interface AgentBusActionViewState {
+  timeRange?: string;
+  iso2?: string;
+  mode?: string;
+  renderer?: string;
+  lat?: number;
+  lon?: number;
+  zoom?: number;
+}
+
+export interface AgentBusActionCompatibility {
+  adjusted: boolean;
+  layers?: Array<{
+    layer: string;
+    from: boolean;
+    to: boolean;
+    reason: string;
+  }>;
 }
 
 export interface AgentBusApplyResult {
@@ -40,6 +63,9 @@ export interface AgentBusApplyResult {
   message: string;
   targets: AgentBusApplyTargetResult[];
   viewportActionToken?: number;
+  requested?: AgentBusActionViewState;
+  effective?: AgentBusActionViewState;
+  compatibility?: AgentBusActionCompatibility;
 }
 
 export interface AgentBusApplierOptions {
@@ -54,12 +80,21 @@ export interface AgentBusApplierOptions {
   ) => void;
   applyLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
   getMapLayerRuntimeAvailability?: () => MapLayerRuntimeAvailability;
+  getCountryMapFocus?: (iso2: string) => CountryMapFocus | null;
+  isCountryGeometryLoaded?: () => boolean;
+  requireMapModePersistence?: boolean;
 }
 
 const DEFAULT_LAYER_RESULT: AgentBusApplyTargetResult[] = [];
 const MAP_VARIANTS = new Set<MapVariant>(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
 
-function denied(message: string, reason: string, targets = DEFAULT_LAYER_RESULT, action?: DashboardControlAction): AgentBusApplyResult {
+function denied(
+  message: string,
+  reason: string,
+  targets = DEFAULT_LAYER_RESULT,
+  action?: DashboardControlAction,
+  extras: Pick<AgentBusApplyResult, 'requested' | 'effective' | 'compatibility'> = {},
+): AgentBusApplyResult {
   return {
     ok: false,
     status: 'denied',
@@ -68,6 +103,7 @@ function denied(message: string, reason: string, targets = DEFAULT_LAYER_RESULT,
     reason,
     message,
     targets,
+    ...extras,
   };
 }
 
@@ -81,7 +117,12 @@ function invalid(issues: string[]): AgentBusApplyResult {
   };
 }
 
-function applied(action: DashboardControlAction, message: string, targets: AgentBusApplyTargetResult[]): AgentBusApplyResult {
+function applied(
+  action: DashboardControlAction,
+  message: string,
+  targets: AgentBusApplyTargetResult[],
+  extras: Pick<AgentBusApplyResult, 'requested' | 'effective' | 'compatibility' | 'viewportActionToken'> = {},
+): AgentBusApplyResult {
   return {
     ok: true,
     status: 'applied',
@@ -89,6 +130,7 @@ function applied(action: DashboardControlAction, message: string, targets: Agent
     label: action.label,
     message,
     targets,
+    ...extras,
   };
 }
 
@@ -292,11 +334,134 @@ function applySetLayers(ctx: AppContext, action: Extract<AgentBusAction, { type:
   return applied(action, 'Updated map layers.', targets);
 }
 
+function applySetTimeRange(
+  ctx: AppContext,
+  action: Extract<AgentBusAction, { type: 'set_time_range' }>,
+): AgentBusApplyResult {
+  if (!ctx.map) {
+    return denied('Map is not available.', 'map_unavailable', [], action);
+  }
+
+  ctx.map.setTimeRange(action.timeRange);
+  const effective = ctx.map.getTimeRange?.() ?? action.timeRange;
+  return applied(action, `Set the map time range to ${effective}.`, [
+    { target: effective, status: 'applied' },
+  ], {
+    requested: { timeRange: action.timeRange },
+    effective: { timeRange: effective },
+    compatibility: { adjusted: effective !== action.timeRange },
+  });
+}
+
+function applyFocusCountry(
+  ctx: AppContext,
+  action: Extract<AgentBusAction, { type: 'focus_country' }>,
+  options: AgentBusApplierOptions,
+): AgentBusApplyResult {
+  if (!ctx.map) {
+    return denied('Map is not available.', 'map_unavailable', [], action);
+  }
+
+  const resolveFocus = options.getCountryMapFocus ?? getCountryMapFocus;
+  const geometryLoaded = options.isCountryGeometryLoaded
+    ?? (options.getCountryMapFocus ? () => true : isCountryGeometryLoaded);
+  if (!geometryLoaded()) {
+    return denied(
+      'Country geometry is not available yet.',
+      'geometry_unavailable',
+      [{ target: action.iso2, status: 'denied', reason: 'geometry_unavailable' }],
+      action,
+      {
+        requested: { iso2: action.iso2 },
+        compatibility: { adjusted: false },
+      },
+    );
+  }
+  const focus = resolveFocus(action.iso2);
+  if (!focus) {
+    return denied(`Unknown country code: ${action.iso2}.`, 'unknown_country', [
+      { target: action.iso2, status: 'denied', reason: 'unknown_country' },
+    ], action, {
+      requested: { iso2: action.iso2 },
+      compatibility: { adjusted: false },
+    });
+  }
+
+  ctx.map.setView('global');
+  const viewportActionToken = ctx.map.setCenter(focus.lat, focus.lon, focus.zoom);
+  return applied(action, `Focused the map on ${focus.iso2}.`, [
+    { target: focus.iso2, status: 'applied' },
+  ], {
+    viewportActionToken,
+    requested: { iso2: action.iso2 },
+    effective: {
+      iso2: focus.iso2,
+      lat: focus.lat,
+      lon: focus.lon,
+      zoom: focus.zoom,
+    },
+    compatibility: { adjusted: false },
+  });
+}
+
+async function applySetMapMode(
+  ctx: AppContext,
+  action: Extract<AgentBusAction, { type: 'set_map_mode' }>,
+  options: AgentBusApplierOptions,
+): Promise<AgentBusApplyResult> {
+  if (!ctx.map) {
+    return denied('Map is not available.', 'map_unavailable', [], action);
+  }
+
+  const result = await applyVisibleMapDimension(ctx, action.mode, {
+    requirePersistence: options.requireMapModePersistence,
+  });
+  const compatibility = {
+    adjusted: result.adjustedLayers.length > 0 || result.fellBack,
+    ...(result.adjustedLayers.length > 0 ? { layers: result.adjustedLayers } : {}),
+  };
+  if (options.requireMapModePersistence && !result.persisted) {
+    return denied(
+      'Map mode change could not be saved.',
+      'persist_failed',
+      [{ target: result.effective, status: 'denied', reason: 'persist_failed' }],
+      action,
+      {
+        requested: { mode: result.requested },
+        effective: { mode: result.effective, renderer: result.renderer },
+        compatibility,
+      },
+    );
+  }
+  if (result.fellBack) {
+    return denied(
+      'Globe startup fell back to the 2D map.',
+      'globe_unavailable',
+      [{ target: result.effective, status: 'denied', reason: 'globe_unavailable' }],
+      action,
+      {
+        requested: { mode: result.requested },
+        effective: { mode: result.effective, renderer: result.renderer },
+        compatibility,
+      },
+    );
+  }
+  return applied(action, result.alreadyActive
+    ? `Map mode is already ${result.effective}.`
+    : `Set the map mode to ${result.effective}.`, [
+    { target: result.effective, status: 'applied' },
+  ], {
+    requested: { mode: result.requested },
+    effective: { mode: result.effective, renderer: result.renderer },
+    compatibility,
+  });
+}
+
 export function applyAgentBusAction(
   ctx: AppContext,
   input: unknown,
   options: AgentBusApplierOptions = {},
-): AgentBusApplyResult {
+): AgentBusApplyResult | Promise<AgentBusApplyResult> {
   const parsed = parseAgentBusAction(input);
   if (!parsed.ok) return invalid(parsed.issues);
   if (!isDashboardControlAction(parsed.action)) {
@@ -318,5 +483,11 @@ export function applyAgentBusAction(
       return applySetView(ctx, parsed.action, options);
     case 'set_layers':
       return applySetLayers(ctx, parsed.action, options);
+    case 'set_time_range':
+      return applySetTimeRange(ctx, parsed.action);
+    case 'focus_country':
+      return applyFocusCountry(ctx, parsed.action, options);
+    case 'set_map_mode':
+      return applySetMapMode(ctx, parsed.action, options);
   }
 }

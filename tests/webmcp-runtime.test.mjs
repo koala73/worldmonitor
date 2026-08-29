@@ -398,10 +398,9 @@ describe('WebMCP registry behavioral contract', () => {
   });
 
   it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
-    // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
-    // stream). switch_monitor persists and reloads or leaves the current
-    // origin. An uncancellable invocation can outlive the session, so both
-    // stay fail-closed while the browser cannot deliver a signal.
+    // Layer, panel, map-mode, tab, and monitor changes can persist or leave
+    // the current origin. An uncancellable invocation can outlive the session,
+    // so these tools stay fail-closed while the browser cannot deliver a signal.
     // open_search_result is result-dependent and must reach its binding so the
     // issued effect class can decide.
     assert.deepEqual(
@@ -413,6 +412,7 @@ describe('WebMCP registry behavioral contract', () => {
         'rename_dashboard_tab',
         'select_dashboard_tab',
         'set_map_layers',
+        'set_map_mode',
         'set_panel_enabled',
         'switch_monitor',
       ],
@@ -474,6 +474,10 @@ describe('WebMCP registry behavioral contract', () => {
     );
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_layers', JSON.stringify({ layers: { conflicts: true } })),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(provider, 'set_map_mode', JSON.stringify({ mode: '3d' })),
       denial,
     );
     assert.deepEqual(
@@ -558,6 +562,52 @@ describe('WebMCP registry behavioral contract', () => {
       event: 'webmcp-tool-invoked',
       data: { tool: 'set_map_view', outcome: 'success', reason: 'completed' },
     });
+  });
+
+  it('runs time-range and country-focus tools without a target execution signal', async () => {
+    const actions = [];
+    const provider = new FakeWebMcpModelContext();
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      applyDashboardAction: async (action) => {
+        actions.push(action.type);
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: action.type,
+          message: 'Applied dashboard action.',
+          targets: [],
+        };
+      },
+    }), harness.runtime);
+    await settlePromises();
+
+    assert.deepEqual(
+      await executeRegistered(provider, 'set_time_range', JSON.stringify({ timeRange: '6h' })),
+      {
+        ok: true,
+        status: 'applied',
+        actionType: 'set_time_range',
+        message: 'Applied dashboard action.',
+        targets: [],
+        targetCount: 0,
+        targetsTruncated: false,
+      },
+    );
+    assert.deepEqual(
+      await executeRegistered(provider, 'focus_country', JSON.stringify({ iso2: 'DE' })),
+      {
+        ok: true,
+        status: 'applied',
+        actionType: 'focus_country',
+        message: 'Applied dashboard action.',
+        targets: [],
+        targetCount: 0,
+        targetsTruncated: false,
+      },
+    );
+    assert.deepEqual(actions, ['set_time_range', 'focus_country']);
+    assert.equal(provider.executionCalls.at(-1).targetSignal, undefined);
   });
 
   it('rejects the caller before the default target cancellation hop is delivered', async () => {

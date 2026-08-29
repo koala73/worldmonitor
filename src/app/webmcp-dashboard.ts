@@ -21,6 +21,7 @@ import {
 import type { PanelConfig } from '@/types';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
 import type { RendererKind } from '@/config/map-layer-definitions';
+import { currentDashboardMapMode } from './map-dimension-control';
 
 const APP_DESTROYED_RESULT: DashboardActionResult = {
   ok: false,
@@ -74,6 +75,7 @@ export function getWebMcpDashboardContext(
       view: mapState.view,
       center,
       zoom: mapState.zoom,
+      mode: currentDashboardMapMode(ctx),
       timeRange: mapState.timeRange,
       enabledLayers: Object.entries(mapState.layers)
         .filter(([, enabled]) => enabled === true)
@@ -193,8 +195,12 @@ export async function applyWebMcpDashboardAction(
   const { applyAgentBusAction } = await import('./agent-bus-applier');
   throwIfWebMcpAborted(signal);
   if (ctx.isDestroyed) return APP_DESTROYED_RESULT;
-  const result = applyAgentBusAction(ctx, action, options);
-  if (result.ok && result.actionType === 'set_view' && ctx.map) {
+  const result = await raceWebMcpAbort(applyAgentBusAction(ctx, action, options), signal);
+  if (
+    result.ok
+    && (result.actionType === 'set_view' || result.actionType === 'focus_country')
+    && ctx.map
+  ) {
     try {
       await raceWebMcpAbort(
         ctx.map.whenViewportSettled(result.viewportActionToken),

@@ -16,7 +16,7 @@ import {
 import { TIER1_COUNTRIES } from '@/services/country-instability';
 import { throwIfWebMcpAborted } from '@/services/webmcp';
 import { CURATED_COUNTRIES } from '@/config/countries';
-import { getCountryBbox } from '@/services/country-geometry';
+import { getCountryMapFocus } from '@/app/country-map-focus';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import type { NewsItem, MapLayers, MilitaryBase } from '@/types';
 import { UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo-map';
@@ -624,16 +624,11 @@ export class SearchSelectionDispatcher {
         });
       }
       case 'country-map': {
-        const bbox = getCountryBbox(action);
-        if (bbox) {
-          const [minLon, minLat, maxLon, maxLat] = bbox;
-          const lat = (minLat + maxLat) / 2;
-          const lon = (minLon + maxLon) / 2;
-          const span = Math.max(maxLat - minLat, maxLon - minLon);
-          const zoom = span > 40 ? 3 : span > 15 ? 4 : span > 5 ? 5 : 6;
+        const focus = getCountryMapFocus(action);
+        if (focus) {
           return this.schedule(() => {
             ctx.map?.setView('global');
-            ctx.map?.setCenter(lat, lon, zoom);
+            ctx.map?.setCenter(focus.lat, focus.lon, focus.zoom);
           }, 300, epoch);
         }
         break;

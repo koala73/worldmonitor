@@ -52,5 +52,10 @@ jobs:
           # Pick up commits merged since the checkout so the convex=false skip
           # proof diffs the head the API reports, not the SHA the checkout was
           # created at. Same shape as seed-freshness-monitor.yml's drift step.
-          git fetch --quiet origin main
+          # `--tags --force` is load-bearing: the convex/ skip proof compares
+          # production's deployed commit (the force-moved `convex-deployed` tag
+          # convex-deploy.yml writes) against main. Without --force the local
+          # tag is pinned at whatever the checkout saw and never advances, so
+          # the monitor would report drift that was already deployed.
+          git fetch --quiet --tags --force origin main
           node scripts/check-postmerge-deploys.mjs

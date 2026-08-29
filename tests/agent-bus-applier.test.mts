@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { applyAgentBusAction } from '../src/app/agent-bus-applier.ts';
 import type { AppContext } from '../src/app/app-context.ts';
 import type { MapLayers, PanelConfig } from '../src/types/index.ts';
+import { DASHBOARD_TIME_RANGES } from '../shared/agent-bus-contract.ts';
 
 function makePanel() {
   let showCalls = 0;
@@ -25,6 +26,11 @@ function makeCtx(overrides: Partial<AppContext> = {}): AppContext {
   const setCenterCalls: Array<[number, number, number | undefined]> = [];
   const setViewCalls: Array<[string, number | undefined]> = [];
   const setLayersCalls: MapLayers[] = [];
+  const setTimeRangeCalls: string[] = [];
+  const switchToGlobeCalls: number[] = [];
+  const switchToFlatCalls: number[] = [];
+  let globeMode = false;
+  let deckActive = false;
   const mapLayers = {
     conflicts: false,
     weather: false,
@@ -37,12 +43,16 @@ function makeCtx(overrides: Partial<AppContext> = {}): AppContext {
     panelSettings: {},
     mapLayers,
     map: {
-      setCenter: (lat: number, lon: number, zoom?: number) => { setCenterCalls.push([lat, lon, zoom]); },
+      setCenter: (lat: number, lon: number, zoom?: number) => { setCenterCalls.push([lat, lon, zoom]); return setCenterCalls.length; },
       setView: (view: string, zoom?: number) => { setViewCalls.push([view, zoom]); },
       setLayers: (layers: MapLayers) => { setLayersCalls.push(layers); },
-      isDeckGLActive: () => false,
-      isGlobeMode: () => false,
-      _calls: { setCenterCalls, setViewCalls, setLayersCalls },
+      setTimeRange: (range: string) => { setTimeRangeCalls.push(range); },
+      getTimeRange: () => setTimeRangeCalls.at(-1) ?? '7d',
+      switchToGlobe: () => { globeMode = true; deckActive = false; switchToGlobeCalls.push(1); },
+      switchToFlat: () => { globeMode = false; deckActive = true; switchToFlatCalls.push(1); },
+      isDeckGLActive: () => deckActive,
+      isGlobeMode: () => globeMode,
+      _calls: { setCenterCalls, setViewCalls, setLayersCalls, setTimeRangeCalls, switchToGlobeCalls, switchToFlatCalls },
     },
     ...overrides,
   } as unknown as AppContext;
@@ -440,5 +450,172 @@ describe('agent bus applier', () => {
         ['outages', 'denied', 'layer_not_configured'],
       ],
     );
+  });
+  it('applies every dashboard time-range enum through the map control', () => {
+    const ctx = makeCtx();
+    const ranges = DASHBOARD_TIME_RANGES;
+    for (const timeRange of ranges) {
+      const result = applyAgentBusAction(ctx, { type: 'set_time_range', timeRange });
+      assert.equal(result.ok, true, timeRange);
+      assert.equal(result.actionType, 'set_time_range');
+      assert.deepEqual(result.requested, { timeRange });
+      assert.deepEqual(result.effective, { timeRange });
+      assert.deepEqual(result.compatibility, { adjusted: false });
+    }
+    assert.deepEqual(
+      (ctx.map as { _calls: { setTimeRangeCalls: string[] } })._calls.setTimeRangeCalls,
+      [...ranges],
+    );
+  });
+
+  it('rejects unknown time ranges and map modes before mutation', () => {
+    const ctx = makeCtx();
+    const invalidRange = applyAgentBusAction(ctx, { type: 'set_time_range', timeRange: '12h' });
+    const invalidMode = applyAgentBusAction(ctx, { type: 'set_map_mode', mode: 'globe' });
+
+    assert.equal(invalidRange.ok, false);
+    assert.equal(invalidRange.status, 'invalid');
+    assert.equal(invalidMode.ok, false);
+    assert.equal(invalidMode.status, 'invalid');
+    assert.deepEqual((ctx.map as { _calls: { setTimeRangeCalls: string[] } })._calls.setTimeRangeCalls, []);
+    assert.deepEqual((ctx.map as { _calls: { switchToGlobeCalls: number[] } })._calls.switchToGlobeCalls, []);
+  });
+
+  it('focuses a country bounding box without opening a briefing', () => {
+    const ctx = makeCtx();
+    const briefCalls: string[] = [];
+    const result = applyAgentBusAction(ctx, { type: 'focus_country', iso2: 'DE' }, {
+      ...entitled,
+      getCountryMapFocus: (iso2) => iso2 === 'DE'
+        ? { iso2: 'DE', lat: 51.1, lon: 10.4, zoom: 5, bbox: [5.8, 47.2, 15.0, 55.0] }
+        : null,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.actionType, 'focus_country');
+    assert.equal(result.viewportActionToken, 1);
+    assert.deepEqual(result.requested, { iso2: 'DE' });
+    assert.deepEqual(result.effective, { iso2: 'DE', lat: 51.1, lon: 10.4, zoom: 5 });
+    assert.deepEqual(
+      (ctx.map as { _calls: { setViewCalls: Array<[string, number | undefined]> } })._calls.setViewCalls,
+      [['global', undefined]],
+    );
+    assert.deepEqual(
+      (ctx.map as { _calls: { setCenterCalls: Array<[number, number, number | undefined]> } })._calls.setCenterCalls,
+      [[51.1, 10.4, 5]],
+    );
+    assert.deepEqual(briefCalls, []);
+  });
+
+  it('denies focus_country as geometry_unavailable when country GeoJSON is not loaded', () => {
+    const ctx = makeCtx();
+    const result = applyAgentBusAction(ctx, { type: 'focus_country', iso2: 'DE' }, {
+      ...entitled,
+      isCountryGeometryLoaded: () => false,
+      getCountryMapFocus: () => ({
+        iso2: 'DE', lat: 51.1, lon: 10.4, zoom: 5, bbox: [5.8, 47.2, 15.0, 55.0],
+      }),
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'geometry_unavailable');
+    assert.deepEqual(result.requested, { iso2: 'DE' });
+    assert.deepEqual(
+      (ctx.map as { _calls: { setCenterCalls: unknown[] } })._calls.setCenterCalls,
+      [],
+    );
+  });
+
+  it('denies unknown country codes with a structured unknown_country result', () => {
+    const ctx = makeCtx();
+    const result = applyAgentBusAction(ctx, { type: 'focus_country', iso2: 'XX' }, {
+      ...entitled,
+      isCountryGeometryLoaded: () => true,
+      getCountryMapFocus: () => null,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'unknown_country');
+    assert.deepEqual(result.requested, { iso2: 'XX' });
+    assert.deepEqual(
+      (ctx.map as { _calls: { setCenterCalls: unknown[] } })._calls.setCenterCalls,
+      [],
+    );
+  });
+
+  it('switches 2d and 3d through the visible map-dimension control', async () => {
+    const ctx = makeCtx();
+
+    const to3d = await applyAgentBusAction(ctx, { type: 'set_map_mode', mode: '3d' });
+    assert.equal(to3d.ok, true);
+    assert.deepEqual(to3d.requested, { mode: '3d' });
+    assert.deepEqual(to3d.effective, { mode: '3d', renderer: 'globe' });
+    assert.deepEqual(to3d.compatibility, { adjusted: false });
+    assert.equal((ctx.map as { _calls: { switchToGlobeCalls: number[] } })._calls.switchToGlobeCalls.length, 1);
+
+    const already3d = await applyAgentBusAction(ctx, { type: 'set_map_mode', mode: '3d' });
+    assert.equal(already3d.ok, true);
+    assert.match(already3d.message ?? '', /already/);
+    assert.equal((ctx.map as { _calls: { switchToGlobeCalls: number[] } })._calls.switchToGlobeCalls.length, 1);
+
+    const to2d = await applyAgentBusAction(ctx, { type: 'set_map_mode', mode: '2d' });
+    assert.equal(to2d.ok, true);
+    assert.deepEqual(to2d.effective, { mode: '2d', renderer: 'deck' });
+    assert.equal((ctx.map as { _calls: { switchToFlatCalls: number[] } })._calls.switchToFlatCalls.length, 1);
+  });
+
+  it('disables resilienceScore when switching away from DeckGL, matching the UI', async () => {
+    const ctx = makeCtx();
+    ctx.map.switchToFlat();
+    ctx.mapLayers = { ...ctx.mapLayers, resilienceScore: true };
+
+    const result = await applyAgentBusAction(ctx, { type: 'set_map_mode', mode: '3d' });
+    assert.equal(result.ok, true);
+    assert.equal(ctx.mapLayers.resilienceScore, false);
+    assert.equal(result.compatibility?.adjusted, true);
+    assert.deepEqual(result.compatibility?.layers, [{
+      layer: 'resilienceScore',
+      from: true,
+      to: false,
+      reason: 'layer_not_executable',
+    }]);
+    assert.deepEqual(
+      (ctx.map as { _calls: { setLayersCalls: MapLayers[] } })._calls.setLayersCalls,
+      [ctx.mapLayers],
+    );
+  });
+
+  it('denies 3d and reports the 2d renderer when globe startup falls back', async () => {
+    let globeMode = false;
+    let deckActive = true;
+    let failGlobe!: () => void;
+    const ctx = makeCtx();
+    ctx.map.switchToGlobe = () => {
+      globeMode = true;
+      deckActive = false;
+      (ctx.map as { _calls: { switchToGlobeCalls: number[] } })._calls.switchToGlobeCalls.push(1);
+      return new Promise((resolve) => {
+        failGlobe = () => {
+          globeMode = false;
+          deckActive = false;
+          resolve({ renderer: 'svg', mode: 'flat', fallback: true });
+        };
+      });
+    };
+    ctx.map.isGlobeMode = () => globeMode;
+    ctx.map.isDeckGLActive = () => deckActive;
+
+    const pending = applyAgentBusAction(ctx, { type: 'set_map_mode', mode: '3d' });
+    failGlobe();
+    const result = await pending;
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'globe_unavailable');
+    assert.deepEqual(result.requested, { mode: '3d' });
+    assert.deepEqual(result.effective, { mode: '2d', renderer: 'svg' });
+    assert.equal(result.compatibility?.adjusted, true);
   });
 });
