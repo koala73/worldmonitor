@@ -363,6 +363,8 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(list.inputSchema.additionalProperties, false);
     assert.match(list.description, /tabsTruncated/);
     assert.match(list.description, /tabCount is the total persisted workspace count/);
+    assert.match(list.description, /nextCursor/);
+    assert.equal(list.inputSchema.properties.cursor.pattern, '^tab-[a-z0-9]+-[a-z0-9]+$');
     for (const tool of [select, create, rename, remove]) {
       assert.match(tool.description, /target-side cancellation/);
       assert.match(tool.description, /worldmonitor-tabs-v1/);
@@ -395,20 +397,22 @@ describe('webmcp.ts: current API contract', () => {
     ]);
   });
 
-  it('truncates an oversized tab list from the front/oldest while keeping the active tab', async () => {
+  it('pages an oversized tab list so every id and name can be walked', async () => {
     const activeId = 'tab-main01-abc123';
-    const tabs = Array.from({ length: 40 }, (_, index) => {
+    const tabs = Array.from({ length: 25 }, (_, index) => {
       const id = index === 0 ? activeId : `tab-fill${String(index).padStart(2, '0')}-abc123`;
       return {
         id,
-        name: `Workspace ${String(index).padStart(2, '0')} ${'n'.repeat(24)}`,
+        name: `${String(index).padStart(2, '0')}-${'n'.repeat(37)}`,
         active: index === 0,
         canDelete: index !== 0,
       };
     });
+    const actions = [];
     const tools = buildWebMcpTools(createBindings({
       applyDashboardTabAction: async (action) => {
         assert.equal(action.type, 'list');
+        actions.push(action);
         return {
           activeTabId: activeId,
           tabs,
@@ -419,16 +423,67 @@ describe('webmcp.ts: current API contract', () => {
         };
       },
     }), () => {});
-    const listed = await tools.find((tool) => tool.name === 'list_dashboard_tabs').execute({});
+    const list = tools.find((tool) => tool.name === 'list_dashboard_tabs');
 
-    assert.equal(listed.tabsTruncated, true);
-    assert.equal(listed.tabCount, 40);
-    assert.equal(listed.activeTabId, activeId);
-    assert.equal(listed.tabs[0].id, activeId);
-    assert.ok(listed.tabs.length < 40);
-    assert.ok(!listed.tabs.some((tab) => tab.id === 'tab-fill01-abc123'));
-    assert.ok(listed.tabs.some((tab) => tab.id === 'tab-fill39-abc123'));
-    assert.ok(JSON.stringify(listed).length <= 1400);
+    const pages = [];
+    let cursor;
+    do {
+      const listed = await list.execute(cursor ? { cursor } : {});
+      assert.ok(JSON.stringify(listed).length <= 1400);
+      assert.equal(listed.tabCount, 25);
+      assert.equal(listed.activeTabId, activeId);
+      pages.push(listed);
+      cursor = listed.nextCursor;
+      if (listed.tabsTruncated) {
+        assert.equal(typeof listed.nextCursor, 'string');
+        assert.match(listed.nextCursor, /^tab-[a-z0-9]+-[a-z0-9]+$/);
+      } else {
+        assert.equal(listed.nextCursor, undefined);
+      }
+    } while (cursor);
+
+    assert.ok(pages.length >= 2);
+    assert.deepEqual(actions[0], { type: 'list' });
+    assert.deepEqual(actions.slice(1), pages.slice(0, -1).map((page) => ({
+      type: 'list',
+      cursor: page.nextCursor,
+    })));
+
+    const seenIds = pages.flatMap((page) => page.tabs.map((tab) => tab.id));
+    const seenNames = pages.flatMap((page) => page.tabs.map((tab) => tab.name));
+    assert.deepEqual(seenIds, tabs.map((tab) => tab.id));
+    assert.deepEqual(seenNames, tabs.map((tab) => tab.name));
+    assert.ok(new Set(seenIds).size === tabs.length);
+    assert.ok(pages[0].tabs.length < 25);
+    assert.equal(pages[0].tabsTruncated, true);
+    assert.equal(pages.at(-1).tabsTruncated, false);
+  });
+
+  it('returns an empty remainder when the list cursor is unknown', async () => {
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardTabAction: async (action) => {
+        assert.equal(action.cursor, 'tab-missing-zzzzzz');
+        return {
+          activeTabId: 'tab-main01-abc123',
+          tabs: [{
+            id: 'tab-main01-abc123',
+            name: 'Main',
+            active: true,
+            canDelete: false,
+          }],
+          tabCount: 1,
+          tabsTruncated: false,
+          canCreate: true,
+          cap: null,
+        };
+      },
+    }), () => {});
+    const listed = await tools.find((tool) => tool.name === 'list_dashboard_tabs')
+      .execute({ cursor: 'tab-missing-zzzzzz' });
+    assert.deepEqual(listed.tabs, []);
+    assert.equal(listed.tabCount, 1);
+    assert.equal(listed.tabsTruncated, false);
+    assert.equal(listed.nextCursor, undefined);
   });
 
   it('classifies last_tab as validation, tab_not_found as stale, and tabs_unavailable as unavailable', async () => {

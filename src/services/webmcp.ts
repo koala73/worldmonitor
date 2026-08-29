@@ -49,6 +49,7 @@ import {
 import {
   DASHBOARD_TAB_ID_PATTERN,
   DASHBOARD_TAB_NAME_MAX_LENGTH,
+  isDashboardTabId,
   isDashboardTabListSnapshot,
   mutationDenied,
   type DashboardTabAction,
@@ -708,7 +709,10 @@ function boundSearchOpenResult(result: DashboardSearchOpenResult): DashboardSear
   };
 }
 
-function boundDashboardTabList(snapshot: DashboardTabListSnapshot): DashboardTabListSnapshot {
+function boundDashboardTabList(
+  snapshot: DashboardTabListSnapshot,
+  cursor?: string,
+): DashboardTabListSnapshot {
   const sourceTabs = Array.isArray(snapshot.tabs) ? snapshot.tabs : [];
   const tabs = sourceTabs.map((tab) => ({
     id: boundedText(tab?.id, 64),
@@ -716,32 +720,56 @@ function boundDashboardTabList(snapshot: DashboardTabListSnapshot): DashboardTab
     active: tab?.active === true,
     canDelete: tab?.canDelete === true,
   })).filter((tab) => tab.id);
-  const result: DashboardTabListSnapshot = {
-    activeTabId: boundedText(snapshot.activeTabId, 64),
-    tabs,
-    tabCount: Math.max(0, Math.floor(boundedNumber(snapshot.tabCount)) || tabs.length),
-    tabsTruncated: snapshot.tabsTruncated === true,
-    canCreate: snapshot.canCreate === true,
-    cap: snapshot.cap === null || typeof snapshot.cap === 'number' ? snapshot.cap : null,
-    ...(snapshot.createBlockReason ? {
-      createBlockReason: boundedText(snapshot.createBlockReason, 32) as DashboardTabListSnapshot['createBlockReason'],
-    } : {}),
-  };
+  const tabCount = Math.max(
+    Math.max(0, Math.floor(boundedNumber(snapshot.tabCount)) || tabs.length),
+    tabs.length,
+  );
+  const activeTabId = boundedText(snapshot.activeTabId, 64);
+  const canCreate = snapshot.canCreate === true;
+  const cap = snapshot.cap === null || typeof snapshot.cap === 'number' ? snapshot.cap : null;
+  const createBlockReason = snapshot.createBlockReason
+    ? boundedText(snapshot.createBlockReason, 32) as DashboardTabListSnapshot['createBlockReason']
+    : undefined;
 
-  const keepActive = (tab: typeof tabs[number]): boolean => tab.id === result.activeTabId;
-  while (JSON.stringify(result).length > TARGET_OUTPUT_CHARS && tabs.some((tab) => !keepActive(tab))) {
-    let dropped = false;
-    for (let index = 0; index < tabs.length; index += 1) {
-      const tab = tabs[index];
-      if (!tab || keepActive(tab)) continue;
-      tabs.splice(index, 1);
-      result.tabsTruncated = true;
-      dropped = true;
+  let startIndex = 0;
+  if (cursor !== undefined) {
+    startIndex = isDashboardTabId(cursor)
+      ? tabs.findIndex((tab) => tab.id === cursor)
+      : -1;
+    if (startIndex < 0) startIndex = tabs.length;
+  }
+
+  const buildPage = (
+    pageTabs: typeof tabs,
+    nextCursor: string | undefined,
+  ): DashboardTabListSnapshot => ({
+    activeTabId,
+    tabs: pageTabs,
+    tabCount,
+    tabsTruncated: nextCursor !== undefined || snapshot.tabsTruncated === true,
+    canCreate,
+    cap,
+    ...(createBlockReason ? { createBlockReason } : {}),
+    ...(nextCursor ? { nextCursor: boundedText(nextCursor, 64) } : {}),
+  });
+
+  const remaining = tabs.slice(startIndex);
+  const page: typeof tabs = [];
+  for (let index = 0; index < remaining.length; index += 1) {
+    const tab = remaining[index];
+    if (!tab) continue;
+    const candidate = [...page, tab];
+    const following = remaining[index + 1];
+    if (JSON.stringify(buildPage(candidate, following?.id)).length > TARGET_OUTPUT_CHARS) {
       break;
     }
-    if (!dropped) break;
+    page.push(tab);
   }
-  result.tabCount = Math.max(result.tabCount, sourceTabs.length);
+  if (page.length === 0 && remaining[0]) page.push(remaining[0]);
+
+  const consumed = startIndex + page.length;
+  const nextCursor = consumed < tabs.length ? tabs[consumed]?.id : undefined;
+  const result = buildPage(page, nextCursor);
   if (JSON.stringify(result).length > MAX_OUTPUT_CHARS) {
     throw new SafeWebMcpError('Dashboard tab list exceeded the safe output limit.');
   }
@@ -778,7 +806,7 @@ async function applyDashboardTabAction(
 ): Promise<DashboardTabActionResult> {
   const result = await app.applyDashboardTabAction(action, options);
   return isDashboardTabListSnapshot(result)
-    ? boundDashboardTabList(result)
+    ? boundDashboardTabList(result, action.type === 'list' ? action.cursor : undefined)
     : boundDashboardTabMutation(result);
 }
 
@@ -1127,16 +1155,31 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.listDashboardTabs,
       title: 'List Dashboard Tabs',
       description:
-        'List dashboard tabs as named persistent panel workspaces. Returns each tab id, name, active flag, plus whether another tab can be created and why add is locked. Use tab ids, not display names, for select, rename, and delete. When tabsTruncated is true, tabCount is the total persisted workspace count and tabs may omit non-active entries; do not assume every id is present. Call list_dashboard_tabs again after mutations.',
+        'List dashboard tabs as named persistent panel workspaces. Returns each tab id, name, active flag, plus whether another tab can be created and why add is locked. Use tab ids, not display names, for select, rename, and delete. When tabsTruncated is true, tabCount is the total persisted workspace count and this page omitted later tabs; pass nextCursor to list the rest. Call list_dashboard_tabs again after mutations.',
       inputSchema: {
         type: 'object',
-        properties: {},
+        properties: {
+          cursor: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 64,
+            pattern: DASHBOARD_TAB_ID_PATTERN,
+            description: 'Inclusive start tab id from a previous nextCursor. Omit to start at the first workspace.',
+          },
+        },
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listDashboardTabs, async (_args, extra) => (
-        applyDashboardTabAction({ type: 'list' }, app, extra)
-      ), trackEvent),
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listDashboardTabs, async (args, extra) => {
+        const cursor = hasOnlyOwnKeys(args, ['cursor']) && typeof args.cursor === 'string'
+          ? args.cursor
+          : undefined;
+        return applyDashboardTabAction(
+          cursor ? { type: 'list', cursor } : { type: 'list' },
+          app,
+          extra,
+        );
+      }, trackEvent),
     },
     {
       name: WEBMCP_SPA_TOOL.selectDashboardTab,

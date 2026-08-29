@@ -113,7 +113,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | `set_map_layers` | 必填对象 `layers`，含 1–10 个布尔项；键长 1–30，匹配 `^[a-z][A-Za-z0-9_-]*$`；顶层不允许其他属性。 | 启用或禁用允许的可见图层，并返回逐图层结果。 |
 | `search_dashboard` | 必填字符串 `query`，长度 1–160；可选 `scope` 为 `all`、`signals`、`map`、`panels`、`actions`，默认 `all`；可选整数 `limit` 为 1–10，默认 8；不允许其他属性。 | 只读、受限地搜索当前国家、信号、地图、面板、金融和动作索引；返回内容标记为不可信。 |
 | `open_search_result` | 必填字符串 `resultKey`，模式 `^sr_[a-f0-9]{32}$`；不允许其他属性。 | 重新检查可用性、兼容性、认证和权益后，打开本页此前返回的一项结果。 |
-| `list_dashboard_tabs` | 空对象；不允许其他属性。 | 只读返回仪表板标签页（命名的持久面板工作区）：稳定 id、名称、是否激活、是否可创建，以及上限锁定原因。当 `tabsTruncated` 为 true 时，`tabCount` 是已持久化的工作区总数，tabs 数组可能省略非激活条目。 |
+| `list_dashboard_tabs` | 可选字符串 `cursor`，匹配 `^tab-[a-z0-9]+-[a-z0-9]+$`；不允许其他属性。 | 只读返回仪表板标签页（命名的持久面板工作区）：稳定 id、名称、是否激活、是否可创建，以及上限锁定原因。当 `tabsTruncated` 为 true 时，`tabCount` 是已持久化的工作区总数，本页省略了后续标签页；传入返回的 `nextCursor` 可列出其余项。 |
 | `select_dashboard_tab` | 必填字符串 `tabId`，模式 `^tab-[a-z0-9]+-[a-z0-9]+$`；不允许其他属性。 | 激活该工作区。选择已激活的标签页是成功的空操作。 |
 | `create_dashboard_tab` | 可选字符串 `name`，长度 1–40；不允许其他属性。 | 创建工作区并激活它。若修剪后的名称已存在，则返回该标签页而不重复创建。达到上限时返回 `tab_cap`。 |
 | `rename_dashboard_tab` | 必填字符串 `tabId` 与必填字符串 `name`，长度 1–40；不允许其他属性。 | 按稳定 id 重命名。名称规则与仪表板标签栏相同。改成当前名称是成功的空操作。 |
@@ -146,7 +146,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | 查找并启用已禁用的地图图层 | 使用 `scope: "map"` 调用 `search_dashboard` → 展示精确结果 → `open_search_result` | 使用搜索返回的精确一次性 `resultKey`。仅当用户或可信的当前状态提供了精确图层 ID 时，才使用 `set_map_layers`；不得猜测 ID。 |
 | 打开国家简报 | `openCountryBrief` | 使用大写 ISO alpha-2 代码。该路径可能消耗已登录用户的每日 LLM 配额；若浏览器不能提供目标侧取消，则该工具不可用。 |
 | 搜索采购机会 | `get_dashboard_context` → 打开已启用的全球采购面板，或请用户启用它 → 发现 `search_procurement` → 调用 | `open_dashboard_panel` 不能启用已禁用的面板。只有当有权益的表单已连接、可见、数据就绪且空闲时，该声明式工具才存在。工具消失表示状态变化，并非注册失败。 |
-| 列出仪表板工作区 | `list_dashboard_tabs` | 使用返回的标签页 id，不要用显示名称。遵守 `tabsTruncated`。 |
+| 列出仪表板工作区 | `list_dashboard_tabs` | 使用返回的标签页 id，不要用显示名称。当 `tabsTruncated` 为 true 时，传入 `nextCursor` 直到列出每个 id。 |
 | 切换仪表板工作区 | `list_dashboard_tabs` → `select_dashboard_tab` | 传入当前标签页 id。选择已激活的标签页是成功的空操作。 |
 | 创建或复用命名工作区 | `list_dashboard_tabs` → `create_dashboard_tab` | 已存在的名称会返回该标签页。上限或权益锁定返回 `tab_cap`。 |
 | 重命名工作区 | `list_dashboard_tabs` → `rename_dashboard_tab` | 名称会修剪，最长 40 个字符。 |

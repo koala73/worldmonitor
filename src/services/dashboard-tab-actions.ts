@@ -35,7 +35,7 @@ export type DashboardTabDenialReason =
   | 'app_destroyed';
 
 export type DashboardTabAction =
-  | { type: 'list' }
+  | { type: 'list'; cursor?: string }
   | { type: 'select'; tabId: string }
   | { type: 'create'; name?: string }
   | { type: 'rename'; tabId: string; name: string }
@@ -53,6 +53,8 @@ export interface DashboardTabListSnapshot {
   tabs: DashboardTabDescriptor[];
   tabCount: number;
   tabsTruncated: boolean;
+  /** Inclusive start tab id for the next page when `tabsTruncated` is true. */
+  nextCursor?: string;
   canCreate: boolean;
   cap: number | null;
   createBlockReason?: ExportGateLockReason;
