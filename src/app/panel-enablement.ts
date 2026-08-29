@@ -84,7 +84,11 @@ export function isCatalogPanelLive(
   panelId: string,
   panels?: Record<string, unknown> | null,
 ): boolean {
-  if (panels?.[panelId]) return true;
+  const instance = panels?.[panelId] as { getElement?: () => { isConnected?: boolean } | null } | undefined;
+  // Registry presence is not enough: deferred load can assign ctx.panels[id]
+  // before mountPanelElement() connects the node. open_dashboard_panel then
+  // calls show() on a disconnected element.
+  if (instance?.getElement?.()?.isConnected === true) return true;
   if (typeof document === 'undefined') return false;
   const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
     ? CSS.escape(panelId)

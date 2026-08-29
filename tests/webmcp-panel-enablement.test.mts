@@ -294,6 +294,49 @@ describe('evaluateSetPanelEnabled', () => {
     assert.equal(result.changed, true);
     assert.equal(result.effectiveEnabled, true);
   });
+
+  it('denies enable when stored premium metadata is stripped but the catalog marks the panel premium', () => {
+    const panelSettings = settingsWithFreeSlots('full');
+    const stored = { ...panelSettings['stock-analysis']!, enabled: false };
+    delete stored.premium;
+    panelSettings['stock-analysis'] = stored;
+    assert.equal(stored.premium, undefined);
+
+    const result = evaluate({
+      panelSettings,
+      panelId: 'stock-analysis',
+      enabled: true,
+      isPro: false,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'panel_not_entitled');
+    assert.equal(result.changed, false);
+    assert.equal(result.effectiveEnabled, false);
+    assert.equal(panelSettings['stock-analysis']?.enabled, false);
+    assert.equal(panelSettings['stock-analysis']?.premium, undefined);
+  });
+
+  it('passes catalog config to the entitlement callback, not the stored entry', () => {
+    const panelSettings = settingsWithFreeSlots('full');
+    const stored = { ...panelSettings['stock-analysis']!, enabled: false };
+    delete stored.premium;
+    panelSettings['stock-analysis'] = stored;
+    let seenPremium: PanelConfig['premium'] | undefined;
+    const result = evaluate({
+      panelSettings,
+      panelId: 'stock-analysis',
+      enabled: true,
+      isPro: false,
+      isPanelAllowed: (_id, config) => {
+        seenPremium = config.premium;
+        return Boolean(config.premium) === false;
+      },
+    });
+    assert.equal(seenPremium, 'locked');
+    assert.equal(result.reason, 'panel_not_entitled');
+    assert.equal(stored.premium, undefined);
+  });
 });
 
 describe('applySetPanelEnabled', () => {
@@ -483,6 +526,28 @@ describe('applySetPanelEnabled', () => {
     assert.equal(unentitled.reason, 'panel_not_entitled');
     assert.equal(unentitledSettings['stock-analysis']?.enabled, false);
     assert.equal(persistCount, 0);
+
+    const stalePremiumSettings = settingsWithFreeSlots('full');
+    const staleStored = { ...stalePremiumSettings['stock-analysis']!, enabled: false };
+    delete staleStored.premium;
+    stalePremiumSettings['stock-analysis'] = staleStored;
+    const stale = applySetPanelEnabled(
+      { panelSettings: stalePremiumSettings },
+      'stock-analysis',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => {
+          persistCount += 1;
+        },
+        applyPanelSettings: () => {},
+        trackToggle: () => {},
+      },
+    );
+    assert.equal(stale.reason, 'panel_not_entitled');
+    assert.equal(stalePremiumSettings['stock-analysis']?.enabled, false);
+    assert.equal(persistCount, 0);
   });
 
   it('shows the free-tier cap toast only when the cap blocks an enable', () => {
@@ -664,9 +729,45 @@ describe('set_panel_enabled WebMCP adapter', () => {
 });
 
 describe('waitUntilPanelLive', () => {
-  it('treats a registered panel instance as live', () => {
-    assert.equal(isCatalogPanelLive('giving', { giving: {} }), true);
+  it('does not treat a registered but disconnected instance as live', () => {
+    assert.equal(isCatalogPanelLive('giving', { giving: {} }), false);
+    assert.equal(
+      isCatalogPanelLive('giving', { giving: { getElement: () => ({ isConnected: false }) } }),
+      false,
+    );
     assert.equal(isCatalogPanelLive('giving', {}), false);
+  });
+
+  it('treats a connected panel instance as live', () => {
+    assert.equal(
+      isCatalogPanelLive('giving', { giving: { getElement: () => ({ isConnected: true }) } }),
+      true,
+    );
+  });
+
+  it('treats a connected non-deferred data-panel node as live', () => {
+    const previousDocument = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = {
+      querySelector: (selector: string) => {
+        if (selector.includes('[data-panel="giving"]') && selector.includes(':not([data-deferred-panel])')) {
+          return { isConnected: true };
+        }
+        return null;
+      },
+    };
+    try {
+      assert.equal(isCatalogPanelLive('giving', {}), true);
+      assert.equal(
+        isCatalogPanelLive('giving', { giving: { getElement: () => ({ isConnected: false }) } }),
+        true,
+      );
+    } finally {
+      if (previousDocument === undefined) {
+        Reflect.deleteProperty(globalThis, 'document');
+      } else {
+        (globalThis as { document?: unknown }).document = previousDocument;
+      }
+    }
   });
 
   it('resolves immediately when the panel is already live', async () => {

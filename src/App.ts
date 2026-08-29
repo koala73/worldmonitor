@@ -1974,17 +1974,18 @@ export class App {
           throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
         }
         const result = this.eventHandlers.setPanelEnabledById(panelId, enabled);
+        // Map uses #mapSection, not ctx.panels / [data-panel]. After persist,
+        // do not abort: cancellation-required only gates a missing signal.
         if (
           result.ok
           && result.changed
           && result.effectiveEnabled
           && typeof panelId === 'string'
+          && panelId !== 'map'
         ) {
           await waitUntilPanelLive({
             isLive: () => isCatalogPanelLive(panelId, this.state.panels),
-            signal: execution?.signal,
           });
-          throwIfWebMcpAborted(execution?.signal);
         }
         return result;
       },

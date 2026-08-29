@@ -1628,8 +1628,30 @@ describe('webmcp App.ts binding invariants', () => {
       ),
       'set_panel_enabled app_destroyed guard',
     );
+    findNode(
+      setPanelEnabled,
+      (node) => (
+        ts.isBinaryExpression(node)
+        && node.getText(appFile) === "panelId !== 'map'"
+      ),
+      'skip wait-until-live for the map panel',
+    );
     const waitLive = callByExpression(setPanelEnabled, appFile, 'waitUntilPanelLive');
     assert.ok(apply.getStart(appFile) < waitLive.getStart(appFile));
+    assert.equal(waitLive.arguments.length, 1);
+    const waitOptions = waitLive.arguments[0];
+    assert.ok(ts.isObjectLiteralExpression(waitOptions), 'waitUntilPanelLive takes one options object');
+    assert.deepEqual(
+      waitOptions.properties.map((property) => property.name?.getText(appFile)),
+      ['isLive'],
+      'post-persist wait must not take a cancellation signal',
+    );
+    const abortGuards = findNodes(
+      setPanelEnabled,
+      (node) => ts.isCallExpression(node) && node.expression.getText(appFile) === 'throwIfWebMcpAborted',
+    );
+    assert.equal(abortGuards.length, 1, 'cancellation is gated before persist, not after');
+    assert.ok(abortGuards[0].getStart(appFile) < apply.getStart(appFile));
     findNode(
       setPanelEnabled,
       (node) => (

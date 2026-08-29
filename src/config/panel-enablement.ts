@@ -91,10 +91,9 @@ export function evaluateSetPanelEnabled(
 
   const existing = input.panelSettings[panelId];
   const currentlyEnabled = existing?.enabled === true;
-  const config = existing ?? {
-    ...getEffectivePanelConfig(panelId, input.variant),
-    enabled: false,
-  };
+  // Entitlement uses catalog metadata. Stored entries can predate a premium
+  // flag or have `premium` stripped; UnifiedSettings uses the same split.
+  const catalogConfig = getEffectivePanelConfig(panelId, input.variant);
 
   if (currentlyEnabled === input.enabled) {
     return result({
@@ -126,8 +125,8 @@ export function evaluateSetPanelEnabled(
   // Entitlement only gates turning a panel on.
   if (input.enabled) {
     const allowed = input.isPanelAllowed
-      ? input.isPanelAllowed(panelId, config)
-      : isPanelEntitled(panelId, config, input.isPro);
+      ? input.isPanelAllowed(panelId, catalogConfig)
+      : isPanelEntitled(panelId, catalogConfig, input.isPro);
     if (!allowed) {
       return result({
         ok: false,
