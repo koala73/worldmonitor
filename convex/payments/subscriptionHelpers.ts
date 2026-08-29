@@ -1542,6 +1542,33 @@ export async function handleSubscriptionCancelled(
     updatedAt: eventTimestamp,
   });
 
+  // Cancellation confirmation (#7314), same non-blocking scheduler pattern as
+  // the day-0 dunning email. Only on the transition INTO cancelled (repeat
+  // cancellation-flavoured events must not re-send) and only while the sub is
+  // still paid through — the copy promises access continues to a date, so an
+  // already-lapsed row must stay silent.
+  //
+  // Coverage is evaluated against the POST-patch shape (`status: "cancelled"`
+  // plus the row's own currentPeriodEnd) rather than `existing`, whose status
+  // is still active/on_hold here: `isCoveringAt(existing, ...)` would answer
+  // true for a lapsed on_hold row purely on its status and email a subscriber
+  // that their access continues until a date that has already passed.
+  const stillPaidThrough = isCoveringAt(
+    { status: "cancelled", currentPeriodEnd: existing.currentPeriodEnd },
+    eventTimestamp,
+  );
+  if (enteringCancelled && stillPaidThrough && process.env.RESEND_API_KEY) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.subscriptionEmails.sendDunningEmail,
+      {
+        dodoSubscriptionId: data.subscription_id,
+        step: "cancellation_confirm",
+        episodeAt: cancelledAt,
+      },
+    );
+  }
+
   // Business Pro grants follow the owner: revoke only when the sub has
   // actually stopped covering (paid-through cancellation still covers). For a
   // still-covering cancellation, schedule the revoke at currentPeriodEnd so

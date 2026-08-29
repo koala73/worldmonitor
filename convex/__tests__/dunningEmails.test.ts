@@ -11,6 +11,10 @@
  *     (pre-existing holds get a single catch-up email), ledger pre-check
  *   - winback: 30–60d window, skips while still entitled, skips
  *     resubscribed users, one-shot
+ *   - cancellation confirmation (#7314): paid-through cancellation emails the
+ *     ACCESS-END DATE once, replays don't re-send, lapsed cancellations stay
+ *     silent, a new cancellation episode re-sends, and the shared episode key
+ *     doesn't let the confirmation suppress the later winback
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -672,5 +676,277 @@ describe("winback", () => {
     });
     expect(result).toEqual({ sent: false, reason: "resubscribed" });
     expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+});
+
+describe("cancellation confirmation email (#7314)", () => {
+  // The escalation this exists to prevent: a subscriber renews, cancels the
+  // same day, and — told nothing — asks for a refund of a month they still
+  // hold. Every test below asserts the ACCESS-END DATE reaches the recipient,
+  // because "an email went out" was never the missing thing.
+
+  test("cancelling a still-covering sub sends one email naming the access-end date", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const periodEnd = Date.parse("2026-09-28T19:01:10Z");
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: periodEnd,
+      updatedAt: Date.now() - 5000,
+    });
+
+    const eventTs = Date.now();
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_1",
+      eventType: "subscription.cancelled",
+      rawPayload: {
+        data: { subscription_id: SUB_ID, customer: { email: EMAIL } },
+      },
+      timestamp: eventTs,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.to).toEqual([EMAIL]);
+    // The whole point: the body must state when access actually ends. A test
+    // that only asserted an email was sent would pass against a body that
+    // says "your subscription has been cancelled" and nothing else — the
+    // exact failure that produced the refund request.
+    expect(sends[0]!.html).toContain("28 September 2026");
+    expect(sends[0]!.subject).toContain("28 September 2026");
+    expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
+  test("webhook replay of the same cancellation sends no second email", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: Date.now() + 30 * DAY_MS,
+      updatedAt: Date.now() - 5000,
+    });
+
+    const eventTs = Date.now();
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_replay_1",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: eventTs,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+
+    // A `subscription.updated` carrying status=cancelled routes to the same
+    // handler and often arrives WITHOUT a stable cancelled_at — the anchor
+    // must not move, or the ledger key changes and the customer is emailed
+    // the same cancellation twice.
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_replay_2",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID } },
+      timestamp: eventTs + 60_000,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
+  test("cancelling an already-lapsed sub sends nothing", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    // Access already ended — "your access continues until <past date>" would
+    // be actively wrong, so this cancellation must stay silent.
+    await seedSub(t, {
+      status: "on_hold",
+      currentPeriodEnd: Date.now() - 3 * DAY_MS,
+      updatedAt: Date.now() - 5000,
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_lapsed",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(0);
+    expect(await ledgerRows(t)).toHaveLength(0);
+  });
+
+  test("cancel → renew → cancel is a new episode and emails again", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: Date.parse("2026-09-28T19:01:10Z"),
+      updatedAt: Date.now() - 5000,
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_ep1",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+
+    // Reactivation via a real renewal, then a second cancellation months
+    // later. The `enteringCancelled` re-anchor must open a fresh episode so
+    // this genuinely-new cancellation is confirmed too.
+    vi.setSystemTime(new Date("2026-10-28T19:01:10Z"));
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_renew_ep2",
+      eventType: "subscription.renewed",
+      rawPayload: {
+        data: {
+          subscription_id: SUB_ID,
+          customer: { email: EMAIL },
+          previous_billing_date: "2026-10-28T19:01:10Z",
+          next_billing_date: "2026-11-28T19:01:10Z",
+        },
+      },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    vi.setSystemTime(new Date("2026-10-28T20:30:00Z"));
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_ep2",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(2);
+    // The second email must carry the NEW period end, not the first one's.
+    expect(sends[1]!.html).toContain("28 November 2026");
+    expect(await ledgerRows(t)).toHaveLength(2);
+  });
+
+  test("send action re-checks coverage: a sub that lapsed after scheduling is skipped", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 60_000;
+    // Scheduled while covering, runs after the period ended (detached action,
+    // same defensive re-validation every other step does).
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() - 1000,
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: false, reason: "not_covering" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("send action skips a sub that is no longer cancelled", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 60_000;
+    await seedSub(t, {
+      status: "active",
+      cancelledAt,
+      currentPeriodEnd: Date.now() + 20 * DAY_MS,
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: false, reason: "not_cancelled" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("suppressed recipient is not sent a cancellation confirmation", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 60_000;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() + 20 * DAY_MS,
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("emailSuppressions", {
+        normalizedEmail: EMAIL,
+        reason: "bounce",
+        suppressedAt: Date.now(),
+      });
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: false, reason: "suppressed" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+});
+
+describe("cancellation_confirm × winback share an episode key (#7314)", () => {
+  test("a confirmed cancellation still gets its winback 30 days later", async () => {
+    // Both steps anchor on the SAME episode (`subscriptions.cancelledAt`), so
+    // a ledger pre-check that dropped the `step` from its key would read the
+    // confirmation row as "winback already sent" and silently kill winback
+    // for every canceller. Only the step-scoped index keeps them independent.
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    // Access must have ended 30-60 days ago: the scan ranges on
+    // currentPeriodEnd, not cancelledAt.
+    const cancelledAt = Date.now() - (WINBACK_MIN_AGE_MS + 40 * DAY_MS);
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() - (WINBACK_MIN_AGE_MS + 5 * DAY_MS),
+    });
+    // The confirmation this subscriber received the day they cancelled.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("dunningEmails", {
+        dodoSubscriptionId: SUB_ID,
+        step: "cancellation_confirm",
+        episodeAt: cancelledAt,
+        email: EMAIL,
+        sentAt: cancelledAt,
+      });
+    });
+
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.subject).toContain("access has ended");
+    expect(await ledgerRows(t)).toHaveLength(2);
   });
 });

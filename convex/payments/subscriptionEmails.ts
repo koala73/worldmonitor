@@ -579,8 +579,35 @@ const dunningStepValidator = v.union(
   v.literal("dunning_day3"),
   v.literal("dunning_day7"),
   v.literal("winback_day30"),
+  v.literal("cancellation_confirm"),
 );
-type DunningStep = "dunning_day0" | "dunning_day3" | "dunning_day7" | "winback_day30";
+type DunningStep =
+  | "dunning_day0"
+  | "dunning_day3"
+  | "dunning_day7"
+  | "winback_day30"
+  | "cancellation_confirm";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+
+/**
+ * Render an access-end date for email copy, in UTC.
+ *
+ * Deliberately hand-rolled rather than `toLocaleDateString`: the Convex
+ * runtime carries no user locale, so a locale-formatted date is both
+ * non-deterministic across runtimes and untestable. UTC (not local) because
+ * `currentPeriodEnd` is a UTC instant from Dodo — formatting it in a server
+ * timezone would print the wrong calendar day for periods ending near
+ * midnight, and this date is the entire point of the cancellation email.
+ * Exported for tests.
+ */
+export function formatAccessEndDate(epochMs: number): string {
+  const d = new Date(epochMs);
+  return `${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
 
 /** Everything the send action needs to decide + address one email. */
 export const getDunningContext = internalQuery({
@@ -735,8 +762,28 @@ export function buildDunningEmail(
   step: DunningStep,
   planName: string,
   ctaUrl: string,
+  accessUntil?: number,
 ): { subject: string; html: string } {
   switch (step) {
+    case "cancellation_confirm": {
+      // Lead with the date, in the subject line as well as the body. The
+      // escalation that motivated this email (#7314) came from a subscriber
+      // who read "cancelled" as "cut off" and asked for a refund of a month
+      // he still held — so the reassurance has to survive being read in a
+      // notification preview, not just by someone who opens the mail.
+      const until = accessUntil === undefined ? null : formatAccessEndDate(accessUntil);
+      const untilPhrase = until ? `until ${until}` : "until the end of your paid period";
+      return {
+        subject: `Your World Monitor ${planName} access continues ${untilPhrase}`,
+        html: dunningEmailShell(
+          `You're still Pro ${untilPhrase}.`,
+          `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">We've cancelled the renewal on your ${planName} subscription — you won't be charged again. Nothing is switched off today: your briefs, alerts, WM Analyst and Pro panels keep working ${untilPhrase}, the period you've already paid for. After that the account returns to the free tier on its own.</p>`,
+          "Open dashboard",
+          ctaUrl,
+          "You're receiving this because you cancelled a World Monitor subscription. No further charges will be taken.",
+        ),
+      };
+    }
     case "dunning_day0":
       return {
         subject: `Your World Monitor payment failed — access continues while you fix it`,
@@ -864,6 +911,15 @@ export const sendDunningEmail = internalAction({
       // user is covered even with every subscription ended.
       if (sub.entitlementCoveredUntil > Date.now()) return { sent: false, reason: "still_entitled" as const };
       if (sub.hasLiveSub) return { sent: false, reason: "resubscribed" as const };
+    } else if (args.step === "cancellation_confirm") {
+      // Mirror-image of the winback guards: this email is only correct while
+      // the cancelled sub is STILL covering. Re-checked here, not just at
+      // schedule time, because the action runs detached — a reactivation or
+      // an expiry can land in between, and "your access continues until
+      // <past date>" is worse than saying nothing.
+      if (sub.status !== "cancelled") return { sent: false, reason: "not_cancelled" as const };
+      if (sub.cancelledAt !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
+      if (sub.currentPeriodEnd <= Date.now()) return { sent: false, reason: "not_covering" as const };
     } else {
       // Dunning only while THIS episode is still open — a recovery or a
       // newer episode (different anchor) invalidates the scheduled send.
@@ -891,8 +947,13 @@ export const sendDunningEmail = internalAction({
     // the whole point); pricing page for winback. Portal minting can fail
     // (no customer id, Dodo error) — fall back to the dashboard, where the
     // payment-failure banner routes to the same portal after sign-in.
+    // Only the dunning steps mint a portal session — card update is their
+    // whole point. Winback goes to pricing; a cancellation confirmation goes
+    // to the dashboard the subscriber still has access to (a billing-portal
+    // link there would read as "there's something left to fix", the opposite
+    // of the message).
     let ctaUrl = args.step === "winback_day30" ? PRICING_URL : DASHBOARD_URL;
-    if (args.step !== "winback_day30") {
+    if (args.step !== "winback_day30" && args.step !== "cancellation_confirm") {
       try {
         ctaUrl = (await createCustomerPortalUrlForUser(ctx, sub.userId)).portal_url;
       } catch (err) {
@@ -909,7 +970,12 @@ export const sendDunningEmail = internalAction({
     }
 
     const planName = PLAN_DISPLAY[sub.planKey] ?? sub.planKey;
-    const { subject, html } = buildDunningEmail(args.step, planName, ctaUrl);
+    const { subject, html } = buildDunningEmail(
+      args.step,
+      planName,
+      ctaUrl,
+      sub.currentPeriodEnd,
+    );
     // Pace the actual POST (not just the scheduled start): the portal mint above
     // has variable latency, so reserve the Resend slot HERE — after the mint —
     // and wait for it. This bounds the true POST rate to <= 1/SEND_SPACING_MS

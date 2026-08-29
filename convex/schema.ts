@@ -770,6 +770,11 @@ export default defineSchema({
       v.literal("dunning_day3"),
       v.literal("dunning_day7"),
       v.literal("winback_day30"),
+      // Paid-through cancellation confirmation (#7314). Shares this ledger
+      // with winback because both are keyed on the same cancellation episode
+      // (`subscriptions.cancelledAt`) — distinct `step` values keep their
+      // one-shot guarantees independent under `by_sub_step_episode`.
+      v.literal("cancellation_confirm"),
     ),
     episodeAt: v.number(),
     email: v.string(),
