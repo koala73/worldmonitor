@@ -155,7 +155,17 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // clients, so the missing marketing copy is what let WORLDMONITOR-117 through
   // with three infra-only frames (the `/pro/assets/sentry-*.js` chunk plus two
   // `<anonymous>`), which `marketingBeforeSend`'s frame gates cannot act on.
-  /Java object is gone/,
+  //
+  // Anchored to the whole sentence, unlike the dashboard's bare
+  // `/Java object is gone/`. `ignoreErrors` is frame-blind, so an unanchored
+  // substring also drops any first-party message that happens to CONTAIN the
+  // phrase (`Our Java object is gone`) even when its stack points straight at
+  // `/pro/assets/*.js` — the observability blind spot this array exists to
+  // avoid. Only the complete Chromium shape is third-party by construction, so
+  // only that shape is suppressed; the method name varies per host-app bridge,
+  // so it is matched as an identifier rather than pinned to the one observed
+  // (PR #7354 review).
+  /^Error invoking [\w$]+: Java object is gone$/,
   // iOS in-app WebView native bridge. The host app injects `sendDataToNative` /
   // `sendPageHideMessage` into the document and they dereference
   // `window.webkit.messageHandlers`, which only exists when a WKWebView host
