@@ -1,0 +1,168 @@
+@font-face {
+  font-family: 'OpenEye Mono';
+  src: url('/fonts/vt323.woff2') format('woff2');
+  font-display: block;
+}
+
+:root {
+  /* Filled from src/config/theme.ts by the openeye-inject-theme-palette
+     Vite plugin — CSS cannot import TypeScript, and hand-copied values
+     drift silently because nothing fails when they disagree. */
+  --oe-bg: __OPENEYE_BG__;
+  --oe-red: __OPENEYE_RED__;
+  --oe-magenta: __OPENEYE_MAGENTA__;
+  --oe-phosphor: __OPENEYE_PHOSPHOR__;
+
+  /* Durations the director also waits on — see MOTION in theme.ts. */
+  --oe-veil-ms: __OPENEYE_VEIL_MS__;
+  --oe-overlay-ms: __OPENEYE_OVERLAY_MS__;
+}
+
+/* #boot is the VEIL as much as it is the terminal: an opaque, full-view layer
+   sitting over the globe. The globe renders behind it from the first frame,
+   and the handoff is this one layer dissolving — see #boot.faded. */
+/* z-index band: the boot layers sit above every dashboard layer. World
+   Monitor's own chrome tops out at 10020 (see src/styles/*.css), and the
+   ceremony must cover all of it — including modals that could open from a
+   restored session before the veil lifts. */
+#boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--oe-bg);
+  z-index: 90000;
+}
+
+#boot .grid {
+  margin: 0;
+  /* Without this the grid inherits the UA's black default onto a black
+     background, and the shell prompt — plain text, not coloured cells —
+     types out completely invisible. Art cells set their own colour inline
+     and are unaffected. */
+  color: var(--oe-phosphor);
+  font-family: 'OpenEye Mono', monospace;
+  font-size: clamp(4px, 0.62vw, 12px);
+  line-height: 1.02;
+  letter-spacing: 0;
+  white-space: pre;
+}
+
+/* The prompt is a single line of shell text, not a 190-column artwork; the
+   art-sized font would render it as a hairline. */
+#boot[data-stage='PROMPT'] .grid {
+  font-size: clamp(12px, 1.6vw, 26px);
+  text-shadow: 0 0 6px currentColor;
+}
+
+#boot .row { display: block; height: 1em; }
+
+/* Once the veil has dissolved the terminal is done for the session. Taking it
+   out of the layout entirely means a window left open for hours is not still
+   carrying a full-view fixed layer. */
+#boot.retired { display: none; }
+
+/* POWER_ON: the tube coming up to brightness. */
+#boot.powered { animation: power-on 500ms ease-out both; }
+
+@keyframes power-on {
+  0%   { filter: brightness(6) blur(3px); transform: scaleY(0.004); opacity: 0; }
+  35%  { filter: brightness(3) blur(1px); transform: scaleY(0.02); opacity: 1; }
+  100% { filter: none; transform: scaleY(1); opacity: 1; }
+}
+
+/* A cell lights INSTANTLY, with no transition of its own.
+   The eye grid is 190x79 = 15,010 cells. Giving each one an opacity
+   transition means 15,010 concurrently animating elements, every one of them
+   needing its blurred text-shadow repainted on every frame of its own fade —
+   and the typewriter's ease-in curve lights thousands of them in the same
+   frame near the end. Measured, that combination produced a single 2323ms
+   frame and let the 3500ms eye stage overrun by 1861ms, which is what
+   starved every animation that came after it.
+   Dropping just the transition (keeping the glow) took the worst frame to
+   182ms and the overrun to 21ms. A phosphor cell striking instantly is also
+   the more honest terminal: it is the CASCADE that reads as typing, not a
+   90ms fade on each individual glyph. */
+#boot .cell { opacity: 0; }
+
+#boot .cell.lit {
+  opacity: 1;
+  text-shadow: 0 0 4px currentColor;
+}
+
+/* Scanlines + vignette, one overlay for the whole app.
+
+   This belongs to the BOOT, not to the working application. It costs ~14%
+   brightness everywhere plus a 65% vignette at the edges, and OpenEye's whole
+   job once booted is reading a map — so it retires at the handoff rather than
+   sitting over the tiles for the rest of the session (see .dissolved).
+
+   There is deliberately no flicker animation. The old one stepped opacity to
+   0.86 for 60ms every 6 seconds via `steps(1)`, i.e. a hard cut, forever, on
+   a window meant to be left open. (Its other keyframe set opacity 1.04, which
+   clamps to 1 and never did anything at all.) */
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90002;
+  opacity: 1;
+  transition: opacity var(--oe-overlay-ms) ease;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0 2px,
+      rgba(0, 0, 0, 0.28) 2px 4px
+    ),
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.65) 100%);
+}
+
+/* Retired at the handoff, in step with the veil, so the two read as one
+   dissolve from terminal to globe rather than two separate events. */
+.crt-overlay.dissolved { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .crt-overlay { transition-duration: 1ms; }
+}
+
+/* Raster tile providers require visible credit (OSM's licence does). Sits in
+   the globe container, out of the way, and hides itself when tiles are off. */
+.tile-attribution {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  z-index: 90005;
+  font-family: 'OpenEye Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--oe-phosphor);
+  opacity: 0.55;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 2px 7px;
+  border-radius: 2px;
+  pointer-events: auto;
+}
+
+.tile-attribution a { color: inherit; }
+
+/* "esc to skip" — the skip only helps if you know it is there, and this is
+   the sequence you will be sitting through most often. Deliberately quiet:
+   it appears once the ceremony is long enough to be worth escaping, and it
+   leaves with the veil. */
+.boot-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 6vh;
+  transform: translateX(-50%);
+  z-index: 90010;
+  font-family: 'OpenEye Mono', monospace;
+  font-size: clamp(11px, 1.1vw, 15px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--oe-phosphor);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 600ms ease;
+}
+
+.boot-hint.shown { opacity: 0.4; }

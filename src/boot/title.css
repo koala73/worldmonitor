@@ -1,0 +1,174 @@
+@font-face {
+  font-family: 'OpenEye Display';
+  src: url('/fonts/orbitron.woff2') format('woff2');
+  font-display: block;
+}
+
+:root {
+  /* Durations the director also waits on — see MOTION in theme.ts. */
+  --oe-dock-ms: __OPENEYE_DOCK_MS__;
+  --oe-letter-ms: __OPENEYE_LETTER_MS__;
+  --oe-title-dock-ms: __OPENEYE_TITLE_DOCK_MS__;
+}
+
+#title {
+  position: fixed;
+  inset: 0;
+  z-index: 90001;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
+#title.shown { opacity: 1; }
+
+/*
+ * The corner handover.
+ *
+ * The ceremony ends with the wordmark compressing into the top-left corner,
+ * where — inside World Monitor — the application header already carries
+ * "AALICE:OpenEYE" in the same place. Two wordmarks stacked is not a
+ * wordmark; the ceremony's job is to arrive, and the app's own chrome is
+ * what stays.
+ *
+ * So the dock still plays in full (it is the last beat of the sequence and
+ * the eye has just landed in its O), and only once it has settled does this
+ * cross-fade hand the corner over. Standalone OpenEye had no header to hand
+ * it to, which is why upstream simply left the title on screen.
+ */
+#title.shown.handed-over {
+  opacity: 0;
+}
+
+/* Absolutely positioned rather than grid-centred so the compress-to-corner
+   move at GLOBE_REVEAL can animate: place-items is not animatable, but
+   left/top/transform/font-size are.
+
+   Laid out as ordinary INLINE text, not as a flex row. Flex blockifies each
+   span, and a blockified box drops its trailing whitespace at the end of a
+   line — so "AALICE: " lost its space and the wordmark rendered
+   "AALICE:OpenEye". Inline layout also gives the docked O a real baseline to
+   sit on, which is what it was missing. `white-space: pre` keeps the space
+   safe regardless of how the markup is indented. */
+#title .line {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  white-space: pre;
+  font-family: 'OpenEye Display', sans-serif;
+  font-size: clamp(24px, 5vw, 72px);
+  letter-spacing: 0.08em;
+  color: var(--oe-phosphor);
+  text-shadow: 0 0 12px var(--oe-magenta), 0 0 32px var(--oe-red);
+  transition:
+    left var(--oe-title-dock-ms) cubic-bezier(0.6, 0, 0.2, 1),
+    top var(--oe-title-dock-ms) cubic-bezier(0.6, 0, 0.2, 1),
+    transform var(--oe-title-dock-ms) cubic-bezier(0.6, 0, 0.2, 1),
+    font-size var(--oe-title-dock-ms) cubic-bezier(0.6, 0, 0.2, 1);
+}
+
+/* The title is a title SCREEN only until the globe arrives; left centred it
+   sits permanently across the equator. Everything is sized in em, so the
+   docked O scales down with the rest of the line. */
+#title.docked .line {
+  left: 1.6rem;
+  top: 1.2rem;
+  transform: translate(0, 0);
+  font-size: clamp(13px, 1.5vw, 20px);
+}
+
+/* The reserved slot the eye docks into as the "O" of OpenEye.
+   It takes its size from the letter inside it rather than being pinned to a
+   1em box: a 1em square is wider and taller than Orbitron's cap-height O, and
+   centring the glyph inside it rendered the O visibly smaller than its
+   neighbours and sitting below their baseline — the wordmark read
+   "AALICE:openEye". The slot is now just a positioning and measuring context;
+   the letter sets the metrics. */
+#title .o-slot {
+  display: inline-block;
+  position: relative;
+}
+
+/* The real O. It is present from the start so the title always READS
+   "AALICE: OpenEye" — the docked artwork is decoration layered over it, and
+   it lives in #boot, which dissolves at the handoff. Cross-fading the letter
+   in *while the eye is still parked on top of it* is what makes the handoff
+   invisible: by the time the veil takes the artwork away, the letter beneath
+   is already at full strength. `opacity: 0` still reserves its layout, so the
+   line never reflows when it lights. */
+#title .o-letter {
+  opacity: 0;
+  transition: opacity var(--oe-letter-ms) ease;
+}
+
+#title .o-letter.lit { opacity: 1; }
+
+#title .cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1em;
+  vertical-align: -0.12em;
+  background: var(--oe-phosphor);
+  animation: blink 1s steps(1) infinite;
+}
+
+/* The cursor belongs to the title SCREEN. Once the title is a corner label on
+   a live map it is just a light blinking in the periphery forever. */
+#title.docked .cursor { display: none; }
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* The typed eye grid, lifted off the terminal and spun.
+   It ends where it started — 360deg is identity, and there is no leftover
+   scale or rotateX. That matters because the director removes this class to
+   measure the grid for the dock: if the animation's fill state differed from
+   the resting state, the eye would visibly snap before it began to fly. */
+#boot.eye-3d .grid {
+  transform-style: preserve-3d;
+  animation: eye-spin 2s ease-in-out both;
+}
+
+@keyframes eye-spin {
+  0%   { transform: perspective(1200px) rotateY(0deg) scale(1); }
+  50%  { transform: perspective(1200px) rotateY(180deg) scale(1.06); }
+  100% { transform: perspective(1200px) rotateY(360deg) scale(1); }
+}
+
+/* Docking transform is set inline by the director via FLIP.
+   Translate and scale only. The dock used to carry a rotateY(360deg) as well,
+   which put the artwork edge-on twice on its way into the wordmark: a
+   full-height plane at 90deg projects to a one-pixel-wide sliver, so the eye
+   crossed the title as a vertical bar of noise. The spin already happened in
+   EYE_3D; the dock's job is only to land. */
+#boot.docking .grid {
+  transition: transform var(--oe-dock-ms) cubic-bezier(0.5, 0, 0.15, 1);
+  transform-origin: center center;
+}
+
+/* pointer-events matters as much as opacity here: #boot is a fixed, full-view
+   layer above #globe, and a transparent one still hit-tests, which would eat
+   every drag and wheel event meant for the globe's orbit controls. */
+#boot.faded {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--oe-veil-ms) ease;
+}
+
+/* The globe is opaque the moment it is revealed, with NO fade of its own.
+   It spends the whole boot rendering behind an opaque #boot, so there is
+   nothing to cross-fade with — and fading both at once is exactly what made
+   the handoff dip through black: the veil at 29% over a globe at 31% left the
+   scene at about a fifth of its brightness before recovering. One layer
+   animates, the veil, and the globe is simply already there behind it. */
+#globe { opacity: 0; }
+#globe.revealed { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  #boot.eye-3d .grid { animation-duration: 1ms; }
+  #boot.docking .grid { transition-duration: 1ms; }
+  #title .o-letter { transition-duration: 1ms; }
+  #title .line { transition-duration: 1ms; }
+  #boot.faded { transition-duration: 1ms; }
+  #title .cursor { animation: none; }
+}
