@@ -66,8 +66,20 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
 }
 
+/**
+ * Whether /api/ traffic should take the desktop sidecar path.
+ *
+ * Same predicate as `suppressesRemoteBase`: a bare `https://localhost` origin
+ * is not enough. `isDesktopRuntime()` treats that origin as desktop, which
+ * would install the sidecar fetch patch and skip the same-origin web path —
+ * the exact HTTPS-dev failure `hasExplicitDesktopSignals()` exists to stop.
+ */
+function routesApiViaDesktop(): boolean {
+  return hasExplicitDesktopSignals();
+}
+
 export function getApiBaseUrl(): string {
-  if (!isDesktopRuntime()) {
+  if (!routesApiViaDesktop()) {
     return '';
   }
 
@@ -191,7 +203,7 @@ export function toApiUrl(path: string): string {
     return path;
   }
 
-  if (isDesktopRuntime()) {
+  if (routesApiViaDesktop()) {
     return toRuntimeUrl(path);
   }
 
@@ -352,7 +364,7 @@ async function fetchLocalWithStartupRetry(
 // cache through the local HTTP control plane.
 
 export function installRuntimeFetchPatch(): void {
-  if (!isDesktopRuntime() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
+  if (!routesApiViaDesktop() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
     return;
   }
 
@@ -439,7 +451,7 @@ function isAllowedRedirectTarget(url: string): boolean {
 }
 
 export function installWebApiRedirect(): void {
-  if (isDesktopRuntime() || typeof window === 'undefined') return;
+  if (routesApiViaDesktop() || typeof window === 'undefined') return;
   if ((window as unknown as Record<string, unknown>).__wmWebRedirectPatched) return;
 
   const apiBase = getConfiguredWebApiBaseUrl();

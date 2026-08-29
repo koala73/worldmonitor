@@ -191,3 +191,71 @@ describe('installWebApiRedirect on numeric loopback bases', () => {
     }
   }
 });
+
+describe('HTTPS loopback uses the web API path, not the sidecar', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('installs the web wrapper and fetches same-origin, not 127.0.0.1:46123', async () => {
+    // The getter-only tests above are not enough: startup still used to pick
+    // the sidecar transport via `isDesktopRuntime()`, so `toApiUrl` and the
+    // installed fetch wrapper could point at the local API while the getter
+    // already returned the empty web base.
+    const runtime = await loadRuntimeWith({
+      apiBase: REMOTE_API,
+      hostname: 'localhost',
+      protocol: 'https:',
+    });
+    const win = window as unknown as Record<string, unknown>;
+    delete win.__wmFetchPatched;
+    delete win.__wmWebRedirectPatched;
+
+    const fetchTargets: string[] = [];
+    window.fetch = (async (input: RequestInfo | URL) => {
+      fetchTargets.push(
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+      );
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+
+    runtime.installRuntimeFetchPatch();
+    runtime.installWebApiRedirect();
+
+    expect(runtime.getConfiguredWebApiBaseUrl()).toBe('');
+    expect(runtime.getApiBaseUrl()).toBe('');
+    expect(runtime.toApiUrl('/api/bootstrap')).toBe('/api/bootstrap');
+    expect(win.__wmFetchPatched).toBeUndefined();
+    expect(win.__wmWebRedirectPatched).toBe(true);
+
+    await window.fetch('/api/bootstrap');
+
+    expect(fetchTargets).toEqual(['/api/bootstrap']);
+    expect(fetchTargets.some((url) => url.includes('127.0.0.1:46123'))).toBe(false);
+  });
+
+  it('still selects the sidecar path for an unambiguous desktop shell', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    const runtime = await loadRuntimeWith({
+      apiBase: REMOTE_API,
+      hostname: 'localhost',
+      protocol: 'https:',
+    });
+    const win = window as unknown as Record<string, unknown>;
+    delete win.__wmFetchPatched;
+    delete win.__wmWebRedirectPatched;
+
+    runtime.installRuntimeFetchPatch();
+    runtime.installWebApiRedirect();
+
+    expect(runtime.toApiUrl('/api/bootstrap')).toBe('http://127.0.0.1:46123/api/bootstrap');
+    expect(win.__wmFetchPatched).toBe(true);
+    expect(win.__wmWebRedirectPatched).toBeUndefined();
+  });
+});
