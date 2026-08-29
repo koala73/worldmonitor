@@ -166,6 +166,12 @@ const SUCCESS_LINGER_MS = 2600;
 
 export interface PasskeyOfferControllerOptions {
   storage?: OfferStorage;
+  /**
+   * The eager boot shim already observed an authoritative signed-out state and
+   * handed off on a real sign-in, so re-deriving it here would lose the arming
+   * and drop the very offer the handoff exists to deliver.
+   */
+  preArmed?: boolean;
   /** Injected in tests; production uses rAF. */
   scheduleFrame?: (cb: () => void) => void;
 }
@@ -194,7 +200,7 @@ export class PasskeyOfferController implements AppModule {
    * false}` — byte-identical to a real signed-out session — while keeping
    * subscribers queued for a retry.
    */
-  private armed = false;
+  private armed: boolean;
   private prompt: PasskeyOfferPrompt | null = null;
   private mountedIdentity: PasskeyIdentity | null = null;
   private acceptedThisMount = false;
@@ -221,6 +227,7 @@ export class PasskeyOfferController implements AppModule {
     this.storage = options.storage ?? safeLocalStorage();
     this.scheduleFrame = options.scheduleFrame
       ?? ((cb) => { if (typeof requestAnimationFrame === 'function') requestAnimationFrame(cb); else setTimeout(cb, 16); });
+    this.armed = options.preArmed === true;
   }
 
   init(): void {
