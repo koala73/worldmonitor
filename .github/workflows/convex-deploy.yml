@@ -129,6 +129,7 @@ jobs:
           # source and fails if this list stops covering it.
           if git diff --name-only "$BEFORE" "$AFTER" -- \
               'convex/' \
+              'shared/cloud-preferences-contract.ts' \
               'shared/mcp-attribution.ts' \
               'shared/company-monitoring-contract.ts' \
               'shared/company-monitoring-evidence.ts' \
@@ -145,24 +146,16 @@ jobs:
     if: needs.changes.outputs.convex == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      # Only this job writes, and only to move DEPLOYED_TAG (#7359). Scoped at
-      # the job so the `changes` job keeps the workflow's read-only default.
-      contents: write
+    # Deliberately READ-ONLY (the workflow default). This job runs `npm ci`,
+    # whose dependency lifecycle scripts are third-party code, so it must never
+    # hold a repo-write credential — see the `record-baseline` job below.
+    outputs:
+      deployed: ${{ steps.deploy.outcome }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          # This job now holds `contents: write`, and checkout would otherwise
-          # leave the token in .git/config as an http.extraheader for the WHOLE
-          # job — including `npm ci` below, whose dependency lifecycle scripts
-          # (preinstall/postinstall/prepare) `--no-audit --no-fund` do not
-          # disable. A compromised transitive dep could then push with repo-wide
-          # write, including force-moving DEPLOYED_TAG to suppress future
-          # deploys. The tag step supplies the token explicitly instead, so no
-          # ambient credential exists while third-party code runs. Same
-          # treatment CONVEX_DEPLOY_KEY already gets (step-scoped `env:`), and
-          # the convention railway-deploy-trigger.yml and railway-registry-sync.yml
-          # already follow.
+          # Belt and braces with the read-only permission above: no ambient
+          # credential in .git/config while third-party install code runs.
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -177,37 +170,6 @@ jobs:
         run: npx convex deploy --yes
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-      - name: Record the deployed commit
-        # Immediately after the deploy and BEFORE the seed steps: this tag
-        # answers "what convex/ code is in production", which is true the moment
-        # `convex deploy` returns. A seed failure still reds the run (and the
-        # post-merge monitor alarms on that), but it must not make the next push
-        # re-deploy code that is already live.
-        #
-        # Force-moved deliberately — it is a pointer to the current deployment,
-        # not release history. `--force` on the push too: a moved tag is not a
-        # fast-forward.
-        env:
-          # Scoped to this step only — see the checkout note above.
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git tag -f "$DEPLOYED_TAG" "$GITHUB_SHA"
-          git push --force \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "refs/tags/$DEPLOYED_TAG" \
-            || {
-              echo "::warning::could not move $DEPLOYED_TAG to $GITHUB_SHA — the deploy SUCCEEDED; the next push will redeploy redundantly until this recovers"
-              exit 1
-            }
-        # The deploy already reached production by this point. A transient push
-        # failure must not restate that success as a failed run: the monitor
-        # judges a non-success conclusion as RUN_FAILED and would page on-call
-        # for a deploy that actually worked. Failing to RECORD the deploy is
-        # self-healing and cheap — the tag stays put, so the next push simply
-        # redeploys — so it is a warning, not a job failure. Same treatment the
-        # post-deploy seed steps below already get.
-        continue-on-error: true
       - id: seed_dodo_webhook_failure_summary
         name: Seed Dodo webhook failure summary (idempotent)
         # Failure recording uses this pre-seeded aggregate row as its
@@ -264,3 +226,46 @@ jobs:
             echo "::error::One or more post-deploy seeds failed; inspect the seed steps above"
             exit 1
           fi
+
+  record-baseline:
+    # The ONLY job holding `contents: write`, and it deliberately runs no
+    # dependency or repository code: no `npm ci`, no build, no project scripts.
+    #
+    # Keeping the marker write inside the deploy job was unsafe even with
+    # `persist-credentials: false` (#7359 review finding 4): `npm ci` runs
+    # third-party lifecycle scripts in that job, and lifecycle code can install a
+    # git hook or rewrite git config that survives to a later step — so a token
+    # introduced afterwards for the tag push could still be read or redirected by
+    # it. A separate job with a fresh checkout has no such prior code execution.
+    #
+    # Gated on the DEPLOY STEP's outcome, not the deploy job's conclusion: the
+    # marker answers "what convex code is in production", which is true the
+    # moment `convex deploy` returns. A post-deploy seed failure still reds the
+    # deploy job (and the monitor alarms on that), but it must not make the next
+    # push re-deploy code that is already live.
+    needs: deploy
+    if: always() && needs.deploy.outputs.deployed == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Record the deployed commit
+        # Force-moved deliberately — a pointer to the current deployment, not
+        # release history. `--force` on the push too: a moved tag is not a
+        # fast-forward.
+        #
+        # A transient push failure must not restate a successful production
+        # deploy as a failed run, and failing to RECORD is self-healing (the tag
+        # stays put, so the next push simply redeploys), so this warns rather
+        # than failing the workflow.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git tag -f "$DEPLOYED_TAG" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$DEPLOYED_TAG" \
+            || {
+              echo "::warning::could not move $DEPLOYED_TAG to $GITHUB_SHA — the deploy SUCCEEDED; the next push will redeploy redundantly until this recovers"
+              exit 1
+            }

@@ -5,8 +5,10 @@
 // warning, not a healthy pass; git/4xx/ENOENT still fail the job.
 
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { relative } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -167,7 +169,7 @@ describe('post-merge deploy monitor', () => {
       now: NOW,
     });
     assert.equal(verdict.state, 'ALARM');
-    assert.equal(verdict.verdict, 'DEPLOY_SKIPPED_BEHIND_BASELINE');
+    assert.equal(verdict.verdict, 'DEPLOY_BEHIND_BASELINE');
     assert.match(verdict.detail, /behind/);
   });
 
@@ -180,7 +182,7 @@ describe('post-merge deploy monitor', () => {
       now: NOW,
     });
     assert.equal(verdict.state, 'ALARM');
-    assert.equal(verdict.verdict, 'DEPLOY_SKIPPED_UNPROVEN');
+    assert.equal(verdict.verdict, 'DEPLOY_BASELINE_UNPROVEN');
   });
 
   it('alarms on any skipped deploy job in a workflow with no legitimate skip', () => {
@@ -507,7 +509,16 @@ describe('post-merge deploy monitor', () => {
     const worker = results.find((entry) => entry.workflow === 'deploy-worker.yml');
     assert.equal(worker.state, 'OK');
     assert.equal(worker.verdict, 'DEPLOY_NOT_DUE');
-    assert.equal(gitCalls.length, 2, 'both path-filtered workflows require current-tree proof');
+    // Counts the path-filtered workflows' own proofs rather than every git call:
+    // convex now also proves drift on every result (#7359 review finding 2), so
+    // a global count would conflate the two mechanisms.
+    const triggerPathProofs = MONITORED_WORKFLOWS
+      .filter((workflow) => Array.isArray(workflow.triggerPaths))
+      .map((workflow) => gitCalls.find((args) => args.includes(workflow.triggerPaths[0])));
+    assert.ok(
+      triggerPathProofs.every(Boolean),
+      'both path-filtered workflows require current-tree proof',
+    );
     const workerDiff = gitCalls.find((args) => args.includes('workers/api-cors-preflight/**'));
     assert.deepEqual(workerDiff, [
       'diff',
@@ -993,6 +1004,9 @@ describe('monitored trigger paths mirror each workflow push filter', () => {
 describe('convex deploy drift against the deployed baseline (#7359)', () => {
   const BASELINE_SHA = 'b'.repeat(40);
   const TAG_REF = 'refs/tags/convex-deployed^{commit}';
+  const WORKFLOW = parseYaml(
+    readFileSync(new URL('../.github/workflows/convex-deploy.yml', import.meta.url), 'utf8'),
+  );
 
   function healthyOtherWorkflows(joined) {
     if (/workflows\/(deploy-railway-reconcile-control|deploy-worker)\.yml\/runs/.test(joined)) {
@@ -1008,12 +1022,8 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     return null;
   }
 
-  /**
-   * The tail of the real 2026-08-29 sequence: the newest run is green with the
-   * deploy job SKIPPED, which is exactly the shape that used to resolve to
-   * DEPLOY_SKIPPED_LEGIT while a merged change sat undeployed.
-   */
-  function convexGh(joined) {
+  /** Newest convex run, with a configurable deploy-job conclusion. */
+  function convexGh(joined, deployConclusion = 'skipped') {
     if (/workflows\/convex-deploy\.yml\/runs/.test(joined)) {
       return JSON.stringify({
         workflow_runs: [{
@@ -1022,17 +1032,17 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
       });
     }
     if (/actions\/runs\/810\/attempts/.test(joined)) {
-      return jobsPayload([{ name: 'deploy', conclusion: 'skipped', status: 'completed' }]);
+      return jobsPayload([{ name: 'deploy', conclusion: deployConclusion, status: 'completed' }]);
     }
     return null;
   }
 
-  function runMonitor({ git }) {
+  function runMonitor({ git, deployConclusion = 'skipped' }) {
     return checkPostmergeDeploys({
       repository: 'koala73/worldmonitor',
       gh: (args) => {
         const joined = args.join(' ');
-        const answer = healthyOtherWorkflows(joined) ?? convexGh(joined);
+        const answer = healthyOtherWorkflows(joined) ?? convexGh(joined, deployConclusion);
         if (answer === null) throw new Error(`unexpected gh call: ${joined}`);
         return answer;
       },
@@ -1041,9 +1051,11 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     });
   }
 
-  function convexResult(results) {
-    return results.find((result) => result.workflow === 'convex-deploy.yml');
-  }
+  const convexResult = (results) => results.find((r) => r.workflow === 'convex-deploy.yml');
+  const driftGit = (sha) => (args) => {
+    if (args[0] === 'rev-parse') return `${sha}\n`;
+    return args.includes(sha) ? 'convex/payments/billing.ts\n' : '';
+  };
 
   it('reads the baseline from the tag the deploy workflow writes', () => {
     assert.equal(
@@ -1053,7 +1065,6 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
   });
 
   it('marks a missing tag as unset rather than inventing a baseline', () => {
-    // `rev-parse --verify --quiet` prints nothing when the ref is absent.
     assert.throws(
       () => readDeployedBaselineSha({ git: () => '', tagRef: 'convex-deployed' }),
       (error) => error.deployedBaselineUnset === true,
@@ -1065,20 +1076,14 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     const results = runMonitor({
       git: (args) => {
         gitCalls.push(args);
-        if (args[0] === 'rev-parse') return `${BASELINE_SHA}\n`;
-        // convex/ moved between the deployed commit and current main — the
-        // stranded #7344 merge.
-        if (args.includes(BASELINE_SHA)) return 'convex/payments/billing.ts\n';
-        return '';
+        return driftGit(BASELINE_SHA)(args);
       },
     });
 
     const convex = convexResult(results);
     assert.equal(convex.state, 'ALARM');
-    assert.equal(convex.verdict, 'DEPLOY_SKIPPED_BEHIND_BASELINE');
+    assert.equal(convex.verdict, 'DEPLOY_BEHIND_BASELINE');
 
-    // The diff must run from the deployed commit to current main, never from
-    // the newest run's parent — that per-push question is what missed it.
     const diff = gitCalls.find((args) => args[0] === 'diff');
     assert.deepEqual(
       diff,
@@ -1090,28 +1095,44 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     );
   });
 
-  it('stays healthy when the deployed commit already matches main', () => {
+  // #7359 review finding 2. "The newest run deployed" is not "production has
+  // current main": if a later watched-path commit produces no run at all
+  // (Actions degraded, a broken trigger, a workflow edit), the newest run stays
+  // a green DEPLOYED. The drift proof must not sit behind that branch.
+  it('alarms on drift even when the newest run DEPLOYED successfully', () => {
     const convex = convexResult(runMonitor({
-      git: (args) => (args[0] === 'rev-parse' ? `${BASELINE_SHA}\n` : ''),
+      git: driftGit(BASELINE_SHA),
+      deployConclusion: 'success',
     }));
-    assert.equal(convex.state, 'OK');
-    assert.equal(convex.verdict, 'DEPLOY_SKIPPED_LEGIT');
+    assert.equal(convex.state, 'ALARM');
+    assert.equal(convex.verdict, 'DEPLOY_BEHIND_BASELINE');
   });
 
-  // The regression an Actions-API baseline caused. convex-deploy.yml moves the
-  // tag right after `convex deploy` returns and BEFORE the seed steps, so a
-  // failed seed reds the run while that code IS live. A baseline keyed on the
-  // deploy JOB's conclusion rejects that run and then reports "production is
-  // behind" about deployed code — every tick, forever, and a chronically red
-  // monitor is a blind spot. The tag cannot disagree with itself.
+  it('stays healthy when the deployed commit already matches main', () => {
+    for (const deployConclusion of ['skipped', 'success']) {
+      const convex = convexResult(runMonitor({
+        git: (args) => (args[0] === 'rev-parse' ? `${BASELINE_SHA}\n` : ''),
+        deployConclusion,
+      }));
+      assert.equal(convex.state, 'OK', deployConclusion);
+      assert.equal(
+        convex.verdict,
+        deployConclusion === 'success' ? 'DEPLOYED' : 'DEPLOY_SKIPPED_LEGIT',
+      );
+    }
+  });
+
+  // convex-deploy.yml moves the tag right after `convex deploy` returns and
+  // BEFORE the seed steps, so a failed seed reds the run while that code IS
+  // live. A baseline keyed on the deploy JOB's conclusion would reject that run
+  // and report "production is behind" about deployed code — forever. The tag
+  // cannot disagree with itself.
   it('does not report drift for code a seed-failed run already deployed', () => {
     const deployedHead = '5'.repeat(40);
     const convex = convexResult(runMonitor({
-      // main is AT the deployed commit: the seed failure did not undeploy it.
       git: (args) => (args[0] === 'rev-parse' ? `${deployedHead}\n` : ''),
     }));
     assert.equal(convex.state, 'OK');
-    assert.equal(convex.verdict, 'DEPLOY_SKIPPED_LEGIT');
   });
 
   it('reports an unrecorded baseline as UNKNOWN, not as a failed deploy', () => {
@@ -1123,8 +1144,6 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
   });
 
   it('still ALARMs when the baseline read fails for a LOCAL reason', () => {
-    // git failures stay ALARM — only "not recorded yet" is UNKNOWN. A local
-    // proof that cannot run is a blind monitor.
     const verdict = judgeWorkflow({
       workflow: CONVEX,
       run: run({ runId: 557 }),
@@ -1133,136 +1152,252 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
       now: NOW,
     });
     assert.equal(verdict.state, 'ALARM');
-    assert.equal(verdict.verdict, 'DEPLOY_SKIPPED_UNPROVEN');
+    assert.equal(verdict.verdict, 'DEPLOY_BASELINE_UNPROVEN');
+  });
+
+  // #7359 review finding 1. The first deriver matched only `../../` specifiers,
+  // so it was blind to every top-level convex/*.ts file — and missed
+  // shared/cloud-preferences-contract, a runtime array convex/userPreferences.ts
+  // imports. Resolve real files, follow re-exports, side-effect and dynamic
+  // imports, and recurse: a shared file that imports another shared file bundles
+  // that one too.
+  it('the convex skip proof covers every path the bundle is built from', () => {
+    const EXTS = ['', '.ts', '.tsx', '.mts', '.mjs', '.js', '.d.ts', '/index.ts', '/index.mjs', '/index.js'];
+    const SKIP_DIRS = new Set(['__tests__', 'node_modules']);
+
+    const listFiles = (dir, out = []) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir);
+        if (entry.isDirectory()) listFiles(child, out);
+        else if (/\.(ts|tsx|mts|mjs|js)$/.test(entry.name)) out.push(fileURLToPath(child));
+      }
+      return out;
+    };
+
+    // Runtime relative specifiers only. `import type` / `export type` are erased
+    // by the compiler and never reach the bundle.
+    const specifiersOf = (src) => {
+      const found = new Set();
+      for (const re of [
+        /^\s*import\s+(?!type\s)[^;]*?from\s+["'](\.[^"']+)["']/gm,
+        /^\s*export\s+(?!type\s)[^;]*?from\s+["'](\.[^"']+)["']/gm,
+        /^\s*import\s+["'](\.[^"']+)["']/gm,
+        /\bimport\s*\(\s*["'](\.[^"']+)["']\s*\)/g,
+      ]) for (const m of src.matchAll(re)) found.add(m[1]);
+      return found;
+    };
+
+    const resolveSpec = (spec, fromFile) => {
+      const base = resolve(dirname(fromFile), spec);
+      for (const ext of EXTS) {
+        const candidate = base + ext;
+        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+      }
+      return null;
+    };
+
+    const seen = new Set();
+    const external = new Set();
+    const unresolvedExternal = new Set();
+    const queue = listFiles(new URL('../convex/', import.meta.url));
+    assert.ok(queue.length > 0, 'the walker must find convex source files');
+
+    while (queue.length > 0) {
+      const file = queue.pop();
+      if (seen.has(file)) continue;
+      seen.add(file);
+      for (const spec of specifiersOf(readFileSync(file, 'utf8'))) {
+        const target = resolveSpec(spec, file);
+        if (!target) {
+          // Fail closed: an unresolvable specifier that textually escapes
+          // convex/ could be a bundled file this guard cannot see.
+          const naive = relative(REPO_ROOT, resolve(dirname(file), spec));
+          if (!naive.startsWith('convex/')) unresolvedExternal.add(`${relative(REPO_ROOT, file)} -> ${spec}`);
+          continue;
+        }
+        const rel = relative(REPO_ROOT, target);
+        if (!rel.startsWith('convex/')) external.add(rel);
+        queue.push(target);
+      }
+    }
+
+    assert.deepEqual([...unresolvedExternal], [], 'an unresolvable escaping import could hide a bundled file');
+    assert.ok(external.size > 0, 'the deriver must find the known cross-boundary imports');
+    // Guards the deriver itself: the first version matched only `../../` and
+    // silently missed this single-level import.
+    assert.ok(
+      external.has('shared/cloud-preferences-contract.ts'),
+      'the deriver must see single-level (../) escapes from top-level convex files',
+    );
+
+    const covered = (target) => CONVEX.skipProofPaths.some((p) => (
+      p.endsWith('/') ? target.startsWith(p) : target === p
+    ));
+    assert.deepEqual(
+      [...external].filter((t) => !covered(t)).sort(),
+      [],
+      'these files are bundled into the Convex deploy but are outside skipProofPaths, so a change to '
+      + 'them would deploy nothing and still read as a legitimate skip. Add them to skipProofPaths '
+      + "AND to convex-deploy.yml's diff pathspec.",
+    );
+
+    const changesStep = WORKFLOW.jobs.changes.steps.find((step) => step.id === 'diff');
+    for (const path of CONVEX.skipProofPaths) {
+      assert.ok(changesStep.run.includes(`'${path}'`), `convex-deploy.yml's pathspec must include ${path}`);
+    }
   });
 
   it('convex-deploy.yml diffs from the deployed tag, not this push range', () => {
-    const source = readFileSync(new URL('../.github/workflows/convex-deploy.yml', import.meta.url), 'utf8');
-    const doc = parseYaml(source);
-    const changesStep = doc.jobs.changes.steps.find((step) => step.id === 'diff');
-
+    const changesStep = WORKFLOW.jobs.changes.steps.find((step) => step.id === 'diff');
     assert.match(
       changesStep.run,
       /BEFORE="\$\(git rev-parse --verify --quiet "refs\/tags\/\$DEPLOYED_TAG/,
-      'the convex/ diff baseline must be the deployed tag',
+      'the diff baseline must be the deployed tag',
     );
     assert.doesNotMatch(
       changesStep.run,
       /BEFORE="\$\{\{ github\.event\.before \}\}"/,
       'github.event.before is the per-push baseline that stranded #7344',
     );
-    assert.match(changesStep.run, /git diff --name-only "\$BEFORE" "\$AFTER" --/);
-
-    // The monitor and the workflow must name the SAME tag — two sources of
-    // truth for "what is live" is the bug this shape exists to prevent.
-    assert.equal(doc.env.DEPLOYED_TAG, CONVEX.deployedTagRef);
-
-    assert.equal(doc.jobs.deploy.permissions.contents, 'write');
-    const recordStep = doc.jobs.deploy.steps.find((step) => step.name === 'Record the deployed commit');
-    assert.ok(recordStep, 'the deploy job must record the commit it deployed');
-    assert.match(recordStep.run, /git push --force/);
-    assert.match(recordStep.run, /refs\/tags\/\$DEPLOYED_TAG/);
-
-    // `contents: write` + a checkout-persisted token would leave a repo-write
-    // credential in .git/config while `npm ci` runs third-party lifecycle
-    // scripts. The token must be step-scoped instead, like CONVEX_DEPLOY_KEY.
-    const checkoutStep = doc.jobs.deploy.steps.find((step) => String(step.uses ?? '').startsWith('actions/checkout@'));
-    assert.equal(
-      checkoutStep.with['persist-credentials'],
-      false,
-      'a write-enabled job must not leave an ambient push credential for npm ci',
-    );
-    assert.ok(recordStep.env?.GH_TOKEN, 'the tag push must carry its own step-scoped token');
-    const npmStep = doc.jobs.deploy.steps.find((step) => String(step.run ?? '').startsWith('npm ci'));
-    assert.equal(npmStep.env, undefined, 'npm ci must not be handed any credential');
-
-    // Production is already updated by the time the tag moves. A transient push
-    // failure must not restate that success as a failed run.
-    assert.equal(
-      recordStep['continue-on-error'],
-      true,
-      'failing to RECORD a successful deploy must not fail the run',
-    );
-    assert.match(recordStep.run, /::warning::/, 'a skipped recording must still be visible');
-
-    // Ordering is load-bearing: recording before the deploy would mark code
-    // live that never shipped.
-    const stepNames = doc.jobs.deploy.steps.map((step) => step.name ?? step.id ?? '');
-    assert.ok(
-      stepNames.indexOf('Convex deploy (prod)') < stepNames.indexOf('Record the deployed commit'),
-      'the baseline must be recorded only after a successful deploy',
-    );
+    assert.equal(WORKFLOW.env.DEPLOYED_TAG, CONVEX.deployedTagRef);
   });
 
-  // The skip proof is only as good as the path list it diffs. `convex/` alone
-  // is not the deployed bundle: convex modules import runtime values from
-  // outside it, and `convex deploy` bundles whatever those imports reach. A file
-  // the bundle contains but the list omits can change what production runs while
-  // the deploy is skipped and the monitor calls that skip legitimate — #7359's
-  // class through a different door.
-  //
-  // This derives the real set from the SOURCE rather than restating the copy in
-  // MONITORED_WORKFLOWS, so a new cross-boundary import fails the test instead
-  // of silently widening the blind spot.
-  it('the convex skip proof covers every path the bundle is built from', () => {
-    const convexDir = new URL('../convex/', import.meta.url);
-    const escaping = new Set();
-    const walk = (dir) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === '__tests__' || entry.name === '_generated') continue;
-        const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir);
-        if (entry.isDirectory()) { walk(child); continue; }
-        if (!/\.(ts|mjs|js)$/.test(entry.name)) continue;
-        const source = readFileSync(child, 'utf8');
-        // Only runtime imports matter — a type-only import is erased and never
-        // reaches the bundle.
-        for (const match of source.matchAll(/^\s*import\s+(?!type\s)[^;]*?from\s+["'](\.\.\/\.\.\/[^"']+)["']/gm)) {
-          // Relative to the repo root, so the derived paths are comparable to
-          // the pathspec on any checkout. Resolving to an absolute path here
-          // would compare against a machine-specific prefix and vacuously pass
-          // wherever that prefix happened to be stripped.
-          escaping.add(relative(REPO_ROOT, fileURLToPath(new URL(match[1], child))));
-        }
-      }
-    };
-    walk(convexDir);
-    assert.ok(escaping.size > 0, 'the deriver must actually find the known cross-boundary imports');
+  // #7359 review finding 4. `persist-credentials: false` is not sufficient on
+  // its own: npm lifecycle scripts run in the deploy job and can install a git
+  // hook or rewrite git config that survives to a later step, so a token
+  // introduced afterwards for the tag push could still be read or redirected.
+  // The write credential must live in a job that runs no third-party code.
+  it('records the marker in a job that runs no dependency or repository code', () => {
+    assert.equal(WORKFLOW.permissions.contents, 'read', 'the workflow default must stay read-only');
 
-    // Import specifiers usually omit the extension (`shared/mcp-attribution`)
-    // while the pathspec must name the real file (`shared/mcp-attribution.ts`),
-    // so match in both directions as well as by directory prefix.
-    const covered = (target) => CONVEX.skipProofPaths.some((p) => (
-      p.endsWith('/')
-        ? target.startsWith(p)
-        : target === p || p.startsWith(`${target}.`) || target.startsWith(`${p}.`)
-    ));
-    const uncovered = [...escaping].filter((target) => !covered(target));
-    assert.deepEqual(
-      uncovered,
-      [],
-      'these files are bundled into the Convex deploy but are outside skipProofPaths, so a change to '
-      + 'them would deploy nothing and still read as a legitimate skip. Add them to skipProofPaths '
-      + 'AND to convex-deploy.yml\'s diff pathspec.',
-    );
+    const writeJobs = Object.entries(WORKFLOW.jobs)
+      .filter(([, job]) => job.permissions?.contents === 'write')
+      .map(([name]) => name);
+    assert.deepEqual(writeJobs, ['record-baseline'], 'exactly one job may hold contents: write');
 
-    // Both halves must agree, or the deployer and the monitor disagree about
-    // what a deploy is even for.
-    const source = readFileSync(new URL('../.github/workflows/convex-deploy.yml', import.meta.url), 'utf8');
-    const changesStep = parseYaml(source).jobs.changes.steps.find((step) => step.id === 'diff');
-    for (const path of CONVEX.skipProofPaths) {
-      assert.ok(
-        changesStep.run.includes(`'${path}'`),
-        `convex-deploy.yml's diff pathspec must include ${path}`,
-      );
+    const record = WORKFLOW.jobs['record-baseline'];
+    const ran = record.steps.map((step) => step.run ?? '').join('\n');
+    for (const forbidden of ['npm ', 'npx ', 'yarn ', 'pnpm ', 'setup-node']) {
+      assert.ok(!ran.includes(forbidden), `the write-enabled job must not run ${forbidden.trim()}`);
     }
+    assert.ok(
+      !record.steps.some((step) => String(step.uses ?? '').includes('setup-node')),
+      'the write-enabled job must not set up a toolchain it does not need',
+    );
+    assert.match(ran, /git push --force/);
+    assert.match(ran, /refs\/tags\/\$DEPLOYED_TAG/);
+
+    // Gated on the deploy STEP's outcome, so a post-deploy seed failure still
+    // reds the run without making the next push redeploy live code.
+    assert.equal(WORKFLOW.jobs.deploy.outputs.deployed, '${{ steps.deploy.outcome }}');
+    assert.match(record.if, /needs\.deploy\.outputs\.deployed == 'success'/);
+    assert.equal(record.needs, 'deploy');
+
+    // The deploy job runs npm ci, so it must NOT be write-enabled.
+    assert.notEqual(WORKFLOW.jobs.deploy.permissions?.contents, 'write');
+    const checkout = WORKFLOW.jobs.deploy.steps.find((s) => String(s.uses ?? '').startsWith('actions/checkout@'));
+    assert.equal(checkout.with['persist-credentials'], false);
+
+    const recordStep = record.steps.find((step) => step.name === 'Record the deployed commit');
+    assert.equal(recordStep['continue-on-error'], true, 'failing to RECORD must not fail a successful deploy');
+    assert.match(recordStep.run, /::warning::/);
   });
 
   it('the monitor refreshes the tag it reads', () => {
-    // Without --tags --force the local tag never advances past the checkout, so
-    // the monitor would report drift that is already deployed.
     const monitor = readFileSync(
       new URL('../.github/workflows/postmerge-deploy-monitor.yml', import.meta.url), 'utf8',
     );
     assert.match(monitor, /git fetch --quiet --tags --force origin main/);
+  });
+});
+
+// #7359 review finding 5. The fail-CLOSED fallbacks were only ever asserted as
+// workflow TEXT, so neither `git cat-file` branch was executed. These run the
+// real decision logic — extracted verbatim from convex-deploy.yml's diff step —
+// against a throwaway git repository, so a missing deployed commit and a missing
+// pushed head each provably reach convex=true and cannot reach the skip.
+describe('convex deploy diff fallbacks execute fail-closed (#7359)', () => {
+  const changesStep = parseYaml(
+    readFileSync(new URL('../.github/workflows/convex-deploy.yml', import.meta.url), 'utf8'),
+  ).jobs.changes.steps.find((step) => step.id === 'diff');
+
+  // The shell the workflow actually runs, minus the two `${{ }}` expressions
+  // (GitHub substitutes those before the shell ever sees them).
+  const shell = changesStep.run
+    .replace(/\$\{\{ github\.event_name \}\}/g, 'push')
+    .replace(/\$\{\{ github\.event\.after \}\}/g, '"$AFTER_SHA"');
+
+  function inTempRepo(fn) {
+    const dir = mkdtempSync(join(tmpdir(), 'wm-convex-deploy-'));
+    const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+    try {
+      git('init', '-q', '-b', 'main');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'test');
+      writeFileSync(join(dir, 'seed.txt'), 'seed\n');
+      git('add', '.');
+      git('commit', '-qm', 'seed');
+      return fn({ dir, git, head: git('rev-parse', 'HEAD') });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** Runs the workflow's diff step and returns the convex=... it decided. */
+  function decide({ dir, tagAt, afterSha }) {
+    const outputFile = join(dir, 'gh-output');
+    writeFileSync(outputFile, '');
+    if (tagAt) execFileSync('git', ['-C', dir, 'tag', '-f', 'convex-deployed', tagAt]);
+    execFileSync('bash', ['-c', shell], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: outputFile,
+        DEPLOYED_TAG: 'convex-deployed',
+        AFTER_SHA: afterSha,
+      },
+    });
+    return readFileSync(outputFile, 'utf8').trim();
+  }
+
+  it('deploys when the deployed commit is missing from history', () => {
+    inTempRepo(({ dir, head }) => {
+      // A tag object cannot point at a commit this clone does not have, so
+      // simulate the force-push case by naming an unreachable SHA as the head.
+      assert.equal(decide({ dir, tagAt: head, afterSha: 'd'.repeat(40) }), 'convex=true');
+    });
+  });
+
+  it('deploys when no baseline tag exists yet', () => {
+    inTempRepo(({ dir, head }) => {
+      assert.equal(decide({ dir, tagAt: null, afterSha: head }), 'convex=true');
+    });
+  });
+
+  it('deploys when a watched bundle path changed since the deployed commit', () => {
+    inTempRepo(({ dir, git, head }) => {
+      mkdirSync(join(dir, 'shared'), { recursive: true });
+      writeFileSync(join(dir, 'shared/mcp-attribution.ts'), 'export const x = 1;\n');
+      git('add', '.');
+      git('commit', '-qm', 'touch a bundled shared file');
+      assert.equal(decide({ dir, tagAt: head, afterSha: git('rev-parse', 'HEAD') }), 'convex=true');
+    });
+  });
+
+  it('skips only when the deployed commit already matches the head', () => {
+    inTempRepo(({ dir, head }) => {
+      assert.equal(decide({ dir, tagAt: head, afterSha: head }), 'convex=false');
+    });
+  });
+
+  it('skips an unrelated change outside the bundle', () => {
+    inTempRepo(({ dir, git, head }) => {
+      writeFileSync(join(dir, 'README.md'), 'unrelated\n');
+      git('add', '.');
+      git('commit', '-qm', 'unrelated');
+      assert.equal(decide({ dir, tagAt: head, afterSha: git('rev-parse', 'HEAD') }), 'convex=false');
+    });
   });
 });

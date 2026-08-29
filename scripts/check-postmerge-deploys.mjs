@@ -74,6 +74,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // think about it.
     skipProofPaths: Object.freeze([
       'convex/',
+      'shared/cloud-preferences-contract.ts',
       'shared/mcp-attribution.ts',
       'shared/company-monitoring-contract.ts',
       'shared/company-monitoring-evidence.ts',
@@ -568,6 +569,58 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
   // keeping the `deploy` id as the YAML key. The jobs API returns the display
   // name, so each workflow declares the deploy job name the API actually
   // publishes via `deployJobName`.
+  // Is production behind main? Evaluated for EVERY convex result, not only a
+  // skipped deploy (#7359 review finding 2). "The newest run deployed" does not
+  // mean production has current main: if a later watched-path commit produces no
+  // run at all (Actions degraded, a broken trigger, a workflow edit), the newest
+  // run stays a green DEPLOYED and the monitor was blind to the drift until the
+  // 7-day no-run backstop. The tag-vs-main comparison is the real question and
+  // does not depend on what any particular run did, so it is asked first.
+  if (workflow.skipProofPaths && typeof skipProof === 'function') {
+    let upToDate = null;
+    try {
+      upToDate = skipProof();
+    } catch (error) {
+      // Swallowing every throw was correct while the proof was local-git only:
+      // "Local proof failures (git, missing gh) ... are ALARM" (see the file
+      // header). The baseline read is still local, but re-throw anything the
+      // classifier calls transport unreadability so the outer handler reports
+      // UNKNOWN — a blip must never page on-call claiming production is behind.
+      if (isGithubRecordUnreadability(error)) throw error;
+      // No baseline recorded yet (the tag is written by the first deploy after
+      // this landed). Nothing to compare against, and it clears itself on the
+      // next deploy — a visible UNKNOWN, not a claim that production is behind.
+      if (error?.deployedBaselineUnset === true) {
+        return {
+          state: 'UNKNOWN',
+          verdict: 'DEPLOY_BASELINE_UNSET',
+          runId: run.runId,
+          detail: `run ${run.runId}: ${error.message}`,
+        };
+      }
+      upToDate = null;
+    }
+    // Proven drift and an unreadable baseline are different alarms: the first
+    // says a deploy is owed, the second says the monitor is blind. Conflating
+    // them sends on-call after the wrong thing.
+    if (upToDate === false) {
+      return {
+        state: 'ALARM',
+        verdict: 'DEPLOY_BEHIND_BASELINE',
+        runId: run.runId,
+        detail: `${workflow.skipProofPaths.join(', ')} changed between the last successful deploy and current main — production is behind`,
+      };
+    }
+    if (upToDate !== true) {
+      return {
+        state: 'ALARM',
+        verdict: 'DEPLOY_BASELINE_UNPROVEN',
+        runId: run.runId,
+        detail: `run ${run.runId}: the deployed baseline could not be read`,
+      };
+    }
+  }
+
   const deployName = workflow.deployJobName ?? 'deploy';
   const deployJobs = [...(jobs?.entries() ?? [])].filter(([name]) => name === deployName);
   if (deployJobs.length === 0) {
@@ -592,58 +645,14 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
     // push's own diff (#7359). A skip is only legitimate if production already
     // has everything main has; "this particular push touched nothing" was true
     // of every push that followed a stranded merge.
-    if (workflow.skipProofPaths && typeof skipProof === 'function') {
-      let skipLegitimate = null;
-      try {
-        skipLegitimate = skipProof();
-      } catch (error) {
-        // Swallowing every throw was correct while the proof was local-git
-        // only: "Local proof failures (git, missing gh) ... are ALARM" (see the
-        // file header). Deriving the baseline from the Actions API put a NETWORK
-        // read on this path, and the same header requires transport
-        // unreadability to be UNKNOWN and to NOT fail the job. Re-throw those so
-        // checkPostmergeDeploys' handler classifies them; a TLS blip must never
-        // page on-call claiming production is behind. Everything else (git, 4xx)
-        // still falls through to ALARM.
-        if (isGithubRecordUnreadability(error)) throw error;
-        // No baseline recorded yet (the tag is created by the first deploy
-        // after this landed). There is legitimately nothing to compare against,
-        // and it clears itself on the next deploy — a visible UNKNOWN, not a
-        // claim that production is behind.
-        if (error?.deployedBaselineUnset === true) {
-          return {
-            state: 'UNKNOWN',
-            verdict: 'DEPLOY_BASELINE_UNSET',
-            runId: run.runId,
-            detail: `run ${run.runId} skipped the deploy and ${error.message}`,
-          };
-        }
-        skipLegitimate = null;
-      }
-      if (skipLegitimate === true) {
-        return {
-          state: 'OK',
-          verdict: 'DEPLOY_SKIPPED_LEGIT',
-          runId: run.runId,
-          detail: `run ${run.runId} skipped the deploy and production already has every bundled change on main (${workflow.skipProofPaths.join(", ")})`,
-        };
-      }
-      // Proven drift and an unreadable baseline are different alarms: the first
-      // says a deploy is owed, the second says the monitor is blind. Conflating
-      // them sends on-call after the wrong thing.
-      if (skipLegitimate === false) {
-        return {
-          state: 'ALARM',
-          verdict: 'DEPLOY_SKIPPED_BEHIND_BASELINE',
-          runId: run.runId,
-          detail: `run ${run.runId} skipped the deploy, but ${workflow.skipProofPaths.join(", ")} changed between the last successful deploy and current main — production is behind`,
-        };
-      }
+    // Drift was already proven false above, so a skip here is legitimate by
+    // construction: production has every bundled change on main.
+    if (workflow.skipProofPaths) {
       return {
-        state: 'ALARM',
-        verdict: 'DEPLOY_SKIPPED_UNPROVEN',
+        state: 'OK',
+        verdict: 'DEPLOY_SKIPPED_LEGIT',
         runId: run.runId,
-        detail: `run ${run.runId} skipped the deploy and the deployed baseline could not be read`,
+        detail: `run ${run.runId} skipped the deploy and production already has every bundled change on main`,
       };
     }
     return {
