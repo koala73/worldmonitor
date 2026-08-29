@@ -10114,6 +10114,9 @@
       "references": [
         {
           "path": "api/docs-mcp.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
         }
       ]
     },
@@ -14095,6 +14098,9 @@
         },
         {
           "path": "src/components/RuntimeConfigPanel.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
         },
         {
           "path": "src/config/variant-meta.ts"
