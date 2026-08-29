@@ -77,9 +77,16 @@ describe('issue #7377 GEO content credibility', () => {
     assert.match(llms, new RegExp(WIRED_FEATURE_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(llms, new RegExp(SILICON_CANALS_2M_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     for (const link of PRESS_LINKS) {
-      assert.ok(llms.includes(link.url), `llms.txt must include ${link.label}`);
+      assert.ok(
+        llms.includes(`](${link.url})`) || llms.includes(link.url),
+        `llms.txt must include exact ${link.label} URL`,
+      );
       assert.ok(pressModule.includes(link.url), `shared/press.ts must include ${link.label}`);
     }
+    assert.equal(
+      PRESS_LINKS.find((l) => l.label === "L'Orient Today")?.url,
+      'https://today.lorientlejour.com/article/1496089/world-monitor-how-anghami-ceos-side-project-became-a-go-to-for-geopolitics-research.html',
+    );
 
     assert.match(hero, /SILICON_CANALS_2M_URL|siliconcanals\.com/);
     assert.ok(

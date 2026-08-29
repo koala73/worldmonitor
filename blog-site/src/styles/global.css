@@ -357,6 +357,8 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-weight: 700;
   color: var(--wm-text);
   margin-bottom: 0.625rem;
+  /* Replaces the former always-present .tag top spacer after audience removal (#7377). */
+  padding-top: 1.25rem;
   line-height: 1.35;
   letter-spacing: -0.01em;
 }
