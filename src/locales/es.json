@@ -2684,6 +2684,18 @@
       "rubBase": "Banco de Rusia — rublos por 1 unidad",
       "rubPerUnit": "Rublos por unidad",
       "sourceCbr": "Fuente: Banco de Rusia"
+    },
+    "passkeyOffer": {
+      "title": "¿Guardar una llave de acceso?",
+      "body": "La próxima vez inicia sesión con tu huella dactilar, rostro o PIN del dispositivo — sin contraseña que recordar.",
+      "accept": "Guardar llave de acceso",
+      "dismiss": "Ahora no",
+      "close": "Cerrar",
+      "announce": "Guarda una llave de acceso para iniciar sesión más rápido la próxima vez.",
+      "busy": "Esperando tu dispositivo…",
+      "succeeded": "Llave de acceso guardada. Puedes usarla la próxima vez que inicies sesión.",
+      "retryable": "No se completó. Puedes intentar de nuevo.",
+      "failed": "No pudimos guardar una llave de acceso en este dispositivo."
     }
   },
   "popups": {
@@ -3465,7 +3477,8 @@
   "auth": {
     "signIn": "Iniciar Sesión",
     "createAccount": "Crear cuenta",
-    "settings": "Configuración"
+    "settings": "Configuración",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Conectar MCP",

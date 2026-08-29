@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "worldmonitor",
+  "version": "2.10.0",
+  "description": "World Monitor agent plugin: live global-intelligence MCP servers plus task-focused agent skills for country risk, conflict, markets, chokepoints, energy, climate, and related situational awareness.",
+  "author": {
+    "name": "WorldMonitor",
+    "email": "support@worldmonitor.app",
+    "url": "https://www.worldmonitor.app"
+  },
+  "homepage": "https://www.worldmonitor.app/docs/agent-discovery",
+  "repository": "https://github.com/koala73/worldmonitor",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "geopolitical-intelligence",
+    "mcp",
+    "agent-skills",
+    "live-data",
+    "country-risk",
+    "markets",
+    "chokepoints"
+  ]
+}

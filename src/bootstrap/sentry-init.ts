@@ -79,7 +79,42 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /^TypeError: Load failed( \(.*\))?$/,
       /^TypeError: (?:cancelled|avbruten)$/,
       /runtime\.sendMessage\(\)/,
-      /Java object is gone/,
+      // Chromium's Android WebView Java bridge. `android_webview` wraps every
+      // failed `@JavascriptInterface` call as
+      // `Error invoking <method>: <GinJavaBridgeError>`, and an in-app browser's
+      // own chrome script hits it when the Java object behind the bridge has
+      // been collected or detached. Both production values this project has
+      // ever recorded carry that envelope:
+      //   WORLDMONITOR-117 `Error invoking enableButtonsClickedMetaDataLogging: Java object is gone`
+      //   WORLDMONITOR-YN  `Error invoking process: Java bridge method invocation error`
+      //
+      // Anchored to the whole sentence, replacing the two bare substring
+      // entries (`/Java object is gone/` and `/Java bridge method invocation
+      // error/`) this supersedes. `ignoreErrors` is frame-blind, so a substring
+      // pattern also dropped any first-party message CONTAINING the phrase —
+      // `Our Java object is gone` was suppressed even with an `/assets/*.js`
+      // frame on the stack, which is the observability blind spot this array is
+      // supposed to avoid. That gate cannot be delegated to `beforeSend`
+      // either: WORLDMONITOR-YN's own stack carries `/assets/main-*.js`, so
+      // `hasFirstParty` is true and a `!hasFirstParty` rule would never fire.
+      //
+      // The method slot is matched as "anything but whitespace or a colon",
+      // not as `[\w$]+`, because it is whichever bridge the host app called and
+      // Java identifiers are NOT ASCII-only — `@JavascriptInterface
+      // obtenirDonnées()` is legal, and JavaScript's `\w` would miss it (PR
+      // #7356 review). Widening the slot cannot loosen the rule: the envelope
+      // is anchored at both ends and the reason is enumerated, so a message
+      // only matches if our own bundle emits the whole Chromium sentence, which
+      // the source scan below forbids. Java method names contain no colon, so
+      // excluding one keeps the slot from swallowing the reason separator. The
+      // reasons ARE enumerated: a Chromium reason we have not seen should
+      // surface as a new issue and be added deliberately, which is the safe
+      // failure direction — under-suppression announces itself, over-suppression
+      // does not. `Error invoking` appears nowhere in `src/`, `pro-test/src/`,
+      // `api/` or `index.html`, which is what licenses matching it at all;
+      // tests/sentry-beforesend.test.mjs pins that so the licence cannot rot.
+      // Marketing-surface copy of the first reason is PR #7356.
+      /^Error invoking [^\s:]+: (?:Java object is gone|Java bridge method invocation error)$/,
       /^Object captured as promise rejection with keys:/,
       /Unable to load image/,
       /Non-Error promise rejection captured with value:/,
@@ -100,7 +135,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Program failed to link/,
       /too much recursion/,
       /zaloJSV2/,
-      /Java bridge method invocation error/,
       /Could not compile fragment shader/,
       /can't redefine non-configurable property/,
       /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage|UTItemActionController|DarkReader|Readability|onPageLoaded|Game|frappe|getPercent|ucConfig|\$a)/,

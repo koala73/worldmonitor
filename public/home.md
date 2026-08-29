@@ -66,6 +66,7 @@ Start with the short [llms.txt briefing](https://worldmonitor.app/llms.txt), the
 - [REST API](https://api.worldmonitor.app): structured endpoints described by the [OpenAPI contract](https://worldmonitor.app/openapi.yaml).
 - [Agent-mode homepage](https://www.worldmonitor.app/?mode=agent): a compact JSON summary of endpoints, authentication, capabilities, and discovery files.
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): task-focused instructions for common country, resilience, and intelligence workflows.
+- [Agent Plugin](https://worldmonitor.app/plugin.json): Agent Plugins 1.0.0 manifest that packages the MCP servers and agent skills.
 - [A2A agent card](https://worldmonitor.app/.well-known/agent-card.json): service identity and protocol discovery for agent-to-agent clients.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks) and [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): supported clients for applications and shell workflows.
 

@@ -79,6 +79,22 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      getAccessContext: async () => ({
+        accountState: 'signed_out',
+        clerk: 'unavailable',
+        productTier: 'anonymous',
+        capabilities: {
+          premiumAccess: false,
+          apiAccess: false,
+          mcpAccess: false,
+          dataExport: false,
+        },
+        limits: {
+          enabledPanels: { used: 1, cap: 40 },
+          dashboardTabs: { used: 1, cap: 3, canCreate: true },
+        },
+      }),
+      openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     }, () => {});
 
     await expect(tools.find((tool) => tool.name === 'openCountryBrief')!.execute({ iso2: 'FR' }))
@@ -160,6 +176,22 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      getAccessContext: async () => ({
+        accountState: 'signed_out',
+        clerk: 'unavailable',
+        productTier: 'anonymous',
+        capabilities: {
+          premiumAccess: false,
+          apiAccess: false,
+          mcpAccess: false,
+          dataExport: false,
+        },
+        limits: {
+          enabledPanels: { used: 1, cap: 40 },
+          dashboardTabs: { used: 1, cap: 3, canCreate: true },
+        },
+      }),
+      openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     };
     const countryTool = buildWebMcpTools(bindings, () => {})
       .find((tool) => tool.name === 'openCountryBrief');

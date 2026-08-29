@@ -114,6 +114,7 @@
     },
     "schemamap": "https://www.worldmonitor.app/schemamap.xml",
     "markdownHomepage": "https://worldmonitor.app/index.md",
+    "agentPlugin": "https://worldmonitor.app/plugin.json",
     "agentSkills": "https://worldmonitor.app/.well-known/agent-skills/index.json",
     "apiCatalog": "https://worldmonitor.app/.well-known/api-catalog",
     "aiCatalog": "https://worldmonitor.app/.well-known/ai-catalog.json",

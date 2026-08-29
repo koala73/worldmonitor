@@ -96,6 +96,15 @@
   --threat-low: #22c55e;
   --threat-info: #3b82f6;
 
+  /* Plan-card billing tones (#7315). Dark hexes match the threat scale
+     (unknown is a dedicated grey — the scale has no grey rung). Light
+     overrides below raise every tone to WCAG AA on --bg / --surface. */
+  --billing-tone-active: #22c55e;
+  --billing-tone-attention: #eab308;
+  --billing-tone-ending: #3b82f6;
+  --billing-tone-ended: #ef4444;
+  --billing-tone-unknown: #9ca3af;
+
   /* DEFCON levels */
   --defcon-1: #ff0040;
   --defcon-2: #ff4400;
@@ -138,6 +147,16 @@
   /* Tailwind yellow-600 (was #eab308, 1.82:1) */
   --threat-low: #15803d;
   /* Tailwind green-700 (was #22c55e, 2.16:1) */
+  --billing-tone-active: #15803d;
+  /* green-700; was #22c55e 2.16:1 on --bg */
+  --billing-tone-attention: #a16207;
+  /* yellow-700; was #eab308 1.82:1 — yellow-600 #ca8a04 is still 2.79:1 */
+  --billing-tone-ending: #2563eb;
+  /* blue-600; was #3b82f6 3.49:1 — sky-600 #0284c7 is still 3.89:1 */
+  --billing-tone-ended: #b91c1c;
+  /* red-700; was #ef4444 3.57:1 */
+  --billing-tone-unknown: #4b5563;
+  /* gray-600; was #9ca3af 2.41:1 */
   --defcon-3: #d97706;
   /* Tailwind amber-600 (was #ffaa00, 1.81:1) */
   --defcon-4: #0284c7;
@@ -14736,14 +14755,57 @@ a.prediction-link:hover {
   .credit-link,
   .github-link,
   .region-selector,
-  .mobile-settings-btn,
-  .header-right {
+  .mobile-settings-btn {
     display: none !important;
+  }
+
+  .header-right {
+    display: flex !important;
+    flex: 0 0 auto;
+    gap: 0;
+    margin-left: auto;
+    padding-left: 0 !important;
+  }
+
+  .header-right > :not(#authWidgetMount),
+  #authWidgetMount .auth-signup-link,
+  #authWidgetMount .auth-header-skeleton-signup {
+    display: none !important;
+  }
+
+  #authWidgetMount {
+    min-width: 0 !important;
+    min-height: 44px;
+  }
+
+  #authWidgetMount .auth-header-widget {
+    gap: 0;
+  }
+
+  #authWidgetMount .auth-signin-btn {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  #authWidgetMount .auth-header-widget-pending {
+    width: 72px;
+  }
+
+  #authWidgetMount .auth-header-skeleton-signin {
+    flex-basis: 72px;
+    height: 44px;
+  }
+
+  #authWidgetMount .auth-clerk-user-button,
+  #authWidgetMount .cl-userButtonTrigger {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .header {
     gap: 8px;
-    padding: 8px 12px;
+    height: 45px;
+    padding: 0 12px;
   }
 
   .header-left {
@@ -26161,6 +26223,33 @@ body.map-width-resizing {
   background: var(--surface);
 }
 
+.upgrade-pro-section[data-billing-tone] {
+  --billing-tone: var(--billing-tone-unknown);
+  border-color: color-mix(in srgb, var(--billing-tone) 20%, transparent);
+  background: color-mix(in srgb, var(--billing-tone) 4%, transparent);
+}
+
+.upgrade-pro-section[data-billing-tone="active"] { --billing-tone: var(--billing-tone-active); }
+.upgrade-pro-section[data-billing-tone="attention"] { --billing-tone: var(--billing-tone-attention); }
+.upgrade-pro-section[data-billing-tone="ending"] { --billing-tone: var(--billing-tone-ending); }
+.upgrade-pro-section[data-billing-tone="ended"] { --billing-tone: var(--billing-tone-ended); }
+.upgrade-pro-section[data-billing-tone="unknown"] { --billing-tone: var(--billing-tone-unknown); }
+
+.upgrade-pro-tone-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--billing-tone);
+  flex-shrink: 0;
+}
+
+.upgrade-pro-plan-name {
+  color: var(--billing-tone);
+  font-weight: 600;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+}
+
 .upgrade-pro-title {
   font-weight: 600;
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
@@ -28058,4 +28147,120 @@ body.map-width-resizing {
 .ed-row:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Passkey offer prompt (post-sign-in)
+
+   The bottom edge is the most contested space in the mobile layout: the fixed
+   .mobile-tab-bar (58px + safe area, z 10003) and the .cached-mode-banner
+   (variable height, wraps to two lines on narrow viewports) both live there. A
+   hardcoded `bottom` overlaps one of them at some width.
+
+   Two custom properties, not one. The banner cannot offset itself, so a single
+   combined value cannot place both surfaces:
+     --wm-bottom-base    the tab bar plus safe-area inset (0 on desktop)
+     --wm-bottom-banner  the cached-mode banner's measured height, 0px absent
+   The card sits above both. Whichever surface changes height, the card moves.
+   The banner's height is measured by a ResizeObserver in the controller, since
+   App.ts creates, removes, and recreates it.
+   --------------------------------------------------------------------------- */
+:root {
+  --wm-bottom-base: env(safe-area-inset-bottom, 0px);
+  --wm-bottom-banner: 0px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    /* Matches the .site-footer .status-panel-container offset convention. */
+    --wm-bottom-base: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.passkey-offer-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--wm-bottom-base) + var(--wm-bottom-banner) + 16px);
+  transform: translateX(-50%);
+  z-index: 10004; /* above .mobile-tab-bar (10003); it is an actionable prompt */
+  width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-active);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.passkey-offer-prompt[hidden] {
+  display: none;
+}
+
+.passkey-offer-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.passkey-offer-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* Visible when non-empty; carries only the status sentence, never the body copy. */
+.passkey-offer-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.passkey-offer-status:empty {
+  margin: 0;
+}
+
+.passkey-offer-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.passkey-offer-actions button {
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.passkey-offer-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.passkey-offer-accept {
+  border: 1px solid var(--accent, #2563eb);
+  background: var(--accent, #2563eb);
+  color: #fff;
+}
+
+.passkey-offer-dismiss {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.passkey-offer-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
 }

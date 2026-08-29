@@ -29,6 +29,13 @@
   --text-ghost: #84908A; /* was #C0C8C2 (1.6:1); 3.2:1 — decorative/large text only, never body copy */
   --accent: #3D4A3E;
 
+  /* The happy variant defaults to this light surface even without data-theme. */
+  --billing-tone-active: #15803d;
+  --billing-tone-attention: #a16207;
+  --billing-tone-ending: #2563eb;
+  --billing-tone-ended: #b91c1c;
+  --billing-tone-unknown: #4b5563;
+
   /* Overlays & shadows */
   --overlay-subtle: rgba(107, 143, 94, 0.03);
   --overlay-light: rgba(107, 143, 94, 0.05);
@@ -118,6 +125,13 @@
   --text-faint: #8F978F; /* was #606860 (2.4:1); AA 4.6:1 */
   --text-ghost: #78807A; /* was #485048 (1.7:1); 3.4:1 — decorative/large text only, never body copy */
   --accent: #E8E4DC;
+
+  /* Lighter tones retain AA contrast on the happy dark panel surface. */
+  --billing-tone-active: #8BAF7A;
+  --billing-tone-attention: #D4B36A;
+  --billing-tone-ending: #8BB5D4;
+  --billing-tone-ended: #D49BAF;
+  --billing-tone-unknown: #A0A098;
 
   /* Overlays & shadows */
   --overlay-subtle: rgba(139, 175, 122, 0.03);
