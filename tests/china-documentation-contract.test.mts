@@ -60,7 +60,7 @@ const englishNavigation = docsConfig.navigation.languages.find(
   (entry: { language?: string }) => entry.language === 'en',
 );
 const chineseNavigation = docsConfig.navigation.languages.find(
-  (entry: { language?: string }) => entry.language === 'zh-Hans',
+  (entry: { language?: string }) => entry.language === 'zh',
 );
 const englishPages = new Set(collectPagePaths(englishNavigation));
 const chinesePages = new Set(collectPagePaths(chineseNavigation));

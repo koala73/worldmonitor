@@ -983,6 +983,8 @@ function pageDocument({
     <meta name="description" content="${escapeHtml(description)}">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="${escapeHtml(canonical)}">
+    <link rel="alternate" hreflang="x-default" href="${escapeHtml(canonical)}">
+    <link rel="alternate" hreflang="en" href="${escapeHtml(canonical)}">
     ${lastmod ? `<meta name="lastmod" content="${escapeHtml(lastmod)}">` : []}
     ${paginationLinks.map((link) => `<link rel="${escapeHtml(link.rel)}" href="${escapeHtml(absoluteUrl(baseUrl, link.path))}">`).join(String.fromCharCode(10) + "    ")}
     <meta property="og:type" content="${escapeHtml(ogType)}">

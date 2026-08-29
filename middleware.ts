@@ -1,4 +1,11 @@
 import { isKnownPublicPagePath, originNotFoundResponse } from './src/config/agent-not-found';
+import {
+  DOCS_UPSTREAM_ORIGIN,
+  isDocsFullDocumentRequest,
+  isDocsHtmlDocumentPath,
+  rewriteDocsLocaleHtml,
+  shouldTransformDocsUpstreamHtml,
+} from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 
 const BOT_UA =
@@ -195,6 +202,13 @@ export default function middleware(request: Request) {
       const canonicalUrl = new URL(docsDestination);
       canonicalUrl.search = url.search;
       return Response.redirect(canonicalUrl.toString(), 308);
+    }
+
+    // Mintlify rewrite cannot set zh-Hans <html lang> or reciprocal hreflang
+    // for /docs/zh/* (issue #7378). Proxy full-document HTML only — leave RSC
+    // flights and static assets on the direct Mintlify rewrite.
+    if (isDocsHtmlDocumentPath(path) && isDocsFullDocumentRequest(request)) {
+      return proxyDocsLocaleHtml(request, url);
     }
 
     // Real HTTP 404 for unknown pages. Agents get markdown (orank
@@ -396,6 +410,65 @@ ${AI_CRAWLER_VARIANT_LINKS}
       headers: { 'Content-Type': 'application/json' },
     });
   }
+}
+
+async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response> {
+  const upstreamUrl = `${DOCS_UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
+  const forwardHeaders = new Headers();
+  for (const name of ['accept', 'accept-language', 'user-agent', 'if-none-match', 'if-modified-since']) {
+    const value = request.headers.get(name);
+    if (value) forwardHeaders.set(name, value);
+  }
+  if (!forwardHeaders.has('user-agent')) {
+    forwardHeaders.set('user-agent', 'WorldMonitorDocsLocaleProxy/1.0');
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers: forwardHeaders,
+      redirect: 'manual',
+    });
+  } catch {
+    return new Response('Docs upstream unavailable', { status: 502 });
+  }
+
+  // Pass through redirects / not-modified without rewriting.
+  if (upstream.status >= 300 && upstream.status < 400) {
+    return upstream;
+  }
+  if (upstream.status === 304 || request.method === 'HEAD') {
+    return upstream;
+  }
+
+  const contentType = upstream.headers.get('content-type');
+  if (!shouldTransformDocsUpstreamHtml(url.pathname, contentType)) {
+    return upstream;
+  }
+
+  const html = await upstream.text();
+  const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
+  const headers = new Headers(upstream.headers);
+  headers.delete('content-length');
+  headers.set('x-wm-docs-locale-seo', '1');
+  // Ensure shared caches vary on the headers that select this proxy path.
+  const vary = headers.get('vary');
+  const varyParts = new Set(
+    (vary ? vary.split(',') : [])
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => part.toLowerCase()),
+  );
+  varyParts.add('accept');
+  varyParts.add('rsc');
+  headers.set('vary', [...varyParts].join(', '));
+
+  return new Response(rewritten, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers,
+  });
 }
 
 export const config = {
