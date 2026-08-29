@@ -6,11 +6,22 @@
 //
 // Source of truth: public/.well-known/agent-skills/<name>/SKILL.md
 // Output:          public/.well-known/agent-skills/index.json
+//                  skills/<name>/SKILL.md (regular Agent Plugins entrypoints)
 //
 // Run locally via `npm run build:agent-skills`. CI re-runs this and
-// diffs the output against the committed index.json to block drift.
+// diffs the output against the committed index.json and plugin skills to
+// block drift.
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -19,6 +30,7 @@ import yaml from 'js-yaml';
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
 const SKILLS_DIR = resolve(ROOT, 'public/.well-known/agent-skills');
+const PLUGIN_SKILLS_DIR = resolve(ROOT, 'skills');
 const INDEX_PATH = join(SKILLS_DIR, 'index.json');
 const MCP_SKILLS_PATH = resolve(ROOT, 'api/mcp/skill-extension/generated.ts');
 const PUBLIC_BASE = 'https://worldmonitor.app';
@@ -93,6 +105,84 @@ export function buildResourceContent(content, mimeType) {
   return isTextMimeType(mimeType)
     ? { mimeType, text: content.toString('utf-8') }
     : { mimeType, blob: content.toString('base64') };
+}
+
+// Agent Plugins 1.0.0 requires skills/<name>/SKILL.md to resolve to a regular
+// file. Git symlinks become one-line relative paths on Windows
+// (`core.symlinks=false`) and in zip extracts, so the plugin would ship no
+// valid recipes. Materialize regular files from the well-known sources, but
+// rewrite checkout-specific API hosts (`*.worldmonitor.app/api/`) to the
+// public site origin already advertised by plugin.json. That keeps the
+// portable package off Vite env hosts that secret scanners treat as
+// credentials when they appear in newly added files.
+export function rewriteWellKnownSkillForPlugin(md) {
+  return md.replace(/https:\/\/([A-Za-z0-9.-]+)(\/api\/)/g, (full, host, suffix) => {
+    const normalized = host.toLowerCase();
+    if (normalized === 'worldmonitor.app' || normalized === 'www.worldmonitor.app') {
+      return full;
+    }
+    if (normalized.endsWith('.worldmonitor.app')) {
+      return `${PUBLIC_BASE}${suffix}`;
+    }
+    return full;
+  });
+}
+
+export function collectPluginSkillNames() {
+  return readdirSync(SKILLS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+}
+
+export function expectedPluginSkillBody(name) {
+  const canonical = readFileSync(join(SKILLS_DIR, name, 'SKILL.md'), 'utf-8');
+  return rewriteWellKnownSkillForPlugin(canonical);
+}
+
+function pluginSkillPath(name) {
+  return join(PLUGIN_SKILLS_DIR, name, 'SKILL.md');
+}
+
+function assertPluginSkillRegularFile(dest, name) {
+  if (!existsSync(dest)) {
+    throw new Error(`missing skills/${name}/SKILL.md — run \`npm run build:agent-skills\``);
+  }
+  const stat = lstatSync(dest);
+  if (stat.isSymbolicLink()) {
+    throw new Error(
+      `skills/${name}/SKILL.md is a symlink; Agent Plugins installs need a regular file`,
+    );
+  }
+  if (!stat.isFile()) {
+    throw new Error(`skills/${name}/SKILL.md must be a regular file`);
+  }
+}
+
+export function materializePluginSkills({ check = false } = {}) {
+  const names = collectPluginSkillNames();
+  const drifted = [];
+  for (const name of names) {
+    const expected = expectedPluginSkillBody(name);
+    const dest = pluginSkillPath(name);
+    if (check) {
+      assertPluginSkillRegularFile(dest, name);
+      const current = readFileSync(dest, 'utf-8');
+      if (current !== expected) drifted.push(name);
+      continue;
+    }
+    mkdirSync(join(PLUGIN_SKILLS_DIR, name), { recursive: true });
+    if (existsSync(dest) && lstatSync(dest).isSymbolicLink()) {
+      unlinkSync(dest);
+    }
+    writeFileSync(dest, expected);
+  }
+  if (check && drifted.length > 0) {
+    throw new Error(
+      `plugin skills/${drifted.join(', ')}/SKILL.md drifted from well-known recipes. Run \`npm run build:agent-skills\`.`,
+    );
+  }
+  return names;
 }
 
 export function parseFrontmatter(md) {
@@ -205,12 +295,21 @@ function main() {
       );
       process.exit(1);
     }
-    process.stdout.write('agent-skills index.json is up to date.\n');
+    try {
+      materializePluginSkills({ check: true });
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : error}\n`);
+      process.exit(1);
+    }
+    process.stdout.write('agent-skills index.json and plugin skills/ are up to date.\n');
     return;
   }
   writeFileSync(INDEX_PATH, index);
   writeFileSync(MCP_SKILLS_PATH, mcpModule);
-  process.stdout.write(`Wrote ${INDEX_PATH} and ${MCP_SKILLS_PATH}\n`);
+  const names = materializePluginSkills();
+  process.stdout.write(
+    `Wrote ${INDEX_PATH}, ${MCP_SKILLS_PATH}, and ${names.length} skills/*/SKILL.md files\n`,
+  );
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

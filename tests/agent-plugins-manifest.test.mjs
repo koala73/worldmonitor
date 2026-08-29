@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rewriteWellKnownSkillForPlugin } from '../scripts/build-agent-skills-index.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
@@ -142,20 +143,44 @@ describe('agent readiness: Agent Plugins manifest', () => {
       const canonical = join(WELL_KNOWN_SKILLS_DIR, name, 'SKILL.md');
       assert.equal(existsSync(pluginSkill), true, `missing skills/${name}/SKILL.md`);
       const stat = lstatSync(pluginSkill);
-      assert.equal(stat.isSymbolicLink(), true, `skills/${name}/SKILL.md must be a symlink to the canonical recipe`);
-      const resolved = realpathSync(pluginSkill);
-      assert.equal(
-        resolved === ROOT || resolved.startsWith(`${ROOT}/`),
-        true,
-        `${name} symlink escaped the plugin root: ${resolved}`,
+      assert.equal(stat.isSymbolicLink(), false, `skills/${name}/SKILL.md must be a regular file, not a symlink`);
+      assert.equal(stat.isFile(), true, `skills/${name}/SKILL.md must be a regular file`);
+      const indexed = spawnSync('git', ['ls-files', '-s', `skills/${name}/SKILL.md`], {
+        cwd: ROOT,
+        encoding: 'utf8',
+      });
+      assert.match(
+        indexed.stdout,
+        /^100644 /,
+        `git must store skills/${name}/SKILL.md as a regular file (not mode 120000)`,
       );
-      assert.equal(resolved, realpathSync(canonical));
+      const body = readFileSync(pluginSkill, 'utf-8');
+      assert.equal(body.startsWith('---\n'), true, `skills/${name}/SKILL.md must open with YAML frontmatter`);
       assert.equal(
-        readFileSync(pluginSkill, 'utf-8'),
-        readFileSync(canonical, 'utf-8'),
-        `skills/${name}/SKILL.md must match the well-known recipe bytes`,
+        body,
+        rewriteWellKnownSkillForPlugin(readFileSync(canonical, 'utf-8')),
+        `skills/${name}/SKILL.md must match the well-known recipe with public-site API origin`,
       );
     }
+  });
+
+  it('rewrites worldmonitor API subdomains to the public site origin', () => {
+    assert.equal(
+      rewriteWellKnownSkillForPlugin('GET https://edge.worldmonitor.app/api/foo'),
+      'GET https://worldmonitor.app/api/foo',
+    );
+    assert.equal(
+      rewriteWellKnownSkillForPlugin('GET https://worldmonitor.app/api/foo'),
+      'GET https://worldmonitor.app/api/foo',
+    );
+    assert.equal(
+      rewriteWellKnownSkillForPlugin('GET https://www.worldmonitor.app/api/foo'),
+      'GET https://www.worldmonitor.app/api/foo',
+    );
+    assert.equal(
+      rewriteWellKnownSkillForPlugin('GET https://earthquake.usgs.gov/api/foo'),
+      'GET https://earthquake.usgs.gov/api/foo',
+    );
   });
 
   it('tracks skills/*/SKILL.md while still ignoring local skills.sh extras', () => {
