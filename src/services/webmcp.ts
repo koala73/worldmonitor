@@ -728,10 +728,16 @@ function boundDashboardTabList(snapshot: DashboardTabListSnapshot): DashboardTab
 
   const keepActive = (tab: typeof tabs[number]): boolean => tab.id === result.activeTabId;
   while (JSON.stringify(result).length > TARGET_OUTPUT_CHARS && tabs.some((tab) => !keepActive(tab))) {
-    const index = tabs.findLastIndex((tab) => !keepActive(tab));
-    if (index < 0) break;
-    tabs.splice(index, 1);
-    result.tabsTruncated = true;
+    let dropped = false;
+    for (let index = tabs.length - 1; index >= 0; index -= 1) {
+      const tab = tabs[index];
+      if (!tab || keepActive(tab)) continue;
+      tabs.splice(index, 1);
+      result.tabsTruncated = true;
+      dropped = true;
+      break;
+    }
+    if (!dropped) break;
   }
   result.tabCount = Math.max(result.tabCount, sourceTabs.length);
   if (JSON.stringify(result).length > MAX_OUTPUT_CHARS) {

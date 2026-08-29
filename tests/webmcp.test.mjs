@@ -375,6 +375,41 @@ describe('webmcp.ts: current API contract', () => {
     ]);
   });
 
+  it('truncates an oversized tab list from the end while keeping the active tab', async () => {
+    const activeId = 'tab-main01-abc123';
+    const tabs = Array.from({ length: 40 }, (_, index) => {
+      const id = index === 0 ? activeId : `tab-fill${String(index).padStart(2, '0')}-abc123`;
+      return {
+        id,
+        name: `Workspace ${String(index).padStart(2, '0')} ${'n'.repeat(24)}`,
+        active: index === 0,
+        canDelete: index !== 0,
+      };
+    });
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardTabAction: async (action) => {
+        assert.equal(action.type, 'list');
+        return {
+          activeTabId: activeId,
+          tabs,
+          tabCount: tabs.length,
+          tabsTruncated: false,
+          canCreate: true,
+          cap: null,
+        };
+      },
+    }), () => {});
+    const listed = await tools.find((tool) => tool.name === 'list_dashboard_tabs').execute({});
+
+    assert.equal(listed.tabsTruncated, true);
+    assert.equal(listed.tabCount, 40);
+    assert.equal(listed.activeTabId, activeId);
+    assert.equal(listed.tabs[0].id, activeId);
+    assert.ok(listed.tabs.length < 40);
+    assert.ok(!listed.tabs.some((tab) => tab.id === 'tab-fill39-abc123'));
+    assert.ok(JSON.stringify(listed).length <= 1400);
+  });
+
   it('runs reversible view-state tools and gates effects that can outlive cancellation', async () => {
     let mutationCalls = 0;
     const events = [];
@@ -1164,7 +1199,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
       },
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 12, pageSurface: 'dashboard', api: 'document-current' },
       },
     ]);
     assert.ok(!JSON.stringify(harness.events).includes('raw duplicate detail'));

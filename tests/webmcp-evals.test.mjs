@@ -178,8 +178,8 @@ describe('offline WebMCP prediction scorer', () => {
 
     assert.equal(report.status, 'passed');
     assert.deepEqual(report.summary, {
-      total: 15,
-      passed: 15,
+      total: 19,
+      passed: 19,
       failed: 0,
       unexpected: 0,
     });
