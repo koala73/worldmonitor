@@ -9,6 +9,7 @@ import {
   getOrderedLayerKeys,
   isLayerEntitled,
   isLayerExecutable,
+  resolveLayerLabel,
   type MapVariant,
   type RendererKind,
 } from '../config/map-layer-definitions';
@@ -57,6 +58,7 @@ export interface MapLayerCatalogSnapshot {
   liveLayerKeys: readonly string[];
   hasPremium: boolean;
   deckGlActive: boolean;
+  tFn?: (key: string) => string;
 }
 
 export interface MapLayerCatalogQuery {
@@ -161,7 +163,7 @@ function describeLayer(
   const reason = enableUnavailableReason(layerKey, snapshot, liveKeys, pageAllowed);
   const entry: MapLayerCatalogEntry = {
     id: layerKey,
-    label: def.fallbackLabel.slice(0, MAP_LAYER_LABEL_MAX_CHARS),
+    label: resolveLayerLabel(def, snapshot.tFn).slice(0, MAP_LAYER_LABEL_MAX_CHARS),
     enabled: enabledSet.has(layerKey),
     monitorAvailable: listedAllowed.has(layerKey),
     rendererCompatible: isLayerExecutable(layerKey, snapshot.rendererKind),

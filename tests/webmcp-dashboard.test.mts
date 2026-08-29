@@ -186,17 +186,14 @@ describe('WebMCP live dashboard bindings', () => {
 
   it('snapshots live map-layer catalog state for list_map_layers', () => {
     const ctx = makeContext();
-    assert.deepEqual(
-      getWebMcpMapLayerCatalogSnapshot(ctx, 'full', false),
-      {
-        variant: 'full',
-        rendererKind: 'svg',
-        enabledLayers: ['conflicts', 'tradeRoutes'],
-        liveLayerKeys: Object.keys(ctx.mapLayers),
-        hasPremium: false,
-        deckGlActive: false,
-      },
-    );
+    const catalogSnapshot = getWebMcpMapLayerCatalogSnapshot(ctx, 'full', false);
+    assert.equal(catalogSnapshot.variant, 'full');
+    assert.equal(catalogSnapshot.rendererKind, 'svg');
+    assert.deepEqual(catalogSnapshot.enabledLayers, ['conflicts', 'tradeRoutes']);
+    assert.deepEqual(catalogSnapshot.liveLayerKeys, Object.keys(ctx.mapLayers));
+    assert.equal(catalogSnapshot.hasPremium, false);
+    assert.equal(catalogSnapshot.deckGlActive, false);
+    assert.equal(catalogSnapshot.tFn, undefined);
 
     const globe = makeContext({
       map: {

@@ -802,7 +802,7 @@ export function buildWebMcpTools(
         properties: {
           monitor: {
             type: 'string',
-            description: 'Optional monitor ID set. Omit for all registered layers; world is not omit.',
+            description: 'Omit for every non-sunset registered layer; world lists only that variant.',
             enum: [...WEBMCP_MAP_LAYER_MONITORS],
           },
           renderer: {
@@ -817,7 +817,7 @@ export function buildWebMcpTools(
           },
           cursor: {
             type: 'string',
-            description: 'Previous page last layer ID; omit to start.',
+            description: 'Previous page last layer ID; reuse only with the same filters.',
             minLength: 1,
             maxLength: MAX_LAYER_ACTION_TARGET_ID_LENGTH,
             pattern: DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,

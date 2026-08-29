@@ -1905,6 +1905,7 @@ export class App {
           this.state,
           SITE_VARIANT,
           hasPremiumAccess(getAuthState()),
+          t,
         );
       },
       applyDashboardAction: async (action, execution) => {

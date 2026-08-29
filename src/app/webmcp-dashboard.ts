@@ -83,6 +83,7 @@ export function getWebMcpMapLayerCatalogSnapshot(
   ctx: AppContext,
   variant: string,
   hasPremium: boolean,
+  tFn?: (key: string) => string,
 ): MapLayerCatalogSnapshot {
   if (ctx.isDestroyed) {
     throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
@@ -104,6 +105,7 @@ export function getWebMcpMapLayerCatalogSnapshot(
     liveLayerKeys: Object.keys(ctx.mapLayers),
     hasPremium,
     deckGlActive: Boolean(ctx.map.isDeckGLActive?.()),
+    ...(tFn ? { tFn } : {}),
   };
 }
 

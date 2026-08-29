@@ -8,9 +8,11 @@ import {
   isLayerEntitled,
   isLayerExecutable,
   isSunsetLayer,
+  resolveLayerLabel,
 } from '../src/config/map-layer-definitions.ts';
 import {
   DEFAULT_MAP_LAYER_PAGE_SIZE,
+  MAP_LAYER_LABEL_MAX_CHARS,
   MAX_MAP_LAYER_PAGE_SIZE,
   listMapLayerCatalog,
   parseMapLayerCatalogArgs,
@@ -194,6 +196,33 @@ describe('listMapLayerCatalog', () => {
     assert.equal(premium.layers[0]?.reason, undefined);
   });
 
+  it('explains resilienceScore as layer_not_executable when deck.gl is inactive', () => {
+    const world = collectPages({ monitor: 'world', limit: MAX_MAP_LAYER_PAGE_SIZE });
+    assert.ok(world.ids.includes('resilienceScore'));
+    const cursor = world.ids[world.ids.indexOf('resilienceScore') - 1];
+    const entry = listMapLayerCatalog(snapshot({ deckGlActive: false, hasPremium: true }), {
+      monitor: 'world',
+      cursor,
+      limit: 1,
+    }, BUDGETS);
+    assert.equal(entry.ok, true);
+    if (!entry.ok) return;
+    assert.equal(entry.layers[0]?.id, 'resilienceScore');
+    assert.equal(entry.layers[0]?.available, false);
+    assert.equal(entry.layers[0]?.reason, 'layer_not_executable');
+  });
+
+  it('shrinks the page to fit a tight output budget', () => {
+    const tight = { targetOutputChars: 200 };
+    const page = listMapLayerCatalog(snapshot(), {
+      limit: MAX_MAP_LAYER_PAGE_SIZE,
+    }, tight);
+    assert.equal(page.ok, true);
+    if (!page.ok) return;
+    assert.ok(JSON.stringify(page).length <= tight.targetOutputChars);
+    assert.ok(page.layers.length < MAX_MAP_LAYER_PAGE_SIZE);
+  });
+
   it('filters enabled and available state against live map state', () => {
     const enabled = listMapLayerCatalog(snapshot({
       enabledLayers: ['conflicts', 'weather'],
@@ -233,5 +262,60 @@ describe('listMapLayerCatalog', () => {
     assert.ok(hotspots);
     assert.equal(hotspots.available, false);
     assert.equal(hotspots.reason, 'layer_not_live');
+  });
+
+  it('reuses a layer-ID cursor in the new filtered sequence when filters change', () => {
+    const omitPage = listMapLayerCatalog(snapshot({ variant: 'tech' }), {
+      limit: DEFAULT_MAP_LAYER_PAGE_SIZE,
+    }, BUDGETS);
+    assert.equal(omitPage.ok, true);
+    if (!omitPage.ok) return;
+    const cursor = omitPage.nextCursor;
+    assert.ok(cursor);
+    const worldAfterCursor = listMapLayerCatalog(snapshot({ variant: 'tech' }), {
+      monitor: 'world',
+      cursor,
+      limit: MAX_MAP_LAYER_PAGE_SIZE,
+    }, BUDGETS);
+    assert.equal(worldAfterCursor.ok, true);
+    if (!worldAfterCursor.ok) return;
+    const worldOrder = getOrderedLayerKeys('full');
+    const cursorIndex = worldOrder.indexOf(cursor as typeof worldOrder[number]);
+    assert.ok(cursorIndex >= 0);
+    const skippedPrefix = worldOrder.slice(0, cursorIndex);
+    assert.ok(skippedPrefix.length > 0);
+    assert.equal(
+      worldAfterCursor.layers.some((layer) => skippedPrefix.includes(layer.id as typeof worldOrder[number])),
+      false,
+    );
+  });
+
+  it('uses resolveLayerLabel when tFn is present and falls back without it', () => {
+    const def = LAYER_REGISTRY.conflicts;
+    const tFn = (key: string) => (key.endsWith('conflicts') ? 'Localized Conflicts' : key);
+    const localized = listMapLayerCatalog(snapshot({ tFn }), {
+      monitor: 'world',
+      cursor: getOrderedLayerKeys('full')[getOrderedLayerKeys('full').indexOf('conflicts') - 1],
+      limit: 1,
+    }, BUDGETS);
+    assert.equal(localized.ok, true);
+    if (!localized.ok) return;
+    assert.equal(localized.layers[0]?.id, 'conflicts');
+    assert.equal(
+      localized.layers[0]?.label,
+      resolveLayerLabel(def, tFn).slice(0, MAP_LAYER_LABEL_MAX_CHARS),
+    );
+    const fallback = listMapLayerCatalog(snapshot(), {
+      monitor: 'world',
+      cursor: getOrderedLayerKeys('full')[getOrderedLayerKeys('full').indexOf('conflicts') - 1],
+      limit: 1,
+    }, BUDGETS);
+    assert.equal(fallback.ok, true);
+    if (!fallback.ok) return;
+    assert.equal(fallback.layers[0]?.id, 'conflicts');
+    assert.equal(
+      fallback.layers[0]?.label,
+      resolveLayerLabel(def).slice(0, MAP_LAYER_LABEL_MAX_CHARS),
+    );
   });
 });
