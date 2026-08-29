@@ -1569,9 +1569,25 @@ export async function handleSubscriptionCancelled(
     ? eventCancelledAt
     : (existing.cancelledAt ?? eventCancelledAt);
 
+  // Prefer a payload `next_billing_date` when it is newer than the stored
+  // period end. A missed `subscription.renewed` leaves currentPeriodEnd stale;
+  // once this row is cancelled, the active-only reconciliation path cannot
+  // repair it, so this is the last chance to persist the paid-through date
+  // for coverage, confirmation copy, and grant expiry. An older or absent
+  // payload date keeps the stored value — never shrink coverage here.
+  const payloadPeriodEnd =
+    data.next_billing_date == null
+      ? undefined
+      : toEpochMs(data.next_billing_date, "next_billing_date", eventTimestamp);
+  const currentPeriodEnd =
+    payloadPeriodEnd !== undefined && payloadPeriodEnd > existing.currentPeriodEnd
+      ? payloadPeriodEnd
+      : existing.currentPeriodEnd;
+
   await ctx.db.patch(existing._id, {
     status: "cancelled",
     cancelledAt,
+    currentPeriodEnd,
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: mergeRawPayloadCustomer(data, existing.rawPayload),
     updatedAt: eventTimestamp,
@@ -1584,14 +1600,12 @@ export async function handleSubscriptionCancelled(
   // already-lapsed row must stay silent.
   //
   // Coverage is evaluated against the POST-patch shape (`status: "cancelled"`
-  // plus the row's own currentPeriodEnd) rather than `existing`, whose status
+  // plus the effective currentPeriodEnd) rather than `existing`, whose status
   // is still active/on_hold here: `isCoveringAt(existing, ...)` would answer
   // true for a lapsed on_hold row purely on its status and email a subscriber
   // that their access continues until a date that has already passed.
-  const stillPaidThrough = isCoveringAt(
-    { status: "cancelled", currentPeriodEnd: existing.currentPeriodEnd },
-    eventTimestamp,
-  );
+  const cancelledCoverage = { status: "cancelled" as const, currentPeriodEnd };
+  const stillPaidThrough = isCoveringAt(cancelledCoverage, eventTimestamp);
   if (enteringCancelled && stillPaidThrough && process.env.RESEND_API_KEY) {
     await ctx.scheduler.runAfter(
       0,
@@ -1609,11 +1623,11 @@ export async function handleSubscriptionCancelled(
   // still-covering cancellation, schedule the revoke at currentPeriodEnd so
   // grants die with access.
   if (existing.planKey === "api_business") {
-    if (!isCoveringAt(existing, eventTimestamp)) {
+    if (!isCoveringAt(cancelledCoverage, eventTimestamp)) {
       await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
     } else {
       await ctx.scheduler.runAfter(
-        Math.max(0, existing.currentPeriodEnd - eventTimestamp),
+        Math.max(0, currentPeriodEnd - eventTimestamp),
         internal.payments.subscriptionHelpers.revokeBusinessProGrantsIfNotCovering,
         { dodoSubscriptionId: existing.dodoSubscriptionId },
       );

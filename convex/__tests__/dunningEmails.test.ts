@@ -871,6 +871,51 @@ describe("cancellation confirmation email (#7314)", () => {
     expect(await ledgerRows(t)).toHaveLength(0);
   });
 
+  test("a newer payload next_billing_date is persisted and used for the confirmation", async () => {
+    // Missed renewal: stored period already ended, but the cancellation
+    // payload carries the renewed next_billing_date. Coverage, email copy,
+    // and the persisted row must all use that later date — once cancelled,
+    // active-only reconciliation cannot repair the stale currentPeriodEnd.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: Date.parse("2026-08-27T19:01:10Z"),
+      updatedAt: Date.now() - 5000,
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_stale_period",
+      eventType: "subscription.cancelled",
+      rawPayload: {
+        data: {
+          subscription_id: SUB_ID,
+          customer: { email: EMAIL },
+          next_billing_date: "2026-09-27T19:01:10Z",
+        },
+      },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sub = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID))
+        .unique(),
+    );
+    expect(sub?.currentPeriodEnd).toBe(Date.parse("2026-09-27T19:01:10Z"));
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.html).toContain("27 September 2026");
+    expect(sends[0]!.subject).toContain("27 September 2026");
+    expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
   test("cancel → renew → cancel is a new episode and emails again", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
