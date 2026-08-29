@@ -755,6 +755,11 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.match(norway, /<meta name="lastmod" content="2026-08-12">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
+      assert.match(
+        norway,
+        /<span>Overall score<\/span><strong>75\.4<\/strong>/,
+        'headline-eligible countries must retain their published score',
+      );
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
       assert.match(norway, /Instability is a fast-moving composite/);
@@ -775,6 +780,34 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(uk, /<h1>Uk /);
       const dprk = read(outDir, 'countries/democratic-peoples-republic-of-korea/index.html');
       assert.match(dprk, /<title>North Korea Country Risk and Resilience \| World Monitor<\/title>/);
+
+      const taiwan = read(outDir, 'countries/taiwan/index.html');
+      assert.match(
+        taiwan,
+        /<span>Overall score<\/span><strong>—<\/strong>/,
+        'headline-ineligible countries must not render a numeric score',
+      );
+      assert.match(
+        taiwan,
+        /World Monitor does not publish a resilience score for Taiwan\. Input coverage is 41%, below the threshold for a ranked score\./,
+      );
+      const taiwanWebPage = jsonLdObjects(taiwan)
+        .find((entry) => entry['@type'] === 'WebPage');
+      assert.equal(taiwanWebPage?.mainEntity?.value, undefined);
+      assert.equal(taiwanWebPage?.mainEntity?.overallScore, undefined);
+
+      const corpusData = await loadCorpusData({ rootDir: repoRoot });
+      const headlineIneligible = corpusData.countries
+        .filter((country) => country.headlineEligible === false);
+      assert.equal(headlineIneligible.length, corpusData.resilience.totals.greyedOutCount);
+      for (const country of headlineIneligible) {
+        const html = read(outDir, `countries/${country.slug}/index.html`);
+        assert.doesNotMatch(
+          html,
+          /<span>Overall score<\/span><strong>\d/,
+          `${country.name} must not render a numeric resilience score`,
+        );
+      }
 
       const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);
