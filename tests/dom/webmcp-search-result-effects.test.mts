@@ -429,6 +429,9 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      setPanelEnabled: async () => {
+        throw new Error('Unexpected dashboard panel mutation.');
+      },
       getAccessContext: async () => ({
         accountState: 'signed_out',
         clerk: 'unavailable',

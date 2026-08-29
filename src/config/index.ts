@@ -130,11 +130,11 @@ export {
 // @/config barrel — they pull the ~62KB tech-geo chunk onto the dashboard
 // critical path. Every consumer (search/map/globe/tech-hub services) imports
 // directly from '@/config/tech-geo'. Type re-exports are erased, no edge. (#4404)
-export {
-  type StartupHub,
-  type Accelerator,
-  type TechHQ,
-  type CloudRegion,
+export type {
+  StartupHub,
+  Accelerator,
+  TechHQ,
+  CloudRegion,
 } from './tech-geo';
 
 // Finance variant - these are included in finance builds

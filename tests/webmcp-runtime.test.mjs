@@ -310,6 +310,7 @@ describe('WebMCP registry behavioral contract', () => {
     );
     let mutationCalls = 0;
     let openCalls = 0;
+    let panelCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
     registerWebMcpTools(createBindings({
@@ -355,6 +356,14 @@ describe('WebMCP registry behavioral contract', () => {
     assert.deepEqual(
       await executeRegistered(
         provider,
+        'set_panel_enabled',
+        JSON.stringify({ panelId: 'giving', enabled: true }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
         'open_search_result',
         JSON.stringify({ resultKey: `sr_${'a'.repeat(32)}` }),
       ),
@@ -362,6 +371,7 @@ describe('WebMCP registry behavioral contract', () => {
     );
     assert.equal(mutationCalls, 0, 'a gated tool must not reach its binding');
     assert.equal(openCalls, 1, 'result-dependent open_search_result must reach its binding');
+    assert.equal(panelCalls, 0, 'persistent panel changes must not reach their binding');
   });
 
   it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {
