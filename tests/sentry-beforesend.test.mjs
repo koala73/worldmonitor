@@ -104,6 +104,15 @@ function extensionFrame(filename = 'blob:https://example.com/ext-1234', fn = 'in
   return { filename, lineno: 1, function: fn };
 }
 
+/** Every .ts/.mts/.tsx file under `dir`, recursively, skipping node_modules. */
+function walkTsFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : walkTsFiles(full);
+    return /\.(?:m?ts|tsx)$/.test(e.name) ? [full] : [];
+  });
+}
+
 // ─── ignoreErrors message matches ────────────────────────────────────────
 
 describe('ignoreErrors filters', () => {
@@ -1848,5 +1857,77 @@ describe('host-attributed fetch failures are fingerprinted by host (WORLDMONITOR
     const unrelated = beforeSend(makeEvent('Something else broke', 'Error', zgStack));
     assert.ok(unrelated !== null);
     assert.equal(unrelated.fingerprint, undefined);
+  });
+});
+
+// ─── WORLDMONITOR-117 / -YN: Android WebView Java-bridge envelope ─────────
+//
+// Chromium's `android_webview` wraps a failed `@JavascriptInterface` call as
+// `Error invoking <method>: <GinJavaBridgeError>`. The two bare substring
+// entries this replaced (`/Java object is gone/`, `/Java bridge method
+// invocation error/`) matched the reason ANYWHERE in a message, and
+// `ignoreErrors` is frame-blind — so a first-party error merely containing the
+// phrase was dropped with an `/assets/*.js` frame on the stack.
+describe('ignoreErrors — Android WebView Java bridge (WORLDMONITOR-117, -YN)', () => {
+  const JAVA_BRIDGE_PATTERN = ignoreErrors.find(
+    (p) => p instanceof RegExp && p.source.includes('Error invoking'));
+
+  it('the anchored envelope entry exists', () => {
+    assert.ok(JAVA_BRIDGE_PATTERN, 'an anchored `Error invoking …` pattern must exist');
+  });
+
+  it('drops both verbatim production values', () => {
+    // WORLDMONITOR-117 — Instagram 415 / Android 13, marketing document.
+    assert.ok(isIgnored('Error invoking enableButtonsClickedMetaDataLogging: Java object is gone'));
+    // WORLDMONITOR-YN — Chrome Mobile 150 / Android 10, dashboard bundle.
+    assert.ok(isIgnored('Error invoking process: Java bridge method invocation error'));
+  });
+
+  it('drops the envelope with any host-app bridge method name', () => {
+    // The method is whichever `@JavascriptInterface` the host called, so it is
+    // matched as an identifier rather than pinned to the two observed names.
+    assert.ok(isIgnored('Error invoking getDeviceInfo: Java object is gone'));
+    assert.ok(isIgnored('Error invoking $handler_2: Java object is gone'));
+  });
+
+  // THE control that matters, and the one the superseded substring entries
+  // could not fail. A control that changes a word the pattern REQUIRES
+  // (`gateway` for `object`) passes against the broken pattern too, so it can
+  // never go red — these all go red against the bare substring entries.
+  it('keeps a first-party message that merely CONTAINS the reason', () => {
+    assert.ok(!isIgnored('Our Java object is gone'));
+    assert.ok(!isIgnored('Session expired: Java object is gone'));
+    assert.ok(!isIgnored('Retry failed: Java bridge method invocation error'));
+    assert.ok(!isIgnored('Error invoking foo: Java object is gone (retrying)'));
+  });
+
+  it('keeps a non-Chromium reason inside the envelope so it surfaces once', () => {
+    // Under-suppression announces itself as a new Sentry issue and gets added
+    // deliberately; over-suppression is silent. Deliberate failure direction.
+    assert.ok(!isIgnored('Error invoking process: Method not found'));
+  });
+
+  // The source-level invariant the whole entry rests on. A message-level
+  // suppression is only safe while our own bundle cannot mint the sentence.
+  it('keeps the licence true: no `Error invoking` call site in our own source', () => {
+    const offenders = [];
+    for (const rel of ['../src', '../pro-test/src', '../api']) {
+      for (const file of walkTsFiles(resolve(__dirname, rel))) {
+        // sentry-init.ts and sentry-filter-policy.ts hold the suppressors
+        // themselves; every other textual hit would be a real call site.
+        if (/sentry-init\.ts$|sentry-filter-policy\.ts$/.test(file)) continue;
+        if (/Error invoking /.test(readFileSync(file, 'utf-8'))) offenders.push(file);
+      }
+    }
+    assert.deepEqual(offenders, [],
+      `\`Error invoking\` now appears in our own source — the suppression is no longer safe:\n${offenders.join('\n')}`);
+  });
+
+  it('the licence scan actually reaches our source', () => {
+    // A source scan that matches nothing is indistinguishable from one that is
+    // silently broken (wrong path, wrong extension filter).
+    const files = walkTsFiles(resolve(__dirname, '../src'));
+    assert.ok(files.length > 100, `sanity: expected to scan src/, got ${files.length} files`);
+    assert.ok(files.some((f) => f.endsWith('sentry-init.ts')), 'scan must reach sentry-init.ts');
   });
 });
