@@ -58,7 +58,10 @@ npm run deploy
 cd workers/api-cors-preflight && npm test
 
 # Live smoke test against prod. Gated by env var so it doesn't run in PR gates
-# (false positives during deploys).
+# (false positives during deploys). CI already runs it after every Worker deploy
+# (the live-smoke job); run it by hand to check the currently-deployed Worker.
+# It is the only guard that reads the bytes users receive, including the
+# KV-served bootstrap tiers that never reach api/bootstrap.js.
 LIVE_SMOKE=1 tsx --test tests/cors-preflight-live.test.mjs
 ```
 
@@ -69,6 +72,54 @@ The Worker's allowlist + Allow-Headers list **must be a superset of** what
 function would accept, the browser sees a mismatched origin echo and CORS
 rejects the request. Drift between the two is the load-bearing trap this
 package exists to make visible. Update both files together.
+
+### The public bootstrap tiers are the exception
+
+`GET /api/bootstrap?tier=<fast|slow>&public=1` is answered with the **public**
+shape — ACAO `*`, no `Access-Control-Allow-Credentials`, no `Vary: Origin` —
+mirroring `api/bootstrap.js#getPublicBootstrapHeaders()`. The payload is the
+shared seed bundle, identical for every caller, so keying it by Origin costs a
+cache entry per origin and buys nothing, and advertising credentialed access on
+a response no credential can change is what #7308 was filed about. Both edge
+paths use it: the KV-served bytes and the origin pass-through, so the shape does
+not depend on which one answered.
+
+**Scope: the tier URLs only.** `api/bootstrap.js` returns the same public shape
+for three more auth kinds — `?keys=weatherAlerts&public=1` and the marked
+single-key on-demand URLs (`isPublicBootstrapKind`, api/bootstrap.js). Those are
+**not** covered here: the Worker still stamps its credentialed bag over them, so
+they carry `Allow-Credentials: true` and an Origin-echoed ACAO in production
+today. Matching the origin on those needs the `ON_DEMAND_KEYS` /
+`PUBLIC_WEATHER_BOOTSTRAP_KEY` membership sets at the edge (`?keys=markets&public=1`
+is *not* public and must not be widened), which is a larger change than #7308
+asked for and touches genuinely CDN-cached URLs — where the `Vary: Origin` the
+Worker adds really does split the CDN entry per origin. Tracked as #7311; do not
+read this section as "the edge and origin shapes now agree everywhere."
+
+Two deliberate carve-outs inside the exception:
+
+- **A disallowed Origin keeps the credentialed bag — but is still served from
+  KV.** The header denial and the routing decision are separate. Its
+  canonical-fallback ACAO is what denies the browser read (not the origin's 403:
+  the public tier ships `CDN-Cache-Control: public, s-maxage=600`, so a warm CDN
+  entry answers before `isDisallowedOrigin` runs). Routing it off KV would buy
+  nothing — the same caller reads the same bytes by omitting the header — while
+  handing anyone a one-header lever for forcing Vercel/Redis load.
+- **The KV-served response stays `Cache-Control: no-store` with no
+  `CDN-Cache-Control`.** Rationale lives with the code it explains —
+  `src/kv-serve.js#serveFromKv`. The origin fallback for the same URL does sit
+  behind Vercel's CDN and keeps its `CDN-Cache-Control` shield untouched.
+
+Note the second carve-out means the browser cache directive for one URL differs
+by which path answered (`no-store` from KV, `TIER_CACHE[tier]` from the origin).
+The CORS shape is unified; caching deliberately is not.
+
+`tests/cors-preflight-live.test.mjs` asserts all of this against a **deployed**
+URL, and the `live-smoke` job in `.github/workflows/deploy-worker.yml` runs it
+automatically after every Worker deploy. The handler-level guard in
+`api/bootstrap-auth.test.mjs` cannot: it calls `handler()` directly, so it never
+sees what the edge does to the bytes afterwards. Both read the same assertions
+from `tests/helpers/public-bootstrap-contract.mjs`.
 
 ## Related learning
 

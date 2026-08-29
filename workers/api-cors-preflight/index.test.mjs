@@ -23,6 +23,11 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 import worker, { isAllowedOrigin, buildCorsHeaders, hasPublicCorsPolicy } from './src/index.js';
+// One definition of the public `&public=1` response contract, shared with the
+// origin-handler guard (api/bootstrap-auth.test.mjs) and the deployed-URL guard
+// (tests/cors-preflight-live.test.mjs). #7308 was a drift bug; a second copy of
+// the contract here would be the same mistake in test form.
+import { assertPublicBootstrapCorsHeaders } from '../../tests/helpers/public-bootstrap-contract.mjs';
 
 function makeRequest(method, url, headers = {}) {
   return new Request(url, { method, headers });
@@ -511,6 +516,159 @@ test('502 fallback when origin throws still includes CORS headers', async () => 
     assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
     const body = await resp.json();
     assert.equal(body.error, 'Origin unavailable');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+// --- public bootstrap tier shape (#7308) ----------------------------------
+//
+// `/api/bootstrap?tier=<fast|slow>&public=1` is the one Worker-owned route
+// whose Vercel handler deliberately answers with the PUBLIC shape
+// (api/bootstrap.js#getPublicBootstrapHeaders: ACAO:*, no Allow-Credentials,
+// no Vary: Origin) so a single entry can answer every caller. Stamping the
+// Worker's credentialed bag over it re-keyed the response by Origin and put
+// Allow-Credentials: true on an unauthenticated payload that also carries
+// Timing-Allow-Origin: *.
+
+const PUBLIC_TIER_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1';
+
+// The origin's real public-tier response shape, so these tests prove what the
+// Worker does to it rather than what a thin mock happened to omit. `Allow-
+// Credentials: true` is NOT something api/bootstrap.js sends on this URL — it is
+// here to exercise the Worker's delete branch, which must clear a credentials
+// header even if the origin ever supplied one, since ACAO `*` alongside it is
+// the pairing browsers reject outright.
+const PUBLIC_TIER_ORIGIN_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Credentials': 'true',
+  'Cache-Control': 'no-store',
+  'CDN-Cache-Control': 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
+  'Timing-Allow-Origin': '*',
+  Vary: 'accept-encoding',
+};
+
+test('public bootstrap tier pass-through keeps the origin public shape, not the credentialed bag', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', {
+    status: 200,
+    headers: PUBLIC_TIER_ORIGIN_HEADERS,
+  });
+  try {
+    const resp = await worker.fetch(makeRequest('GET', PUBLIC_TIER_URL, { Origin: KNOWN_GOOD }));
+    assertPublicBootstrapCorsHeaders({ assert, resp, label: 'tier pass-through' });
+    // The origin's shared-cache declaration is the only CDN lifetime this path
+    // has; the Worker must not drop it while rewriting CORS.
+    assert.equal(
+      resp.headers.get('cdn-cache-control'),
+      'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
+    );
+    assert.equal(resp.headers.get('vary'), 'accept-encoding');
+    assert.equal(resp.headers.get('access-control-allow-headers'), ACAH_EXPECTED);
+    assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('public bootstrap tier pass-through with no Origin header is still the public shape', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', {
+    status: 200,
+    headers: { 'Timing-Allow-Origin': '*' },
+  });
+  try {
+    const resp = await worker.fetch(makeRequest('GET', PUBLIC_TIER_URL));
+    assertPublicBootstrapCorsHeaders({ assert, resp, label: 'no-Origin tier pass-through' });
+    // Merging an absent origin Vary with an absent Worker Vary must leave the
+    // header off entirely, not set it to the empty string.
+    assert.equal(resp.headers.get('vary'), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a 502 on the public tier URL still carries the public shape', async () => {
+  // passThroughToOrigin's catch takes the non-function branch of its ternary
+  // whenever corsPolicy is the fixed public bag — the branch a real upstream
+  // outage on this URL would hit, and the one no other 502 test reaches.
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('origin down'); };
+  try {
+    const resp = await worker.fetch(makeRequest('GET', PUBLIC_TIER_URL, { Origin: KNOWN_GOOD }));
+    assert.equal(resp.status, 502);
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+    assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+    assert.equal(await resp.json().then((body) => body.error), 'Origin unavailable');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a disallowed Origin on the public tier URL keeps the credentialed fallback echo', async () => {
+  // api/bootstrap.js rejects a disallowed Origin with 403 before it reads any
+  // payload. Handing that caller ACAO:* would make the seed bundle readable by
+  // a page the origin refuses, so the Worker must not widen it here.
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('Forbidden', { status: 403 });
+  try {
+    const resp = await worker.fetch(makeRequest('GET', PUBLIC_TIER_URL, { Origin: 'https://evil.example' }));
+    assert.equal(resp.status, 403);
+    assert.equal(resp.headers.get('access-control-allow-origin'), 'https://evil.example');
+    assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+    assert.match(resp.headers.get('vary') || '', /Origin/i);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('the public tier preflight carries the public shape, matching its own GET', async () => {
+  // A split contract — Allow-Credentials: true on the preflight clearing a
+  // response that answers ACAO:* with no credentials — is the same mismatch
+  // #7308 fixed one layer down, and the pairing browsers reject.
+  const resp = await worker.fetch(makeRequest('OPTIONS', PUBLIC_TIER_URL, {
+    Origin: KNOWN_GOOD,
+    'Access-Control-Request-Method': 'GET',
+  }));
+  assert.equal(resp.status, 204);
+  assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  assert.equal(resp.headers.get('vary'), null);
+});
+
+test('a preflight declaring a non-GET method on the public tier URL stays credentialed', async () => {
+  // Only the GET is the public contract; anything else would be answered by the
+  // credentialed handler, so its preflight must advertise that shape.
+  const resp = await worker.fetch(makeRequest('OPTIONS', PUBLIC_TIER_URL, {
+    Origin: KNOWN_GOOD,
+    'Access-Control-Request-Method': 'POST',
+  }));
+  assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
+test('a disallowed Origin preflighting the public tier URL keeps the readable echo (#6411)', async () => {
+  // The echo is what lets the browser send the actual request and observe the
+  // origin's 403 instead of an opaque network error.
+  const resp = await worker.fetch(makeRequest('OPTIONS', PUBLIC_TIER_URL, {
+    Origin: 'https://evil.example',
+    'Access-Control-Request-Method': 'GET',
+  }));
+  assert.equal(resp.headers.get('access-control-allow-origin'), 'https://evil.example');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
+test('the credentialed bootstrap URL (no public=1) keeps the Origin-echoing shape', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', { status: 200 });
+  try {
+    const resp = await worker.fetch(
+      makeRequest('GET', 'https://api.worldmonitor.app/api/bootstrap?tier=fast', { Origin: KNOWN_GOOD }),
+    );
+    assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
+    assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+    assert.match(resp.headers.get('vary') || '', /Origin/i);
   } finally {
     globalThis.fetch = original;
   }

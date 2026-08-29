@@ -177,6 +177,25 @@ const MODULE_LOAD_FAILURE =
  */
 const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
 /**
+ * A marketing document frame: `/`, `/pro`, or an absolute URL on any production,
+ * preview, or custom host with one of those paths. Query strings, hashes, and a
+ * trailing slash do not change the document identity.
+ *
+ * WebKit attributes a MAIN-world injected script — in-app-browser chrome,
+ * WKUserScript content scripts, bookmarklets — to the DOCUMENT URL rather than
+ * to a distinct `.js` URL.
+ *
+ * On the DASHBOARD that shape alone proves injection, because its entry is
+ * always a hashed `/assets/*.js` chunk (WORLDMONITOR-V8). It does NOT prove it
+ * here: these pages ship executable inline script (welcome.html's WebMCP
+ * bootstrap, prerender.mjs's DEFERRED_STYLES_SCRIPT), which lands on the
+ * document URL too. So this is one necessary signal among several at the call
+ * site, never the whole licence on its own.
+ */
+const MARKETING_DOCUMENT_FRAME =
+  /^(?:https?:\/\/[^/?#]+)?\/(?:pro\/?)?(?:[?#]|$)/;
+
+/**
  * Safari's placeholder for a script it refuses to attribute to a real document
  * URL — extension content scripts and injected `eval`/blob contexts. Every
  * frame of this bundle is served from an ordinary `https://` URL, so a masked
@@ -229,7 +248,8 @@ const JSON_RPC_RESERVED_MAX = -32000;
  * message text alone, with no access to frames).
  */
 export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
-  const msg = event.exception?.values?.[0]?.value ?? '';
+  const exceptionValues = event.exception?.values ?? [];
+  const msg = exceptionValues[0]?.value ?? '';
 
   // A message that is nothing but a 1-3 character identifier (`ga`, `Ba`) is an
   // injected in-app-browser/extension script rethrowing its own minified
@@ -240,7 +260,7 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // (WORLDMONITOR-ZZ, -ZW).
   if (msg.length <= 3 && BARE_SYMBOL_MESSAGE.test(msg)) return null;
 
-  const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
+  const frames = exceptionValues[0]?.stacktrace?.frames ?? [];
   const nonInfraFrames = frames.filter(
     (f) =>
       f.filename &&
@@ -305,7 +325,7 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // `TypeError`/`Error` families a first-party bug would raise, the empty stack
   // excludes every in-bundle `JSON.parse` (those carry the calling frame), and
   // `!hasFirstParty` excludes anything attributable to `/pro/assets/*.js`.
-  const excType = event.exception?.values?.[0]?.type ?? '';
+  const excType = exceptionValues[0]?.type ?? '';
   const action = event.tags?.action;
   if (!hasFirstParty
       && frames.length === 0
@@ -355,6 +375,40 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       && Number.isInteger(rejectedCode)
       && rejectedCode >= JSON_RPC_RESERVED_MIN
       && rejectedCode <= JSON_RPC_RESERVED_MAX) return null;
+
+  // An injected script attributed to the document URL, dereferencing an iframe
+  // this bundle does not have. Instagram's in-app browser was the observed case
+  // (WORLDMONITOR-115): its own chrome script threw `null is not an object
+  // (evaluating 'e.contentWindow.postMessage')` on `/pro`, with every frame
+  // reading `/pro:1` / `/pro:37` and minified names (`T`, `w`, `i`,
+  // `sendMessageToIFrames`), plus breadcrumbs naming its bridge
+  // (`hxp-chat-suppression`, `IAB unified bridge`).
+  //
+  // Scoped to `contentWindow`, NOT to the frame shape alone. The first draft of
+  // this rule suppressed ANY TypeError whose frames were all non-script URLs —
+  // a straight port of the dashboard's WORLDMONITOR-V8 rule. Review showed that
+  // port is unsound HERE, because the premise it rests on does not hold on this
+  // surface: the dashboard's entry really is always a hashed chunk, but the
+  // marketing pages ship executable INLINE script, which WebKit also attributes
+  // to the document URL —
+  //
+  //   - `pro-test/welcome.html` — the WebMCP bootstrap IIFE
+  //   - `pro-test/prerender.mjs` — DEFERRED_STYLES_SCRIPT, whose
+  //     `setTimeout(a, 3000)` arm runs long after Sentry has initialised
+  //
+  // A TypeError thrown in either is first-party and indistinguishable from an
+  // injected one by frame shape, so the broad rule would have silently hidden
+  // real bugs. `contentWindow` is the discriminator instead: it appears nowhere
+  // on this surface — not in `pro-test/src`, and not in the inline scripts the
+  // original source scan did not read — so an error dereferencing one can only
+  // have come from injected code. `tests/pro-sentry-filter-policy.test.mts`
+  // pins that across all three file kinds, so the licence cannot rot.
+  if ((excType === 'TypeError' || /^TypeError:/.test(msg))
+      && exceptionValues.length === 1
+      && !hasFirstParty
+      && /\bcontentWindow\b/.test(msg)
+      && nonInfraFrames.length > 0
+      && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? ''))) return null;
 
   return event;
 }

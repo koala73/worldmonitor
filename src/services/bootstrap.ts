@@ -336,6 +336,13 @@ async function fetchTier(
     // public=1 gives the shared seed bundle a cache key distinct from the legacy
     // credentialed tier URL. credentials:'omit' also avoids sending cookies to
     // a route whose contract is explicitly public (see #5249).
+    //
+    // The omit is now load-bearing for CORS, not just cookie hygiene: since #7308
+    // this URL answers ACAO `*` with no Allow-Credentials from both the edge and
+    // the origin, which a browser refuses to hand to a credentialed request. Drop
+    // the omit here — or let the wm-session interceptor's `?? 'include'` default
+    // apply by taking this call out of isCredentiallessPublicDataRequest's exact
+    // shape — and hydration fails as an opaque console CORS error, not a test.
     const resp = await fetch(requestUrl, { signal, credentials: 'omit' });
     if (!resp.ok) {
       failedOutcome = 'http-error';

@@ -17,6 +17,7 @@
 //      ~/.claude/skills/worldmonitor-architecture-gotchas/reference/
 //        cloudflare-worker-overrides-vercel-cors-for-preflight.md
 
+import { bootstrapTierFromPublicRequest, bootstrapTierFromPublicUrl } from '../../../api/_bootstrap-public-tier.js';
 import { maybeShadowKvRead } from './kv-shadow.js';
 import { maybeServeBootstrapFromKv } from './kv-serve.js';
 
@@ -169,6 +170,73 @@ export function buildCorsHeaders(origin) {
 }
 
 /**
+ * The response shape `api/bootstrap.js` uses for a `&public=1` URL
+ * (`getPublicBootstrapHeaders()` -> `getPublicCorsHeaders()` + TAO): ACAO `*`,
+ * no `Access-Control-Allow-Credentials`, no `Vary: Origin`.
+ *
+ * The payload behind those URLs is the shared seed bundle — one answer for
+ * every caller — so keying it by Origin buys nothing and costs a cache entry
+ * per origin, while `Allow-Credentials: true` advertises credentialed access on
+ * a response no credential can change. The origin honours that distinction for
+ * public auth kinds; before #7308 the edge did not, and stamped its
+ * credentialed bag over both the KV-served bytes and the origin pass-through.
+ *
+ * Allow-Methods / Allow-Headers / Expose-Headers stay the Worker's own
+ * supersets (the origin publishes `GET, OPTIONS` and a narrower expose list);
+ * a superset is what this Worker's allowlist contract already promises
+ * everywhere else, and none of the three is part of the caching or credential
+ * question this shape answers.
+ *
+ * Reimplemented rather than imported from `api/_cors.js#getPublicCorsHeaders`,
+ * even though this file imports `api/_bootstrap-public-tier.js` two lines up:
+ * that module was kept dependency-free precisely so both sides could share it,
+ * while `api/_cors.js` reads `process.env.NODE_ENV` at module scope, and this
+ * Worker declares no `nodejs_compat` flag — importing it would throw at cold
+ * start for every request on api.worldmonitor.app.
+ */
+function buildPublicBootstrapCorsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': ALLOW_METHODS,
+    'Access-Control-Allow-Headers': ALLOW_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSE_HEADERS,
+    'Access-Control-Max-Age': '3600',
+  };
+}
+
+// A disallowed Origin is excluded from the public shape on purpose — both by the
+// preflight predicate below and by publicBootstrapShape in fetch(). api/bootstrap.js
+// refuses those with 403 (isDisallowedOrigin), so answering one with ACAO `*` would
+// make the seed bundle browser-readable to a page the origin turns away. Those
+// requests keep the credentialed bag, whose canonical-fallback ACAO is what actually
+// denies the read: the origin's 403 cannot be relied on for it, because the public
+// tier ships `CDN-Cache-Control: public, s-maxage=600` and a warm CDN entry answers
+// before isDisallowedOrigin ever runs.
+//
+// This is policy consistency with the origin, not an access-control boundary — the
+// payload is public, and any caller CORS refuses reads the same bytes server-side or
+// by omitting the Origin header. That is precisely why it must not cost anything to
+// enforce; see the KV routing note in fetch().
+
+/**
+ * Whether this OPTIONS request is the preflight for a public-tier bootstrap GET.
+ *
+ * The preflight leg has to agree with the response leg or the contract is split
+ * in half: advertising `Allow-Credentials: true` while clearing a request whose
+ * answer is ACAO `*` with no credentials is the same mismatch #7308 fixed one
+ * layer down, and it is the combination browsers reject when a caller does send
+ * credentials. The preflight's own method is OPTIONS, so the GET-gated request
+ * predicate cannot answer this — the URL shape plus `Access-Control-Request-Method`
+ * can. Anything other than a declared GET keeps the credentialed bag, as does a
+ * disallowed Origin, whose echo is load-bearing for observing origin_403 (#6411).
+ */
+function preflightsPublicBootstrapShape(request, url, origin) {
+  if (bootstrapTierFromPublicUrl(url) === null) return false;
+  if ((request.headers.get('Access-Control-Request-Method') || '').toUpperCase() !== 'GET') return false;
+  return !origin || isAllowedOrigin(origin);
+}
+
+/**
  * OPTIONS preflight for disallowed origins must echo the request Origin so the
  * browser will send the actual request. Otherwise origin_403 stays an opaque
  * network error (#6411). Success responses still use the allowlist via
@@ -237,7 +305,19 @@ async function passThroughToOrigin(request, url, corsHeadersForStatus) {
     for (const [k, v] of Object.entries(corsHeaders)) {
       newHeaders.set(k, v);
     }
-    newHeaders.set('Vary', mergeHeaderNames(originVary, corsHeaders.Vary));
+    // A shape that omits Allow-Credentials must actively clear one the origin
+    // supplied: setting ACAO `*` while leaving `Allow-Credentials: true` behind
+    // is the combination browsers reject outright.
+    if (!('Access-Control-Allow-Credentials' in corsHeaders)) {
+      newHeaders.delete('Access-Control-Allow-Credentials');
+    }
+    // The public bootstrap shape contributes no Vary at all. Merging two empty
+    // inputs yields '', and `set('Vary', '')` is a present-but-empty header
+    // rather than an absent one — enough to fail a contract check that reads
+    // "no Vary" as `null`, and a needless header on every such response.
+    const mergedVary = mergeHeaderNames(originVary, corsHeaders.Vary);
+    if (mergedVary) newHeaders.set('Vary', mergedVary);
+    else newHeaders.delete('Vary');
     // Bootstrap temporarily exposes U3a timing and cache-classifier headers.
     // Preserve only that route's function-owned additions while retaining
     // the Worker's canonical baseline. Replacing this header outright made
@@ -292,14 +372,33 @@ export default {
     // error (#6411). Non-OPTIONS responses still use the allowlist, with a
     // readable echo only on 401/403 refusals.
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: buildPreflightCorsHeaders(origin) });
+      const headers = preflightsPublicBootstrapShape(request, url, origin)
+        ? buildPublicBootstrapCorsHeaders()
+        : buildPreflightCorsHeaders(origin);
+      return new Response(null, { status: 204, headers });
     }
 
-    const corsForStatus = (status) => buildResponseCorsHeaders(origin, status);
+    // `?tier=<fast|slow>&public=1` is answered by api/bootstrap.js with the public shape, so the
+    // edge reproduces it on BOTH paths (#7308). One CORS shape for one URL: the KV-served bytes and
+    // the origin fallback answer the same request, and a response whose CORS shape depends on which
+    // path won the hedge is the harder thing to reason about, not the safer one. A fixed bag rather
+    // than a status-dependent builder — public is public at every status here.
+    //
+    // Scoped to CORS on purpose. The browser CACHE directive still differs by path (KV `no-store`,
+    // origin `TIER_CACHE[tier]`) and that is deliberate, for reasons that belong to the KV path
+    // rather than this one — see kv-serve.js#serveFromKv. Do not read this as a caching invariant.
+    const publicTier = bootstrapTierFromPublicRequest(request, url);
+    const publicBootstrapShape = publicTier !== null && (!origin || isAllowedOrigin(origin));
+    const corsPolicy = publicBootstrapShape
+      ? buildPublicBootstrapCorsHeaders()
+      : (status) => buildResponseCorsHeaders(origin, status);
+    // KV always mints a 200, and serveFromKv spreads what it is handed — resolve the union here so
+    // the bag it receives is a bag, never a status function whose spread would yield no CORS at all.
+    const kvCorsHeaders = publicBootstrapShape ? corsPolicy : buildCorsHeaders(origin);
     // The single origin path for this request. maybeServeBootstrapFromKv (U-K4) may invoke it once
     // internally when it hedges/falls back; every other request runs it directly below. Either way
     // origin is fetched at most once.
-    const fetchOrigin = () => passThroughToOrigin(request, url, corsForStatus);
+    const fetchOrigin = () => passThroughToOrigin(request, url, corsPolicy);
 
     // KV serving (U-K4, #5338 / #7291): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE
     // on, serve the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged
@@ -307,7 +406,18 @@ export default {
     // (KTD3), so the worst case is origin pass-through. Returns null for non-servable requests
     // (flag off, not a bootstrap GET), which then run the normal pass-through. Production is
     // BOOTSTRAP_KV_SERVE="all"; "slow" and "off" remain kill-switches.
-    const bootstrapKv = await maybeServeBootstrapFromKv(request, url, env, ctx, buildCorsHeaders(origin), fetchOrigin);
+    //
+    // Gated on the tier predicate ALONE, deliberately — not on publicBootstrapShape. Which CORS bag
+    // a disallowed Origin gets is a header decision; whether its bytes come from KV is a routing
+    // one, and the two must not be fused. The KV bytes are caller-invariant, so serving them under
+    // the credentialed fallback bag denies the browser read just as effectively while keeping the
+    // request off Vercel/Redis. Gating the route instead would hand any unauthenticated caller an
+    // origin-forcing lever: one bogus `Origin:` header on every request re-opens exactly the Redis
+    // egress this path exists to eliminate, and buys nothing — the same caller reads the same bytes
+    // from KV by simply omitting the header.
+    const bootstrapKv = publicTier !== null
+      ? await maybeServeBootstrapFromKv(request, url, env, ctx, kvCorsHeaders, fetchOrigin)
+      : null;
     if (bootstrapKv) return bootstrapKv;
 
     // All other methods/paths — pass through to Vercel with the Worker's canonical CORS stamped.
