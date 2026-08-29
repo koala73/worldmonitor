@@ -656,7 +656,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
   });
 
-  test('switches a visible monitor and opens settings and alerts through existing UI', async ({ page }, testInfo) => {
+  test('validates monitor switches and opens settings and alerts through existing UI', async ({ page }, testInfo) => {
     test.skip(productionSmoke, 'Must not execute switch_monitor against a production origin.');
     testInfo.setTimeout(120_000);
     const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -697,32 +697,24 @@ test.describe('top-level WebMCP dashboard contract', () => {
     await expect(page.locator('#unifiedSettingsModal.active')).toHaveCount(0);
 
     const historyBefore = await page.evaluate(() => window.history.length);
-    const reloaded = page.waitForEvent('load');
-    const switched = executeDashboardTool(page, 'switch_monitor', { monitor: 'tech' })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!/Execution context was destroyed|Target crashed/i.test(message)) throw error;
-        return null;
-      });
-    await reloaded;
-    const switchResult = await switched;
-    if (switchResult) {
-      expect(switchResult).toMatchObject({
-        ok: true,
-        destination: 'tech',
-        navigation: 'reload',
-      });
-    }
+    const locationBefore = new URL(page.url());
+    const switchResult = await executeDashboardTool(page, 'switch_monitor', { monitor: 'tech' });
+    expect(switchResult).toMatchObject({
+      ok: false,
+      status: 'denied',
+      reason: 'target_cancellation_unsupported',
+    });
 
-    await expect.poll(async () => page.evaluate(async () => (
-      (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
-    )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
     const context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
       variant?: string;
     };
-    expect(context.variant).toBe('tech');
-    await expect(page.locator('.variant-option.active[data-variant="tech"]')).toBeVisible();
-    expect(page.url()).toContain('/dashboard');
+    expect(context.variant).toBe('full');
+    await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
+    const locationAfter = new URL(page.url());
+    expect({ origin: locationAfter.origin, pathname: locationAfter.pathname }).toEqual({
+      origin: locationBefore.origin,
+      pathname: locationBefore.pathname,
+    });
     expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
 
     await attachJsonEvidence(testInfo, 'webmcp-navigation.json', {

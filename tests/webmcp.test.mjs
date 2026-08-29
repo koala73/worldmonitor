@@ -285,8 +285,9 @@ describe('webmcp.ts: current API contract', () => {
     ]);
     assert.equal(tool.annotations.readOnlyHint, false);
 
+    const signal = new AbortController().signal;
     for (const monitor of ['full', 'tech', 'finance', 'commodity', 'energy', 'happy']) {
-      const result = await tool.execute({ monitor });
+      const result = await tool.execute({ monitor }, { signal });
       assert.equal(result.ok, true, monitor);
       assert.equal(result.destination, monitor, monitor);
       assert.equal(result.context.variant, monitor, monitor);
@@ -294,7 +295,7 @@ describe('webmcp.ts: current API contract', () => {
     }
     assert.deepEqual(switches, ['full', 'tech', 'finance', 'commodity', 'energy', 'happy']);
 
-    const unknown = await tool.execute({ monitor: 'World' });
+    const unknown = await tool.execute({ monitor: 'World' }, {});
     assert.deepEqual(
       { ok: unknown.ok, status: unknown.status, reason: unknown.reason },
       { ok: false, status: 'invalid', reason: 'unknown_monitor' },
@@ -302,8 +303,16 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(unknown.context.variant, 'full');
     assert.equal(switches.length, 6);
 
-    const extra = await tool.execute({ monitor: 'tech', url: 'https://example.invalid' });
+    const extra = await tool.execute({ monitor: 'tech', url: 'https://example.invalid' }, {});
     assert.equal(extra.reason, 'malformed_arguments');
+    assert.equal(switches.length, 6);
+
+    const unsupported = await tool.execute({ monitor: 'tech' }, {});
+    assert.equal(
+      unsupported.reason,
+      'target_cancellation_unsupported',
+      JSON.stringify(unsupported),
+    );
     assert.equal(switches.length, 6);
   });
 

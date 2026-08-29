@@ -484,6 +484,17 @@ export async function raceWebMcpAbort<T>(
   });
 }
 
+interface WebMcpInvocationHooks {
+  preflight?: (
+    args: Record<string, unknown>,
+    extra?: WebMcpToolExecutionContext,
+  ) => Promise<unknown | undefined> | unknown | undefined;
+  successMetadata?: (
+    args: Record<string, unknown>,
+    result: unknown,
+  ) => Record<string, unknown>;
+}
+
 function withInvocationLogging(
   name: WebMcpSpaToolName,
   fn: (
@@ -491,28 +502,30 @@ function withInvocationLogging(
     extra?: { signal?: AbortSignal },
   ) => Promise<unknown> | unknown,
   trackEvent: WebMcpAnalytics,
-  successMetadata?: (
-    args: Record<string, unknown>,
-    result: unknown,
-  ) => Record<string, unknown>,
+  hooks: WebMcpInvocationHooks = {},
 ): DashboardWebMcpTool['execute'] {
   return async (args, extra?: WebMcpToolExecutionContext) => {
     const signal = isAbortSignal(extra?.signal) ? extra.signal : undefined;
+    const execution = signal ? { signal } : undefined;
     markLcpDebug('wm:webmcp:tool-start', {
       tool: name,
       targetCancellationSupported: Boolean(signal),
     });
     try {
+      throwIfWebMcpAborted(signal);
+      const preflightResult = await hooks.preflight?.(args, execution);
+      throwIfWebMcpAborted(signal);
       let result: unknown;
-      if (CANCELLATION_REQUIRED_WEBMCP_TOOLS.has(name) && !signal) {
+      if (preflightResult !== undefined) {
+        result = preflightResult;
+      } else if (CANCELLATION_REQUIRED_WEBMCP_TOOLS.has(name) && !signal) {
         // This tool declared that a phantom completion would be unsafe, and
         // the host cannot deliver the target-side signal. Return a structured
         // denial because some hosts erase the name and message of errors
         // raised by the page callback.
         result = unsupportedCancellationResult();
       } else {
-        throwIfWebMcpAborted(signal);
-        result = await fn(args, signal ? { signal } : undefined);
+        result = await fn(args, execution);
         // Browser cancellation rejects executeTool independently of this
         // callback. Re-check here so late work cannot publish success telemetry
         // after the host has already cancelled the invocation.
@@ -523,7 +536,7 @@ function withInvocationLogging(
       reportWebMcpEvent(trackEvent, 'webmcp-tool-invoked', {
         tool: name,
         ...invocation,
-        ...(successMetadata?.(args, result) ?? {}),
+        ...(hooks.successMetadata?.(args, result) ?? {}),
       });
       return result;
     } catch (error) {
@@ -883,6 +896,33 @@ function hasOnlyOwnKeys(
   return Object.keys(value).every((key) => allowed.has(key));
 }
 
+type SwitchMonitorInput =
+  | { ok: true; monitor: SiteVariant }
+  | {
+    ok: false;
+    reason: 'malformed_arguments' | 'unknown_monitor';
+    message: string;
+  };
+
+function validateSwitchMonitorInput(args: Record<string, unknown>): SwitchMonitorInput {
+  if (!hasOnlyOwnKeys(args, ['monitor'])) {
+    return {
+      ok: false,
+      reason: 'malformed_arguments',
+      message: 'switch_monitor accepts only a monitor key.',
+    };
+  }
+  const monitor = typeof args.monitor === 'string' ? args.monitor : '';
+  if (!isSiteVariant(monitor)) {
+    return {
+      ok: false,
+      reason: 'unknown_monitor',
+      message: 'Unknown monitor.',
+    };
+  }
+  return { ok: true, monitor };
+}
+
 async function applyDashboardAction(
   action: unknown,
   app: WebMcpAppBindings,
@@ -993,28 +1033,24 @@ export function buildWebMcpTools(
       },
       annotations: { readOnlyHint: false },
       execute: withInvocationLogging(WEBMCP_SPA_TOOL.switchMonitor, async (args, extra) => {
-        const context = await currentNavigationContext(app, extra);
-        if (!hasOnlyOwnKeys(args, ['monitor'])) {
+        const input = validateSwitchMonitorInput(args);
+        if (!input.ok) {
+          throw new SafeWebMcpError('switch_monitor input preflight did not run.');
+        }
+        return boundDashboardNavigationResult(await app.switchMonitor(input.monitor, extra));
+      }, trackEvent, {
+        preflight: async (args, extra) => {
+          const input = validateSwitchMonitorInput(args);
+          if (input.ok) return undefined;
           return boundDashboardNavigationResult({
             ok: false,
             status: 'invalid',
-            reason: 'malformed_arguments',
-            message: 'switch_monitor accepts only a monitor key.',
-            context,
+            reason: input.reason,
+            message: input.message,
+            context: await currentNavigationContext(app, extra),
           });
-        }
-        const monitor = typeof args.monitor === 'string' ? args.monitor : '';
-        if (!isSiteVariant(monitor)) {
-          return boundDashboardNavigationResult({
-            ok: false,
-            status: 'invalid',
-            reason: 'unknown_monitor',
-            message: 'Unknown monitor.',
-            context,
-          });
-        }
-        return boundDashboardNavigationResult(await app.switchMonitor(monitor, extra));
-      }, trackEvent),
+        },
+      }),
     },
     {
       name: WEBMCP_SPA_TOOL.openSettings,
@@ -1258,15 +1294,17 @@ export function buildWebMcpTools(
           Number(limit),
           extra,
         ));
-      }, trackEvent, (args, value) => {
-        const result = value as DashboardSearchResponse;
-        return {
-          queryLength: typeof args.query === 'string' ? args.query.trim().length : 0,
-          resultCount: result.resultCount,
-          resultTypes: [...new Set(
-            result.results.map((match) => searchResultTypeBucket(match.type)),
-          )].sort(),
-        };
+      }, trackEvent, {
+        successMetadata: (args, value) => {
+          const result = value as DashboardSearchResponse;
+          return {
+            queryLength: typeof args.query === 'string' ? args.query.trim().length : 0,
+            resultCount: result.resultCount,
+            resultTypes: [...new Set(
+              result.results.map((match) => searchResultTypeBucket(match.type)),
+            )].sort(),
+          };
+        },
       }),
     },
     {
