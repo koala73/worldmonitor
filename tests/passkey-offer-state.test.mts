@@ -280,6 +280,20 @@ describe('the durable account cap', () => {
     });
   });
 
+  it('does not move a spent durable cap backward from a stale device snapshot', async () => {
+    let persistedCount = ACCOUNT_OFFER_CAP;
+    const staleUser = {
+      unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: 1 },
+      update: async (params: { unsafeMetadata: Record<string, unknown> }) => {
+        persistedCount = params.unsafeMetadata[ACCOUNT_OFFER_COUNT_KEY] as number;
+      },
+    };
+
+    await recordAccountOffer(staleUser);
+
+    assert.equal(persistedCount, ACCOUNT_OFFER_CAP);
+  });
+
   it('PRESERVES every other unsafeMetadata key when writing', async () => {
     // Clerk REPLACES unsafeMetadata wholesale rather than merging it, so a bare
     // `{ [KEY]: ... }` patch would silently delete everything else the app
