@@ -26,3 +26,8 @@ export const MAX_LAYER_ACTION_TARGET_ID_LENGTH = 30;
 // characters can expand far beyond their source length and break the bounded
 // WebMCP result contract.
 export const DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN = '^[a-z][A-Za-z0-9_-]*$';
+
+// Canonical ALL_PANELS keys are mostly kebab-case, but a few live IDs are
+// mixed-case (`regionalStartups`, `gccNews`). Catalog output and open_panel
+// must share this grammar so schema-validating hosts can consume catalog IDs.
+export const DASHBOARD_PANEL_ACTION_ID_PATTERN = '^[A-Za-z0-9][A-Za-z0-9@_-]*$';

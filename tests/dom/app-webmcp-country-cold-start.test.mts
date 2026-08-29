@@ -73,6 +73,13 @@ describe('App WebMCP country binding cold start', () => {
         hasPremium: false,
         deckGlActive: true,
       }),
+      listDashboardPanels: async () => ({
+        variant: 'full',
+        total: 0,
+        hasMore: false,
+        nextCursor: null,
+        panels: [],
+      }),
       ...unusedNavigationBindings(),
       applyDashboardAction: async () => ({
         ok: true,
@@ -177,6 +184,13 @@ describe('App WebMCP country binding cold start', () => {
         liveLayerKeys: [],
         hasPremium: false,
         deckGlActive: true,
+      }),
+      listDashboardPanels: async () => ({
+        variant: 'full',
+        total: 0,
+        hasMore: false,
+        nextCursor: null,
+        panels: [],
       }),
       ...unusedNavigationBindings(),
       applyDashboardAction: async () => ({

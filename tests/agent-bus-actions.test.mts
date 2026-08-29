@@ -75,6 +75,11 @@ describe('agent bus action schema', () => {
       panelId: '../forecast',
     });
     assert.equal(badPanelId.ok, false);
+
+    for (const panelId of ['regionalStartups', 'gccNews']) {
+      const mixedCase = parseAgentBusAction({ type: 'open_panel', panelId });
+      assert.equal(mixedCase.ok, true, panelId);
+    }
   });
 
   it('bounds map view targets', () => {

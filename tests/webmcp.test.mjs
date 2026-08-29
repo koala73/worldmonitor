@@ -11,10 +11,14 @@ import {
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 import {
+  listDashboardPanelCatalog,
+  DASHBOARD_PANEL_ID_PATTERN,
+} from '../src/services/webmcp-panel-catalog.ts';
+import { getInitialPanelSettingsForVariant } from '../src/config/panels.ts';
+import {
   WEBMCP_HOMEPAGE_TOOL_NAMES,
   WEBMCP_SPA_TOOL_NAMES,
 } from '../src/config/webmcp.ts';
-import { getInitialPanelSettingsForVariant } from '../src/config/panels.ts';
 import {
   DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
   DASHBOARD_MAP_MAX_LATITUDE,
@@ -97,6 +101,22 @@ function createBindings(overrides = {}) {
       liveLayerKeys: ['conflicts', 'weather', 'hotspots', 'resilienceScore', 'startupHubs'],
       hasPremium: false,
       deckGlActive: true,
+    }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
     }),
     applyDashboardAction: async (action) => ({
       ok: true,
@@ -188,6 +208,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearch/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.getDashboardContext/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.listMapLayers/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.listDashboardPanels/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.switchMonitor/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSettings/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openAlerts/);
@@ -251,7 +272,13 @@ describe('webmcp.ts: current API contract', () => {
       assert.ok(tool.title.length > 0);
       assert.equal(
         tool.annotations?.readOnlyHint,
-        ['get_access_context', 'get_dashboard_context', 'list_map_layers', 'search_dashboard']
+        [
+          'get_access_context',
+          'get_dashboard_context',
+          'list_map_layers',
+          'list_dashboard_panels',
+          'search_dashboard',
+        ]
           .includes(tool.name),
       );
       const properties = tool.inputSchema?.properties ?? {};
@@ -735,6 +762,78 @@ describe('webmcp.ts: current API contract', () => {
     );
   });
 
+  it('publishes a paginated panel catalog schema and rejects invalid filters', async () => {
+    const events = [];
+    const panelSettings = getInitialPanelSettingsForVariant('full');
+    const tools = buildWebMcpTools(createBindings({
+      listDashboardPanels: async (query) => listDashboardPanelCatalog({
+        currentVariant: 'full',
+        panelSettings,
+        mountedIds: new Set(
+          Object.entries(panelSettings)
+            .filter(([, config]) => config.enabled)
+            .map(([panelId]) => panelId),
+        ),
+        isPanelAllowed: () => true,
+      }, query),
+    }), (event, data) => events.push({ event, data }));
+    const tool = tools.find((candidate) => candidate.name === 'list_dashboard_panels');
+
+    assert.deepEqual(tool.annotations, { readOnlyHint: true });
+    assert.equal(tool.inputSchema.additionalProperties, false);
+    assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), [
+      'available',
+      'category',
+      'cursor',
+      'enabled',
+      'limit',
+      'variant',
+    ]);
+    assert.equal(tool.inputSchema.properties.limit.minimum, 1);
+    assert.equal(tool.inputSchema.properties.limit.maximum, 8);
+    assert.equal(tool.inputSchema.properties.limit.default, 6);
+    assert.equal(tool.inputSchema.properties.cursor.pattern, DASHBOARD_PANEL_ID_PATTERN);
+
+    const open = tools.find((candidate) => candidate.name === 'open_dashboard_panel');
+    assert.equal(open.inputSchema.properties.panelId.pattern, DASHBOARD_PANEL_ID_PATTERN);
+    assert.match('regionalStartups', new RegExp(DASHBOARD_PANEL_ID_PATTERN));
+    assert.match('gccNews', new RegExp(DASHBOARD_PANEL_ID_PATTERN));
+
+    const page = await tool.execute({ variant: 'full', limit: 4 });
+    assert.equal(page.variant, 'full');
+    assert.equal(page.total, 109);
+    assert.equal(page.hasMore, true);
+    assert.equal(typeof page.nextCursor, 'string');
+    assert.equal(page.panels.length, 4);
+    const next = await tool.execute({ variant: 'full', limit: 4, cursor: page.nextCursor });
+    assert.notEqual(next.panels[0].id, page.panels[0].id);
+    assert.ok(JSON.stringify(page).length <= 1500);
+
+    await assert.rejects(
+      tool.execute({ unknown: true }),
+      (error) => error.name === 'WebMcpToolError'
+        && /accepts only/.test(error.message),
+    );
+    await assert.rejects(
+      tool.execute({ cursor: 'not-a-panel' }),
+      (error) => error.name === 'WebMcpToolError'
+        && error.message === 'cursor is not a valid catalog cursor.',
+    );
+    assert.deepEqual(
+      events.filter(({ data }) => data.tool === 'list_dashboard_panels').map(({ data }) => (
+        [data.outcome, data.reason]
+      )),
+      [
+        ['success', 'completed'],
+        ['success', 'completed'],
+        ['failure', 'validation'],
+        ['failure', 'validation'],
+      ],
+    );
+    const serialized = JSON.stringify(events);
+    assert.equal(serialized.includes('not-a-panel'), false);
+    assert.equal(serialized.includes(page.panels[0].id), false);
+  });
   it('runs reversible view-state tools and gates effects that can outlive cancellation', async () => {
     let mutationCalls = 0;
     const events = [];

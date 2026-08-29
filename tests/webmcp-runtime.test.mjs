@@ -51,6 +51,22 @@ function createBindings(overrides = {}) {
       hasPremium: false,
       deckGlActive: true,
     }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
+    }),
     switchMonitor: async (monitor) => ({
       ok: true,
       status: 'applied',

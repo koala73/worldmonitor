@@ -7,6 +7,7 @@
       "openSearch",
       "get_dashboard_context",
       "list_map_layers",
+      "list_dashboard_panels",
       "switch_monitor",
       "open_settings",
       "open_alerts",
@@ -51,7 +52,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -81,7 +83,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -162,7 +165,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -211,7 +215,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -365,7 +370,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -401,7 +407,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -487,7 +494,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -521,7 +529,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ],
       "failure": {
         "atStep": 2,
@@ -565,7 +574,8 @@
         "list_map_layers",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ],
       "failure": {
         "atStep": 2,
@@ -644,7 +654,8 @@
         "search_procurement",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -673,7 +684,8 @@
         "search_procurement",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -704,7 +716,8 @@
         "search_procurement",
         "switch_monitor",
         "open_settings",
-        "open_alerts"
+        "open_alerts",
+        "list_dashboard_panels"
       ],
       "failure": {
         "atStep": 2,
@@ -743,7 +756,8 @@
         "search_procurement",
         "open_settings",
         "open_alerts",
-        "list_map_layers"
+        "list_map_layers",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -772,7 +786,8 @@
         "search_procurement",
         "open_settings",
         "open_alerts",
-        "list_map_layers"
+        "list_map_layers",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -799,7 +814,8 @@
         "search_procurement",
         "switch_monitor",
         "open_alerts",
-        "list_map_layers"
+        "list_map_layers",
+        "list_dashboard_panels"
       ]
     },
     {
@@ -826,6 +842,67 @@
         "search_procurement",
         "switch_monitor",
         "open_settings",
+        "list_map_layers",
+        "list_dashboard_panels"
+      ]
+    },
+    {
+      "id": "dashboard_panel_catalog_direct",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "List every dashboard panel, including disabled and unmounted ones.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_panels",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_map_layers"
+      ]
+    },
+    {
+      "id": "dashboard_panel_catalog_variant_filter",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "List the World monitor panel catalog for the full variant.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_panels",
+            "arguments": {
+              "variant": "full"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
         "list_map_layers"
       ]
     }

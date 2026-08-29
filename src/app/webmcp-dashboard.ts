@@ -13,6 +13,12 @@ import {
   type MapLayerCatalogSnapshot,
 } from '@/services/webmcp-map-layer-catalog';
 import type { MapLayerRuntimeAvailability } from '@/services/map-layer-runtime-availability';
+import {
+  listDashboardPanelCatalog,
+  type DashboardPanelCatalogPage,
+  type DashboardPanelCatalogQuery,
+} from '@/services/webmcp-panel-catalog';
+import type { PanelConfig } from '@/types';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
 import type { RendererKind } from '@/config/map-layer-definitions';
 
@@ -112,6 +118,23 @@ export function getWebMcpMapLayerCatalogSnapshot(
     deckGlActive: Boolean(ctx.map.isDeckGLActive?.()),
     ...(tFn ? { tFn } : {}),
   };
+}
+
+export function listWebMcpDashboardPanels(
+  ctx: AppContext,
+  variant: string,
+  query: DashboardPanelCatalogQuery,
+  options: { isPanelAllowed: (panelId: string, config: PanelConfig) => boolean },
+): DashboardPanelCatalogPage {
+  if (ctx.isDestroyed) {
+    throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+  }
+  return listDashboardPanelCatalog({
+    currentVariant: variant,
+    panelSettings: ctx.panelSettings,
+    mountedIds: new Set(Object.keys(ctx.panels)),
+    isPanelAllowed: options.isPanelAllowed,
+  }, query);
 }
 
 export async function waitForWebMcpUiReady(
