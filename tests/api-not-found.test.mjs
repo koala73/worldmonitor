@@ -22,6 +22,7 @@ describe('api/not-found.ts — structured JSON 404 for unmatched /api/* paths', 
   it('is CORS-enabled (agents / cross-origin scanners can read the error)', async () => {
     const res = handler(new Request(`${URL_BASE}/api/x`, { method: 'GET' }));
     assert.equal(res.headers.get('access-control-allow-origin'), '*');
+    assert.match(res.headers.get('link') ?? '', /rel="deprecation"/);
   });
 
   it('answers an OPTIONS preflight with 204 + CORS', async () => {
@@ -29,6 +30,7 @@ describe('api/not-found.ts — structured JSON 404 for unmatched /api/* paths', 
     assert.equal(res.status, 204);
     assert.equal(res.headers.get('access-control-allow-origin'), '*');
     assert.match(res.headers.get('access-control-allow-methods') ?? '', /POST/);
+    assert.match(res.headers.get('link') ?? '', /rel="deprecation"/);
   });
 
   it('never caches (a 404 must not be served as a cached 200 for a later-added route)', async () => {

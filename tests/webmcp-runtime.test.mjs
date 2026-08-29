@@ -51,6 +51,62 @@ function createBindings(overrides = {}) {
       hasPremium: false,
       deckGlActive: true,
     }),
+    switchMonitor: async (monitor) => ({
+      ok: true,
+      status: 'applied',
+      destination: monitor,
+      navigation: 'none',
+      message: 'Already on that monitor.',
+      context: {
+        variant: monitor,
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openSettings: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'settings',
+      overlay: 'open',
+      tab: 'settings',
+      message: 'Opened settings.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openAlerts: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'alerts',
+      overlay: 'open',
+      tab: 'notifications',
+      message: 'Opened alerts.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
     applyDashboardAction: async (action) => ({
       ok: true,
       status: 'applied',
@@ -298,14 +354,15 @@ describe('WebMCP registry behavioral contract', () => {
 
   it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
     // set_map_layers writes STORAGE_KEYS.mapLayers (and can open the AIS
-    // stream). An uncancellable invocation outlives the session, so it stays
-    // fail-closed while the browser cannot deliver a signal. open_search_result
-    // is result-dependent and must reach its binding so the issued effect
-    // class can decide.
+    // stream). switch_monitor persists and reloads or leaves the current
+    // origin. An uncancellable invocation can outlive the session, so both
+    // stay fail-closed while the browser cannot deliver a signal.
+    // open_search_result is result-dependent and must reach its binding so the
+    // issued effect class can decide.
     assert.deepEqual(
       [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
-      ['openCountryBrief', 'set_map_layers'],
-      'the gated set includes persistent layer writes and metered country generation',
+      ['openCountryBrief', 'set_map_layers', 'switch_monitor'],
+      'the gated set includes navigation, persistent layer writes, and metered country generation',
     );
     let mutationCalls = 0;
     let openCalls = 0;
@@ -337,6 +394,10 @@ describe('WebMCP registry behavioral contract', () => {
     );
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_layers', JSON.stringify({ layers: { conflicts: true } })),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(provider, 'switch_monitor', JSON.stringify({ monitor: 'tech' })),
       denial,
     );
     assert.deepEqual(

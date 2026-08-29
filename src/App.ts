@@ -169,6 +169,9 @@ import {
   type WebMcpExecutionOptions,
 } from '@/services/webmcp';
 import {
+  applyWebMcpOpenAlerts,
+  applyWebMcpOpenSettings,
+  applyWebMcpSwitchMonitor,
   getWebMcpDashboardContext,
   getWebMcpMapLayerCatalogSnapshot,
   WEBMCP_UI_READY_TIMEOUT_MS,
@@ -1916,6 +1919,26 @@ export class App {
           t,
           this.getMapLayerRuntimeAvailability(),
         );
+      },
+      switchMonitor: async (monitor, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpSwitchMonitor(
+          this.state,
+          SITE_VARIANT,
+          monitor,
+          (variant) => this.eventHandlers.navigateToVisibleVariant(variant),
+        );
+      },
+      openSettings: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpOpenSettings(this.state, SITE_VARIANT);
+      },
+      openAlerts: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpOpenAlerts(this.state, SITE_VARIANT);
       },
       applyDashboardAction: async (action, execution) => {
         return runDashboardActionBinding(this.state, action, {

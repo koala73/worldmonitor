@@ -26,6 +26,8 @@
  *
  *   - repeated non-2xx error responses      -> components.responses $refs
  *   - fleet-wide injected parameters        -> components.parameters $refs
+ *     (then one inline typed param restored on ops that would otherwise
+ *     have only $refs — JSON-only scanners often skip parameter $refs)
  *   - shared China provenance value schemas -> reused $refs
  *     (all three in openapi-dedup-*.mjs; tests prove they are lossless)
  *   - component schemas nothing can reach   -> removed
@@ -38,7 +40,11 @@ import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { dedupeErrorResponses, dedupeSharedParameters } from './openapi-dedup-responses.mjs';
+import {
+  dedupeErrorResponses,
+  dedupeSharedParameters,
+  ensureInlineTypedInput,
+} from './openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
@@ -49,6 +55,37 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const yamlPath = process.env.OPENAPI_YAML_PATH
   ?? resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
 export const jsonPath = resolve(scriptDir, '../public/openapi.json');
+
+export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
+const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
+
+function injectDeprecationPolicyMetadata(spec) {
+  spec.components ??= {};
+  spec.components.headers ??= {};
+  spec.components.headers.Deprecation ??= {
+    description:
+      'RFC 9745. Present only when this operation or version is deprecated; omitted while the surface is current. Value is the deprecation instant as an HTTP Structured Field date (for example `@1782864000`).',
+    schema: { type: 'string', examples: ['@1782864000'] },
+  };
+  spec.components.headers.Sunset ??= {
+    description:
+      'RFC 8594. Present only when this operation or version is deprecated. Final availability date in HTTP-date format (for example `Thu, 31 Dec 2026 23:59:59 GMT`).',
+    schema: { type: 'string', examples: ['Thu, 31 Dec 2026 23:59:59 GMT'] },
+  };
+  spec.components.headers.DeprecationPolicyLink ??= {
+    description:
+      `RFC 8288 Link with rel="deprecation" pointing at the versioning and sunset policy (${DEPRECATION_POLICY_URL}). May appear on current, non-deprecated responses so agents can discover the policy before any surface is retired.`,
+    schema: { type: 'string' },
+  };
+
+  const info = spec.info ?? (spec.info = {});
+  const description = String(info.description ?? '');
+  if (!description.includes('api-versioning.md')) {
+    const policyNote =
+      ` Static machine-readable deprecation policy: ${DEPRECATION_POLICY_URL} (HTML: ${DEPRECATION_POLICY_HTML_URL}). Current responses may carry Link rel="deprecation" for policy discovery (RFC 9745); Deprecation and Sunset headers are sent only on deprecated surfaces.`;
+    info.description = description + policyNote;
+  }
+}
 
 /**
  * Produce the exact artifact `public/openapi.json` receives, without writing it.
@@ -77,6 +114,8 @@ export function buildBundle({ spec: provided } = {}) {
   const stats = dedupeErrorResponses(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
   const paramStats = dedupeSharedParameters(spec);
+  const inlineTypedStats = ensureInlineTypedInput(spec);
+  injectDeprecationPolicyMetadata(spec);
   // Last by convention, not by necessity. The drop seeds reachability from
   // EVERY non-schema bucket (see openapi-drop-unreachable-schemas.mjs), so the
   // responses and parameters the passes above hoist into components keep their
@@ -95,12 +134,13 @@ export function buildBundle({ spec: provided } = {}) {
     stats,
     schemaStats,
     paramStats,
+    inlineTypedStats,
     unreachableStats,
   };
 }
 
 function main() {
-  const { spec, json, bytes, stats, schemaStats, paramStats, unreachableStats } = buildBundle();
+  const { spec, json, bytes, stats, schemaStats, paramStats, inlineTypedStats, unreachableStats } = buildBundle();
   writeFileSync(jsonPath, json);
 
   const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
@@ -108,6 +148,7 @@ function main() {
     `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
       `${bytes} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
       `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
+      `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
       `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );

@@ -86,13 +86,6 @@ describe('weather bootstrap read targets the public CDN-shielded URL (#5386)', (
   });
 
   it('stays out of the on-demand tier, which would silently steal its cache profile', () => {
-    // api/bootstrap.js checks isPublicOnDemandBootstrapRequest BEFORE
-    // isPublicWeatherBootstrapRequest, and both match the same URL shape. If
-    // weatherAlerts were ever moved into ON_DEMAND_KEY_NAMES, the on-demand
-    // predicate would win and the response would silently inherit the slow-tier
-    // profile (browser max-age=300, CDN s-maxage=7200) instead of the fast one
-    // it is seeded for — a 2-hour edge TTL on a key its relay refreshes every
-    // 15 minutes. Nothing else would fail.
     assert.equal(
       BOOTSTRAP_TIERS[PUBLIC_WEATHER_BOOTSTRAP_KEY], 'fast',
       `${PUBLIC_WEATHER_BOOTSTRAP_KEY} must stay a fast-tier key; moving it to on-demand changes `

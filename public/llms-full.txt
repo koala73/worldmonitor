@@ -53,6 +53,8 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 - [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, live tool registry, and auth modes
 - [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
 - [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
+- [World Monitor](https://worldmonitor.app/world-monitor.md): Official brand identity — name, canonical domain, NAP, press mentions
+- [REST versioning and deprecation](https://worldmonitor.app/api-versioning.md): URL versioning, six-month + 90-day sunset timeline, Deprecation / Sunset / Link headers
 
 ## Data Layers — Geopolitical
 

@@ -13,12 +13,15 @@ const DASHBOARD_TOOL_NAMES = [
   'list_map_layers',
   'openCountryBrief',
   'openSearch',
+  'open_alerts',
   'open_dashboard_panel',
   'open_search_result',
+  'open_settings',
   'open_sign_in',
   'search_dashboard',
   'set_map_layers',
   'set_map_view',
+  'switch_monitor',
 ];
 const HOMEPAGE_TOOL_NAMES = [
   'getWorldMonitorMcpEndpoint',
@@ -109,6 +112,31 @@ async function attachJsonEvidence(
   const path = testInfo.outputPath(name);
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
   await testInfo.attach(name, { path, contentType: 'application/json' });
+}
+
+async function executeDashboardTool(
+  page: Page,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<unknown> {
+  return page.evaluate(async ({ toolName, payload }) => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const provider = document.modelContext as ExecutableModelContext | undefined;
+    if (!provider || typeof provider.executeTool !== 'function') {
+      throw new Error('Chrome WebMCP execution API is unavailable.');
+    }
+    const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
+    if (!tool) throw new Error(`${toolName} was not discovered.`);
+    const raw = await provider.executeTool(tool, JSON.stringify(payload));
+    if (typeof raw !== 'string') return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }, { toolName: name, payload: input });
 }
 
 async function installReadinessRecorder(page: Page): Promise<void> {
@@ -678,6 +706,78 @@ test.describe('top-level WebMCP dashboard contract', () => {
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
         ...(searchResultEffects ? { searchResultEffects } : {}),
       },
+    });
+  });
+
+  test('validates monitor switches and opens settings and alerts through existing UI', async ({ page }, testInfo) => {
+    test.skip(productionSmoke, 'Must not execute switch_monitor against a production origin.');
+    testInfo.setTimeout(120_000);
+    const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    expect(response).not.toBeNull();
+    await expect.poll(async () => page.evaluate(async () => (
+      (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+    )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+
+    const invalid = await executeDashboardTool(page, 'switch_monitor', { monitor: 'World' });
+    expect(invalid).toMatchObject({
+      ok: false,
+      status: 'invalid',
+      reason: 'unknown_monitor',
+    });
+    expect(page.url()).toContain('/dashboard');
+    await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
+
+    const settings = await executeDashboardTool(page, 'open_settings', {});
+    expect(settings).toMatchObject({
+      ok: true,
+      destination: 'settings',
+      overlay: 'open',
+      tab: 'settings',
+    });
+    await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal [data-tab="settings"][aria-selected="true"]')).toBeVisible();
+
+    const alerts = await executeDashboardTool(page, 'open_alerts', {});
+    expect(alerts).toMatchObject({
+      ok: true,
+      destination: 'alerts',
+      overlay: 'open',
+      tab: 'notifications',
+    });
+    await expect(page.locator('#unifiedSettingsModal.active')).toBeVisible();
+    await expect(page.locator('#unifiedSettingsModal [data-tab="notifications"][aria-selected="true"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#unifiedSettingsModal.active')).toHaveCount(0);
+
+    const historyBefore = await page.evaluate(() => window.history.length);
+    const locationBefore = new URL(page.url());
+    const switchResult = await executeDashboardTool(page, 'switch_monitor', { monitor: 'tech' });
+    expect(switchResult).toMatchObject({
+      ok: false,
+      status: 'denied',
+      reason: 'target_cancellation_unsupported',
+    });
+
+    const context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
+      variant?: string;
+    };
+    expect(context.variant).toBe('full');
+    await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
+    const locationAfter = new URL(page.url());
+    expect({ origin: locationAfter.origin, pathname: locationAfter.pathname }).toEqual({
+      origin: locationBefore.origin,
+      pathname: locationBefore.pathname,
+    });
+    expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
+
+    await attachJsonEvidence(testInfo, 'webmcp-navigation.json', {
+      invalid,
+      settings,
+      alerts,
+      switchResult,
+      context,
+      url: page.url(),
+      historyLength: await page.evaluate(() => window.history.length),
     });
   });
 

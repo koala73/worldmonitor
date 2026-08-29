@@ -1,6 +1,7 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { subscribeAuthState } from '@/services/auth-state';
 import { getClerk } from '@/services/clerk';
+import { recordPasskeyOfferReason } from '@/utils/passkey-offer-trace';
 
 /**
  * Eager shim that keeps the passkey offer OUT of the first-paint bundle.
@@ -56,15 +57,25 @@ export class PasskeyOfferBoot implements AppModule {
     // Clerk absent means the SDK has not loaded (or failed to). A user-null
     // reading then proves nothing about whether anyone is signed in, so it must
     // not arm — see the controller's own KTD3c note.
-    if (!clerk) return;
-    if (!clerk.user?.id) { this.armed = true; return; }
+    if (!clerk) { recordPasskeyOfferReason('clerk-absent'); return; }
+    if (!clerk.user?.id) {
+      this.armed = true;
+      recordPasskeyOfferReason('signed-out-observed');
+      return;
+    }
     // Signed in, and we saw them signed out first: this is a real sign-in, so
     // the offer is now plausible and the real controller is worth its bytes.
-    if (this.armed) void this.load();
+    if (this.armed) { void this.load(); return; }
+    // Signed in with no prior signed-out observation — a cold cookie
+    // hydration. This is the branch that is otherwise completely invisible:
+    // the controller never loads, so controller-side instrumentation can never
+    // report it.
+    recordPasskeyOfferReason('cold-hydration-suppressed');
   }
 
   private async load(): Promise<void> {
     this.loading = true;
+    recordPasskeyOfferReason('import-started');
     try {
       const { PasskeyOfferController } = await import('@/app/passkey-offer-controller');
       if (this.destroyed) return;
@@ -78,6 +89,7 @@ export class PasskeyOfferBoot implements AppModule {
     } catch {
       // A failed chunk fetch must not break the dashboard. The offer is a
       // nice-to-have; leave the shim disarmed rather than retrying forever.
+      recordPasskeyOfferReason('import-failed');
     } finally {
       this.loading = false;
     }

@@ -78,6 +78,7 @@ World Monitor is not a general web-search engine, a complete historical archive,
 
 ## Documentation
 
+- [Brand identity](https://worldmonitor.app/world-monitor.md) — official name, canonical domain, NAP, and press mentions
 - [Product and API documentation](https://www.worldmonitor.app/docs/documentation)
 - [Source catalog](https://www.worldmonitor.app/sources/)
 - [Support and contact](https://worldmonitor.app/support.md)
