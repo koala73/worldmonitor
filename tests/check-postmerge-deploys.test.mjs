@@ -12,10 +12,11 @@ import { parse as parseYaml } from 'yaml';
 import {
   DEFAULT_NO_RUN_WINDOW_MS,
   MONITORED_WORKFLOWS,
+  DEPLOY_BASELINE_MAX_RUNS,
   checkPostmergeDeploys,
   createRetryingGh,
-  diffTouchesPath,
   diffTouchesPaths,
+  readLastDeployedSha,
   formatResultMark,
   githubWarningAnnotations,
   isGithubRecordUnreadability,
@@ -151,21 +152,33 @@ describe('post-merge deploy monitor', () => {
     assert.equal(verdict.verdict, 'DEPLOY_SKIPPED_LEGIT');
   });
 
-  it('alarms on a convex deploy skipped without proof that the diff is empty', () => {
-    // Two failure directions: the skipProof throws (unreadable parent) and it
-    // returns false (the head DID touch convex/ but the deploy job skipped —
-    // the workflow filter drifted from reality).
-    for (const skipProof of [() => { throw new Error('unreadable'); }, () => false]) {
-      const verdict = judgeWorkflow({
-        workflow: CONVEX,
-        run: run({ runId: 555 }),
-        jobs: new Map([['deploy', { name: 'deploy', conclusion: 'skipped', status: 'completed' }]]),
-        skipProof,
-        now: NOW,
-      });
-      assert.equal(verdict.state, 'ALARM');
-      assert.match(verdict.verdict, /DEPLOY_SKIPPED_UNPROVEN/);
-    }
+  // The two failure directions are NOT the same alarm and must not be
+  // conflated (#7359): "convex/ provably changed since the last deploy" tells
+  // on-call production is behind and a deploy is owed; "we could not read the
+  // baseline" tells them the monitor is blind. Opposite responses.
+  it('alarms that production is behind when convex/ changed since the last deploy', () => {
+    const verdict = judgeWorkflow({
+      workflow: CONVEX,
+      run: run({ runId: 555 }),
+      jobs: new Map([['deploy', { name: 'deploy', conclusion: 'skipped', status: 'completed' }]]),
+      skipProof: () => false,
+      now: NOW,
+    });
+    assert.equal(verdict.state, 'ALARM');
+    assert.equal(verdict.verdict, 'DEPLOY_SKIPPED_BEHIND_BASELINE');
+    assert.match(verdict.detail, /behind/);
+  });
+
+  it('alarms as unproven when the deployed baseline cannot be read', () => {
+    const verdict = judgeWorkflow({
+      workflow: CONVEX,
+      run: run({ runId: 556 }),
+      jobs: new Map([['deploy', { name: 'deploy', conclusion: 'skipped', status: 'completed' }]]),
+      skipProof: () => { throw new Error('unreadable'); },
+      now: NOW,
+    });
+    assert.equal(verdict.state, 'ALARM');
+    assert.equal(verdict.verdict, 'DEPLOY_SKIPPED_UNPROVEN');
   });
 
   it('alarms on any skipped deploy job in a workflow with no legitimate skip', () => {
@@ -418,20 +431,20 @@ describe('post-merge deploy monitor', () => {
 
   it('judges the diff by trees only, with an empty diff meaning nothing touched', () => {
     assert.equal(
-      diffTouchesPath({
+      diffTouchesPaths({
         git: () => '',
-        parentSha: 'p'.repeat(40),
+        baseSha: 'p'.repeat(40),
         headSha: 'h'.repeat(40),
-        pathPrefix: 'convex/',
+        paths: ['convex/'],
       }),
       false,
     );
     assert.equal(
-      diffTouchesPath({
+      diffTouchesPaths({
         git: () => 'convex/schema.ts\n',
-        parentSha: 'p'.repeat(40),
+        baseSha: 'p'.repeat(40),
         headSha: 'h'.repeat(40),
-        pathPrefix: 'convex/',
+        paths: ['convex/'],
       }),
       true,
     );
@@ -967,4 +980,209 @@ describe('monitored trigger paths mirror each workflow push filter', () => {
       );
     });
   }
+});
+
+// #7359 — a merge burst cancels the QUEUED convex deploy (the concurrency group
+// keeps one pending run and drops the older one), and no later push can rescue
+// it: every subsequent push honestly diffs its OWN range, finds no convex/
+// change, and skips. The monitor agreed, because it proved the skip against the
+// newest run's own parent diff. Both were asking "did THIS push touch convex/?"
+// when the only question that matters is "is production behind main?".
+describe('convex deploy drift against the deployed baseline (#7359)', () => {
+  const BASELINE_SHA = 'b'.repeat(40);
+
+  /**
+   * The real 2026-08-29 run sequence, newest first: the orphaned merge's run was
+   * cancelled, later runs went green with the deploy job skipped, and the last
+   * run that actually deployed sits five runs back.
+   */
+  function incidentRuns() {
+    return [
+      { id: 810, created_at: '2026-08-29T13:35:51Z', conclusion: 'success', run_attempt: 1, head_sha: '7'.repeat(40) },
+      { id: 809, created_at: '2026-08-29T12:49:11Z', conclusion: 'success', run_attempt: 1, head_sha: 'c'.repeat(40) },
+      { id: 808, created_at: '2026-08-29T12:48:49Z', conclusion: 'cancelled', run_attempt: 1, head_sha: '9'.repeat(40) },
+      { id: 807, created_at: '2026-08-29T12:48:30Z', conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40) },
+      // The stranded merge itself.
+      { id: 806, created_at: '2026-08-29T12:47:27Z', conclusion: 'cancelled', run_attempt: 1, head_sha: '6'.repeat(40) },
+      { id: 805, created_at: '2026-08-29T12:46:52Z', conclusion: 'success', run_attempt: 1, head_sha: BASELINE_SHA },
+    ];
+  }
+
+  // Only run 805 actually deployed; the other successes skipped the job.
+  function incidentJobs(runId) {
+    const conclusion = runId === 805 ? 'success' : 'skipped';
+    return jobsPayload([{ name: 'deploy', conclusion, status: 'completed' }]);
+  }
+
+  function incidentGh({ runs = incidentRuns(), jobs = incidentJobs } = {}) {
+    return (args) => {
+      const joined = args.join(' ');
+      if (/workflows\/convex-deploy\.yml\/runs/.test(joined)) {
+        return JSON.stringify({ workflow_runs: runs });
+      }
+      const jobsMatch = joined.match(/actions\/runs\/(\d+)\/attempts/);
+      if (jobsMatch) return jobs(Number(jobsMatch[1]));
+      throw new Error(`unexpected gh call: ${joined}`);
+    };
+  }
+
+  it('walks past cancelled and skipped-deploy runs to the last real deploy', () => {
+    assert.equal(
+      readLastDeployedSha({
+        gh: incidentGh(),
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        deployJobName: 'deploy',
+      }),
+      BASELINE_SHA,
+    );
+  });
+
+  it('refuses to invent a baseline when nothing in the budget deployed', () => {
+    // Never returning the newest head here is the whole point: treating an
+    // undeployed run as the baseline would prove every future skip legitimate.
+    assert.throws(
+      () => readLastDeployedSha({
+        gh: incidentGh({ jobs: () => jobsPayload([{ name: 'deploy', conclusion: 'skipped', status: 'completed' }]) }),
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        deployJobName: 'deploy',
+      }),
+      /baseline/,
+    );
+  });
+
+  it('bounds how many runs it will read before giving up', () => {
+    let jobReads = 0;
+    const many = Array.from({ length: 60 }, (_, index) => ({
+      id: 900 + index,
+      created_at: new Date(Date.parse('2026-08-29T12:00:00Z') - index * 60_000).toISOString(),
+      conclusion: 'success',
+      run_attempt: 1,
+      head_sha: String(index).padStart(40, '0'),
+    }));
+    assert.throws(
+      () => readLastDeployedSha({
+        gh: incidentGh({
+          runs: many,
+          jobs: () => {
+            jobReads += 1;
+            return jobsPayload([{ name: 'deploy', conclusion: 'skipped', status: 'completed' }]);
+          },
+        }),
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        deployJobName: 'deploy',
+      }),
+      /baseline/,
+    );
+    assert.equal(jobReads, DEPLOY_BASELINE_MAX_RUNS);
+  });
+
+  it('alarms on the real incident instead of proving the skip legitimate', () => {
+    const gitCalls = [];
+    const results = checkPostmergeDeploys({
+      repository: 'koala73/worldmonitor',
+      gh: (args) => {
+        const joined = args.join(' ');
+        // The other two monitored workflows are healthy and irrelevant here.
+        if (/workflows\/(deploy-railway-reconcile-control|deploy-worker)\.yml\/runs/.test(joined)) {
+          return JSON.stringify({
+            workflow_runs: [{
+              id: 1, created_at: '2026-08-29T13:00:00Z', conclusion: 'success', run_attempt: 1, head_sha: 'f'.repeat(40),
+            }],
+          });
+        }
+        if (/actions\/runs\/1\/attempts/.test(joined)) {
+          return jobsPayload([{ name: 'Wrangler deploy', conclusion: 'success', status: 'completed' }]);
+        }
+        return incidentGh()(args);
+      },
+      git: (args) => {
+        gitCalls.push(args);
+        // convex/ moved between the deployed baseline and current main — the
+        // stranded #7344 merge.
+        if (args.includes(BASELINE_SHA)) return 'convex/payments/billing.ts\n';
+        return '';
+      },
+      now: Date.parse('2026-08-29T13:40:00Z'),
+    });
+
+    const convex = results.find((result) => result.workflow === 'convex-deploy.yml');
+    assert.equal(convex.state, 'ALARM');
+    assert.equal(convex.verdict, 'DEPLOY_SKIPPED_BEHIND_BASELINE');
+
+    // The diff must be taken from the deployed baseline to current main, never
+    // from the newest run's parent — that per-push question is what missed it.
+    const convexDiff = gitCalls.find((args) => args.includes('--') && args.includes('convex/'));
+    assert.deepEqual(convexDiff, ['diff', '--name-only', BASELINE_SHA, 'origin/main', '--', 'convex/']);
+    assert.ok(
+      !gitCalls.some((args) => args[0] === 'rev-parse'),
+      'the parent-of-head lookup is the removed per-push baseline and must not be used',
+    );
+  });
+
+  // The monitor only ALARMS on drift; convex-deploy.yml is what clears it on the
+  // next push. That self-heal exists only while its diff baseline is the
+  // deployed tag — reverting to `github.event.before` restores the bug with
+  // every test here still green, because none of them read the workflow.
+  it('convex-deploy.yml diffs from the deployed tag, not this push range', () => {
+    const source = readFileSync(new URL('../.github/workflows/convex-deploy.yml', import.meta.url), 'utf8');
+    const doc = parseYaml(source);
+    const changesStep = doc.jobs.changes.steps.find((step) => step.id === 'diff');
+
+    assert.match(
+      changesStep.run,
+      /BEFORE="\$\(git rev-parse --verify --quiet "refs\/tags\/\$DEPLOYED_TAG/,
+      'the convex/ diff baseline must be the deployed tag',
+    );
+    assert.doesNotMatch(
+      changesStep.run,
+      /BEFORE="\$\{\{ github\.event\.before \}\}"/,
+      'github.event.before is the per-push baseline that stranded #7344',
+    );
+    assert.match(changesStep.run, /git diff --name-only "\$BEFORE" "\$AFTER" -- 'convex\/'/);
+
+    // The tag is only meaningful if the deploy job actually moves it, and only
+    // if that job is allowed to write.
+    assert.equal(doc.jobs.deploy.permissions.contents, 'write');
+    const recordStep = doc.jobs.deploy.steps.find((step) => step.name === 'Record the deployed commit');
+    assert.ok(recordStep, 'the deploy job must record the commit it deployed');
+    assert.match(recordStep.run, /git push --force origin "refs\/tags\/\$DEPLOYED_TAG"/);
+    assert.equal(doc.env.DEPLOYED_TAG, 'convex-deployed');
+
+    // Ordering is load-bearing: recording before the deploy would mark code
+    // live that never shipped.
+    const stepNames = doc.jobs.deploy.steps.map((step) => step.name ?? step.id ?? '');
+    assert.ok(
+      stepNames.indexOf('Convex deploy (prod)') < stepNames.indexOf('Record the deployed commit'),
+      'the baseline must be recorded only after a successful deploy',
+    );
+  });
+
+  it('stays healthy when the deployed baseline already matches main', () => {
+    const results = checkPostmergeDeploys({
+      repository: 'koala73/worldmonitor',
+      gh: (args) => {
+        const joined = args.join(' ');
+        if (/workflows\/(deploy-railway-reconcile-control|deploy-worker)\.yml\/runs/.test(joined)) {
+          return JSON.stringify({
+            workflow_runs: [{
+              id: 1, created_at: '2026-08-29T13:00:00Z', conclusion: 'success', run_attempt: 1, head_sha: 'f'.repeat(40),
+            }],
+          });
+        }
+        if (/actions\/runs\/1\/attempts/.test(joined)) {
+          return jobsPayload([{ name: 'Wrangler deploy', conclusion: 'success', status: 'completed' }]);
+        }
+        return incidentGh()(args);
+      },
+      git: () => '',
+      now: Date.parse('2026-08-29T13:40:00Z'),
+    });
+
+    const convex = results.find((result) => result.workflow === 'convex-deploy.yml');
+    assert.equal(convex.state, 'OK');
+    assert.equal(convex.verdict, 'DEPLOY_SKIPPED_LEGIT');
+  });
 });

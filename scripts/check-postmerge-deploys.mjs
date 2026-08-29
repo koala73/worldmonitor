@@ -360,18 +360,6 @@ export function readRunJobs({ gh, repository, runId, runAttempt }) {
 }
 
 /**
- * Did the diff between `parent` and `head` touch `pathPrefix`?
- *
- * Returns a boolean, never a maybe, but the caller must treat a read failure
- * (a checkout too shallow to reach the parent, a missing object) as ALARM —
- * a skipped deploy whose skip reason cannot be verified must not resolve to
- * healthy. `git` is injected for testability.
- */
-export function diffTouchesPath({ git, parentSha, headSha, pathPrefix }) {
-  return diffTouchesPaths({ git, baseSha: parentSha, headSha, paths: [pathPrefix] });
-}
-
-/**
  * Did any of `paths` change between a deployed baseline and the current tree?
  *
  * Path-filtered workflows can be dormant indefinitely. Their age alone says
@@ -387,6 +375,76 @@ export function diffTouchesPaths({ git, baseSha, headSha, paths }) {
   }
   const result = git(['diff', '--name-only', `${baseSha}`, `${headSha}`, '--', ...paths]);
   return result.trim().length > 0;
+}
+
+// How many successful runs back the deployed-baseline walk will look before it
+// gives up. Each candidate costs one jobs read, so this bounds the API spend
+// against the monitor's `timeout-minutes: 10`. The #7359 incident sat five runs
+// back; 30 leaves room for a much longer burst without pretending an unknown
+// baseline is a known one.
+export const DEPLOY_BASELINE_MAX_RUNS = 30;
+
+/**
+ * The head SHA of the most recent run whose deploy job actually SUCCEEDED —
+ * i.e. what production is currently running. (#7359)
+ *
+ * This is deliberately NOT "the newest run's head". A run can be green with its
+ * deploy job skipped, and a queued run can be cancelled outright by the
+ * concurrency group during a merge burst; neither put anything in production.
+ * Treating either as the baseline is what let a stranded `convex/` change prove
+ * every later skip legitimate.
+ *
+ * Throws when no run in the budget deployed: an unknown baseline is a read
+ * failure the caller must resolve to ALARM, never a healthy pass. Runs that did
+ * not conclude `success` are skipped without spending a jobs read — their deploy
+ * job cannot have succeeded.
+ */
+export function readLastDeployedSha({
+  gh,
+  repository,
+  workflowFile,
+  deployJobName = 'deploy',
+  maxRuns = DEPLOY_BASELINE_MAX_RUNS,
+}) {
+  const payload = JSON.parse(readGithub(gh, [
+    'api',
+    `repos/${repository}/actions/workflows/${workflowFile}/runs?branch=main&per_page=100`,
+  ]));
+  const runs = payload?.workflow_runs;
+  if (!Array.isArray(runs)) {
+    throw new Error(`the run listing for ${workflowFile} was not an object with a workflow_runs array`);
+  }
+  const ordered = [...runs].sort((left, right) => {
+    const leftMs = parseTimestamp(left?.created_at);
+    const rightMs = parseTimestamp(right?.created_at);
+    if (leftMs === null && rightMs === null) return 0;
+    if (leftMs === null) return 1;
+    if (rightMs === null) return -1;
+    return rightMs - leftMs;
+  });
+
+  let inspected = 0;
+  for (const candidate of ordered) {
+    if (candidate?.conclusion !== 'success') continue;
+    if (inspected >= maxRuns) break;
+    inspected += 1;
+    const jobs = readRunJobs({
+      gh,
+      repository,
+      runId: candidate.id,
+      runAttempt: candidate.run_attempt ?? 1,
+    });
+    if (jobs.get(deployJobName)?.conclusion !== 'success') continue;
+    const headSha = candidate.head_sha;
+    if (typeof headSha !== 'string' || headSha.length === 0) {
+      throw new Error(`run ${candidate.id} of ${workflowFile} deployed but has no readable head_sha`);
+    }
+    return headSha;
+  }
+  throw new Error(
+    `no run of ${workflowFile} on main deployed within the last ${inspected} successful run(s) — `
+    + 'the deployed baseline is unknown',
+  );
 }
 
 /**
@@ -525,12 +583,17 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
   if (deploy.conclusion === 'skipped') {
     // A legitimate skip exists only for Convex Deploy: the convex=false path
     // diff. Any other workflow's deploy job must never be skipped, and even
-    // for Convex the skip must be proven against the actual diff — a workflow
-    // edit that widens or narrows the filter would otherwise skip silently.
+    // for Convex the skip must be proven — a workflow edit that widens or
+    // narrows the filter would otherwise skip silently.
+    //
+    // The proof compares the DEPLOYED baseline to current main, not this
+    // push's own diff (#7359). A skip is only legitimate if production already
+    // has everything main has; "this particular push touched nothing" was true
+    // of every push that followed a stranded merge.
     if (workflow.skipProofPath && typeof skipProof === 'function') {
       let skipLegitimate = null;
       try {
-        skipLegitimate = skipProof(run.headSha);
+        skipLegitimate = skipProof();
       } catch (error) {
         skipLegitimate = null;
       }
@@ -539,14 +602,25 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
           state: 'OK',
           verdict: 'DEPLOY_SKIPPED_LEGIT',
           runId: run.runId,
-          detail: `run ${run.runId} skipped the deploy because nothing under ${workflow.skipProofPath} changed`,
+          detail: `run ${run.runId} skipped the deploy and production already has every ${workflow.skipProofPath} change on main`,
+        };
+      }
+      // Proven drift and an unreadable baseline are different alarms: the first
+      // says a deploy is owed, the second says the monitor is blind. Conflating
+      // them sends on-call after the wrong thing.
+      if (skipLegitimate === false) {
+        return {
+          state: 'ALARM',
+          verdict: 'DEPLOY_SKIPPED_BEHIND_BASELINE',
+          runId: run.runId,
+          detail: `run ${run.runId} skipped the deploy, but ${workflow.skipProofPath} changed between the last successful deploy and current main — production is behind`,
         };
       }
       return {
         state: 'ALARM',
         verdict: 'DEPLOY_SKIPPED_UNPROVEN',
         runId: run.runId,
-        detail: `run ${run.runId} skipped the deploy and the skip reason (nothing under ${workflow.skipProofPath} changed) could not be proven against the head diff`,
+        detail: `run ${run.runId} skipped the deploy and the deployed baseline for ${workflow.skipProofPath} could not be read`,
       };
     }
     return {
@@ -598,13 +672,26 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
         });
       }
       const skipProof = workflow.skipProofPath
-        ? (headSha) => {
-          // The parent of the head on main. The checkout has full history with
+        ? () => {
+          // "Is production behind main?", not "did this push touch the path?"
+          // (#7359). The baseline is the head of the last run that actually
+          // deployed, so a stranded change stays visible no matter how many
+          // later pushes legitimately skip. The checkout has full history with
           // no blobs (see the workflow), so `git diff --name-only` needs only
-          // trees. A missing parent is a read failure: throw, and the caller
-          // resolves the skip to ALARM.
-          const parent = git(['rev-parse', '--verify', `${headSha}^`]).trim();
-          return !diffTouchesPath({ git, parentSha: parent, headSha, pathPrefix: workflow.skipProofPath });
+          // trees. An unreadable baseline throws, and the caller resolves the
+          // skip to ALARM rather than healthy.
+          const baseSha = readLastDeployedSha({
+            gh,
+            repository,
+            workflowFile: workflow.file,
+            deployJobName: workflow.deployJobName,
+          });
+          return !diffTouchesPaths({
+            git,
+            baseSha,
+            headSha: 'origin/main',
+            paths: [workflow.skipProofPath],
+          });
         }
         : null;
       results.push({
