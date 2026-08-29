@@ -386,7 +386,7 @@ function isAbsoluteHttpUrl(value) {
   }
 }
 
-function assertDatasetGoogleProperties(html, route, { requireDataset = false } = {}) {
+function assertDatasetGoogleProperties(html, route, { requireDataset = false, requireCatalogLinkage = false } = {}) {
   const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
   if (requireDataset) {
     assert.ok(datasets.length > 0, `${route} must contain a Dataset JSON-LD object`);
@@ -427,9 +427,64 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false } =
       )),
       `${route} Dataset ${index + 1} must link to a specific license URL`,
     );
+
+    if (requireCatalogLinkage) {
+      assert.equal(
+        dataset.isAccessibleForFree,
+        true,
+        `${route} Dataset ${index + 1} must declare isAccessibleForFree`,
+      );
+      assert.ok(
+        dataset.includedInDataCatalog
+          && (
+            isJsonLdType(dataset.includedInDataCatalog, 'DataCatalog')
+            || typeof dataset.includedInDataCatalog['@id'] === 'string'
+          ),
+        `${route} Dataset ${index + 1} must link includedInDataCatalog`,
+      );
+      const measured = Array.isArray(dataset.variableMeasured)
+        ? dataset.variableMeasured
+        : dataset.variableMeasured == null
+          ? []
+          : [dataset.variableMeasured];
+      assert.ok(
+        measured.length > 0,
+        `${route} Dataset ${index + 1} must declare variableMeasured`,
+      );
+      const distributions = Array.isArray(dataset.distribution)
+        ? dataset.distribution
+        : dataset.distribution == null
+          ? []
+          : [dataset.distribution];
+      assert.ok(
+        distributions.some((item) => (
+          isJsonLdType(item, 'DataDownload')
+          && isAbsoluteHttpUrl(item.contentUrl)
+        )),
+        `${route} Dataset ${index + 1} must expose a DataDownload distribution`,
+      );
+      assert.ok(
+        dataset.temporalCoverage || dataset.datePublished,
+        `${route} Dataset ${index + 1} must declare temporalCoverage or datePublished`,
+      );
+      assert.ok(
+        dataset.spatialCoverage,
+        `${route} Dataset ${index + 1} must declare spatialCoverage`,
+      );
+    }
   }
 
   return datasets;
+}
+
+function assertDataCatalogPresent(html, route) {
+  const catalogs = jsonLdObjects(html).filter((entry) => isJsonLdType(entry, 'DataCatalog'));
+  assert.ok(catalogs.length > 0, `${route} must emit a DataCatalog JSON-LD node`);
+  const catalog = catalogs[0];
+  assert.ok(typeof catalog['@id'] === 'string' && catalog['@id'].includes('#data-catalog'), `${route} DataCatalog must use a stable @id`);
+  assert.equal(catalog.isAccessibleForFree, true, `${route} DataCatalog must be free`);
+  assert.ok(typeof catalog.name === 'string' && catalog.name.trim().length > 0, `${route} DataCatalog must have a name`);
+  return catalog;
 }
 
 function decodeHtmlAttribute(value) {
@@ -717,15 +772,32 @@ describe('crawlable corpus generator', () => {
       );
       const datasetRequiredRoutes = new Set([
         ...manifest.sections.countries.routes,
+        ...manifest.sections.chokepoints.routes,
+        ...manifest.sections.crises.routes,
         ...manifest.sections.research.routes,
       ]);
+      const catalogLinkedRoutes = new Set([
+        ...manifest.sections.countries.routes,
+        ...manifest.sections.chokepoints.routes,
+        ...manifest.sections.crises.routes,
+      ]);
       for (const route of generatedRoutes) {
+        const html = read(outDir, `${route.slice(1)}index.html`);
         assertDatasetGoogleProperties(
-          read(outDir, `${route.slice(1)}index.html`),
+          html,
           route,
-          { requireDataset: datasetRequiredRoutes.has(route) },
+          {
+            requireDataset: datasetRequiredRoutes.has(route),
+            requireCatalogLinkage: catalogLinkedRoutes.has(route),
+          },
         );
+        if (catalogLinkedRoutes.has(route)) {
+          assertDataCatalogPresent(html, route);
+        }
       }
+      assertDataCatalogPresent(read(outDir, 'countries/index.html'), '/countries/');
+      assertDataCatalogPresent(read(outDir, 'chokepoints/index.html'), '/chokepoints/');
+      assertDataCatalogPresent(read(outDir, 'crises/index.html'), '/crises/');
 
       for (const path of [
         'countries/index.html',
@@ -753,7 +825,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-08-12">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-08-29">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -788,6 +860,20 @@ describe('crawlable corpus generator', () => {
       const norwayWebPage = norwayLd.find((entry) => entry['@type'] === 'WebPage');
       assert.ok(norwayWebPage?.about?.['@type'] === 'Country' && norwayWebPage.about?.name === 'Norway');
       assert.ok(norwayLd.some((entry) => entry['@type'] === 'BreadcrumbList'));
+      const norwayDataset = collectDatasets(norwayWebPage)[0];
+      assert.ok(norwayDataset, 'country page must expose a Dataset mainEntity');
+      assert.equal(norwayDataset.isAccessibleForFree, true);
+      assert.ok(norwayDataset.includedInDataCatalog?.['@id']?.includes('#data-catalog'));
+      assert.match(
+        JSON.stringify(norwayDataset.distribution),
+        /\/api\/resilience\/v1\/get-resilience-score\?countryCode=NO/,
+      );
+      assert.ok(
+        norwayDataset.spatialCoverage?.geo?.['@type'] === 'GeoShape'
+          || norwayDataset.spatialCoverage?.['@type'] === 'Country',
+        'country Dataset spatialCoverage must identify the country (with GeoShape when bbox exists)',
+      );
+      assertDataCatalogPresent(norway, '/countries/norway/');
 
       const chokepointsIndex = read(outDir, 'chokepoints/index.html');
       // The "N routes" / raw-id card subtitles are gone; cards now describe what each waterway connects.
@@ -1059,7 +1145,38 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(hormuz, /id="app"/, 'chokepoint page must be raw static HTML, not the SPA shell');
 
       const hormuzLd = jsonLdObjects(hormuz);
-      assert.ok(hormuzLd.some((entry) => entry['@type'] === 'WebPage' && entry.about?.['@type'] === 'Place' && entry.about?.name === 'Strait of Hormuz'));
+      const hormuzPage = hormuzLd.find((entry) => entry['@type'] === 'WebPage');
+      assert.ok(hormuzPage?.about?.['@type'] === 'Place' && hormuzPage.about?.name === 'Strait of Hormuz');
+      const hormuzGeos = Array.isArray(hormuzPage.about.geo)
+        ? hormuzPage.about.geo
+        : [hormuzPage.about.geo].filter(Boolean);
+      assert.ok(
+        hormuzGeos.some((geo) => geo?.['@type'] === 'GeoCoordinates'),
+        'chokepoint Place must keep GeoCoordinates',
+      );
+      const hormuzDataset = collectDatasets(hormuzPage)[0];
+      assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
+      const hormuzShapes = [
+        ...hormuzGeos,
+        hormuzDataset?.spatialCoverage?.geo,
+      ].filter((geo) => geo?.['@type'] === 'GeoShape');
+      assert.ok(hormuzShapes.length > 0, 'chokepoint Place/Dataset must include GeoShape corridor extent');
+      assert.ok(
+        typeof hormuzShapes[0].box === 'string' || typeof hormuzShapes[0].line === 'string',
+        'chokepoint GeoShape must declare box or line coordinates',
+      );
+      assert.match(
+        JSON.stringify(hormuzDataset.distribution),
+        /\/api\/supply-chain\/v1\/get-chokepoint-status/,
+      );
+      const additionalProps = Array.isArray(hormuzPage.about.additionalProperty)
+        ? hormuzPage.about.additionalProperty
+        : [hormuzPage.about.additionalProperty].filter(Boolean);
+      assert.ok(
+        additionalProps.some((prop) => prop.name === 'Connects'),
+        'chokepoint Place must expose connects/routes as additionalProperty',
+      );
+      assertDataCatalogPresent(hormuz, '/chokepoints/strait-of-hormuz/');
 
       // A chokepoint with no modelled trade routes must degrade gracefully — never "0 routes".
       const dover = read(outDir, 'chokepoints/dover-strait/index.html');
@@ -1069,6 +1186,7 @@ describe('crawlable corpus generator', () => {
       const crisesIndex = read(outDir, 'crises/index.html');
       assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
       assert.match(crisesIndex, /href="\/crises\/red-sea-security\/"/);
+      assertDataCatalogPresent(crisesIndex, '/crises/');
 
       const redSea = read(outDir, 'crises/red-sea-security/index.html');
       assert.match(redSea, /data-live-crisis/);
@@ -1077,6 +1195,16 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /HAPI\/HDX humanitarian conflict summaries/);
       assert.ok(redSea.includes(liveScriptTag), 'crisis live script must match the production CSP nonce');
       assert.doesNotMatch(redSea, /id="app"/);
+      const redSeaLd = jsonLdObjects(redSea);
+      const redSeaPage = redSeaLd.find((entry) => entry['@type'] === 'WebPage');
+      const redSeaDataset = collectDatasets(redSeaPage)[0];
+      assert.ok(redSeaDataset, 'crisis page must expose a Dataset mainEntity');
+      assert.equal(redSeaDataset.isAccessibleForFree, true);
+      assert.match(
+        JSON.stringify(redSeaDataset.distribution),
+        /\/api\/conflict\/v1\/get-humanitarian-summary\?country_code=/,
+      );
+      assertDataCatalogPresent(redSea, '/crises/red-sea-security/');
 
       const toolsIndex = read(outDir, 'tools/index.html');
       assert.match(toolsIndex, /<h1>Check a current operational signal<\/h1>/);
@@ -1140,8 +1268,8 @@ describe('crawlable corpus generator', () => {
     assert.deepEqual(data.sources.sourceCatalogInputs, SOURCE_CATALOG_LASTMOD_PATHS);
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
-    assert.equal(data.lastmod.countries, '2026-08-12');
-    assert.equal(data.lastmod.research, '2026-08-12');
+    assert.equal(data.lastmod.countries, '2026-08-29');
+    assert.equal(data.lastmod.research, '2026-08-29');
     assert.equal(
       data.lastmod.sources,
       sourcePageLastmod({
