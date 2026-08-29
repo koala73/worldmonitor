@@ -44,7 +44,13 @@ import {
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
-import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
+import {
+  deriveBillingUxState,
+  getReactivationHref,
+  getSubscriptionStatusTone,
+  isSubscriptionCoveringAt,
+  type BillingStatusTone,
+} from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
@@ -109,6 +115,34 @@ export interface UnifiedSettingsConfig {
 
 type TabId = UnifiedSettingsTabId;
 type AccountRequest = { userId: string; generation: number };
+
+/**
+ * Plan-card palette per billing status tone (#7315).
+ *
+ * The tone comes from the shared coverage predicate in billing-state.ts, never
+ * from a status string compared here — a cancelled plan still inside its paid
+ * window is a paying customer and must not be painted like a dead account. The
+ * `33`/`0a` suffixes are the border and background alpha of the base hue.
+ *
+ * `unknown` (a provider status this client does not model) is deliberately the
+ * neutral grey, not red: we are inside the isEntitled() branch, so claiming a
+ * problem we have not established would repeat the bug in a new colour.
+ *
+ * The four hues are the threat-scale values from main.css (--threat-low,
+ * --threat-medium, --threat-info, --threat-critical), so `ending` lands on the
+ * palette's existing "informational" rung rather than inventing a colour.
+ * Kept as literals because this card has always inlined hexes; that also means
+ * it does not pick up the [data-theme="light"] contrast overrides those tokens
+ * carry — pre-existing for all four, and worth a follow-up that moves the whole
+ * card onto the vars rather than a partial switch here.
+ */
+const BILLING_TONE_COLORS: Record<BillingStatusTone, string> = {
+  active: '#22c55e',
+  attention: '#eab308',
+  ending: '#3b82f6',
+  ended: '#ef4444',
+  unknown: '#9ca3af',
+};
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -1013,15 +1047,16 @@ export class UnifiedSettings {
         return this.renderPlanCheckingState();
       }
       const planName = sub?.displayName ?? 'Pro';
+      const now = Date.now();
       // A Business Pro grant invitee has no own subscription row (sub === null)
-      // but IS entitled (we're inside the isEntitled() branch) — treat that as
-      // 'active' rather than falling through to the red "problem" color, which
-      // the ternaries below would otherwise do for every status value that
-      // isn't literally 'active'/'on_hold'.
-      const effectiveStatus = sub?.status ?? 'active';
-      const statusColor = effectiveStatus === 'active' ? '#22c55e' : effectiveStatus === 'on_hold' ? '#eab308' : '#ef4444';
-      const statusBorderColor = effectiveStatus === 'active' ? '#22c55e33' : effectiveStatus === 'on_hold' ? '#eab30833' : '#ef444433';
-      const statusBgColor = effectiveStatus === 'active' ? '#22c55e0a' : effectiveStatus === 'on_hold' ? '#eab3080a' : '#ef44440a';
+      // but IS entitled (we're inside the isEntitled() branch) — they hold a
+      // grant that is working, so paint them like an active plan.
+      const tone: BillingStatusTone = sub === null
+        ? 'active'
+        : getSubscriptionStatusTone(sub, now);
+      const statusColor = BILLING_TONE_COLORS[tone];
+      const statusBorderColor = `${statusColor}33`;
+      const statusBgColor = `${statusColor}0a`;
 
       let statusLine = '';
       if (sub?.currentPeriodEnd) {
@@ -1031,7 +1066,11 @@ export class UnifiedSettings {
         } else if (sub.status === 'on_hold') {
           statusLine = 'On hold -- please update payment method';
         } else if (sub.status === 'cancelled') {
-          statusLine = `Cancelled -- access until ${dateStr}`;
+          // Same predicate as the tone above, so the sentence and the colour
+          // always agree about whether access is still running (#7315).
+          statusLine = isSubscriptionCoveringAt(sub, now)
+            ? `Cancelled -- access until ${dateStr}`
+            : `Cancelled -- access ended ${dateStr}`;
         } else if (sub.status === 'expired') {
           statusLine = 'Expired';
         }
