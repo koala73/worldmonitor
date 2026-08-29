@@ -18,9 +18,10 @@
  *   - cancellation copy: UTC date formatting, plan-neutral body (this step
  *     fires for api_* plans too), dateless fallback
  *   - cancellation retry: the daily scan re-queues a confirmation that never
- *     landed (Resend threw before the ledger write), dedups against the
- *     ledger, and is age-capped so the first deploy doesn't mass-mail every
- *     historic paid-through canceller
+ *     landed (Resend threw before the ledger write, or the webhook skipped
+ *     because RESEND_API_KEY was missing), dedups against the ledger, and is
+ *     age-capped so the first deploy doesn't mass-mail every historic
+ *     paid-through canceller
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -1053,6 +1054,50 @@ describe("cancellation confirmation is durably retried (#7328 review)", () => {
     const sends = resendSends(fetchMock);
     expect(sends).toHaveLength(1);
     expect(sends[0]!.html).toContain("28 September 2026");
+    expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
+  test("a confirmation skipped because the webhook-time key is missing is recovered by the daily scan", async () => {
+    // The webhook only enqueues when RESEND_API_KEY is set. A missing key at
+    // cancellation time leaves a cancelled, still-covering row with no
+    // scheduled send and no ledger — the scan sweep is the recovery path.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-29T10:00:00Z"));
+    delete process.env.RESEND_API_KEY;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const periodEnd = Date.parse("2026-09-28T19:01:10Z");
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: periodEnd,
+      updatedAt: Date.now() - 5000,
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_no_key",
+      eventType: "subscription.cancelled",
+      rawPayload: {
+        data: { subscription_id: SUB_ID, customer: { email: EMAIL } },
+      },
+      timestamp: Date.now(),
+    });
+
+    const scheduledAtWebhook = await t.run(async (ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    expect(scheduledAtWebhook).toHaveLength(0);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(0);
+    expect(await ledgerRows(t)).toHaveLength(0);
+
+    process.env.RESEND_API_KEY = "re_test";
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.html).toContain("28 September 2026");
+    expect(sends[0]!.subject).toContain("28 September 2026");
     expect(await ledgerRows(t)).toHaveLength(1);
   });
 
