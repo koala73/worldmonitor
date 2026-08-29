@@ -280,7 +280,8 @@ test.describe('top-level WebMCP dashboard contract', () => {
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
       expect(tool.schema, `${tool.name} schema`).toMatchObject({ type: 'object' });
       expect(tool.annotations.readOnlyHint, `${tool.name} readOnlyHint`).toBe(
-        ['get_access_context', 'get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        ['get_access_context', 'get_dashboard_context', 'list_map_layers', 'search_dashboard']
+          .includes(tool.name),
       );
       expect(
         Boolean(tool.annotations.untrustedContentHint),

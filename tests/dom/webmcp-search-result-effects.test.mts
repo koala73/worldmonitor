@@ -416,6 +416,14 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
         },
         panels: { mounted: [], enabled: [] },
       }),
+      listMapLayerCatalog: async () => ({
+        variant: 'full',
+        rendererKind: 'deck',
+        enabledLayers: [],
+        liveLayerKeys: [],
+        hasPremium: false,
+        deckGlActive: true,
+      }),
       applyDashboardAction: async () => ({
         ok: true,
         status: 'applied',
