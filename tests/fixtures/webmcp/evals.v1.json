@@ -25,6 +25,9 @@
       "create_dashboard_tab",
       "rename_dashboard_tab",
       "delete_dashboard_tab",
+      "list_mission_presets",
+      "apply_mission_preset",
+      "open_mission_picker",
       "get_access_context",
       "open_sign_in"
     ],
@@ -71,7 +74,10 @@
         "set_panel_enabled",
         "set_time_range",
         "focus_country",
-        "set_map_mode"
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -111,7 +117,10 @@
         "set_panel_enabled",
         "set_time_range",
         "focus_country",
-        "set_map_mode"
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -137,7 +146,10 @@
         "search_dashboard",
         "open_search_result",
         "open_sign_in",
-        "search_procurement"
+        "search_procurement",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -163,7 +175,10 @@
         "search_dashboard",
         "open_search_result",
         "open_sign_in",
-        "search_procurement"
+        "search_procurement",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -199,7 +214,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -255,7 +273,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -292,7 +313,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -318,7 +342,10 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -353,7 +380,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
-        "focus_country"
+        "focus_country",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -407,7 +437,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -443,7 +476,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -486,7 +522,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -523,7 +562,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -558,7 +600,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -594,7 +639,10 @@
         "set_panel_enabled",
         "set_time_range",
         "focus_country",
-        "set_map_mode"
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -635,7 +683,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -692,7 +743,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -741,7 +795,10 @@
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
-        "set_panel_enabled"
+        "set_panel_enabled",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 1,
@@ -782,7 +839,10 @@
         "focus_country",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -806,7 +866,10 @@
         "set_map_view",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -830,7 +893,10 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -862,7 +928,10 @@
         "switch_monitor",
         "open_settings",
         "open_alerts",
-        "list_dashboard_panels"
+        "list_dashboard_panels",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -892,7 +961,10 @@
         "switch_monitor",
         "open_settings",
         "open_alerts",
-        "list_dashboard_panels"
+        "list_dashboard_panels",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -924,7 +996,10 @@
         "switch_monitor",
         "open_settings",
         "open_alerts",
-        "list_dashboard_panels"
+        "list_dashboard_panels",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -964,7 +1039,10 @@
         "open_settings",
         "open_alerts",
         "list_map_layers",
-        "list_dashboard_panels"
+        "list_dashboard_panels",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -994,7 +1072,10 @@
         "open_settings",
         "open_alerts",
         "list_map_layers",
-        "list_dashboard_panels"
+        "list_dashboard_panels",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1022,7 +1103,10 @@
         "switch_monitor",
         "open_alerts",
         "list_map_layers",
-        "list_dashboard_panels"
+        "list_dashboard_panels",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1050,7 +1134,10 @@
         "switch_monitor",
         "open_settings",
         "list_map_layers",
-        "list_dashboard_panels"
+        "list_dashboard_panels",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1079,7 +1166,10 @@
         "switch_monitor",
         "open_settings",
         "open_alerts",
-        "list_map_layers"
+        "list_map_layers",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1110,7 +1200,10 @@
         "switch_monitor",
         "open_settings",
         "open_alerts",
-        "list_map_layers"
+        "list_map_layers",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1139,7 +1232,10 @@
         "select_dashboard_tab",
         "create_dashboard_tab",
         "rename_dashboard_tab",
-        "delete_dashboard_tab"
+        "delete_dashboard_tab",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1173,7 +1269,10 @@
         "search_procurement",
         "select_dashboard_tab",
         "rename_dashboard_tab",
-        "delete_dashboard_tab"
+        "delete_dashboard_tab",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1218,7 +1317,10 @@
         "open_search_result",
         "search_procurement",
         "rename_dashboard_tab",
-        "delete_dashboard_tab"
+        "delete_dashboard_tab",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1253,7 +1355,10 @@
         "search_procurement",
         "select_dashboard_tab",
         "create_dashboard_tab",
-        "rename_dashboard_tab"
+        "rename_dashboard_tab",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -1290,7 +1395,10 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     }
   ]
