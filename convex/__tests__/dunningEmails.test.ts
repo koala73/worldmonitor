@@ -752,8 +752,22 @@ describe("cancellation confirmation email (#7314)", () => {
       rawPayload: { data: { subscription_id: SUB_ID } },
       timestamp: eventTs + 60_000,
     });
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
 
+    // The replay must not even ENQUEUE a second send. Asserting only "one
+    // email went out" leaves the `enteringCancelled` guard untested, because
+    // the ledger would swallow the duplicate at send time — and that ledger
+    // dedup is explicitly best-effort, not exactly-once (two concurrent
+    // invocations can both pass wasDunningStepSent before either records).
+    // The guard is the layer that stops the second invocation existing.
+    // Verified by mutation: dropping `enteringCancelled` turns this red.
+    const pending = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+        (job) => job.state.kind === "pending" || job.state.kind === "inProgress",
+      ),
+    );
+    expect(pending).toHaveLength(0);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(resendSends(fetchMock)).toHaveLength(1);
     expect(await ledgerRows(t)).toHaveLength(1);
   });
@@ -777,8 +791,19 @@ describe("cancellation confirmation email (#7314)", () => {
       rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
       timestamp: Date.now(),
     });
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
 
+    // Assert at the SCHEDULING layer, before draining the queue. The send
+    // action re-checks coverage itself, so a "no email was sent" assertion
+    // alone stays green with the webhook-side guard deleted — it would only
+    // prove the second line of defence. Checking the queue is what pins the
+    // first one (verified by mutation: dropping `stillPaidThrough` from
+    // handleSubscriptionCancelled turns this red).
+    const scheduled = await t.run(async (ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    expect(scheduled).toHaveLength(0);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(resendSends(fetchMock)).toHaveLength(0);
     expect(await ledgerRows(t)).toHaveLength(0);
   });
