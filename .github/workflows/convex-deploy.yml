@@ -114,9 +114,24 @@ jobs:
             exit 0
           fi
           # Authoritative path-scoped diff. `--` separates revisions from
-          # pathspecs, so `convex/` is interpreted as a path filter even if
+          # pathspecs, so these are interpreted as path filters even if
           # something weird is going on with the SHAs.
-          if git diff --name-only "$BEFORE" "$AFTER" -- 'convex/' | grep -q .; then
+          #
+          # `convex/` alone is NOT the deployed bundle. Convex modules import
+          # runtime values from outside it — shared/mcp-attribution,
+          # shared/company-monitoring-*, scripts/lib/company-monitoring-
+          # classification.mjs, src/utils/country-codes — and `convex deploy`
+          # bundles whatever those imports reach. A change to one of them alters
+          # what production runs while touching nothing under convex/, so a
+          # convex/-only filter skips a deploy that was genuinely due. Same
+          # silent-staleness class as #7359, through a different door.
+          # tests/check-postmerge-deploys.test.mjs derives the real set from the
+          # source and fails if this list stops covering it.
+          if git diff --name-only "$BEFORE" "$AFTER" -- \
+              'convex/' \
+              'shared/' \
+              'scripts/lib/company-monitoring-classification.mjs' \
+              'src/utils/country-codes.ts' | grep -q .; then
             echo "convex=true" >> "$GITHUB_OUTPUT"
           else
             echo "convex=false" >> "$GITHUB_OUTPUT"

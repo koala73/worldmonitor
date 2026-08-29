@@ -5,7 +5,7 @@
 // warning, not a healthy pass; git/4xx/ENOENT still fail the job.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
@@ -1077,7 +1077,10 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     // The diff must run from the deployed commit to current main, never from
     // the newest run's parent — that per-push question is what missed it.
     const diff = gitCalls.find((args) => args[0] === 'diff');
-    assert.deepEqual(diff, ['diff', '--name-only', BASELINE_SHA, 'origin/main', '--', 'convex/']);
+    assert.deepEqual(
+      diff,
+      ['diff', '--name-only', BASELINE_SHA, 'origin/main', '--', ...CONVEX.skipProofPaths],
+    );
     assert.ok(
       gitCalls.some((args) => args[0] === 'rev-parse' && args.includes(TAG_REF)),
       'the baseline must come from the deployed tag',
@@ -1145,7 +1148,7 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
       /BEFORE="\$\{\{ github\.event\.before \}\}"/,
       'github.event.before is the per-push baseline that stranded #7344',
     );
-    assert.match(changesStep.run, /git diff --name-only "\$BEFORE" "\$AFTER" -- 'convex\/'/);
+    assert.match(changesStep.run, /git diff --name-only "\$BEFORE" "\$AFTER" --/);
 
     // The monitor and the workflow must name the SAME tag — two sources of
     // truth for "what is live" is the bug this shape exists to prevent.
@@ -1186,6 +1189,60 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
       stepNames.indexOf('Convex deploy (prod)') < stepNames.indexOf('Record the deployed commit'),
       'the baseline must be recorded only after a successful deploy',
     );
+  });
+
+  // The skip proof is only as good as the path list it diffs. `convex/` alone
+  // is not the deployed bundle: convex modules import runtime values from
+  // outside it, and `convex deploy` bundles whatever those imports reach. A file
+  // the bundle contains but the list omits can change what production runs while
+  // the deploy is skipped and the monitor calls that skip legitimate — #7359's
+  // class through a different door.
+  //
+  // This derives the real set from the SOURCE rather than restating the copy in
+  // MONITORED_WORKFLOWS, so a new cross-boundary import fails the test instead
+  // of silently widening the blind spot.
+  it('the convex skip proof covers every path the bundle is built from', () => {
+    const convexDir = new URL('../convex/', import.meta.url);
+    const escaping = new Set();
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === '__tests__' || entry.name === '_generated') continue;
+        const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir);
+        if (entry.isDirectory()) { walk(child); continue; }
+        if (!/\.(ts|mjs|js)$/.test(entry.name)) continue;
+        const source = readFileSync(child, 'utf8');
+        // Only runtime imports matter — a type-only import is erased and never
+        // reaches the bundle.
+        for (const match of source.matchAll(/^\s*import\s+(?!type\s)[^;]*?from\s+["'](\.\.\/\.\.\/[^"']+)["']/gm)) {
+          escaping.add(new URL(match[1], child).pathname.replace(/^.*\/replicated-mixing-cerf\//, ''));
+        }
+      }
+    };
+    walk(convexDir);
+    assert.ok(escaping.size > 0, 'the deriver must actually find the known cross-boundary imports');
+
+    const covered = (target) => CONVEX.skipProofPaths.some(
+      (p) => (p.endsWith('/') ? target.startsWith(p) : target === p || target.startsWith(`${p}.`)),
+    );
+    const uncovered = [...escaping].filter((target) => !covered(target));
+    assert.deepEqual(
+      uncovered,
+      [],
+      'these files are bundled into the Convex deploy but are outside skipProofPaths, so a change to '
+      + 'them would deploy nothing and still read as a legitimate skip. Add them to skipProofPaths '
+      + 'AND to convex-deploy.yml\'s diff pathspec.',
+    );
+
+    // Both halves must agree, or the deployer and the monitor disagree about
+    // what a deploy is even for.
+    const source = readFileSync(new URL('../.github/workflows/convex-deploy.yml', import.meta.url), 'utf8');
+    const changesStep = parseYaml(source).jobs.changes.steps.find((step) => step.id === 'diff');
+    for (const path of CONVEX.skipProofPaths) {
+      assert.ok(
+        changesStep.run.includes(`'${path}'`),
+        `convex-deploy.yml's diff pathspec must include ${path}`,
+      );
+    }
   });
 
   it('the monitor refreshes the tag it reads', () => {

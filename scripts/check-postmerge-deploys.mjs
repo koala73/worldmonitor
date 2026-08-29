@@ -52,10 +52,25 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // `deploy:` with no `name:` override, and the jobs API publishes the id.
     deployJobName: 'deploy',
     // What a legitimate skip of the deploy job means for this workflow:
-    // production must already have every convex/ change on main. Proven against
-    // the deployed baseline below, NOT against the run's own push diff — the
-    // per-push question is what let #7359 strand a merge behind green badges.
-    skipProofPath: 'convex/',
+    // production must already have every change on main under EVERY path the
+    // Convex bundle is built from. Proven against the deployed baseline below,
+    // NOT against the run's own push diff — the per-push question is what let
+    // #7359 strand a merge behind green badges.
+    //
+    // `convex/` alone is NOT the bundle. Deployed modules import runtime values
+    // from outside it (e.g. convex/payments/subscriptionHelpers.ts pulls
+    // normalizeCheckoutAttributionSource from shared/mcp-attribution), so
+    // `convex deploy` bundles those files too. A change to one of them alters
+    // what production runs while touching nothing under convex/ — the same
+    // silent-staleness class as #7359, through a different door. Pinned by
+    // 'the convex skip proof covers every path the bundle is built from', which
+    // derives the real list from the source rather than trusting this copy.
+    skipProofPaths: Object.freeze([
+      'convex/',
+      'shared/',
+      'scripts/lib/company-monitoring-classification.mjs',
+      'src/utils/country-codes.ts',
+    ]),
     // The git tag convex-deploy.yml moves after each successful deploy. Reading
     // the workflow's own marker keeps ONE source of truth for "what is live";
     // re-deriving it from the Actions API drifts from the tag whenever a
@@ -77,7 +92,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // The workflow's own path filter covers workers/railway-reconcile-control/**
     // plus its own file and test. A push touching ONLY those paths must
     // deploy; a deploy job skipped there is an unexpected skip, which alarms.
-    skipProofPath: null,
+    skipProofPaths: null,
     triggerPaths: Object.freeze([
       'workers/railway-reconcile-control/**',
       '.github/workflows/deploy-railway-reconcile-control.yml',
@@ -96,7 +111,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // Same shape: path-filtered push-to-main, no gate anywhere. A missing
     // CLOUDFLARE_API_TOKEN fails it silently like the reconcile Worker's
     // missing secrets did.
-    skipProofPath: null,
+    skipProofPaths: null,
     // MUST mirror the workflow's own `on.push.paths` exactly — this list is what
     // decides whether a deploy was DUE, so anything the workflow deploys on but
     // this list omits is a deploy the monitor cannot see fail. Pinned by
@@ -567,7 +582,7 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
     // push's own diff (#7359). A skip is only legitimate if production already
     // has everything main has; "this particular push touched nothing" was true
     // of every push that followed a stranded merge.
-    if (workflow.skipProofPath && typeof skipProof === 'function') {
+    if (workflow.skipProofPaths && typeof skipProof === 'function') {
       let skipLegitimate = null;
       try {
         skipLegitimate = skipProof();
@@ -600,7 +615,7 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
           state: 'OK',
           verdict: 'DEPLOY_SKIPPED_LEGIT',
           runId: run.runId,
-          detail: `run ${run.runId} skipped the deploy and production already has every ${workflow.skipProofPath} change on main`,
+          detail: `run ${run.runId} skipped the deploy and production already has every bundled change on main (${workflow.skipProofPaths.join(", ")})`,
         };
       }
       // Proven drift and an unreadable baseline are different alarms: the first
@@ -611,14 +626,14 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
           state: 'ALARM',
           verdict: 'DEPLOY_SKIPPED_BEHIND_BASELINE',
           runId: run.runId,
-          detail: `run ${run.runId} skipped the deploy, but ${workflow.skipProofPath} changed between the last successful deploy and current main — production is behind`,
+          detail: `run ${run.runId} skipped the deploy, but ${workflow.skipProofPaths.join(", ")} changed between the last successful deploy and current main — production is behind`,
         };
       }
       return {
         state: 'ALARM',
         verdict: 'DEPLOY_SKIPPED_UNPROVEN',
         runId: run.runId,
-        detail: `run ${run.runId} skipped the deploy and the deployed baseline for ${workflow.skipProofPath} could not be read`,
+        detail: `run ${run.runId} skipped the deploy and the deployed baseline could not be read`,
       };
     }
     return {
@@ -669,7 +684,7 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
           runAttempt: run.runAttempt,
         });
       }
-      const skipProof = workflow.skipProofPath
+      const skipProof = workflow.skipProofPaths
         ? () => {
           // "Is production behind main?", not "did this push touch the path?"
           // (#7359). The baseline is the commit the deploy workflow recorded as
@@ -683,7 +698,7 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
             git,
             baseSha,
             headSha: 'origin/main',
-            paths: [workflow.skipProofPath],
+            paths: workflow.skipProofPaths,
           });
         }
         : null;
