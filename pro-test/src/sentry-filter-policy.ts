@@ -177,6 +177,24 @@ const MODULE_LOAD_FAILURE =
  */
 const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
 /**
+ * A frame that is not a script file: the page document URL itself (`/pro`,
+ * `https://www.worldmonitor.app/pro`) or any http(s) resource served without a
+ * recognized script extension.
+ *
+ * WebKit attributes a MAIN-world injected script — in-app-browser chrome,
+ * WKUserScript content scripts, bookmarklets — to the DOCUMENT URL rather than
+ * to a distinct `.js` URL. Our own code never runs from such a URL: this
+ * bundle's entry is a hashed `/pro/assets/*.js` module chunk. So a stack whose
+ * every non-infra frame is a non-script URL is positive evidence of injection,
+ * not merely the absence of first-party evidence.
+ *
+ * Ported from the dashboard's WORLDMONITOR-V8 rule in `src/bootstrap/sentry-init.ts`.
+ */
+const NON_SCRIPT_URL_FRAME = (filename: string) =>
+  !/\.(?:m|c)?[jt]sx?(?:[?#]|$)/.test(filename)
+  && (/^\/(?!\/)/.test(filename) || /^https?:\/\//.test(filename));
+
+/**
  * Safari's placeholder for a script it refuses to attribute to a real document
  * URL — extension content scripts and injected `eval`/blob contexts. Every
  * frame of this bundle is served from an ordinary `https://` URL, so a masked
@@ -355,6 +373,32 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       && Number.isInteger(rejectedCode)
       && rejectedCode >= JSON_RPC_RESERVED_MIN
       && rejectedCode <= JSON_RPC_RESERVED_MAX) return null;
+
+  // An injected script attributed to the document URL. Instagram's in-app
+  // browser was the observed case (WORLDMONITOR-115): its own chrome script
+  // dereferenced a null iframe — `null is not an object (evaluating
+  // 'e.contentWindow.postMessage')` — with every frame reading `/pro:1` /
+  // `/pro:37` and minified names (`T`, `w`, `i`, `sendMessageToIFrames`), plus
+  // breadcrumbs naming its bridge (`hxp-chat-suppression`, `IAB unified
+  // bridge`). None of those identifiers exists in either bundle.
+  //
+  // This ports the MECHANISM rather than another message. WORLDMONITOR-115 was
+  // the sixth instance of the same dashboard-filters-it / marketing-does-not
+  // gap (-15, -102, -108, -10N, -10T, -107) and every previous fix added one
+  // more string; a frame-shape rule retires the class instead of extending the
+  // list. It is safe here for a stronger reason than on the dashboard:
+  // `pro-test/src` holds no `contentWindow` reference at all, pinned by
+  // `tests/pro-sentry-filter-policy.test.mts`.
+  //
+  // Gated three ways so a real defect still surfaces: the TypeError family
+  // WebKit reports for these faults, `!hasFirstParty` (a genuine bug rides a
+  // `/pro/assets/*.js` frame), and a NON-EMPTY frame list — zero frames is not
+  // "all frames are non-script URLs", and the frameless cases belong to the
+  // rules above.
+  if ((excType === 'TypeError' || /^TypeError:/.test(msg))
+      && !hasFirstParty
+      && nonInfraFrames.length > 0
+      && nonInfraFrames.every((f) => NON_SCRIPT_URL_FRAME(f.filename ?? ''))) return null;
 
   return event;
 }

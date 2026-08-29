@@ -659,3 +659,98 @@ describe('marketing beforeSend — wallet JSON-RPC rejection (WORLDMONITOR-107)'
       `walk must follow the out-of-tree imports, got ${JSON.stringify(shared)}`);
   });
 });
+
+// ─── WORLDMONITOR-115: injected scripts attributed to the document URL ────────
+//
+// Instagram's in-app browser injects its own chrome into the page and its
+// script references a null iframe: `TypeError: null is not an object
+// (evaluating 'e.contentWindow.postMessage')`, on `https://www.worldmonitor.app/pro`,
+// browser tag `Instagram 435.1.0`, with breadcrumbs naming its own bridge
+// (`hxp-chat-suppression Sending message to native bridge` / `Message sent via
+// IAB unified bridge`).
+//
+// WebKit attributes a MAIN-world injected script to the DOCUMENT URL, not to a
+// distinct `.js` file — so every frame reads `/pro:1` / `/pro:37` with minified
+// names (`T`, `w`, `i`, `sendMessageToIFrames`). None of them is a
+// `/pro/assets/*.js` chunk, so `hasFirstParty` is already false; what was
+// missing is a rule that treats "all frames are non-script URLs" as positive
+// evidence of injection.
+//
+// The dashboard has carried exactly this rule since WORLDMONITOR-V8. Porting
+// the MECHANISM rather than the message is the point: this is the sixth
+// instance of the same dashboard-filters-it / marketing-does-not gap
+// (WORLDMONITOR-15, -102, -108, -10N, -10T, -107), and each previous fix added
+// one more string. A frame-shape rule retires the class.
+//
+// Safe here for a stronger reason than on the dashboard: `pro-test/src`
+// contains no `contentWindow` reference at all, so this bundle cannot touch an
+// iframe's content window — asserted below so the claim cannot rot.
+describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () => {
+  /** Verbatim frame shape from the production event. */
+  const instagramFrames = [
+    { filename: '/pro' },
+    { filename: '/pro' },
+    { filename: '/pro' },
+    { filename: '/pro' },
+    { filename: '[native code]' },
+    { filename: '/pro' },
+    { filename: '/pro' },
+  ];
+
+  const injected = (value: string, frames = instagramFrames): PolicyEvent => ({
+    exception: { values: [{ type: 'TypeError', value, stacktrace: { frames } }] },
+  });
+
+  it('drops the verbatim production event', () => {
+    assert.equal(
+      marketingBeforeSend(injected("null is not an object (evaluating 'e.contentWindow.postMessage')")),
+      null,
+    );
+  });
+
+  it('drops the same shape served from the absolute document URL', () => {
+    // WebKit sometimes reports the full URL rather than the path.
+    const abs = instagramFrames.map((f) =>
+      f.filename === '/pro' ? { filename: 'https://www.worldmonitor.app/pro' } : f);
+    assert.equal(marketingBeforeSend(injected('undefined is not an object (evaluating \'s[e]\')', abs)), null);
+  });
+
+  it('KEEPS the same message when a marketing bundle chunk is on the stack', () => {
+    // The load-bearing control. A real first-party TypeError rides
+    // /pro/assets/*.js and must still report — delete the hasFirstParty half of
+    // the rule and this goes red.
+    const withOurs = [...instagramFrames, { filename: '/pro/assets/index-A1b2C3.js' }];
+    assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'e.contentWindow.postMessage\')', withOurs)) !== null);
+  });
+
+  it('KEEPS a non-TypeError with the same frames', () => {
+    // Scoped to the family WebKit reports for injected-script faults; a
+    // first-party Error thrown from an inline handler is not covered.
+    const ev: PolicyEvent = {
+      exception: { values: [{ type: 'Error', value: 'checkout failed', stacktrace: { frames: instagramFrames } }] },
+    };
+    assert.ok(marketingBeforeSend(ev) !== null);
+  });
+
+  it('KEEPS a TypeError whose frames are real script files', () => {
+    // Absence of a `.js` frame is the evidence; a stack full of them is not
+    // injection, wherever it came from.
+    const scripts = [{ filename: 'https://cdn.example.com/widget.js' }, { filename: '/pro/assets/x-Ab12Cd.js' }];
+    assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'x.y\')', scripts)) !== null);
+  });
+
+  it('KEEPS a TypeError with no frames at all', () => {
+    // Zero frames is not "all frames are non-script URLs". Other rules own the
+    // frameless cases; this one must not quietly widen to them.
+    assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'a.b\')', [])) !== null);
+  });
+
+  it('pins the marketing bundle as contentWindow-free, which licenses the rule', () => {
+    const files = readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('sentry-filter-policy'))
+      .map((f) => readFileSync(resolve(root, 'pro-test/src', f), 'utf-8'))
+      .join('\n');
+    assert.ok(!/contentWindow/.test(files),
+      'the marketing bundle now touches an iframe contentWindow — re-derive the WORLDMONITOR-115 rule');
+  });
+});
