@@ -676,6 +676,15 @@ describe('crawlable corpus generator', () => {
       assert.deepEqual(corpusLocations, manifestLocations);
       const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
+      assert.equal(
+        manifest.sections.changelog.routes.length,
+        1,
+        'sitemap changelog inventory must only include the index',
+      );
+      assert.ok(
+        manifest.sections.changelog.paginationRoutes.length >= 1,
+        'generator must still emit changelog pagination routes',
+      );
       assert.ok(manifest.sections.glossary.count >= 15, `expected existing glossary manifest entries, got ${manifest.sections.glossary.count}`);
 
       const searchLandingRoutes = [
@@ -1123,7 +1132,12 @@ describe('crawlable corpus generator', () => {
       assert.match(changelogIndex, /<link rel="next" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/page\/2\/">/);
       assert.match(changelogIndex, /server scorer read non-existent/);
       assert.match(changelogIndex, /methodology_version is now v8/);
+      assert.match(
+        changelogIndex,
+        /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/,
+      );
       assert.match(changelogPage2, /<link rel="prev" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/">/);
+      assert.match(changelogPage2, /name="robots" content="noindex, follow"/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }

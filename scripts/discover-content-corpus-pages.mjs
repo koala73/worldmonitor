@@ -56,6 +56,9 @@ const hasNoIndex = (html) => {
   return /(?:^|,)\s*noindex\b/i.test(robots ?? '');
 };
 
+const isChangelogPaginationPath = (pathname) =>
+  /^\/(?:reference\/)?changelog\/page\/\d+\/$/.test(pathname);
+
 const toPublicPath = (relativePath) => {
   const normalized = relativePath.split(sep).join('/');
   if (normalized.endsWith('/index.html')) {
@@ -158,14 +161,53 @@ const validateChangelogPagination = (pages) => {
 
 export function discoverContentCorpusPages({ publicDir = join(REPO_ROOT, 'public') } = {}) {
   const pages = [];
+  const changelogPagesForValidation = [];
   for (const prefix of CONTENT_CORPUS_PREFIXES) {
     const prefixDir = join(publicDir, prefix);
     for (const file of walkHtmlFiles(prefixDir)) {
+      const relativePath = relative(publicDir, file);
+      const publicPath = toPublicPath(relativePath);
+      const html = readFileSync(file, 'utf8');
+      const noindex = hasNoIndex(html);
+      const isChangelogPagination = isChangelogPaginationPath(publicPath);
+
+      // Changelog page/2+ are intentionally noindex and omitted from the
+      // sitemap (#7380). Still validate their prev/next graph when present.
+      if (noindex && isChangelogPagination) {
+        const canonicalHref = getLinkHref(html, 'canonical');
+        if (!canonicalHref) {
+          throw new Error(relativePath.split(sep).join('/') + ' is missing a canonical link');
+        }
+        changelogPagesForValidation.push({
+          loc: normalizeHref(canonicalHref),
+          file: relativePath.split(sep).join('/'),
+          prevHref: (() => {
+            const href = getLinkHref(html, 'prev');
+            return href ? normalizeHref(href) : null;
+          })(),
+          nextHref: (() => {
+            const href = getLinkHref(html, 'next');
+            return href ? normalizeHref(href) : null;
+          })(),
+        });
+        continue;
+      }
+
+      if (noindex) {
+        throw new Error(relativePath.split(sep).join('/') + ' is noindex but would be added to sitemap');
+      }
+
+      // Also omit indexable changelog pagination if a future generator forgets noindex.
+      if (isChangelogPagination) continue;
+
       pages.push(buildPageRecord({ file, publicDir }));
     }
   }
 
   pages.sort((a, b) => a.loc.localeCompare(b.loc));
-  validateChangelogPagination(pages);
+  validateChangelogPagination([
+    ...pages.filter((page) => changelogPageNumber(page) != null),
+    ...changelogPagesForValidation,
+  ]);
   return pages;
 }

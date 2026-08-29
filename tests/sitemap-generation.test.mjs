@@ -28,7 +28,7 @@ function isolatedGitEnv(overrides = {}) {
   return env;
 }
 
-function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots = 'index, follow' }) {
+function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots = 'index, follow, max-image-preview:large, max-snippet:-1' }) {
   const target = join(publicDir, relativePath);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(

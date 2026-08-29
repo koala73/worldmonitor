@@ -660,30 +660,33 @@ describe('crawlable content corpus deployment contracts', () => {
       );
       writeFixturePage(
         publicDir,
-        'reference/changelog/page/1/index.html',
-        '<link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/1/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
+        'reference/changelog/index.html',
+        '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
       );
       writeFixturePage(
         publicDir,
         'reference/changelog/page/2/index.html',
-        '<link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/2/" /><link rel="prev" href="https://www.worldmonitor.app/reference/changelog/page/1/" />'
+        '<meta name="robots" content="noindex, follow" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/2/" /><link rel="prev" href="https://www.worldmonitor.app/reference/changelog/" />'
       );
 
       const pages = discoverContentCorpusPages({ publicDir });
       const locations = pages.map((page) => page.loc).sort();
       assert.deepEqual(locations, [
-        'https://www.worldmonitor.app/reference/changelog/page/1/',
-        'https://www.worldmonitor.app/reference/changelog/page/2/',
+        'https://www.worldmonitor.app/reference/changelog/',
         'https://www.worldmonitor.app/chokepoints/suez-canal/',
         'https://www.worldmonitor.app/crises/ukraine-war/',
         'https://www.worldmonitor.app/countries/ukraine/',
         'https://www.worldmonitor.app/tools/natural-hazard-pulse/',
       ].sort());
+      assert.ok(
+        !locations.some((loc) => loc.includes('/changelog/page/')),
+        'paginated changelog URLs must be omitted from the sitemap inventory',
+      );
 
       writeFixturePage(
         publicDir,
         'reference/changelog/page/3/index.html',
-        '<link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/3/" />'
+        '<meta name="robots" content="noindex, follow" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/3/" />'
       );
       assert.throws(
         () => discoverContentCorpusPages({ publicDir }),
