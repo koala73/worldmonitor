@@ -48,7 +48,6 @@ import {
   deriveBillingUxState,
   getReactivationHref,
   getSubscriptionStatusTone,
-  isBusinessSeatOwnerAt,
   type BillingStatusTone,
 } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
@@ -629,11 +628,16 @@ export class UnifiedSettings {
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = onSubscriptionChange(() => {
       this.replaceUpgradeSection();
-      if (isBusinessSeatOwnerAt(getSubscription(), Date.now())) {
+      // Ask for seats whenever the account has ANY subscription row, and let
+      // the server decide who owns seats. Filtering here on the display row's
+      // plan/status would miss an owner whose Business row is outranked by
+      // another subscription (see BusinessSeatsSection.businessSubscriptionId);
+      // free accounts have no row at all, so they still never query.
+      if (getSubscription() !== null) {
         void this.businessSeatsSection.load();
       }
     });
-    if (isBusinessSeatOwnerAt(getSubscription(), Date.now())) {
+    if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
     }
   }
@@ -1110,7 +1114,7 @@ export class UnifiedSettings {
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
           ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
-        ${isBusinessSeatOwnerAt(sub, now) ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
+        ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
     }
 

@@ -78,30 +78,6 @@ export function isSubscriptionCoveringAt(
 }
 
 /**
- * Whether this row entitles its owner to the Business seat-management surface.
- *
- * The client-side mirror of `getCoveringBusinessSubscription` in
- * convex/payments/businessSeats.ts, which authorizes `listSeats` and
- * `inviteSeats` on `planKey === "api_business" && isCoveringAt(s, at)`. Both
- * sides must agree: the server keeps a seat owner authorized through the
- * payment-retry window and through a cancelled-but-paid-through period, and
- * `recomputeEntitlementFromAllSubs` keeps their invitees' grants conferring Pro
- * for exactly that window. A client that gated on `status === 'active'` hid the
- * whole surface from an owner whose team was still on Pro, so they could not
- * see or remove a live seat (#7315 follow-up).
- *
- * This decides UI VISIBILITY only, never authority — every seat mutation
- * re-checks server-side. It is deliberately not an entitlement gate; see the
- * caveat on `isSubscriptionCoveringAt`.
- */
-export function isBusinessSeatOwnerAt(
-  sub: (Pick<BillingSubscriptionSnapshot, 'status' | 'currentPeriodEnd'> & { planKey: string }) | null,
-  at: number,
-): boolean {
-  return sub !== null && sub.planKey === 'api_business' && isSubscriptionCoveringAt(sub, at);
-}
-
-/**
  * How a subscription row should be *painted*, as a tone rather than a colour —
  * the palette stays in the component.
  *

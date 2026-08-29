@@ -103,14 +103,17 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
   });
 });
 
-describe('Business seats surface gates on coverage, not the status string', () => {
-  // The server authorizes listSeats/inviteSeats on
-  // `planKey === "api_business" && isCoveringAt(s, at)`
-  // (convex/payments/businessSeats.ts). Every client gate must mirror that, or
-  // an owner in the payment-retry window or a paid-through cancellation loses
-  // the surface while their invitees are still holding Pro through the grant.
-  // These are source-text locks because both files are DOM modules that cannot
-  // be imported under `tsx --test`; the rendered behaviour is covered by
+describe('Business seats surface defers to the server verdict', () => {
+  // The server scans EVERY subscription row for a covering api_business one
+  // (getCoveringBusinessSubscription, convex/payments/businessSeats.ts) and
+  // reports the outcome as listSeats' `businessSubscriptionId`. The client
+  // cannot reproduce that from getSubscription(), which exposes a single
+  // display row chosen by a sort ranking active < on_hold < ended — so an
+  // owner whose Business row is outranked by another subscription would be
+  // told they own no seats while the server still authorizes them.
+  //
+  // Source-text locks because both files are DOM modules that cannot be
+  // imported under `tsx --test`; the rendered behaviour is covered by
   // tests/dom/business-seats-coverage-gate.test.mts.
   const SEAT_GATE_FILES = [
     'src/components/UnifiedSettings.ts',
@@ -118,27 +121,47 @@ describe('Business seats surface gates on coverage, not the status string', () =
   ];
 
   for (const file of SEAT_GATE_FILES) {
-    it(`${file} never re-derives the seat gate from a status string`, async () => {
+    it(`${file} never re-derives seat ownership from the display row`, async () => {
       const src = await read(file);
       assert.doesNotMatch(
         src,
-        /planKey === 'api_business'\s*&&\s*sub\??\.status === 'active'/,
-        `${file} must call isBusinessSeatOwnerAt instead of comparing status to 'active'`,
-      );
-    });
-
-    it(`${file} calls the shared seat-owner predicate`, async () => {
-      const src = await read(file);
-      assert.match(
-        src,
-        /isBusinessSeatOwnerAt\(/,
-        `${file} should gate the seats surface on the shared predicate`,
-      );
-      assert.match(
-        src,
-        /import \{[^}]*isBusinessSeatOwnerAt[^}]*\} from '@\/services\/billing-state'/s,
-        `${file} should import isBusinessSeatOwnerAt from billing-state`,
+        /planKey === 'api_business'/,
+        `${file} must not decide seat ownership from the display subscription's plan; `
+          + 'the server reports it via listSeats.businessSubscriptionId',
       );
     });
   }
+
+  it('BusinessSeatsSection renders only on the server-reported subscription id', async () => {
+    const src = await read('src/components/BusinessSeatsSection.ts');
+    assert.match(
+      src,
+      /this\.businessSubscriptionId = result\.businessSubscriptionId;/,
+      'the server verdict must be captured from the listSeats result',
+    );
+    assert.match(
+      src,
+      /if \(typeof this\.businessSubscriptionId !== 'string'\) return '';/,
+      'rendering must gate on the captured server verdict',
+    );
+  });
+
+  it('BusinessSeatsSection keeps a confirmed owner visible across a failed refresh', async () => {
+    const src = await read('src/components/BusinessSeatsSection.ts');
+    const loadBody = src.slice(src.indexOf('async load('), src.indexOf('renderInPlace()'));
+    assert.doesNotMatch(
+      loadBody,
+      /catch[\s\S]*this\.businessSubscriptionId = (undefined|null)/,
+      'a transient listSeats failure must not clear a previously confirmed owner verdict',
+    );
+  });
+
+  it('UnifiedSettings asks for seats whenever the account has any subscription', async () => {
+    const src = await read('src/components/UnifiedSettings.ts');
+    assert.match(
+      src,
+      /if \(getSubscription\(\) !== null\) \{\s*\n\s*void this\.businessSeatsSection\.load\(\);/,
+      'the load pre-filter must be subscription presence, not the display row plan/status',
+    );
+  });
 });

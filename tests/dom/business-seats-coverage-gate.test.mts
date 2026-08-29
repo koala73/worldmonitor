@@ -1,37 +1,52 @@
 /**
  * The Business seats UI must appear exactly when the SERVER would authorize a
- * seat operation, not when the status string happens to read 'active'.
+ * seat operation.
  *
- * convex/payments/businessSeats.ts:88 authorizes on
- * `planKey === "api_business" && isCoveringAt(s, at)`, which includes an
- * on_hold row (payment retry window) and a cancelled-but-paid-through row.
- * The client gated on `status === 'active'`, so an owner in either window lost
- * the entire seats surface — while their invitees' grants stayed alive
- * (subscriptionHelpers.ts:419 keeps a grant conferring Pro for exactly the
- * covering window), leaving a team on Pro that the owner could not see or
- * manage. CONCEPTS.md § Covering Subscription requires the client to mirror
- * the server rather than re-derive from status-string intuition.
+ * convex/payments/businessSeats.ts scans EVERY subscription row for a covering
+ * `api_business` one. The client cannot reproduce that from `getSubscription()`,
+ * which returns a single DISPLAY row chosen by a sort that ranks
+ * active(0) < on_hold(1) < ended(2) and takes the first
+ * (convex/payments/billing.ts:622-637). So an owner holding an active
+ * `pro_monthly` alongside an `on_hold` or paid-through-cancelled `api_business`
+ * gets the pro_monthly as their display row — and any client-side predicate
+ * over that row answers "not an owner" while the server still authorizes.
+ * A `cancelled` Business row can even be outranked by an `expired` row with a
+ * later recorded period end, so no display-row predicate is sound.
  *
- * Harness mirrors unified-settings-billing-status-colour.test.mts.
+ * The gate is therefore the server's own verdict: `listSeats` returns
+ * `businessSubscriptionId` non-null exactly when getCoveringBusinessSubscription
+ * found a covering Business row. This locks that the client asks rather than
+ * re-derives, which is what CONCEPTS.md § Covering Subscription requires.
+ *
+ * Matters because an invitee's grant keeps conferring Pro for exactly the
+ * covering window (subscriptionHelpers.ts:419): hiding the surface strands a
+ * team on Pro that the owner cannot see, remove, or add to.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+// No initTestI18n(): BusinessSeatsSection renders hardcoded copy, so loading
+// the locale dictionaries here would only add startup cost to a suite whose
+// slowest file already sits near the 15s budget.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { initTestI18n } from './helpers/i18n.mts';
 import type { SubscriptionInfo } from '@/services/billing';
 
 const DAY = 86_400_000;
 
-/** Read lazily by the billing mock; set per case. */
+/** Both read lazily by the billing mock; set per case. */
 let mockSubscription: SubscriptionInfo | null = null;
+let serverBusinessSubscriptionId: string | null = null;
+let listSeatsError: Error | null = null;
 
 vi.mock('@/services/billing', () => ({
   getSubscription: () => mockSubscription,
-  listBusinessSeats: async () => ({
-    businessSubscriptionId: null,
-    ownerDomain: null,
-    ownerIsCorporateDomain: false,
-    seats: [],
-  }),
+  listBusinessSeats: async () => {
+    if (listSeatsError) throw listSeatsError;
+    return {
+      businessSubscriptionId: serverBusinessSubscriptionId,
+      ownerDomain: 'example.com',
+      ownerIsCorporateDomain: true,
+      seats: [],
+    };
+  },
   inviteBusinessSeats: async () => ({ invited: [] }),
   removeBusinessSeat: async () => ({ status: 'removed' as const }),
 }));
@@ -51,14 +66,9 @@ function subscription(overrides: Partial<SubscriptionInfo> = {}): SubscriptionIn
 
 let section: InstanceType<typeof BusinessSeatsSection>;
 
-/** The seats surface renders as a non-empty string, or '' when gated off. */
 function rendersSeatsUi(): boolean {
   return section.renderContent() !== '';
 }
-
-beforeAll(async () => {
-  await initTestI18n();
-});
 
 beforeEach(() => {
   const overlay = document.createElement('div');
@@ -69,55 +79,92 @@ beforeEach(() => {
 
 afterEach(() => {
   mockSubscription = null;
+  serverBusinessSubscriptionId = null;
+  listSeatsError = null;
   document.body.replaceChildren();
 });
 
-describe('Business seats UI coverage gate', () => {
-  it('renders for a renewing Business plan', () => {
+describe('Business seats UI follows the server verdict', () => {
+  it('renders once the server confirms a covering Business subscription', async () => {
     mockSubscription = subscription({ status: 'active' });
+    serverBusinessSubscriptionId = 'sub_biz_1';
+    await section.load();
     expect(rendersSeatsUi()).toBe(true);
   });
 
-  it('renders for a cancelled-but-paid-through Business plan', () => {
-    // The owner still has coverage and their invitees still hold Pro through
-    // the grant; hiding the surface strands a live team.
+  it('renders when the Business row is hidden behind another display subscription', async () => {
+    // The owner's display row is an active pro_monthly; their on_hold Business
+    // row sorts second and never reaches the client. The server still finds it.
+    mockSubscription = subscription({ planKey: 'pro_monthly', status: 'active' });
+    serverBusinessSubscriptionId = 'sub_biz_hidden';
+    await section.load();
+    expect(rendersSeatsUi()).toBe(true);
+  });
+
+  it('renders for a paid-through-cancelled Business owner', async () => {
     mockSubscription = subscription({
       status: 'cancelled',
       currentPeriodEnd: Date.now() + 20 * DAY,
     });
+    serverBusinessSubscriptionId = 'sub_biz_cancelled';
+    await section.load();
     expect(rendersSeatsUi()).toBe(true);
   });
 
-  it('renders for an on_hold Business plan (payment retry window keeps coverage)', () => {
-    mockSubscription = subscription({
-      status: 'on_hold',
-      currentPeriodEnd: Date.now() + 5 * DAY,
-    });
+  it('renders for an on_hold Business owner (retry window keeps coverage)', async () => {
+    mockSubscription = subscription({ status: 'on_hold' });
+    serverBusinessSubscriptionId = 'sub_biz_onhold';
+    await section.load();
     expect(rendersSeatsUi()).toBe(true);
   });
 
-  it('hides once a cancelled Business plan is past its paid period', () => {
+  it('stays hidden when the server reports no covering Business subscription', async () => {
+    // Even though the display row still reads api_business, coverage has ended
+    // and the server is the authority.
     mockSubscription = subscription({
       status: 'cancelled',
       currentPeriodEnd: Date.now() - DAY,
     });
+    serverBusinessSubscriptionId = null;
+    await section.load();
     expect(rendersSeatsUi()).toBe(false);
   });
 
-  it('hides for an expired Business plan, even with a future period end', () => {
-    // `expired` never covers, whatever its recorded period end.
-    mockSubscription = subscription({
-      status: 'expired',
-      currentPeriodEnd: Date.now() + 30 * DAY,
-    });
+  it('stays hidden before any load has settled', () => {
+    // No verdict yet is not the same as a positive verdict.
+    mockSubscription = subscription({ status: 'active' });
     expect(rendersSeatsUi()).toBe(false);
   });
 
-  it('hides for a non-Business plan and for no subscription at all', () => {
-    mockSubscription = subscription({ planKey: 'pro_monthly' });
-    expect(rendersSeatsUi()).toBe(false);
+  it('keeps a known owner visible when a later refresh fails', async () => {
+    mockSubscription = subscription({ status: 'active' });
+    serverBusinessSubscriptionId = 'sub_biz_1';
+    await section.load();
+    expect(rendersSeatsUi()).toBe(true);
 
-    mockSubscription = null;
+    // A transient failure must not silently strip an owner's seat surface;
+    // the error belongs inside the section, not instead of it.
+    listSeatsError = new Error('network');
+    await section.load();
+    expect(rendersSeatsUi()).toBe(true);
+    expect(section.renderContent()).toContain('network');
+  });
+
+  it('stays hidden when the very first load fails', async () => {
+    // Never confirmed an owner, so rendering a seats surface would be a guess.
+    mockSubscription = subscription({ status: 'active' });
+    listSeatsError = new Error('network');
+    await section.load();
+    expect(rendersSeatsUi()).toBe(false);
+  });
+
+  it('drops the surface on account change until the new account is confirmed', async () => {
+    mockSubscription = subscription({ status: 'active' });
+    serverBusinessSubscriptionId = 'sub_biz_1';
+    await section.load();
+    expect(rendersSeatsUi()).toBe(true);
+
+    section.resetForAccountChange();
     expect(rendersSeatsUi()).toBe(false);
   });
 });
