@@ -1680,7 +1680,11 @@ describe('webmcp App.ts binding invariants', () => {
       assert.equal(text.includes('waitForDashboardReady'), false, `${name} must not wait for the map`);
     }
     callByExpression(getAccessContext, appFile, 'getWebMcpAccessContext');
-    callByExpression(openSignIn, appFile, 'openWebMcpSignIn');
+    assertCallArguments(
+      callByExpression(openSignIn, appFile, 'openWebMcpSignIn'),
+      appFile,
+      ['execution?.signal'],
+    );
   });
 
   it('resolves UI readiness after Phase 4 and wakes pending tools during destroy cleanup', () => {

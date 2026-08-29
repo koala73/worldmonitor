@@ -83,7 +83,7 @@ export async function openWebMcpSignIn(signal?: AbortSignal): Promise<OpenSignIn
   }
 
   throwIfWebMcpAborted(signal);
-  const opened = await openSignInAndWait();
+  const opened = await raceWebMcpAbort(openSignInAndWait(signal), signal);
   if (!opened) return { ok: false, status: 'denied', reason: 'clerk_unavailable' };
   return { ok: true, status: 'opened' };
 }

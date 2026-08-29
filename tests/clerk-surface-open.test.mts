@@ -115,6 +115,70 @@ describe('waitForClerkSurfaceOpen', () => {
     assert.equal(opens, 1);
   });
 
+  it('does not report opened until isOpen is true', async () => {
+    let visible = false;
+    let sawPending = false;
+    const pending = waitForClerkSurfaceOpen(
+      () => {},
+      400,
+      (cb) => { setTimeout(cb, 15); },
+      { isOpen: () => visible },
+    );
+    const raced = await Promise.race([
+      pending.then((opened) => ({ opened })),
+      new Promise<{ pending: true }>((resolve) => {
+        setTimeout(() => resolve({ pending: true }), 40);
+      }),
+    ]);
+    if ('pending' in raced) {
+      sawPending = true;
+      visible = true;
+    }
+    assert.equal(sawPending, true);
+    assert.equal(await pending, true);
+  });
+
+  it('returns false when open succeeds but the modal never appears', async () => {
+    const result = await waitForClerkSurfaceOpen(
+      () => {},
+      30,
+      (cb) => { setTimeout(cb, 5); },
+      { isOpen: () => false },
+    );
+    assert.equal(result, false);
+  });
+
+  it('does not open when the signal is already aborted', async () => {
+    let opens = 0;
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      waitForClerkSurfaceOpen(
+        () => { opens += 1; },
+        100,
+        () => {},
+        { signal: controller.signal },
+      ),
+      (error: unknown) => error instanceof Error && error.name === 'AbortError',
+    );
+    assert.equal(opens, 0);
+  });
+
+  it('rejects when the signal aborts before the modal is present', async () => {
+    const controller = new AbortController();
+    const pending = waitForClerkSurfaceOpen(
+      () => {},
+      400,
+      (cb) => { setTimeout(cb, 15); },
+      { isOpen: () => false, signal: controller.signal },
+    );
+    setTimeout(() => controller.abort(), 20);
+    await assert.rejects(
+      pending,
+      (error: unknown) => error instanceof Error && error.name === 'AbortError',
+    );
+  });
+
   it('retries via setTimeout even when requestAnimationFrame never fires', async () => {
     const previousRaf = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');
     Object.defineProperty(globalThis, 'requestAnimationFrame', {
