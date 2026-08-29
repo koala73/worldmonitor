@@ -4,6 +4,9 @@ import { describe, it } from 'node:test';
 
 import {
   applyWebMcpDashboardAction,
+  applyWebMcpOpenAlerts,
+  applyWebMcpOpenSettings,
+  applyWebMcpSwitchMonitor,
   getWebMcpDashboardContext,
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
@@ -14,7 +17,8 @@ import {
   globeAltitudeToMapZoom,
   mapZoomToGlobeAltitude,
 } from '../src/utils/globe-zoom.ts';
-import type { AppContext } from '../src/app/app-context.ts';
+import type { AppContext, UnifiedSettingsController } from '../src/app/app-context.ts';
+import { SITE_VARIANTS } from '../src/config/variant.ts';
 import {
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
@@ -765,5 +769,148 @@ describe('WebMCP live dashboard bindings', () => {
       assert.equal(ctx.mapLayers[allowed], true, variant);
       assert.equal(ctx.mapLayers[disallowed], false, variant);
     }
+  });
+
+  it('switches every stable monitor key and overlays the destination on context', async () => {
+    assert.deepEqual([...SITE_VARIANTS], ['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
+    const navigated: string[] = [];
+    for (const monitor of SITE_VARIANTS) {
+      const result = await applyWebMcpSwitchMonitor(
+        makeContext(),
+        'full',
+        monitor,
+        async (variant) => {
+          navigated.push(variant);
+          return variant === 'full' ? 'none' : 'reload';
+        },
+      );
+      assert.equal(result.ok, true, monitor);
+      assert.equal(result.status, 'applied', monitor);
+      assert.equal(result.destination, monitor, monitor);
+      assert.equal(result.context.variant, monitor, monitor);
+      assert.equal(result.navigation, monitor === 'full' ? 'none' : 'reload', monitor);
+      assert.equal(result.message, monitor === 'full' ? 'Already on that monitor.' : 'Switched monitor.', monitor);
+    }
+    assert.deepEqual(navigated, [...SITE_VARIANTS]);
+  });
+
+  it('denies a missing visible monitor link without navigating', async () => {
+    let navigated = false;
+    const result = await applyWebMcpSwitchMonitor(
+      makeContext(),
+      'full',
+      'tech',
+      async () => {
+        navigated = true;
+        return 'unavailable';
+      },
+    );
+    assert.equal(navigated, true);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'unavailable');
+    assert.equal(result.destination, 'tech');
+    assert.equal(result.context.variant, 'full');
+    assert.match(result.message, /not available/i);
+    assert.equal(/user|email|plan|account/i.test(result.message), false);
+  });
+
+  it('opens settings and alerts without mutating overlay contents', () => {
+    const calls: string[] = [];
+    const unifiedSettings = {
+      open(tab?: string) {
+        calls.push(tab ?? 'default');
+      },
+      close() {
+        calls.push('close');
+      },
+      hasPendingChanges: () => false,
+      refreshPanelToggles() {
+        calls.push('refresh');
+      },
+      getButton: () => ({}) as HTMLButtonElement,
+      destroy() {
+        calls.push('destroy');
+      },
+    } as UnifiedSettingsController;
+    const ctx = makeContext({ unifiedSettings, isDesktopApp: false });
+
+    const settings = applyWebMcpOpenSettings(ctx, 'full');
+    assert.equal(settings.ok, true);
+    assert.equal(settings.destination, 'settings');
+    assert.equal(settings.overlay, 'open');
+    assert.equal(settings.tab, 'settings');
+    assert.deepEqual(calls, ['settings']);
+
+    const alerts = applyWebMcpOpenAlerts(ctx, 'full');
+    assert.equal(alerts.ok, true);
+    assert.equal(alerts.destination, 'alerts');
+    assert.equal(alerts.overlay, 'open');
+    assert.equal(alerts.tab, 'notifications');
+    assert.deepEqual(calls, ['settings', 'notifications']);
+  });
+
+  it('keeps alerts unavailable on desktop without opening settings', () => {
+    const calls: string[] = [];
+    const unifiedSettings = {
+      open(tab?: string) {
+        calls.push(tab ?? 'default');
+      },
+      close() {},
+      hasPendingChanges: () => false,
+      refreshPanelToggles() {},
+      getButton: () => ({}) as HTMLButtonElement,
+      destroy() {},
+    } as UnifiedSettingsController;
+
+    const result = applyWebMcpOpenAlerts(
+      makeContext({ unifiedSettings, isDesktopApp: true }),
+      'full',
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'unavailable');
+    assert.equal(result.destination, 'alerts');
+    assert.deepEqual(calls, []);
+    assert.equal(/user|email|plan|account/i.test(result.message), false);
+  });
+
+  it('returns dashboard context without a map and denies destroyed navigation', async () => {
+    const settingsCalls: string[] = [];
+    const settings = applyWebMcpOpenSettings(makeContext({
+      map: null,
+      unifiedSettings: {
+        open(tab?: string) {
+          settingsCalls.push(tab ?? 'default');
+        },
+        close() {},
+        hasPendingChanges: () => false,
+        refreshPanelToggles() {},
+        getButton: () => ({}) as HTMLButtonElement,
+        destroy() {},
+      } as UnifiedSettingsController,
+    }), 'full');
+    assert.equal(settings.ok, true);
+    assert.equal(settings.context.variant, 'full');
+    assert.deepEqual(settings.context.map.enabledLayers, []);
+    assert.deepEqual(settingsCalls, ['settings']);
+
+    let navigated = false;
+    const destroyed = await applyWebMcpSwitchMonitor(
+      makeContext({ isDestroyed: true }),
+      'full',
+      'tech',
+      async () => {
+        navigated = true;
+        return 'reload';
+      },
+    );
+    assert.equal(navigated, false);
+    assert.equal(destroyed.ok, false);
+    assert.equal(destroyed.reason, 'app_destroyed');
+    assert.equal(applyWebMcpOpenSettings(makeContext({ isDestroyed: true }), 'full').reason, 'app_destroyed');
+    assert.equal(applyWebMcpOpenAlerts(makeContext({ isDestroyed: true }), 'full').reason, 'app_destroyed');
+    assert.equal(applyWebMcpOpenSettings(makeContext({ unifiedSettings: null }), 'full').reason, 'unavailable');
+    assert.equal(applyWebMcpOpenAlerts(makeContext({ unifiedSettings: null }), 'full').reason, 'unavailable');
   });
 });

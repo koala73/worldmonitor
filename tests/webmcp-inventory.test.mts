@@ -50,6 +50,62 @@ function createBindings(overrides: Record<string, unknown> = {}) {
       },
       panels: { mounted: ['map'], enabled: ['map'] },
     }),
+    switchMonitor: async (monitor) => ({
+      ok: true,
+      status: 'applied' as const,
+      destination: monitor,
+      navigation: 'none' as const,
+      message: 'Already on that monitor.',
+      context: {
+        variant: monitor,
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: ['weather'],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openSettings: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      destination: 'settings' as const,
+      overlay: 'open' as const,
+      tab: 'settings',
+      message: 'Opened settings.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: ['weather'],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openAlerts: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      destination: 'alerts' as const,
+      overlay: 'open' as const,
+      tab: 'notifications',
+      message: 'Opened alerts.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: ['weather'],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
     applyDashboardAction: async (action: { type: 'open_panel' | 'set_view' | 'set_layers' }) => ({
       ok: true,
       status: 'applied' as const,
@@ -77,6 +133,9 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   openCountryBrief: { iso2: 'DE' },
   openSearch: {},
   get_dashboard_context: {},
+  switch_monitor: { monitor: 'tech' },
+  open_settings: {},
+  open_alerts: {},
   open_dashboard_panel: { panelId: 'markets' },
   set_map_view: { view: 'eu', zoom: 4 },
   set_map_layers: { layers: { weather: true } },
@@ -103,6 +162,7 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'src/services/webmcp.ts',
   'src/App.ts',
   'src/app/webmcp-dashboard.ts',
+  'src/app/event-handlers.ts',
   'src/app/webmcp-search-controller.ts',
   'src/app/search-selection-dispatcher.ts',
   'src/components/GlobalProcurementPanel.ts',
@@ -405,7 +465,7 @@ describe('WebMCP imperative schema and budget contract', () => {
     }
   });
 
-  it('applies uniform metadata, schema, output, and error budgets to all eight tools', async () => {
+  it('applies uniform metadata, schema, output, and error budgets to every SPA tool', async () => {
     const tools = buildWebMcpTools(createBindings(), () => {});
     for (const tool of tools) {
       assert.ok(tool.name.length <= WEBMCP_TOOL_BUDGETS.nameChars, `${tool.name}: name`);
@@ -436,6 +496,9 @@ describe('WebMCP imperative schema and budget contract', () => {
       openCountryBriefByCode: async () => { throw privateError; },
       openSearch: async () => { throw privateError; },
       getDashboardContext: async () => { throw privateError; },
+      switchMonitor: async () => { throw privateError; },
+      openSettings: async () => { throw privateError; },
+      openAlerts: async () => { throw privateError; },
       applyDashboardAction: async () => { throw privateError; },
       searchDashboard: async () => { throw privateError; },
       openSearchResult: async () => { throw privateError; },

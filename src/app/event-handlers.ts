@@ -1606,26 +1606,43 @@ export class EventHandlerManager implements AppModule {
   private async navigateToVariant(
     variant: string,
     options: { href?: string; isLocalDev: boolean },
-  ): Promise<void> {
+  ): Promise<'reload' | 'assign' | 'blocked'> {
     trackVariantSwitch(SITE_VARIANT, variant);
     await this.exitFullscreenForNavigation();
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
       if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
         window.location.reload();
+        return 'reload';
       }
-      return;
+      return 'blocked';
     }
 
     const target = options.href || VARIANT_META[variant]?.url;
-    if (!target) return;
+    if (!target) return 'blocked';
     try {
       const parsed = new URL(target, window.location.href);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'blocked';
       window.location.href = parsed.toString();
+      return 'assign';
     } catch {
-      return;
+      return 'blocked';
     }
+  }
+
+  public async navigateToVisibleVariant(
+    variant: string,
+  ): Promise<'none' | 'reload' | 'assign' | 'blocked' | 'unavailable'> {
+    if (variant === SITE_VARIANT) return 'none';
+    const link = this.ctx.container.querySelector<HTMLAnchorElement>(
+      `.variant-option[data-variant="${variant}"]`,
+    );
+    if (!link) return 'unavailable';
+    const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    return this.navigateToVariant(variant, {
+      href: link.href,
+      isLocalDev,
+    });
   }
 
   toggleFullscreen(): void {
