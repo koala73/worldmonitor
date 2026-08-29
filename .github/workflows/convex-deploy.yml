@@ -197,7 +197,11 @@ jobs:
         # The mutation preserves Dodo's on_hold status, fixes only derived
         # entitlements/grants, and writes a durable completion marker after
         # the bounded atomic pass succeeds. Running this after every deploy is
-        # therefore a cheap no-op once production has been repaired.
+        # therefore a cheap no-op once production has been repaired. This runs
+        # immediately after the first production deploy containing the fix. A
+        # failure reds this workflow; workflow_dispatch is the explicit retry
+        # path because record-baseline still records code that Convex already
+        # deployed even when a post-deploy repair or seed fails.
         run: npx convex run --prod payments/repairStaleOnHoldDerivedState:run
         continue-on-error: true
         env:
