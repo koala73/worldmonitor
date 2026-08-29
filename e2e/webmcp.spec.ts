@@ -56,6 +56,49 @@ type ToolStartMark = {
   startTime: number;
 };
 
+type MapLayerListResult = {
+  count: number;
+  layers: Array<{ available?: boolean; id: string }>;
+  nextCursor?: string;
+  ok: boolean;
+  total: number;
+};
+
+function assertMapLayerListResult(listed: unknown, label: string): MapLayerListResult {
+  expect(listed, label).toMatchObject({
+    ok: true,
+    layers: expect.any(Array),
+  });
+  const result = listed as MapLayerListResult;
+  expect(result.layers.length, `${label} layers`).toBeGreaterThan(0);
+  if (result.count < result.total) {
+    expect(result.nextCursor, `${label} nextCursor`).toBe(
+      result.layers[result.layers.length - 1]?.id,
+    );
+  }
+  return result;
+}
+
+async function executeListMapLayers(page: Page): Promise<unknown> {
+  return page.evaluate(async (): Promise<unknown> => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const parseOutput = (value: unknown): unknown => {
+      if (typeof value !== 'string') return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    };
+    const provider = document.modelContext as ExecutableModelContext;
+    const listTool = (await provider.getTools()).find((tool) => tool.name === 'list_map_layers');
+    if (!listTool) throw new Error('list_map_layers was not discovered.');
+    return parseOutput(await provider.executeTool(listTool, JSON.stringify({ limit: 8 })));
+  });
+}
+
 async function attachJsonEvidence(
   testInfo: TestInfo,
   name: string,
@@ -314,11 +357,16 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
 
     let visibleMutation: (MutationExecutionProbe & { visible: boolean }) | null = null;
-    let layerCatalogChain: {
+    let layerListed: unknown = null;
+    let layerCatalogMutation: {
       firstId: string | null;
-      listed: unknown;
       setResult: MutationExecutionProbe;
     } | null = null;
+
+    const listed = await executeListMapLayers(page);
+    assertMapLayerListResult(listed, 'list_map_layers');
+    layerListed = listed;
+
     if (!productionSmoke) {
       const mutation = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
         type ExecutableModelContext = WebMCP.ModelContext & {
@@ -359,9 +407,8 @@ test.describe('top-level WebMCP dashboard contract', () => {
       await page.keyboard.press('Escape');
       await expect(page.locator('.search-overlay')).toHaveCount(0);
 
-      const layerCatalogChainResult = await page.evaluate(async (): Promise<{
+      const layerCatalogMutationResult = await page.evaluate(async (listedJson): Promise<{
         firstId: string | null;
-        listed: unknown;
         setResult: MutationExecutionProbe;
       }> => {
         type ExecutableModelContext = WebMCP.ModelContext & {
@@ -378,10 +425,9 @@ test.describe('top-level WebMCP dashboard contract', () => {
         const provider = document.modelContext as ExecutableModelContext;
         const tools = await provider.getTools();
         const byName = new Map(tools.map((tool) => [tool.name, tool]));
-        const listTool = byName.get('list_map_layers');
         const setTool = byName.get('set_map_layers');
-        if (!listTool || !setTool) throw new Error('Expected layer catalog tools were not discovered.');
-        const listed = parseOutput(await provider.executeTool(listTool, JSON.stringify({ limit: 8 })));
+        if (!setTool) throw new Error('set_map_layers was not discovered.');
+        const listed = typeof listedJson === 'string' ? JSON.parse(listedJson) : listedJson;
         const layers = listed && typeof listed === 'object' && 'layers' in listed
           ? (listed as { layers?: Array<{ available?: boolean; id?: string }> }).layers
           : undefined;
@@ -389,14 +435,12 @@ test.describe('top-level WebMCP dashboard contract', () => {
         if (!chosen) {
           return {
             firstId: null,
-            listed,
             setResult: { ok: false, errorName: 'missing_available_layer', errorMessage: 'Catalog returned no currently available layer IDs.' },
           };
         }
         try {
           return {
             firstId: chosen,
-            listed,
             setResult: {
               ok: true,
               output: parseOutput(await provider.executeTool(
@@ -408,7 +452,6 @@ test.describe('top-level WebMCP dashboard contract', () => {
         } catch (error) {
           return {
             firstId: chosen,
-            listed,
             setResult: {
               errorMessage: error && typeof error === 'object' && 'message' in error
                 ? String(error.message).slice(0, 500)
@@ -420,35 +463,30 @@ test.describe('top-level WebMCP dashboard contract', () => {
             },
           };
         }
-      });
-      expect(layerCatalogChainResult.listed).toMatchObject({
-        ok: true,
-        layers: expect.any(Array),
-      });
+      }, JSON.stringify(listed));
       expect(
-        (layerCatalogChainResult.listed as { layers: Array<{ available?: boolean }> }).layers
-          .some((layer) => layer.available === true),
+        (listed as MapLayerListResult).layers.some((layer) => layer.available === true),
       ).toBe(true);
-      expect(layerCatalogChainResult.firstId).toMatch(/^[a-z][A-Za-z0-9_-]*$/);
-      expect(layerCatalogChainResult.setResult.ok).toBe(true);
+      expect(layerCatalogMutationResult.firstId).toMatch(/^[a-z][A-Za-z0-9_-]*$/);
+      expect(layerCatalogMutationResult.setResult.ok).toBe(true);
       if (coldStart.targetCancellationSupported) {
-        expect(layerCatalogChainResult.setResult.output).toEqual(expect.objectContaining({
+        expect(layerCatalogMutationResult.setResult.output).toEqual(expect.objectContaining({
           ok: true,
           status: 'applied',
           targets: expect.arrayContaining([
             expect.objectContaining({
-              target: layerCatalogChainResult.firstId,
+              target: layerCatalogMutationResult.firstId,
               status: 'applied',
             }),
           ]),
         }));
       } else {
-        expect(layerCatalogChainResult.setResult.output).toEqual(expect.objectContaining({
+        expect(layerCatalogMutationResult.setResult.output).toEqual(expect.objectContaining({
           ok: false,
           reason: 'target_cancellation_unsupported',
         }));
       }
-      layerCatalogChain = layerCatalogChainResult;
+      layerCatalogMutation = layerCatalogMutationResult;
     }
 
     await attachJsonEvidence(testInfo, 'webmcp-smoke.json', {
@@ -478,12 +516,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
           ...panelProbe,
         },
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
-        ...(layerCatalogChain ? {
+        ...(layerListed ? {
           layerCatalog: {
             tool: 'list_map_layers',
-            firstId: layerCatalogChain.firstId,
-            listed: layerCatalogChain.listed,
-            setMapLayers: layerCatalogChain.setResult,
+            listed: layerListed,
+            ...(layerCatalogMutation ? {
+              firstId: layerCatalogMutation.firstId,
+              setMapLayers: layerCatalogMutation.setResult,
+            } : {}),
           },
         } : {}),
       },
@@ -569,6 +609,9 @@ test.describe('top-level WebMCP dashboard contract', () => {
           DASHBOARD_TOOL_NAMES,
         );
 
+        const layerListed = await executeListMapLayers(page);
+        assertMapLayerListResult(layerListed, `${target.origin} list_map_layers`);
+
         const directDocumentUrl = `${target.origin}/dashboard.html`;
         const directDocument = await context.request.get(directDocumentUrl, { maxRedirects: 0 });
         expect(directDocument.status(), `${target.origin}/dashboard.html status`).toBe(200);
@@ -583,6 +626,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           ...target,
           servedSha,
           rootRedirect,
+          listMapLayers: layerListed,
           dashboard: {
             status: response!.status(),
             url: response!.url(),
