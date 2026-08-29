@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package worldmonitor.scorecard.v1;
+
+message ScorecardObservation {
+  string name = 1;
+  double value = 2;
+  int32 year = 3;
+  string unit = 4;
+  string source = 5;
+  string indicator_code = 6;
+}
+
+message ScorecardEvidence {
+  string input_id = 1;
+  bool available = 2;
+  double value = 3;
+  bool has_value = 4;
+  int32 year = 5;
+  string unit = 6;
+  string source = 7;
+  string source_key = 8;
+  string unavailable_reason = 9;
+  string quality = 10;
+  repeated ScorecardObservation observations = 11;
+}
+
+message FiveFactorPillar {
+  string pillar = 1;
+  bool has_score = 2;
+  int32 score = 3;
+  double sub_score = 4;
+  string band = 5;
+  double input_coverage = 6;
+  string aggregation_method = 7;
+  repeated ScorecardEvidence inputs = 8;
+  repeated string insufficient_reasons = 9;
+  repeated string included_members = 10;
+  repeated ExcludedBlocMember excluded_members = 11;
+}
+
+message FiveFactorCountryScorecard {
+  string country_code = 1;
+  string methodology_version = 2;
+  string computed_at = 3;
+  repeated FiveFactorPillar pillars = 4;
+}
+
+message ExcludedBlocMember {
+  string country_code = 1;
+  string reason = 2;
+}
+
+message FiveFactorBlocScorecard {
+  string id = 1;
+  string label = 2;
+  string methodology_version = 3;
+  string computed_at = 4;
+  repeated string members = 5;
+  repeated string included_members = 6;
+  repeated ExcludedBlocMember excluded_members = 7;
+  repeated FiveFactorPillar pillars = 8;
+}

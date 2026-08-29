@@ -34,8 +34,9 @@
 //
 // Resolution model: the bundle runner spawns members with
 // `spawn(process.execPath, [scriptPath])` (scripts/_bundle-runner.mjs) — plain
-// `node`, no tsx loader. So these containers get plain-node rules: no
-// extension guessing, no TypeScript. hasTsx: false encodes that.
+// `node`. A member can explicitly register the declared `tsx` dependency with
+// `tsx/esm/api` before its first TypeScript dynamic import. That loader applies
+// to the member's remaining graph; every other root keeps plain-node rules.
 //
 // The walker/tokenizer machinery is shared with the Dockerfile-based container
 // guards (tests/resilience-validation-import-graph.test.mjs), which own its
@@ -46,7 +47,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractBundleMembers, walkContainerGraph } from './_lib/import-graph-walk.mjs';
+import ts from 'typescript';
+import { extractBundleMembers, readStrippedSource, walkContainerGraph } from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -66,7 +68,7 @@ const MIN_SERVICES = 20;
 const scriptsPkg = JSON.parse(readFileSync(join(scriptsDir, 'package.json'), 'utf-8'));
 const installedPackages = new Set(Object.keys(scriptsPkg.dependencies ?? {}));
 
-const contract = {
+const baseContract = {
   repoRoot: root,
   // rootDirectory: scripts → /app IS scripts/. Nothing outside it exists.
   copyRootDirs: [scriptsDir],
@@ -74,8 +76,56 @@ const contract = {
   // that matter (helper loading); follow them within the container.
   dynamicRootDirs: [scriptsDir],
   installedPackages,
-  hasTsx: false,
 };
+
+export function sourceBootstrapsTsx(src) {
+  const sourceFile = ts.createSourceFile('seeder.mjs', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  let registerName = null;
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== 'tsx/esm/api') continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    const importedRegister = bindings.elements.find((element) => (element.propertyName ?? element.name).text === 'register');
+    if (importedRegister) registerName = importedRegister.name.text;
+  }
+  if (!registerName) return false;
+
+  const registerCall = sourceFile.statements.find((statement) =>
+    ts.isExpressionStatement(statement)
+      && ts.isCallExpression(statement.expression)
+      && ts.isIdentifier(statement.expression.expression)
+      && statement.expression.expression.text === registerName
+      && statement.expression.arguments.length === 0);
+  if (!registerCall) return false;
+
+  let firstTypeScriptImport = Number.POSITIVE_INFINITY;
+  function visit(node) {
+    if (ts.isCallExpression(node)
+      && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      && node.arguments.length === 1
+      && ts.isStringLiteral(node.arguments[0])
+      && /\.(?:ts|mts|cts)$/.test(node.arguments[0].text)) {
+      firstTypeScriptImport = Math.min(firstTypeScriptImport, node.getStart(sourceFile));
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return registerCall.getStart(sourceFile) < firstTypeScriptImport;
+}
+
+function walkRoots(roots) {
+  const combined = { violations: [], unresolved: [], visited: new Set() };
+  for (const rootPath of roots) {
+    const hasTsx = sourceBootstrapsTsx(readStrippedSource(rootPath));
+    const result = walkContainerGraph([rootPath], { ...baseContract, hasTsx });
+    combined.violations.push(...result.violations);
+    combined.unresolved.push(...result.unresolved);
+    for (const path of result.visited) combined.visited.add(path);
+  }
+  return combined;
+}
 
 // The one service whose crash created this guard. A floor alone (MIN_SERVICES,
 // below) would still pass if THIS service were dropped from the config or its
@@ -171,6 +221,24 @@ describe('extractBundleMembers self-test (#5289)', () => {
   });
 });
 
+describe('self-registered tsx member detection', () => {
+  it('accepts registration before the first TypeScript dynamic import', () => {
+    assert.equal(sourceBootstrapsTsx("import { register } from 'tsx/esm/api';\nregister();\nawait import('./worker.mts');"), true);
+    assert.equal(sourceBootstrapsTsx("import { register as boot } from 'tsx/esm/api';\nboot();\nawait import('./worker.mts');"), true);
+  });
+
+  it('fails closed when registration is absent or occurs after the import', () => {
+    assert.equal(sourceBootstrapsTsx("await import('./worker.mts');"), false);
+    assert.equal(sourceBootstrapsTsx("import { register } from 'tsx/esm/api';\nawait import('./worker.mts');\nregister();"), false);
+  });
+
+  it('rejects quoted, conditional, and nested registration lookalikes', () => {
+    assert.equal(sourceBootstrapsTsx("import { register } from 'tsx/esm/api';\n'register();';\nawait import('./worker.mts');"), false);
+    assert.equal(sourceBootstrapsTsx("import { register } from 'tsx/esm/api';\nif (false) register();\nawait import('./worker.mts');"), false);
+    assert.equal(sourceBootstrapsTsx("import { register } from 'tsx/esm/api';\nfunction boot() { register(); }\nawait import('./worker.mts');"), false);
+  });
+});
+
 describe('nixpacks-root-scripts seeder import graphs (#5266)', () => {
   it('deploy config still yields the service list the guard is meant to cover', () => {
     assert.ok(
@@ -194,7 +262,7 @@ describe('nixpacks-root-scripts seeder import graphs (#5266)', () => {
   for (const svc of services) {
     describe(svc.service, () => {
       const { entryPath, entryExists, isBundle, members, missingMembers, roots } = resolveRoots(svc.entry);
-      const { violations, unresolved, visited } = walkContainerGraph(roots, contract);
+      const { violations, unresolved, visited } = walkRoots(roots);
 
       it('entry and every declared bundle member exist on disk', () => {
         assert.ok(entryExists, `railway-services.json entry missing on disk: ${svc.entry}`);

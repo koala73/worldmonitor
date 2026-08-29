@@ -25,12 +25,12 @@ const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 
 function makeCountries(overrides = []) {
   const base = new Map([
-    ['DE', { iso2: 'DE', country: 'Germany',      year: 2023, coalShare: 26, gasShare: 15, oilShare: 1,  renewShare: 56, importShare: 4,  nuclearShare: 2,  windShare: 34, solarShare: 12, hydroShare: 3,  seededAt: '' }],
-    ['IT', { iso2: 'IT', country: 'Italy',         year: 2023, coalShare: 5,  gasShare: 47, oilShare: 2,  renewShare: 40, importShare: 15, nuclearShare: 0,  windShare: 7,  solarShare: 10, hydroShare: 15, seededAt: '' }],
-    ['ZA', { iso2: 'ZA', country: 'South Africa',  year: 2023, coalShare: 88, gasShare: 0,  oilShare: 1,  renewShare: 8,  importShare: 2,  nuclearShare: 5,  windShare: 3,  solarShare: 2,  hydroShare: 1,  seededAt: '' }],
-    ['SA', { iso2: 'SA', country: 'Saudi Arabia',  year: 2023, coalShare: 0,  gasShare: 38, oilShare: 62, renewShare: 0,  importShare: 0,  nuclearShare: 0,  windShare: 0,  solarShare: 0,  hydroShare: 0,  seededAt: '' }],
-    ['MT', { iso2: 'MT', country: 'Malta',         year: 2023, coalShare: null, gasShare: null, oilShare: 3, renewShare: 10, importShare: 93, nuclearShare: null, windShare: 5, solarShare: 5, hydroShare: 0, seededAt: '' }],
-    ['NO', { iso2: 'NO', country: 'Norway',        year: 2023, coalShare: 0,  gasShare: 2,  oilShare: 0,  renewShare: 97, importShare: -2, nuclearShare: 0,  windShare: 8,  solarShare: 0,  hydroShare: 89, seededAt: '' }],
+    ['DE', { iso2: 'DE', country: 'Germany',      year: 2023, coalShare: 26, gasShare: 15, oilShare: 1,  renewShare: 56, importShare: 4,  nuclearShare: 2,  windShare: 34, solarShare: 12, hydroShare: 3,  primaryEnergyConsumptionTwh: 3200, seededAt: '' }],
+    ['IT', { iso2: 'IT', country: 'Italy',         year: 2023, coalShare: 5,  gasShare: 47, oilShare: 2,  renewShare: 40, importShare: 15, nuclearShare: 0,  windShare: 7,  solarShare: 10, hydroShare: 15, primaryEnergyConsumptionTwh: 1800, seededAt: '' }],
+    ['ZA', { iso2: 'ZA', country: 'South Africa',  year: 2023, coalShare: 88, gasShare: 0,  oilShare: 1,  renewShare: 8,  importShare: 2,  nuclearShare: 5,  windShare: 3,  solarShare: 2,  hydroShare: 1,  primaryEnergyConsumptionTwh: 1600, seededAt: '' }],
+    ['SA', { iso2: 'SA', country: 'Saudi Arabia',  year: 2023, coalShare: 0,  gasShare: 38, oilShare: 62, renewShare: 0,  importShare: 0,  nuclearShare: 0,  windShare: 0,  solarShare: 0,  hydroShare: 0, primaryEnergyConsumptionTwh: 3100, seededAt: '' }],
+    ['MT', { iso2: 'MT', country: 'Malta',         year: 2023, coalShare: null, gasShare: null, oilShare: 3, renewShare: 10, importShare: 93, nuclearShare: null, windShare: 5, solarShare: 5, hydroShare: 0, primaryEnergyConsumptionTwh: 27, seededAt: '' }],
+    ['NO', { iso2: 'NO', country: 'Norway',        year: 2023, coalShare: 0,  gasShare: 2,  oilShare: 0,  renewShare: 97, importShare: -2, nuclearShare: 0,  windShare: 8,  solarShare: 0,  hydroShare: 89, primaryEnergyConsumptionTwh: 510, seededAt: '' }],
   ]);
   for (const [iso2, patch] of overrides) base.set(iso2, { ...base.get(iso2), ...patch });
   return base;
@@ -161,8 +161,8 @@ describe('buildAllCountriesMap', () => {
       '_all entry count must match _countries count');
   });
 
-  it('each entry has exactly the 9 numeric share fields plus year', () => {
-    const expectedFields = ['year', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare'];
+  it('each entry has exactly the 9 numeric share fields, consumption, and year', () => {
+    const expectedFields = ['year', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
     const all = buildAllCountriesMap(makeCountries());
     for (const [iso2, entry] of Object.entries(all)) {
       const keys = Object.keys(entry).sort();
@@ -191,6 +191,7 @@ describe('buildAllCountriesMap', () => {
     assert.equal(all['DE'].coalShare, 26);
     assert.equal(all['NO'].renewShare, 97);
     assert.equal(all['SA'].oilShare, 62);
+    assert.equal(all['DE'].primaryEnergyConsumptionTwh, 3200);
   });
 
   it('keys are ISO2 codes matching the input map keys', () => {
@@ -222,7 +223,7 @@ describe('golden fixture (OWID CSV)', () => {
   });
 
   it('all parsed entries have the expected share fields', () => {
-    const expected = ['coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare'];
+    const expected = ['coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
     const countries = parseOwidCsv(csv);
     for (const [iso2, entry] of countries) {
       for (const field of expected) {
@@ -246,5 +247,11 @@ describe('golden fixture (OWID CSV)', () => {
     assert.ok(countries.has('US'), 'US missing');
     assert.ok(countries.has('DE'), 'DE missing');
     assert.ok(countries.has('JP'), 'JP missing');
+  });
+
+  it('preserves primary-energy consumption as TWh', () => {
+    const countries = parseOwidCsv(csv);
+    assert.equal(countries.get('US')?.primaryEnergyConsumptionTwh, 25_000);
+    assert.equal(countries.get('DE')?.primaryEnergyConsumptionTwh, 3_200);
   });
 });

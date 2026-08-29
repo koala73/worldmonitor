@@ -1,0 +1,16 @@
+{
+  "methodologyVersion": "1.0.0",
+  "description": "Ten-country synthetic anchor cohort for hand-checking absolute normalization and band assignment. It is not production evidence.",
+  "countries": [
+    { "countryCode": "US", "normalizedAnchor": 90, "expectedBand": 5 },
+    { "countryCode": "DE", "normalizedAnchor": 75, "expectedBand": 4 },
+    { "countryCode": "JP", "normalizedAnchor": 62, "expectedBand": 4 },
+    { "countryCode": "IN", "normalizedAnchor": 58, "expectedBand": 3 },
+    { "countryCode": "BR", "normalizedAnchor": 50, "expectedBand": 3 },
+    { "countryCode": "ZA", "normalizedAnchor": 45, "expectedBand": 3 },
+    { "countryCode": "AE", "normalizedAnchor": 39, "expectedBand": 2 },
+    { "countryCode": "MX", "normalizedAnchor": 25, "expectedBand": 2 },
+    { "countryCode": "ID", "normalizedAnchor": 19, "expectedBand": 1 },
+    { "countryCode": "ZW", "normalizedAnchor": 8, "expectedBand": 1 }
+  ]
+}

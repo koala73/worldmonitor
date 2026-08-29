@@ -10034,6 +10034,9 @@
           "path": "scripts/seed-digest-notifications.mjs"
         },
         {
+          "path": "scripts/seed-five-factor-scorecard.mjs"
+        },
+        {
           "path": "scripts/seed-hyperliquid-flow.mjs"
         },
         {

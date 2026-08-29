@@ -62,6 +62,7 @@ import type { CountryEvidenceBundleInput } from '@/utils/export';
 import { ciiBandForLevel } from './CountryDeepDivePanel-cii';
 import { renderDefenseIndustrialSection } from './CountryDeepDivePanel-defense-industrial';
 import { renderDemographicsCapabilitySection } from './CountryDeepDivePanel-demographics-capability';
+import { renderFiveFactorScorecardSection } from './CountryDeepDivePanel-five-factor-scorecard';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -156,6 +157,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private resilienceWidgetRequestId = 0;
   private foodStocksRequestId = 0;
   private demographicsCapabilityRequestId = 0;
+  private fiveFactorScorecardRequestId = 0;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
   private tradeExposureBody: HTMLElement | null = null;
@@ -313,6 +315,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.destroyResilienceWidget();
     this.foodStocksRequestId += 1;
     this.demographicsCapabilityRequestId += 1;
+    this.fiveFactorScorecardRequestId += 1;
     this.tearDownFollowButton();
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
@@ -2639,6 +2642,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       demographicsBody.append(this.makeProLocked(t('countryBrief.demographicsCapability.proLocked')));
     }
 
+    const [fiveFactorScorecardCard, fiveFactorScorecardBody] = this.sectionCard(
+      t('countryBrief.fiveFactorScorecard.title'),
+      t('countryBrief.fiveFactorScorecard.help'),
+    );
+    if (isPro) {
+      fiveFactorScorecardBody.append(this.makeLoading(t('countryBrief.fiveFactorScorecard.loading')));
+      void this.renderFiveFactorScorecard(code, fiveFactorScorecardBody);
+    } else {
+      fiveFactorScorecardBody.append(this.makeProLocked(t('countryBrief.fiveFactorScorecard.proLocked')));
+    }
+
     const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity', 'Port-level tanker call volume and import/export cargo weight over 30 days. ⚠ badge = port running below 50% of its 30-day baseline. Source: IMF PortWatch.');
     this.maritimeBody = maritimeBody;
     maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
@@ -2715,7 +2729,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), factsExpanded, demographicsCard, foodStocksCard, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
+    bodyGrid.append(briefCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), factsExpanded, fiveFactorScorecardCard, demographicsCard, foodStocksCard, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -2836,6 +2850,33 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         });
       }
       if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.demographicsCapability.unavailable')));
+    }
+  }
+
+  private async renderFiveFactorScorecard(code: string, body: HTMLElement): Promise<void> {
+    const requestId = ++this.fiveFactorScorecardRequestId;
+    const stillCurrent = (): boolean => requestId === this.fiveFactorScorecardRequestId;
+    const signal = this.signal;
+    try {
+      if (typeof location === 'undefined') {
+        if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.fiveFactorScorecard.unavailable')));
+        return;
+      }
+      const { getFiveFactorScorecard } = await import('@/services/scorecard');
+      if (!stillCurrent() || signal.aborted) return;
+      const response = await getFiveFactorScorecard(code, signal);
+      if (!stillCurrent()) return;
+      body.replaceChildren(renderFiveFactorScorecardSection(response, t));
+    } catch (error) {
+      console.warn('[CountryDeepDivePanel] five-factor scorecard load failed', error);
+      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted;
+      if (!aborted) {
+        this.captureCountryDeepDiveLoadFailure(error, code, {
+          message: 'Five-factor scorecard load failed',
+          widget: 'five-factor-scorecard',
+        });
+      }
+      if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.fiveFactorScorecard.unavailable')));
     }
   }
 

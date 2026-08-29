@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 525;
-export const GENERATED_REQUEST_METHOD_COUNT = 160;
+export const GENERATED_REQUEST_METHOD_COUNT = 162;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -15,6 +15,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getAircraftDetails": "worldmonitor.military.v1.GetAircraftDetailsRequest",
   "getAircraftDetailsBatch": "worldmonitor.military.v1.GetAircraftDetailsBatchRequest",
   "getAirportOpsSummary": "worldmonitor.aviation.v1.GetAirportOpsSummaryRequest",
+  "getBlocScorecard": "worldmonitor.scorecard.v1.GetBlocScorecardRequest",
   "getBlsSeries": "worldmonitor.economic.v1.GetBlsSeriesRequest",
   "getBootstrapData": "worldmonitor.infrastructure.v1.GetBootstrapDataRequest",
   "getBypassOptions": "worldmonitor.supply_chain.v1.GetBypassOptionsRequest",
@@ -42,6 +43,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getEnergyCapacity": "worldmonitor.economic.v1.GetEnergyCapacityRequest",
   "getEnergyCrisisPolicies": "worldmonitor.economic.v1.GetEnergyCrisisPoliciesRequest",
   "getEnergyPrices": "worldmonitor.economic.v1.GetEnergyPricesRequest",
+  "getFiveFactorScorecard": "worldmonitor.scorecard.v1.GetFiveFactorScorecardRequest",
   "getFlightStatus": "worldmonitor.aviation.v1.GetFlightStatusRequest",
   "getFoodStocks": "worldmonitor.resilience.v1.GetFoodStocksRequest",
   "getForecasts": "worldmonitor.forecast.v1.GetForecastsRequest",
@@ -1332,6 +1334,12 @@ export const GENERATED_MESSAGE_RULES = {
         "stringPattern": "^([A-Z]{2})?$"
       }
     }
+  },
+  "worldmonitor.scorecard.v1.GetBlocScorecardRequest": {
+    "fields": {}
+  },
+  "worldmonitor.scorecard.v1.GetFiveFactorScorecardRequest": {
+    "fields": {}
   },
   "worldmonitor.seismology.v1.ListEarthquakesRequest": {
     "fields": {}

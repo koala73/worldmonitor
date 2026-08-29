@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createBrowserEnvironment } from './runtime-config-panel-harness.mjs';
+import { MiniNode } from './mini-dom.mts';
 import { createTempDir, removeTempDir } from './temp-dir.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -46,6 +47,10 @@ async function loadCountryDeepDivePanel(options = {}) {
     available: false,
     fetchedAt: '',
     stages: [],
+  });
+  const scorecardResponse = JSON.stringify(options.scorecardResponse ?? {
+    unavailable: true,
+    unavailableReason: 'snapshot-unavailable',
   });
   const tempDir = createTempDir('wm-country-deep-dive-');
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
@@ -254,6 +259,17 @@ async function loadCountryDeepDivePanel(options = {}) {
         return { ...demographicsResponse, countryCode: options.countryCode };
       }
     `],
+    ['scorecard-service-stub', `
+      const state = globalThis.__wmCountryDeepDiveTestState;
+      const scorecardResponse = ${scorecardResponse};
+      export async function getFiveFactorScorecard(countryCode, signal) {
+        state.scorecardCalls.push({
+          countryCode,
+          hasSignal: signal instanceof AbortSignal,
+        });
+        return scorecardResponse;
+      }
+    `],
     ['resilience-widget-stub', resilienceWidgetStub],
     ['sentry-defer-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
@@ -311,6 +327,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['@/services/panel-gating', 'panel-gating-stub'],
     ['@/services/auth-state', 'auth-state-stub'],
     ['@/services/resilience', 'resilience-service-stub'],
+    ['@/services/scorecard', 'scorecard-service-stub'],
     ['@/bootstrap/sentry-defer', 'sentry-defer-stub'],
     ['@/utils/overlay-history', 'overlay-history-stub'],
   ]);
@@ -362,6 +379,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     location: snapshotGlobal('location'),
     HTMLElement: snapshotGlobal('HTMLElement'),
     HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
+    Node: snapshotGlobal('Node'),
   };
   const browserEnvironment = createBrowserEnvironment();
   const state = {
@@ -370,6 +388,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     sentryExceptions: [],
     sentryMessages: [],
     demographicsCalls: [],
+    scorecardCalls: [],
     sentryUser: undefined,
     evidenceExports: [],
     gateHits: [],
@@ -387,6 +406,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
   defineGlobal('location', browserEnvironment.window.location);
   defineGlobal('HTMLElement', browserEnvironment.HTMLElement);
   defineGlobal('HTMLButtonElement', browserEnvironment.HTMLButtonElement);
+  defineGlobal('Node', MiniNode);
   globalThis.__wmCountryDeepDiveTestState = state;
 
   let CountryDeepDivePanel;
@@ -404,6 +424,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     restoreGlobal('location', originalGlobals.location);
     restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
     restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
+    restoreGlobal('Node', originalGlobals.Node);
     throw error;
   }
 
@@ -427,6 +448,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     restoreGlobal('location', originalGlobals.location);
     restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
     restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
+    restoreGlobal('Node', originalGlobals.Node);
   }
 
   return {
@@ -444,6 +466,9 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     },
     getDemographicsCalls() {
       return state.demographicsCalls;
+    },
+    getScorecardCalls() {
+      return state.scorecardCalls;
     },
     getEvidenceExports() {
       return state.evidenceExports;

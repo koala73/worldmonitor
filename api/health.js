@@ -455,6 +455,9 @@ const STANDALONE_KEYS = {
   // UN WPP + UNESCO/World Bank + ILOSTAT capability data (#6437). The country
   // deep-dive fetches this seeded key on demand; it is not bootstrap-hydrated.
   demographicsCapability:   'demographics:capability:v1',
+  // Atomic country evidence + derived five-factor results (#6441). The public
+  // API and MCP service read this key only; no request-time source fan-out.
+  scorecardFiveFactor:       'scorecard:five-factor:v1',
   resilienceRanking:        'resilience:ranking:v28',
   productCatalog:           'product-catalog:v3',
   energySpineCountries:     'energy:spine:v1:_countries',
@@ -1154,6 +1157,17 @@ const SEED_META = {
       mode: 'expiring-ack',
       fromKey: null,
       issue: 6437,
+      status: 'EMPTY',
+    },
+  },
+  scorecardFiveFactor: {
+    key: 'seed-meta:scorecard:five-factor',
+    maxStaleMin: 2160, // Daily section; 36h allows one delayed Railway tick before the 3d data TTL.
+    minRecordCount: 150,
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6441,
       status: 'EMPTY',
     },
   },

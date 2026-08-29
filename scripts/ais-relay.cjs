@@ -5799,6 +5799,7 @@ const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
 const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
+const { buildWorldBankTechObservations } = require('./_wb-tech-readiness-projection.cjs');
 
 const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
 const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
@@ -5897,7 +5898,13 @@ function wbComputeRankings(indicatorData) {
     }
     const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
     const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
-    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components });
+    const observations = buildWorldBankTechObservations({
+      internet: indicatorData.internet[cc],
+      mobile: indicatorData.mobile[cc],
+      broadband: indicatorData.broadband[cc],
+      rdSpend: indicatorData.rdSpend[cc],
+    });
+    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components, observations });
   }
   scores.sort((a, b) => b.score - a.score);
   scores.forEach((s, i) => { s.rank = i + 1; });

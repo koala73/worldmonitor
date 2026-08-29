@@ -41,6 +41,7 @@ const COLS = {
   solar:      'solar_share_elec',
   hydro:      'hydro_share_elec',
   imports:    'net_energy_imports',
+  primaryEnergyConsumption: 'primary_energy_consumption',
 };
 
 function parseDelimitedRow(line, delimiter) {
@@ -140,6 +141,7 @@ export function parseOwidCsv(csvText) {
       solarShare: safeFloat(row[COLS.solar]),
       hydroShare: safeFloat(row[COLS.hydro]),
       importShare: safeFloat(row[COLS.imports]),
+      primaryEnergyConsumptionTwh: safeFloat(row[COLS.primaryEnergyConsumption]),
       seededAt: new Date().toISOString(),
     });
   }
@@ -176,7 +178,7 @@ export function buildExposureIndex(countries) {
  * Build a compact bulk map of all countries keyed by ISO2.
  * Omits `iso2`, `country`, and `seededAt` to reduce payload size (~30% savings).
  * @param {Map<string, object>} countries
- * @returns {Record<string, {year: number, coalShare: number|null, gasShare: number|null, oilShare: number|null, nuclearShare: number|null, renewShare: number|null, windShare: number|null, solarShare: number|null, hydroShare: number|null, importShare: number|null}>}
+ * @returns {Record<string, {year: number, coalShare: number|null, gasShare: number|null, oilShare: number|null, nuclearShare: number|null, renewShare: number|null, windShare: number|null, solarShare: number|null, hydroShare: number|null, importShare: number|null, primaryEnergyConsumptionTwh: number|null}>}
  */
 export function buildAllCountriesMap(countries) {
   const result = {};
@@ -192,6 +194,7 @@ export function buildAllCountriesMap(countries) {
       solarShare: entry.solarShare,
       hydroShare: entry.hydroShare,
       importShare: entry.importShare,
+      primaryEnergyConsumptionTwh: entry.primaryEnergyConsumptionTwh,
     };
   }
   return result;

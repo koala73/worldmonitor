@@ -691,6 +691,148 @@ const DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA = {
   },
 };
 
+const SCORECARD_INPUT_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  description: 'One scorecard input. Read available and hasValue before value; an unavailable proto3 numeric field is zero.',
+  properties: {
+    inputId: { type: 'string' as const },
+    available: { type: 'boolean' as const },
+    value: { type: 'number' as const },
+    hasValue: { type: 'boolean' as const },
+    year: { type: 'integer' as const },
+    unit: { type: 'string' as const },
+    source: { type: 'string' as const },
+    sourceKey: { type: 'string' as const },
+    unavailableReason: { type: 'string' as const },
+    quality: { type: 'string' as const },
+    observations: { type: 'array' as const, items: { type: 'object' as const } },
+  },
+};
+
+const SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  required: ['countryCode', 'reason'],
+  properties: {
+    countryCode: { type: 'string' as const },
+    reason: { type: 'string' as const },
+  },
+};
+
+const FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    scorecard: {
+      type: 'object' as const,
+      properties: {
+        countryCode: { type: 'string' as const },
+        id: { type: 'string' as const },
+        label: { type: 'string' as const },
+        members: { type: 'array' as const, items: { type: 'string' as const } },
+        includedMembers: { type: 'array' as const, items: { type: 'string' as const } },
+        excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA },
+        methodologyVersion: { type: 'string' as const },
+        computedAt: { type: 'string' as const },
+        pillars: {
+          type: 'array' as const,
+          items: {
+            type: 'object' as const,
+            properties: {
+              pillar: { type: 'string' as const },
+              hasScore: { type: 'boolean' as const, description: 'Read before score and subScore.' },
+              score: { type: 'number' as const },
+              subScore: { type: 'number' as const },
+              band: { type: 'string' as const },
+              inputCoverage: { type: 'number' as const },
+              aggregationMethod: { type: 'string' as const },
+              insufficientReasons: { type: 'array' as const, items: { type: 'string' as const } },
+              includedMembers: { type: 'array' as const, items: { type: 'string' as const } },
+              excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA },
+              inputs: { type: 'array' as const, items: SCORECARD_INPUT_OUTPUT_SCHEMA },
+            },
+          },
+        },
+      },
+    },
+    unavailable: { type: 'boolean' as const },
+    unavailableReason: { type: 'string' as const },
+  },
+};
+
+const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    methodologyVersion: { type: 'string' as const },
+    computedAt: { type: 'string' as const },
+    scorecards: {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        properties: {
+          countryCode: { type: 'string' as const },
+          pillars: {
+            type: 'array' as const,
+            items: {
+              type: 'object' as const,
+              properties: {
+                pillar: { type: 'string' as const },
+                hasScore: { type: 'boolean' as const },
+                score: { type: 'number' as const },
+                subScore: { type: 'number' as const },
+                band: { type: 'string' as const },
+                inputCoverage: { type: 'number' as const },
+                insufficientReasons: { type: 'array' as const, items: { type: 'string' as const } },
+              },
+            },
+          },
+        },
+      },
+    },
+    unavailable: { type: 'boolean' as const },
+    unavailableReason: { type: 'string' as const },
+  },
+};
+
+type FiveFactorListBody = {
+  methodologyVersion?: unknown;
+  computedAt?: unknown;
+  scorecards?: unknown;
+  unavailable?: unknown;
+  unavailableReason?: unknown;
+};
+
+function compactFiveFactorScorecardList(body: FiveFactorListBody) {
+  const scorecards = Array.isArray(body.scorecards) ? body.scorecards : [];
+  return {
+    methodologyVersion: typeof body.methodologyVersion === 'string' ? body.methodologyVersion : '',
+    computedAt: typeof body.computedAt === 'string' ? body.computedAt : '',
+    scorecards: scorecards.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return [];
+      const scorecard = entry as Record<string, unknown>;
+      const pillars = Array.isArray(scorecard.pillars) ? scorecard.pillars : [];
+      return [{
+        countryCode: typeof scorecard.countryCode === 'string' ? scorecard.countryCode : '',
+        pillars: pillars.flatMap((entryPillar) => {
+          if (!entryPillar || typeof entryPillar !== 'object') return [];
+          const pillar = entryPillar as Record<string, unknown>;
+          return [{
+            pillar: typeof pillar.pillar === 'string' ? pillar.pillar : '',
+            hasScore: pillar.hasScore === true,
+            score: typeof pillar.score === 'number' ? pillar.score : 0,
+            subScore: typeof pillar.subScore === 'number' ? pillar.subScore : 0,
+            band: typeof pillar.band === 'string' ? pillar.band : '',
+            inputCoverage: typeof pillar.inputCoverage === 'number' ? pillar.inputCoverage : 0,
+            insufficientReasons: Array.isArray(pillar.insufficientReasons)
+              ? pillar.insufficientReasons.filter((reason): reason is string => typeof reason === 'string')
+              : [],
+          }];
+        }),
+      }];
+    }),
+    unavailable: body.unavailable === true,
+    unavailableReason: typeof body.unavailableReason === 'string' ? body.unavailableReason : '',
+  };
+}
+
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_defense_industrial_base',
@@ -1683,6 +1825,102 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     _apiPaths: [
       'GET /api/resilience/v1/get-demographics-capability',
+    ],
+  },
+  {
+    name: 'get_five_factor_scorecard',
+    _outputBudgetBytes: 524288,
+    description: 'Return the frozen v1 food, energy, demographics, technology, and defense scorecard for exactly one country or bloc. Select a country_code, one official preset, or a custom members list. Read every hasScore, available, and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a WorldMonitor subscription.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: {
+          type: 'string',
+          pattern: '^[A-Za-z]{2}$',
+          description: 'ISO 3166-1 alpha-2 country code. Mutually exclusive with preset and members.',
+        },
+        preset: {
+          type: 'string',
+          enum: ['USMCA', 'EU27', 'BRICS', 'GCC', 'ASEAN', 'NATO'],
+          description: 'Official bloc preset. Mutually exclusive with country_code and members.',
+        },
+        members: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 30,
+          uniqueItems: true,
+          items: { type: 'string', pattern: '^[A-Z]{2}$' },
+          description: 'Custom bloc of 2-30 unique uppercase ISO-2 member codes. Mutually exclusive with country_code and preset.',
+        },
+      },
+      required: [],
+    },
+    outputSchema: FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _coverageKeys: ['scorecard:five-factor:v1', 'seed-meta:scorecard:five-factor'],
+    _execute: async (params, base, context) => {
+      const countryCode = argStr(params.country_code).trim().toUpperCase();
+      const preset = argStr(params.preset).trim().toUpperCase();
+      const members = Array.isArray(params.members) ? params.members : [];
+      const selectors = Number(countryCode.length > 0) + Number(preset.length > 0) + Number(members.length > 0);
+      if (selectors !== 1) {
+        throw new RpcValidationError('get-five-factor-scorecard', [{
+          field: 'selection',
+          description: 'provide exactly one of country_code, preset, or members.',
+        }]);
+      }
+
+      const q = new URLSearchParams();
+      let path: string;
+      if (countryCode) {
+        if (!/^[A-Z]{2}$/.test(countryCode)) {
+          throw new RpcValidationError('get-five-factor-scorecard', [{
+            field: 'country_code',
+            description: 'must be an ISO 3166-1 alpha-2 country code.',
+          }]);
+        }
+        path = '/api/scorecard/v1/get-five-factor-scorecard';
+        q.set('countryCode', countryCode);
+      } else {
+        path = '/api/scorecard/v1/get-bloc-scorecard';
+        if (preset) q.set('preset', preset);
+        else members.forEach((member) => q.append('members', String(member)));
+      }
+
+      const url = `${base}${path}?${q.toString()}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertToolFetchOk(res, 'get-five-factor-scorecard');
+      return res.json();
+    },
+    _apiPaths: [
+      'GET /api/scorecard/v1/get-five-factor-scorecard',
+      'GET /api/scorecard/v1/get-bloc-scorecard',
+    ],
+  },
+  {
+    name: 'list_five_factor_scorecards',
+    _outputBudgetBytes: 262144,
+    description: 'List compact frozen v1 scorecard summaries for every country in the seeded cohort. Returns pillar scores, bands, coverage, and insufficient-data reasons without the full evidence ledger. Use get_five_factor_scorecard for source provenance and raw observations. Requires a WorldMonitor subscription.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    outputSchema: FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _coverageKeys: ['scorecard:five-factor:v1', 'seed-meta:scorecard:five-factor'],
+    _execute: async (_params, base, context) => {
+      const url = `${base}/api/scorecard/v1/list-five-factor-scorecards`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertToolFetchOk(res, 'list-five-factor-scorecards');
+      return compactFiveFactorScorecardList(await res.json() as FiveFactorListBody);
+    },
+    _apiPaths: [
+      'GET /api/scorecard/v1/list-five-factor-scorecards',
     ],
   },
   {
