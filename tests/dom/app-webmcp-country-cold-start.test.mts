@@ -43,12 +43,22 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
-      applyDashboardTabAction: async () => ({
-        ok: true,
-        status: 'applied' as const,
-        actionType: 'list' as const,
-        message: 'Applied dashboard tab action.',
+      getAccessContext: async () => ({
+        accountState: 'signed_out',
+        clerk: 'unavailable',
+        productTier: 'anonymous',
+        capabilities: {
+          premiumAccess: false,
+          apiAccess: false,
+          mcpAccess: false,
+          dataExport: false,
+        },
+        limits: {
+          enabledPanels: { used: 1, cap: 40 },
+          dashboardTabs: { used: 1, cap: 3, canCreate: true },
+        },
       }),
+      openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     }, () => {});
 
     await expect(tools.find((tool) => tool.name === 'openCountryBrief')!.execute({ iso2: 'FR' }))
@@ -139,12 +149,22 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
-      applyDashboardTabAction: async () => ({
-        ok: true,
-        status: 'applied',
-        actionType: 'list',
-        message: 'Applied dashboard tab action.',
+      getAccessContext: async () => ({
+        accountState: 'signed_out',
+        clerk: 'unavailable',
+        productTier: 'anonymous',
+        capabilities: {
+          premiumAccess: false,
+          apiAccess: false,
+          mcpAccess: false,
+          dataExport: false,
+        },
+        limits: {
+          enabledPanels: { used: 1, cap: 40 },
+          dashboardTabs: { used: 1, cap: 3, canCreate: true },
+        },
       }),
+      openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     };
     const countryTool = buildWebMcpTools(bindings, () => {})
       .find((tool) => tool.name === 'openCountryBrief');

@@ -63,26 +63,22 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
-    applyDashboardTabAction: async (action) => (
-      action.type === 'list'
-        ? {
-            activeTabId: 'tab-main01-abc123',
-            tabs: [{ id: 'tab-main01-abc123', name: 'Main', active: true, canDelete: false }],
-            tabCount: 1,
-            tabsTruncated: false,
-            canCreate: true,
-            cap: null,
-          }
-        : {
-            ok: true,
-            status: 'applied',
-            actionType: action.type,
-            message: 'Applied.',
-            tabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
-            name: typeof action.name === 'string' ? action.name : 'Main',
-            activeTabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
-          }
-    ),
+    getAccessContext: async () => ({
+      accountState: 'signed_out',
+      clerk: 'unavailable',
+      productTier: 'anonymous',
+      capabilities: {
+        premiumAccess: false,
+        apiAccess: false,
+        mcpAccess: false,
+        dataExport: false,
+      },
+      limits: {
+        enabledPanels: { used: 1, cap: 40 },
+        dashboardTabs: { used: 1, cap: 3, canCreate: true },
+      },
+    }),
+    openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     ...overrides,
   };
 }
@@ -188,7 +184,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 12, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 14, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(

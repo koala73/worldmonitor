@@ -2684,6 +2684,18 @@
       "rubBase": "Banque de Russie — roubles pour 1 unité",
       "rubPerUnit": "Roubles par unité",
       "sourceCbr": "Source : Banque de Russie"
+    },
+    "passkeyOffer": {
+      "title": "Enregistrer une clé d'accès ?",
+      "body": "Connectez-vous la prochaine fois avec votre empreinte digitale, votre visage ou votre code PIN — pas de mot de passe à retenir.",
+      "accept": "Enregistrer la clé d'accès",
+      "dismiss": "Pas maintenant",
+      "close": "Fermer",
+      "announce": "Enregistrez une clé d'accès pour vous connecter plus rapidement la prochaine fois.",
+      "busy": "En attente de votre appareil…",
+      "succeeded": "Clé d'accès enregistrée. Vous pouvez l'utiliser la prochaine fois que vous vous connectez.",
+      "retryable": "Cette opération ne s'est pas terminée. Vous pouvez réessayer.",
+      "failed": "Nous n'avons pas pu enregistrer une clé d'accès sur cet appareil."
     }
   },
   "popups": {
@@ -3465,7 +3477,8 @@
   "auth": {
     "signIn": "Se connecter",
     "createAccount": "Créer un compte",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connecter MCP",

@@ -2703,6 +2703,18 @@
       "rubBase": "Bank Rosji — ruble za 1 jednostkę",
       "rubPerUnit": "Rubli za jednostkę",
       "sourceCbr": "Źródło: Bank Rosji"
+    },
+    "passkeyOffer": {
+      "title": "Zapisać klucz dostępu?",
+      "body": "Zaloguj się następnym razem za pomocą odcisku palca, twarzy lub kodu PIN urządzenia — bez hasła do zapamiętania.",
+      "accept": "Zapisz klucz dostępu",
+      "dismiss": "Nie teraz",
+      "close": "Zamknij",
+      "announce": "Zapisz klucz dostępu, aby zalogować się szybciej następnym razem.",
+      "busy": "Oczekiwanie na urządzenie…",
+      "succeeded": "Klucz dostępu zapisany. Możesz go użyć przy następnym logowaniu.",
+      "retryable": "To się nie powiodło. Możesz spróbować ponownie.",
+      "failed": "Nie udało się zapisać klucza dostępu na tym urządzeniu."
     }
   },
   "popups": {
@@ -3484,7 +3496,8 @@
   "auth": {
     "signIn": "Zaloguj się",
     "createAccount": "Utwórz konto",
-    "settings": "Ustawienia"
+    "settings": "Ustawienia",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Połącz MCP",

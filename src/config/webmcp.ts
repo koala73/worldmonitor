@@ -27,6 +27,8 @@ export const WEBMCP_SPA_TOOL = Object.freeze({
   createDashboardTab: 'create_dashboard_tab',
   renameDashboardTab: 'rename_dashboard_tab',
   deleteDashboardTab: 'delete_dashboard_tab',
+  getAccessContext: 'get_access_context',
+  openSignIn: 'open_sign_in',
 } as const);
 
 export const WEBMCP_SPA_TOOL_NAMES = [
@@ -43,6 +45,8 @@ export const WEBMCP_SPA_TOOL_NAMES = [
   WEBMCP_SPA_TOOL.createDashboardTab,
   WEBMCP_SPA_TOOL.renameDashboardTab,
   WEBMCP_SPA_TOOL.deleteDashboardTab,
+  WEBMCP_SPA_TOOL.getAccessContext,
+  WEBMCP_SPA_TOOL.openSignIn,
 ] as const;
 
 export const WEBMCP_DECLARATIVE_TOOL_NAMES = [

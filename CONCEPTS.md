@@ -328,7 +328,11 @@ Two rules follow. Plan-to-capability mappings drift while the destination's own 
 
 ### Covering Subscription
 
-A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition. See also: Cancelled-But-Paid-Through, Billing UX State.
+A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition.
+
+The mirror is exact except at one boundary, and the exception is deliberate: the server treats the paid window as open while `currentPeriodEnd > at`, the client while `currentPeriodEnd >= at`. The client is the more permissive of the two for the single instant they differ, which is safe precisely because a Billing UX State changes copy and actions only and never grants access the server would deny — while the reverse rounding would blink a covered plan into looking lapsed between snapshots. Anything that later deduplicates the two implementations must preserve each side's boundary rather than picking one, since the comparison is load-bearing in opposite directions.
+
+Answering "does this row cover?" is also not the same as answering "does this user have access". An `active` or `on_hold` row reports covering on its fields alone whatever its period end, so a row whose renewal webhook was missed still looks covering; only the full Billing UX State derivation resolves that into pending verification or lapse. Coverage predicates are therefore safe for choosing copy and never safe as an entitlement gate. See also: Cancelled-But-Paid-Through, Billing UX State, Renewal Verification.
 
 ### Cancelled-But-Paid-Through
 
