@@ -14,6 +14,7 @@ import {
   WEBMCP_HOMEPAGE_TOOL_NAMES,
   WEBMCP_SPA_TOOL_NAMES,
 } from '../src/config/webmcp.ts';
+import { getInitialPanelSettingsForVariant } from '../src/config/panels.ts';
 import {
   DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
   DASHBOARD_MAP_MAX_LATITUDE,
@@ -353,6 +354,101 @@ describe('webmcp.ts: current API contract', () => {
     const gatedSettings = await tools.find((tool) => tool.name === 'open_settings').execute({ tab: 'billing' });
     assert.equal(gatedSettings.reason, 'malformed_arguments');
     assert.deepEqual(calls, ['settings', 'alerts']);
+  });
+
+  it('reserves navigation envelope space when dashboard context is already near the output target', async () => {
+    const manyIds = Array.from({ length: 200 }, (_, index) => (
+      `panel-${String(index).padStart(3, '0')}-${'x'.repeat(80)}`
+    ));
+    const hostileContext = {
+      variant: 'full',
+      map: {
+        view: 'global',
+        center: { lat: 40.7128, lon: -74.006 },
+        zoom: 4,
+        timeRange: '24h',
+        enabledLayers: manyIds,
+      },
+      panels: { mounted: manyIds, enabled: manyIds },
+    };
+
+    const freshContexts = Object.fromEntries(
+      ['full', 'finance', 'commodity'].map((variant) => {
+        const enabled = Object.entries(getInitialPanelSettingsForVariant(variant))
+          .filter(([, config]) => config.enabled === true)
+          .map(([panelId]) => panelId);
+        return [variant, {
+          variant,
+          map: {
+            view: 'global',
+            center: { lat: 1.25, lon: 2.5 },
+            zoom: 3,
+            timeRange: '7d',
+            enabledLayers: ['conflicts', 'tradeRoutes'],
+          },
+          panels: { mounted: enabled, enabled },
+        }];
+      }),
+    );
+
+    const applied = [];
+    const executeNavigation = async (context, monitor = 'tech') => {
+      const tools = buildWebMcpTools(createBindings({
+        switchMonitor: async (destination) => {
+          applied.push(`switch:${destination}`);
+          return {
+            ok: true,
+            status: 'applied',
+            destination,
+            navigation: 'reload',
+            message: 'Switched monitor.',
+            context: { ...context, variant: destination },
+          };
+        },
+        openSettings: async () => {
+          applied.push('settings');
+          return {
+            ok: true,
+            status: 'applied',
+            destination: 'settings',
+            overlay: 'open',
+            tab: 'settings',
+            message: 'Opened settings.',
+            context,
+          };
+        },
+        openAlerts: async () => {
+          applied.push('alerts');
+          return {
+            ok: true,
+            status: 'applied',
+            destination: 'alerts',
+            overlay: 'open',
+            tab: 'notifications',
+            message: 'Opened alerts.',
+            context,
+          };
+        },
+      }), () => {});
+      return {
+        settings: await tools.find((tool) => tool.name === 'open_settings').execute({}),
+        alerts: await tools.find((tool) => tool.name === 'open_alerts').execute({}),
+        switched: await tools.find((tool) => tool.name === 'switch_monitor').execute({ monitor }),
+      };
+    };
+
+    const contexts = [hostileContext, ...Object.values(freshContexts)];
+    for (const context of contexts) {
+      const { settings, alerts, switched } = await executeNavigation(context);
+      for (const result of [settings, alerts, switched]) {
+        assert.equal(result.ok, true, context.variant);
+        assert.equal(result.status, 'applied', context.variant);
+        assert.ok(JSON.stringify(result).length <= 1_500, context.variant);
+      }
+      assert.equal(switched.destination, 'tech');
+      assert.equal(switched.context.variant, 'tech');
+    }
+    assert.equal(applied.length, contexts.length * 3);
   });
 
   it('reports entitlement-style unavailability without account details', async () => {

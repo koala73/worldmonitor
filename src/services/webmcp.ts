@@ -587,7 +587,10 @@ function normalizeIdentifiers(values: unknown, maxLength: number): string[] {
     .sort();
 }
 
-function boundDashboardContext(snapshot: DashboardContextSnapshot): Record<string, unknown> {
+function boundDashboardContext(
+  snapshot: DashboardContextSnapshot,
+  maxChars = TARGET_OUTPUT_CHARS,
+): Record<string, unknown> {
   const enabledLayers = normalizeIdentifiers(snapshot.map?.enabledLayers, 80);
   const mounted = normalizeIdentifiers(snapshot.panels?.mounted, 96);
   const enabled = normalizeIdentifiers(snapshot.panels?.enabled, 96);
@@ -618,7 +621,7 @@ function boundDashboardContext(snapshot: DashboardContextSnapshot): Record<strin
   };
 
   const collections = [enabled, mounted, enabledLayers];
-  while (JSON.stringify(result).length > TARGET_OUTPUT_CHARS) {
+  while (JSON.stringify(result).length > maxChars) {
     const candidate = collections
       .filter((collection) => collection.length > 0)
       .sort((left, right) => (
@@ -738,8 +741,7 @@ async function currentNavigationContext(
 }
 
 function boundDashboardNavigationResult(result: WebMcpNavigationResult): Record<string, unknown> {
-  const context = boundDashboardContext(result.context ?? EMPTY_NAV_CONTEXT);
-  const bounded = {
+  const envelope = {
     ok: result.ok === true,
     status: result.status,
     ...(result.destination ? { destination: boundedText(result.destination, 32) } : {}),
@@ -748,7 +750,14 @@ function boundDashboardNavigationResult(result: WebMcpNavigationResult): Record<
     ...(result.tab ? { tab: boundedText(result.tab, 32) } : {}),
     ...(result.reason ? { reason: boundedText(result.reason, 64) } : {}),
     message: boundedText(result.message, 240),
-    context,
+    context: {},
+  };
+  const envelopeChars = JSON.stringify(envelope).length;
+  // `"context":{}` is already in the envelope; the empty object is 2 chars.
+  const contextBudget = Math.max(0, MAX_OUTPUT_CHARS - envelopeChars + 2);
+  const bounded = {
+    ...envelope,
+    context: boundDashboardContext(result.context ?? EMPTY_NAV_CONTEXT, contextBudget),
   };
   if (JSON.stringify(bounded).length > MAX_OUTPUT_CHARS) {
     throw new SafeWebMcpError('Dashboard navigation result exceeded the safe output limit.');
