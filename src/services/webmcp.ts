@@ -12,10 +12,11 @@
 //   2. openSearch()               — opens the global command palette.
 //   3. get_dashboard_context()    — reads bounded visible dashboard state.
 //   4. open_dashboard_panel()     — opens an already-live panel.
-//   5. set_map_view()             — moves the visible map.
-//   6. set_map_layers()           — changes allowed visible map layers.
-//   7. search_dashboard()         — searches the live dashboard index.
-//   8. open_search_result()       — selects an opaque, revalidated result.
+//   5. set_panel_enabled()        — enables or disables a catalog panel.
+//   6. set_map_view()             — moves the visible map.
+//   7. set_map_layers()           — changes allowed visible map layers.
+//   8. search_dashboard()         — searches the live dashboard index.
+//   9. open_search_result()       — selects an opaque, revalidated result.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -41,6 +42,7 @@ import {
   MAX_LAYER_ACTION_TARGET_ID_LENGTH,
   MAX_LAYER_ACTION_TARGETS,
 } from '../../shared/agent-bus-contract';
+import type { SetPanelEnabledResult } from '../config/panel-enablement';
 
 export interface WebMcpAppBindings {
   openCountryBriefByCode(
@@ -71,6 +73,11 @@ export interface WebMcpAppBindings {
     resultKey: string,
     options?: WebMcpExecutionOptions,
   ): DashboardSearchOpenResult | Promise<DashboardSearchOpenResult>;
+  setPanelEnabled(
+    panelId: unknown,
+    enabled: unknown,
+    options?: WebMcpExecutionOptions,
+  ): SetPanelEnabledResult | Promise<SetPanelEnabledResult>;
 }
 
 export interface WebMcpExecutionOptions {
@@ -213,13 +220,15 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 //     selection dispatcher. Putting the map back by hand restores neither.
 //     openCountryBrief can start server-side LLM generation that consumes the
 //     caller's daily allowance. The gateway cannot refund a request merely
-//     because browser-side execution was cancelled.
+//     because browser-side execution was cancelled. set_panel_enabled writes
+//     STORAGE_KEYS.panels, so a phantom completion would persist dashboard
+//     layout beyond the cancelled invocation.
 //   - 'view-state': set_map_view also writes share-URL state via
 //     history.replaceState — visible in the address bar and overwritten by the
 //     next human map move.
 //   - 'read-only': nothing to undo.
 //
-// Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
+// Keyed by WebMcpSpaToolName, so adding a tenth tool without a policy entry is
 // a TypeScript error. That is the forcing function: nothing ships unclassified.
 export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'cancellation-required'>
@@ -228,6 +237,7 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
   [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
   [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
+  [WEBMCP_SPA_TOOL.setPanelEnabled]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
   [WEBMCP_SPA_TOOL.openCountryBrief]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.setMapLayers]: 'cancellation-required',
@@ -282,6 +292,7 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   openSearch: 'World Monitor could not open search.',
   get_dashboard_context: 'World Monitor could not read dashboard context.',
   open_dashboard_panel: 'World Monitor could not open that dashboard panel.',
+  set_panel_enabled: 'World Monitor could not update that dashboard panel.',
   set_map_view: 'World Monitor could not move the map.',
   set_map_layers: 'World Monitor could not update map layers.',
   search_dashboard: 'World Monitor could not search the dashboard.',
@@ -484,9 +495,11 @@ const VALIDATION_DENIAL_REASONS = new Set([
   'malformed_arguments',
   'invalid_action',
   'not_dashboard_control',
+  'unknown_panel',
 ]);
 const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_not_entitled',
+  'panel_cap_exceeded',
   'layer_not_entitled',
 ]);
 const STALE_DENIAL_REASONS = new Set([
@@ -672,6 +685,35 @@ function boundSearchOpenResult(result: DashboardSearchOpenResult): DashboardSear
   };
 }
 
+const SET_PANEL_ENABLED_REASONS = new Set([
+  'malformed_arguments',
+  'unknown_panel',
+  'panel_incompatible',
+  'panel_not_entitled',
+  'panel_cap_exceeded',
+  'panel_required',
+]);
+
+function boundSetPanelEnabledResult(result: SetPanelEnabledResult): SetPanelEnabledResult {
+  const status = result.status === 'applied' || result.status === 'denied' || result.status === 'invalid'
+    ? result.status
+    : 'denied';
+  const ok = result.ok === true && status === 'applied';
+  const reason = result.reason && SET_PANEL_ENABLED_REASONS.has(result.reason)
+    ? result.reason
+    : undefined;
+  return {
+    ok,
+    status: ok ? 'applied' : status === 'invalid' ? 'invalid' : 'denied',
+    panelId: boundedText(result.panelId, 96),
+    requestedEnabled: result.requestedEnabled === true,
+    effectiveEnabled: result.effectiveEnabled === true,
+    changed: ok && result.changed === true,
+    ...(!ok && reason ? { reason } : {}),
+    message: boundedText(result.message, 160) || (ok ? 'Panel updated.' : 'Panel change denied.'),
+  };
+}
+
 function hasOnlyOwnKeys(
   value: Record<string, unknown>,
   allowedKeys: readonly string[],
@@ -775,7 +817,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.openDashboardPanel,
       title: 'Open Dashboard Panel',
       description:
-        'Open and scroll to an already-live, currently enabled dashboard panel through the same entitlement-aware control path used by World Monitor. Disabled panels return panel_disabled. A person can enable them from dashboard search or settings; this tool does not enable panels itself.',
+        'Open and scroll to an already-live, currently enabled dashboard panel through the same entitlement-aware control path used by World Monitor. Disabled panels return panel_disabled. Use set_panel_enabled to change whether a catalog panel is enabled; this tool does not enable panels itself.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -797,6 +839,48 @@ export function buildWebMcpTools(
           panelId: args.panelId,
         }, app, extra)
       ), trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.setPanelEnabled,
+      title: 'Set Panel Enabled',
+      description:
+        'Enable or disable a dashboard panel by its stable ID through the same settings path a person uses. Returns the requested state, effective state, and whether anything changed. Refuses unknown, incompatible, unentitled, and free-tier-capped panels. Requires target-side cancellation because it persists dashboard settings.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          panelId: {
+            type: 'string',
+            description: 'Dashboard panel ID, such as "markets" or "giving".',
+            minLength: 1,
+            maxLength: 96,
+            pattern: '^[a-z0-9][a-z0-9@_-]*$',
+          },
+          enabled: {
+            type: 'boolean',
+            description: 'True to enable the panel, false to disable it.',
+          },
+        },
+        required: ['panelId', 'enabled'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setPanelEnabled, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['panelId', 'enabled'])) {
+          return boundSetPanelEnabledResult({
+            ok: false,
+            status: 'invalid',
+            panelId: typeof args.panelId === 'string' ? args.panelId : '',
+            requestedEnabled: args.enabled === true,
+            effectiveEnabled: false,
+            changed: false,
+            reason: 'malformed_arguments',
+            message: 'panelId must be a stable dashboard panel ID and enabled must be a boolean.',
+          });
+        }
+        return boundSetPanelEnabledResult(
+          await app.setPanelEnabled(args.panelId, args.enabled, extra),
+        );
+      }, trackEvent),
     },
     {
       name: WEBMCP_SPA_TOOL.setMapView,

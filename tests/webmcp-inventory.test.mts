@@ -69,6 +69,15 @@ function createBindings(overrides: Record<string, unknown> = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' as const, type: 'country' }),
+    setPanelEnabled: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      panelId: 'giving',
+      requestedEnabled: true,
+      effectiveEnabled: true,
+      changed: true,
+      message: 'Panel enabled.',
+    }),
     ...overrides,
   };
 }
@@ -78,6 +87,7 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   openSearch: {},
   get_dashboard_context: {},
   open_dashboard_panel: { panelId: 'markets' },
+  set_panel_enabled: { panelId: 'giving', enabled: true },
   set_map_view: { view: 'eu', zoom: 4 },
   set_map_layers: { layers: { weather: true } },
   search_dashboard: { query: 'germany' },
@@ -103,6 +113,8 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'src/services/webmcp.ts',
   'src/App.ts',
   'src/app/webmcp-dashboard.ts',
+  'src/config/panel-enablement.ts',
+  'src/app/panel-enablement.ts',
   'src/app/webmcp-search-controller.ts',
   'src/app/search-selection-dispatcher.ts',
   'src/components/GlobalProcurementPanel.ts',
@@ -130,6 +142,7 @@ const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
   'tests/webmcp-runtime.test.mjs',
   'tests/webmcp-analytics-policy.test.mjs',
   'tests/webmcp-evals.test.mjs',
+  'tests/webmcp-panel-enablement.test.mts',
   'tests/deploy-config.test.mjs',
 ] as const;
 
@@ -405,7 +418,7 @@ describe('WebMCP imperative schema and budget contract', () => {
     }
   });
 
-  it('applies uniform metadata, schema, output, and error budgets to all eight tools', async () => {
+  it('applies uniform metadata, schema, output, and error budgets to all nine tools', async () => {
     const tools = buildWebMcpTools(createBindings(), () => {});
     for (const tool of tools) {
       assert.ok(tool.name.length <= WEBMCP_TOOL_BUDGETS.nameChars, `${tool.name}: name`);
@@ -439,6 +452,7 @@ describe('WebMCP imperative schema and budget contract', () => {
       applyDashboardAction: async () => { throw privateError; },
       searchDashboard: async () => { throw privateError; },
       openSearchResult: async () => { throw privateError; },
+      setPanelEnabled: async () => { throw privateError; },
     }), () => {});
     for (const tool of failing) {
       await assert.rejects(tool.execute(VALID_INPUTS[tool.name]!), (error: Error) => (

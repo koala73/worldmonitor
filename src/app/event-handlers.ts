@@ -18,8 +18,11 @@ import {
   FREE_MAX_SOURCES,
   countFreePanelCapUsage,
   isFreePanelCapCounted,
+  isPanelEntitled,
   userSetPanelEnabled,
 } from '@/config/panels';
+import { applySetPanelEnabled } from '@/app/panel-enablement';
+import type { SetPanelEnabledResult } from '@/config/panel-enablement';
 import type { McpDataPanel } from '@/components/McpDataPanel';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
@@ -389,6 +392,35 @@ export class EventHandlerManager implements AppModule {
       (panel as { fetchData: () => void }).fetchData();
     }
     return true;
+  }
+
+  /**
+   * Enable or disable a catalog panel through the same persist/apply path as
+   * settings and search-add. Runtime widgets (`cw-*` / `mcp-*`) are refused;
+   * closing those panels still uses the dedicated confirm-and-delete handlers.
+   */
+  setPanelEnabledById(panelId: unknown, enabled: unknown): SetPanelEnabledResult {
+    const isPro = hasPremiumAccess(getAuthState());
+    return applySetPanelEnabled(
+      {
+        panelSettings: this.ctx.panelSettings,
+        panels: this.ctx.panels,
+        unifiedSettings: this.ctx.unifiedSettings,
+      },
+      panelId,
+      enabled,
+      {
+        variant: SITE_VARIANT,
+        isPro,
+        persist: (settings) => saveToStorage(STORAGE_KEYS.panels, settings),
+        applyPanelSettings: () => this.applyPanelSettings(),
+        trackToggle: trackPanelToggled,
+        showCapToast: () => showToast(
+          t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }),
+        ),
+        isPanelAllowed: (id, config) => isPanelEntitled(id, config, hasPremiumAccess(getAuthState())),
+      },
+    );
   }
 
   private setupTvMode(): void {

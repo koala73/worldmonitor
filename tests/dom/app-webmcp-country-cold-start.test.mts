@@ -43,6 +43,15 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      setPanelEnabled: async () => ({
+        ok: true,
+        status: 'applied',
+        panelId: 'giving',
+        requestedEnabled: true,
+        effectiveEnabled: true,
+        changed: true,
+        message: 'Panel enabled.',
+      }),
     }, () => {});
 
     await expect(tools.find((tool) => tool.name === 'openCountryBrief')!.execute({ iso2: 'FR' }))
@@ -133,6 +142,15 @@ describe('App WebMCP country binding cold start', () => {
         truncated: false,
       }),
       openSearchResult: async () => ({ ok: true, status: 'opened' }),
+      setPanelEnabled: async () => ({
+        ok: true,
+        status: 'applied',
+        panelId: 'giving',
+        requestedEnabled: true,
+        effectiveEnabled: true,
+        changed: true,
+        message: 'Panel enabled.',
+      }),
     };
     const countryTool = buildWebMcpTools(bindings, () => {})
       .find((tool) => tool.name === 'openCountryBrief');

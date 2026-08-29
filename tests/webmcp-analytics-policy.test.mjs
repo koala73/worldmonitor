@@ -63,6 +63,15 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
+    setPanelEnabled: async () => ({
+      ok: true,
+      status: 'applied',
+      panelId: 'giving',
+      requestedEnabled: true,
+      effectiveEnabled: true,
+      changed: true,
+      message: 'Panel enabled.',
+    }),
     ...overrides,
   };
 }
@@ -168,7 +177,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(

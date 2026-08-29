@@ -1161,6 +1161,12 @@ function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | 
     : undefined;
 }
 
+/** True when `panelId` is in the selected monitor's native catalog, not merely in ALL_PANELS. */
+export function isPanelNativeToVariant(panelId: string, variant: string): boolean {
+  const configs = getVariantPanelConfigs(variant);
+  return Boolean(configs && Object.prototype.hasOwnProperty.call(configs, panelId));
+}
+
 /** All panels from all variants — canonical cross-variant registry. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,

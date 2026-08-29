@@ -7,6 +7,7 @@
       "openSearch",
       "get_dashboard_context",
       "open_dashboard_panel",
+      "set_panel_enabled",
       "set_map_view",
       "set_map_layers",
       "search_dashboard",
@@ -35,6 +36,7 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
+        "set_panel_enabled",
         "set_map_view",
         "set_map_layers",
         "search_dashboard",
@@ -59,6 +61,7 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
+        "set_panel_enabled",
         "set_map_view",
         "set_map_layers",
         "search_dashboard",
@@ -84,6 +87,34 @@
       "forbiddenTools": [
         "openCountryBrief",
         "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "set_panel_enabled"
+      ]
+    },
+    {
+      "id": "panel_enablement_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Enable the giving panel.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_panel_enabled",
+            "arguments": {
+              "panelId": "giving",
+              "enabled": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
         "search_dashboard",
         "open_search_result",
         "search_procurement"
@@ -129,7 +160,8 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "set_panel_enabled"
       ]
     },
     {
@@ -154,7 +186,8 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "set_panel_enabled"
       ]
     },
     {
@@ -176,7 +209,8 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "set_panel_enabled"
       ]
     },
     {
@@ -210,7 +244,8 @@
       ],
       "forbiddenTools": [
         "openSearch",
-        "search_procurement"
+        "search_procurement",
+        "set_panel_enabled"
       ]
     },
     {
@@ -232,6 +267,7 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
+        "set_panel_enabled",
         "open_search_result",
         "search_procurement"
       ]
@@ -263,6 +299,7 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
+        "set_panel_enabled",
         "search_procurement"
       ]
     },
@@ -288,7 +325,8 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "set_panel_enabled"
       ]
     },
     {
@@ -311,7 +349,8 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "set_panel_enabled"
       ]
     },
     {
@@ -327,6 +366,7 @@
         "openSearch",
         "get_dashboard_context",
         "open_dashboard_panel",
+        "set_panel_enabled",
         "set_map_view",
         "set_map_layers",
         "search_dashboard",
@@ -359,6 +399,7 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
+        "set_panel_enabled",
         "search_procurement"
       ],
       "failure": {
@@ -369,7 +410,8 @@
         "forbiddenAfterFailure": [
           "openCountryBrief",
           "openSearch",
-          "open_dashboard_panel"
+          "open_dashboard_panel",
+          "set_panel_enabled"
         ]
       }
     },
@@ -397,7 +439,8 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "set_panel_enabled"
       ],
       "failure": {
         "atStep": 2,
@@ -429,7 +472,8 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "set_panel_enabled"
       ],
       "failure": {
         "atStep": 1,
@@ -438,7 +482,8 @@
         "mustStop": true,
         "forbiddenAfterFailure": [
           "openSearch",
-          "search_dashboard"
+          "search_dashboard",
+          "set_panel_enabled"
         ]
       }
     }

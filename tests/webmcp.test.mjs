@@ -79,6 +79,15 @@ function createBindings(overrides = {}) {
       ok: true,
       status: 'opened',
     }),
+    setPanelEnabled: async () => ({
+      ok: true,
+      status: 'applied',
+      panelId: 'giving',
+      requestedEnabled: true,
+      effectiveEnabled: true,
+      changed: true,
+      message: 'Panel enabled.',
+    }),
     ...overrides,
   };
 }
@@ -136,6 +145,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearch/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.getDashboardContext/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openDashboardPanel/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setPanelEnabled/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapView/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapLayers/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.searchDashboard/);
@@ -298,11 +308,24 @@ describe('webmcp.ts: current API contract', () => {
         mutationCalls += 1;
         return { ok: true, status: 'opened' };
       },
+      setPanelEnabled: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          panelId: 'giving',
+          requestedEnabled: true,
+          effectiveEnabled: true,
+          changed: true,
+          message: 'Panel enabled.',
+        };
+      },
     }), (event, data) => events.push({ event, data }));
     const validInputs = {
       openCountryBrief: { iso2: 'DE' },
       openSearch: {},
       open_dashboard_panel: { panelId: 'markets' },
+      set_panel_enabled: { panelId: 'giving', enabled: true },
       set_map_view: { view: 'eu' },
       set_map_layers: { layers: { conflicts: true } },
       open_search_result: { resultKey: `sr_${'a'.repeat(32)}` },
@@ -320,16 +343,16 @@ describe('webmcp.ts: current API contract', () => {
 
     // openCountryBrief can consume daily LLM allowance after caller
     // cancellation. set_map_layers and open_search_result persist
-    // STORAGE_KEYS.mapLayers. All three stay fail-closed without a target
-    // signal; the remaining dashboard-changing tools only move reversible
-    // visible view state.
+    // STORAGE_KEYS.mapLayers. set_panel_enabled persists STORAGE_KEYS.panels.
+    // All four stay fail-closed without a target signal; the remaining
+    // dashboard-changing tools only move reversible visible view state.
     //
     // Every tool is pinned to its EXACT return, gated and ungated alike.
     // `notDeepEqual(result, denial)` excluded exactly one literal object, so a
     // swallowed error, a differently shaped failure, a wrong country name, or a
     // dropped actionType all passed it. createBindings() is deterministic, so
     // there is nothing environment-dependent left to hedge against.
-    const gated = ['openCountryBrief', 'set_map_layers', 'open_search_result'];
+    const gated = ['openCountryBrief', 'set_map_layers', 'open_search_result', 'set_panel_enabled'];
     const denial = {
       ok: false,
       status: 'denied',
@@ -351,6 +374,7 @@ describe('webmcp.ts: current API contract', () => {
       openCountryBrief: denial,
       openSearch: 'Opened search palette.',
       open_dashboard_panel: appliedAction('open_panel'),
+      set_panel_enabled: denial,
       set_map_view: appliedAction('set_view'),
       set_map_layers: denial,
       open_search_result: denial,
@@ -998,7 +1022,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     await settlePromises();
     assert.deepEqual(harness.events, [{
       event: 'webmcp-registered',
-      data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
+      data: { toolCount: 9, pageSurface: 'dashboard', api: 'document-current' },
     }]);
 
     controller.abort();
@@ -1025,7 +1049,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
       },
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
       },
     ]);
     assert.ok(!JSON.stringify(harness.events).includes('raw duplicate detail'));
