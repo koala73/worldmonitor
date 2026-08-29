@@ -75,7 +75,6 @@ export function identityMatches(a: PasskeyIdentity, b: PasskeyIdentity): boolean
 export interface PasskeyEvaluationDeps {
   /** Has an authoritative signed-out state been observed this page life? */
   armed: () => boolean;
-  isDesktopApp: boolean;
   readEnvironment: () => { isDesktopApp: boolean; inIframe: boolean; hasPublicKeyCredential: boolean };
   readIdentity: () => PasskeyIdentity;
   passkeyCount: () => number;
@@ -123,13 +122,14 @@ export async function evaluatePasskeyOffer(deps: PasskeyEvaluationDeps): Promise
   const env = deps.readEnvironment();
   if (!isPasskeyEnvironmentEligible(env)) return 'ineligible-environment';
 
+  const passkeyCount = deps.passkeyCount();
   if (!shouldOfferPasskey({
     environmentEligible: true,
     sessionReady: true,
-    existingPasskeyCount: deps.passkeyCount(),
+    existingPasskeyCount: passkeyCount,
     alreadyOffered: deps.alreadyOffered(identity.accountKey),
   })) {
-    return deps.passkeyCount() > 0 ? 'already-has-passkey' : 'already-offered';
+    return passkeyCount > 0 ? 'already-has-passkey' : 'already-offered';
   }
 
   // Overlay check BEFORE the frame defer, and again after — an overlay can open
@@ -163,11 +163,6 @@ export async function evaluatePasskeyOffer(deps: PasskeyEvaluationDeps): Promise
 const BROADCAST_CHANNEL = 'wm-passkey-offer';
 /** How long the success confirmation stays before the card leaves. */
 const SUCCESS_LINGER_MS = 2600;
-
-/** Coarse, closed reason vocabulary for the failure event. Never a Clerk string. */
-function failureReason(outcome: PasskeyOutcome): string {
-  return outcome === 'failed' ? 'device-unsupported' : 'unknown';
-}
 
 export interface PasskeyOfferControllerOptions {
   storage?: OfferStorage;
@@ -255,7 +250,6 @@ export class PasskeyOfferController implements AppModule {
     const epoch = this.evaluationEpoch;
     await evaluatePasskeyOffer({
       armed: () => this.armed,
-      isDesktopApp: this.ctx.isDesktopApp,
       readEnvironment: () => readPasskeyEnvironmentFacts(this.ctx.isDesktopApp),
       readIdentity: () => this.readIdentity(),
       passkeyCount: () => countPasskeys(getClerk()?.user as { passkeys?: unknown } | null),
@@ -353,7 +347,9 @@ export class PasskeyOfferController implements AppModule {
     }
     if (outcome === 'failed') {
       prompt.setState('failed');
-      trackPasskeyOfferFailed(failureReason(outcome));
+      // Coarse, closed vocabulary — never a raw Clerk string, which can carry
+      // account detail. Only the `failed` class reaches here (KTD5).
+      trackPasskeyOfferFailed('device-unsupported');
       return;
     }
     // Retryable emits nothing: the user is still deciding, not done.
@@ -413,8 +409,10 @@ export class PasskeyOfferController implements AppModule {
         // Account-keyed: an unqualified "someone mounted" would silence a
         // sibling tab signed into a DIFFERENT account.
         if (typeof key !== 'string') return;
+        // Record it locally so this tab's next evaluation sees the sibling's
+        // mount. A tab that already has the card up keeps it — the broadcast
+        // prevents a duplicate, it does not retract one.
         if (this.storage) recordOffered(this.storage, this.memory, key);
-        if (this.mountedIdentity?.accountKey === key) return;
       };
     } catch { this.channel = null; }
   }

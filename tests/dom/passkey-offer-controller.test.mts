@@ -39,7 +39,6 @@ function deps(overrides: Partial<PasskeyEvaluationDeps> = {}) {
   const probe = vi.fn(async () => true);
   const base: PasskeyEvaluationDeps = {
     armed: () => true,
-    isDesktopApp: false,
     readEnvironment: () => ({ isDesktopApp: false, inIframe: false, hasPublicKeyCredential: true }),
     readIdentity: () => READY,
     passkeyCount: () => 0,
