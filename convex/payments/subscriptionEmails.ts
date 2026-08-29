@@ -776,8 +776,11 @@ export function buildDunningEmail(
       return {
         subject: `Your World Monitor ${planName} access continues ${untilPhrase}`,
         html: dunningEmailShell(
-          `You're still Pro ${untilPhrase}.`,
-          `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">We've cancelled the renewal on your ${planName} subscription — you won't be charged again. Nothing is switched off today: your briefs, alerts, WM Analyst and Pro panels keep working ${untilPhrase}, the period you've already paid for. After that the account returns to the free tier on its own.</p>`,
+          // Plan-neutral on purpose: this step fires for every plan key,
+          // api_starter and api_business included, so naming Pro features
+          // here would tell an API subscriber about things they never had.
+          `Your access continues ${untilPhrase}.`,
+          `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">We've cancelled the renewal on your ${planName} subscription — you won't be charged again. Nothing is switched off today: your ${planName} access keeps working ${untilPhrase}, the period you've already paid for. After that, this subscription ends.</p>`,
           "Open dashboard",
           ctaUrl,
           "You're receiving this because you cancelled a World Monitor subscription. No further charges will be taken.",
@@ -943,15 +946,13 @@ export const sendDunningEmail = internalAction({
     );
     if (alreadySent) return { sent: false, reason: "already_sent" as const };
 
-    // CTA: a freshly minted Dodo portal session for dunning (card update is
-    // the whole point); pricing page for winback. Portal minting can fail
-    // (no customer id, Dodo error) — fall back to the dashboard, where the
-    // payment-failure banner routes to the same portal after sign-in.
-    // Only the dunning steps mint a portal session — card update is their
-    // whole point. Winback goes to pricing; a cancellation confirmation goes
-    // to the dashboard the subscriber still has access to (a billing-portal
-    // link there would read as "there's something left to fix", the opposite
-    // of the message).
+    // CTA: only the dunning steps mint a freshly minted Dodo portal session —
+    // card update is their whole point. Winback goes to pricing. A
+    // cancellation confirmation goes to the dashboard the subscriber still
+    // has access to; a billing-portal link there would read as "there's
+    // something left to fix", the opposite of the message. Portal minting can
+    // fail (no customer id, Dodo error) — fall back to the dashboard, where
+    // the payment-failure banner routes to the same portal after sign-in.
     let ctaUrl = args.step === "winback_day30" ? PRICING_URL : DASHBOARD_URL;
     if (args.step !== "winback_day30" && args.step !== "cancellation_confirm") {
       try {

@@ -15,6 +15,8 @@
  *     ACCESS-END DATE once, replays don't re-send, lapsed cancellations stay
  *     silent, a new cancellation episode re-sends, and the shared episode key
  *     doesn't let the confirmation suppress the later winback
+ *   - cancellation copy: UTC date formatting, plan-neutral body (this step
+ *     fires for api_* plans too), dateless fallback
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -27,6 +29,8 @@ import {
   WINBACK_MAX_AGE_MS,
   SEND_SPACING_MS,
   resendPacingWaitMs,
+  buildDunningEmail,
+  formatAccessEndDate,
 } from "../payments/subscriptionEmails";
 
 const modules = import.meta.glob("../**/*.ts");
@@ -973,5 +977,50 @@ describe("cancellation_confirm × winback share an episode key (#7314)", () => {
     expect(sends).toHaveLength(1);
     expect(sends[0]!.subject).toContain("access has ended");
     expect(await ledgerRows(t)).toHaveLength(2);
+  });
+});
+
+describe("cancellation confirmation copy (#7314)", () => {
+  test("formats the access-end date in UTC, not the server timezone", () => {
+    // A period ending just after midnight UTC must not print the previous
+    // day. This date is the whole payload of the email — printing it a day
+    // early is the same customer-facing failure as not sending it.
+    expect(formatAccessEndDate(Date.parse("2026-09-28T00:30:00Z"))).toBe("28 September 2026");
+    expect(formatAccessEndDate(Date.parse("2026-09-28T23:45:00Z"))).toBe("28 September 2026");
+    expect(formatAccessEndDate(Date.parse("2026-01-01T00:00:00Z"))).toBe("1 January 2026");
+    expect(formatAccessEndDate(Date.parse("2026-12-31T23:59:59Z"))).toBe("31 December 2026");
+  });
+
+  test("copy stays plan-neutral so API subscribers aren't told about Pro features", () => {
+    // This step fires for EVERY plan key. The winback template names Pro
+    // features unconditionally; this one must not copy that, or an
+    // api_starter canceller is told their "briefs and WM Analyst" continue.
+    const { subject, html } = buildDunningEmail(
+      "cancellation_confirm",
+      "API Starter (Monthly)",
+      "https://www.worldmonitor.app/dashboard",
+      Date.parse("2026-09-28T19:01:10Z"),
+    );
+    expect(subject).toContain("API Starter (Monthly)");
+    expect(subject).toContain("28 September 2026");
+    expect(html).toContain("28 September 2026");
+    for (const proOnly of ["WM Analyst", "Pro panels", "briefs"]) {
+      expect(html).not.toContain(proOnly);
+    }
+    // And it must not claim the account drops to free — the canceller may
+    // hold another covering subscription.
+    expect(html).not.toContain("free tier");
+  });
+
+  test("falls back to a dateless phrase rather than printing an invalid date", () => {
+    const { subject, html } = buildDunningEmail(
+      "cancellation_confirm",
+      "Pro (Monthly)",
+      "https://www.worldmonitor.app/dashboard",
+    );
+    expect(subject).toContain("until the end of your paid period");
+    expect(html).toContain("until the end of your paid period");
+    expect(subject).not.toContain("undefined");
+    expect(html).not.toContain("NaN");
   });
 });
