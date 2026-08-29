@@ -25,6 +25,7 @@ import {
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
   resolvePlanKey,
+  revokeBusinessProGrantsForSubscription,
   type SubscriptionStatus,
 } from "./subscriptionHelpers";
 
@@ -3951,6 +3952,145 @@ export const grantComplimentaryEntitlement = internalMutation({
       planKey: args.planKey,
       validUntil,
       compUntil,
+    };
+  },
+});
+
+/**
+ * Ends a subscription's paid coverage NOW, keeping the row as a `cancelled`
+ * churn record.
+ *
+ * Ops tool for the refund case. A Dodo refund does NOT revoke access: the
+ * `refund.succeeded` handler records the payment event and (only when the sub
+ * is still uncancelled) raises the ops alert in `classifyRefundAlert` —
+ * "entitlement remains active until manual cleanup" (subscriptionHelpers.ts).
+ * `subscription.cancelled` is also deliberately paid-through: entitlements
+ * stand until `currentPeriodEnd`. So a full refund of the CURRENT period
+ * leaves the customer holding a month of Pro they were paid back for, and a
+ * refund on an already-cancelled sub doesn't even alert. This mutation is that
+ * manual cleanup — it retires the coverage the refund reversed.
+ *
+ * Prefer this over `deleteSubscriptionByDodoId` for refunds: it preserves the
+ * churn record (winback scan, billing UI, revenue reporting) instead of
+ * erasing the subscription. Reach for the delete only when the row's eventual
+ * `subscription.expired` webhook would clobber a DIFFERENT active entitlement.
+ *
+ * Semantics:
+ *   - `currentPeriodEnd` moves to now, never forward (an already-lapsed sub
+ *     keeps its earlier end date — this can only take access away).
+ *   - `expired` stays `expired`; it is already terminal and non-covering, so
+ *     regressing it to `cancelled` would falsify the churn record. Everything
+ *     else becomes `cancelled`.
+ *   - `cancelledAt` is stamped only if absent — the original cancellation
+ *     timestamp is history and is never overwritten by cleanup.
+ *   - A complimentary floor (`compUntil`) still wins: `recomputeEntitlement-
+ *     FromAllSubs` preserves goodwill grants, so the returned
+ *     `entitlementAfter` may legitimately still be paid. Check it.
+ *
+ * Typical usage (CLI):
+ *   npx convex run 'payments/billing:endSubscriptionCoverageNow' \
+ *     '{"dodoSubscriptionId":"sub_XXX","reason":"full refund ref_YYY"}'
+ */
+export const endSubscriptionCoverageNow = internalMutation({
+  args: {
+    dodoSubscriptionId: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", args.dodoSubscriptionId),
+      )
+      .unique();
+    if (!sub) {
+      throw new Error(
+        `[billing] endSubscriptionCoverageNow: no subscription found with dodoSubscriptionId="${args.dodoSubscriptionId}"`,
+      );
+    }
+
+    const now = Date.now();
+    const before = {
+      status: sub.status,
+      currentPeriodEnd: sub.currentPeriodEnd,
+      cancelledAt: sub.cancelledAt ?? null,
+    };
+    // Only ever shortens. Math.min keeps a sub that already lapsed at its real
+    // end date so the churn record stays truthful.
+    const currentPeriodEnd = Math.min(sub.currentPeriodEnd, now);
+    const status: SubscriptionStatus = sub.status === "expired" ? "expired" : "cancelled";
+
+    await ctx.db.patch(sub._id, {
+      status,
+      currentPeriodEnd,
+      updatedAt: now,
+      ...(status === "cancelled" ? { cancelledAt: sub.cancelledAt ?? now } : {}),
+      // The row can no longer be in the stale-active set, so the reconciler's
+      // backoff bookkeeping and the request-path renewal-verification lease are
+      // both meaningless — clear them exactly as the reconciliation path does
+      // when a row leaves that set. Leaving `renewalVerificationState` behind
+      // would make the billing UI show "verifying your renewal" forever (#4771).
+      lastReconcileAttemptAt: undefined,
+      reconcileFailureCount: undefined,
+      reconcileNotFoundCount: undefined,
+      renewalVerificationState: undefined,
+      renewalVerificationAttemptAt: undefined,
+    });
+
+    // Business seats: the sub no longer covers, so its invitee grants must die
+    // with it. Same shared grant-walk the cancelled/expired webhook handlers
+    // use — per-invitee error isolation and the "team access ended" email
+    // included — called inline so seat revocation commits atomically with the
+    // coverage end rather than in a second transaction that could fail alone.
+    const { revoked: revokedSeats, failed: failedSeats } =
+      await revokeBusinessProGrantsForSubscription(ctx, args.dodoSubscriptionId, now);
+
+    await recomputeEntitlementFromAllSubs(ctx, sub.userId, now);
+    const entitlementAfter = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
+      .first();
+
+    console.log(
+      `[billing] endSubscriptionCoverageNow userId=${sub.userId} dodoSubscriptionId=${args.dodoSubscriptionId} ` +
+        `planKey=${sub.planKey} status=${before.status}→${status} ` +
+        `currentPeriodEnd=${new Date(before.currentPeriodEnd).toISOString()}→${new Date(currentPeriodEnd).toISOString()} ` +
+        `revokedSeats=${revokedSeats} failedSeats=${failedSeats} ` +
+        `entitlementAfter=${entitlementAfter?.planKey ?? "none"} reason="${args.reason}"`,
+    );
+
+    // Sync the edge cache so access actually stops now instead of drifting for
+    // up to ENTITLEMENT_CACHE_TTL_SECONDS (900s) on a stale Redis entry.
+    if (process.env.UPSTASH_REDIS_REST_URL && entitlementAfter) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.cacheActions.syncEntitlementCache,
+        {
+          userId: sub.userId,
+          planKey: entitlementAfter.planKey,
+          features: entitlementAfter.features,
+          validUntil: entitlementAfter.validUntil,
+        },
+      );
+    }
+
+    return {
+      userId: sub.userId,
+      dodoSubscriptionId: args.dodoSubscriptionId,
+      planKey: sub.planKey,
+      before,
+      after: { status, currentPeriodEnd },
+      revokedSeats,
+      failedSeats,
+      entitlementAfter: entitlementAfter
+        ? {
+            planKey: entitlementAfter.planKey,
+            validUntil: entitlementAfter.validUntil,
+            ...(entitlementAfter.compUntil !== undefined
+              ? { compUntil: entitlementAfter.compUntil }
+              : {}),
+          }
+        : null,
     };
   },
 });

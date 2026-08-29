@@ -6519,3 +6519,253 @@ describe("Pro activation — day-0 outcome rows (#5621)", () => {
     }
   });
 });
+
+describe("payments billing endSubscriptionCoverageNow (refund cleanup)", () => {
+  const PRO_PRODUCT_ID = PRODUCT_CATALOG.pro_monthly.dodoProductId!;
+
+  async function readSub(t: ReturnType<typeof convexTest>, suffix: string) {
+    return await t.run(async (ctx) =>
+      await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", `sub_billing_${suffix}`),
+        )
+        .unique(),
+    );
+  }
+
+  async function readEntitlement(t: ReturnType<typeof convexTest>, userId = TEST_USER_ID) {
+    return await t.run(async (ctx) =>
+      await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first(),
+    );
+  }
+
+  test("ends coverage now on a refunded cancelled sub and downgrades to free", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRO_PRODUCT_ID,
+      status: "cancelled",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "refund_cleanup_basic",
+    });
+    const cancelledAt = NOW - DAY_MS;
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", "sub_billing_refund_cleanup_basic"),
+        )
+        .unique();
+      await ctx.db.patch(sub!._id, { cancelledAt });
+      await upsertEntitlements(ctx, TEST_USER_ID, "pro_monthly", NOW + 30 * DAY_MS, NOW);
+    });
+
+    const result = await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+      dodoSubscriptionId: "sub_billing_refund_cleanup_basic",
+      reason: "full refund ref_test",
+    });
+
+    const sub = await readSub(t, "refund_cleanup_basic");
+    expect(sub!.status).toBe("cancelled");
+    expect(sub!.currentPeriodEnd).toBeLessThanOrEqual(Date.now());
+    // The original cancellation timestamp is history — never overwritten.
+    expect(sub!.cancelledAt).toBe(cancelledAt);
+
+    const entitlement = await readEntitlement(t);
+    expect(entitlement!.planKey).toBe("free");
+    expect(entitlement!.validUntil).toBeLessThanOrEqual(Date.now());
+    expect(result.entitlementAfter?.planKey).toBe("free");
+  });
+
+  test("never extends coverage on a sub whose period already ended", async () => {
+    const t = convexTest(schema, modules);
+    const endedAt = NOW - 5 * DAY_MS;
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRO_PRODUCT_ID,
+      status: "cancelled",
+      currentPeriodEnd: endedAt,
+      suffix: "refund_cleanup_no_extend",
+    });
+
+    await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+      dodoSubscriptionId: "sub_billing_refund_cleanup_no_extend",
+      reason: "refund on an already-lapsed sub",
+    });
+
+    const sub = await readSub(t, "refund_cleanup_no_extend");
+    expect(sub!.currentPeriodEnd).toBe(endedAt);
+  });
+
+  test("flips an active refunded sub to cancelled and stamps cancelledAt", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRO_PRODUCT_ID,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "refund_cleanup_active",
+    });
+
+    await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+      dodoSubscriptionId: "sub_billing_refund_cleanup_active",
+      reason: "refunded before cancellation",
+    });
+
+    const sub = await readSub(t, "refund_cleanup_active");
+    expect(sub!.status).toBe("cancelled");
+    expect(sub!.cancelledAt).toBeGreaterThanOrEqual(NOW);
+    expect(sub!.currentPeriodEnd).toBeLessThanOrEqual(Date.now());
+  });
+
+  test("keeps `expired` terminal instead of regressing it to cancelled", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRO_PRODUCT_ID,
+      status: "expired",
+      currentPeriodEnd: NOW - DAY_MS,
+      suffix: "refund_cleanup_expired",
+    });
+
+    await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+      dodoSubscriptionId: "sub_billing_refund_cleanup_expired",
+      reason: "refund after expiry",
+    });
+
+    const sub = await readSub(t, "refund_cleanup_expired");
+    expect(sub!.status).toBe("expired");
+    expect(sub!.cancelledAt).toBeUndefined();
+  });
+
+  test("preserves a complimentary floor that outlives the refund", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRO_PRODUCT_ID,
+      status: "cancelled",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "refund_cleanup_comp",
+    });
+    const compUntil = NOW + 90 * DAY_MS;
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: TEST_USER_ID,
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: NOW + 90 * DAY_MS,
+        compUntil,
+        updatedAt: NOW,
+      });
+    });
+
+    await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+      dodoSubscriptionId: "sub_billing_refund_cleanup_comp",
+      reason: "refund, goodwill comp stands",
+    });
+
+    // Coverage still ends, but the goodwill floor keeps the entitlement.
+    const sub = await readSub(t, "refund_cleanup_comp");
+    expect(sub!.currentPeriodEnd).toBeLessThanOrEqual(Date.now());
+    const entitlement = await readEntitlement(t);
+    expect(entitlement!.planKey).toBe("pro_monthly");
+    expect(entitlement!.compUntil).toBe(compUntil);
+  });
+
+  test("clears the renewal-verification lease so the UI stops showing 'verifying'", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRO_PRODUCT_ID,
+      status: "active",
+      currentPeriodEnd: NOW - DAY_MS,
+      suffix: "refund_cleanup_lease",
+      renewalVerificationState: "pending",
+    });
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", "sub_billing_refund_cleanup_lease"),
+        )
+        .unique();
+      await ctx.db.patch(sub!._id, {
+        renewalVerificationAttemptAt: NOW,
+        reconcileFailureCount: 3,
+        reconcileNotFoundCount: 1,
+        lastReconcileAttemptAt: NOW,
+      });
+    });
+
+    await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+      dodoSubscriptionId: "sub_billing_refund_cleanup_lease",
+      reason: "refund cleanup on a stale-active row",
+    });
+
+    const sub = await readSub(t, "refund_cleanup_lease");
+    expect(sub!.renewalVerificationState).toBeUndefined();
+    expect(sub!.renewalVerificationAttemptAt).toBeUndefined();
+    expect(sub!.reconcileFailureCount).toBeUndefined();
+    expect(sub!.reconcileNotFoundCount).toBeUndefined();
+    expect(sub!.lastReconcileAttemptAt).toBeUndefined();
+  });
+
+  test("revokes Business Pro seat grants once the sub stops covering", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "api_business",
+      dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "refund_cleanup_seats",
+    });
+    const inviteeUserId = "user_billing_test_invitee";
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: "sub_billing_refund_cleanup_seats",
+        ownerUserId: TEST_USER_ID,
+        inviteeEmail: "seat@example.com",
+        domain: "example.com",
+        inviteeUserId,
+        status: "accepted",
+        createdAt: NOW,
+        acceptedAt: NOW,
+        expiresAt: NOW + 30 * DAY_MS,
+      });
+      await upsertEntitlements(ctx, inviteeUserId, "pro_monthly", NOW + 30 * DAY_MS, NOW);
+    });
+
+    const result = await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+      dodoSubscriptionId: "sub_billing_refund_cleanup_seats",
+      reason: "refunded Business subscription",
+    });
+    expect(result.revokedSeats).toBe(1);
+    expect(result.failedSeats).toBe(0);
+
+    const grant = await t.run(async (ctx) =>
+      await ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", "sub_billing_refund_cleanup_seats"),
+        )
+        .unique(),
+    );
+    expect(grant!.status).toBe("revoked");
+    const inviteeEntitlement = await readEntitlement(t, inviteeUserId);
+    expect(inviteeEntitlement!.planKey).toBe("free");
+  });
+
+  test("throws on an unknown dodoSubscriptionId", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+        dodoSubscriptionId: "sub_does_not_exist",
+        reason: "typo",
+      }),
+    ).rejects.toThrow(/no subscription found/);
+  });
+});
