@@ -14049,6 +14049,9 @@
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
+          "path": "scripts/build-openapi-json.mjs"
+        },
+        {
           "path": "scripts/build-research-reports.mjs"
         },
         {
@@ -14083,6 +14086,9 @@
         },
         {
           "path": "scripts/verify-sitemaps.mjs"
+        },
+        {
+          "path": "server/_shared/deprecation-policy.ts"
         },
         {
           "path": "src/components/RuntimeConfigPanel.ts"
