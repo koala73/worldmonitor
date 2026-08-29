@@ -63,15 +63,22 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
-    setPanelEnabled: async () => ({
-      ok: true,
-      status: 'applied',
-      panelId: 'giving',
-      requestedEnabled: true,
-      effectiveEnabled: true,
-      changed: true,
-      message: 'Panel enabled.',
+    getAccessContext: async () => ({
+      accountState: 'signed_out',
+      clerk: 'unavailable',
+      productTier: 'anonymous',
+      capabilities: {
+        premiumAccess: false,
+        apiAccess: false,
+        mcpAccess: false,
+        dataExport: false,
+      },
+      limits: {
+        enabledPanels: { used: 1, cap: 40 },
+        dashboardTabs: { used: 1, cap: 3, canCreate: true },
+      },
     }),
+    openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     ...overrides,
   };
 }
@@ -177,7 +184,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 10, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(

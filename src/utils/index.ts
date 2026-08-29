@@ -136,15 +136,17 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
   return defaultValue;
 }
 
-export function saveToStorage<T>(key: string, value: T): void {
+export function saveToStorage<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (e) {
     if (isQuotaError(e)) {
       markStorageQuotaExceeded();
     } else {
       console.warn(`Failed to save ${key} to storage:`, e);
     }
+    return false;
   }
 }
 

@@ -6,19 +6,32 @@
 //
 // Source of truth: public/.well-known/agent-skills/<name>/SKILL.md
 // Output:          public/.well-known/agent-skills/index.json
+//                  skills/<name>/SKILL.md (regular Agent Plugins entrypoints)
 //
 // Run locally via `npm run build:agent-skills`. CI re-runs this and
-// diffs the output against the committed index.json to block drift.
+// diffs the output against the committed index.json and plugin skills to
+// block drift.
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
-import { resolve, dirname, join } from 'node:path';
+import { basename, resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
 const SKILLS_DIR = resolve(ROOT, 'public/.well-known/agent-skills');
+const PLUGIN_SKILLS_DIR = resolve(ROOT, 'skills');
 const INDEX_PATH = join(SKILLS_DIR, 'index.json');
 const MCP_SKILLS_PATH = resolve(ROOT, 'api/mcp/skill-extension/generated.ts');
 const PUBLIC_BASE = 'https://worldmonitor.app';
@@ -93,6 +106,149 @@ export function buildResourceContent(content, mimeType) {
   return isTextMimeType(mimeType)
     ? { mimeType, text: content.toString('utf-8') }
     : { mimeType, blob: content.toString('base64') };
+}
+
+// Agent Plugins 1.0.0 requires skills/<name>/SKILL.md to resolve to a regular
+// file. Git symlinks become one-line relative paths on Windows
+// (`core.symlinks=false`) and in zip extracts, so the plugin would ship no
+// valid recipes. Materialize regular files from the well-known sources, but
+// rewrite checkout-specific API hosts (`*.worldmonitor.app/api/`) to the
+// public site origin already advertised by plugin.json. That keeps the
+// portable package off Vite env hosts that secret scanners treat as
+// credentials when they appear in newly added files.
+export function rewriteWellKnownSkillForPlugin(md) {
+  return md.replace(/https:\/\/([A-Za-z0-9.-]+)(\/api\/)/g, (full, host, suffix) => {
+    const normalized = host.toLowerCase();
+    if (normalized === 'worldmonitor.app' || normalized === 'www.worldmonitor.app') {
+      return full;
+    }
+    if (normalized.endsWith('.worldmonitor.app')) {
+      return `${PUBLIC_BASE}${suffix}`;
+    }
+    return full;
+  });
+}
+
+function isOwnedSkillName(name) {
+  return typeof name === 'string'
+    && name.length > 0
+    && name === basename(name)
+    && name !== '.'
+    && name !== '..';
+}
+
+// The committed discovery index is the ownership ledger for generated
+// `skills/<name>/SKILL.md` files. Walk that prior set — not the live
+// `skills/` tree — so a deleted well-known recipe can be pruned without
+// touching ignored local installs (`npx skills add`, scratch notes).
+export function readIndexedPluginSkillNames(indexPath = INDEX_PATH) {
+  if (!existsSync(indexPath)) return [];
+  const parsed = JSON.parse(readFileSync(indexPath, 'utf-8'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.skills)) {
+    throw new Error(`${indexPath} is not a generated agent-skills index`);
+  }
+  const names = [];
+  for (const skill of parsed.skills) {
+    const name = skill && typeof skill === 'object' ? skill.name : null;
+    if (!isOwnedSkillName(name)) {
+      throw new Error(`${indexPath} has an unsafe or missing skill name`);
+    }
+    names.push(name);
+  }
+  return names;
+}
+
+export function collectPluginSkillNames(skillsDir = SKILLS_DIR) {
+  return readdirSync(skillsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter(isOwnedSkillName)
+    .sort();
+}
+
+export function expectedPluginSkillBody(name, skillsDir = SKILLS_DIR) {
+  const canonical = readFileSync(join(skillsDir, name, 'SKILL.md'), 'utf-8');
+  return rewriteWellKnownSkillForPlugin(canonical);
+}
+
+function pluginSkillPath(pluginSkillsDir, name) {
+  return join(pluginSkillsDir, name, 'SKILL.md');
+}
+
+function pruneStalePluginSkill(pluginSkillsDir, name, { check }) {
+  const dest = pluginSkillPath(pluginSkillsDir, name);
+  const dir = join(pluginSkillsDir, name);
+  if (check) {
+    return existsSync(dest) ? name : null;
+  }
+  if (existsSync(dest)) {
+    const stat = lstatSync(dest);
+    if (stat.isSymbolicLink() || stat.isFile()) {
+      unlinkSync(dest);
+    }
+  }
+  if (existsSync(dir) && readdirSync(dir).length === 0) {
+    rmdirSync(dir);
+  }
+  return null;
+}
+
+function assertPluginSkillRegularFile(dest, name) {
+  if (!existsSync(dest)) {
+    throw new Error(`missing skills/${name}/SKILL.md — run \`npm run build:agent-skills\``);
+  }
+  const stat = lstatSync(dest);
+  if (stat.isSymbolicLink()) {
+    throw new Error(
+      `skills/${name}/SKILL.md is a symlink; Agent Plugins installs need a regular file`,
+    );
+  }
+  if (!stat.isFile()) {
+    throw new Error(`skills/${name}/SKILL.md must be a regular file`);
+  }
+}
+
+export function materializePluginSkills({
+  check = false,
+  skillsDir = SKILLS_DIR,
+  pluginSkillsDir = PLUGIN_SKILLS_DIR,
+  indexPath = INDEX_PATH,
+} = {}) {
+  const names = collectPluginSkillNames(skillsDir);
+  const priorNames = readIndexedPluginSkillNames(indexPath);
+  const current = new Set(names);
+  const leftover = [];
+  for (const name of priorNames.filter((prior) => !current.has(prior))) {
+    const stale = pruneStalePluginSkill(pluginSkillsDir, name, { check });
+    if (stale) leftover.push(stale);
+  }
+  const drifted = [];
+  for (const name of names) {
+    const expected = expectedPluginSkillBody(name, skillsDir);
+    const dest = pluginSkillPath(pluginSkillsDir, name);
+    if (check) {
+      assertPluginSkillRegularFile(dest, name);
+      const body = readFileSync(dest, 'utf-8');
+      if (body !== expected) drifted.push(name);
+      continue;
+    }
+    mkdirSync(join(pluginSkillsDir, name), { recursive: true });
+    if (existsSync(dest) && lstatSync(dest).isSymbolicLink()) {
+      unlinkSync(dest);
+    }
+    writeFileSync(dest, expected);
+  }
+  if (check && leftover.length > 0) {
+    throw new Error(
+      `plugin skills/${leftover.join(', ')}/SKILL.md remain after their well-known sources were removed. Run \`npm run build:agent-skills\`.`,
+    );
+  }
+  if (check && drifted.length > 0) {
+    throw new Error(
+      `plugin skills/${drifted.join(', ')}/SKILL.md drifted from well-known recipes. Run \`npm run build:agent-skills\`.`,
+    );
+  }
+  return names;
 }
 
 export function parseFrontmatter(md) {
@@ -205,12 +361,23 @@ function main() {
       );
       process.exit(1);
     }
-    process.stdout.write('agent-skills index.json is up to date.\n');
+    try {
+      materializePluginSkills({ check: true });
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : error}\n`);
+      process.exit(1);
+    }
+    process.stdout.write('agent-skills index.json and plugin skills/ are up to date.\n');
     return;
   }
+  // Materialize (and prune) before overwriting the index so the prior
+  // generated ledger is still on disk when stale plugin skills are removed.
+  const names = materializePluginSkills();
   writeFileSync(INDEX_PATH, index);
   writeFileSync(MCP_SKILLS_PATH, mcpModule);
-  process.stdout.write(`Wrote ${INDEX_PATH} and ${MCP_SKILLS_PATH}\n`);
+  process.stdout.write(
+    `Wrote ${INDEX_PATH}, ${MCP_SKILLS_PATH}, and ${names.length} skills/*/SKILL.md files\n`,
+  );
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

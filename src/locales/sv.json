@@ -2350,6 +2350,18 @@
       "rubBase": "Rysslands centralbank — rubel per 1 enhet",
       "rubPerUnit": "Rubel per enhet",
       "sourceCbr": "Källa: Rysslands centralbank"
+    },
+    "passkeyOffer": {
+      "title": "Spara en passkey?",
+      "body": "Logga in nästa gång med ditt fingeravtryck, ansikte eller enhets-PIN — inget lösenord att komma ihåg.",
+      "accept": "Spara passkey",
+      "dismiss": "Inte nu",
+      "close": "Stäng",
+      "announce": "Spara en passkey för att logga in snabbare nästa gång.",
+      "busy": "Väntar på din enhet…",
+      "succeeded": "Passkey sparad. Du kan använda den nästa gång du loggar in.",
+      "retryable": "Det blev inte klart. Du kan försöka igen.",
+      "failed": "Vi kunde inte spara en passkey på den här enheten."
     }
   },
   "popups": {
@@ -3446,7 +3458,8 @@
   "auth": {
     "signIn": "Logga in",
     "createAccount": "Skapa konto",
-    "settings": "Inställningar"
+    "settings": "Inställningar",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Anslut MCP",

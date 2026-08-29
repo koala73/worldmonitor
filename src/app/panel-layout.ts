@@ -65,6 +65,7 @@ import {
   markProActivationPending,
   ProActivationController,
 } from '@/app/pro-activation-controller';
+import { PasskeyOfferBoot } from '@/app/passkey-offer-boot';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { PanelTabBar, tabCapGateCopy } from '@/components/PanelTabBar';
 import {
@@ -431,6 +432,7 @@ export class PanelLayoutManager implements AppModule {
   private scheduledLoadAllIdle: number | null = null;
   private responsiveZoneListener: ResponsiveZoneListener | null = null;
   private readonly proActivationController: ProActivationController;
+  private readonly passkeyOfferController: PasskeyOfferBoot;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -461,6 +463,9 @@ export class PanelLayoutManager implements AppModule {
       openAiAnalyst: () => this.revealAnalystPanel(),
       openSearch: callbacks.openSearch,
     });
+    // Boot shim only — the controller, prompt, and passkey services load on
+    // demand, keeping ~12 KB out of the first-paint chunk (see #7353 follow-up).
+    this.passkeyOfferController = new PasskeyOfferBoot(ctx);
     if (returnedFromCheckout) {
       // Funnel (#4931): the purchase-complete signal on the client side.
       // Queued by the analytics facade until Umami loads after first paint.
@@ -665,6 +670,11 @@ export class PanelLayoutManager implements AppModule {
     // finish-setup chip). Deferred off the boot critical path like the panel
     // hydration scheduler above.
     this.proActivationController.init();
+    // Passkey offer: subscribes to auth and evaluates on a genuine sign-in.
+    // Registered after the Pro controller so the activation interstitial —
+    // which is a focus trap — wins the crowded post-sign-in moment; the offer
+    // hides behind it and restores when it closes.
+    this.passkeyOfferController.init();
   }
 
   /**
@@ -799,6 +809,7 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribePaymentFailureBanner = null;
 
     this.proActivationController.destroy();
+    this.passkeyOfferController.destroy();
 
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
@@ -1212,6 +1223,13 @@ export class PanelLayoutManager implements AppModule {
   // ============================================
   // Dashboard tabs — named, persistent panel workspaces
   // ============================================
+
+  /** Dashboard workspaces always include at least one tab. */
+  public getDashboardTabCount(): number {
+    if (this.tabsState) return Math.max(1, this.tabsState.tabs.length);
+    const stored = loadTabsState();
+    return stored?.tabs.length ?? 1;
+  }
 
   private initPanelTabs(): void {
     const mount = document.getElementById('panelTabsMount');

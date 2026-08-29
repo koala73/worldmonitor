@@ -198,6 +198,38 @@ function shouldSuppressCspViolation(
     (directive === 'script-src-elem' || directive === 'script-src')
     && /^https:\/\/www\.youtube\.com\/iframe_api(?:\?|$)/.test(blockedURI)
   ) return true;
+  // HeyTap Browser (the stock browser on OPPO / realme / OnePlus Android
+  // devices) injects its own chrome scripts from `dhfs.heytapimage.com` — the
+  // vendor's asset CDN — into every page it renders. The string `heytap`
+  // appears nowhere in `src/`, `pro-test/src/`, `public/`, `index.html` or
+  // `tests/`, so we never request it; the block is the browser's own injection
+  // failing against our policy, and the injected feature stays broken in that
+  // environment regardless of our code.
+  //
+  // Host-pinned rather than "any cross-origin script-src block", even though
+  // our `script-src` is `'self' 'strict-dynamic' <nonce> <hashes>` and admits
+  // no cross-origin host at all. That invariant would license the broader rule
+  // by the same argument the font-src section uses, but it must NOT be taken
+  // here: a script one of our OWN trusted scripts injects without carrying the
+  // nonce forward is also cross-origin and also blocked, and that is a real
+  // first-party defect. WORLDMONITOR-HP holds exactly that shape in its
+  // history — `clerk.worldmonitor.app/npm/@clerk/ui@1/dist/ui.browser.js` and
+  // `www.worldmonitor.app/assets/locale-zh-*.js` blocks through June/July —
+  // so the cross-origin invariant is the wrong axis and the vendor host is the
+  // right one. Exact parsed hostname (not a suffix) so a
+  // `dhfs.heytapimage.com.evil.com` lookalike still surfaces.
+  //
+  // Sizing: HP's 33k lifetime events are a fixed bug's residue. A 40-event
+  // sample taken 2026-08-29 spanned 2026-06-25 → 2026-08-27, and the only
+  // events after 2026-07-19 were 3 heytapimage blocks and 1 first-party
+  // `locale-zh` block — so this host IS the live tail, and pinning it lets the
+  // issue be resolved and act as a canary for any NEW script-src block class.
+  if (directive === 'script-src-elem' || directive === 'script-src') {
+    try {
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:' && url.hostname === 'dhfs.heytapimage.com') return true;
+    } catch { /* scheme-only values ('inline', 'eval') fall through */ }
+  }
   // Zscaler enterprise content-filter proxy: `gateway.zscloud.net` is injected into
   // corporate users' frames by Zscaler's web filter agent. We never load it ourselves;
   // it's inserted into the host page outside our control (WORLDMONITOR-HT). Match by

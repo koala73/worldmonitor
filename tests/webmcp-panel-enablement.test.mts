@@ -476,6 +476,38 @@ describe('applySetPanelEnabled', () => {
     assert.equal(persistCalls.length, 1);
   });
 
+  it('fails closed before changing live state when persistence fails', () => {
+    const panelSettings = settingsWithFreeSlots('full');
+    let applyCount = 0;
+    let toggleCount = 0;
+    const result = applySetPanelEnabled(
+      { panelSettings },
+      'windy-webcams',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => false,
+        applyPanelSettings: () => { applyCount += 1; },
+        trackToggle: () => { toggleCount += 1; },
+      },
+    );
+
+    assert.deepEqual(result, {
+      ok: false,
+      status: 'denied',
+      panelId: 'windy-webcams',
+      requestedEnabled: true,
+      effectiveEnabled: false,
+      changed: false,
+      reason: 'persist_failed',
+      message: 'Dashboard panel change could not be saved.',
+    });
+    assert.equal(panelSettings['windy-webcams']?.enabled, false);
+    assert.equal(applyCount, 0);
+    assert.equal(toggleCount, 0);
+  });
+
   it('does not persist entitlement, cap, or unknown refusals', () => {
     const panelSettings = settingsAtFreeCap('full', 'windy-webcams');
     let persistCount = 0;

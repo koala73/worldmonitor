@@ -78,6 +78,22 @@ function createBindings(overrides: Record<string, unknown> = {}) {
       changed: true,
       message: 'Panel enabled.',
     }),
+    getAccessContext: async () => ({
+      accountState: 'signed_out' as const,
+      clerk: 'unavailable' as const,
+      productTier: 'anonymous' as const,
+      capabilities: {
+        premiumAccess: false,
+        apiAccess: false,
+        mcpAccess: false,
+        dataExport: false,
+      },
+      limits: {
+        enabledPanels: { used: 1, cap: 40 },
+        dashboardTabs: { used: 1, cap: 3, canCreate: true },
+      },
+    }),
+    openSignIn: async () => ({ ok: false as const, status: 'denied' as const, reason: 'clerk_unavailable' as const }),
     ...overrides,
   };
 }
@@ -92,6 +108,8 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   set_map_layers: { layers: { weather: true } },
   search_dashboard: { query: 'germany' },
   open_search_result: { resultKey: `sr_${'a'.repeat(32)}` },
+  get_access_context: {},
+  open_sign_in: {},
 };
 
 interface HomepageTool {
@@ -115,7 +133,10 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'src/app/webmcp-dashboard.ts',
   'src/config/panel-enablement.ts',
   'src/app/panel-enablement.ts',
+  'src/app/webmcp-access.ts',
+  'src/services/webmcp-access-snapshot.ts',
   'src/app/webmcp-search-controller.ts',
+  'src/app/webmcp-search-effects.ts',
   'src/app/search-selection-dispatcher.ts',
   'src/components/GlobalProcurementPanel.ts',
   'pro-test/welcome.html',
@@ -138,10 +159,12 @@ const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
   'tests/docs-i18n-parity.test.mjs',
   'tests/webmcp-inventory.test.mts',
   'tests/webmcp.test.mjs',
+  'tests/webmcp-search-effects.test.mts',
   'tests/webmcp-dashboard.test.mts',
   'tests/webmcp-runtime.test.mjs',
   'tests/webmcp-analytics-policy.test.mjs',
   'tests/webmcp-evals.test.mjs',
+  'tests/webmcp-access.test.mts',
   'tests/webmcp-panel-enablement.test.mts',
   'tests/deploy-config.test.mjs',
 ] as const;
@@ -418,7 +441,7 @@ describe('WebMCP imperative schema and budget contract', () => {
     }
   });
 
-  it('applies uniform metadata, schema, output, and error budgets to all nine tools', async () => {
+  it('applies uniform metadata, schema, output, and error budgets to all dashboard tools', async () => {
     const tools = buildWebMcpTools(createBindings(), () => {});
     for (const tool of tools) {
       assert.ok(tool.name.length <= WEBMCP_TOOL_BUDGETS.nameChars, `${tool.name}: name`);
@@ -453,6 +476,8 @@ describe('WebMCP imperative schema and budget contract', () => {
       searchDashboard: async () => { throw privateError; },
       openSearchResult: async () => { throw privateError; },
       setPanelEnabled: async () => { throw privateError; },
+      getAccessContext: async () => { throw privateError; },
+      openSignIn: async () => { throw privateError; },
     }), () => {});
     for (const tool of failing) {
       await assert.rejects(tool.execute(VALID_INPUTS[tool.name]!), (error: Error) => (

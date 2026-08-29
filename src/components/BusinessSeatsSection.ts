@@ -8,7 +8,6 @@ import { escapeHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { showToast } from '@/utils/toast';
 import {
-  getSubscription,
   listBusinessSeats,
   inviteBusinessSeats,
   removeBusinessSeat,
@@ -23,6 +22,17 @@ export class BusinessSeatsSection {
   // corporate" rejection during the async listBusinessSeats() round-trip —
   // the server call is the authoritative gate at submit time regardless.
   private ownerIsCorporateDomain = true;
+  // The SERVER's verdict on whether this account owns a covering Business
+  // subscription — `listSeats` returns it non-null exactly when
+  // getCoveringBusinessSubscription found one. `undefined` means "not asked
+  // yet", which is deliberately distinct from `null` ("asked; not an owner").
+  //
+  // The client cannot derive this itself: getSubscription() exposes one
+  // DISPLAY row picked by a sort that ranks active < on_hold < ended
+  // (convex/payments/billing.ts), so an owner holding an active pro_monthly
+  // alongside an on_hold or paid-through-cancelled api_business row never sees
+  // the Business row at all. Asking the server is the only sound gate.
+  private businessSubscriptionId: string | null | undefined;
   private accountGeneration = 0;
   // grantIds with a removeSeat mutation currently in flight — lets two
   // DIFFERENT seats be removed concurrently while still preventing a
@@ -38,6 +48,7 @@ export class BusinessSeatsSection {
     this.loading = false;
     this.error = '';
     this.ownerIsCorporateDomain = true;
+    this.businessSubscriptionId = undefined;
     this.removingGrantIds.clear();
     this.renderInPlace();
   }
@@ -52,8 +63,14 @@ export class BusinessSeatsSection {
       if (generation !== this.accountGeneration) return;
       this.seats = result.seats;
       this.ownerIsCorporateDomain = result.ownerIsCorporateDomain;
+      this.businessSubscriptionId = result.businessSubscriptionId;
     } catch (err) {
       if (generation !== this.accountGeneration) return;
+      // Deliberately does NOT clear businessSubscriptionId: a transient failure
+      // on a refresh must not strip a confirmed owner's seat surface out from
+      // under them — the error renders inside the section instead. A first load
+      // that fails leaves it `undefined`, so an unconfirmed account still shows
+      // nothing rather than a guessed surface.
       this.error = err instanceof Error ? err.message : 'Failed to load seats';
     } finally {
       if (generation === this.accountGeneration) {
@@ -71,11 +88,10 @@ export class BusinessSeatsSection {
   }
 
   renderContent(): string {
-    const sub = getSubscription();
-    const isBusinessOwner = sub?.planKey === 'api_business' && sub?.status === 'active';
     const isCorporateDomain = this.ownerIsCorporateDomain;
 
-    if (!isBusinessOwner) return '';
+    // The server's verdict, never a status-string reading of the display row.
+    if (typeof this.businessSubscriptionId !== 'string') return '';
 
     const seats = this.seats;
     const activeSeats = seats.filter((s) => s.status === 'accepted');

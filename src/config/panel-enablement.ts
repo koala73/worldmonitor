@@ -20,7 +20,8 @@ export type SetPanelEnabledReason =
   | 'panel_incompatible'
   | 'panel_not_entitled'
   | 'panel_cap_exceeded'
-  | 'panel_required';
+  | 'panel_required'
+  | 'persist_failed';
 
 export interface SetPanelEnabledResult {
   ok: boolean;

@@ -358,6 +358,52 @@ describe('marketing ignoreErrors — in-app-browser injected globals (2026-08-27
   it('keeps the unprefixed WKWebView word so a real message still reports', () => {
     assert.equal(isIgnored('Error', 'WKWebView failed to render our checkout frame'), false);
   });
+
+  it("drops Android WebView's Java-bridge teardown error (WORLDMONITOR-117)", () => {
+    // Verbatim production value: Instagram 415 on Android 13, fired from a
+    // `beforeunload` listener, with only infra frames (the `/pro/assets/
+    // sentry-*.js` chunk and two `<anonymous>`) — so `marketingBeforeSend`'s
+    // frame gates have nothing to act on and this must be message-level.
+    assert.equal(
+      isIgnored('Error', 'Error invoking enableButtonsClickedMetaDataLogging: Java object is gone'),
+      true,
+    );
+    // The method name in the sentence is whatever bridge the host app called,
+    // so the pattern keys on Chromium's fixed suffix, not the one observed
+    // method.
+    assert.equal(isIgnored('Error', 'Error invoking getDeviceInfo: Java object is gone'), true);
+  });
+
+  it('drops the envelope with a non-ASCII bridge method name', () => {
+    // Java identifiers are not ASCII-only — `@JavascriptInterface
+    // obtenirDonnées()` is legal and Chromium emits the same sentence for it.
+    // An `[\w$]+` slot silently misses these because JavaScript's `\w` is
+    // ASCII-only, which is what these controls exist to catch (PR #7356
+    // review).
+    assert.equal(isIgnored('Error', 'Error invoking obtenirDonnées: Java object is gone'), true);
+    assert.equal(isIgnored('Error', 'Error invoking 获取设备信息: Java object is gone'), true);
+    assert.equal(isIgnored('Error', 'Error invoking процесс: Java object is gone'), true);
+  });
+
+  it('keeps a first-party message that merely CONTAINS the phrase', () => {
+    // The control that matters, and the one an unanchored `/Java object is
+    // gone/` fails: `ignoreErrors` is frame-blind, so a substring pattern drops
+    // this even with a `/pro/assets/*.js` frame on the stack. Changing a word
+    // the pattern requires (`gateway` for `object`) does NOT exercise this —
+    // that control passes against the unanchored pattern too, so it can never
+    // fail (PR #7354 review).
+    assert.equal(isIgnored('Error', 'Our Java object is gone'), false);
+    assert.equal(isIgnored('Error', 'Session expired: Java object is gone'), false);
+    assert.equal(
+      isIgnored('Error', 'Error invoking foo: Java object is gone (retrying)'),
+      false,
+    );
+  });
+
+  it('keeps other Java-flavoured messages so a real one still reports', () => {
+    assert.equal(isIgnored('Error', 'Java object is missing'), false);
+    assert.equal(isIgnored('Error', 'Our Java gateway is gone'), false);
+  });
 });
 
 describe('marketingBeforeSend — Safari-masked injected script (WORLDMONITOR-110)', () => {

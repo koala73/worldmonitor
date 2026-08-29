@@ -4252,7 +4252,11 @@ export class MapComponent {
       delete this.layerZoomOverrides[layer];
     }
 
-    const btn = this.container.querySelector(`[data-layer="${layer}"]`);
+    // Qualify with .layer-toggle: the chip is a button inside a
+    // `.layer-toggle-row` that carries the SAME data-layer, and an ancestor
+    // precedes its descendant in document order — so a bare [data-layer]
+    // query returns the row and the chip never leaves its initial state.
+    const btn = this.container.querySelector(`.layer-toggle[data-layer="${layer}"]`);
     const isEnabled = this.state.layers[layer];
     const isAsyncLayer = MapComponent.ASYNC_DATA_LAYERS.has(layer);
 

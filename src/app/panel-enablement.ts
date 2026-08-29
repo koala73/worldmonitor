@@ -17,7 +17,7 @@ export interface SetPanelEnabledContext {
 export interface SetPanelEnabledDeps {
   variant: string;
   isPro: boolean;
-  persist: (settings: Record<string, PanelConfig>) => void;
+  persist: (settings: Record<string, PanelConfig>) => boolean | void;
   applyPanelSettings: () => void;
   trackToggle: (panelId: string, enabled: boolean) => void;
   showCapToast?: () => void;
@@ -52,14 +52,26 @@ export function applySetPanelEnabled(
     return decision;
   }
 
-  let config = ctx.panelSettings[panelId];
-  if (!config) {
-    config = { ...getEffectivePanelConfig(panelId, deps.variant), enabled: false };
-    ctx.panelSettings[panelId] = config;
+  const currentConfig = ctx.panelSettings[panelId];
+  const nextConfig = currentConfig
+    ? { ...currentConfig }
+    : { ...getEffectivePanelConfig(panelId, deps.variant), enabled: false };
+  userSetPanelEnabled(nextConfig, enabled);
+  const nextSettings = { ...ctx.panelSettings, [panelId]: nextConfig };
+  if (deps.persist(nextSettings) === false) {
+    return {
+      ok: false,
+      status: 'denied',
+      panelId,
+      requestedEnabled: enabled,
+      effectiveEnabled: currentConfig?.enabled === true,
+      changed: false,
+      reason: 'persist_failed',
+      message: 'Dashboard panel change could not be saved.',
+    };
   }
-  userSetPanelEnabled(config, enabled);
+  ctx.panelSettings[panelId] = nextConfig;
   deps.trackToggle(panelId, enabled);
-  deps.persist(ctx.panelSettings);
   deps.applyPanelSettings();
   ctx.unifiedSettings?.refreshPanelToggles?.();
   if (enabled) {

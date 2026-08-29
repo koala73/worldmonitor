@@ -36,29 +36,76 @@ export type RuntimeProbe = {
   locationOrigin: string;
 };
 
+/**
+ * Signals an ordinary web page cannot produce.
+ *
+ * Sole owner of the list. Both public detectors below derive from it, so a
+ * signal added here reaches each of them and the two cannot drift apart —
+ * `tests/dom/desktop-runtime-explicit-signals.test.mts` holds them to that.
+ */
+function hasUnambiguousDesktopSignals(probe: RuntimeProbe): boolean {
+  return probe.hasTauriGlobals
+    || probe.userAgent.includes('Tauri')
+    // Tauri production windows can expose tauri-like hosts/schemes without
+    // always exposing bridge globals at first paint.
+    || probe.locationProtocol === 'tauri:'
+    || probe.locationProtocol === 'asset:'
+    || probe.locationHost === 'tauri.localhost'
+    || probe.locationHost.endsWith('.tauri.localhost')
+    || probe.locationOrigin.startsWith('tauri://');
+}
+
+/**
+ * A bare `https://localhost` origin — which a Tauri window may serve from
+ * before its bridge globals appear, and which a dev server run over HTTPS is
+ * equally entitled to. Desktop-ish, but never proof of desktop on its own.
+ */
+function isSecureLoopbackOrigin(probe: RuntimeProbe): boolean {
+  return probe.locationProtocol === 'https:' && (
+    probe.locationHost === 'localhost' ||
+    probe.locationHost.startsWith('localhost:') ||
+    probe.locationHost === '127.0.0.1' ||
+    probe.locationHost.startsWith('127.0.0.1:')
+  );
+}
+
 export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
-  const tauriInUserAgent = probe.userAgent.includes('Tauri');
-  const secureLocalhostOrigin = (
-    probe.locationProtocol === 'https:' && (
-      probe.locationHost === 'localhost' ||
-      probe.locationHost.startsWith('localhost:') ||
-      probe.locationHost === '127.0.0.1' ||
-      probe.locationHost.startsWith('127.0.0.1:')
-    )
-  );
+  return hasUnambiguousDesktopSignals(probe) || isSecureLoopbackOrigin(probe);
+}
 
-  // Tauri production windows can expose tauri-like hosts/schemes without
-  // always exposing bridge globals at first paint.
-  const tauriLikeLocation = (
-    probe.locationProtocol === 'tauri:' ||
-    probe.locationProtocol === 'asset:' ||
-    probe.locationHost === 'tauri.localhost' ||
-    probe.locationHost.endsWith('.tauri.localhost') ||
-    probe.locationOrigin.startsWith('tauri://') ||
-    secureLocalhostOrigin
-  );
+function currentProbe(): RuntimeProbe {
+  return {
+    hasTauriGlobals: '__TAURI_INTERNALS__' in window || '__TAURI__' in window,
+    userAgent: window.navigator?.userAgent ?? '',
+    locationProtocol: window.location?.protocol ?? '',
+    locationHost: window.location?.host ?? '',
+    locationOrigin: window.location?.origin ?? '',
+  };
+}
 
-  return probe.hasTauriGlobals || tauriInUserAgent || tauriLikeLocation;
+/**
+ * Desktop signals an ordinary web page cannot produce.
+ *
+ * `detectDesktopRuntime` also accepts a bare `https://localhost` origin,
+ * because a Tauri production window can serve from one before its bridge
+ * globals appear at first paint. That heuristic cannot tell the shell apart
+ * from a dev server running over HTTPS, so a caller that must distinguish
+ * those two — rather than merely "might be desktop" — uses this instead.
+ *
+ * Shipped desktop builds set `VITE_DESKTOP_RUNTIME=1`
+ * (.github/workflows/build-desktop.yml), so they answer true here without
+ * relying on the location heuristic at all.
+ */
+export function hasExplicitDesktopSignals(): boolean {
+  if (FORCE_DESKTOP_RUNTIME) {
+    return true;
+  }
+
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return hasUnambiguousDesktopSignals(currentProbe());
 }
 
 export function isDesktopRuntime(): boolean {
@@ -70,11 +117,5 @@ export function isDesktopRuntime(): boolean {
     return false;
   }
 
-  return detectDesktopRuntime({
-    hasTauriGlobals: '__TAURI_INTERNALS__' in window || '__TAURI__' in window,
-    userAgent: window.navigator?.userAgent ?? '',
-    locationProtocol: window.location?.protocol ?? '',
-    locationHost: window.location?.host ?? '',
-    locationOrigin: window.location?.origin ?? '',
-  });
+  return detectDesktopRuntime(currentProbe());
 }

@@ -52,6 +52,32 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(page.locator('[data-mobile-tab="alerts"]')).toHaveAttribute('aria-current', 'page');
   });
 
+  test('keeps the account entry visible in the header before More opens', async ({ page }) => {
+    const headerAuth = page.locator('#authWidgetMount');
+    const signIn = headerAuth.locator('.auth-signin-btn');
+
+    await expect(page.locator('#mobileMenu')).not.toHaveClass(/open/);
+    await expect(headerAuth).toBeVisible();
+    await expect(signIn).toBeVisible();
+    await expect(signIn).toHaveAccessibleName('Sign In');
+    await expect(headerAuth.locator('.auth-signup-link')).toBeHidden();
+
+    const box = await signIn.boundingBox();
+    const headerBox = await page.locator('.header').boundingBox();
+    expect(box).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.y).toBeGreaterThanOrEqual(headerBox?.y ?? Number.POSITIVE_INFINITY);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
+      (headerBox?.y ?? 0) + (headerBox?.height ?? 0),
+    );
+
+    const logoBox = await page.locator('.logo-mobile').boundingBox();
+    expect(logoBox).not.toBeNull();
+    expect(logoBox?.height).toBeLessThanOrEqual(24);
+  });
+
   test('uses one Back press for the More to Region sheet transition', async ({ page }) => {
     await page.locator('[data-mobile-tab="more"]').click();
     await page.locator('#mobileMenuRegion').click();

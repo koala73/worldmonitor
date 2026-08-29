@@ -63,6 +63,23 @@
       }
     },
     {
+      "identifier": "urn:air:worldmonitor.app:agent-plugin:worldmonitor",
+      "displayName": "World Monitor agent plugin",
+      "type": "application/json",
+      "url": "https://worldmonitor.app/plugin.json",
+      "description": "Agent Plugins 1.0.0 manifest for World Monitor: MCP servers plus task-focused agent skills, packaged from the public GitHub repository.",
+      "tags": [
+        "news-and-intelligence",
+        "agent-plugin",
+        "mcp",
+        "agent-skills"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
       "identifier": "urn:air:worldmonitor.app:skills:index",
       "displayName": "World Monitor agent skills",
       "type": "application/json",

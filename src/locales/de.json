@@ -2665,6 +2665,18 @@
       "rubBase": "Russische Zentralbank — Rubel pro 1 Einheit",
       "rubPerUnit": "Rubel pro Einheit",
       "sourceCbr": "Quelle: Russische Zentralbank"
+    },
+    "passkeyOffer": {
+      "title": "Passkey speichern?",
+      "body": "Melden Sie sich beim nächsten Mal mit Ihrem Fingerabdruck, Gesicht oder der Geräte-PIN an — kein Passwort zum Merken.",
+      "accept": "Passkey speichern",
+      "dismiss": "Später",
+      "close": "Schließen",
+      "announce": "Speichern Sie einen Passkey, um sich beim nächsten Anmelden schneller anzumelden.",
+      "busy": "Gerät wird vorbereitet…",
+      "succeeded": "Passkey gespeichert. Sie können ihn beim nächsten Anmelden verwenden.",
+      "retryable": "Das konnte nicht abgeschlossen werden. Sie können es erneut versuchen.",
+      "failed": "Wir konnten keinen Passkey auf diesem Gerät speichern."
     }
   },
   "popups": {
@@ -3446,7 +3458,8 @@
   "auth": {
     "signIn": "Anmelden",
     "createAccount": "Konto erstellen",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP verbinden",
