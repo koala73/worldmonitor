@@ -2633,7 +2633,7 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
 
   it('opens view-state results without a target signal and blocks persistent ones', async () => {
     const viewScenario = makeScenario([
-      commandMatch('nav:eu', 'navigate', 'Map: Europe'),
+      resultMatch('hotspot', 'view-hotspot', 'View hotspot', { id: 'view-hotspot' }),
     ]);
     const viewResponse = await viewScenario.manager.searchDashboard(
       'needle',
@@ -2648,9 +2648,9 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
         async () => {},
         undefined,
       ),
-      { ok: true, status: 'opened', type: 'command' },
+      { ok: true, status: 'opened', type: 'hotspot' },
     );
-    assert.deepEqual(viewScenario.calls.views, ['eu']);
+    assert.deepEqual(viewScenario.calls.hotspotIds, ['view-hotspot']);
 
     const layerScenario = makeScenario([
       commandMatch('layer:conflicts', 'layers', 'Toggle conflict zones'),
