@@ -33,6 +33,12 @@
  * tests need no jsdom and no globals.
  */
 
+import {
+  ACCOUNT_OFFER_CAP,
+  type PasskeyOfferMetadataReader,
+  readAccountOfferCount,
+} from '../../shared/passkey-offer-contract.ts';
+
 // ---------------------------------------------------------------------------
 // Account scoping
 // ---------------------------------------------------------------------------
@@ -164,85 +170,27 @@ function parseOfferRecord(raw: string): { at: number } | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Where the durable count lives inside `user.unsafeMetadata`.
+ * The shared account-cap contract used by the eager browser read and the
+ * server reservation writer.
  *
  * `unsafeMetadata` is user-writable by design, which is right for a cosmetic
- * "how often have we asked" counter and wrong for anything security bearing.
- * Forging it can only suppress an offer for the forger.
+ * mirror and wrong for anything security bearing. Redis slots are the
+ * authoritative writer. The Clerk count lets the eager shim skip the dynamic
+ * import after the cap is spent.
  */
-export const ACCOUNT_OFFER_COUNT_KEY = 'wmPasskeyOfferCount';
-
-/**
- * The first shipped shape: a single timestamp meaning "offered, once, ever".
- *
- * Read-only now. It is migrated as a count of 1 rather than ignored, so nobody
- * already suppressed under the old policy restarts from zero and collects a
- * fresh run of prompts.
- */
-export const LEGACY_ACCOUNT_OFFER_KEY = 'wmPasskeyOfferedAt';
-
-/**
- * How many times one account may ever be offered, across every device.
- *
- * This is a BACKSTOP, not the primary suppression — that is the per-device
- * local record. The cap exists for the browser where `localStorage` is
- * unavailable, which otherwise has no memory at all and would be prompted on
- * every single page load.
- *
- * Three is a product decision, not a derived value. It buys a genuinely new
- * device roughly two further chances while keeping the worst case finite.
- */
-export const ACCOUNT_OFFER_CAP = 3;
+export {
+  ACCOUNT_OFFER_CAP,
+  ACCOUNT_OFFER_COUNT_KEY,
+  LEGACY_ACCOUNT_OFFER_KEY,
+  readAccountOfferCount,
+} from '../../shared/passkey-offer-contract.ts';
 
 /** The read side of the Clerk user this module touches. */
-export interface AccountOfferReader {
-  unsafeMetadata?: Record<string, unknown> | null;
-}
-
-/** The write side. Clerk's `User.update` resolves once the patch is persisted. */
-export interface AccountOfferWriter extends AccountOfferReader {
-  update?: (params: { unsafeMetadata: Record<string, unknown> }) => Promise<unknown>;
-}
-
-/** How many times this account has been offered, on any device. */
-export function readAccountOfferCount(user: AccountOfferReader | null | undefined): number {
-  const raw = user?.unsafeMetadata?.[ACCOUNT_OFFER_COUNT_KEY];
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return Math.floor(raw);
-  const legacy = user?.unsafeMetadata?.[LEGACY_ACCOUNT_OFFER_KEY];
-  return typeof legacy === 'number' && Number.isFinite(legacy) && legacy > 0 ? 1 : 0;
-}
+export type AccountOfferReader = PasskeyOfferMetadataReader;
 
 /** Whether the lifetime cap is spent. */
 export function accountOfferCapReached(user: AccountOfferReader | null | undefined): boolean {
   return readAccountOfferCount(user) >= ACCOUNT_OFFER_CAP;
-}
-
-/**
- * Increment the durable count. Resolves to whether it actually landed.
- *
- * The spread is load bearing. Clerk REPLACES `unsafeMetadata` wholesale rather
- * than merging, so writing a bare `{ [KEY]: ... }` would silently delete every
- * other key the app or a future feature keeps there.
- *
- * Read-modify-write, so two devices offering at the same moment can lose an
- * increment. That is acceptable for a nag cap and not worth a transaction: the
- * failure mode is one extra prompt in a rare race, and the per-device record
- * still suppresses each device independently.
- *
- * Never throws and never rejects. This runs at mount, and a failed metadata
- * write must not break a prompt already on screen.
- */
-export async function recordAccountOffer(user: AccountOfferWriter | null | undefined): Promise<boolean> {
-  if (!user || typeof user.update !== 'function') return false;
-  const next = readAccountOfferCount(user) + 1;
-  try {
-    await user.update({
-      unsafeMetadata: { ...(user.unsafeMetadata ?? {}), [ACCOUNT_OFFER_COUNT_KEY]: next },
-    });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

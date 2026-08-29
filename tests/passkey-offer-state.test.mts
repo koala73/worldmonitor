@@ -29,7 +29,6 @@ import {
   LEGACY_ACCOUNT_OFFER_KEY,
   passkeyOfferStorageKey,
   readAccountOfferCount,
-  recordAccountOffer,
   recordOffered,
   shouldOfferPasskey,
 } from '../src/services/passkey-offer-state.ts';
@@ -266,64 +265,4 @@ describe('the durable account cap', () => {
     assert.equal(accountOfferCapReached(at(ACCOUNT_OFFER_CAP + 1)), true);
   });
 
-  it('INCREMENTS rather than overwriting, so the cap can be reached', () => {
-    // A write that set a constant would leave the cap permanently one away and
-    // the storage-disabled browser nagging forever.
-    let patch: Record<string, unknown> | null = null;
-    const user = {
-      unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: 1 },
-      update: async (params: { unsafeMetadata: Record<string, unknown> }) => { patch = params.unsafeMetadata; },
-    };
-    return recordAccountOffer(user).then((ok) => {
-      assert.equal(ok, true);
-      assert.equal(patch![ACCOUNT_OFFER_COUNT_KEY], 2);
-    });
-  });
-
-  it('does not move a spent durable cap backward from a stale device snapshot', async () => {
-    let persistedCount = ACCOUNT_OFFER_CAP;
-    const staleUser = {
-      unsafeMetadata: { [ACCOUNT_OFFER_COUNT_KEY]: 1 },
-      update: async (params: { unsafeMetadata: Record<string, unknown> }) => {
-        persistedCount = params.unsafeMetadata[ACCOUNT_OFFER_COUNT_KEY] as number;
-      },
-    };
-
-    await recordAccountOffer(staleUser);
-
-    assert.equal(persistedCount, ACCOUNT_OFFER_CAP);
-  });
-
-  it('PRESERVES every other unsafeMetadata key when writing', async () => {
-    // Clerk REPLACES unsafeMetadata wholesale rather than merging it, so a bare
-    // `{ [KEY]: ... }` patch would silently delete everything else the app
-    // keeps there. Nothing else in the suite would notice.
-    let patch: Record<string, unknown> | null = null;
-    const user = {
-      unsafeMetadata: { theme: 'dark', onboardingStep: 3 },
-      update: async (params: { unsafeMetadata: Record<string, unknown> }) => {
-        patch = params.unsafeMetadata;
-      },
-    };
-
-    assert.equal(await recordAccountOffer(user), true);
-    assert.equal(patch!.theme, 'dark');
-    assert.equal(patch!.onboardingStep, 3);
-    assert.equal(patch![ACCOUNT_OFFER_COUNT_KEY], 1);
-  });
-
-  it('resolves false rather than throwing when the write rejects', async () => {
-    // This runs at mount. A rejected metadata write must not break a prompt
-    // that is already on screen; the device record still suppresses the repeat.
-    const user = {
-      unsafeMetadata: {},
-      update: async () => { throw new Error('network'); },
-    };
-    assert.equal(await recordAccountOffer(user), false);
-  });
-
-  it('resolves false when there is no user or no update method', async () => {
-    assert.equal(await recordAccountOffer(null), false);
-    assert.equal(await recordAccountOffer({ unsafeMetadata: {} }), false);
-  });
 });

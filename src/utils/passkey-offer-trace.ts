@@ -56,6 +56,7 @@ export const PASSKEY_OFFER_REASONS = [
   'not-ready',
   'ineligible-environment',
   'no-platform-authenticator',
+  'offer-reservation-unavailable',
   'blocked-by-overlay',
   'superseded',
   'mounted',
