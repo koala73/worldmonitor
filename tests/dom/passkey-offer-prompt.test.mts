@@ -66,12 +66,12 @@ describe('PasskeyOfferPrompt — structure and intents', () => {
 
   it('routes every visible label through t() rather than a hardcoded literal', () => {
     const { el } = mount();
-    expect(el.querySelector('.passkey-offer-title')?.textContent).toBe('auth.passkeyOffer.title');
-    expect(el.querySelector('.passkey-offer-body')?.textContent).toBe('auth.passkeyOffer.body');
-    expect(accept(el)?.textContent).toBe('auth.passkeyOffer.accept');
-    expect(dismiss(el)?.textContent).toBe('auth.passkeyOffer.dismiss');
-    expect(el.getAttribute('aria-label')).toBe('auth.passkeyOffer.title');
-    expect(close(el)?.getAttribute('aria-label')).toBe('auth.passkeyOffer.close');
+    expect(el.querySelector('.passkey-offer-title')?.textContent).toBe('components.passkeyOffer.title');
+    expect(el.querySelector('.passkey-offer-body')?.textContent).toBe('components.passkeyOffer.body');
+    expect(accept(el)?.textContent).toBe('components.passkeyOffer.accept');
+    expect(dismiss(el)?.textContent).toBe('components.passkeyOffer.dismiss');
+    expect(el.getAttribute('aria-label')).toBe('components.passkeyOffer.title');
+    expect(close(el)?.getAttribute('aria-label')).toBe('components.passkeyOffer.close');
   });
 });
 

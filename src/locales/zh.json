@@ -2646,6 +2646,18 @@
       "rubBase": "俄罗斯央行 — 每 1 单位卢布",
       "rubPerUnit": "每单位卢布",
       "sourceCbr": "来源：俄罗斯央行"
+    },
+    "passkeyOffer": {
+      "title": "Save a passkey?",
+      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
+      "accept": "Save passkey",
+      "dismiss": "Not now",
+      "close": "Close",
+      "announce": "Save a passkey to sign in faster next time.",
+      "busy": "Waiting for your device…",
+      "succeeded": "Passkey saved. You can use it next time you sign in.",
+      "retryable": "That didn't finish. You can try again.",
+      "failed": "We couldn't save a passkey on this device."
     }
   },
   "popups": {

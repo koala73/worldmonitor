@@ -46,15 +46,15 @@ export class PasskeyOfferPrompt {
 
     this.root = document.createElement('aside');
     this.root.className = 'passkey-offer-prompt';
-    this.root.setAttribute('aria-label', t('auth.passkeyOffer.title'));
+    this.root.setAttribute('aria-label', t('components.passkeyOffer.title'));
 
     const title = document.createElement('p');
     title.className = 'passkey-offer-title';
-    title.textContent = t('auth.passkeyOffer.title');
+    title.textContent = t('components.passkeyOffer.title');
 
     const body = document.createElement('p');
     body.className = 'passkey-offer-body';
-    body.textContent = t('auth.passkeyOffer.body');
+    body.textContent = t('components.passkeyOffer.body');
 
     // Empty on mount. An empty live region announces nothing, so arrival is
     // written on the next frame (see `announceOnMount`) — several screen
@@ -69,19 +69,19 @@ export class PasskeyOfferPrompt {
     this.acceptBtn = document.createElement('button');
     this.acceptBtn.type = 'button';
     this.acceptBtn.className = 'passkey-offer-accept';
-    this.acceptBtn.textContent = t('auth.passkeyOffer.accept');
+    this.acceptBtn.textContent = t('components.passkeyOffer.accept');
     this.acceptBtn.addEventListener('click', this.handleAccept);
 
     this.dismissBtn = document.createElement('button');
     this.dismissBtn.type = 'button';
     this.dismissBtn.className = 'passkey-offer-dismiss';
-    this.dismissBtn.textContent = t('auth.passkeyOffer.dismiss');
+    this.dismissBtn.textContent = t('components.passkeyOffer.dismiss');
     this.dismissBtn.addEventListener('click', this.handleDismiss);
 
     this.closeBtn = document.createElement('button');
     this.closeBtn.type = 'button';
     this.closeBtn.className = 'passkey-offer-close';
-    this.closeBtn.setAttribute('aria-label', t('auth.passkeyOffer.close'));
+    this.closeBtn.setAttribute('aria-label', t('components.passkeyOffer.close'));
     this.closeBtn.textContent = '×';
     this.closeBtn.addEventListener('click', this.handleDismiss);
 
@@ -108,7 +108,7 @@ export class PasskeyOfferPrompt {
   announceOnMount(schedule: (cb: () => void) => number = requestAnimationFrame): void {
     this.announceFrame = schedule(() => {
       this.announceFrame = null;
-      if (this.state === 'offered') this.status.textContent = t('auth.passkeyOffer.announce');
+      if (this.state === 'offered') this.status.textContent = t('components.passkeyOffer.announce');
     });
   }
 
@@ -190,10 +190,10 @@ export class PasskeyOfferPrompt {
 /** The sentence the live region carries for each state. `offered` stays empty until announced. */
 function statusTextFor(state: PasskeyPromptState): string {
   switch (state) {
-    case 'busy': return t('auth.passkeyOffer.busy');
-    case 'succeeded': return t('auth.passkeyOffer.succeeded');
-    case 'retryable': return t('auth.passkeyOffer.retryable');
-    case 'failed': return t('auth.passkeyOffer.failed');
+    case 'busy': return t('components.passkeyOffer.busy');
+    case 'succeeded': return t('components.passkeyOffer.succeeded');
+    case 'retryable': return t('components.passkeyOffer.retryable');
+    case 'failed': return t('components.passkeyOffer.failed');
     default: return '';
   }
 }
