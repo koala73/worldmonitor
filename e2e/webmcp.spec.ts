@@ -516,6 +516,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
         [
           'get_access_context',
           'get_dashboard_context',
+          'get_panel_layout',
           'list_dashboard_tabs',
           'list_map_layers',
           'list_dashboard_panels',
