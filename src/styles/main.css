@@ -14785,7 +14785,8 @@ a.prediction-link:hover {
 
   .header {
     gap: 8px;
-    padding: 8px 12px;
+    height: 45px;
+    padding: 0 12px;
   }
 
   .header-left {

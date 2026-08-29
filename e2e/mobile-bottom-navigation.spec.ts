@@ -63,9 +63,15 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(headerAuth.locator('.auth-signup-link')).toBeHidden();
 
     const box = await signIn.boundingBox();
+    const headerBox = await page.locator('.header').boundingBox();
     expect(box).not.toBeNull();
+    expect(headerBox).not.toBeNull();
     expect(box?.width).toBeGreaterThanOrEqual(44);
     expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.y).toBeGreaterThanOrEqual(headerBox?.y ?? Number.POSITIVE_INFINITY);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
+      (headerBox?.y ?? 0) + (headerBox?.height ?? 0),
+    );
 
     const logoBox = await page.locator('.logo-mobile').boundingBox();
     expect(logoBox).not.toBeNull();
