@@ -3,7 +3,10 @@ import { describe, it } from 'node:test';
 
 import {
   DASHBOARD_TAB_NAME_MAX_LENGTH,
+  TABS_PERSIST_FAILED_MESSAGE,
+  applyPersistReceipt,
   describeDashboardTabs,
+  mutationApplied,
   normalizeDashboardTabName,
   resolveCreateDashboardTab,
   resolveDeleteDashboardTab,
@@ -127,6 +130,44 @@ describe('renameDashboardTab', () => {
       resolveRenameDashboardTab(current, MAIN_ID, 'x'.repeat(DASHBOARD_TAB_NAME_MAX_LENGTH + 1)).reason,
       'invalid_name',
     );
+  });
+});
+
+describe('persist receipt', () => {
+  it('keeps durable success only when persistence reports a write', () => {
+    const applied = mutationApplied('create', {
+      message: 'Created dashboard tab.',
+      tabId: MAIN_ID,
+      name: 'Main',
+    });
+    assert.equal(applied.ok, true);
+    assert.equal(applied.status, 'applied');
+    assert.equal(applied.persisted, true);
+
+    const persisted = applyPersistReceipt({ persisted: true }, applied);
+    assert.equal(persisted.ok, true);
+    assert.equal(persisted.status, 'applied');
+    assert.equal(persisted.persisted, true);
+    assert.equal(persisted.message, 'Created dashboard tab.');
+  });
+
+  it('does not report applied after a swallowed storage failure', () => {
+    const applied = mutationApplied('rename', {
+      message: 'Renamed dashboard tab.',
+      tabId: MAIN_ID,
+      name: 'Markets',
+    });
+    const failed = applyPersistReceipt({ persisted: false }, applied);
+    assert.deepEqual(failed, {
+      ok: false,
+      status: 'denied',
+      actionType: 'rename',
+      reason: 'persist_failed',
+      persisted: false,
+      message: TABS_PERSIST_FAILED_MESSAGE,
+      tabId: MAIN_ID,
+      name: 'Markets',
+    });
   });
 });
 

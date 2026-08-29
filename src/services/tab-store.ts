@@ -66,11 +66,17 @@ export function loadTabsState(): TabsState | null {
   }
 }
 
-export function saveTabsState(state: TabsState): void {
+export interface TabsPersistReceipt {
+  persisted: boolean;
+}
+
+export function saveTabsState(state: TabsState): TabsPersistReceipt {
   try {
     localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(state));
+    return { persisted: true };
   } catch {
     // Storage unavailable (private mode / quota) — tabs still work this session.
+    return { persisted: false };
   }
 }
 

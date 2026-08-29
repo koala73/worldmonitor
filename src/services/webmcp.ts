@@ -788,6 +788,7 @@ function boundDashboardTabMutation(result: DashboardTabMutationResult): Dashboar
     ...(result.activeTabId ? { activeTabId: boundedText(result.activeTabId, 64) } : {}),
     ...(result.unchanged === true ? { unchanged: true } : {}),
     ...(result.alreadyExisted === true ? { alreadyExisted: true } : {}),
+    ...(typeof result.persisted === 'boolean' ? { persisted: result.persisted } : {}),
     ...(typeof result.tabCount === 'number' ? { tabCount: Math.max(0, Math.floor(result.tabCount)) } : {}),
     ...(typeof result.canCreate === 'boolean' ? { canCreate: result.canCreate } : {}),
     ...(result.cap === null || typeof result.cap === 'number' ? { cap: result.cap } : {}),

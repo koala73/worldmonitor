@@ -32,6 +32,7 @@ export type DashboardTabDenialReason =
   | 'last_tab'
   | 'confirmation_required'
   | 'tabs_unavailable'
+  | 'persist_failed'
   | 'app_destroyed';
 
 export type DashboardTabAction =
@@ -71,6 +72,7 @@ export interface DashboardTabMutationResult {
   activeTabId?: string;
   unchanged?: boolean;
   alreadyExisted?: boolean;
+  persisted?: boolean;
   tabCount?: number;
   canCreate?: boolean;
   cap?: number | null;
@@ -294,6 +296,26 @@ export function mutationApplied(
     ok: true,
     status: 'applied',
     actionType,
+    persisted: true,
     ...fields,
+  };
+}
+
+export const TABS_PERSIST_FAILED_MESSAGE = 'Dashboard tab change could not be saved.';
+
+export function applyPersistReceipt(
+  receipt: { persisted: boolean },
+  applied: DashboardTabMutationResult,
+): DashboardTabMutationResult {
+  if (receipt.persisted) {
+    return { ...applied, persisted: true };
+  }
+  return {
+    ...applied,
+    ok: false,
+    status: 'denied',
+    reason: 'persist_failed',
+    persisted: false,
+    message: TABS_PERSIST_FAILED_MESSAGE,
   };
 }

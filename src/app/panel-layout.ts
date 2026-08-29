@@ -73,9 +73,10 @@ import {
   generateTabId,
   buildDefaultTabPanels,
 } from '@/services/tab-store';
-import type { PanelTab, TabsState } from '@/services/tab-store';
+import type { PanelTab, TabsPersistReceipt, TabsState } from '@/services/tab-store';
 import {
   DASHBOARD_TAB_UNAVAILABLE_RESULT,
+  applyPersistReceipt,
   describeDashboardTabs,
   mutationApplied,
   mutationDenied,
@@ -1277,12 +1278,15 @@ export class PanelLayoutManager implements AppModule {
         if (!resolved.ok) {
           return mutationDenied('select', resolved.reason, resolved.message);
         }
-        if (!resolved.unchanged) this.switchToTab(resolved.tab.id);
+        const persist = resolved.unchanged
+          ? { persisted: true }
+          : this.switchToTab(resolved.tab.id);
         return this.tabMutationResult(
           'select',
           resolved.unchanged ? 'Dashboard tab already selected.' : 'Selected dashboard tab.',
           resolved.tab,
           resolved.unchanged,
+          persist,
         );
       }
       case 'create': {
@@ -1298,27 +1302,35 @@ export class PanelLayoutManager implements AppModule {
         }
         if ('alreadyExisted' in resolved) {
           const switched = resolved.tab.id !== this.tabsState.activeTabId;
-          if (switched) this.switchToTab(resolved.tab.id);
+          const persist = switched ? this.switchToTab(resolved.tab.id) : { persisted: true };
           return this.tabMutationResult(
             'create',
             'Dashboard tab already exists.',
             resolved.tab,
             !switched,
-            { alreadyExisted: true },
+            { alreadyExisted: true, ...persist },
           );
         }
         const created = this.createAndActivateTab(
           resolved.name || t('dashboardTabs.newTabName'),
         );
         showToast(t('dashboardTabs.newTabCreated'));
-        return this.tabMutationResult('create', 'Created dashboard tab.', created, false);
+        return this.tabMutationResult(
+          'create',
+          'Created dashboard tab.',
+          created.tab,
+          false,
+          created,
+        );
       }
       case 'rename': {
         const resolved = resolveRenameDashboardTab(this.tabsState, action.tabId, action.name);
         if (!resolved.ok) {
           return mutationDenied('rename', resolved.reason, resolved.message);
         }
-        if (!resolved.unchanged) this.renameTab(resolved.tab.id, resolved.name);
+        const persist = resolved.unchanged
+          ? { persisted: true }
+          : this.renameTab(resolved.tab.id, resolved.name);
         const tab = this.tabsState.tabs.find((candidate) => candidate.id === resolved.tab.id)
           ?? resolved.tab;
         return this.tabMutationResult(
@@ -1326,6 +1338,7 @@ export class PanelLayoutManager implements AppModule {
           resolved.unchanged ? 'Dashboard tab already has that name.' : 'Renamed dashboard tab.',
           tab,
           resolved.unchanged,
+          persist,
         );
       }
       case 'delete': {
@@ -1338,9 +1351,9 @@ export class PanelLayoutManager implements AppModule {
           });
         }
         const removedName = resolved.tab.name;
-        this.deleteTab(resolved.tab.id);
+        const persist = this.deleteTab(resolved.tab.id);
         const nextCap = this.updateTabCapLock();
-        return mutationApplied('delete', {
+        return applyPersistReceipt(persist, mutationApplied('delete', {
           message: `Deleted dashboard tab "${removedName}".`,
           tabId: resolved.tab.id,
           name: removedName,
@@ -1349,7 +1362,7 @@ export class PanelLayoutManager implements AppModule {
           tabCount: this.tabsState.tabs.length,
           canCreate: nextCap.allowed,
           cap: nextCap.cap,
-        });
+        }));
       }
     }
   }
@@ -1359,10 +1372,11 @@ export class PanelLayoutManager implements AppModule {
     message: string,
     tab: PanelTab,
     unchanged: boolean,
-    extra: { alreadyExisted?: boolean } = {},
+    extra: { alreadyExisted?: boolean; persisted?: boolean } = {},
   ): DashboardTabActionResult {
     const cap = this.updateTabCapLock();
-    return mutationApplied(actionType, {
+    const persist = { persisted: extra.persisted !== false };
+    return applyPersistReceipt(persist, mutationApplied(actionType, {
       message,
       tabId: tab.id,
       name: tab.name,
@@ -1372,10 +1386,10 @@ export class PanelLayoutManager implements AppModule {
       tabCount: this.tabsState?.tabs.length ?? 0,
       canCreate: cap.allowed,
       cap: cap.cap,
-    });
+    }));
   }
 
-  private createAndActivateTab(name: string): PanelTab {
+  private createAndActivateTab(name: string): { tab: PanelTab; persisted: boolean } {
     if (!this.tabsState) {
       throw new Error('Dashboard tabs are not available.');
     }
@@ -1396,11 +1410,11 @@ export class PanelLayoutManager implements AppModule {
     };
     this.tabsState.tabs.push(tab);
     this.tabsState.activeTabId = tab.id;
-    saveTabsState(this.tabsState);
+    const persist = saveTabsState(this.tabsState);
     this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
     this.panelTabBar?.refresh();
     this.updateTabCapLock();
-    return tab;
+    return { tab, persisted: persist.persisted };
   }
 
   /**
@@ -1486,17 +1500,18 @@ export class PanelLayoutManager implements AppModule {
     Object.assign(active, this.captureCurrentTabState());
   }
 
-  private switchToTab(tabId: string): void {
-    if (!this.tabsState || tabId === this.tabsState.activeTabId) return;
+  private switchToTab(tabId: string): TabsPersistReceipt {
+    if (!this.tabsState || tabId === this.tabsState.activeTabId) return { persisted: true };
     const target = this.tabsState.tabs.find((t) => t.id === tabId);
-    if (!target) return;
+    if (!target) return { persisted: true };
 
     this.snapshotActiveTab();
     this.tabsState.activeTabId = tabId;
-    saveTabsState(this.tabsState);
+    const persist = saveTabsState(this.tabsState);
 
     this.applyTabPanelState(target.panelSettings, target.panelOrder, target.bottomSet);
     this.panelTabBar?.refresh();
+    return persist;
   }
 
   /**
@@ -1546,34 +1561,37 @@ export class PanelLayoutManager implements AppModule {
     showToast(t('dashboardTabs.newTabCreated'));
   }
 
-  private renameTab(tabId: string, name: string): void {
-    if (!this.tabsState) return;
+  private renameTab(tabId: string, name: string): TabsPersistReceipt {
+    if (!this.tabsState) return { persisted: true };
     const tab = this.tabsState.tabs.find((t) => t.id === tabId);
-    if (!tab) return;
+    if (!tab) return { persisted: true };
     tab.name = name;
-    saveTabsState(this.tabsState);
+    const persist = saveTabsState(this.tabsState);
     this.panelTabBar?.refresh();
+    return persist;
   }
 
-  private deleteTab(tabId: string): void {
-    if (!this.tabsState || this.tabsState.tabs.length <= 1) return;
+  private deleteTab(tabId: string): TabsPersistReceipt {
+    if (!this.tabsState || this.tabsState.tabs.length <= 1) return { persisted: true };
     const idx = this.tabsState.tabs.findIndex((t) => t.id === tabId);
-    if (idx === -1) return;
+    if (idx === -1) return { persisted: true };
     const wasActive = this.tabsState.activeTabId === tabId;
     const [removed] = this.tabsState.tabs.splice(idx, 1);
 
+    let persist: TabsPersistReceipt;
     if (wasActive) {
       const fallback = this.tabsState.tabs[Math.max(0, idx - 1)]!;
       this.tabsState.activeTabId = fallback.id;
-      saveTabsState(this.tabsState);
+      persist = saveTabsState(this.tabsState);
       this.applyTabPanelState(fallback.panelSettings, fallback.panelOrder, fallback.bottomSet);
     } else {
-      saveTabsState(this.tabsState);
+      persist = saveTabsState(this.tabsState);
     }
     this.panelTabBar?.refresh();
     // Deleting frees a slot: a capped user drops back under the limit.
     this.updateTabCapLock();
     showToast(t('dashboardTabs.tabDeleted', { name: removed!.name }));
+    return persist;
   }
 
   /**

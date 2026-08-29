@@ -35,6 +35,10 @@ const deleteBody = panelLayout.slice(
   panelLayout.indexOf('private deleteTab('),
   panelLayout.indexOf('private applyTabPanelState('),
 );
+const mutationResultBody = panelLayout.slice(
+  panelLayout.indexOf('private tabMutationResult('),
+  panelLayout.indexOf('private createAndActivateTab('),
+);
 
 describe('WebMCP tab-action wiring', () => {
   it('extracts the applyWebMcpTabAction body', () => {
@@ -61,6 +65,8 @@ describe('WebMCP tab-action wiring', () => {
     assert.match(applyBody, /alreadyExisted/);
     assert.match(applyBody, /trackGateHit\('dashboard-tab'\)/);
     assert.match(applyBody, /DASHBOARD_TAB_UNAVAILABLE_RESULT/);
+    assert.match(applyBody, /applyPersistReceipt\(/);
+    assert.match(mutationResultBody, /applyPersistReceipt\(/);
     assert.equal(
       applyBody.includes('saveTabsState('),
       false,
