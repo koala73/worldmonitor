@@ -1211,6 +1211,110 @@ export class EventHandlerManager implements AppModule {
     this.closeMissionPresetPopover();
   }
 
+  /**
+   * WebMCP entry: open the mission picker without applying a preset.
+   * Uses the desktop mission control trigger when present.
+   */
+  openMissionPresetPickerForWebMcp(): boolean {
+    if (this.ctx.isDestroyed) return false;
+    const anchor = document.getElementById('missionPresetBtn');
+    this.openMissionPresetPopover(anchor, false);
+    return this.missionPresetPopover !== null;
+  }
+
+  /**
+   * WebMCP entry: apply a bundled mission preset through the same path as the
+   * visible mission control. Snapshots prior dashboard state and restores it
+   * if the commit throws before completion.
+   */
+  applyMissionPresetForWebMcp(presetId: MissionPresetId): {
+    changed: boolean;
+    priorPresetId: string | null;
+  } {
+    if (this.ctx.isDestroyed) {
+      throw new Error('Dashboard is no longer available.');
+    }
+
+    const snapshot = this.snapshotMissionDashboardState();
+    try {
+      this.applyMissionPreset(presetId);
+      const nextPresetId = loadStoredMissionPreset()?.id ?? null;
+      const changed = snapshot.presetId !== nextPresetId
+        || JSON.stringify(snapshot.panelSettings) !== JSON.stringify(this.ctx.panelSettings)
+        || JSON.stringify(snapshot.mapLayers) !== JSON.stringify(this.ctx.mapLayers);
+      return { changed, priorPresetId: snapshot.presetId };
+    } catch (error) {
+      this.restoreMissionDashboardState(snapshot);
+      throw error;
+    }
+  }
+
+  private snapshotMissionDashboardState(): {
+    panelSettings: Record<string, PanelConfig>;
+    mapLayers: MapLayers;
+    panelOrder: string[];
+    presetId: string | null;
+    mapView: MapView;
+    mapZoom: number;
+    timeRange: string;
+  } {
+    const mapState = this.ctx.map?.getState();
+    let panelOrder: string[] = [];
+    try {
+      const raw = localStorage.getItem(this.ctx.PANEL_ORDER_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          panelOrder = parsed.filter((value): value is string => typeof value === 'string');
+        }
+      }
+    } catch {
+      panelOrder = [];
+    }
+    return {
+      panelSettings: structuredClone(this.ctx.panelSettings),
+      mapLayers: { ...this.ctx.mapLayers },
+      panelOrder,
+      presetId: loadStoredMissionPreset()?.id ?? null,
+      mapView: (mapState?.view ?? 'global') as MapView,
+      mapZoom: mapState?.zoom ?? 2,
+      timeRange: mapState?.timeRange ?? '7d',
+    };
+  }
+
+  private restoreMissionDashboardState(snapshot: {
+    panelSettings: Record<string, PanelConfig>;
+    mapLayers: MapLayers;
+    panelOrder: string[];
+    presetId: string | null;
+    mapView: MapView;
+    mapZoom: number;
+    timeRange: string;
+  }): void {
+    const previousMapLayers = { ...this.ctx.mapLayers };
+    this.ctx.panelSettings = structuredClone(snapshot.panelSettings);
+    this.ctx.mapLayers = { ...snapshot.mapLayers };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+    this.persistMissionPanelOrder(snapshot.panelOrder);
+    if (snapshot.presetId) {
+      saveMissionPreset(snapshot.presetId as MissionPresetId);
+    } else {
+      clearMissionPreset();
+    }
+    this.applyPanelSettings();
+    this.callbacks.applySavedPanelOrder?.(snapshot.panelOrder);
+    this.ctx.unifiedSettings?.refreshPanelToggles();
+    this.ctx.map?.setLayers(this.ctx.mapLayers);
+    this.applyMissionMapLayerTransitions(previousMapLayers, this.ctx.mapLayers);
+    this.ctx.map?.setView(snapshot.mapView, snapshot.mapZoom);
+    this.ctx.map?.setTimeRange(snapshot.timeRange as '1h' | '6h' | '24h' | '48h' | '7d' | 'all');
+    this.callbacks.mountLiveNewsIfReady?.();
+    this.callbacks.syncDataFreshnessWithLayers();
+    this.syncUrlState();
+    this.renderMissionPresetControl();
+  }
+
   private resetMissionPreset(): void {
     const reset = resetMissionPresetState(
       this.ctx.panelSettings,

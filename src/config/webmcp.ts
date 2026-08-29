@@ -36,6 +36,9 @@ export const WEBMCP_SPA_TOOL = Object.freeze({
   createDashboardTab: 'create_dashboard_tab',
   renameDashboardTab: 'rename_dashboard_tab',
   deleteDashboardTab: 'delete_dashboard_tab',
+  listMissionPresets: 'list_mission_presets',
+  applyMissionPreset: 'apply_mission_preset',
+  openMissionPicker: 'open_mission_picker',
   getAccessContext: 'get_access_context',
   openSignIn: 'open_sign_in',
 } as const);
@@ -63,6 +66,9 @@ export const WEBMCP_SPA_TOOL_NAMES = [
   WEBMCP_SPA_TOOL.createDashboardTab,
   WEBMCP_SPA_TOOL.renameDashboardTab,
   WEBMCP_SPA_TOOL.deleteDashboardTab,
+  WEBMCP_SPA_TOOL.listMissionPresets,
+  WEBMCP_SPA_TOOL.applyMissionPreset,
+  WEBMCP_SPA_TOOL.openMissionPicker,
   WEBMCP_SPA_TOOL.getAccessContext,
   WEBMCP_SPA_TOOL.openSignIn,
 ] as const;
