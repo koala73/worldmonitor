@@ -17,6 +17,10 @@
  *     doesn't let the confirmation suppress the later winback
  *   - cancellation copy: UTC date formatting, plan-neutral body (this step
  *     fires for api_* plans too), dateless fallback
+ *   - cancellation retry: the daily scan re-queues a confirmation that never
+ *     landed (Resend threw before the ledger write), dedups against the
+ *     ledger, and is age-capped so the first deploy doesn't mass-mail every
+ *     historic paid-through canceller
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -1022,5 +1026,100 @@ describe("cancellation confirmation copy (#7314)", () => {
     expect(html).toContain("until the end of your paid period");
     expect(subject).not.toContain("undefined");
     expect(html).not.toContain("NaN");
+  });
+});
+
+describe("cancellation confirmation is durably retried (#7328 review)", () => {
+  test("a confirmation that never landed is re-queued by the daily scan", async () => {
+    // The failure this covers: sendEmail throws on a transient Resend error
+    // BEFORE the ledger write, and internalActions are not auto-retried. The
+    // webhook only enqueues on the enteringCancelled transition, so without a
+    // scan sweep that customer's confirmation is lost permanently — the exact
+    // silence this whole PR exists to remove.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-29T10:00:00Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt: Date.now() - 2 * 3600_000,
+      currentPeriodEnd: Date.parse("2026-09-28T19:01:10Z"),
+    });
+
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.html).toContain("28 September 2026");
+    expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
+  test("the scan does not re-send a confirmation already in the ledger", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 2 * 3600_000;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() + 20 * DAY_MS,
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("dunningEmails", {
+        dodoSubscriptionId: SUB_ID,
+        step: "cancellation_confirm",
+        episodeAt: cancelledAt,
+        email: EMAIL,
+        sentAt: cancelledAt,
+      });
+    });
+
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(0);
+    expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
+  test("an old paid-through cancellation is not swept — first deploy must not mass-mail", async () => {
+    // An annual subscriber who cancelled months ago is still paid through, so
+    // an unbounded sweep would mail every historic canceller on the first tick
+    // after deploy. The retry window is a retry window, not a backfill (same
+    // reasoning as WINBACK_MAX_AGE_MS).
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt: Date.now() - 30 * DAY_MS,
+      currentPeriodEnd: Date.now() + 300 * DAY_MS,
+    });
+
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(0);
+    expect(await ledgerRows(t)).toHaveLength(0);
+  });
+
+  test("a legacy cancelled row with no cancelledAt is skipped, not anchored on updatedAt", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, {
+      status: "cancelled",
+      currentPeriodEnd: Date.now() + 20 * DAY_MS,
+      updatedAt: Date.now() - 3600_000,
+    });
+
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(0);
   });
 });

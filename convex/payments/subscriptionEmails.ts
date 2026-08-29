@@ -544,6 +544,14 @@ export const DUNNING_DAY7_AGE_MS = 7 * DAY_MS;
 // Winback window bounds, measured from currentPeriodEnd (access end).
 export const WINBACK_MIN_AGE_MS = 30 * DAY_MS;
 export const WINBACK_MAX_AGE_MS = 60 * DAY_MS;
+// How long after `cancelledAt` the daily scan will still retry an unsent
+// cancellation confirmation (#7314, PR #7328 review). This is a RETRY window,
+// not a backfill: an annual subscriber who cancelled months ago is still paid
+// through, so an unbounded sweep would mail every historic canceller on the
+// first tick after deploy — the same trap WINBACK_MAX_AGE_MS exists to avoid.
+// Three days outlives a multi-day Resend outage while keeping the message
+// timely enough to still be about a cancellation the subscriber remembers.
+export const CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS = 3 * DAY_MS;
 
 const DASHBOARD_URL = "https://www.worldmonitor.app/dashboard";
 const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
@@ -1061,6 +1069,39 @@ export const runDunningScan = internalMutation({
       due.push({ dodoSubscriptionId: sub.dodoSubscriptionId, step: "winback_day30", episodeAt: sub.cancelledAt });
     }
 
+    // Durable retry for the cancellation confirmation (#7314, PR #7328
+    // review). The webhook enqueues it once, on the enteringCancelled
+    // transition — but sendEmail throws BEFORE the ledger write and
+    // internalActions are not auto-retried, so a transient Resend error (or a
+    // RESEND_API_KEY missing at webhook time) would otherwise lose that
+    // customer's confirmation permanently. Every other step in this module
+    // recovers through this scan; this one now does too.
+    //
+    // The range is DISJOINT from the winback range above — still-covering
+    // (currentPeriodEnd >= now) versus lapsed 30-60 days — so no subscription
+    // can be due for both steps in the same tick.
+    //
+    // Unbounded above deliberately: unlike the lapsed set, still-covering
+    // cancellations do not accumulate (a row leaves this range the moment its
+    // period ends), so this read is self-limiting by churn rather than growing
+    // with lifetime history — the concern that forced the winback window.
+    const paidThroughCancelled = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_status_currentPeriodEnd", (q) =>
+        q.eq("status", "cancelled").gte("currentPeriodEnd", now),
+      )
+      .collect();
+    for (const sub of paidThroughCancelled) {
+      // Same rule as winback: no cancelledAt means no stable episode key.
+      if (sub.cancelledAt === undefined) continue;
+      if (now - sub.cancelledAt > CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS) continue;
+      due.push({
+        dodoSubscriptionId: sub.dodoSubscriptionId,
+        step: "cancellation_confirm",
+        episodeAt: sub.cancelledAt,
+      });
+    }
+
     let scheduled = 0;
     for (const item of due) {
       // Ledger pre-check keeps the steady-state tick write-free; the send
@@ -1086,8 +1127,13 @@ export const runDunningScan = internalMutation({
     }
 
     console.log(
-      `[dunning] scan: ${onHold.length} on_hold, ${cancelled.length} cancelled, ${scheduled} sends scheduled`,
+      `[dunning] scan: ${onHold.length} on_hold, ${cancelled.length} cancelled, ${paidThroughCancelled.length} paid-through cancelled, ${scheduled} sends scheduled`,
     );
-    return { onHold: onHold.length, cancelled: cancelled.length, scheduled };
+    return {
+      onHold: onHold.length,
+      cancelled: cancelled.length,
+      paidThroughCancelled: paidThroughCancelled.length,
+      scheduled,
+    };
   },
 });
