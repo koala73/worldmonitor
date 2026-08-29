@@ -35,19 +35,34 @@ https://api.worldmonitor.app/api/<domain>/v<major>/<operation>
 
 ## 机器可读信号
 
-被弃用操作或版本的响应包含：
+### 当前（未弃用）响应上的政策发现
+
+[RFC 9745](https://www.rfc-editor.org/rfc/rfc9745.html) 允许在没有 `Deprecation`
+响应头的情况下发送带有 `rel="deprecation"` 的 `Link`，以便智能体在任何接口停用之前找到本政策。
+当前 WorldMonitor API 和首页响应可能包含：
+
+```http
+Link: <https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"
+```
+
+该响应头**不是**弃用通知，而是指向静态
+[Markdown 政策](https://www.worldmonitor.app/api-versioning.md)（本页是其 HTML 对应版本）。
+
+### 已弃用操作或版本上的信号
+
+被弃用操作或版本的响应还包含：
 
 ```http
 Deprecation: @1782864000
 Sunset: Thu, 31 Dec 2026 23:59:59 GMT
-Link: <https://www.worldmonitor.app/docs/api-versioning>; rel="deprecation"; type="text/html"
+Link: <https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"
 ```
 
 - [`Deprecation`](https://www.rfc-editor.org/rfc/rfc9745.html) 表示接口开始弃用的日期，
   使用 HTTP 结构化字段日期格式。
 - [`Sunset`](https://www.rfc-editor.org/rfc/rfc8594.html) 表示最终可用日期，
   使用 HTTP 日期格式。
-- 带有 `rel="deprecation"` 的 `Link` 指向迁移指南或本政策。
+- 带有 `rel="deprecation"` 的 `Link` 指向本政策或迁移指南。在当前未弃用的接口上，它仅用于政策发现。
 
 相应的 OpenAPI 操作也会标记为 `deprecated: true`。智能体应将 `Deprecation`
 视为迁移警告，并停止安排在 `Sunset` 日期之后的调用。

@@ -36,7 +36,7 @@ function makeRequest(method, url, headers = {}) {
 const CANONICAL_FALLBACK = 'https://worldmonitor.app';
 const KNOWN_GOOD = 'https://www.worldmonitor.app';
 const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
-const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+const ACEH_EXPECTED = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 // Must be a superset of every method any api/* route advertises. Notably
 // includes DELETE for api/product-catalog.js — pinning this prevents the
 // regression that PR review caught (Worker omitted DELETE → product-catalog
@@ -143,6 +143,8 @@ test('OPTIONS preflight returns 204 with Access-Control-Allow-Credentials: true'
   assert.equal(resp.headers.get('access-control-allow-headers'), ACAH_EXPECTED);
   assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
   assert.equal(resp.headers.get('vary'), 'Origin');
+  assert.match(resp.headers.get('link') ?? '', /rel="deprecation"/);
+  assert.match(resp.headers.get('link') ?? '', /api-versioning\.md/);
 });
 
 test('OPTIONS preflight to /api/product-catalog preserves the endpoint-owned DELETE policy', async () => {

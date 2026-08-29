@@ -42,7 +42,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
-const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -54,6 +54,25 @@ const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempoten
 //     Allow-Methods, but listing it costs nothing and avoids a different
 //     preflight from a stricter future client.
 const ALLOW_METHODS = 'GET, POST, DELETE, HEAD, OPTIONS';
+
+// Absolute URL: this Worker serves api.worldmonitor.app, where a
+// root-relative /api-versioning.md would 404. Keep in sync with
+// server/_shared/deprecation-policy.ts.
+const DEPRECATION_POLICY_LINK =
+  '<https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"';
+const DEPRECATION_REL = /(?:^|,)\s*<[^>]+>\s*;[^,]*\brel="deprecation"/;
+
+function appendDeprecationPolicyLink(headers) {
+  if (headers instanceof Headers) {
+    const existing = headers.get('Link');
+    if (existing && DEPRECATION_REL.test(existing)) return;
+    headers.set('Link', existing ? `${existing}, ${DEPRECATION_POLICY_LINK}` : DEPRECATION_POLICY_LINK);
+    return;
+  }
+  const existing = headers.Link;
+  if (existing && DEPRECATION_REL.test(existing)) return;
+  headers.Link = existing ? `${existing}, ${DEPRECATION_POLICY_LINK}` : DEPRECATION_POLICY_LINK;
+}
 
 // Paths whose Vercel functions own a DIFFERENT CORS policy than this Worker
 // (intentionally wider — e.g. MCP/OAuth endpoints accept https://claude.ai +
@@ -328,6 +347,7 @@ async function passThroughToOrigin(request, url, corsHeadersForStatus) {
         mergeHeaderNames(EXPOSE_HEADERS, originExposedHeaders),
       );
     }
+    appendDeprecationPolicyLink(newHeaders);
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
@@ -337,9 +357,11 @@ async function passThroughToOrigin(request, url, corsHeadersForStatus) {
     const corsHeaders = typeof corsHeadersForStatus === 'function'
       ? corsHeadersForStatus(502)
       : corsHeadersForStatus;
+    const errorHeaders = { 'Content-Type': 'application/json', ...corsHeaders };
+    appendDeprecationPolicyLink(errorHeaders);
     return new Response(JSON.stringify({ error: 'Origin unavailable' }), {
       status: 502,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      headers: errorHeaders,
     });
   }
 }
@@ -375,6 +397,7 @@ export default {
       const headers = preflightsPublicBootstrapShape(request, url, origin)
         ? buildPublicBootstrapCorsHeaders()
         : buildPreflightCorsHeaders(origin);
+      appendDeprecationPolicyLink(headers);
       return new Response(null, { status: 204, headers });
     }
 

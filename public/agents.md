@@ -19,6 +19,8 @@ World Monitor is a real-time global intelligence dashboard: curated news feeds, 
 - **Schema map:** https://www.worldmonitor.app/schemamap.xml — NLWeb schemamap indexing the structured-data surfaces
 - **Research reports:** https://www.worldmonitor.app/research/ — original source-backed research with downloadable CSV/JSON data, per-figure provenance, and stable citation URLs (no auth, no JavaScript required)
 - **Developer portal:** https://worldmonitor.app/developers.md — links every developer resource by name. Named resource pages: [MCP Server](https://worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md)
+- **Brand identity:** https://worldmonitor.app/world-monitor.md — official name, canonical domain, NAP, press mentions
+- **REST versioning and deprecation:** https://worldmonitor.app/api-versioning.md — URL versioning, sunset timeline, Deprecation / Sunset / Link header contract (HTML: https://www.worldmonitor.app/docs/api-versioning)
 
 ## Authentication
 

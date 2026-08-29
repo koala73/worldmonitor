@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
-import { dedupeErrorResponses, dedupeSharedParameters } from '../scripts/openapi-dedup-responses.mjs';
+import { dedupeErrorResponses, dedupeSharedParameters, ensureInlineTypedInput } from '../scripts/openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
 import { buildBundle } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
@@ -262,6 +262,50 @@ describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
   });
 });
 
+describe('ensureInlineTypedInput (fixture)', () => {
+  it('inlines one $ref parameter only when the operation has no other typed input', () => {
+    const spec = {
+      openapi: '3.1.0',
+      paths: {
+        '/only-ref': {
+          get: {
+            parameters: [{ $ref: '#/components/parameters/JmespathParam' }],
+          },
+        },
+        '/has-path': {
+          get: {
+            parameters: [
+              { name: 'id', in: 'path', schema: { type: 'string' } },
+              { $ref: '#/components/parameters/JmespathParam' },
+            ],
+          },
+        },
+        '/has-body': {
+          post: {
+            parameters: [{ $ref: '#/components/parameters/IdempotencyKeyParam' }],
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Body' } } },
+            },
+          },
+        },
+      },
+      components: {
+        parameters: {
+          JmespathParam: { name: 'jmespath', in: 'query', schema: { type: 'string' } },
+          IdempotencyKeyParam: { name: 'Idempotency-Key', in: 'header', schema: { type: 'string' } },
+        },
+        schemas: { Body: { type: 'object', properties: { ok: { type: 'boolean' } } } },
+      },
+    };
+
+    const stats = ensureInlineTypedInput(spec);
+    assert.equal(stats.inlined, 1);
+    assert.equal(spec.paths['/only-ref'].get.parameters[0].name, 'jmespath');
+    assert.equal(spec.paths['/has-path'].get.parameters[1].$ref, '#/components/parameters/JmespathParam');
+    assert.equal(spec.paths['/has-body'].post.parameters[0].$ref, '#/components/parameters/IdempotencyKeyParam');
+  });
+});
+
 describe('public OpenAPI dedupe (real bundle)', () => {
   const original = loadUnifiedOpenApiSpec();
   const deduped = structuredClone(original);
@@ -308,6 +352,46 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     assert.ok(paramStats.replacedRefs >= 200, `expected fleet-wide dedup, got ${paramStats.replacedRefs} refs`);
   });
 
+  it('gives every JSON operation an inline typed parameter or requestBody without following parameter $refs', () => {
+    // ora.ai / orank fetch /openapi.json and score "partially documented" when
+    // every typed input is a components.parameters $ref. Schema $refs for
+    // requestBody/200 remain resolver-credited; parameter $refs are not.
+    const { spec, inlineTypedStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    assert.ok(inlineTypedStats.inlined >= 50, `expected GETs restored to inline typed input, got ${inlineTypedStats.inlined}`);
+
+    const issues = [];
+    for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
+      for (const [method, operation] of Object.entries(pathItem ?? {})) {
+        if (!HTTP_METHODS.has(method.toLowerCase()) || !operation) continue;
+        const inlineTypedParam = (operation.parameters ?? []).some((param) =>
+          param && !param.$ref && param.schema && (
+            param.schema.type
+            || param.schema.$ref
+            || param.schema.properties
+            || param.schema.anyOf
+            || param.schema.oneOf
+            || param.schema.allOf
+          ),
+        );
+        const body = operation.requestBody?.content?.['application/json']?.schema;
+        const typedBody = Boolean(body && (body.type || body.$ref || body.properties || body.anyOf || body.oneOf || body.allOf));
+        if (!inlineTypedParam && !typedBody) {
+          issues.push(`${method.toUpperCase()} ${path}`);
+        }
+      }
+    }
+    assert.deepEqual(issues, [], `JSON operations missing inline typed input:\n${issues.join('\n')}`);
+  });
+
+  it('documents Deprecation/Sunset header objects and the static policy URL on the JSON bundle', () => {
+    const { spec } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    assert.match(String(spec.info?.description ?? ''), /api-versioning\.md/);
+    assert.ok(spec.components?.headers?.Deprecation, 'JSON bundle must declare components.headers.Deprecation');
+    assert.ok(spec.components?.headers?.Sunset, 'JSON bundle must declare components.headers.Sunset');
+    assert.match(spec.components.headers.Deprecation.description, /RFC 9745/);
+    assert.match(spec.components.headers.Sunset.description, /RFC 8594/);
+  });
+
   it('the budget is 950,000 bytes and raising it is not the remedy', () => {
     // A literal pin, not a restatement: the guard below reads the shared
     // constant, so without this a crossing could be "fixed" by editing one
@@ -343,17 +427,20 @@ describe('build-openapi-json wiring', () => {
     assert.match(src, /dedupeErrorResponses\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
+    assert.match(src, /ensureInlineTypedInput\(spec\)/);
+    assert.match(src, /injectDeprecationPolicyMetadata\(spec\)/);
   });
 
   it('every transform actually engaged on the bundle it emits', () => {
     // The source match above proves the calls are written down; this proves
     // they did something. A transform that silently stops finding work is the
     // regression the byte budget notices last and from the wrong direction.
-    const { stats, schemaStats, paramStats, unreachableStats } = buildBundle({
+    const { stats, schemaStats, paramStats, inlineTypedStats, unreachableStats } = buildBundle({
       spec: loadUnifiedOpenApiSpec(),
     });
     assert.ok(stats.replacedRefs >= 500, `error-response dedup: ${stats.replacedRefs} refs`);
     assert.ok(paramStats.replacedRefs >= 200, `parameter dedup: ${paramStats.replacedRefs} refs`);
+    assert.ok(inlineTypedStats.inlined >= 50, `inline typed-input restore: ${inlineTypedStats.inlined}`);
     // `replacedRefs === compared` alone passes at 0 === 0, which is exactly the
     // silent-disengagement case this test exists for.
     assert.ok(schemaStats.compared > 0, 'China provenance dedup compared nothing');

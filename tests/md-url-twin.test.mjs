@@ -58,6 +58,8 @@ describe('api/md-twin.ts', () => {
       assert.equal(res.status, 200);
       assert.match(res.headers.get('content-type') ?? '', /text\/markdown/);
       assert.equal(res.headers.get('access-control-allow-origin'), '*');
+      assert.match(res.headers.get('link') ?? '', /rel="canonical"/);
+      assert.match(res.headers.get('link') ?? '', /rel="deprecation"/);
       const body = await res.text();
       assert.match(body, /^# /m);
       assert.match(body, /Dashboard|World Monitor/);

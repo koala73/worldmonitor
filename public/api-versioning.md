@@ -1,0 +1,82 @@
+# World Monitor REST API versioning and deprecation
+
+Last updated: August 29, 2026
+
+Machine-readable versioning, compatibility, and sunset contract for the World Monitor REST API. Human HTML twin: https://www.worldmonitor.app/docs/api-versioning (Simplified Chinese: https://www.worldmonitor.app/docs/zh/api-versioning). OpenAPI bundle: https://www.worldmonitor.app/openapi.yaml (JSON: https://www.worldmonitor.app/openapi.json).
+
+World Monitor versions public REST APIs in the URL:
+
+```
+https://www.worldmonitor.app/api/<domain>/v<major>/<operation>
+```
+
+For example, `/api/market/v1/list-market-quotes` is a version 1 operation. Different domains may advance independently, so clients should use the version present in each path rather than assuming one global API version.
+
+One domain currently deviates from that shape: shipping v2 puts the version before the domain — `/api/v2/shipping/<operation>` (e.g. `/api/v2/shipping/route-intelligence`). Every other domain is at v1 with the standard `/api/<domain>/v1/` prefix.
+
+## Compatibility within a major version
+
+Within a published major version, World Monitor may add optional request fields, response fields, operations, and enum values. Existing fields keep their meaning and type. We do not remove or rename operations or fields, make an optional field required, or otherwise introduce an intentionally breaking change without publishing a new major-version path.
+
+Clients should ignore response fields and enum values they do not recognize. The bundled OpenAPI specification is the source of truth for the currently published contract.
+
+## Protobuf compatibility check
+
+The public API is JSON over HTTP. On pull requests that touch proto paths, CI runs `make breaking` against `origin/main` with Buf's `FILE`, `PACKAGE`, and `WIRE_JSON` rules. That job fails the `proto-breaking` check-run when the baseline is missing or a rule is violated. `WIRE_JSON` is intentional: generated JSON field names and shapes are part of the versioned REST contract.
+
+## Deprecation timeline
+
+When World Monitor replaces or retires a public REST version or operation:
+
+1. We publish the replacement and migration guidance in the API documentation and changelog (https://www.worldmonitor.app/docs/changelog).
+2. The deprecated surface remains available for at least **six months** after the public deprecation announcement.
+3. We publish a specific shutdown date at least **90 days** before that date.
+4. Until shutdown, requests to the deprecated surface will carry the HTTP signals below.
+
+Security, privacy, legal, or upstream-provider emergencies may require a faster change. When that happens, we publish notice and migration guidance as soon as practical.
+
+Nothing is deprecated today. A version number in the path (including `v1`) identifies a compatibility boundary; it does not by itself mean the version is deprecated.
+
+## Machine-readable signals
+
+### Policy discovery on current (non-deprecated) responses
+
+RFC 9745 allows a `Link` with `rel="deprecation"` without a `Deprecation` header, so agents can find this policy before any surface is retired. Current World Monitor API and homepage responses may include:
+
+```http
+Link: <https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"
+```
+
+That header is **not** a deprecation notice. It points at this document.
+
+### Signals on a deprecated operation or version
+
+When a surface is actually deprecated, responses also include:
+
+```http
+Deprecation: @1782864000
+Sunset: Thu, 31 Dec 2026 23:59:59 GMT
+Link: <https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"
+```
+
+- [Deprecation](https://www.rfc-editor.org/rfc/rfc9745.html) is the date the surface became deprecated, expressed as an HTTP Structured Field date.
+- [Sunset](https://www.rfc-editor.org/rfc/rfc8594.html) is the final availability date in HTTP-date format.
+- `Link` with `rel="deprecation"` points at this policy or at migration guidance.
+
+The matching OpenAPI operation is also marked `deprecated: true`. Agents should treat `Deprecation` as a migration warning and stop scheduling calls beyond the `Sunset` date.
+
+No currently supported endpoint sends `Deprecation` or `Sunset` merely because its path contains `v1`.
+
+## Client guidance
+
+- Pin the complete versioned path from the OpenAPI document.
+- Regenerate or update clients when a replacement major version is published.
+- Monitor `Deprecation`, `Sunset`, and `Link` on successful and error responses.
+- Subscribe to the [changelog](https://www.worldmonitor.app/docs/changelog) for human-readable release notices.
+
+## Related
+
+- [OpenAPI specification](https://worldmonitor.app/openapi.md)
+- [Developer portal](https://worldmonitor.app/developers.md)
+- [Agent operations guide](https://worldmonitor.app/agents.md)
+- [Brand identity](https://worldmonitor.app/world-monitor.md)
