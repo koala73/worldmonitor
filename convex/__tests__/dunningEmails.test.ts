@@ -22,8 +22,8 @@
  *   - cancellation retry: the daily scan re-queues a confirmation that never
  *     landed (Resend threw before the ledger write, or the webhook skipped
  *     because RESEND_API_KEY was missing), dedups against the ledger, and is
- *     age-capped so the first deploy doesn't mass-mail every historic
- *     paid-through canceller
+ *     age-capped (index-bounded by cancelledAt) so the first deploy doesn't
+ *     mass-mail every historic paid-through canceller
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -34,6 +34,7 @@ import {
   DUNNING_DAY7_AGE_MS,
   WINBACK_MIN_AGE_MS,
   WINBACK_MAX_AGE_MS,
+  CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS,
   SEND_SPACING_MS,
   resendPacingWaitMs,
   buildDunningEmail,
@@ -1216,5 +1217,51 @@ describe("cancellation confirmation is durably retried (#7328 review)", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
 
     expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("many old paid-through cancellations stay out of the retry query", async () => {
+    // An annual who cancelled months ago remains currentPeriodEnd > now for
+    // the rest of the year. A status+period-end collect() would re-read every
+    // such row on every daily tick and can exceed Convex's per-transaction
+    // read cap, starving all retries. The cancelledAt index must keep the
+    // query at the three-day cohort regardless of how many historic
+    // paid-through rows exist.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-29T10:00:00Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const historic = 200;
+    await t.run(async (ctx) => {
+      for (let i = 0; i < historic; i++) {
+        await ctx.db.insert("subscriptions", {
+          userId: `user_historic_${i}`,
+          dodoSubscriptionId: `sub_historic_${i}`,
+          dodoProductId: "pdt_test",
+          planKey: "pro_annual",
+          status: "cancelled",
+          currentPeriodStart: now - 200 * DAY_MS,
+          currentPeriodEnd: now + 160 * DAY_MS,
+          cancelledAt: now - (30 + i) * DAY_MS,
+          rawPayload: { subscription_id: `sub_historic_${i}`, customer: { email: EMAIL } },
+          updatedAt: now - (30 + i) * DAY_MS,
+        });
+      }
+    });
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt: now - 2 * 3600_000,
+      currentPeriodEnd: now + 20 * DAY_MS,
+    });
+
+    const scan = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    expect(scan.paidThroughCancelled).toBe(1);
+    expect(scan.scheduled).toBe(1);
+    expect(30 * DAY_MS).toBeGreaterThan(CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(1);
+    expect(await ledgerRows(t)).toHaveLength(1);
   });
 });

@@ -1077,24 +1077,31 @@ export const runDunningScan = internalMutation({
     // customer's confirmation permanently. Every other step in this module
     // recovers through this scan; this one now does too.
     //
-    // The range is DISJOINT from the winback range above — still-covering
-    // (currentPeriodEnd >= now) versus lapsed 30-60 days — so no subscription
+    // The still-covering filter is DISJOINT from the winback range above —
+    // currentPeriodEnd >= now versus lapsed 30-60 days — so no subscription
     // can be due for both steps in the same tick.
     //
-    // Unbounded above deliberately: unlike the lapsed set, still-covering
-    // cancellations do not accumulate (a row leaves this range the moment its
-    // period ends), so this read is self-limiting by churn rather than growing
-    // with lifetime history — the concern that forced the winback window.
-    const paidThroughCancelled = await ctx.db
+    // Bound the READ by cancelledAt, not currentPeriodEnd. An annual who
+    // cancelled months ago stays paid-through until period end, so a
+    // currentPeriodEnd >= now collect() would re-read that row every day
+    // for the rest of the year and can exceed Convex's per-transaction
+    // read cap (PR #7328 review). The three-day retry window is the
+    // natural cohort; period-end is then an in-memory still-covering check.
+    const recentCancellations = await ctx.db
       .query("subscriptions")
-      .withIndex("by_status_currentPeriodEnd", (q) =>
-        q.eq("status", "cancelled").gte("currentPeriodEnd", now),
+      .withIndex("by_status_cancelledAt", (q) =>
+        q
+          .eq("status", "cancelled")
+          .gte("cancelledAt", now - CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS),
       )
       .collect();
-    for (const sub of paidThroughCancelled) {
+    const paidThroughCancelled: typeof recentCancellations = [];
+    for (const sub of recentCancellations) {
       // Same rule as winback: no cancelledAt means no stable episode key.
+      // The index omits missing fields; this guard keeps episodeAt typed.
       if (sub.cancelledAt === undefined) continue;
-      if (now - sub.cancelledAt > CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS) continue;
+      if (sub.currentPeriodEnd < now) continue;
+      paidThroughCancelled.push(sub);
       due.push({
         dodoSubscriptionId: sub.dodoSubscriptionId,
         step: "cancellation_confirm",

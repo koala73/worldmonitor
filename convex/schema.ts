@@ -693,7 +693,14 @@ export default defineSchema({
     // post-cancel window and outside it once access actually ends — never
     // winback-eligible (review round 2, finding 3). The winback email says
     // "your access ended ~a month ago", so access end is the right clock.
-    .index("by_status_currentPeriodEnd", ["status", "currentPeriodEnd"]),
+    .index("by_status_currentPeriodEnd", ["status", "currentPeriodEnd"])
+    // Cancellation-confirm retry (#7314, PR #7328): still-covering cancelled
+    // rows can sit in by_status_currentPeriodEnd for a full annual period.
+    // Keying this index on cancelledAt lets the daily scan range-read only
+    // the three-day retry cohort instead of every paid-through cancellation.
+    // Rows without cancelledAt are omitted (optional field) — the scan
+    // already skips those as having no stable episode key.
+    .index("by_status_cancelledAt", ["status", "cancelledAt"]),
 
   // What happened in a Pro-activation session, one row per subscription per
   // cohort (see `cohort` below).
