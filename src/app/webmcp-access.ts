@@ -13,14 +13,19 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import {
   buildWebMcpAccessContext,
   resolveWebMcpOpenSignIn,
+  type OpenSignInDecision,
 } from '@/services/webmcp-access-snapshot';
 import type { AccessContextSnapshot, OpenSignInResult } from '@/services/webmcp';
 
-export {
-  ACCESS_CONTEXT_PRIVACY_KEYS,
-  buildWebMcpAccessContext,
-  resolveWebMcpOpenSignIn,
-} from '@/services/webmcp-access-snapshot';
+function currentOpenSignInDecision(loadFailed = false): OpenSignInDecision {
+  const clerkReady = isClerkReady();
+  return resolveWebMcpOpenSignIn({
+    clerkEnabled: isClerkAuthEnabled(),
+    clerkReady,
+    alreadyOpen: clerkReady && isClerkSignInOpen(),
+    loadFailed,
+  });
+}
 
 export function getWebMcpAccessContext(options: {
   enabledPanelUsed: number;
@@ -41,25 +46,18 @@ export function getWebMcpAccessContext(options: {
 }
 
 export async function openWebMcpSignIn(): Promise<OpenSignInResult> {
-  const decision = resolveWebMcpOpenSignIn({
-    clerkEnabled: isClerkAuthEnabled(),
-    clerkReady: isClerkReady(),
-    alreadyOpen: isClerkSignInOpen(),
-  });
+  let decision = currentOpenSignInDecision();
   if ('reason' in decision) return decision;
 
   if (decision.action === 'load_and_open') {
+    let loadFailed = false;
     try {
       await initClerk();
     } catch {
-      return { ok: false, status: 'denied', reason: 'clerk_unavailable' };
+      loadFailed = true;
     }
-    if (!isClerkReady()) {
-      return { ok: false, status: 'denied', reason: 'clerk_unavailable' };
-    }
-    if (isClerkSignInOpen()) {
-      return { ok: true, status: 'already_open', reason: 'already_open' };
-    }
+    decision = currentOpenSignInDecision(loadFailed || !isClerkReady());
+    if ('reason' in decision) return decision;
   }
 
   const opened = await openSignInAndWait();

@@ -445,9 +445,13 @@ export function runClerkSurfaceOpen(
   }
 }
 
+function openLoadedClerkSignIn(): void {
+  clerkInstance?.openSignIn({ appearance: getAppearance() });
+}
+
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   const open = action === 'open-sign-in'
-    ? () => clerkInstance?.openSignIn({ appearance: getAppearance() })
+    ? openLoadedClerkSignIn
     : () => clerkInstance?.openSignUp({ appearance: getAppearance() });
   // Distinct reasons so Sentry can tell the "components not attached" race
   // (the surface open threw) apart from a "Clerk bundle never loaded" failure
@@ -480,7 +484,7 @@ export function isClerkReady(): boolean {
 
 /** True when Clerk's sign-in (or other auth) modal is already on screen. */
 export function isClerkSignInOpen(): boolean {
-  if (typeof document === 'undefined') return false;
+  if (!clerkInstance || typeof document === 'undefined') return false;
   try {
     return Boolean(document.querySelector(
       '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
@@ -491,9 +495,8 @@ export function isClerkSignInOpen(): boolean {
 }
 
 /**
- * Open the existing Clerk sign-in modal and wait for the UI-open retry.
  * Returns false when Clerk is disabled, failed to load, or the UI surface
- * could not attach. Does not accept credentials.
+ * could not attach.
  */
 export async function openSignInAndWait(): Promise<boolean> {
   if (!isClerkAuthEnabled()) return false;
@@ -514,7 +517,7 @@ export async function openSignInAndWait(): Promise<boolean> {
     let opened = false;
     runClerkSurfaceOpen(
       () => {
-        clerkInstance?.openSignIn({ appearance: getAppearance() });
+        openLoadedClerkSignIn();
         opened = true;
       },
       () => finish(false),

@@ -57,21 +57,17 @@ export function buildWebMcpAccessContext(
       ? 'signed_in'
       : 'signed_out';
 
-  const clerk = !input.clerkEnabled
-    ? 'unavailable'
-    : input.clerkReady
-      ? 'ready'
-      : input.auth.isPending
-        ? 'loading'
-        : 'unavailable';
+  let clerk: AccessContextSnapshot['clerk'];
+  if (!input.clerkEnabled) clerk = 'unavailable';
+  else if (input.clerkReady) clerk = 'ready';
+  else if (input.auth.isPending) clerk = 'loading';
+  else clerk = 'unavailable';
 
-  const productTier = accountState === 'loading'
-    ? 'unknown'
-    : input.premiumAccess
-      ? 'pro'
-      : accountState === 'signed_in'
-        ? 'free'
-        : 'anonymous';
+  let productTier: AccessContextSnapshot['productTier'];
+  if (accountState === 'loading') productTier = 'unknown';
+  else if (input.premiumAccess) productTier = 'pro';
+  else if (accountState === 'signed_in') productTier = 'free';
+  else productTier = 'anonymous';
 
   const features = input.entitlement?.features;
   const loading = accountState === 'loading';
