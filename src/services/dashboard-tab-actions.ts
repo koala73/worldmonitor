@@ -164,7 +164,7 @@ export function resolveCreateDashboardTab(
   cap: TabCapVerdict,
   requestedName: unknown,
 ):
-  | { ok: true; unchanged: true; alreadyExisted: true; tab: PanelTab }
+  | { ok: true; unchanged: boolean; alreadyExisted: true; tab: PanelTab }
   | { ok: true; unchanged: false; name: string }
   | { ok: false; reason: DashboardTabDenialReason; message: string; lockReason?: ExportGateLockReason } {
   if (requestedName !== undefined) {
@@ -178,7 +178,12 @@ export function resolveCreateDashboardTab(
     }
     const existing = state.tabs.find((tab) => tab.name === name);
     if (existing) {
-      return { ok: true, unchanged: true, alreadyExisted: true, tab: existing };
+      return {
+        ok: true,
+        unchanged: existing.id === state.activeTabId,
+        alreadyExisted: true,
+        tab: existing,
+      };
     }
     if (!cap.allowed) {
       return tabCapDenial(cap);

@@ -1290,19 +1290,20 @@ export class PanelLayoutManager implements AppModule {
         if (!resolved.ok) {
           if (resolved.reason === 'tab_cap') trackGateHit('dashboard-tab');
           return mutationDenied('create', resolved.reason, resolved.message, {
-            lockReason: resolved.lockReason,
+            ...(resolved.lockReason ? { lockReason: resolved.lockReason } : {}),
             cap: cap.cap,
-            canCreate: false,
+            canCreate: cap.allowed,
             tabCount: this.tabsState.tabs.length,
           });
         }
-        if (resolved.unchanged) {
-          if (resolved.tab.id !== this.tabsState.activeTabId) this.switchToTab(resolved.tab.id);
+        if ('alreadyExisted' in resolved) {
+          const switched = resolved.tab.id !== this.tabsState.activeTabId;
+          if (switched) this.switchToTab(resolved.tab.id);
           return this.tabMutationResult(
             'create',
             'Dashboard tab already exists.',
             resolved.tab,
-            true,
+            !switched,
             { alreadyExisted: true },
           );
         }

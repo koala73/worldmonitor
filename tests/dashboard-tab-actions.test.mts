@@ -88,6 +88,17 @@ describe('createDashboardTab', () => {
     const result = resolveCreateDashboardTab(current, uncapped, 'Markets');
     assert.deepEqual(result, {
       ok: true,
+      unchanged: false,
+      alreadyExisted: true,
+      tab: tab(MARKETS_ID, 'Markets'),
+    });
+    const alreadyActive = resolveCreateDashboardTab(
+      state(MARKETS_ID, current.tabs),
+      uncapped,
+      'Markets',
+    );
+    assert.deepEqual(alreadyActive, {
+      ok: true,
       unchanged: true,
       alreadyExisted: true,
       tab: tab(MARKETS_ID, 'Markets'),

@@ -169,10 +169,24 @@ describe('webmcp.ts: current API contract', () => {
 
   it('classifies structured denials by exact reason codes', () => {
     assert.match(src, /malformed_arguments/);
+    assert.match(src, /'last_tab'/);
+    assert.match(src, /'tab_not_found'/);
     assert.doesNotMatch(src, /reason\.includes\(/);
     assert.match(src, /VALIDATION_DENIAL_REASONS/);
     assert.match(src, /ENTITLEMENT_DENIAL_REASONS/);
     assert.match(src, /STALE_DENIAL_REASONS/);
+    assert.doesNotMatch(
+      src,
+      /VALIDATION_DENIAL_REASONS = new Set\(\[[\s\S]*?tabs_unavailable[\s\S]*?\]\)/,
+    );
+    assert.doesNotMatch(
+      src,
+      /STALE_DENIAL_REASONS = new Set\(\[[\s\S]*?tabs_unavailable[\s\S]*?\]\)/,
+    );
+    assert.doesNotMatch(
+      src,
+      /ENTITLEMENT_DENIAL_REASONS = new Set\(\[[\s\S]*?tabs_unavailable[\s\S]*?\]\)/,
+    );
   });
 
   it('preserves host AbortError identity through invocation logging', async () => {
@@ -347,6 +361,12 @@ describe('webmcp.ts: current API contract', () => {
 
     assert.deepEqual(list.annotations, { readOnlyHint: true });
     assert.equal(list.inputSchema.additionalProperties, false);
+    assert.match(list.description, /tabsTruncated/);
+    assert.match(list.description, /tabCount is the total persisted workspace count/);
+    for (const tool of [select, create, rename, remove]) {
+      assert.match(tool.description, /target-side cancellation/);
+      assert.match(tool.description, /worldmonitor-tabs-v1/);
+    }
     assert.deepEqual(select.inputSchema.required, ['tabId']);
     assert.equal(select.inputSchema.properties.tabId.pattern, '^tab-[a-z0-9]+-[a-z0-9]+$');
     assert.equal(create.inputSchema.properties.name.maxLength, 40);
@@ -375,7 +395,7 @@ describe('webmcp.ts: current API contract', () => {
     ]);
   });
 
-  it('truncates an oversized tab list from the end while keeping the active tab', async () => {
+  it('truncates an oversized tab list from the front/oldest while keeping the active tab', async () => {
     const activeId = 'tab-main01-abc123';
     const tabs = Array.from({ length: 40 }, (_, index) => {
       const id = index === 0 ? activeId : `tab-fill${String(index).padStart(2, '0')}-abc123`;
@@ -406,8 +426,162 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(listed.activeTabId, activeId);
     assert.equal(listed.tabs[0].id, activeId);
     assert.ok(listed.tabs.length < 40);
-    assert.ok(!listed.tabs.some((tab) => tab.id === 'tab-fill39-abc123'));
+    assert.ok(!listed.tabs.some((tab) => tab.id === 'tab-fill01-abc123'));
+    assert.ok(listed.tabs.some((tab) => tab.id === 'tab-fill39-abc123'));
     assert.ok(JSON.stringify(listed).length <= 1400);
+  });
+
+  it('classifies last_tab as validation, tab_not_found as stale, and tabs_unavailable as unavailable', async () => {
+    const events = [];
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardTabAction: async (action) => ({
+        ok: false,
+        status: 'denied',
+        actionType: action.type,
+        message: 'Denied dashboard tab action.',
+        reason: action.type === 'delete'
+          ? 'last_tab'
+          : action.type === 'select'
+            ? 'tab_not_found'
+            : 'tabs_unavailable',
+      }),
+    }), (event, data) => events.push({ event, data }));
+
+    await tools.find((tool) => tool.name === 'delete_dashboard_tab')
+      .execute({ tabId: 'tab-main01-abc123', confirm: true });
+    await tools.find((tool) => tool.name === 'select_dashboard_tab')
+      .execute({ tabId: 'tab-missing-zzzzzz' });
+    await tools.find((tool) => tool.name === 'rename_dashboard_tab')
+      .execute({ tabId: 'tab-main01-abc123', name: 'Workspace' });
+
+    assert.deepEqual(events, [
+      {
+        event: 'webmcp-tool-invoked',
+        data: { tool: 'delete_dashboard_tab', outcome: 'denied', reason: 'validation' },
+      },
+      {
+        event: 'webmcp-tool-invoked',
+        data: { tool: 'select_dashboard_tab', outcome: 'denied', reason: 'stale' },
+      },
+      {
+        event: 'webmcp-tool-invoked',
+        data: { tool: 'rename_dashboard_tab', outcome: 'denied', reason: 'unavailable' },
+      },
+    ]);
+  });
+
+  it('rejects extra keys on dashboard tab mutation tools before the binding runs', async () => {
+    const actions = [];
+    const events = [];
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardTabAction: async (action) => {
+        actions.push(action);
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: action.type,
+          message: 'Applied dashboard tab action.',
+        };
+      },
+    }), (event, data) => events.push({ event, data }));
+    const tabId = 'tab-main01-abc123';
+    const select = tools.find((tool) => tool.name === 'select_dashboard_tab');
+    const create = tools.find((tool) => tool.name === 'create_dashboard_tab');
+    const rename = tools.find((tool) => tool.name === 'rename_dashboard_tab');
+    const remove = tools.find((tool) => tool.name === 'delete_dashboard_tab');
+
+    const selected = await select.execute({ tabId, extra: true });
+    const created = await create.execute({ name: 'Markets', extra: true });
+    const renamed = await rename.execute({ tabId, name: 'Watchlist', extra: true });
+    const deleted = await remove.execute({ tabId, confirm: true, extra: true });
+
+    assert.deepEqual(selected, {
+      ok: false,
+      status: 'invalid',
+      actionType: 'select',
+      reason: 'malformed_arguments',
+      message: 'select_dashboard_tab accepts only tabId.',
+    });
+    assert.deepEqual(created, {
+      ok: false,
+      status: 'invalid',
+      actionType: 'create',
+      reason: 'malformed_arguments',
+      message: 'create_dashboard_tab accepts only an optional name.',
+    });
+    assert.deepEqual(renamed, {
+      ok: false,
+      status: 'invalid',
+      actionType: 'rename',
+      reason: 'malformed_arguments',
+      message: 'rename_dashboard_tab accepts only tabId and name.',
+    });
+    assert.deepEqual(deleted, {
+      ok: false,
+      status: 'invalid',
+      actionType: 'delete',
+      reason: 'malformed_arguments',
+      message: 'delete_dashboard_tab accepts only tabId and confirm.',
+    });
+    assert.deepEqual(actions, []);
+    assert.deepEqual(events.map(({ data }) => [data.tool, data.outcome, data.reason]), [
+      ['select_dashboard_tab', 'denied', 'validation'],
+      ['create_dashboard_tab', 'denied', 'validation'],
+      ['rename_dashboard_tab', 'denied', 'validation'],
+      ['delete_dashboard_tab', 'denied', 'validation'],
+    ]);
+  });
+
+  it('returns tab_cap and last_tab through dashboard tab execute', async () => {
+    const events = [];
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardTabAction: async (action) => {
+        if (action.type === 'create') {
+          return {
+            ok: false,
+            status: 'denied',
+            actionType: 'create',
+            reason: 'tab_cap',
+            message: 'Dashboard tab cap reached.',
+            canCreate: false,
+            cap: 3,
+            lockReason: 'free_tier',
+            tabCount: 3,
+          };
+        }
+        return {
+          ok: false,
+          status: 'denied',
+          actionType: 'delete',
+          reason: 'last_tab',
+          message: 'The last required dashboard tab cannot be deleted.',
+          canCreate: true,
+          cap: null,
+          tabCount: 1,
+        };
+      },
+    }), (event, data) => events.push({ event, data }));
+
+    const capped = await tools.find((tool) => tool.name === 'create_dashboard_tab')
+      .execute({ name: 'Overflow' });
+    assert.equal(capped.ok, false);
+    assert.equal(capped.status, 'denied');
+    assert.equal(capped.reason, 'tab_cap');
+    assert.equal(capped.canCreate, false);
+    assert.equal(capped.cap, 3);
+    assert.equal(capped.lockReason, 'free_tier');
+
+    const last = await tools.find((tool) => tool.name === 'delete_dashboard_tab')
+      .execute({ tabId: 'tab-main01-abc123', confirm: true });
+    assert.equal(last.ok, false);
+    assert.equal(last.status, 'denied');
+    assert.equal(last.reason, 'last_tab');
+    assert.equal(last.canCreate, true);
+
+    assert.deepEqual(events.map(({ data }) => [data.tool, data.outcome, data.reason]), [
+      ['create_dashboard_tab', 'denied', 'entitlement'],
+      ['delete_dashboard_tab', 'denied', 'validation'],
+    ]);
   });
 
   it('runs reversible view-state tools and gates effects that can outlive cancellation', async () => {

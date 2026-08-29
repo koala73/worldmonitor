@@ -517,6 +517,7 @@ const VALIDATION_DENIAL_REASONS = new Set([
   'not_dashboard_control',
   'invalid_name',
   'confirmation_required',
+  'last_tab',
 ]);
 const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_not_entitled',
@@ -528,6 +529,7 @@ const STALE_DENIAL_REASONS = new Set([
   'search_state_changed',
   'result_no_longer_available',
   'result_no_longer_executable',
+  'tab_not_found',
 ]);
 
 function classifyStructuredDenial(result: Record<string, unknown>): WebMcpInvocationReason {
@@ -729,7 +731,7 @@ function boundDashboardTabList(snapshot: DashboardTabListSnapshot): DashboardTab
   const keepActive = (tab: typeof tabs[number]): boolean => tab.id === result.activeTabId;
   while (JSON.stringify(result).length > TARGET_OUTPUT_CHARS && tabs.some((tab) => !keepActive(tab))) {
     let dropped = false;
-    for (let index = tabs.length - 1; index >= 0; index -= 1) {
+    for (let index = 0; index < tabs.length; index += 1) {
       const tab = tabs[index];
       if (!tab || keepActive(tab)) continue;
       tabs.splice(index, 1);
@@ -1125,7 +1127,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.listDashboardTabs,
       title: 'List Dashboard Tabs',
       description:
-        'List dashboard tabs as named persistent panel workspaces. Returns each tab id, name, active flag, plus whether another tab can be created and why add is locked. Use tab ids, not display names, for select, rename, and delete.',
+        'List dashboard tabs as named persistent panel workspaces. Returns each tab id, name, active flag, plus whether another tab can be created and why add is locked. Use tab ids, not display names, for select, rename, and delete. When tabsTruncated is true, tabCount is the total persisted workspace count and tabs may omit non-active entries; do not assume every id is present. Call list_dashboard_tabs again after mutations.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -1140,7 +1142,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.selectDashboardTab,
       title: 'Select Dashboard Tab',
       description:
-        'Activate a dashboard tab by stable tab id from list_dashboard_tabs. Selecting the already-active tab is a successful no-op.',
+        'Activate a dashboard tab by stable tab id from list_dashboard_tabs. Selecting the already-active tab is a successful no-op. Unavailable without target-side cancellation because tab changes persist to worldmonitor-tabs-v1 and the live panel workspace (same class as openCountryBrief/set_map_layers).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1175,7 +1177,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.createDashboardTab,
       title: 'Create Dashboard Tab',
       description:
-        'Create a dashboard tab as a named persistent panel workspace, then activate it. Omit name to use the dashboard default. Creating a tab whose trimmed name already exists returns that tab without duplicating it. Honors the same tab cap and entitlement lock as the dashboard tab bar.',
+        'Create a dashboard tab as a named persistent panel workspace, then activate it. Omit name to use the dashboard default. Creating a tab whose trimmed name already exists returns that tab without duplicating it. Honors the same tab cap and entitlement lock as the dashboard tab bar. Unavailable without target-side cancellation because tab changes persist to worldmonitor-tabs-v1 and the live panel workspace (same class as openCountryBrief/set_map_layers).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1212,7 +1214,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.renameDashboardTab,
       title: 'Rename Dashboard Tab',
       description:
-        'Rename a dashboard tab by stable tab id. Names are trimmed and capped at 40 characters, matching the dashboard tab bar. Renaming to the current name is a successful no-op.',
+        'Rename a dashboard tab by stable tab id. Names are trimmed and capped at 40 characters, matching the dashboard tab bar. Renaming to the current name is a successful no-op. Unavailable without target-side cancellation because tab changes persist to worldmonitor-tabs-v1 and the live panel workspace (same class as openCountryBrief/set_map_layers).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1257,7 +1259,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.deleteDashboardTab,
       title: 'Delete Dashboard Tab',
       description:
-        'Delete a dashboard tab by stable tab id. Requires confirm=true. Refuses to delete the last remaining tab.',
+        'Delete a dashboard tab by stable tab id. Requires confirm=true. Refuses to delete the last remaining tab. Unavailable without target-side cancellation because tab changes persist to worldmonitor-tabs-v1 and the live panel workspace (same class as openCountryBrief/set_map_layers).',
       inputSchema: {
         type: 'object',
         properties: {

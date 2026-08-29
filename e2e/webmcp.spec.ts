@@ -88,6 +88,27 @@ async function closeMissionPresetIfOpen(page: Page): Promise<void> {
   }
 }
 
+async function executeDashboardTabTool(
+  page: Page,
+  name: string,
+  input: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  return page.evaluate(async ({ name, input }) => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const provider = document.modelContext as ExecutableModelContext;
+    const tool = (await provider.getTools()).find((candidate) => candidate.name === name);
+    if (!tool) throw new Error(`${name} was not discovered.`);
+    const raw = await provider.executeTool(tool, JSON.stringify(input));
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) as unknown : raw;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`${name} returned a non-object result.`);
+    }
+    return parsed as Record<string, unknown>;
+  }, { name, input });
+}
+
 async function installColdStartContextProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type ExecutableModelContext = WebMCP.ModelContext & {
@@ -206,7 +227,7 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
 test.describe('dashboard tab persistence', () => {
   test.skip(productionSmoke, 'Do not mutate production dashboard tab persistence.');
 
-  test('creates, renames, selects, and deletes a dashboard tab through the visible tab bar', async ({ page }) => {
+  test('creates, renames, selects, and deletes a dashboard tab', async ({ page }) => {
     await dismissMissionPreset(page);
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -223,21 +244,64 @@ test.describe('dashboard tab persistence', () => {
       await expect.poll(async () => page.evaluate(async () => (
         (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
       )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
-      const listed = await page.evaluate(async () => {
-        type ExecutableModelContext = WebMCP.ModelContext & {
-          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
-        };
-        const provider = document.modelContext as ExecutableModelContext;
-        const tool = (await provider.getTools()).find((candidate) => candidate.name === 'list_dashboard_tabs');
-        if (!tool) throw new Error('list_dashboard_tabs was not discovered.');
-        const raw = await provider.executeTool(tool, '{}');
-        return typeof raw === 'string' ? JSON.parse(raw) : raw;
-      });
+      const listed = await executeDashboardTabTool(page, 'list_dashboard_tabs');
       expect(listed).toMatchObject({
         tabCount: 1,
         tabs: [{ name: originalName, active: true, canDelete: false }],
       });
-      expect(listed.tabs[0].id).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
+      const originalId = (listed.tabs as Array<{ id: string }>)[0]?.id;
+      expect(originalId).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
+
+      const created = await executeDashboardTabTool(page, 'create_dashboard_tab', {
+        name: 'Draft Workspace',
+      });
+      expect(created).toMatchObject({ ok: true, status: 'applied' });
+      const createdId = created.tabId;
+      expect(createdId).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
+      expect(createdId).not.toBe(originalId);
+      await expect(labels).toHaveCount(2);
+
+      const renamed = await executeDashboardTabTool(page, 'rename_dashboard_tab', {
+        tabId: createdId,
+        name: 'WebMCP Workspace',
+      });
+      expect(renamed).toMatchObject({ ok: true, status: 'applied', name: 'WebMCP Workspace' });
+      await expect(labels.nth(1)).toHaveText('WebMCP Workspace');
+      await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
+
+      const selectedOriginal = await executeDashboardTabTool(page, 'select_dashboard_tab', {
+        tabId: originalId,
+      });
+      expect(selectedOriginal).toMatchObject({ ok: true, status: 'applied' });
+      await expect(labels.first()).toHaveAttribute('aria-selected', 'true');
+
+      const selectedCreated = await executeDashboardTabTool(page, 'select_dashboard_tab', {
+        tabId: createdId,
+      });
+      expect(selectedCreated).toMatchObject({ ok: true, status: 'applied' });
+      await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
+
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(page.locator('.dashboard-tab-label')).toHaveCount(2);
+      await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveText('WebMCP Workspace');
+      await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveAttribute('aria-selected', 'true');
+      await closeMissionPresetIfOpen(page);
+      await expect.poll(async () => page.evaluate(async () => (
+        (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+      )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+
+      const deleted = await executeDashboardTabTool(page, 'delete_dashboard_tab', {
+        tabId: createdId,
+        confirm: true,
+      });
+      expect(deleted).toMatchObject({ ok: true, status: 'applied' });
+      await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
+      await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
+
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
+      await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
+      return;
     }
 
     await page.locator('.dashboard-tab-add').click();
