@@ -74,6 +74,20 @@ async function installReadinessRecorder(page: Page): Promise<void> {
   await page.addInitScript(() => localStorage.setItem('wm_lcp_debug', '1'));
 }
 
+async function dismissMissionPreset(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+  });
+}
+
+async function closeMissionPresetIfOpen(page: Page): Promise<void> {
+  const closeButton = page.locator('.mission-preset-popover [data-mission-close]');
+  if (await closeButton.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await closeButton.click({ force: true });
+    await expect(page.locator('.mission-preset-popover')).toBeHidden({ timeout: 5_000 });
+  }
+}
+
 async function installColdStartContextProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type ExecutableModelContext = WebMCP.ModelContext & {
@@ -188,6 +202,77 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
     target.__wmWebMcpColdStartContext = probe;
   });
 }
+
+test.describe('dashboard tab persistence', () => {
+  test.skip(productionSmoke, 'Do not mutate production dashboard tab persistence.');
+
+  test('creates, renames, selects, and deletes a dashboard tab through the visible tab bar', async ({ page }) => {
+    await dismissMissionPreset(page);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const tabBar = page.locator('.dashboard-tabs-bar');
+    await expect(tabBar).toBeVisible({ timeout: 60_000 });
+    await closeMissionPresetIfOpen(page);
+
+    const labels = page.locator('.dashboard-tab-label');
+    await expect(labels).toHaveCount(1);
+    const originalName = (await labels.first().innerText()).trim();
+    expect(originalName.length).toBeGreaterThan(0);
+
+    if (requireWebMcp) {
+      await expect.poll(async () => page.evaluate(async () => (
+        (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+      )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+      const listed = await page.evaluate(async () => {
+        type ExecutableModelContext = WebMCP.ModelContext & {
+          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+        };
+        const provider = document.modelContext as ExecutableModelContext;
+        const tool = (await provider.getTools()).find((candidate) => candidate.name === 'list_dashboard_tabs');
+        if (!tool) throw new Error('list_dashboard_tabs was not discovered.');
+        const raw = await provider.executeTool(tool, '{}');
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      });
+      expect(listed).toMatchObject({
+        tabCount: 1,
+        tabs: [{ name: originalName, active: true, canDelete: false }],
+      });
+      expect(listed.tabs[0].id).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
+    }
+
+    await page.locator('.dashboard-tab-add').click();
+    await expect(labels).toHaveCount(2);
+    const createdName = (await labels.nth(1).innerText()).trim();
+    expect(createdName).not.toBe(originalName);
+
+    await labels.nth(1).dblclick();
+    const rename = page.locator('.dashboard-tab-rename');
+    await expect(rename).toBeVisible();
+    await rename.fill('WebMCP Workspace');
+    await rename.press('Enter');
+    await expect(labels.nth(1)).toHaveText('WebMCP Workspace');
+    await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
+
+    await labels.first().click();
+    await expect(labels.first()).toHaveAttribute('aria-selected', 'true');
+    await labels.nth(1).click();
+    await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.dashboard-tab-label')).toHaveCount(2);
+    await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveText('WebMCP Workspace');
+    await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveAttribute('aria-selected', 'true');
+    await closeMissionPresetIfOpen(page);
+
+    await page.locator('.dashboard-tab').nth(1).locator('.dashboard-tab-close').click();
+    await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
+    await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
+    await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
+  });
+});
 
 test.describe('top-level WebMCP dashboard contract', () => {
   test.skip(
@@ -388,69 +473,6 @@ test.describe('top-level WebMCP dashboard contract', () => {
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
       },
     });
-  });
-
-  test('creates, renames, selects, and deletes a dashboard tab through the visible tab bar', async ({ page }) => {
-    test.skip(productionSmoke, 'Do not mutate production dashboard tab persistence.');
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-    await expect.poll(async () => page.evaluate(async () => (
-      (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
-    )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
-
-    const tabBar = page.locator('.dashboard-tabs-bar');
-    await expect(tabBar).toBeVisible({ timeout: 60_000 });
-    const labels = page.locator('.dashboard-tab-label');
-    await expect(labels).toHaveCount(1);
-    const originalName = (await labels.first().innerText()).trim();
-    expect(originalName.length).toBeGreaterThan(0);
-
-    const listed = await page.evaluate(async () => {
-      type ExecutableModelContext = WebMCP.ModelContext & {
-        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
-      };
-      const provider = document.modelContext as ExecutableModelContext;
-      const tool = (await provider.getTools()).find((candidate) => candidate.name === 'list_dashboard_tabs');
-      if (!tool) throw new Error('list_dashboard_tabs was not discovered.');
-      const raw = await provider.executeTool(tool, '{}');
-      return typeof raw === 'string' ? JSON.parse(raw) : raw;
-    });
-    expect(listed).toMatchObject({
-      tabCount: 1,
-      tabs: [{ name: originalName, active: true, canDelete: false }],
-    });
-    expect(listed.tabs[0].id).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
-
-    await page.locator('.dashboard-tab-add').click();
-    await expect(labels).toHaveCount(2);
-    const createdName = (await labels.nth(1).innerText()).trim();
-    expect(createdName).not.toBe(originalName);
-
-    await labels.nth(1).dblclick();
-    const rename = page.locator('.dashboard-tab-rename');
-    await expect(rename).toBeVisible();
-    await rename.fill('WebMCP Workspace');
-    await rename.press('Enter');
-    await expect(labels.nth(1)).toHaveText('WebMCP Workspace');
-    await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
-
-    await labels.first().click();
-    await expect(labels.first()).toHaveAttribute('aria-selected', 'true');
-    await labels.nth(1).click();
-    await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
-
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.dashboard-tab-label')).toHaveCount(2);
-    await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveText('WebMCP Workspace');
-    await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveAttribute('aria-selected', 'true');
-
-    await page.locator('.dashboard-tab').nth(1).locator('.dashboard-tab-close').click();
-    await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
-    await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
-
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
-    await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
   });
 
   // Production collection is intentionally restricted to this spec. Keep a
