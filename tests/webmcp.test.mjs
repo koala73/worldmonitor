@@ -79,6 +79,26 @@ function createBindings(overrides = {}) {
       ok: true,
       status: 'opened',
     }),
+    applyDashboardTabAction: async (action) => (
+      action.type === 'list'
+        ? {
+            activeTabId: 'tab-main01-abc123',
+            tabs: [{ id: 'tab-main01-abc123', name: 'Main', active: true, canDelete: false }],
+            tabCount: 1,
+            tabsTruncated: false,
+            canCreate: true,
+            cap: null,
+          }
+        : {
+            ok: true,
+            status: 'applied',
+            actionType: action.type,
+            message: 'Applied dashboard tab action.',
+            tabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
+            name: typeof action.name === 'string' ? action.name : 'Main',
+            activeTabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
+          }
+    ),
     ...overrides,
   };
 }
@@ -140,6 +160,11 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapLayers/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.searchDashboard/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearchResult/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.listDashboardTabs/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.selectDashboardTab/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.createDashboardTab/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.renameDashboardTab/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.deleteDashboardTab/);
   });
 
   it('classifies structured denials by exact reason codes', () => {
@@ -184,7 +209,7 @@ describe('webmcp.ts: current API contract', () => {
       assert.ok(tool.title.length > 0);
       assert.equal(
         tool.annotations?.readOnlyHint,
-        ['get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        ['get_dashboard_context', 'search_dashboard', 'list_dashboard_tabs'].includes(tool.name),
       );
       const properties = tool.inputSchema?.properties ?? {};
       for (const property of Object.values(properties)) {
@@ -278,6 +303,78 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(open.inputSchema.properties.resultKey.pattern, '^sr_[a-f0-9]{32}$');
   });
 
+  it('routes dashboard tab tools through stable IDs and bounded mutation results', async () => {
+    const actions = [];
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardTabAction: async (action) => {
+        actions.push(action);
+        if (action.type === 'list') {
+          return {
+            activeTabId: 'tab-main01-abc123',
+            tabs: [{ id: 'tab-main01-abc123', name: 'Main', active: true, canDelete: false }],
+            tabCount: 1,
+            tabsTruncated: false,
+            canCreate: true,
+            cap: null,
+          };
+        }
+        if (action.type === 'delete' && action.confirm !== true) {
+          return {
+            ok: false,
+            status: 'denied',
+            actionType: 'delete',
+            reason: 'confirmation_required',
+            message: 'Deleting a dashboard tab requires confirm=true.',
+          };
+        }
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: action.type,
+          message: 'Applied dashboard tab action.',
+          tabId: action.tabId ?? 'tab-k1m2n3-abcdef',
+          name: action.name ?? 'Markets',
+          activeTabId: action.tabId ?? 'tab-k1m2n3-abcdef',
+          unchanged: action.type === 'select',
+        };
+      },
+    }), () => {});
+    const list = tools.find((tool) => tool.name === 'list_dashboard_tabs');
+    const select = tools.find((tool) => tool.name === 'select_dashboard_tab');
+    const create = tools.find((tool) => tool.name === 'create_dashboard_tab');
+    const rename = tools.find((tool) => tool.name === 'rename_dashboard_tab');
+    const remove = tools.find((tool) => tool.name === 'delete_dashboard_tab');
+
+    assert.deepEqual(list.annotations, { readOnlyHint: true });
+    assert.equal(list.inputSchema.additionalProperties, false);
+    assert.deepEqual(select.inputSchema.required, ['tabId']);
+    assert.equal(select.inputSchema.properties.tabId.pattern, '^tab-[a-z0-9]+-[a-z0-9]+$');
+    assert.equal(create.inputSchema.properties.name.maxLength, 40);
+    assert.deepEqual(rename.inputSchema.required, ['tabId', 'name']);
+    assert.deepEqual(remove.inputSchema.required, ['tabId', 'confirm']);
+
+    const listed = await list.execute({});
+    assert.equal(listed.activeTabId, 'tab-main01-abc123');
+    assert.equal(listed.tabs[0].id, 'tab-main01-abc123');
+
+    const selected = await select.execute({ tabId: 'tab-main01-abc123' });
+    assert.equal(selected.ok, true);
+    assert.equal(selected.unchanged, true);
+
+    await create.execute({ name: 'Markets' });
+    await rename.execute({ tabId: 'tab-k1m2n3-abcdef', name: 'Watchlist' });
+    const denied = await remove.execute({ tabId: 'tab-k1m2n3-abcdef', confirm: false });
+    assert.equal(denied.reason, 'confirmation_required');
+
+    assert.deepEqual(actions, [
+      { type: 'list' },
+      { type: 'select', tabId: 'tab-main01-abc123' },
+      { type: 'create', name: 'Markets' },
+      { type: 'rename', tabId: 'tab-k1m2n3-abcdef', name: 'Watchlist' },
+      { type: 'delete', tabId: 'tab-k1m2n3-abcdef', confirm: false },
+    ]);
+  });
+
   it('runs reversible view-state tools and gates effects that can outlive cancellation', async () => {
     let mutationCalls = 0;
     const events = [];
@@ -298,6 +395,27 @@ describe('webmcp.ts: current API contract', () => {
         mutationCalls += 1;
         return { ok: true, status: 'opened' };
       },
+      applyDashboardTabAction: async (action) => {
+        if (action.type !== 'list') mutationCalls += 1;
+        return action.type === 'list'
+          ? {
+              activeTabId: 'tab-main01-abc123',
+              tabs: [{ id: 'tab-main01-abc123', name: 'Main', active: true, canDelete: false }],
+              tabCount: 1,
+              tabsTruncated: false,
+              canCreate: true,
+              cap: null,
+            }
+          : {
+              ok: true,
+              status: 'applied',
+              actionType: action.type,
+              message: 'Applied dashboard tab action.',
+              tabId: 'tab-main01-abc123',
+              name: 'Main',
+              activeTabId: 'tab-main01-abc123',
+            };
+      },
     }), (event, data) => events.push({ event, data }));
     const validInputs = {
       openCountryBrief: { iso2: 'DE' },
@@ -306,6 +424,10 @@ describe('webmcp.ts: current API contract', () => {
       set_map_view: { view: 'eu' },
       set_map_layers: { layers: { conflicts: true } },
       open_search_result: { resultKey: `sr_${'a'.repeat(32)}` },
+      select_dashboard_tab: { tabId: 'tab-main01-abc123' },
+      create_dashboard_tab: { name: 'Markets' },
+      rename_dashboard_tab: { tabId: 'tab-main01-abc123', name: 'Workspace' },
+      delete_dashboard_tab: { tabId: 'tab-main01-abc123', confirm: true },
     };
 
     assert.equal(
@@ -317,19 +439,32 @@ describe('webmcp.ts: current API contract', () => {
         .execute({ query: 'safe' })).resultCount,
       0,
     );
+    assert.equal(
+      (await tools.find(({ name }) => name === 'list_dashboard_tabs').execute({})).tabCount,
+      1,
+    );
 
     // openCountryBrief can consume daily LLM allowance after caller
     // cancellation. set_map_layers and open_search_result persist
-    // STORAGE_KEYS.mapLayers. All three stay fail-closed without a target
-    // signal; the remaining dashboard-changing tools only move reversible
-    // visible view state.
+    // STORAGE_KEYS.mapLayers. Dashboard tab mutations persist
+    // worldmonitor-tabs-v1 plus the live panel workspace. All of those stay
+    // fail-closed without a target signal; the remaining dashboard-changing
+    // tools only move reversible visible view state.
     //
     // Every tool is pinned to its EXACT return, gated and ungated alike.
     // `notDeepEqual(result, denial)` excluded exactly one literal object, so a
     // swallowed error, a differently shaped failure, a wrong country name, or a
     // dropped actionType all passed it. createBindings() is deterministic, so
     // there is nothing environment-dependent left to hedge against.
-    const gated = ['openCountryBrief', 'set_map_layers', 'open_search_result'];
+    const gated = [
+      'openCountryBrief',
+      'set_map_layers',
+      'open_search_result',
+      'select_dashboard_tab',
+      'create_dashboard_tab',
+      'rename_dashboard_tab',
+      'delete_dashboard_tab',
+    ];
     const denial = {
       ok: false,
       status: 'denied',
@@ -354,6 +489,10 @@ describe('webmcp.ts: current API contract', () => {
       set_map_view: appliedAction('set_view'),
       set_map_layers: denial,
       open_search_result: denial,
+      select_dashboard_tab: denial,
+      create_dashboard_tab: denial,
+      rename_dashboard_tab: denial,
+      delete_dashboard_tab: denial,
     };
     assert.deepEqual(
       Object.keys(expected).sort(),
@@ -998,7 +1137,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     await settlePromises();
     assert.deepEqual(harness.events, [{
       event: 'webmcp-registered',
-      data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
+      data: { toolCount: 13, pageSurface: 'dashboard', api: 'document-current' },
     }]);
 
     controller.abort();

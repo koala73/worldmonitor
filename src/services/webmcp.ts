@@ -16,6 +16,11 @@
 //   6. set_map_layers()           — changes allowed visible map layers.
 //   7. search_dashboard()         — searches the live dashboard index.
 //   8. open_search_result()       — selects an opaque, revalidated result.
+//   9. list_dashboard_tabs()      — enumerates persistent workspace tabs.
+//  10. select_dashboard_tab()     — switches the active workspace tab.
+//  11. create_dashboard_tab()     — creates a workspace, or returns one by name.
+//  12. rename_dashboard_tab()     — renames a workspace tab by stable ID.
+//  13. delete_dashboard_tab()     — deletes a workspace tab after confirm=true.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -41,6 +46,16 @@ import {
   MAX_LAYER_ACTION_TARGET_ID_LENGTH,
   MAX_LAYER_ACTION_TARGETS,
 } from '../../shared/agent-bus-contract';
+import {
+  DASHBOARD_TAB_ID_PATTERN,
+  DASHBOARD_TAB_NAME_MAX_LENGTH,
+  isDashboardTabListSnapshot,
+  mutationDenied,
+  type DashboardTabAction,
+  type DashboardTabActionResult,
+  type DashboardTabListSnapshot,
+  type DashboardTabMutationResult,
+} from './dashboard-tab-actions';
 
 export interface WebMcpAppBindings {
   openCountryBriefByCode(
@@ -71,6 +86,10 @@ export interface WebMcpAppBindings {
     resultKey: string,
     options?: WebMcpExecutionOptions,
   ): DashboardSearchOpenResult | Promise<DashboardSearchOpenResult>;
+  applyDashboardTabAction(
+    action: DashboardTabAction,
+    options?: WebMcpExecutionOptions,
+  ): DashboardTabActionResult | Promise<DashboardTabActionResult>;
 }
 
 export interface WebMcpExecutionOptions {
@@ -213,13 +232,15 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 //     selection dispatcher. Putting the map back by hand restores neither.
 //     openCountryBrief can start server-side LLM generation that consumes the
 //     caller's daily allowance. The gateway cannot refund a request merely
-//     because browser-side execution was cancelled.
+//     because browser-side execution was cancelled. Dashboard tab select,
+//     create, rename, and delete persist worldmonitor-tabs-v1 plus the live
+//     panel workspace.
 //   - 'view-state': set_map_view also writes share-URL state via
 //     history.replaceState — visible in the address bar and overwritten by the
 //     next human map move.
 //   - 'read-only': nothing to undo.
 //
-// Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
+// Keyed by WebMcpSpaToolName, so adding a tool without a policy entry is
 // a TypeScript error. That is the forcing function: nothing ships unclassified.
 export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'cancellation-required'>
@@ -232,6 +253,11 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.openCountryBrief]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.setMapLayers]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.openSearchResult]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.listDashboardTabs]: 'read-only',
+  [WEBMCP_SPA_TOOL.selectDashboardTab]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.createDashboardTab]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.renameDashboardTab]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.deleteDashboardTab]: 'cancellation-required',
 });
 
 /** Tools the page refuses to run without a target-side AbortSignal. */
@@ -286,6 +312,11 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   set_map_layers: 'World Monitor could not update map layers.',
   search_dashboard: 'World Monitor could not search the dashboard.',
   open_search_result: 'World Monitor could not open that search result.',
+  list_dashboard_tabs: 'World Monitor could not list dashboard tabs.',
+  select_dashboard_tab: 'World Monitor could not select that dashboard tab.',
+  create_dashboard_tab: 'World Monitor could not create that dashboard tab.',
+  rename_dashboard_tab: 'World Monitor could not rename that dashboard tab.',
+  delete_dashboard_tab: 'World Monitor could not delete that dashboard tab.',
 };
 const UNSUPPORTED_MUTATION_MESSAGE =
   'This browser cannot cancel work already running in the page, so World Monitor '
@@ -484,10 +515,13 @@ const VALIDATION_DENIAL_REASONS = new Set([
   'malformed_arguments',
   'invalid_action',
   'not_dashboard_control',
+  'invalid_name',
+  'confirmation_required',
 ]);
 const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_not_entitled',
   'layer_not_entitled',
+  'tab_cap',
 ]);
 const STALE_DENIAL_REASONS = new Set([
   'invalid_or_expired_key',
@@ -670,6 +704,74 @@ function boundSearchOpenResult(result: DashboardSearchOpenResult): DashboardSear
     ...(result.type ? { type: boundedText(result.type, 32) } : {}),
     ...(!opened ? { reason } : {}),
   };
+}
+
+function boundDashboardTabList(snapshot: DashboardTabListSnapshot): DashboardTabListSnapshot {
+  const sourceTabs = Array.isArray(snapshot.tabs) ? snapshot.tabs : [];
+  const tabs = sourceTabs.map((tab) => ({
+    id: boundedText(tab?.id, 64),
+    name: boundedText(tab?.name, DASHBOARD_TAB_NAME_MAX_LENGTH),
+    active: tab?.active === true,
+    canDelete: tab?.canDelete === true,
+  })).filter((tab) => tab.id);
+  const result: DashboardTabListSnapshot = {
+    activeTabId: boundedText(snapshot.activeTabId, 64),
+    tabs,
+    tabCount: Math.max(0, Math.floor(boundedNumber(snapshot.tabCount)) || tabs.length),
+    tabsTruncated: snapshot.tabsTruncated === true,
+    canCreate: snapshot.canCreate === true,
+    cap: snapshot.cap === null || typeof snapshot.cap === 'number' ? snapshot.cap : null,
+    ...(snapshot.createBlockReason ? {
+      createBlockReason: boundedText(snapshot.createBlockReason, 32) as DashboardTabListSnapshot['createBlockReason'],
+    } : {}),
+  };
+
+  const keepActive = (tab: typeof tabs[number]): boolean => tab.id === result.activeTabId;
+  while (JSON.stringify(result).length > TARGET_OUTPUT_CHARS && tabs.some((tab) => !keepActive(tab))) {
+    const index = tabs.findLastIndex((tab) => !keepActive(tab));
+    if (index < 0) break;
+    tabs.splice(index, 1);
+    result.tabsTruncated = true;
+  }
+  result.tabCount = Math.max(result.tabCount, sourceTabs.length);
+  if (JSON.stringify(result).length > MAX_OUTPUT_CHARS) {
+    throw new SafeWebMcpError('Dashboard tab list exceeded the safe output limit.');
+  }
+  return result;
+}
+
+function boundDashboardTabMutation(result: DashboardTabMutationResult): DashboardTabMutationResult {
+  const bounded: DashboardTabMutationResult = {
+    ok: result.ok === true,
+    status: result.status,
+    actionType: result.actionType,
+    message: boundedText(result.message, 240),
+    ...(result.reason ? { reason: boundedText(result.reason, 64) as DashboardTabMutationResult['reason'] } : {}),
+    ...(result.tabId ? { tabId: boundedText(result.tabId, 64) } : {}),
+    ...(result.name ? { name: boundedText(result.name, DASHBOARD_TAB_NAME_MAX_LENGTH) } : {}),
+    ...(result.activeTabId ? { activeTabId: boundedText(result.activeTabId, 64) } : {}),
+    ...(result.unchanged === true ? { unchanged: true } : {}),
+    ...(result.alreadyExisted === true ? { alreadyExisted: true } : {}),
+    ...(typeof result.tabCount === 'number' ? { tabCount: Math.max(0, Math.floor(result.tabCount)) } : {}),
+    ...(typeof result.canCreate === 'boolean' ? { canCreate: result.canCreate } : {}),
+    ...(result.cap === null || typeof result.cap === 'number' ? { cap: result.cap } : {}),
+    ...(result.lockReason ? { lockReason: boundedText(result.lockReason, 32) as DashboardTabMutationResult['lockReason'] } : {}),
+  };
+  if (JSON.stringify(bounded).length > MAX_OUTPUT_CHARS) {
+    throw new SafeWebMcpError('Dashboard tab result exceeded the safe output limit.');
+  }
+  return bounded;
+}
+
+async function applyDashboardTabAction(
+  action: DashboardTabAction,
+  app: WebMcpAppBindings,
+  options?: WebMcpExecutionOptions,
+): Promise<DashboardTabActionResult> {
+  const result = await app.applyDashboardTabAction(action, options);
+  return isDashboardTabListSnapshot(result)
+    ? boundDashboardTabList(result)
+    : boundDashboardTabMutation(result);
 }
 
 function hasOnlyOwnKeys(
@@ -1011,6 +1113,181 @@ export function buildWebMcpTools(
           });
         }
         return boundSearchOpenResult(await app.openSearchResult(resultKey, extra));
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.listDashboardTabs,
+      title: 'List Dashboard Tabs',
+      description:
+        'List dashboard tabs as named persistent panel workspaces. Returns each tab id, name, active flag, plus whether another tab can be created and why add is locked. Use tab ids, not display names, for select, rename, and delete.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listDashboardTabs, async (_args, extra) => (
+        applyDashboardTabAction({ type: 'list' }, app, extra)
+      ), trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.selectDashboardTab,
+      title: 'Select Dashboard Tab',
+      description:
+        'Activate a dashboard tab by stable tab id from list_dashboard_tabs. Selecting the already-active tab is a successful no-op.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tabId: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 64,
+            pattern: DASHBOARD_TAB_ID_PATTERN,
+            description: 'Stable dashboard tab id from list_dashboard_tabs.',
+          },
+        },
+        required: ['tabId'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.selectDashboardTab, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['tabId'])) {
+          return boundDashboardTabMutation(mutationDenied(
+            'select',
+            'malformed_arguments',
+            'select_dashboard_tab accepts only tabId.',
+          ));
+        }
+        return applyDashboardTabAction(
+          { type: 'select', tabId: typeof args.tabId === 'string' ? args.tabId : '' },
+          app,
+          extra,
+        );
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.createDashboardTab,
+      title: 'Create Dashboard Tab',
+      description:
+        'Create a dashboard tab as a named persistent panel workspace, then activate it. Omit name to use the dashboard default. Creating a tab whose trimmed name already exists returns that tab without duplicating it. Honors the same tab cap and entitlement lock as the dashboard tab bar.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            minLength: 1,
+            maxLength: DASHBOARD_TAB_NAME_MAX_LENGTH,
+            description: 'Optional display name. Omit to use the dashboard default.',
+          },
+        },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.createDashboardTab, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['name'])) {
+          return boundDashboardTabMutation(mutationDenied(
+            'create',
+            'malformed_arguments',
+            'create_dashboard_tab accepts only an optional name.',
+          ));
+        }
+        const name = args.name;
+        if (name !== undefined && typeof name !== 'string') {
+          return boundDashboardTabMutation(mutationDenied(
+            'create',
+            'invalid_name',
+            `Tab names must be 1–${DASHBOARD_TAB_NAME_MAX_LENGTH} visible characters.`,
+          ));
+        }
+        return applyDashboardTabAction({ type: 'create', name }, app, extra);
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.renameDashboardTab,
+      title: 'Rename Dashboard Tab',
+      description:
+        'Rename a dashboard tab by stable tab id. Names are trimmed and capped at 40 characters, matching the dashboard tab bar. Renaming to the current name is a successful no-op.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tabId: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 64,
+            pattern: DASHBOARD_TAB_ID_PATTERN,
+            description: 'Stable dashboard tab id from list_dashboard_tabs.',
+          },
+          name: {
+            type: 'string',
+            minLength: 1,
+            maxLength: DASHBOARD_TAB_NAME_MAX_LENGTH,
+            description: 'New display name for the tab.',
+          },
+        },
+        required: ['tabId', 'name'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.renameDashboardTab, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['tabId', 'name'])) {
+          return boundDashboardTabMutation(mutationDenied(
+            'rename',
+            'malformed_arguments',
+            'rename_dashboard_tab accepts only tabId and name.',
+          ));
+        }
+        return applyDashboardTabAction(
+          {
+            type: 'rename',
+            tabId: typeof args.tabId === 'string' ? args.tabId : '',
+            name: typeof args.name === 'string' ? args.name : '',
+          },
+          app,
+          extra,
+        );
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.deleteDashboardTab,
+      title: 'Delete Dashboard Tab',
+      description:
+        'Delete a dashboard tab by stable tab id. Requires confirm=true. Refuses to delete the last remaining tab.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tabId: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 64,
+            pattern: DASHBOARD_TAB_ID_PATTERN,
+            description: 'Stable dashboard tab id from list_dashboard_tabs.',
+          },
+          confirm: {
+            type: 'boolean',
+            description: 'Must be true. Delete is a destructive persistent mutation.',
+          },
+        },
+        required: ['tabId', 'confirm'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.deleteDashboardTab, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['tabId', 'confirm'])) {
+          return boundDashboardTabMutation(mutationDenied(
+            'delete',
+            'malformed_arguments',
+            'delete_dashboard_tab accepts only tabId and confirm.',
+          ));
+        }
+        return applyDashboardTabAction(
+          {
+            type: 'delete',
+            tabId: typeof args.tabId === 'string' ? args.tabId : '',
+            confirm: args.confirm === true,
+          },
+          app,
+          extra,
+        );
       }, trackEvent),
     },
   ];

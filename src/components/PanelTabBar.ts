@@ -1,4 +1,4 @@
-import type { PanelTab, TabsState } from '@/services/tab-store';
+import { DASHBOARD_TAB_NAME_MAX_LENGTH, type PanelTab, type TabsState } from '@/services/tab-store';
 import { t } from '@/services/i18n';
 import { PanelGateReason } from '@/services/panel-gating';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
@@ -342,7 +342,7 @@ export class PanelTabBar {
     input.type = 'text';
     input.className = 'dashboard-tab-rename';
     input.value = tab.name;
-    input.maxLength = 40;
+    input.maxLength = DASHBOARD_TAB_NAME_MAX_LENGTH;
     input.setAttribute('aria-label', t('dashboardTabs.tabNameAria'));
 
     // `done` guards the blur that fires when commit/cancel re-renders the bar.

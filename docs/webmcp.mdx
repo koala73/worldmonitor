@@ -50,7 +50,7 @@ For discovery and read-only dashboard tools, use Chrome 149 or newer:
 1. Open `chrome://flags/#enable-webmcp-testing`.
 2. Set **WebMCP for testing** to **Enabled**.
 3. Relaunch Chrome completely.
-4. Start WorldMonitor locally. Open `/dashboard` for the eight-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
+4. Start WorldMonitor locally. Open `/dashboard` for the thirteen-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
 5. Confirm feature detection in DevTools:
 
 ```js
@@ -78,7 +78,7 @@ Chrome 149–151 exposes `registerTool()` but invokes the registered callback wi
 
 WorldMonitor still runs read-only tools and reversible dashboard view changes on these versions. `openSearch`, `open_dashboard_panel`, and `set_map_view` work normally. `set_map_view` writes the address bar through `history.replaceState`, producing the same share URL the page's link-copy control produces and that the dashboard restores on reload; that write is visible in the address bar and is overwritten by the next human map move.
 
-`openCountryBrief`, `set_map_layers`, and `open_search_result` stay gated and reject as unavailable. `openCountryBrief` can start server-side LLM generation (`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`) that consumes the caller's daily allowance even if the browser later cancels the caller-side promise. The two layer tools persist the map-layer selection to browser storage, and enabling the AIS layer also opens a network stream. These effects can outlive cancellation, so the tools become available only on a browser that supplies the target-side signal.
+`openCountryBrief`, `set_map_layers`, `open_search_result`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, and `delete_dashboard_tab` stay gated and reject as unavailable. `openCountryBrief` can start server-side LLM generation (`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`) that consumes the caller's daily allowance even if the browser later cancels the caller-side promise. The two layer tools persist the map-layer selection to browser storage, and enabling the AIS layer also opens a network stream. Dashboard tab mutations persist `worldmonitor-tabs-v1` plus the live panel workspace. These effects can outlive cancellation, so the tools become available only on a browser that supplies the target-side signal.
 
 <Note>
 Browsers without the current API, including the Tauri desktop webview when it does not expose WebMCP, safely do nothing. WorldMonitor does not install a browser polyfill and does not fall back to an older draft API.
@@ -99,9 +99,9 @@ The static `https://www.worldmonitor.app/` welcome page registers two imperative
 
 ### Dashboard imperative tools
 
-Every dashboard variant registers the same eight imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
+Every dashboard variant registers the same thirteen imperative tools. Registration is stable across sign-in and entitlement changes; each invocation rechecks the live state.
 
-On a browser that omits the target-side invocation signal, the reversible view-state tools still run: because such a browser cannot cancel them, an invocation you abort still completes and its visible dashboard change still lands. `openCountryBrief`, `set_map_layers`, and `open_search_result` reject as unavailable there instead. The country tool can consume daily LLM allowance after caller cancellation, while the layer tools persist selection beyond the session. See [Availability](#availability).
+On a browser that omits the target-side invocation signal, the reversible view-state tools still run: because such a browser cannot cancel them, an invocation you abort still completes and its visible dashboard change still lands. `openCountryBrief`, `set_map_layers`, `open_search_result`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, and `delete_dashboard_tab` reject as unavailable there instead. The country tool can consume daily LLM allowance after caller cancellation, while the layer tools persist selection beyond the session and tab mutations persist named workspaces. See [Availability](#availability).
 
 | Tool | Input schema | Visible result |
 |---|---|---|
@@ -113,6 +113,11 @@ On a browser that omits the target-side invocation signal, the reversible view-s
 | `set_map_layers` | Required object `layers` with 1–10 boolean entries. Keys are 1–30 characters and match `^[a-z][A-Za-z0-9_-]*$`; no additional top-level properties. | Enables or disables allowed visible layers and returns a per-layer outcome. |
 | `search_dashboard` | Required string `query`, 1–160 characters. Optional `scope`: `all`, `signals`, `map`, `panels`, or `actions` (default `all`). Optional integer `limit`: 1–10 (default 8). No additional properties. | Read-only bounded search of current country, signal, map, panel, finance, and action indexes. Returned content is marked untrusted. |
 | `open_search_result` | Required string `resultKey`, pattern `^sr_[a-f0-9]{32}$`; no additional properties. | Opens one result previously returned on this page after rechecking availability, compatibility, auth, and entitlement. |
+| `list_dashboard_tabs` | Empty object; no additional properties. | Read-only snapshot of dashboard tabs as named persistent panel workspaces: stable ids, names, active flag, create availability, and cap lock reason. |
+| `select_dashboard_tab` | Required string `tabId`, pattern `^tab-[a-z0-9]+-[a-z0-9]+$`; no additional properties. | Activates that workspace. Selecting the already-active tab is a successful no-op. |
+| `create_dashboard_tab` | Optional string `name`, 1–40 characters; no additional properties. | Creates a workspace and activates it. A trimmed name that already exists returns that tab instead of duplicating it. Tab caps return `tab_cap`. |
+| `rename_dashboard_tab` | Required string `tabId` plus required string `name`, 1–40 characters; no additional properties. | Renames a tab by stable id. Names match the dashboard tab bar. Renaming to the current name is a successful no-op. |
+| `delete_dashboard_tab` | Required string `tabId` plus required boolean `confirm`; no additional properties. | Deletes a tab after `confirm` is exactly `true`. The last remaining tab cannot be deleted (`last_tab`). |
 
 `search_dashboard` returns concise descriptors rather than raw hidden dashboard state. Its opaque result keys are one-use, expire after two minutes, are bounded to the most recent 64 entries, and are invalidated when relevant runtime, authentication, entitlement, variant, or widget access changes. A stale or invalid key is denied instead of being treated as a URL or command.
 
@@ -141,8 +146,13 @@ Discover the inventory only after the page has finished registering tools. Then 
 | Find and enable a disabled map layer | `search_dashboard` with `scope: "map"` → present the exact result → `open_search_result` | Use the exact one-use `resultKey` returned by search. Use `set_map_layers` only when the person or trusted current state supplied the exact layer ID; never guess an ID. |
 | Open a country brief | `openCountryBrief` | Use an uppercase ISO alpha-2 code. This path can consume the signed-in person's daily LLM allowance and is unavailable when the browser cannot deliver target-side cancellation. |
 | Search procurement | `get_dashboard_context` → open the enabled Global Procurement panel, or ask the person to enable it → discover `search_procurement` → invoke it | `open_dashboard_panel` cannot enable a disabled panel. The declarative tool exists only while the entitled form is connected, visible, data-ready, and idle. Its disappearance is a state change, not a registration failure. |
+| List dashboard workspaces | `list_dashboard_tabs` | Use returned tab ids, not display names. Honor `tabsTruncated`. |
+| Switch dashboard workspace | `list_dashboard_tabs` → `select_dashboard_tab` | Pass a current tab id. Selecting the active tab is a successful no-op. |
+| Create or reuse a named workspace | `list_dashboard_tabs` → `create_dashboard_tab` | A name that already exists returns that tab. A cap or entitlement lock returns `tab_cap`. |
+| Rename a workspace | `list_dashboard_tabs` → `rename_dashboard_tab` | Names are trimmed and capped at 40 characters. |
+| Delete a workspace | `list_dashboard_tabs` → `delete_dashboard_tab` with `confirm: true` | Requires explicit confirmation. The last remaining tab cannot be deleted. |
 
-Do not guess panel IDs, layer IDs, result keys, entitlements, or hidden data. Read the current page state, invoke one bounded action, inspect its result and visible effect, then continue.
+Do not guess panel IDs, layer IDs, tab IDs, result keys, entitlements, or hidden data. Read the current page state, invoke one bounded action, inspect its result and visible effect, then continue.
 
 ## Results, denials, and errors
 
@@ -163,7 +173,7 @@ Imperative tool output is limited to 1,500 serialized characters. Search descrip
 - Imperative tools register synchronously at startup, but wait for the necessary UI or map renderer before acting. Destroying the app aborts pending work and unregisters its tools; same-document reinitialization does not create duplicates.
 - Actions go through the same UI, agent-bus, panel, and map paths used by human controls. They do not call a privileged backend shortcut.
 - Authentication, subscription entitlement, dashboard variant, mounted-panel availability, layer policy, and renderer readiness are evaluated at invocation time. A tool discovered while signed in cannot retain access after sign-out or downgrade.
-- Successful mutations remain visible: panels open, the search palette appears, map state changes, and the declarative procurement form shows active/pending state.
+- Successful mutations remain visible: panels open, the search palette appears, map state changes, dashboard tabs change, and the declarative procurement form shows active/pending state.
 - Denied, invalid, skipped, unavailable, and expired operations return bounded outcomes or safe errors. They do not silently bypass a lock or invent a result.
 - The person can continue using the page. Existing reset, close, navigation, and cancellation controls remain authoritative.
 
@@ -245,9 +255,10 @@ The Inspector's natural-language workflow sends prompts to an external Gemini mo
 | `getTools()` hangs or an origin-trial page settles with no inventory | The page provider may have been touched before registration completed | Reload the page, wait for document load and WorldMonitor registration to settle, then perform one inventory read. Do not poll `document.modelContext`. |
 | Only the homepage inventory is visible | The agent is on the static homepage | Invoke `launchWorldMonitor` or navigate to `/dashboard` for the imperative dashboard inventory. |
 | The imperative dashboard inventory is visible but `search_procurement` is absent | The conditional declarative form is not currently eligible | Open and enable the Global Procurement panel, satisfy entitlement, wait for data to settle, and ensure the form is visible and idle. |
-| A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `set_map_layers`, or `open_search_result`. |
+| A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `set_map_layers`, `open_search_result`, or dashboard tab mutations. |
 | A panel or layer is denied | The current page state failed a live variant, renderer, enabled-state, or entitlement check | Read `reason` and each target status. Change state through normal visible controls or ask the person; do not force a hidden path. |
 | `open_search_result` reports an invalid, expired, changed, or unavailable key | The one-use capability is stale or the dashboard changed after search | Run `search_dashboard` again and present the new result before opening it. Never reinterpret a key as a URL. |
+| A tab mutation returns `tab_cap`, `last_tab`, or `confirmation_required` | The dashboard tab bar would refuse the same action | List tabs again. Use a current tab id. Delete requires `confirm: true` and will not remove the last remaining tab. |
 | The caller sees `AbortError` but the UI changes later | The browser cancelled the caller-side promise but did not cancel page execution | Treat the visible page as authoritative. Wait for it to settle before a follow-up action and record the browser version in a bug report. |
 | Tools work on the top-level page but not in `/embed` or a cross-origin frame | The security boundary is working | No recovery is expected. Use the top-level WorldMonitor page or the hosted MCP server for the intended integration. |
 
@@ -284,7 +295,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-The suite asserts the served build SHA; the `Origin-Trial`, `Origin-Agent-Cluster`, and `Permissions-Policy` headers; the inventory and schemas; an invocation started immediately after discovery and completed after UI readiness; caller-side cancellation and the phantom-completion invariant — the page's work completes and its visible effect lands even when the caller's own call sees `AbortError` — for the tested browser; the cancellation-required denial for `openCountryBrief`, `set_map_layers`, and `open_search_result`; all six enrolled dashboard inventories; specialized-root redirects; and a cross-origin embed denial. On a target-signal-capable browser it also proves the denied unavailable-panel path. The local strict suite separately proves a visible mutation without changing production state. The production suite writes durable `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` files below `test-results/`; preserve those files with the release evidence. Its guard intentionally accepts only the canonical `https://www.worldmonitor.app` base target, while the reviewed matrix uses fixed absolute URLs for the other enrolled origins.
+The suite asserts the served build SHA; the `Origin-Trial`, `Origin-Agent-Cluster`, and `Permissions-Policy` headers; the inventory and schemas; an invocation started immediately after discovery and completed after UI readiness; caller-side cancellation and the phantom-completion invariant — the page's work completes and its visible effect lands even when the caller's own call sees `AbortError` — for the tested browser; the cancellation-required denial for `openCountryBrief`, `set_map_layers`, `open_search_result`, and dashboard tab mutations; all six enrolled dashboard inventories; specialized-root redirects; and a cross-origin embed denial. On a target-signal-capable browser it also proves the denied unavailable-panel path. The local strict suite separately proves a visible mutation without changing production state. The production suite writes durable `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` files below `test-results/`; preserve those files with the release evidence. Its guard intentionally accepts only the canonical `https://www.worldmonitor.app` base target, while the reviewed matrix uses fixed absolute URLs for the other enrolled origins.
 
 Also verify `/embed` and `/embed.html` return `tools=()`, and that `/?mode=agent`, preview deployments, docs, and embed pages do not gain the top-level inventory. Treat the deployment control-plane SHA check, headers, inventory, UI behavior, and terminal outcomes as separate assertions; a successful deploy or registration log alone is not acceptance.
 
@@ -313,6 +324,7 @@ Treat a WebMCP change as a public UI contract change, even when the implementati
 | `src/services/webmcp.ts` | Imperative tool descriptors, schemas, registration lifecycle, safe result/error boundaries, telemetry, and cancellation policy. |
 | `src/App.ts` and `src/app/webmcp-dashboard.ts` | Startup ordering, UI-readiness gate, teardown, dashboard context, and human-path action binding. |
 | `src/app/webmcp-search-controller.ts` and `src/app/search-selection-dispatcher.ts` | Opaque search capabilities, invalidation, live-state revalidation, and visible result selection. |
+| `src/app/panel-layout.ts`, `src/services/tab-store.ts`, and `src/services/dashboard-tab-actions.ts` | Dashboard tab persistence, name and ID limits, and WebMCP list/select/create/rename/delete. |
 | `src/components/GlobalProcurementPanel.ts` | Conditional declarative `search_procurement` form, visible pending state, reset, cancellation, and bounded result. |
 | `pro-test/welcome.html` | Zero-import homepage registration for `launchWorldMonitor` and `getWorldMonitorMcpEndpoint`. |
 | `vercel.json`, `docker/nginx-security-headers.conf`, `docker/nginx-embed-security-headers.conf`, `vite.config.ts`, and `pro-test/vite.config.ts` | Trial enrollment, origin isolation, same-origin permission, local testing parity, and explicit embed denial. |
@@ -331,6 +343,7 @@ npm run docs:check
   tests/webmcp-inventory.test.mts \
   tests/webmcp.test.mjs \
   tests/webmcp-dashboard.test.mts \
+  tests/dashboard-tab-actions.test.mts \
   tests/webmcp-runtime.test.mjs \
   tests/webmcp-analytics-policy.test.mjs \
   tests/webmcp-evals.test.mjs \

@@ -22,6 +22,11 @@ export const WEBMCP_SPA_TOOL = Object.freeze({
   setMapLayers: 'set_map_layers',
   searchDashboard: 'search_dashboard',
   openSearchResult: 'open_search_result',
+  listDashboardTabs: 'list_dashboard_tabs',
+  selectDashboardTab: 'select_dashboard_tab',
+  createDashboardTab: 'create_dashboard_tab',
+  renameDashboardTab: 'rename_dashboard_tab',
+  deleteDashboardTab: 'delete_dashboard_tab',
 } as const);
 
 export const WEBMCP_SPA_TOOL_NAMES = [
@@ -33,6 +38,11 @@ export const WEBMCP_SPA_TOOL_NAMES = [
   WEBMCP_SPA_TOOL.setMapLayers,
   WEBMCP_SPA_TOOL.searchDashboard,
   WEBMCP_SPA_TOOL.openSearchResult,
+  WEBMCP_SPA_TOOL.listDashboardTabs,
+  WEBMCP_SPA_TOOL.selectDashboardTab,
+  WEBMCP_SPA_TOOL.createDashboardTab,
+  WEBMCP_SPA_TOOL.renameDashboardTab,
+  WEBMCP_SPA_TOOL.deleteDashboardTab,
 ] as const;
 
 export const WEBMCP_DECLARATIVE_TOOL_NAMES = [

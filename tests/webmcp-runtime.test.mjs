@@ -57,6 +57,26 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
+    applyDashboardTabAction: async (action) => (
+      action.type === 'list'
+        ? {
+            activeTabId: 'tab-main01-abc123',
+            tabs: [{ id: 'tab-main01-abc123', name: 'Main', active: true, canDelete: false }],
+            tabCount: 1,
+            tabsTruncated: false,
+            canCreate: true,
+            cap: null,
+          }
+        : {
+            ok: true,
+            status: 'applied',
+            actionType: action.type,
+            message: 'Applied dashboard tab action.',
+            tabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
+            name: typeof action.name === 'string' ? action.name : 'Main',
+            activeTabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
+          }
+    ),
     ...overrides,
   };
 }
@@ -131,7 +151,7 @@ describe('WebMCP registry behavioral contract', () => {
     assert.deepEqual(harness.events, [
       {
         event: 'webmcp-registered',
-        data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 13, pageSurface: 'dashboard', api: 'document-current' },
       },
       {
         event: 'webmcp-tool-invoked',
@@ -279,11 +299,12 @@ describe('WebMCP registry behavioral contract', () => {
     // both stay fail-closed while the browser cannot deliver a signal.
     assert.deepEqual(
       [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
-      ['openCountryBrief', 'open_search_result', 'set_map_layers'],
+      ['create_dashboard_tab', 'delete_dashboard_tab', 'openCountryBrief', 'open_search_result', 'rename_dashboard_tab', 'select_dashboard_tab', 'set_map_layers'],
       'the gated set includes persistent effects and metered country generation',
     );
     let mutationCalls = 0;
     let openCalls = 0;
+    let tabCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
     registerWebMcpTools(createBindings({
@@ -294,6 +315,18 @@ describe('WebMCP registry behavioral contract', () => {
       openSearchResult: async () => {
         openCalls += 1;
         return { ok: true, status: 'opened' };
+      },
+      applyDashboardTabAction: async () => {
+        tabCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: 'create',
+          message: 'Applied dashboard tab action.',
+          tabId: 'tab-main01-abc123',
+          name: 'Main',
+          activeTabId: 'tab-main01-abc123',
+        };
       },
     }), harness.runtime);
     await settlePromises();
@@ -322,8 +355,25 @@ describe('WebMCP registry behavioral contract', () => {
       ),
       denial,
     );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'create_dashboard_tab',
+        JSON.stringify({ name: 'Markets' }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'select_dashboard_tab',
+        JSON.stringify({ tabId: 'tab-main01-abc123' }),
+      ),
+      denial,
+    );
     assert.equal(mutationCalls, 0, 'a gated tool must not reach its binding');
     assert.equal(openCalls, 0, 'a gated tool must not reach its binding');
+    assert.equal(tabCalls, 0, 'a gated tab mutation must not reach its binding');
   });
 
   it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {
@@ -355,7 +405,7 @@ describe('WebMCP registry behavioral contract', () => {
 
     // Chrome through 151 passes no target-side signal. These tools only move
     // visible, reversible dashboard view state, so they run anyway rather than
-    // costing 6 of 8 tools on every browser that exists.
+    // costing every reversible view-state tool on every browser that exists.
     assert.deepEqual(
       await executeRegistered(provider, 'set_map_view', JSON.stringify({ view: 'eu' })),
       {

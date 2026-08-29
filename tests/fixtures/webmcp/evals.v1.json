@@ -10,7 +10,12 @@
       "set_map_view",
       "set_map_layers",
       "search_dashboard",
-      "open_search_result"
+      "open_search_result",
+      "list_dashboard_tabs",
+      "select_dashboard_tab",
+      "create_dashboard_tab",
+      "rename_dashboard_tab",
+      "delete_dashboard_tab"
     ],
     "declarative": [
       "search_procurement"
@@ -39,7 +44,12 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -63,7 +73,12 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -86,7 +101,12 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -129,7 +149,12 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -154,7 +179,12 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -176,7 +206,12 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -210,7 +245,12 @@
       ],
       "forbiddenTools": [
         "openSearch",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -233,7 +273,12 @@
         "openSearch",
         "open_dashboard_panel",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -263,7 +308,12 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -288,7 +338,12 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -311,7 +366,12 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -331,7 +391,12 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ]
     },
     {
@@ -359,7 +424,12 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ],
       "failure": {
         "atStep": 2,
@@ -369,7 +439,12 @@
         "forbiddenAfterFailure": [
           "openCountryBrief",
           "openSearch",
-          "open_dashboard_panel"
+          "open_dashboard_panel",
+          "list_dashboard_tabs",
+          "select_dashboard_tab",
+          "create_dashboard_tab",
+          "rename_dashboard_tab",
+          "delete_dashboard_tab"
         ]
       }
     },
@@ -397,7 +472,12 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ],
       "failure": {
         "atStep": 2,
@@ -405,7 +485,12 @@
         "reason": "panel_not_entitled",
         "mustStop": true,
         "forbiddenAfterFailure": [
-          "set_map_view"
+          "set_map_view",
+          "list_dashboard_tabs",
+          "select_dashboard_tab",
+          "create_dashboard_tab",
+          "rename_dashboard_tab",
+          "delete_dashboard_tab"
         ]
       }
     },
@@ -429,7 +514,12 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
       ],
       "failure": {
         "atStep": 1,
@@ -438,7 +528,165 @@
         "mustStop": true,
         "forbiddenAfterFailure": [
           "openSearch",
-          "search_dashboard"
+          "search_dashboard",
+          "list_dashboard_tabs",
+          "select_dashboard_tab",
+          "create_dashboard_tab",
+          "rename_dashboard_tab",
+          "delete_dashboard_tab"
+        ]
+      }
+    },
+    {
+      "id": "dashboard_tabs_list_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List the dashboard workspace tabs, including which one is active.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
+      ]
+    },
+    {
+      "id": "dashboard_tabs_create_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Create a dashboard workspace named Markets, or return it if it already exists.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "create_dashboard_tab",
+            "arguments": {
+              "name": "Markets"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "select_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
+      ]
+    },
+    {
+      "id": "dashboard_tabs_workspace_ambiguous",
+      "category": "dashboard_control",
+      "promptKind": "ambiguous",
+      "prompt": "Switch to my Markets dashboard workspace.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "select_dashboard_tab",
+            "arguments": {
+              "tabId": "tab-main01-abc123"
+            }
+          }
+        ],
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "create_dashboard_tab",
+            "arguments": {
+              "name": "Markets"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab"
+      ]
+    },
+    {
+      "id": "dashboard_tabs_delete_last_failure",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List dashboard tabs and delete the only remaining workspace.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "delete_dashboard_tab",
+            "arguments": {
+              "tabId": "tab-main01-abc123",
+              "confirm": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "delete_dashboard_tab",
+        "reason": "last_tab",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "create_dashboard_tab",
+          "open_dashboard_panel"
         ]
       }
     }
