@@ -5,7 +5,9 @@
 // warning, not a healthy pass; git/4xx/ENOENT still fail the job.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { parse as parseYaml } from 'yaml';
 
 import {
   DEFAULT_NO_RUN_WINDOW_MS,
@@ -924,4 +926,45 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
       assert.equal(summary.exitCode, 0);
     });
   });
+});
+
+// #7313 — the monitor's triggerPaths is a hand-copied mirror of each workflow's
+// own `on.push.paths`, and it is what decides whether a deploy was DUE. Widening
+// a workflow's filter without widening the copy leaves a class of pushes that
+// really do deploy but that the monitor believes deployed nothing — so a failed
+// or missing run there raises no alarm. The existing coverage could not catch
+// that: it spreads WORKER.triggerPaths into its own expectation, which asserts
+// the monitor agrees with itself, never that it agrees with the YAML.
+describe('monitored trigger paths mirror each workflow push filter', () => {
+  const workflowsDir = new URL('../.github/workflows/', import.meta.url);
+
+  /**
+   * Read `on.push.paths` from a workflow. Parsed with the YAML library rather
+   * than a regex: `on:` is the YAML 1.1 boolean `true` after parsing, and a
+   * hand-rolled scanner would have to re-implement quoting and comment rules
+   * the file is free to use.
+   */
+  function workflowPushPaths(file) {
+    const doc = parseYaml(readFileSync(new URL(file, workflowsDir), 'utf8'));
+    const on = doc.on ?? doc[true];
+    return on?.push?.paths ?? null;
+  }
+
+  for (const workflow of MONITORED_WORKFLOWS) {
+    if (!workflow.triggerPaths) continue;
+    it(`${workflow.file} declares the paths the monitor watches`, () => {
+      const declared = workflowPushPaths(workflow.file);
+      assert.ok(
+        Array.isArray(declared),
+        `${workflow.file} must declare on.push.paths for a triggerPaths entry to mirror`,
+      );
+      assert.deepEqual(
+        [...workflow.triggerPaths].sort(),
+        [...declared].sort(),
+        `${workflow.file}: the monitor's triggerPaths must match the workflow's own push filter. `
+        + 'A path the workflow deploys on but the monitor omits is a deploy it cannot see fail; '
+        + 'a path the monitor watches but the workflow ignores manufactures DEPLOY_DUE alarms.',
+      );
+    });
+  }
 });

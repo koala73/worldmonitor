@@ -90,9 +90,15 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // CLOUDFLARE_API_TOKEN fails it silently like the reconcile Worker's
     // missing secrets did.
     skipProofPath: null,
+    // MUST mirror the workflow's own `on.push.paths` exactly — this list is what
+    // decides whether a deploy was DUE, so anything the workflow deploys on but
+    // this list omits is a deploy the monitor cannot see fail. Pinned by
+    // 'monitored trigger paths mirror each workflow's own push filter'.
     triggerPaths: Object.freeze([
       'workers/api-cors-preflight/**',
       'api/_bootstrap-public-tier.js',
+      'tests/cors-preflight-live.test.mjs',
+      'tests/helpers/public-bootstrap-contract.mjs',
       '.github/workflows/deploy-worker.yml',
     ]),
     // Same dormant reasoning as the reconcile Worker: a healthy run can be
