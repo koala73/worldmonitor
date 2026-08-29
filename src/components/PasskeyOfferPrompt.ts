@@ -13,10 +13,18 @@ import { t } from '@/services/i18n';
  *     and without moving focus tells assistive technology the user entered a
  *     dialog, and then nothing does. This is a non-modal notification with
  *     actions, so it is a labelled `<aside>`.
- *   - **`aria-live` on a dedicated status node, never on the card.** A live
- *     region wrapping the whole interactive card re-announces the buttons and
- *     body copy on every state change. A separate, initially-empty node
- *     receives only the status sentence, so exactly the change is announced.
+ *   - **`aria-live` on dedicated nodes, never on the card.** A live region
+ *     wrapping the whole interactive card re-announces the buttons and body
+ *     copy on every state change. Two separate, initially-empty nodes each
+ *     receive one sentence, so exactly the change is announced. They are split
+ *     because their audiences differ: the arrival sentence restates the body
+ *     copy and is screen-reader only, while the status sentence is state
+ *     feedback nobody can infer from looking and is painted.
+ *
+ * Its styling follows `.update-toast`, the house pattern for an elevated
+ * notification with an action. The generic surface/border/accent tokens are the
+ * wrong choice here — `--accent` is `#fff` in the dark theme, which rendered
+ * the primary button as white text on white.
  */
 
 /** The five states the card can be in. Terminal timing differs by state. */
@@ -29,6 +37,8 @@ export interface PasskeyOfferPromptOptions {
 
 export class PasskeyOfferPrompt {
   private readonly root: HTMLElement;
+  /** Screen-reader-only arrival sentence. Never painted. */
+  private readonly announce: HTMLElement;
   private readonly status: HTMLElement;
   private readonly acceptBtn: HTMLButtonElement;
   private readonly dismissBtn: HTMLButtonElement;
@@ -56,9 +66,20 @@ export class PasskeyOfferPrompt {
     body.className = 'passkey-offer-body';
     body.textContent = t('components.passkeyOffer.body');
 
-    // Empty on mount. An empty live region announces nothing, so arrival is
+    // Two live regions, because the two announcements have different audiences.
+    //
+    // The arrival sentence restates the body copy, so painting it put two
+    // sentences saying the same thing on one small card. It is screen-reader
+    // only. The status sentence is genuine state feedback nobody can infer from
+    // looking, so it is visible.
+    //
+    // Both start empty: an empty live region announces nothing, so arrival is
     // written on the next frame (see `announceOnMount`) — several screen
     // readers only announce mutations to a region that was already present.
+    this.announce = document.createElement('p');
+    this.announce.className = 'passkey-offer-announce';
+    this.announce.setAttribute('aria-live', 'polite');
+
     this.status = document.createElement('p');
     this.status.className = 'passkey-offer-status';
     this.status.setAttribute('aria-live', 'polite');
@@ -86,7 +107,7 @@ export class PasskeyOfferPrompt {
     this.closeBtn.addEventListener('click', this.handleDismiss);
 
     actions.append(this.dismissBtn, this.acceptBtn);
-    this.root.append(this.closeBtn, title, body, this.status, actions);
+    this.root.append(this.closeBtn, title, body, this.announce, this.status, actions);
   }
 
   /** The element to insert. The caller owns where it goes. */
@@ -108,7 +129,7 @@ export class PasskeyOfferPrompt {
   announceOnMount(schedule: (cb: () => void) => number = requestAnimationFrame): void {
     this.announceFrame = schedule(() => {
       this.announceFrame = null;
-      if (this.state === 'offered') this.status.textContent = t('components.passkeyOffer.announce');
+      if (this.state === 'offered') this.announce.textContent = t('components.passkeyOffer.announce');
     });
   }
 
@@ -130,6 +151,10 @@ export class PasskeyOfferPrompt {
     else this.root.removeAttribute('aria-busy');
 
     this.root.dataset.state = next;
+    // The arrival sentence is stale the moment a state exists. Clearing it
+    // announces nothing (an empty region is silent) but stops a screen reader
+    // reading "save a passkey to sign in faster" back alongside "passkey saved".
+    this.announce.textContent = '';
     this.status.textContent = statusTextFor(next);
   }
 

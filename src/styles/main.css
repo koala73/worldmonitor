@@ -28177,20 +28177,27 @@ body.map-width-resizing {
   }
 }
 
+/*
+ * Matches `.update-toast`, the house pattern for an elevated notification with
+ * an action: green-tinted dark gradient, green primary, panel-scaled type.
+ *
+ * The first cut used the generic `--surface-active` / `--border` / `--accent`
+ * tokens and rendered as a foreign white-on-white card, because `--accent` is
+ * `#fff` in the dark theme. Nothing generic reads as "our UI" here.
+ */
 .passkey-offer-prompt {
   position: fixed;
   left: 50%;
   bottom: calc(var(--wm-bottom-base) + var(--wm-bottom-banner) + 16px);
   transform: translateX(-50%);
   z-index: 10004; /* above .mobile-tab-bar (10003); it is an actionable prompt */
-  width: min(420px, calc(100vw - 32px));
+  width: min(400px, calc(100vw - 32px));
   box-sizing: border-box;
   padding: 14px 16px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(68, 255, 136, 0.25);
   border-radius: 10px;
-  background: var(--surface-active);
-  color: var(--text);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  background: linear-gradient(135deg, #1a2332 0%, #0f1923 100%);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(68, 255, 136, 0.08);
 }
 
 .passkey-offer-prompt[hidden] {
@@ -28199,68 +28206,116 @@ body.map-width-resizing {
 
 .passkey-offer-title {
   margin: 0 0 4px;
-  font-size: 14px;
+  padding-right: 20px; /* clear the close button */
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #e8e8e8;
 }
 
 .passkey-offer-body {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  letter-spacing: 0.3px;
+  color: #888;
+}
+
+/*
+ * Screen-reader only. The arrival sentence must not be painted: it restates the
+ * body copy, and rendering both put two sentences saying the same thing on one
+ * small card.
+ */
+.passkey-offer-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Visible when non-empty; carries only the status sentence, never the body copy. */
 .passkey-offer-status {
   margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.3px;
+  color: var(--green);
 }
 
 .passkey-offer-status:empty {
   margin: 0;
 }
 
+.passkey-offer-prompt[data-state="failed"] .passkey-offer-status {
+  color: #ff6b6b;
+}
+
 .passkey-offer-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  align-items: center;
   margin-top: 12px;
 }
 
 .passkey-offer-actions button {
-  padding: 7px 14px;
+  padding: 6px 14px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.3px;
   cursor: pointer;
+  transition: filter 0.15s, transform 0.15s;
 }
 
 .passkey-offer-actions button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
 }
 
+.passkey-offer-actions button:not(:disabled):hover {
+  filter: brightness(1.15);
+}
+
+.passkey-offer-actions button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
 .passkey-offer-accept {
-  border: 1px solid var(--accent, #2563eb);
-  background: var(--accent, #2563eb);
-  color: #fff;
+  border: none;
+  background: var(--green);
+  color: #0a0a0a;
 }
 
 .passkey-offer-dismiss {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   background: transparent;
-  color: var(--text-secondary);
+  color: #888;
 }
 
 .passkey-offer-close {
   position: absolute;
-  top: 6px;
+  top: 8px;
   right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border: none;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 18px;
+  background: none;
+  color: #666;
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
   line-height: 1;
-  padding: 4px 6px;
+  padding: 0;
   cursor: pointer;
+  transition: color 0.15s;
+}
+
+.passkey-offer-close:hover {
+  color: #e8e8e8;
 }

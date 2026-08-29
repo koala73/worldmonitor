@@ -38,6 +38,8 @@ const accept = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('.passke
 const dismiss = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('.passkey-offer-dismiss');
 const close = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('.passkey-offer-close');
 const status = (el: HTMLElement) => el.querySelector<HTMLElement>('.passkey-offer-status');
+const announce = (el: HTMLElement) => el.querySelector<HTMLElement>('.passkey-offer-announce');
+const body = (el: HTMLElement) => el.querySelector<HTMLElement>('.passkey-offer-body');
 
 beforeEach(() => {
   document.body.replaceChildren();
@@ -96,8 +98,29 @@ describe('PasskeyOfferPrompt — accessibility', () => {
 
   it('announces arrival on a later frame, once the region already exists', () => {
     const { prompt, el } = mount();
-    expect(status(el)?.textContent).toBe('');
+    expect(announce(el)?.textContent).toBe('');
     prompt.announceOnMount(immediate);
+    expect(announce(el)?.textContent).not.toBe('');
+  });
+
+  it('does NOT paint the arrival sentence, which restates the body copy', () => {
+    // Shipped broken: the arrival sentence went into the VISIBLE status node,
+    // so the card showed two sentences saying the same thing.
+    const { prompt, el } = mount();
+    prompt.announceOnMount(immediate);
+
+    expect(status(el)?.textContent).toBe('');
+    const spoken = announce(el)?.textContent ?? '';
+    expect(spoken).not.toBe('');
+    expect(spoken).not.toBe(body(el)?.textContent);
+  });
+
+  it('drops the stale arrival sentence once a state exists', () => {
+    const { prompt, el } = mount();
+    prompt.announceOnMount(immediate);
+    prompt.setState('succeeded');
+
+    expect(announce(el)?.textContent).toBe('');
     expect(status(el)?.textContent).not.toBe('');
   });
 
