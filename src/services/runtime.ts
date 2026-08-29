@@ -432,7 +432,7 @@ const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*wor
 function isAllowedRedirectTarget(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return ALLOWED_REDIRECT_HOSTS.test(parsed.origin) || parsed.hostname === 'localhost';
+    return ALLOWED_REDIRECT_HOSTS.test(parsed.origin) || isLoopbackHostname(parsed.hostname);
   } catch {
     return false;
   }

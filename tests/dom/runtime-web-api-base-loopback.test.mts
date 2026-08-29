@@ -121,3 +121,73 @@ describe('getConfiguredWebApiBaseUrl on a loopback page', () => {
     expect(runtime.getConfiguredWebApiBaseUrl()).toBe('');
   });
 });
+
+function loopbackHost(hostname: string, port: number): string {
+  const bracketed = hostname.includes(':') ? `[${hostname.replace(/^\[|\]$/g, '')}]` : hostname;
+  return `${bracketed}:${port}`;
+}
+
+function hrefOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+describe('installWebApiRedirect on numeric loopback bases', () => {
+  const originalFetch = window.fetch;
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    window.fetch = originalFetch;
+    delete (window as unknown as Record<string, unknown>).__wmWebRedirectPatched;
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  for (const hostname of ['127.0.0.1', '::1'] as const) {
+    const pageOrigin = `http://${loopbackHost(hostname, 5173)}`;
+    const configuredBase = `http://${loopbackHost(hostname, 8787)}`;
+
+    for (const inputKind of ['relative string', 'URL', 'Request'] as const) {
+      it(`redirects a ${inputKind} /api/ call to ${configuredBase}`, async () => {
+        const seen: string[] = [];
+        window.fetch = (async (input: RequestInfo | URL) => {
+          seen.push(hrefOf(input));
+          return new Response('ok', { status: 200 });
+        }) as typeof fetch;
+
+        const runtime = await loadRuntimeWith({
+          apiBase: configuredBase,
+          hostname,
+        });
+        Object.assign(window.location, {
+          hostname,
+          host: loopbackHost(hostname, 5173),
+          protocol: 'http:',
+          href: `${pageOrigin}/`,
+          origin: pageOrigin,
+        });
+
+        expect(runtime.getConfiguredWebApiBaseUrl()).toBe(configuredBase);
+
+        runtime.installWebApiRedirect();
+
+        const path = '/api/llm-health';
+        if (inputKind === 'relative string') {
+          await window.fetch(path);
+        } else if (inputKind === 'URL') {
+          await window.fetch(new URL(path, pageOrigin));
+        } else {
+          await window.fetch(new Request(new URL(path, pageOrigin)));
+        }
+
+        expect(seen, 'installed dispatch must reach native fetch').not.toHaveLength(0);
+        expect(seen[0]).toBe(`${configuredBase}${path}`);
+      });
+    }
+  }
+});
