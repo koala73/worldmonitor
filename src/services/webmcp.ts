@@ -462,8 +462,6 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.listMissionPresets]: 'read-only',
   [WEBMCP_SPA_TOOL.applyMissionPreset]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.openMissionPicker]: 'view-state',
-  [WEBMCP_SPA_TOOL.getAccessContext]: 'read-only',
-  [WEBMCP_SPA_TOOL.openSignIn]: 'view-state',
 });
 
 /** Tools the page refuses to run without a target-side AbortSignal. */
@@ -1162,13 +1160,11 @@ const MISSION_PRESET_APPLY_REASONS = new Set<MissionPresetApplyDenyReason>([
 function boundMissionPresetCatalog(result: MissionPresetCatalogResult): MissionPresetCatalogResult {
   const presets = (Array.isArray(result.presets) ? result.presets : []).map((preset) => ({
     id: boundedText(preset.id, 48) as MissionPresetId,
-    label: boundedText(preset.label, 80),
-    shortLabel: boundedText(preset.shortLabel, 24),
-    description: boundedText(preset.description, 160),
+    label: boundedText(preset.label, 48),
     view: boundedText(preset.view, 24) as MissionPresetCatalogResult['presets'][number]['view'],
     timeRange: boundedText(preset.timeRange, 8) as MissionPresetCatalogResult['presets'][number]['timeRange'],
-    panelIds: normalizeIdentifiers(preset.panelIds, 96),
-    layerIds: normalizeIdentifiers(preset.layerIds, 64),
+    panelCount: Math.max(0, Math.floor(boundedNumber(preset.panelCount))),
+    layerCount: Math.max(0, Math.floor(boundedNumber(preset.layerCount))),
     active: preset.active === true,
     monitorCompatible: preset.monitorCompatible === true,
     entitled: preset.entitled === true,
@@ -2298,7 +2294,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.listMissionPresets,
       title: 'List Mission Presets',
       description:
-        'List every bundled mission preset for the current monitor. Each item uses a stable preset ID and describes intended view, time range, panels, and layers without premium payloads. Includes active, monitorCompatible, entitled, and available flags with a stable unavailableReason when gated.',
+        'List every bundled mission preset for the current monitor. Each item uses a stable preset ID plus view, time range, and panel/layer counts without premium payloads. Includes active, monitorCompatible, entitled, and available flags with a stable unavailableReason when gated.',
       inputSchema: {
         type: 'object',
         properties: {

@@ -46,11 +46,13 @@ describe('webmcp mission preset catalog', () => {
     for (const preset of result.presets) {
       assert.equal(typeof preset.label, 'string');
       assert.ok(preset.label.length > 0);
-      assert.equal(typeof preset.description, 'string');
-      assert.ok(preset.description.length > 0);
-      assert.equal(Array.isArray(preset.panelIds), true);
-      assert.equal(Array.isArray(preset.layerIds), true);
+      assert.equal(typeof preset.panelCount, 'number');
+      assert.equal(typeof preset.layerCount, 'number');
+      assert.ok(preset.panelCount >= 0);
+      assert.ok(preset.layerCount >= 0);
+      assert.equal('description' in preset, false);
     }
+    assert.ok(JSON.stringify(result).length <= 1_500);
   });
 
   it('marks monitor-incompatible presets with a stable reason', () => {
@@ -60,7 +62,7 @@ describe('webmcp mission preset catalog', () => {
     assert.equal(crisis.monitorCompatible, false);
     assert.equal(crisis.available, false);
     assert.equal(crisis.unavailableReason, 'preset_incompatible');
-    assert.deepEqual(crisis.panelIds, []);
+    assert.equal(crisis.panelCount, 0);
 
     const goodNews = result.presets.find((preset) => preset.id === 'good-news-explorer');
     assert.ok(goodNews);
@@ -79,7 +81,7 @@ describe('webmcp mission preset catalog', () => {
     assert.equal(supply.entitled, false);
     assert.equal(supply.available, false);
     assert.equal(supply.unavailableReason, 'preset_not_entitled');
-    assert.match(supply.description, /Routes, chokepoints/);
+    assert.equal(Object.keys(supply).includes('description'), false);
   });
 
   it('marks presets unavailable when the host cannot cancel mutations', () => {

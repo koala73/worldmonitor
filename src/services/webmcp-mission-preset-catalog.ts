@@ -27,12 +27,10 @@ export type MissionPresetApplyDenyReason =
 export interface MissionPresetCatalogItem {
   id: MissionPresetId;
   label: string;
-  shortLabel: string;
-  description: string;
   view: MissionMapView;
   timeRange: MissionTimeRange;
-  panelIds: string[];
-  layerIds: string[];
+  panelCount: number;
+  layerCount: number;
   active: boolean;
   monitorCompatible: boolean;
   entitled: boolean;
@@ -165,12 +163,10 @@ export function buildMissionPresetCatalogItem(
   return {
     id: preset.id,
     label: preset.label,
-    shortLabel: preset.shortLabel,
-    description: preset.description,
     view: preset.view,
     timeRange: preset.timeRange,
-    panelIds,
-    layerIds: [...preset.layers],
+    panelCount: panelIds.length,
+    layerCount: preset.layers.length,
     active: live.activePresetId === preset.id,
     monitorCompatible,
     entitled,

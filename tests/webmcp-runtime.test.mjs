@@ -146,6 +146,47 @@ function createBindings(overrides = {}) {
       changed: true,
       message: 'Panel enabled.',
     }),
+    listMissionPresets: async () => ({
+      ok: true,
+      variant: 'full',
+      activePresetId: null,
+      presets: [],
+      count: 0,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: true,
+      monitor: 'full',
+      map: {
+        view: 'global',
+        zoom: 2.3,
+        timeRange: '7d',
+        enabledLayers: [],
+      },
+      panels: { enabled: [] },
+      message: 'Applied.',
+    }),
+    openMissionPicker: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'mission_picker',
+      overlay: 'open',
+      message: 'Opened mission presets.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
     applyDashboardTabAction: async (action) => (
       action.type === 'list'
         ? {
@@ -406,6 +447,7 @@ describe('WebMCP registry behavioral contract', () => {
     assert.deepEqual(
       [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
       [
+        'apply_mission_preset',
         'create_dashboard_tab',
         'delete_dashboard_tab',
         'openCountryBrief',
@@ -422,6 +464,7 @@ describe('WebMCP registry behavioral contract', () => {
     let openCalls = 0;
     let tabCalls = 0;
     let panelCalls = 0;
+    let missionCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
     registerWebMcpTools(createBindings({
@@ -457,6 +500,25 @@ describe('WebMCP registry behavioral contract', () => {
           message: 'Panel enabled.',
         };
       },
+      applyMissionPreset: async () => {
+        missionCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          presetId: 'supply-chain-risk',
+          label: 'Supply-Chain Risk',
+          changed: true,
+          monitor: 'full',
+          map: {
+            view: 'global',
+            zoom: 2.3,
+            timeRange: '7d',
+            enabledLayers: [],
+          },
+          panels: { enabled: [] },
+          message: 'Applied.',
+        };
+      },
     }), harness.runtime);
     await settlePromises();
 
@@ -488,6 +550,14 @@ describe('WebMCP registry behavioral contract', () => {
       ),
       denial,
     );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'apply_mission_preset',
+        JSON.stringify({ presetId: 'supply-chain-risk' }),
+      ),
+      denial,
+    );
     for (const [tool, input] of [
       ['select_dashboard_tab', { tabId: 'tab-main01-abc123' }],
       ['create_dashboard_tab', { name: 'Markets' }],
@@ -512,6 +582,7 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(openCalls, 1, 'result-dependent open_search_result must reach its binding');
     assert.equal(tabCalls, 0, 'persistent dashboard tab tools must not reach their binding');
     assert.equal(panelCalls, 0, 'persistent panel changes must not reach their binding');
+    assert.equal(missionCalls, 0, 'persistent mission preset changes must not reach their binding');
   });
 
   it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {

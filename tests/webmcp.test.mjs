@@ -321,6 +321,7 @@ describe('webmcp.ts: current API contract', () => {
           'list_map_layers',
           'list_dashboard_panels',
           'list_dashboard_tabs',
+          'list_mission_presets',
           'search_dashboard',
         ]
           .includes(tool.name),
