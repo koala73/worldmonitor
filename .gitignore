@@ -22,6 +22,7 @@ public/product-facts.json
 api/_inventory-facts.generated.js
 scripts/shared/inventory-facts.generated.json
 docs/generated/stats.json
+docs/generated/entitlement-crosswalk.json
 .DS_Store
 *.log
 .env
