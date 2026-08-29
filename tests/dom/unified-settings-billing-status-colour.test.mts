@@ -25,11 +25,6 @@ const session: AuthSession = {
 };
 
 const DAY = 86_400_000;
-const GREEN = '#22c55e';
-const YELLOW = '#eab308';
-const BLUE = '#3b82f6';
-const RED = '#ef4444';
-const GREY = '#9ca3af';
 
 /** Read lazily by the billing mock below; set per case. */
 let mockSubscription: SubscriptionInfo | null = null;
@@ -171,12 +166,13 @@ function subscription(overrides: Partial<SubscriptionInfo> = {}): SubscriptionIn
 }
 
 /**
- * The plan name's own colour — the single largest coloured element in the card,
- * and the one a reader actually parses as "is my plan OK?". Matched off the
- * rendered markup so a change to the dot/border alone cannot fake this pass.
+ * The plan card's billing tone — the class/token the 13px plan name reads.
+ * Matched off the rendered markup so a change to the dot/border alone cannot
+ * fake this pass. Hex contrast is locked in tests/contrast.test.mts against
+ * the theme tokens; this file locks which tone the coverage predicate picks.
  */
-function planNameColour(html: string): string | null {
-  return html.match(/<span style="color:(#[0-9a-f]{6});font-weight:600/i)?.[1] ?? null;
+function planTone(html: string): string | null {
+  return html.match(/data-billing-tone="([a-z]+)"/)?.[1] ?? null;
 }
 
 beforeAll(async () => {
@@ -205,10 +201,11 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
 
     expect(html).toContain('access until');
-    expect(planNameColour(html)).toBe(BLUE);
-    // Not one red anywhere in the card — the dot, the plan name, the border and
-    // the background tint all derive from the same tone.
-    expect(html).not.toContain(RED);
+    expect(html).toContain('class="upgrade-pro-plan-name"');
+    expect(planTone(html)).toBe('ending');
+    // Not the ended tone — the dot, the plan name, the border and the
+    // background tint all derive from the same data-billing-tone.
+    expect(html).not.toContain('data-billing-tone="ended"');
   });
 
   it('paints a cancellation past its paid period red', () => {
@@ -218,7 +215,7 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     });
     const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
 
-    expect(planNameColour(html)).toBe(RED);
+    expect(planTone(html)).toBe('ended');
   });
 
   it('paints expired red, even with a future period end', () => {
@@ -228,17 +225,17 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     });
     const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
 
-    expect(planNameColour(html)).toBe(RED);
+    expect(planTone(html)).toBe('ended');
   });
 
   it('leaves active green and on_hold yellow', () => {
     mockSubscription = subscription({ status: 'active' });
-    expect(planNameColour((settings as unknown as SettingsInternals).renderUpgradeSection()))
-      .toBe(GREEN);
+    expect(planTone((settings as unknown as SettingsInternals).renderUpgradeSection()))
+      .toBe('active');
 
     mockSubscription = subscription({ status: 'on_hold' });
-    expect(planNameColour((settings as unknown as SettingsInternals).renderUpgradeSection()))
-      .toBe(YELLOW);
+    expect(planTone((settings as unknown as SettingsInternals).renderUpgradeSection()))
+      .toBe('attention');
   });
 
   it('paints a Business-grant invitee (no own subscription row) green', () => {
@@ -249,7 +246,7 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
 
     expect(html).toContain('managed by your plan owner');
-    expect(planNameColour(html)).toBe(GREEN);
+    expect(planTone(html)).toBe('active');
   });
 
   it('paints an unrecognised provider status neutral, not red', () => {
@@ -259,8 +256,8 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     mockSubscription = subscription({ status: 'paused' as unknown as 'active' });
     const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
 
-    expect(planNameColour(html)).toBe(GREY);
-    expect(html).not.toContain(RED);
+    expect(planTone(html)).toBe('unknown');
+    expect(html).not.toContain('data-billing-tone="ended"');
     // Asserting the colour alone would let the card ship as a bare grey dot
     // with no sentence at all, which is what the old trailing `else` produced.
     expect(html).toContain('See Manage Billing for your current plan details.');

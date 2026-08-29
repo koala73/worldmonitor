@@ -2350,6 +2350,18 @@
       "rubBase": "Centrale Bank van Rusland — roebel per 1 eenheid",
       "rubPerUnit": "Roebel per eenheid",
       "sourceCbr": "Bron: Centrale Bank van Rusland"
+    },
+    "passkeyOffer": {
+      "title": "Wachtsleutel opslaan?",
+      "body": "Volgende keer inloggen met je vingerafdruk, gezicht of apparaat-pincode — geen wachtwoord om te onthouden.",
+      "accept": "Wachtsleutel opslaan",
+      "dismiss": "Nu niet",
+      "close": "Sluiten",
+      "announce": "Sla een wachtsleutel op om volgende keer sneller in te loggen.",
+      "busy": "Je apparaat wordt gecontroleerd…",
+      "succeeded": "Wachtsleutel opgeslagen. Je kunt deze gebruiken wanneer je volgende keer inlogt.",
+      "retryable": "Dit is niet afgerond. Je kunt het opnieuw proberen.",
+      "failed": "We konden geen wachtsleutel op dit apparaat opslaan."
     }
   },
   "popups": {
@@ -3446,7 +3458,8 @@
   "auth": {
     "signIn": "Aanmelden",
     "createAccount": "Account aanmaken",
-    "settings": "Instellingen"
+    "settings": "Instellingen",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP Verbinden",

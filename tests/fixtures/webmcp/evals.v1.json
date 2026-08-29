@@ -10,7 +10,9 @@
       "set_map_view",
       "set_map_layers",
       "search_dashboard",
-      "open_search_result"
+      "open_search_result",
+      "get_access_context",
+      "open_sign_in"
     ],
     "declarative": [
       "search_procurement"
@@ -39,7 +41,9 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -63,6 +67,60 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
+      ]
+    },
+    {
+      "id": "access_context_direct",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "Am I signed in on this tab, and what product tier and panel limits apply? Do not return any personal information.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_access_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "open_sign_in",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "access_context_ambiguous",
+      "category": "dashboard_context",
+      "promptKind": "ambiguous",
+      "prompt": "Can this account add another dashboard tab, or is the account state still loading?",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_access_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "open_sign_in",
         "search_procurement"
       ]
     },
@@ -86,7 +144,9 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -129,7 +189,9 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -154,6 +216,34 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
+      ]
+    },
+    {
+      "id": "open_sign_in_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the existing Clerk sign-in dialog on this page. Do not send a password, one-time code, or provider choice.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_sign_in",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "get_access_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
         "search_procurement"
       ]
     },
@@ -176,7 +266,9 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -210,7 +302,9 @@
       ],
       "forbiddenTools": [
         "openSearch",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -233,7 +327,9 @@
         "openSearch",
         "open_dashboard_panel",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -263,7 +359,9 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -288,7 +386,9 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -311,7 +411,9 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -331,7 +433,9 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ]
     },
     {
@@ -359,7 +463,9 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ],
       "failure": {
         "atStep": 2,
@@ -397,7 +503,9 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement"
+        "search_procurement",
+        "get_access_context",
+        "open_sign_in"
       ],
       "failure": {
         "atStep": 2,
@@ -429,7 +537,9 @@
       "forbiddenTools": [
         "openSearch",
         "search_dashboard",
-        "open_search_result"
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in"
       ],
       "failure": {
         "atStep": 1,

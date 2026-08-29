@@ -2684,6 +2684,18 @@
       "rubBase": "Banca Rusiei — ruble per 1 unitate",
       "rubPerUnit": "Ruble per unitate",
       "sourceCbr": "Sursă: Banca Rusiei"
+    },
+    "passkeyOffer": {
+      "title": "Salvezi o cheie de acces?",
+      "body": "Autentifică-te data viitoare cu amprenta, fața sau codul PIN al dispozitivului — fără parolă de reținut.",
+      "accept": "Salvează cheia de acces",
+      "dismiss": "Acum nu",
+      "close": "Închide",
+      "announce": "Salvează o cheie de acces pentru a te autentifica mai repede data viitoare.",
+      "busy": "Se așteaptă dispozitivul…",
+      "succeeded": "Cheia de acces a fost salvată. O poți folosi data viitoare când te autentifici.",
+      "retryable": "Nu s-a finalizat. Poți încerca din nou.",
+      "failed": "Nu am putut salva o cheie de acces pe acest dispozitiv."
     }
   },
   "popups": {
@@ -3465,7 +3477,8 @@
   "auth": {
     "signIn": "Conectare",
     "createAccount": "Creare cont",
-    "settings": "Setări"
+    "settings": "Setări",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Conectare MCP",

@@ -2684,6 +2684,18 @@
       "rubBase": "Banca di Russia — rubli per 1 unità",
       "rubPerUnit": "Rubli per unità",
       "sourceCbr": "Fonte: Banca di Russia"
+    },
+    "passkeyOffer": {
+      "title": "Salvare una passkey?",
+      "body": "La prossima volta accedi con l'impronta digitale, il volto o il PIN del dispositivo — nessuna password da ricordare.",
+      "accept": "Salva passkey",
+      "dismiss": "Non ora",
+      "close": "Chiudi",
+      "announce": "Salva una passkey per accedere più velocemente la prossima volta.",
+      "busy": "In attesa del tuo dispositivo…",
+      "succeeded": "Passkey salvata. Puoi usarla la prossima volta che accedi.",
+      "retryable": "Non è andato a buon fine. Puoi provare di nuovo.",
+      "failed": "Non siamo riusciti a salvare una passkey su questo dispositivo."
     }
   },
   "popups": {
@@ -3465,7 +3477,8 @@
   "auth": {
     "signIn": "Accedi",
     "createAccount": "Crea account",
-    "settings": "Impostazioni"
+    "settings": "Impostazioni",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connetti MCP",

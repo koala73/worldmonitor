@@ -12,10 +12,17 @@ import type {
   DashboardSearchScope,
 } from '@/services/webmcp';
 import {
+  classifySearchMatchEffect,
+  isSearchResultEffectHostExecutable,
+  searchResultEffectRequiresCancellation,
+  type SearchResultEffectClass,
+} from '@/app/webmcp-search-effects';
+import {
   DASHBOARD_SEARCH_OUTPUT_TARGET_CHARS,
   DASHBOARD_SEARCH_SUBTITLE_MAX_CHARS,
   DASHBOARD_SEARCH_TITLE_MAX_CHARS,
   DASHBOARD_SEARCH_TYPE_MAX_CHARS,
+  WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
   raceWebMcpAbort,
   throwIfWebMcpAborted,
 } from '@/services/webmcp';
@@ -30,6 +37,7 @@ interface IssuedSearchResult {
   authContext: string;
   securityEpoch: number;
   variant: string;
+  effectClass: SearchResultEffectClass;
 }
 
 export interface WebMcpSearchControllerBindings {
@@ -42,6 +50,7 @@ export interface WebMcpSearchControllerBindings {
   getAuthContext(): string;
   getVariant(): string;
   isMatchExecutable(match: SearchMatch): boolean;
+  isPanelCurrentlyEnabled(panelId: string): boolean;
   selectMatch(match: SearchMatch, signal?: AbortSignal): Promise<boolean>;
   subscribeAuth(listener: () => void): () => void;
   subscribeEntitlement(listener: () => void): () => void;
@@ -142,9 +151,10 @@ export class WebMcpSearchController {
     }
 
     const matches = searchResult.orderedMatches;
+    const targetCancellationSupported = Boolean(signal);
     const candidates = matches.slice(0, limit).map((match) => ({
       match,
-      descriptor: this.describeMatch(match),
+      descriptor: this.describeMatch(match, targetCancellationSupported),
     }));
     const accepted: typeof candidates = [];
     for (const candidate of candidates) {
@@ -171,6 +181,7 @@ export class WebMcpSearchController {
         authContext,
         securityEpoch: this.securityEpoch,
         variant: this.bindings.getVariant(),
+        effectClass: this.classifyMatch(match),
       }),
       ...descriptor,
     }));
@@ -200,10 +211,14 @@ export class WebMcpSearchController {
     signal?.addEventListener('abort', handleCallerAbort, { once: true });
 
     try {
+      // Host cancellation capability is the caller's signal. The internal
+      // controller is always present so a newer open can supersede this one;
+      // it must not make a Chrome-without-signal host look capable.
       const result = await this.openCurrent(
         resultKey,
         waitForMapReady,
         controller.signal,
+        Boolean(signal),
       );
       throwIfWebMcpAborted(signal);
       if (!this.isOpenOperationCurrent(epoch, controller)) {
@@ -233,6 +248,7 @@ export class WebMcpSearchController {
     resultKey: string,
     waitForMapReady: (() => Promise<void>) | undefined,
     signal: AbortSignal,
+    targetCancellationSupported: boolean,
   ): Promise<DashboardSearchOpenResult> {
     throwIfWebMcpAborted(signal);
     if (this.bindings.isDestroyed()) return this.denied('invalid_or_expired_key');
@@ -259,6 +275,12 @@ export class WebMcpSearchController {
       this.resultCache.delete(resultKey);
       return this.denied('result_no_longer_executable');
     }
+    const cancellationDenied = this.cancellationUnsupportedDenial(
+      issued.effectClass,
+      liveMatch,
+      targetCancellationSupported,
+    );
+    if (cancellationDenied) return cancellationDenied;
 
     if (this.requiresMapRenderer(liveMatch) && waitForMapReady) {
       await raceWebMcpAbort(waitForMapReady(), signal);
@@ -284,6 +306,12 @@ export class WebMcpSearchController {
       this.resultCache.delete(resultKey);
       return this.denied('search_state_changed');
     }
+    const cancellationDeniedAfterRefresh = this.cancellationUnsupportedDenial(
+      issued.effectClass,
+      liveMatch,
+      targetCancellationSupported,
+    );
+    if (cancellationDeniedAfterRefresh) return cancellationDeniedAfterRefresh;
 
     throwIfWebMcpAborted(signal);
     this.resultCache.delete(resultKey);
@@ -316,15 +344,48 @@ export class WebMcpSearchController {
     return unsubscribe;
   }
 
-  private describeMatch(match: SearchMatch): Omit<DashboardSearchDescriptor, 'key'> {
+  private describeMatch(
+    match: SearchMatch,
+    targetCancellationSupported: boolean,
+  ): Omit<DashboardSearchDescriptor, 'key'> {
     const subtitle = match.kind === 'command' ? match.subtitle : match.result.subtitle;
+    const effectClass = this.classifyMatch(match);
     return {
       type: this.matchType(match).slice(0, DASHBOARD_SEARCH_TYPE_MAX_CHARS),
       title: (match.kind === 'command' ? match.title : match.result.title)
         .slice(0, DASHBOARD_SEARCH_TITLE_MAX_CHARS),
       ...(subtitle ? { subtitle: subtitle.slice(0, DASHBOARD_SEARCH_SUBTITLE_MAX_CHARS) } : {}),
-      executable: this.bindings.isMatchExecutable(match),
+      executable: this.bindings.isMatchExecutable(match)
+        && isSearchResultEffectHostExecutable(effectClass, targetCancellationSupported),
     };
+  }
+
+  private classifyMatch(match: SearchMatch): SearchResultEffectClass {
+    return classifySearchMatchEffect(
+      match,
+      (panelId) => this.bindings.isPanelCurrentlyEnabled(panelId),
+    );
+  }
+
+  private cancellationUnsupportedDenial(
+    boundEffect: SearchResultEffectClass,
+    liveMatch: SearchMatch,
+    targetCancellationSupported: boolean,
+  ): DashboardSearchOpenResult | null {
+    const liveEffect = this.classifyMatch(liveMatch);
+    if (
+      targetCancellationSupported
+      || (
+        !searchResultEffectRequiresCancellation(boundEffect)
+        && !searchResultEffectRequiresCancellation(liveEffect)
+      )
+    ) {
+      return null;
+    }
+    return this.denied(
+      'target_cancellation_unsupported',
+      WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
+    );
   }
 
   private matchType(match: SearchMatch): string {
@@ -355,7 +416,12 @@ export class WebMcpSearchController {
       && issued.securityEpoch === this.securityEpoch;
   }
 
-  private denied(reason: NonNullable<DashboardSearchOpenResult['reason']>): DashboardSearchOpenResult {
-    return { ok: false, status: 'denied', reason };
+  private denied(
+    reason: NonNullable<DashboardSearchOpenResult['reason']>,
+    message?: string,
+  ): DashboardSearchOpenResult {
+    return message
+      ? { ok: false, status: 'denied', reason, message }
+      : { ok: false, status: 'denied', reason };
   }
 }

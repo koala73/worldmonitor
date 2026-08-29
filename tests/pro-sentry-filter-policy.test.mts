@@ -13,6 +13,50 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
+const MARKETING_INLINE_SCRIPT_FILES = [
+  'pro-test/welcome.html',
+  'pro-test/index.html',
+  'pro-test/prerender.mjs',
+] as const;
+
+let marketingSourceCache: { rel: string; code: string }[] | undefined;
+
+/**
+ * Every first-party source file the marketing bundle can execute.
+ *
+ * `pro-test/src` alone is NOT the bundle's boundary: `App.tsx` and `main.tsx`
+ * import leaf modules out of the repo-root `shared/` tree, and the HTML and
+ * prerender entrypoints contain inline scripts. The out-of-tree imports are
+ * resolved from the source so a new one is covered when it is added.
+ *
+ * Third-party package code is deliberately out of scope: `node_modules` is
+ * neither reviewable nor stable enough to assert on.
+ */
+function marketingFirstPartySources(): { rel: string; code: string }[] {
+  if (marketingSourceCache) return marketingSourceCache;
+
+  const seen = new Map<string, string>();
+  for (const f of readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })) {
+    if (!/\.(ts|tsx)$/.test(f)) continue;
+    const rel = `pro-test/src/${f}`;
+    seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+  }
+  // `from '../../shared/<mod>'` → `shared/<mod>.ts`. The shared modules in use
+  // today are import-free leaves, so one hop is the whole closure; the
+  // reachability test below keeps that assumption visible.
+  for (const code of [...seen.values()]) {
+    for (const m of code.matchAll(/from '\.\.\/\.\.\/(shared\/[\w./-]+)'/g)) {
+      const rel = `${m[1]}.ts`;
+      if (!seen.has(rel)) seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+    }
+  }
+  for (const rel of MARKETING_INLINE_SCRIPT_FILES) {
+    seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
+  }
+
+  marketingSourceCache = [...seen].map(([rel, code]) => ({ rel, code }));
+  return marketingSourceCache;
+}
 
 /**
  * The marketing surface (`/` and `/pro`) runs its own `@sentry/react` client,
@@ -314,6 +358,28 @@ describe('marketing ignoreErrors — in-app-browser injected globals (2026-08-27
   it('keeps the unprefixed WKWebView word so a real message still reports', () => {
     assert.equal(isIgnored('Error', 'WKWebView failed to render our checkout frame'), false);
   });
+
+  it("drops Android WebView's Java-bridge teardown error (WORLDMONITOR-117)", () => {
+    // Verbatim production value: Instagram 415 on Android 13, fired from a
+    // `beforeunload` listener, with only infra frames (the `/pro/assets/
+    // sentry-*.js` chunk and two `<anonymous>`) — so `marketingBeforeSend`'s
+    // frame gates have nothing to act on and this must be message-level.
+    assert.equal(
+      isIgnored('Error', 'Error invoking enableButtonsClickedMetaDataLogging: Java object is gone'),
+      true,
+    );
+    // The method name in the sentence is whatever bridge the host app called,
+    // so the pattern keys on Chromium's fixed suffix, not the one observed
+    // method.
+    assert.equal(isIgnored('Error', 'Error invoking getDeviceInfo: Java object is gone'), true);
+  });
+
+  it('keeps other Java-flavoured messages so a real one still reports', () => {
+    // Only the exact Chromium sentence is third-party by construction; the
+    // word "Java" on its own is not a licence to suppress.
+    assert.equal(isIgnored('Error', 'Java object is missing'), false);
+    assert.equal(isIgnored('Error', 'Our Java gateway is gone'), false);
+  });
 });
 
 describe('marketingBeforeSend — Safari-masked injected script (WORLDMONITOR-110)', () => {
@@ -598,43 +664,6 @@ describe('marketing beforeSend — wallet JSON-RPC rejection (WORLDMONITOR-107)'
     }
   });
 
-  /**
-   * Every first-party source file the marketing bundle can execute.
-   *
-   * `pro-test/src` alone is NOT the bundle's boundary: `App.tsx` and `main.tsx`
-   * import leaf modules out of the repo-root `shared/` tree, so a scan stopping
-   * at `pro-test/src` stays green on JSON-RPC introduced there (greptile
-   * review, PR #7241). The out-of-tree imports are RESOLVED from the source
-   * rather than hardcoded, so a new one is covered the day it is added instead
-   * of silently widening the suppression it licenses.
-   *
-   * Third-party package code is deliberately out of scope: `node_modules` is
-   * neither reviewable nor stable enough to assert on, and the only SDK this
-   * surface loads is Clerk, which is REST. A dependency that both spoke
-   * JSON-RPC and rejected a reserved-range `{code}` into the page's
-   * `onunhandledrejection` would defeat the rule — an accepted, named limit of
-   * the tripwire rather than an oversight.
-   */
-  function marketingFirstPartySources(): { rel: string; code: string }[] {
-    const seen = new Map<string, string>();
-    for (const f of readdirSync(resolve(root, 'pro-test/src'), { recursive: true, encoding: 'utf-8' })) {
-      if (!/\.(ts|tsx)$/.test(f)) continue;
-      const rel = `pro-test/src/${f}`;
-      seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
-    }
-    // `from '../../shared/<mod>'` → `shared/<mod>.ts`. The shared modules in use
-    // today are import-free leaves, so one hop is the whole closure; one that
-    // grew imports of its own would need this widened, which is what the
-    // reachability test below exists to keep visible.
-    for (const code of [...seen.values()]) {
-      for (const m of code.matchAll(/from '\.\.\/\.\.\/(shared\/[\w./-]+)'/g)) {
-        const rel = `${m[1]}.ts`;
-        if (!seen.has(rel)) seen.set(rel, readFileSync(resolve(root, rel), 'utf-8'));
-      }
-    }
-    return [...seen].map(([rel, code]) => ({ rel, code }));
-  }
-
   it('pins the marketing bundle as JSON-RPC-free, which is what licenses the rule', () => {
     // If a JSON-RPC client is ever added to this surface, the reserved-range
     // discriminator stops proving third-party origin and this suppression must
@@ -654,8 +683,166 @@ describe('marketing beforeSend — wallet JSON-RPC rejection (WORLDMONITOR-107)'
     const files = marketingFirstPartySources().map((f) => f.rel);
     assert.ok(files.length > 20, `walk must reach the real tree, got ${files.length} files`);
     assert.ok(files.includes('pro-test/src/App.tsx'), 'walk must include the app root');
+    for (const rel of MARKETING_INLINE_SCRIPT_FILES) {
+      assert.ok(files.includes(rel), `walk must include ${rel}`);
+    }
     const shared = files.filter((f) => f.startsWith('shared/'));
     assert.ok(shared.length >= 3,
       `walk must follow the out-of-tree imports, got ${JSON.stringify(shared)}`);
+    const nestedSharedImports = marketingFirstPartySources()
+      .filter((f) => f.rel.startsWith('shared/'))
+      .flatMap((f) => [...f.code.matchAll(/(?:import|export).*from ['"](\.[^'"]+)['"]/g)]
+        .map((match) => `${f.rel}: ${match[1]}`));
+    assert.deepEqual(nestedSharedImports, [],
+      'shared leaves gained relative imports; make the source inventory recursive');
+  });
+});
+
+describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () => {
+  const instagramFrames = [
+    { filename: '/pro' },
+    { filename: '/pro' },
+    { filename: '/pro' },
+    { filename: '/pro' },
+    { filename: '[native code]' },
+    { filename: '/pro' },
+    { filename: '/pro' },
+  ];
+
+  const injected = (value: string, frames = instagramFrames): PolicyEvent => ({
+    exception: { values: [{ type: 'TypeError', value, stacktrace: { frames } }] },
+  });
+
+  it('drops the verbatim production event', () => {
+    assert.equal(
+      marketingBeforeSend(injected("null is not an object (evaluating 'e.contentWindow.postMessage')")),
+      null,
+    );
+  });
+
+  it('drops the same shape served from the absolute document URL', () => {
+    const abs = instagramFrames.map((f) =>
+      f.filename === '/pro' ? { filename: 'https://www.worldmonitor.app/pro' } : f);
+    assert.equal(
+      marketingBeforeSend(injected("undefined is not an object (evaluating 'e.contentWindow')", abs)),
+      null,
+    );
+  });
+
+  it('drops the same shape on every marketing document route variant', () => {
+    for (const filename of [
+      '/',
+      '/?utm_source=test',
+      '/pro/',
+      '/pro#pricing',
+      'https://preview.example.com/',
+      'https://custom.example.com/pro/?utm_source=test#pricing',
+    ]) {
+      assert.equal(marketingBeforeSend(injected(
+        "null is not an object (evaluating 'e.contentWindow.postMessage')",
+        [{ filename }],
+      )), null, filename);
+    }
+  });
+
+  it('drops a TypeError-prefixed value when Sentry omits the exception type', () => {
+    const ev: PolicyEvent = {
+      exception: {
+        values: [{
+          value: "TypeError: null is not an object (evaluating 'e.contentWindow.postMessage')",
+          stacktrace: { frames: instagramFrames },
+        }],
+      },
+    };
+    assert.equal(marketingBeforeSend(ev), null);
+  });
+
+  it('KEEPS the same message when a marketing bundle chunk is on the stack', () => {
+    const withOurs = [...instagramFrames, { filename: '/pro/assets/index-A1b2C3.js' }];
+    assert.ok(marketingBeforeSend(injected('null is not an object (evaluating \'e.contentWindow.postMessage\')', withOurs)) !== null);
+  });
+
+  it('KEEPS a linked event with a first-party parent exception', () => {
+    const ev: PolicyEvent = {
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            value: "null is not an object (evaluating 'e.contentWindow.postMessage')",
+            stacktrace: { frames: instagramFrames },
+          },
+          {
+            type: 'Error',
+            value: 'checkout failed',
+            stacktrace: { frames: [{ filename: '/pro/assets/index-A1b2C3.js' }] },
+          },
+        ],
+      },
+    };
+    assert.ok(marketingBeforeSend(ev) !== null);
+  });
+
+  it('KEEPS a first-party inline-script TypeError on the same frames', () => {
+    for (const value of [
+      "null is not an object (evaluating 'l.rel')",
+      "undefined is not an object (evaluating 'MONITORS.world')",
+      'links.querySelectorAll is not a function',
+    ]) {
+      assert.ok(
+        marketingBeforeSend(injected(value)) !== null,
+        `first-party inline-script error must survive: ${value}`,
+      );
+    }
+  });
+
+  it('KEEPS a non-TypeError with the same frames', () => {
+    const ev: PolicyEvent = {
+      exception: {
+        values: [{
+          type: 'Error',
+          value: "null is not an object (evaluating 'e.contentWindow.postMessage')",
+          stacktrace: { frames: instagramFrames },
+        }],
+      },
+    };
+    assert.ok(marketingBeforeSend(ev) !== null);
+  });
+
+  it('KEEPS a TypeError whose frames are real script files', () => {
+    const scripts = [{ filename: 'https://cdn.example.com/widget.js' }, { filename: '/pro/assets/x-Ab12Cd.js' }];
+    assert.ok(marketingBeforeSend(injected(
+      "null is not an object (evaluating 'e.contentWindow.postMessage')",
+      scripts,
+    )) !== null);
+  });
+
+  it('KEEPS the same message on extensionless non-document script URLs', () => {
+    for (const filename of ['/widget', 'https://cdn.example.com/widget']) {
+      assert.ok(marketingBeforeSend(injected(
+        "null is not an object (evaluating 'e.contentWindow.postMessage')",
+        [{ filename }],
+      )) !== null, filename);
+    }
+  });
+
+  it('KEEPS a TypeError with no frames at all', () => {
+    assert.ok(marketingBeforeSend(injected(
+      "null is not an object (evaluating 'e.contentWindow.postMessage')",
+      [],
+    )) !== null);
+  });
+
+  it('pins the whole surface as contentWindow-free, inline scripts included', () => {
+    const sources = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'));
+    const offenders = sources.filter((f) => /contentWindow/.test(f.code)).map((f) => f.rel);
+    assert.deepEqual(offenders, [],
+      'the marketing surface now touches an iframe contentWindow — re-derive the WORLDMONITOR-115 rule');
+
+    for (const rel of ['pro-test/welcome.html', 'pro-test/prerender.mjs']) {
+      const body = sources.find((f) => f.rel === rel)?.code ?? '';
+      assert.ok(body.length > 500, `${rel} did not resolve`);
+      assert.match(body, /<script|SCRIPT =/, `${rel} is expected to carry inline script`);
+    }
   });
 });

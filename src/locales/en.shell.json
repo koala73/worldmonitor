@@ -799,6 +799,9 @@
     },
     "webcams": {
       "previewStatus": "Live preview"
+    },
+    "passkeyOffer": {
+      "title": "Save a passkey?"
     }
   },
   "modals": {

@@ -120,43 +120,17 @@ type AccountRequest = { userId: string; generation: number };
  *
  * The tone comes from the shared coverage predicate in billing-state.ts, never
  * from a status string compared here — a cancelled plan still inside its paid
- * window is a paying customer and must not be painted like a dead account. The
- * `33`/`0a` suffixes are the border and background alpha of the base hue.
+ * window is a paying customer and must not be painted like a dead account.
  *
  * `unknown` (a provider status this client does not model) is deliberately the
  * neutral grey, not red: we are inside the isEntitled() branch, so claiming a
  * problem we have not established would repeat the bug in a new colour.
  *
- * Three of these are threat-scale hexes from main.css (--threat-low,
- * --threat-medium, --threat-critical); `ending` borrows --threat-info, and
- * `unknown` is not on that scale at all — the scale has no grey rung.
- *
- * They stay literals because this card has always inlined hexes: green, yellow
- * and red were already hardcoded here, and `ending`/`unknown` follow that same
- * pattern rather than introducing a second convention mid-card. The cost is
- * that none of them pick up the [data-theme="light"] overrides, and all five
- * are under the AA 4.5:1 floor on the light background for the 13px-bold plan
- * name (measured with src/utils/contrast.ts against --bg #f8f9fa): #22c55e
- * 2.16, #eab308 1.82, #3b82f6 3.49, #ef4444 3.57, #9ca3af 2.41. The first two
- * are the very numbers main.css records next to its light overrides, so this
- * is a bypass of a correction the team already made, not an unnoticed gap.
- *
- * Moving to var(--threat-*) is NOT sufficient on its own: the light block
- * overrides only --threat-high/-medium/-low, so --threat-info and
- * --threat-critical resolve to the same failing hexes in both themes and the
- * fix would look landed while `ending` and `ended` still failed. Closing this
- * needs light overrides for those two tokens (compare --defcon-4 #0284c7, the
- * sky-600 the light theme already uses for blue) plus a light-safe grey, and a
- * light-theme render test — its own change, see the follow-up on #7315.
- * The status sentence is unaffected; it uses the theme-aware var(--text-dim).
+ * Colours live on `--billing-tone-*` in main.css so [data-theme="light"] can
+ * raise every tone to WCAG AA for the 13px-bold plan name. The card only
+ * stamps `data-billing-tone`; it must not inline hex, or those overrides
+ * never apply. The status sentence stays on theme-aware var(--text-dim).
  */
-const BILLING_TONE_COLORS: Record<BillingStatusTone, string> = {
-  active: '#22c55e',
-  attention: '#eab308',
-  ending: '#3b82f6',
-  ended: '#ef4444',
-  unknown: '#9ca3af',
-};
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -1071,9 +1045,6 @@ export class UnifiedSettings {
       const tone: BillingStatusTone = sub === null
         ? 'active'
         : getSubscriptionStatusTone(sub, now);
-      const statusColor = BILLING_TONE_COLORS[tone];
-      const statusBorderColor = `${statusColor}33`;
-      const statusBgColor = `${statusColor}0a`;
 
       let statusLine = '';
       if (sub?.currentPeriodEnd) {
@@ -1105,10 +1076,10 @@ export class UnifiedSettings {
       }
 
       return `
-        <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
+        <div class="upgrade-pro-section upgrade-pro-active" data-billing-tone="${tone}">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>
-            <span style="color:${statusColor};font-weight:600;font-size:calc(13px * var(--wm-panel-effective-scale, 1));">${escapeHtml(planName)}</span>
+            <span class="upgrade-pro-tone-dot"></span>
+            <span class="upgrade-pro-plan-name">${escapeHtml(planName)}</span>
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}

@@ -8,11 +8,13 @@ const productionSmoke = process.env.WM_WEBMCP_PRODUCTION === '1';
 const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
 
 const DASHBOARD_TOOL_NAMES = [
+  'get_access_context',
   'get_dashboard_context',
   'openCountryBrief',
   'openSearch',
   'open_dashboard_panel',
   'open_search_result',
+  'open_sign_in',
   'search_dashboard',
   'set_map_layers',
   'set_map_view',
@@ -234,12 +236,117 @@ test.describe('top-level WebMCP dashboard contract', () => {
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
       expect(tool.schema, `${tool.name} schema`).toMatchObject({ type: 'object' });
       expect(tool.annotations.readOnlyHint, `${tool.name} readOnlyHint`).toBe(
-        ['get_dashboard_context', 'search_dashboard'].includes(tool.name),
+        ['get_access_context', 'get_dashboard_context', 'search_dashboard'].includes(tool.name),
       );
       expect(
         Boolean(tool.annotations.untrustedContentHint),
         `${tool.name} untrustedContentHint`,
       ).toBe(tool.name === 'search_dashboard');
+    }
+
+    const accessContract = discoveredContracts.find((tool) => tool.name === 'get_access_context');
+    const signInContract = discoveredContracts.find((tool) => tool.name === 'open_sign_in');
+    expect(accessContract?.schema).toMatchObject({ type: 'object', additionalProperties: false });
+    expect(accessContract?.schema.properties ?? {}).toEqual({});
+    expect(signInContract?.schema).toMatchObject({ type: 'object', additionalProperties: false });
+    expect(Object.keys(signInContract?.schema.properties ?? {})).toEqual([]);
+    expect(JSON.stringify(signInContract?.schema ?? {})).not.toMatch(
+      /password|otp|one[-_]?time|credential|provider/i,
+    );
+
+    const accessAndSignIn = await page.evaluate(async () => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(
+          tool: WebMCP.RegisteredTool,
+          input: string,
+          options?: { signal?: AbortSignal },
+        ): Promise<unknown>;
+      };
+      const provider = document.modelContext as ExecutableModelContext | undefined;
+      if (!provider || typeof provider.executeTool !== 'function') {
+        throw new Error('Chrome WebMCP execution API is unavailable.');
+      }
+      const parseOutput = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
+      };
+      const tools = await provider.getTools();
+      const byName = new Map(tools.map((tool) => [tool.name, tool]));
+      const accessTool = byName.get('get_access_context');
+      const signInTool = byName.get('open_sign_in');
+      if (!accessTool || !signInTool) {
+        throw new Error('Expected access and sign-in tools were not discovered.');
+      }
+      const access = parseOutput(await provider.executeTool(accessTool, JSON.stringify({})));
+      let signInError: { message?: string; name?: string } | null = null;
+      let signInResult: unknown;
+      try {
+        signInResult = parseOutput(await provider.executeTool(signInTool, JSON.stringify({})));
+      } catch (error) {
+        signInError = {
+          name: error instanceof Error ? error.name : undefined,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      return {
+        access,
+        clerkModalPresent: Boolean(document.querySelector(
+          '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
+        )),
+        signInError,
+        signInResult,
+      };
+    });
+    expect(accessAndSignIn.access).toEqual(expect.objectContaining({
+      accountState: expect.stringMatching(/^(signed_out|loading|signed_in)$/),
+      clerk: expect.stringMatching(/^(unavailable|loading|ready)$/),
+    }));
+    expect(JSON.stringify(accessAndSignIn.access)).not.toMatch(
+      /@|user_|pk_test_|sk_live_|Bearer |sessionId|"email"|"name"|"token"/i,
+    );
+    if (accessAndSignIn.signInError) {
+      throw new Error(
+        `open_sign_in must return a bounded result, not throw: ${accessAndSignIn.signInError.name}: ${accessAndSignIn.signInError.message}`,
+      );
+    }
+    const signInResult = accessAndSignIn.signInResult as {
+      ok?: boolean;
+      reason?: string;
+      status?: string;
+    };
+    const accessSnapshot = accessAndSignIn.access as { clerk?: string };
+    const signInEvidence = {
+      clerk: accessSnapshot.clerk ?? null,
+      clerkModalPresent: accessAndSignIn.clerkModalPresent,
+      signInResult,
+    };
+    // Production must prove the real Clerk modal. The clerk_unavailable
+    // denial is only valid on the local Vite fixture, where Clerk is
+    // explicitly unconfigured (`clerk: unavailable`).
+    const unconfiguredLocalFixture =
+      !productionSmoke && accessSnapshot.clerk === 'unavailable';
+    if (unconfiguredLocalFixture) {
+      expect(signInResult).toEqual({
+        ok: false,
+        status: 'denied',
+        reason: 'clerk_unavailable',
+      });
+      expect(accessAndSignIn.clerkModalPresent).toBe(false);
+    } else {
+      expect(
+        accessAndSignIn.clerkModalPresent,
+        productionSmoke
+          ? 'production smoke must open the real Clerk sign-in modal'
+          : 'configured Clerk must open the real sign-in modal',
+      ).toBe(true);
+      expect(signInResult).toEqual(expect.objectContaining({
+        ok: true,
+        status: expect.stringMatching(/^(opened|already_open)$/),
+      }));
     }
 
     const panelProbe = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
@@ -354,6 +461,140 @@ test.describe('top-level WebMCP dashboard contract', () => {
       await expect(page.locator('.search-overlay')).toHaveCount(0);
     }
 
+    type SearchResultEffectProbe = {
+      allowed: MutationExecutionProbe & {
+        executable?: boolean;
+        query?: string;
+      };
+      denied?: MutationExecutionProbe & {
+        executable?: boolean;
+        query?: string;
+      };
+    };
+    let searchResultEffects: SearchResultEffectProbe | null = null;
+    if (!productionSmoke) {
+      searchResultEffects = await page.evaluate(async (
+        targetCancellationSupported: boolean | undefined,
+      ): Promise<SearchResultEffectProbe> => {
+        type ExecutableModelContext = WebMCP.ModelContext & {
+          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+        };
+        const parseOutput = (value: unknown): unknown => {
+          if (typeof value !== 'string') return value;
+          try {
+            return JSON.parse(value);
+          } catch {
+            return value;
+          }
+        };
+        const provider = document.modelContext as ExecutableModelContext;
+        const tools = await provider.getTools();
+        const byName = new Map(tools.map((tool) => [tool.name, tool]));
+        const searchTool = byName.get('search_dashboard');
+        const openTool = byName.get('open_search_result');
+        if (!searchTool || !openTool) {
+          throw new Error('Expected dashboard search tools were not discovered.');
+        }
+        const execute = async (tool: WebMCP.RegisteredTool, input: string) => {
+          try {
+            return { ok: true as const, output: parseOutput(await provider.executeTool(tool, input)) };
+          } catch (error) {
+            return {
+              errorMessage: error && typeof error === 'object' && 'message' in error
+                ? String(error.message).slice(0, 500)
+                : String(error).slice(0, 500),
+              errorName: error && typeof error === 'object' && 'name' in error
+                ? String(error.name)
+                : 'unknown',
+              ok: false as const,
+            };
+          }
+        };
+        const panelSearch = await execute(searchTool, JSON.stringify({
+          query: 'live webcams',
+          scope: 'panels',
+          limit: 8,
+        }));
+        const panelResults = panelSearch.ok
+          && panelSearch.output
+          && typeof panelSearch.output === 'object'
+          && 'results' in panelSearch.output
+          && Array.isArray((panelSearch.output as { results: unknown }).results)
+          ? (panelSearch.output as {
+            results: Array<{ key?: string; executable?: boolean }>;
+          }).results
+          : [];
+        const allowedResult = panelResults.find((result) => result.executable === true) ?? panelResults[0];
+        const allowedOpen = allowedResult?.key
+          ? await execute(openTool, JSON.stringify({ resultKey: allowedResult.key }))
+          : {
+            ok: false as const,
+            errorName: 'missing_result',
+            errorMessage: 'search_dashboard did not return an executable panel result.',
+          };
+        const probe: SearchResultEffectProbe = {
+          allowed: {
+            ...allowedOpen,
+            executable: allowedResult?.executable,
+            query: 'live webcams',
+          },
+        };
+        if (targetCancellationSupported === true) return probe;
+
+        const layerSearch = await execute(searchTool, JSON.stringify({
+          query: 'conflicts',
+          scope: 'map',
+          limit: 8,
+        }));
+        const layerResults = layerSearch.ok
+          && layerSearch.output
+          && typeof layerSearch.output === 'object'
+          && 'results' in layerSearch.output
+          && Array.isArray((layerSearch.output as { results: unknown }).results)
+          ? (layerSearch.output as {
+            results: Array<{ key?: string; executable?: boolean }>;
+          }).results
+          : [];
+        const deniedResult = layerResults.find((result) => result.executable === false)
+          ?? layerResults[0];
+        const deniedOpen = deniedResult?.key
+          ? await execute(openTool, JSON.stringify({ resultKey: deniedResult.key }))
+          : {
+            ok: false as const,
+            errorName: 'missing_result',
+            errorMessage: 'search_dashboard did not return a persistent map result.',
+          };
+        probe.denied = {
+          ...deniedOpen,
+          executable: deniedResult?.executable,
+          query: 'conflicts',
+        };
+        return probe;
+      }, coldStart.targetCancellationSupported);
+
+      expect(searchResultEffects).not.toBeNull();
+      expect(searchResultEffects!.allowed).toMatchObject({
+        ok: true,
+        executable: true,
+        output: {
+          ok: true,
+          status: 'opened',
+          type: 'command',
+        },
+      });
+      if (coldStart.targetCancellationSupported !== true) {
+        expect(searchResultEffects!.denied).toMatchObject({
+          ok: true,
+          executable: false,
+          output: {
+            ok: false,
+            status: 'denied',
+            reason: 'target_cancellation_unsupported',
+          },
+        });
+      }
+    }
+
     await attachJsonEvidence(testInfo, 'webmcp-smoke.json', {
       target: response!.url(),
       deployedSha,
@@ -380,7 +621,9 @@ test.describe('top-level WebMCP dashboard contract', () => {
           targetCancellationSupported: coldStart.targetCancellationSupported,
           ...panelProbe,
         },
+        signIn: { tool: 'open_sign_in', ...signInEvidence },
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
+        ...(searchResultEffects ? { searchResultEffects } : {}),
       },
     });
   });
