@@ -18,7 +18,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runClerkSurfaceOpen } from '../src/services/clerk.ts';
+import { runClerkSurfaceOpen, waitForClerkSurfaceOpen } from '../src/services/clerk.ts';
 
 describe('runClerkSurfaceOpen', () => {
   it('opens once and never schedules a retry when the surface is ready', () => {
@@ -86,5 +86,56 @@ describe('runClerkSurfaceOpen', () => {
     );
     assert.equal(opens, 1, 'retry must be deferred, not run inline');
     assert.equal(typeof scheduled, 'function');
+  });
+});
+
+describe('waitForClerkSurfaceOpen', () => {
+  it('settles false when the first open throws and the retry scheduler never runs', async () => {
+    const result = await waitForClerkSurfaceOpen(
+      () => { throw new Error('Clerk was not loaded with Ui components'); },
+      25,
+      () => {},
+    );
+    assert.equal(result, false);
+  });
+
+  it('does not open after the wait cap has already settled', async () => {
+    let opens = 0;
+    let lateRetry: (() => void) | undefined;
+    const result = await waitForClerkSurfaceOpen(
+      () => {
+        opens += 1;
+        throw new Error('not ready');
+      },
+      20,
+      (cb) => { lateRetry = cb; },
+    );
+    assert.equal(result, false);
+    lateRetry?.();
+    assert.equal(opens, 1);
+  });
+
+  it('retries via setTimeout even when requestAnimationFrame never fires', async () => {
+    const previousRaf = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');
+    Object.defineProperty(globalThis, 'requestAnimationFrame', {
+      configurable: true,
+      writable: true,
+      value: () => 0,
+    });
+    try {
+      let opens = 0;
+      const opened = await waitForClerkSurfaceOpen(
+        () => {
+          opens += 1;
+          if (opens === 1) throw new Error('not ready');
+        },
+        500,
+      );
+      assert.equal(opens, 2);
+      assert.equal(opened, true);
+    } finally {
+      if (previousRaf) Object.defineProperty(globalThis, 'requestAnimationFrame', previousRaf);
+      else delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+    }
   });
 });

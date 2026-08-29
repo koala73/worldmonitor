@@ -306,7 +306,7 @@ describe('webmcp.ts: current API contract', () => {
     assert.deepEqual(access.inputSchema.properties, {});
     assert.match(access.description, /no names, emails, account IDs, tokens/i);
 
-    const snapshot = await access.execute({});
+    const snapshot = await access.execute({}, { signal: new AbortController().signal });
     assert.equal(snapshot.accountState, 'signed_out');
     assert.equal(snapshot.clerk, 'unavailable');
     assert.equal(snapshot.productTier, 'anonymous');
@@ -318,15 +318,29 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(signIn.inputSchema.additionalProperties, false);
     assert.deepEqual(signIn.inputSchema.properties, {});
     assert.match(signIn.description, /does not accept credentials/i);
-    assert.deepEqual(await signIn.execute({}), {
+    assert.deepEqual(await signIn.execute({}, { signal: new AbortController().signal }), {
       ok: false,
       status: 'denied',
       reason: 'clerk_unavailable',
     });
     await assert.rejects(
-      () => signIn.execute({ password: 'secret', otp: '123456' }),
+      () => signIn.execute(
+        { password: 'secret', otp: '123456' },
+        { signal: new AbortController().signal },
+      ),
       (error) => error.name === 'WebMcpToolError'
         && /does not accept credentials/.test(error.message),
+    );
+  });
+
+  it('passes already_open sign-in results through unchanged', async () => {
+    const tools = buildWebMcpTools(createBindings({
+      openSignIn: async () => ({ ok: true, status: 'already_open', reason: 'already_open' }),
+    }), () => {});
+    const signIn = tools.find((tool) => tool.name === 'open_sign_in');
+    assert.deepEqual(
+      await signIn.execute({}, { signal: new AbortController().signal }),
+      { ok: true, status: 'already_open', reason: 'already_open' },
     );
   });
 
@@ -369,10 +383,9 @@ describe('webmcp.ts: current API contract', () => {
       (await tools.find(({ name }) => name === 'get_dashboard_context').execute({})).variant,
       'full',
     );
-    assert.equal(
-      (await tools.find(({ name }) => name === 'get_access_context').execute({})).accountState,
-      'signed_out',
-    );
+    const accessWithoutSignal = await tools.find(({ name }) => name === 'get_access_context').execute({});
+    assert.equal(accessWithoutSignal.accountState, 'signed_out');
+    assert.equal(accessWithoutSignal.targetCancellationSupported, false);
     assert.equal(
       (await tools.find(({ name }) => name === 'search_dashboard')
         .execute({ query: 'safe' })).resultCount,

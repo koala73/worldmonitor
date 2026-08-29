@@ -494,6 +494,66 @@ export function isClerkSignInOpen(): boolean {
   }
 }
 
+const CLERK_SIGN_IN_OPEN_WAIT_MS = 2000;
+const CLERK_SURFACE_RETRY_TIMEOUT_MS = 50;
+
+/**
+ * Schedule a one-shot retry on the next animation frame when available, and
+ * always on a timeout so a background tab that never paints still retries.
+ */
+function scheduleClerkSurfaceRetry(cb: () => void): void {
+  let ran = false;
+  const run = (): void => {
+    if (ran) return;
+    ran = true;
+    cb();
+  };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  setTimeout(run, CLERK_SURFACE_RETRY_TIMEOUT_MS);
+}
+
+/**
+ * Wait until a Clerk surface open succeeds, persistently fails, or the wait
+ * cap elapses. Settlement must not depend on rAF-only scheduling. Exported
+ * so tests can drive the dual scheduler and wait cap without a Clerk instance.
+ */
+export function waitForClerkSurfaceOpen(
+  open: () => void,
+  waitCapMs = CLERK_SIGN_IN_OPEN_WAIT_MS,
+  scheduleRetry: (cb: () => void) => void = scheduleClerkSurfaceRetry,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    let waitCap: ReturnType<typeof setTimeout> | undefined;
+    const settle = (ok: boolean): void => {
+      if (waitCap !== undefined) clearTimeout(waitCap);
+      finish(ok);
+    };
+    waitCap = setTimeout(() => settle(false), waitCapMs);
+    let opened = false;
+    runClerkSurfaceOpen(
+      () => {
+        open();
+        opened = true;
+      },
+      () => settle(false),
+      (retryOpen) => {
+        scheduleRetry(() => {
+          if (settled) return;
+          retryOpen();
+          if (opened) settle(true);
+        });
+      },
+    );
+    if (opened) settle(true);
+  });
+}
+
 /**
  * Returns false when Clerk is disabled, failed to load, or the UI surface
  * could not attach.
@@ -506,30 +566,7 @@ export async function openSignInAndWait(): Promise<boolean> {
     return false;
   }
   if (!clerkInstance || typeof clerkInstance.openSignIn !== 'function') return false;
-
-  return await new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (ok: boolean): void => {
-      if (settled) return;
-      settled = true;
-      resolve(ok);
-    };
-    let opened = false;
-    runClerkSurfaceOpen(
-      () => {
-        openLoadedClerkSignIn();
-        opened = true;
-      },
-      () => finish(false),
-      (cb) => {
-        scheduleNextFrame(() => {
-          cb();
-          if (opened) finish(true);
-        });
-      },
-    );
-    if (opened) finish(true);
-  });
+  return waitForClerkSurfaceOpen(openLoadedClerkSignIn);
 }
 
 /**

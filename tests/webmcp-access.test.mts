@@ -41,6 +41,7 @@ function signedOutInput(
     enabledPanelUsed: 12,
     dashboardTabCount: 1,
     freePanelCap: FREE_MAX_PANELS,
+    dataExport: false,
     ...overrides,
   };
 }
@@ -158,6 +159,7 @@ describe('buildWebMcpAccessContext', () => {
       tabCap: { allowed: true, cap: null, pendingActivation: false },
       enabledPanelUsed: 80,
       dashboardTabCount: 6,
+      dataExport: true,
     }));
     assert.equal(pro.accountState, 'signed_in');
     assert.equal(pro.productTier, 'pro');
@@ -172,6 +174,90 @@ describe('buildWebMcpAccessContext', () => {
     assert.equal(pro.limits.dashboardTabs.canCreate, true);
     assertNoPersonalInformation(free);
     assertNoPersonalInformation(pro);
+  });
+
+  it('keeps a signed-in account visible while entitlement is still unknown', () => {
+    const snapshot = buildWebMcpAccessContext(signedOutInput({
+      auth: FREE_AUTH,
+      premiumAccess: false,
+      entitlement: null,
+      tabCap: { allowed: false, cap: FREE_TAB_CAP, reason: 'free_tier' },
+    }));
+    assert.equal(snapshot.accountState, 'signed_in');
+    assert.equal(snapshot.productTier, 'unknown');
+    assert.equal(snapshot.limits.enabledPanels.cap, null);
+    assert.equal(snapshot.limits.dashboardTabs.cap, null);
+    assert.equal(snapshot.limits.dashboardTabs.canCreate, true);
+  });
+
+  it('keeps productTier pro when premium access is already known and entitlement is still null', () => {
+    const snapshot = buildWebMcpAccessContext(signedOutInput({
+      auth: PRO_AUTH,
+      premiumAccess: true,
+      entitlement: null,
+    }));
+    assert.equal(snapshot.accountState, 'signed_in');
+    assert.equal(snapshot.productTier, 'pro');
+    assert.equal(snapshot.limits.enabledPanels.cap, null);
+    assert.equal(snapshot.limits.dashboardTabs.cap, null);
+  });
+
+  it('takes dataExport from the reader boolean, not the entitlement feature flag', () => {
+    const freeFeatures = {
+      tier: 0,
+      apiAccess: false,
+      apiRateLimit: 0,
+      maxDashboards: FREE_TAB_CAP,
+      prioritySupport: false,
+      exportFormats: [] as string[],
+      mcpAccess: false,
+    };
+    const unlockedDespiteMissingFlag = buildWebMcpAccessContext(signedOutInput({
+      auth: FREE_AUTH,
+      entitlement: {
+        planKey: 'free',
+        features: { ...freeFeatures, dataExport: false },
+        validUntil: Date.now() + 60_000,
+      },
+      dataExport: true,
+    }));
+    assert.equal(unlockedDespiteMissingFlag.capabilities.dataExport, true);
+    assert.equal(unlockedDespiteMissingFlag.capabilities.apiAccess, false);
+    assert.equal(unlockedDespiteMissingFlag.capabilities.mcpAccess, false);
+
+    const unlockedWhenFeatureOmitted = buildWebMcpAccessContext(signedOutInput({
+      auth: FREE_AUTH,
+      entitlement: {
+        planKey: 'free',
+        features: freeFeatures,
+        validUntil: Date.now() + 60_000,
+      },
+      dataExport: true,
+    }));
+    assert.equal(unlockedWhenFeatureOmitted.capabilities.dataExport, true);
+
+    const lockedDespiteFeature = buildWebMcpAccessContext(signedOutInput({
+      auth: PRO_AUTH,
+      premiumAccess: true,
+      entitlement: {
+        planKey: 'pro',
+        features: {
+          tier: 1,
+          apiAccess: false,
+          apiRateLimit: 60,
+          maxDashboards: -1,
+          prioritySupport: true,
+          exportFormats: ['csv', 'json', 'pdf'],
+          mcpAccess: true,
+          dataExport: true,
+        },
+        validUntil: Date.now() + 60_000,
+      },
+      dataExport: false,
+    }));
+    assert.equal(lockedDespiteFeature.capabilities.dataExport, false);
+    assert.equal(lockedDespiteFeature.capabilities.mcpAccess, true);
+    assert.equal(lockedDespiteFeature.capabilities.apiAccess, false);
   });
 
   it('never copies personal fields even when a caller tries to inject them', () => {

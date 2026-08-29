@@ -25,6 +25,7 @@ export interface WebMcpAccessContextInput {
   enabledPanelUsed: number;
   dashboardTabCount: number;
   freePanelCap: number;
+  dataExport: boolean;
 }
 
 export interface OpenSignInDecisionInput {
@@ -45,8 +46,9 @@ function nonNegativeCount(value: number): number {
 }
 
 /**
- * Bounded, PII-free access snapshot for WebMCP. Capability flags come from the
- * same entitlement and premium-access sources the dashboard uses.
+ * Bounded, PII-free access snapshot for WebMCP. apiAccess/mcpAccess stay
+ * fail-closed on the entitlement feature flags. dataExport is supplied by the
+ * live export-gate reader so it matches the dashboard export lock.
  */
 export function buildWebMcpAccessContext(
   input: WebMcpAccessContextInput,
@@ -63,16 +65,23 @@ export function buildWebMcpAccessContext(
   else if (input.auth.isPending) clerk = 'loading';
   else clerk = 'unavailable';
 
+  const entitlementUnknown = accountState === 'signed_in' && input.entitlement == null;
+
   let productTier: AccessContextSnapshot['productTier'];
-  if (accountState === 'loading') productTier = 'unknown';
-  else if (input.premiumAccess) productTier = 'pro';
-  else if (accountState === 'signed_in') productTier = 'free';
-  else productTier = 'anonymous';
+  if (accountState === 'loading' || (entitlementUnknown && !input.premiumAccess)) {
+    productTier = 'unknown';
+  } else if (input.premiumAccess) {
+    productTier = 'pro';
+  } else if (accountState === 'signed_in') {
+    productTier = 'free';
+  } else {
+    productTier = 'anonymous';
+  }
 
   const features = input.entitlement?.features;
-  const loading = accountState === 'loading';
-  const panelCap = loading || input.premiumAccess ? null : input.freePanelCap;
-  const tabCap = loading ? null : input.tabCap.cap;
+  const deferLimits = accountState === 'loading' || entitlementUnknown;
+  const panelCap = deferLimits || input.premiumAccess ? null : input.freePanelCap;
+  const tabCap = deferLimits ? null : input.tabCap.cap;
 
   return {
     accountState,
@@ -82,7 +91,7 @@ export function buildWebMcpAccessContext(
       premiumAccess: input.premiumAccess === true,
       apiAccess: features?.apiAccess === true,
       mcpAccess: features?.mcpAccess === true,
-      dataExport: features?.dataExport === true,
+      dataExport: input.dataExport === true,
     },
     limits: {
       enabledPanels: {
@@ -92,7 +101,7 @@ export function buildWebMcpAccessContext(
       dashboardTabs: {
         used: nonNegativeCount(input.dashboardTabCount),
         cap: tabCap,
-        canCreate: loading || input.tabCap.allowed,
+        canCreate: deferLimits || input.tabCap.allowed,
       },
     },
   };

@@ -1983,7 +1983,7 @@ export class App {
         if (this.state.isDestroyed) {
           throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
         }
-        return openWebMcpSignIn();
+        return openWebMcpSignIn(execution?.signal);
       },
     });
 
