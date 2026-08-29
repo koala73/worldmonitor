@@ -1154,16 +1154,23 @@ function boundPanelLayoutSnapshot(
   snapshot: PanelLayoutSnapshot,
   cursor?: string,
 ): PanelLayoutSnapshot | PanelLayoutMutationResult {
-  const panels = (Array.isArray(snapshot.panels) ? snapshot.panels : []).map((panel, index) => ({
-    id: boundedText(panel?.id, PANEL_LAYOUT_ID_MAX_CHARS),
-    region: panel?.region === 'bottom' ? 'bottom' as const : 'sidebar' as const,
-    index: Math.max(0, Math.floor(boundedNumber(panel?.index) || index)),
-    collapsed: panel?.collapsed === true,
-    fullscreen: panel?.fullscreen === true,
-    collapsible: panel?.collapsible === true,
-    fullscreenCapable: panel?.fullscreenCapable === true,
-    fixed: panel?.fixed === true,
-  })).filter((panel) => panel.id);
+  const panels = (Array.isArray(snapshot.panels) ? snapshot.panels : []).map((panel, index) => {
+    const rawIndex = panel?.index;
+    const resolvedIndex = typeof rawIndex === 'number' && Number.isFinite(rawIndex)
+      ? rawIndex
+      : index;
+    return {
+      id: boundedText(panel?.id, PANEL_LAYOUT_ID_MAX_CHARS),
+      region: panel?.region === 'bottom' ? 'bottom' as const : 'sidebar' as const,
+      // Preserve regional index 0; `||` would coerce it to the flatten fallback.
+      index: Math.max(0, Math.floor(resolvedIndex)),
+      collapsed: panel?.collapsed === true,
+      fullscreen: panel?.fullscreen === true,
+      collapsible: panel?.collapsible === true,
+      fullscreenCapable: panel?.fullscreenCapable === true,
+      fixed: panel?.fixed === true,
+    };
+  }).filter((panel) => panel.id);
 
   let startIndex = 0;
   if (cursor !== undefined) {
@@ -1192,26 +1199,30 @@ function boundPanelLayoutSnapshot(
   const remaining = panels.slice(startIndex);
   const page: typeof panels = [];
   let nextCursor: string | undefined;
+  const resolvePanelCount = (raw: unknown, fallback: number): number => {
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      return Math.max(0, Math.floor(raw));
+    }
+    return Math.max(0, fallback);
+  };
   const regionMeta = {
     sidebar: {
       available: snapshot.regions?.sidebar?.available !== false,
-      panelCount: Math.max(
-        0,
-        Math.floor(boundedNumber(snapshot.regions?.sidebar?.panelCount))
-          || panels.filter((panel) => panel.region === 'sidebar').length,
+      panelCount: resolvePanelCount(
+        snapshot.regions?.sidebar?.panelCount,
+        panels.filter((panel) => panel.region === 'sidebar').length,
       ),
     },
     bottom: {
       available: snapshot.regions?.bottom?.available === true,
-      panelCount: Math.max(
-        0,
-        Math.floor(boundedNumber(snapshot.regions?.bottom?.panelCount))
-          || panels.filter((panel) => panel.region === 'bottom').length,
+      panelCount: resolvePanelCount(
+        snapshot.regions?.bottom?.panelCount,
+        panels.filter((panel) => panel.region === 'bottom').length,
       ),
     },
   };
   const panelCount = Math.max(
-    Math.max(0, Math.floor(boundedNumber(snapshot.panelCount)) || panels.length),
+    resolvePanelCount(snapshot.panelCount, panels.length),
     panels.length,
   );
 

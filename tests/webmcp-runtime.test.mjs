@@ -447,6 +447,50 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
+  it('preserves regional panel index 0 in get_panel_layout', async () => {
+    // Bottom-region index 0 is a valid ordinal. Coercing with `||` would replace
+    // it with the flatten fallback (1 when a sidebar panel precedes it).
+    const provider = new FakeWebMcpModelContext();
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      getPanelLayout: async () => ({
+        regions: {
+          sidebar: { available: true, panelCount: 1 },
+          bottom: { available: true, panelCount: 1 },
+        },
+        panels: [
+          {
+            id: 'giving',
+            region: 'sidebar',
+            index: 0,
+            collapsed: false,
+            fullscreen: false,
+            collapsible: false,
+            fullscreenCapable: false,
+            fixed: false,
+          },
+          {
+            id: 'live-news',
+            region: 'bottom',
+            index: 0,
+            collapsed: false,
+            fullscreen: false,
+            collapsible: true,
+            fullscreenCapable: true,
+            fixed: false,
+          },
+        ],
+        panelCount: 2,
+      }),
+    }), harness.runtime);
+    await settlePromises();
+
+    const layout = await executeRegistered(provider, 'get_panel_layout');
+    assert.equal(layout.regions.bottom.panelCount, 1);
+    assert.equal(layout.panels[1].id, 'live-news');
+    assert.equal(layout.panels[1].index, 0, 'bottom panel must keep regional index 0');
+  });
+
   it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
     // Layer, panel, map-mode, tab, and monitor changes can persist or leave
     // the current origin. An uncancellable invocation can outlive the session,
