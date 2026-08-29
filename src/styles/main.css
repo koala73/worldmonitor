@@ -96,6 +96,15 @@
   --threat-low: #22c55e;
   --threat-info: #3b82f6;
 
+  /* Plan-card billing tones (#7315). Dark hexes match the threat scale
+     (unknown is a dedicated grey — the scale has no grey rung). Light
+     overrides below raise every tone to WCAG AA on --bg / --surface. */
+  --billing-tone-active: #22c55e;
+  --billing-tone-attention: #eab308;
+  --billing-tone-ending: #3b82f6;
+  --billing-tone-ended: #ef4444;
+  --billing-tone-unknown: #9ca3af;
+
   /* DEFCON levels */
   --defcon-1: #ff0040;
   --defcon-2: #ff4400;
@@ -138,6 +147,16 @@
   /* Tailwind yellow-600 (was #eab308, 1.82:1) */
   --threat-low: #15803d;
   /* Tailwind green-700 (was #22c55e, 2.16:1) */
+  --billing-tone-active: #15803d;
+  /* green-700; was #22c55e 2.16:1 on --bg */
+  --billing-tone-attention: #a16207;
+  /* yellow-700; was #eab308 1.82:1 — yellow-600 #ca8a04 is still 2.79:1 */
+  --billing-tone-ending: #2563eb;
+  /* blue-600; was #3b82f6 3.49:1 — sky-600 #0284c7 is still 3.89:1 */
+  --billing-tone-ended: #b91c1c;
+  /* red-700; was #ef4444 3.57:1 */
+  --billing-tone-unknown: #4b5563;
+  /* gray-600; was #9ca3af 2.41:1 */
   --defcon-3: #d97706;
   /* Tailwind amber-600 (was #ffaa00, 1.81:1) */
   --defcon-4: #0284c7;
@@ -26159,6 +26178,33 @@ body.map-width-resizing {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
+}
+
+.upgrade-pro-section[data-billing-tone] {
+  --billing-tone: var(--billing-tone-unknown);
+  border-color: color-mix(in srgb, var(--billing-tone) 20%, transparent);
+  background: color-mix(in srgb, var(--billing-tone) 4%, transparent);
+}
+
+.upgrade-pro-section[data-billing-tone="active"] { --billing-tone: var(--billing-tone-active); }
+.upgrade-pro-section[data-billing-tone="attention"] { --billing-tone: var(--billing-tone-attention); }
+.upgrade-pro-section[data-billing-tone="ending"] { --billing-tone: var(--billing-tone-ending); }
+.upgrade-pro-section[data-billing-tone="ended"] { --billing-tone: var(--billing-tone-ended); }
+.upgrade-pro-section[data-billing-tone="unknown"] { --billing-tone: var(--billing-tone-unknown); }
+
+.upgrade-pro-tone-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--billing-tone);
+  flex-shrink: 0;
+}
+
+.upgrade-pro-plan-name {
+  color: var(--billing-tone);
+  font-weight: 600;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 .upgrade-pro-title {

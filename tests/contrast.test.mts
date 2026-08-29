@@ -4,6 +4,40 @@ import { readFileSync } from 'node:fs';
 
 import { readableTextColor, contrastRatio, relativeLuminance } from '../src/utils/contrast.ts';
 
+const readFile = (rel: string): string =>
+  readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+
+/**
+ * Brace-match the rule that starts at `blockStart`. Markers must include the
+ * opening `{` so a comment such as `overridden by [data-theme="light"] below`
+ * cannot steal the light-theme lookup, and so a prefix such as
+ * `:root[data-variant="happy"]` cannot leak into the happy-dark block.
+ */
+function extractBlock(css: string, blockStart: string): string {
+  const start = css.indexOf(blockStart);
+  assert.ok(start >= 0, `theme block not found: ${blockStart}`);
+  const open = css.indexOf('{', start);
+  assert.ok(open >= 0, `opening brace for ${blockStart} not found`);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    const ch = css[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return css.slice(open, i + 1);
+    }
+  }
+  assert.fail(`unclosed theme block: ${blockStart}`);
+}
+
+/** Extract the first `--name: #hex` inside the brace-bounded `blockStart` rule. */
+function token(css: string, blockStart: string, name: string): string {
+  const slice = extractBlock(css, blockStart);
+  const m = slice.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`));
+  assert.ok(m, `${name} not found in block ${blockStart}`);
+  return m![1]!;
+}
+
 describe('contrast util', () => {
   it('computes WCAG contrast ratio at the extremes', () => {
     assert.equal(Math.round(contrastRatio('#ffffff', '#000000')), 21);
@@ -51,40 +85,6 @@ describe('contrast util', () => {
  * non-text / large-text floor.
  */
 describe('theme text-token contrast', () => {
-  const readFile = (rel: string): string =>
-    readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
-
-  /**
-   * Brace-match the rule that starts at `blockStart`. Markers must include the
-   * opening `{` so a comment such as `overridden by [data-theme="light"] below`
-   * cannot steal the light-theme lookup, and so a prefix such as
-   * `:root[data-variant="happy"]` cannot leak into the happy-dark block.
-   */
-  const extractBlock = (css: string, blockStart: string): string => {
-    const start = css.indexOf(blockStart);
-    assert.ok(start >= 0, `theme block not found: ${blockStart}`);
-    const open = css.indexOf('{', start);
-    assert.ok(open >= 0, `opening brace for ${blockStart} not found`);
-    let depth = 0;
-    for (let i = open; i < css.length; i++) {
-      const ch = css[i];
-      if (ch === '{') depth += 1;
-      else if (ch === '}') {
-        depth -= 1;
-        if (depth === 0) return css.slice(open, i + 1);
-      }
-    }
-    assert.fail(`unclosed theme block: ${blockStart}`);
-  };
-
-  /** Extract the first `--name: #hex` inside the brace-bounded `blockStart` rule. */
-  const token = (css: string, blockStart: string, name: string): string => {
-    const slice = extractBlock(css, blockStart);
-    const m = slice.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`));
-    assert.ok(m, `${name} not found in block ${blockStart}`);
-    return m![1]!;
-  };
-
   const mainCss = readFile('src/styles/main.css');
   const happyCss = readFile('src/styles/happy-theme.css');
 
@@ -125,4 +125,86 @@ describe('theme text-token contrast', () => {
       }
     });
   }
+});
+
+/**
+ * Guard the plan-card billing tones (#7315 / #7340). The 13px-bold plan name
+ * reads `--billing-tone-*` as its foreground; every theme that defines those
+ * tokens must keep them at WCAG AA (4.5:1) on both --bg and --surface.
+ * Light values are the ones that used to fail (3.49:1 / 2.41:1 for ending /
+ * unknown) when the card inlined dark-theme hex.
+ */
+describe('billing tone contrast', () => {
+  const mainCss = readFile('src/styles/main.css');
+  const settingsSource = readFile('src/components/UnifiedSettings.ts');
+  const tones = [
+    '--billing-tone-active',
+    '--billing-tone-attention',
+    '--billing-tone-ending',
+    '--billing-tone-ended',
+    '--billing-tone-unknown',
+  ] as const;
+
+  /** Dark tokens live in the second `:root` (semantic/threat), not the first. */
+  const tokenInAnyRoot = (css: string, name: string): string => {
+    let searchFrom = 0;
+    while (searchFrom < css.length) {
+      const idx = css.indexOf(':root {', searchFrom);
+      if (idx < 0) break;
+      const slice = extractBlock(css.slice(idx), ':root {');
+      const m = slice.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`));
+      if (m) return m[1]!;
+      searchFrom = idx + 7;
+    }
+    assert.fail(`${name} not found in any :root block`);
+  };
+
+  it('paints the plan name from data-billing-tone, not an inlined hex', () => {
+    assert.match(
+      settingsSource,
+      /data-billing-tone="\$\{tone\}"/,
+      'the entitled plan card must stamp data-billing-tone so light overrides apply',
+    );
+    assert.match(
+      settingsSource,
+      /class="upgrade-pro-plan-name"/,
+      'the 13px plan name must use the theme-aware class, not an inline color',
+    );
+    assert.doesNotMatch(
+      settingsSource,
+      /BILLING_TONE_COLORS/,
+      'inlined hex map would bypass [data-theme="light"] billing-tone overrides',
+    );
+  });
+
+  it('dark: every billing tone clears 4.5:1 on --bg and --surface', () => {
+    const bg = token(mainCss, ':root {', '--bg');
+    const surface = token(mainCss, ':root {', '--surface');
+    for (const tone of tones) {
+      const color = tokenInAnyRoot(mainCss, tone);
+      for (const base of [bg, surface]) {
+        const ratio = contrastRatio(color, base);
+        assert.ok(
+          ratio >= 4.5,
+          `dark ${tone} (${color}) on ${base} is ${ratio.toFixed(2)}:1, needs >= 4.5:1`,
+        );
+      }
+    }
+  });
+
+  it('light: every billing tone clears 4.5:1 on --bg and --surface', () => {
+    const block = '[data-theme="light"] {';
+    const bg = token(mainCss, block, '--bg');
+    const surface = token(mainCss, block, '--surface');
+    for (const tone of tones) {
+      const color = token(mainCss, block, tone);
+      for (const base of [bg, surface]) {
+        const ratio = contrastRatio(color, base);
+        assert.ok(
+          ratio >= 4.5,
+          `light ${tone} (${color}) on ${base} is ${ratio.toFixed(2)}:1, needs >= 4.5:1`,
+        );
+      }
+    }
+  });
 });
