@@ -61,6 +61,44 @@ export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
   return probe.hasTauriGlobals || tauriInUserAgent || tauriLikeLocation;
 }
 
+/**
+ * Desktop signals an ordinary web page cannot produce.
+ *
+ * `detectDesktopRuntime` also accepts a bare `https://localhost` origin,
+ * because a Tauri production window can serve from one before its bridge
+ * globals appear at first paint. That heuristic cannot tell the shell apart
+ * from a dev server running over HTTPS, so a caller that must distinguish
+ * those two — rather than merely "might be desktop" — uses this instead.
+ *
+ * Shipped desktop builds set `VITE_DESKTOP_RUNTIME=1`
+ * (.github/workflows/build-desktop.yml), so they answer true here without
+ * relying on the location heuristic at all.
+ */
+export function hasExplicitDesktopSignals(): boolean {
+  if (FORCE_DESKTOP_RUNTIME) {
+    return true;
+  }
+
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
+    return true;
+  }
+
+  if ((window.navigator?.userAgent ?? '').includes('Tauri')) {
+    return true;
+  }
+
+  const protocol = window.location?.protocol ?? '';
+  const host = window.location?.host ?? '';
+  return protocol === 'tauri:'
+    || protocol === 'asset:'
+    || host === 'tauri.localhost'
+    || host.endsWith('.tauri.localhost');
+}
+
 export function isDesktopRuntime(): boolean {
   if (FORCE_DESKTOP_RUNTIME) {
     return true;

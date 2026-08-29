@@ -22,11 +22,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const REMOTE_API = 'https://api.worldmonitor.app';
 
 async function loadRuntimeWith(
-  { apiBase, hostname }: { apiBase?: string; hostname: string },
+  { apiBase, hostname, protocol = 'http:' }:
+    { apiBase?: string; hostname: string; protocol?: 'http:' | 'https:' },
 ): Promise<typeof import('@/services/runtime')> {
   vi.resetModules();
   vi.stubEnv('VITE_WS_API_URL', apiBase ?? '');
-  vi.stubGlobal('location', { hostname, href: `http://${hostname}/`, origin: `http://${hostname}` });
+  // protocol/host matter: the desktop detector treats an https loopback origin
+  // as "might be Tauri", so the guard has to see the real scheme.
+  vi.stubGlobal('location', {
+    hostname,
+    host: hostname,
+    protocol,
+    href: `${protocol}//${hostname}/`,
+    origin: `${protocol}//${hostname}`,
+  });
   return import('@/services/runtime');
 }
 
@@ -48,6 +57,34 @@ describe('getConfiguredWebApiBaseUrl on a loopback page', () => {
       expect(runtime.getConfiguredWebApiBaseUrl()).toBe('');
     });
   }
+
+  for (const hostname of ['127.0.0.1', 'localhost']) {
+    it(`ignores a remote configured base on https://${hostname} too`, async () => {
+      // `detectDesktopRuntime` counts a bare https loopback origin as desktop,
+      // because a Tauri window can serve from one before its bridge globals
+      // appear. A dev server run over HTTPS must not inherit that exemption.
+      const runtime = await loadRuntimeWith({
+        apiBase: REMOTE_API,
+        hostname,
+        protocol: 'https:',
+      });
+
+      expect(runtime.getConfiguredWebApiBaseUrl()).toBe('');
+    });
+  }
+
+  it('keeps the exemption for a real desktop shell on a loopback origin', async () => {
+    // The positive control for the tightening above: an unambiguous Tauri
+    // signal still opts out, so the shell keeps its cloud API base.
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    const runtime = await loadRuntimeWith({
+      apiBase: REMOTE_API,
+      hostname: 'localhost',
+      protocol: 'https:',
+    });
+
+    expect(runtime.getConfiguredWebApiBaseUrl()).toBe(REMOTE_API);
+  });
 
   it('still honours a loopback configured base, so a local API on another port works', async () => {
     const runtime = await loadRuntimeWith({

@@ -1,7 +1,7 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { getClerkToken } from '@/services/clerk';
 import { withBillingVerificationRetry } from '@/services/billing-retry';
-import { isDesktopRuntime } from './desktop-runtime';
+import { hasExplicitDesktopSignals, isDesktopRuntime } from './desktop-runtime';
 
 // The detector lives in a dependency-free leaf (#5911) so consumers that need
 // only the boolean do not pull this module's variant/Clerk graph. Re-exported
@@ -115,10 +115,15 @@ function hostnameOf(url: string): string {
  * to. A loopback base stays honoured, so pointing dev at a local API on another
  * port still works. Deployed and self-hosted pages are untouched — and the
  * self-hosted image proxies /api/ server-side (docker/nginx.conf.template).
+ *
+ * The exemption tests `hasExplicitDesktopSignals()`, NOT `isDesktopRuntime()`:
+ * the latter counts a bare `https://localhost` origin as desktop, so a dev
+ * server running over HTTPS would inherit the exemption and keep 403ing —
+ * the exact failure this guard exists to stop.
  */
 function suppressesRemoteBase(configuredBaseUrl: string): boolean {
   if (typeof window === 'undefined') return false;
-  if (isDesktopRuntime()) return false;
+  if (hasExplicitDesktopSignals()) return false;
   if (!isLoopbackHostname(window.location?.hostname ?? '')) return false;
   return !isLoopbackHostname(hostnameOf(configuredBaseUrl));
 }
