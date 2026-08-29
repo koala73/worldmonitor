@@ -1060,7 +1060,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     await settlePromises();
     assert.deepEqual(harness.events, [{
       event: 'webmcp-registered',
-      data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
+      data: { toolCount: DASHBOARD_TOOL_NAMES.length, pageSurface: 'dashboard', api: 'document-current' },
     }]);
 
     controller.abort();
@@ -1087,7 +1087,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
       },
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: DASHBOARD_TOOL_NAMES.length - 1, pageSurface: 'dashboard', api: 'document-current' },
       },
     ]);
     assert.ok(!JSON.stringify(harness.events).includes('raw duplicate detail'));
@@ -1639,6 +1639,35 @@ describe('webmcp App.ts binding invariants', () => {
       appFile,
       ['true', 'execution?.signal'],
     );
+  });
+
+  it('reads access context and opens sign-in without waiting for map or UI ready', () => {
+    const accessImport = findNode(
+      appFile,
+      (node) => (
+        ts.isImportDeclaration(node)
+        && ts.isStringLiteral(node.moduleSpecifier)
+        && node.moduleSpecifier.text === '@/app/webmcp-access'
+      ),
+      'static @/app/webmcp-access import',
+    );
+    const importedNames = accessImport.importClause?.namedBindings?.elements
+      .map(({ name }) => name.text) ?? [];
+    assert.ok(importedNames.includes('getWebMcpAccessContext'));
+    assert.ok(importedNames.includes('openWebMcpSignIn'));
+
+    const getAccessContext = objectPropertyInitializer(bindings, appFile, 'getAccessContext');
+    const openSignIn = objectPropertyInitializer(bindings, appFile, 'openSignIn');
+    for (const [name, initializer] of [
+      ['getAccessContext', getAccessContext],
+      ['openSignIn', openSignIn],
+    ]) {
+      const text = initializer.getText(appFile);
+      assert.equal(text.includes('waitForUiReady'), false, `${name} must not wait for UI ready`);
+      assert.equal(text.includes('waitForDashboardReady'), false, `${name} must not wait for the map`);
+    }
+    callByExpression(getAccessContext, appFile, 'getWebMcpAccessContext');
+    callByExpression(openSignIn, appFile, 'openWebMcpSignIn');
   });
 
   it('resolves UI readiness after Phase 4 and wakes pending tools during destroy cleanup', () => {

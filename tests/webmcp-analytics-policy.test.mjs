@@ -184,7 +184,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 9, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(

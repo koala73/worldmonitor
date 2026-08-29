@@ -147,7 +147,7 @@ describe('WebMCP registry behavioral contract', () => {
     assert.deepEqual(harness.events, [
       {
         event: 'webmcp-registered',
-        data: { toolCount: 8, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: WEBMCP_SPA_TOOL_NAMES.length, pageSurface: 'dashboard', api: 'document-current' },
       },
       {
         event: 'webmcp-tool-invoked',
@@ -444,7 +444,7 @@ describe('WebMCP registry behavioral contract', () => {
     ]);
     assert.deepEqual(harness.events.at(-1), {
       event: 'webmcp-registered',
-      data: { toolCount: 3, pageSurface: 'dashboard', api: 'document-current' },
+      data: { toolCount: WEBMCP_SPA_TOOL_NAMES.length - failures.size, pageSurface: 'dashboard', api: 'document-current' },
     });
     assert.equal(JSON.stringify(harness.events).includes('detail'), false);
   });
