@@ -1,0 +1,244 @@
+/*
+ * Containment for the embedded God's Eye View globe.
+ *
+ * Hand-written companion to the generated src/styles/gev.css — that file is
+ * produced by scripts/vendor-gev-css.mjs and must not be edited; this one
+ * holds the rules that exist only because GEV is embedded rather than
+ * standing alone. Loaded after it, so these win on equal specificity.
+ *
+ * THE PROBLEM: upstream is a full-viewport app, so 29 of its chrome elements
+ * are `position: fixed` — the title bar, the layer tray, the location bar,
+ * the voice dock, the loading screen, the first-run launcher. Namespacing the
+ * selectors under `.gev-root` (which gev.css does) scopes which elements the
+ * rules MATCH, but does nothing about where a fixed element POSITIONS: that
+ * is always the viewport, whatever the ancestor chain looks like. Mounted in
+ * a dashboard panel, GEV's HUD therefore escaped the panel and painted itself
+ * across the whole application, on top of World Monitor's own header.
+ *
+ * THE FIX: `contain: layout` makes an element the containing block for its
+ * absolutely- AND fixed-positioned descendants (CSS Containment Level 2).
+ * `paint` clips anything that still overflows. Together they turn the panel
+ * into the viewport as far as GEV's chrome is concerned, which is exactly the
+ * illusion upstream's layout assumes — no changes to the 1,356 vendored rules
+ * required.
+ *
+ * The older way to force this was `transform: translateZ(0)`, which works but
+ * also promotes the subtree to its own compositor layer. Containment says
+ * what is actually meant and leaves Cesium's own layer management alone.
+ */
+
+.gev-root {
+  /* The panel is GEV's world. */
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+
+  /* Containing block for the fixed-position chrome + clip the overflow. */
+  contain: layout paint;
+
+  /* gev.css sets these on `.gev-root` itself (upstream had them on
+   * `html, body`); restate the background here so a panel that has not
+   * finished loading tiles is the globe's own dark, not the page showing
+   * through. */
+  isolation: isolate;
+}
+
+/*
+ * Cesium sizes its canvas from the container's client box. A panel that is
+ * display:none at mount time (a collapsed or background tab) reports 0×0, and
+ * Cesium bakes that in — the canvas then stays 0-height until something
+ * forces a resize. Giving the container a floor means the first measurement
+ * is always usable; MapContainer's ResizeObserver corrects it afterwards.
+ */
+.gev-root #cesiumContainer {
+  position: absolute;
+  inset: 0;
+  min-height: 1px;
+}
+
+/*
+ * Upstream's loading screen covers the viewport and fades out. Contained, it
+ * covers the panel — which is right — but it must not outlive its usefulness
+ * if the boot throws before the fade is scheduled.
+ */
+.gev-root #loading-screen {
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * The first-run launcher is a full-screen takeover in upstream. Inside a
+ * panel it is far too large for the space, so let it scroll rather than
+ * overflow into a clipped, unreachable state.
+ */
+.gev-root #first-run-launcher {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+/*
+ * Google's Terms of Service require the Google Maps / 3D Tiles attribution to
+ * stay visible whenever their content is displayed. It is `position: fixed`
+ * upstream and is now contained with everything else — pin it to the bottom
+ * of the panel and keep it above the rest of the chrome so no HUD element can
+ * cover it.
+ */
+.gev-root #cesium-credits {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+}
+
+/*
+ * World Monitor's layer tray, inside the globe panel.
+ *
+ * Two trays share this panel: God's Eye View's own (its command dock, pinned
+ * bottom-centre) and this one, for World Monitor's trackers. Neither drives
+ * the other — a World Monitor toggle controls World Monitor's data, and the
+ * vendored tray controls the vendored layers — so both need somewhere to
+ * live that the other does not want.
+ *
+ * Top-right is the only corner the vendored chrome leaves free: the title
+ * bar takes top-left, the command dock bottom-centre, and the Google
+ * attribution bottom-left. `top: 56px` clears #style-indicator, which sits
+ * at top:32px and is pointer-events:none text.
+ *
+ * The one known overlap is #right-context-rail (top: 26vh), which appears
+ * only while an entity is selected. It sets its own top inline at runtime,
+ * so a CSS override here would not hold; collapsing the tray is the way out
+ * until the tray moves into the vendored dock properly.
+ */
+.gev-root .gev-layer-toggles {
+  position: absolute;
+  top: 56px;
+  right: 8px;
+  bottom: auto;
+  left: auto;
+  z-index: 120;
+
+  /* Sized against the PANEL, not the viewport. `vh` is what the 2D map uses,
+   * and it is right there because that map fills the window — here the panel
+   * is a fraction of it, so a vh-based cap lets the tray run off the bottom
+   * edge and hide its own last rows. `100%` resolves against .gev-root. */
+  max-height: calc(100% - 72px);
+}
+
+/* The tray is a flex column with `overflow: hidden`; letting the list be the
+ * flexible child is what keeps the header and search box pinned while only
+ * the rows scroll. */
+.gev-root .gev-layer-toggles .toggle-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/*
+ * Hover read-out for a bridged marker. GlobeMap got this free from the
+ * browser (each marker was a DOM node with a `title`); Cesium markers are
+ * WebGL, so the tooltip has to be drawn.
+ *
+ * Positioned with `transform` rather than top/left so a mousemove moves it
+ * on the compositor instead of triggering layout on every frame.
+ */
+.gev-root .gev-marker-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 130;
+  display: none;
+  max-width: 260px;
+  padding: 3px 7px;
+  border: 1px solid var(--border, rgba(0, 212, 255, 0.35));
+  border-radius: 3px;
+  background: rgba(6, 10, 16, 0.92);
+  color: #d8e6f2;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/*
+ * The map's loading screen, wearing OpenEye's identity.
+ *
+ * God's Eye View shipped its own wordmark and a cyan pulsing logo. Inside
+ * OpenEye that reads as a second application announcing itself in the middle
+ * of the first one — so the artwork, the palette and the motion all come from
+ * the boot ceremony instead (src/boot/). Same eye, same phosphor, same easing
+ * as the ceremony's EYE_3D beat, so opening the map feels like the product
+ * powering up rather than handing off to something else.
+ *
+ * Only the presentation changes. Upstream's `.loader-status` still reports
+ * real progress underneath — "Flying to Austin…", "Restoring shared view…" —
+ * because replacing honest status text with a spinner would be a downgrade
+ * dressed up as a re-skin.
+ *
+ * These override the generated src/styles/gev.css, which is why they are here
+ * and not there: that file is produced by scripts/vendor-gev-css.mjs and any
+ * edit to it is lost on the next re-vendor.
+ */
+.gev-root #loading-screen {
+  /* The ceremony's black, so the map's loader and the intro are the same
+     surface rather than two dark greys that do not quite match. */
+  background: var(--oe-bg, #050608);
+}
+
+.gev-root .loader-logo.openeye-loader-eye {
+  width: clamp(140px, 22vh, 240px);
+  height: auto;
+  margin: 0 auto 26px;
+  /* Upstream's cyan drop-shadow is replaced by the CRT phosphor, and the
+     opacity pulse by the rotation below — two pulses at once reads as a
+     stutter. */
+  filter: drop-shadow(0 0 26px rgba(120, 255, 190, 0.34));
+  animation: openeye-loader-spin 5.2s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  transform-style: preserve-3d;
+}
+
+.gev-root .loader-logo.openeye-loader-eye img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* The artwork is an opaque PNG whose background is near-black but not
+     black, so `screen` alone still leaves a faintly lighter rectangle
+     against the loader — visible as a box around the eye, and more obvious
+     while it rotates. The radial mask fades the plate out before its edge,
+     which costs nothing and avoids shipping a second, alpha-channel copy of
+     a 2.4 MB image. */
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(closest-side, #000 62%, transparent 96%);
+  mask-image: radial-gradient(closest-side, #000 62%, transparent 96%);
+}
+
+/*
+ * One slow revolution with a pause at each face, matching the ceremony's
+ * eye-spin rather than inventing a second motion vocabulary. It rests at
+ * identity (0 and 100% are the same transform) so a loader dismissed
+ * mid-animation does not snap.
+ */
+@keyframes openeye-loader-spin {
+  0%   { transform: perspective(1200px) rotateY(0deg) scale(1); }
+  8%   { transform: perspective(1200px) rotateY(0deg) scale(1); }
+  50%  { transform: perspective(1200px) rotateY(180deg) scale(1.05); }
+  58%  { transform: perspective(1200px) rotateY(180deg) scale(1.05); }
+  100% { transform: perspective(1200px) rotateY(360deg) scale(1); }
+}
+
+.gev-root .loader-content h2 {
+  font-family: 'OpenEye Display', var(--font-mono), sans-serif;
+  letter-spacing: 5px;
+}
+
+/* Reduced motion: keep the eye, drop the revolution. The status line below
+   it is what actually carries progress. */
+@media (prefers-reduced-motion: reduce) {
+  .gev-root .loader-logo.openeye-loader-eye {
+    animation: none;
+  }
+}

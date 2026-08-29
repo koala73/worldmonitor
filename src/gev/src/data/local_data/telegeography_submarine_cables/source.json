@@ -1,0 +1,26 @@
+{
+  "id": "telegeography-submarine-cables",
+  "name": "TeleGeography Submarine Cable Map",
+  "category": "infrastructure",
+  "description": "Public GeoJSON for submarine cable routes and landing points from TeleGeography's Submarine Cable Map.",
+  "downloaded_at": "2026-05-24",
+  "license_note": "Public map GeoJSON endpoints. Check TeleGeography terms before redistribution or commercial use. Full structured dataset is licensed separately by TeleGeography.",
+  "files": [
+    {
+      "path": "cable-geo.json",
+      "url": "https://www.submarinecablemap.com/api/v3/cable/cable-geo.json",
+      "format": "GeoJSON",
+      "geojson_type": "FeatureCollection",
+      "feature_count": 712,
+      "sha256": "3d28db104e57982e7ae67fabe66f2ff8dc01e137458454e0de0032a8878c6bad"
+    },
+    {
+      "path": "landing-point-geo.json",
+      "url": "https://www.submarinecablemap.com/api/v3/landing-point/landing-point-geo.json",
+      "format": "GeoJSON",
+      "geojson_type": "FeatureCollection",
+      "feature_count": 1917,
+      "sha256": "11fc154189db51237099ffe1da2183984d666a906e5ed0e89b86421192eb622b"
+    }
+  ]
+}

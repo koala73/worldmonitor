@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Microphone</title>
+  <g fill="none" stroke="#36dcff" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="23" y="10" width="18" height="30" rx="9" stroke-width="3"/>
+    <path d="M16 31v2c0 9 7 16 16 16s16-7 16-16v-2" stroke-width="3"/>
+    <path d="M32 49v8M24 57h16" stroke-width="3"/>
+    <path d="M28 17h8M28 23h8M28 29h8" stroke-width="2" opacity=".65"/>
+  </g>
+</svg>

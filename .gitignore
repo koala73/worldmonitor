@@ -83,3 +83,11 @@ tmp/
 docs/plans/
 docs/brainstorms/
 playground-pricing.html
+dist-gev-api/
+qa-shots/
+.gev-cache/
+.gev-logs/
+
+# Upstream God's Eye View demo GIFs — 68 MB of screen recordings that nothing
+# in the build references. Recoverable from upstream 880a672 if ever needed.
+src/gev/docs/media/
