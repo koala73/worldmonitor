@@ -338,7 +338,9 @@ export class EventHandlerManager implements AppModule {
     this.callbacks = callbacks;
     this.mobilePrimaryNav = new MobilePrimaryNav(ctx, {
       openSearch: (options) => this.callbacks.openSearch(options),
-      navigateToVariant: (variant, options) => this.navigateToVariant(variant, options),
+      navigateToVariant: async (variant, options) => {
+        await this.navigateToVariant(variant, options);
+      },
       openMission: (anchor) => this.openMissionPresetPopover(anchor, true),
     });
   }

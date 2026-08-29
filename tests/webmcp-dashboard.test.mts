@@ -102,6 +102,25 @@ const applierOptions = {
   applyLayerChange: () => {},
 };
 
+function makeSettings(calls: string[] = []): UnifiedSettingsController {
+  return {
+    open(tab?: string) {
+      calls.push(tab ?? 'default');
+    },
+    close() {
+      calls.push('close');
+    },
+    hasPendingChanges: () => false,
+    refreshPanelToggles() {
+      calls.push('refresh');
+    },
+    getButton: () => ({}) as HTMLButtonElement,
+    destroy() {
+      calls.push('destroy');
+    },
+  };
+}
+
 describe('WebMCP live dashboard bindings', () => {
   it('locks the canonical panel defaults for all six variants', () => {
     assert.deepEqual(Object.keys(VARIANT_DEFAULTS).sort(), [...VARIANTS].sort());
@@ -817,23 +836,7 @@ describe('WebMCP live dashboard bindings', () => {
 
   it('opens settings and alerts without mutating overlay contents', () => {
     const calls: string[] = [];
-    const unifiedSettings = {
-      open(tab?: string) {
-        calls.push(tab ?? 'default');
-      },
-      close() {
-        calls.push('close');
-      },
-      hasPendingChanges: () => false,
-      refreshPanelToggles() {
-        calls.push('refresh');
-      },
-      getButton: () => ({}) as HTMLButtonElement,
-      destroy() {
-        calls.push('destroy');
-      },
-    } as UnifiedSettingsController;
-    const ctx = makeContext({ unifiedSettings, isDesktopApp: false });
+    const ctx = makeContext({ unifiedSettings: makeSettings(calls), isDesktopApp: false });
 
     const settings = applyWebMcpOpenSettings(ctx, 'full');
     assert.equal(settings.ok, true);
@@ -852,19 +855,8 @@ describe('WebMCP live dashboard bindings', () => {
 
   it('keeps alerts unavailable on desktop without opening settings', () => {
     const calls: string[] = [];
-    const unifiedSettings = {
-      open(tab?: string) {
-        calls.push(tab ?? 'default');
-      },
-      close() {},
-      hasPendingChanges: () => false,
-      refreshPanelToggles() {},
-      getButton: () => ({}) as HTMLButtonElement,
-      destroy() {},
-    } as UnifiedSettingsController;
-
     const result = applyWebMcpOpenAlerts(
-      makeContext({ unifiedSettings, isDesktopApp: true }),
+      makeContext({ unifiedSettings: makeSettings(calls), isDesktopApp: true }),
       'full',
     );
     assert.equal(result.ok, false);
@@ -879,16 +871,7 @@ describe('WebMCP live dashboard bindings', () => {
     const settingsCalls: string[] = [];
     const settings = applyWebMcpOpenSettings(makeContext({
       map: null,
-      unifiedSettings: {
-        open(tab?: string) {
-          settingsCalls.push(tab ?? 'default');
-        },
-        close() {},
-        hasPendingChanges: () => false,
-        refreshPanelToggles() {},
-        getButton: () => ({}) as HTMLButtonElement,
-        destroy() {},
-      } as UnifiedSettingsController,
+      unifiedSettings: makeSettings(settingsCalls),
     }), 'full');
     assert.equal(settings.ok, true);
     assert.equal(settings.context.variant, 'full');
