@@ -63,7 +63,13 @@ export function passkeyOfferStorageKey(accountKey: string): string {
 // Storage tiers
 // ---------------------------------------------------------------------------
 
-/** The slice of `localStorage` this module uses. Injected so tests stay jsdom-free. */
+/**
+ * The slice of `localStorage` this module uses. Injected so tests stay
+ * jsdom-free, and **nullable**: a browser that throws on `localStorage` access
+ * has no handle at all, and the caller must still get the in-memory tier. Both
+ * functions below take `OfferStorage | null` for exactly that reason — gating
+ * the CALL on a non-null handle silently discards the fallback.
+ */
 export interface OfferStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -94,13 +100,13 @@ export function createOfferMemory(): OfferMemory {
  * offered" from the persistent tier, and the in-memory tier still answers.
  */
 export function hasBeenOffered(
-  storage: OfferStorage,
+  storage: OfferStorage | null,
   memory: OfferMemory,
   accountKey: string | null,
 ): boolean {
   if (accountKey === null) return false;
   try {
-    const raw = storage.getItem(passkeyOfferStorageKey(accountKey));
+    const raw = storage?.getItem(passkeyOfferStorageKey(accountKey)) ?? null;
     if (raw !== null && parseOfferRecord(raw) !== null) return true;
   } catch {
     // Storage unavailable — the in-memory tier below is the whole fallback.
@@ -117,14 +123,14 @@ export function hasBeenOffered(
  * browser, which starts nagging again.
  */
 export function recordOffered(
-  storage: OfferStorage,
+  storage: OfferStorage | null,
   memory: OfferMemory,
   accountKey: string | null,
 ): void {
   if (accountKey === null) return;
   memory.add(accountKey);
   try {
-    storage.setItem(passkeyOfferStorageKey(accountKey), JSON.stringify({ at: Date.now() }));
+    storage?.setItem(passkeyOfferStorageKey(accountKey), JSON.stringify({ at: Date.now() }));
   } catch {
     // Persisting is best-effort; the in-memory tier already holds this page.
   }

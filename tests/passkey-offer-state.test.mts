@@ -159,6 +159,30 @@ describe('the in-memory tier', () => {
   });
 });
 
+describe('a null storage handle (PR #7353 review)', () => {
+  // A browser that throws on `localStorage` ACCESS gives the caller no handle
+  // at all. Gating the ledger calls on a non-null handle silently discards the
+  // in-memory tier, which is the entire fallback.
+  it('still suppresses via the in-memory tier when there is no handle', () => {
+    const memory = createOfferMemory();
+    assert.equal(hasBeenOffered(null, memory, KEY_A), false);
+    recordOffered(null, memory, KEY_A);
+    assert.equal(hasBeenOffered(null, memory, KEY_A), true);
+  });
+
+  it('stays account-scoped with no handle', () => {
+    const memory = createOfferMemory();
+    recordOffered(null, memory, KEY_A);
+    assert.equal(hasBeenOffered(null, memory, KEY_B), false);
+  });
+
+  it('does not throw on either call with no handle', () => {
+    const memory = createOfferMemory();
+    assert.doesNotThrow(() => recordOffered(null, memory, KEY_A));
+    assert.doesNotThrow(() => hasBeenOffered(null, memory, KEY_A));
+  });
+});
+
 describe('shouldOfferPasskey', () => {
   const OFFERABLE = {
     environmentEligible: true,

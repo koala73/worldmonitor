@@ -115,9 +115,16 @@ export class PasskeyOfferPrompt {
   /** Move to a state, updating copy, disabled-ness, and the live region. */
   setState(next: PasskeyPromptState): void {
     this.state = next;
-    // Only the ceremony blocks input; every other state leaves the card usable.
     const busy = next === 'busy';
-    this.acceptBtn.disabled = busy;
+    // Accept is live only where another attempt makes sense. `busy` blocks a
+    // double-tap mid-ceremony; the two TERMINAL states block it for different
+    // reasons: during the success linger a second tap would run a duplicate
+    // ceremony and double-fire `created`, and a `failed` verdict is by
+    // definition non-retryable on this device, so re-enabling it invites an
+    // unbounded retry loop against a device that cannot succeed.
+    this.acceptBtn.disabled = busy || next === 'succeeded' || next === 'failed';
+    // Dismiss stays available in terminal states — the user must be able to
+    // close a failure they have read.
     this.dismissBtn.disabled = busy;
     if (busy) this.root.setAttribute('aria-busy', 'true');
     else this.root.removeAttribute('aria-busy');
@@ -177,7 +184,9 @@ export class PasskeyOfferPrompt {
   }
 
   private readonly handleAccept = (): void => {
-    if (this.state === 'busy') return;
+    // Belt-and-braces alongside the disabled attribute: a synthetic click or a
+    // stale listener must not start a second ceremony either.
+    if (this.state !== 'offered' && this.state !== 'retryable') return;
     this.onAccept();
   };
 

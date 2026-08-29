@@ -179,6 +179,9 @@ export class PasskeyOfferController implements AppModule {
   private unsubscribeAuth: (() => void) | null = null;
   private observer: MutationObserver | null = null;
   private channel: BroadcastChannel | null = null;
+  /** Measures the cached-mode banner so the card can sit above it. */
+  private bannerResizeObserver: ResizeObserver | null = null;
+  private observedBanner: Element | null = null;
 
   /**
    * Whether an authoritative signed-out state has been seen this page life.
@@ -200,6 +203,18 @@ export class PasskeyOfferController implements AppModule {
   private successTimer: ReturnType<typeof setTimeout> | null = null;
   /** Set when an outcome resolves while the card is hidden behind an overlay. */
   private pendingOutcome: PasskeyOutcome | null = null;
+  /**
+   * An evaluation that an overlay blocked BEFORE it could mount.
+   *
+   * Without this the feature is dead for the common case: Clerk's own sign-in
+   * modal matches the shared modal predicate (`.cl-modalBackdrop`), and the
+   * auth emission arrives while it is still on screen. The evaluation returns
+   * `blocked-by-overlay`, and nothing else ever re-triggers — the auth listener
+   * will not fire again for that session, and the overlay observer used to bail
+   * out whenever no prompt was mounted. An eligible user signed in and was
+   * simply never offered.
+   */
+  private evaluationDeferredByOverlay = false;
 
   constructor(ctx: AppContext, options: PasskeyOfferControllerOptions = {}) {
     this.ctx = ctx;
@@ -211,6 +226,7 @@ export class PasskeyOfferController implements AppModule {
   init(): void {
     this.unsubscribeAuth = subscribeAuthState(() => { void this.onAuthChange(); });
     this.observeOverlays();
+    this.syncBannerHeight();
     this.openChannel();
   }
 
@@ -219,6 +235,10 @@ export class PasskeyOfferController implements AppModule {
     this.unsubscribeAuth = null;
     this.observer?.disconnect();
     this.observer = null;
+    this.bannerResizeObserver?.disconnect();
+    this.bannerResizeObserver = null;
+    this.observedBanner = null;
+    this.setBannerHeight(0);
     try { this.channel?.close(); } catch { /* already closed, or unsupported */ }
     this.channel = null;
     if (this.successTimer !== null) clearTimeout(this.successTimer);
@@ -248,12 +268,15 @@ export class PasskeyOfferController implements AppModule {
 
     this.evaluationEpoch += 1;
     const epoch = this.evaluationEpoch;
-    await evaluatePasskeyOffer({
+    const result = await evaluatePasskeyOffer({
       armed: () => this.armed,
       readEnvironment: () => readPasskeyEnvironmentFacts(this.ctx.isDesktopApp),
       readIdentity: () => this.readIdentity(),
       passkeyCount: () => countPasskeys(getClerk()?.user as { passkeys?: unknown } | null),
-      alreadyOffered: (key) => this.storage !== null && hasBeenOffered(this.storage, this.memory, key),
+      // NOT gated on a non-null handle: when localStorage throws on access
+      // `storage` is null, and gating here would discard the in-memory tier
+      // that is the entire fallback (KTD3d).
+      alreadyOffered: (key) => hasBeenOffered(this.storage, this.memory, key),
       platformAuthenticator: () => hasPlatformAuthenticator(),
       blockedByOverlay: () => this.blockedByOverlay(),
       deferFrame: () => new Promise<void>((resolve) => this.scheduleFrame(() => resolve())),
@@ -264,6 +287,9 @@ export class PasskeyOfferController implements AppModule {
       },
       mount: (id) => this.mountPrompt(id),
     });
+    // Come back when the overlay goes away. Every other non-mount result is
+    // genuinely terminal for this emission.
+    this.evaluationDeferredByOverlay = result === 'blocked-by-overlay';
   }
 
   private readIdentity(): PasskeyIdentity {
@@ -291,7 +317,7 @@ export class PasskeyOfferController implements AppModule {
 
     // The offer is spent at MOUNT, not at answer — otherwise closing the tab
     // with the card open earns a second offer.
-    if (this.storage) recordOffered(this.storage, this.memory, identity.accountKey);
+    recordOffered(this.storage, this.memory, identity.accountKey);
     this.broadcastMounted(identity.accountKey);
     trackPasskeyOfferShown();
   }
@@ -303,6 +329,7 @@ export class PasskeyOfferController implements AppModule {
     this.mountedIdentity = null;
     this.acceptedThisMount = false;
     this.pendingOutcome = null;
+    this.evaluationDeferredByOverlay = false;
   }
 
   private async onAccept(): Promise<void> {
@@ -367,7 +394,12 @@ export class PasskeyOfferController implements AppModule {
 
   private observeOverlays(): void {
     if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
-    this.observer = new MutationObserver(() => this.syncOverlayState());
+    this.observer = new MutationObserver(() => {
+      this.syncOverlayState();
+      // App.ts creates, removes, and RECREATES the cached-mode banner, so its
+      // element identity changes; re-bind on every mutation batch.
+      this.syncBannerHeight();
+    });
     // `childList` alone misses Settings, which opens by toggling a class on an
     // already-connected node. The attribute filter keeps a subtree observer cheap.
     this.observer.observe(document.body, {
@@ -386,12 +418,60 @@ export class PasskeyOfferController implements AppModule {
   /** Hide behind an overlay, restore when it closes. Never unmount — the offer is spent. */
   private syncOverlayState(): void {
     const prompt = this.prompt;
-    if (!prompt) return;
+    if (!prompt) {
+      // Nothing mounted. If an overlay is what stopped us mounting, retry now
+      // that it has closed — this is the path that makes the offer survive
+      // Clerk's own sign-in modal.
+      if (this.evaluationDeferredByOverlay && !this.blockedByOverlay()) {
+        this.evaluationDeferredByOverlay = false;
+        void this.onAuthChange();
+      }
+      return;
+    }
     if (this.blockedByOverlay()) { prompt.hide(); return; }
     if (!this.isHidden()) return;
     prompt.restore();
     const held = this.pendingOutcome;
     if (held !== null) { this.pendingOutcome = null; this.applyOutcome(held); }
+  }
+
+  /**
+   * Keep `--wm-bottom-banner` equal to the cached-mode banner's rendered height.
+   *
+   * Two custom properties rather than one, because the banner cannot offset
+   * itself: `--wm-bottom-base` is the tab bar plus safe-area inset, and the card
+   * sits above base + banner. Nothing wrote this property before, so it stayed
+   * at its `0px` default and the card rendered straight on top of a banner that
+   * wraps to two or three lines on a narrow viewport.
+   */
+  private syncBannerHeight(): void {
+    if (typeof document === 'undefined') return;
+    const banner = document.querySelector('.cached-mode-banner');
+    // Identity unchanged → nothing to do. Deliberately does NOT re-measure:
+    // this runs from a body-wide MutationObserver on a dashboard that mutates
+    // constantly, and getBoundingClientRect() forces a synchronous layout. A
+    // measurement per mutation batch is a real per-frame cost for no benefit —
+    // the ResizeObserver below already reports every height change.
+    if (banner === this.observedBanner) return;
+    this.bannerResizeObserver?.disconnect();
+    this.observedBanner = banner;
+    if (!banner) {
+      // Removed: reset, or the card floats above a gap that is no longer there.
+      this.setBannerHeight(0);
+      return;
+    }
+    this.setBannerHeight(banner.getBoundingClientRect().height);
+    if (typeof ResizeObserver !== 'function') return;
+    this.bannerResizeObserver = new ResizeObserver((entries) => {
+      const rect = entries[0]?.target.getBoundingClientRect();
+      if (rect) this.setBannerHeight(rect.height);
+    });
+    this.bannerResizeObserver.observe(banner);
+  }
+
+  private setBannerHeight(px: number): void {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.setProperty('--wm-bottom-banner', `${Math.round(px)}px`);
   }
 
   private isHidden(): boolean {
@@ -412,7 +492,7 @@ export class PasskeyOfferController implements AppModule {
         // Record it locally so this tab's next evaluation sees the sibling's
         // mount. A tab that already has the card up keeps it — the broadcast
         // prevents a duplicate, it does not retract one.
-        if (this.storage) recordOffered(this.storage, this.memory, key);
+        recordOffered(this.storage, this.memory, key);
       };
     } catch { this.channel = null; }
   }

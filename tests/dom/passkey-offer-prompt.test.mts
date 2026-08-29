@@ -152,6 +152,47 @@ describe('PasskeyOfferPrompt — states', () => {
   });
 });
 
+describe('PasskeyOfferPrompt — terminal states lock accept (PR #7353 review)', () => {
+  it('disables accept during the success linger so a second tap cannot duplicate creation', () => {
+    const { prompt, el, onAccept } = mount();
+    prompt.setState('succeeded');
+    expect(accept(el)?.disabled).toBe(true);
+    accept(el)?.click();
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it('disables accept after a terminal failure — it was classified non-retryable', () => {
+    const { prompt, el, onAccept } = mount();
+    prompt.setState('failed');
+    expect(accept(el)?.disabled).toBe(true);
+    accept(el)?.click();
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it('keeps dismiss available in terminal states so a failure can be closed', () => {
+    const { prompt, el, onDismiss } = mount();
+    prompt.setState('failed');
+    expect(dismiss(el)?.disabled).toBe(false);
+    dismiss(el)?.click();
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a synthetic accept in a terminal state even past the disabled attribute', () => {
+    const { prompt, el, onAccept } = mount();
+    prompt.setState('succeeded');
+    accept(el)!.disabled = false; // simulate a stale listener or scripted click
+    accept(el)?.click();
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it('still allows accept from the retryable state (AE3)', () => {
+    const { prompt, el, onAccept } = mount();
+    prompt.setState('retryable');
+    accept(el)?.click();
+    expect(onAccept).toHaveBeenCalledOnce();
+  });
+});
+
 describe('PasskeyOfferPrompt — overlay arbitration', () => {
   it('hiding removes the card from the accessibility tree, not just visually', () => {
     const { prompt, el } = mount();
