@@ -526,31 +526,27 @@ function makeScenario(
   // 149–151 passes explicit `undefined`; those cases must keep being able to
   // name the missing signal, so only an omitted argument is filled in.
   const searchDashboard = manager.searchDashboard.bind(manager);
-  manager.searchDashboard = function (
+  manager.searchDashboard = (
     query: string,
     scope: string,
     limit: number,
-    signal?: AbortSignal,
-  ) {
-    return searchDashboard(
-      query,
-      scope,
-      limit,
-      arguments.length < 4 ? new AbortController().signal : signal,
-    );
-  };
+    ...rest: Array<AbortSignal | undefined>
+  ) => searchDashboard(
+    query,
+    scope,
+    limit,
+    rest.length === 0 ? new AbortController().signal : rest[0],
+  );
   const openSearchResult = manager.openSearchResult.bind(manager);
-  manager.openSearchResult = function (
+  manager.openSearchResult = (
     resultKey: string,
     waitForMapReady?: () => Promise<void>,
-    signal?: AbortSignal,
-  ) {
-    return openSearchResult(
-      resultKey,
-      waitForMapReady,
-      arguments.length < 3 ? new AbortController().signal : signal,
-    );
-  };
+    ...rest: Array<AbortSignal | undefined>
+  ) => openSearchResult(
+    resultKey,
+    waitForMapReady,
+    rest.length === 0 ? new AbortController().signal : rest[0],
+  );
 
   return { manager, runtime, modal, ctx, calls, state };
 }

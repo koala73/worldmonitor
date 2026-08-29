@@ -32,6 +32,13 @@ function commandMatch(id: string): SearchMatch {
   };
 }
 
+function mountPanel(panelId: string): HTMLElement {
+  const panel = document.createElement('div');
+  panel.setAttribute('data-panel', panelId);
+  document.body.append(panel);
+  return panel;
+}
+
 function countryMatch(): SearchMatch {
   return {
     kind: 'result',
@@ -146,7 +153,7 @@ describe('open_search_result evaluates cancellation per issued effect', () => {
       [commandMatch('panel:live-webcams')],
       { 'live-webcams': true },
     );
-    dispatcher.scrollToPanelWhenReady = vi.fn(async () => true) as never;
+    mountPanel('live-webcams');
 
     const response = await controller.search('webcam', 'panels', 10);
     const issued = response.results[0];
@@ -261,7 +268,6 @@ describe('open_search_result evaluates cancellation per issued effect', () => {
     const enabledPanels = { 'live-webcams': true };
     const { controller, closeForProgrammaticSelection, dispatcher, enablePanel, panelSettings } =
       createHarness([commandMatch('panel:live-webcams')], enabledPanels);
-    dispatcher.scrollToPanelWhenReady = vi.fn(async () => true) as never;
 
     const response = await controller.search('webcam', 'panels', 10);
     expect(response.results[0]?.executable).toBe(true);
