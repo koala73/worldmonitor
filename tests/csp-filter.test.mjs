@@ -652,6 +652,29 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'script-src-elem', 'https://www.youtube.com/embed/abc', '', false, FIRST_PARTY_CONVEX));
     });
 
+    it('suppresses script-src-elem for HeyTap Browser vendor script injection (WORLDMONITOR-HP)', () => {
+      // Verbatim production value: HeyTap Browser 40.10.19 on an Oppo PDVM00
+      // injects its own chrome scripts from the vendor asset CDN into every
+      // page it renders. `heytap` appears nowhere in our sources.
+      assert.ok(suppress('enforce', 'script-src-elem', 'https://dhfs.heytapimage.com/2026/02/25/dfd2694e72835a1b58beaef5900ac938.js', '', false, FIRST_PARTY_CONVEX));
+      // Browser-variant directive, same injection.
+      assert.ok(suppress('enforce', 'script-src', 'https://dhfs.heytapimage.com/2025/07/01/d39da93ac9178b0548d25a1ee8fed5fb.js', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress a heytapimage lookalike host', () => {
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://dhfs.heytapimage.com.evil.com/a.js', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://cdn.heytapimage.com/a.js', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress first-party script-src blocks that share the cross-origin shape (WORLDMONITOR-HP history)', () => {
+      // `'strict-dynamic'` means these are cross-origin-and-blocked exactly
+      // like the HeyTap script, but they are OUR scripts failing to carry the
+      // nonce forward — a real defect the vendor pin must not swallow. Both
+      // shapes appear in HP's own June/July history.
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://clerk.worldmonitor.app/npm/@clerk/ui@1/dist/ui.browser.js', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://www.worldmonitor.app/assets/locale-zh-Bl6_8Wci.js', '', false, FIRST_PARTY_CONVEX));
+    });
+
     it('suppresses frame-src for Zscaler corporate proxy injection', () => {
       assert.ok(suppress('enforce', 'frame-src', 'https://gateway.zscloud.net/auth/sso', '', false, FIRST_PARTY_CONVEX));
     });
