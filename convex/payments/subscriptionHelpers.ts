@@ -877,6 +877,41 @@ function mergeDodoCustomerId(
 }
 
 /**
+ * Keep a previously stored recipient email when a lifecycle event omits
+ * `customer` (or sends one without a usable email).
+ *
+ * `getDunningContext` resolves the address from `rawPayload.customer.email`
+ * first, then the same-userId `customers` row. A blind `rawPayload: data`
+ * patch on a first cancellation that carries neither would erase the only
+ * stored email; with no customers row, both the immediate send and the
+ * daily retry then end as `no_email`. Incoming email still wins — a later
+ * event that names a new address must not be stuck on the old one.
+ */
+function mergeRawPayloadCustomer(
+  data: DodoSubscriptionData,
+  existingRawPayload: unknown,
+): DodoSubscriptionData {
+  const incomingEmail = data.customer?.email;
+  if (typeof incomingEmail === "string" && incomingEmail.includes("@")) {
+    return data;
+  }
+  const priorCustomer = (existingRawPayload as { customer?: DodoCustomer } | null)
+    ?.customer;
+  const priorEmail = priorCustomer?.email;
+  if (typeof priorEmail !== "string" || !priorEmail.includes("@")) {
+    return data;
+  }
+  return {
+    ...data,
+    customer: {
+      ...priorCustomer,
+      ...data.customer,
+      email: priorEmail,
+    },
+  };
+}
+
+/**
  * Returns the login email the checkout stamped into its metadata together with
  * the moment it was stamped, or null when there is nothing trustworthy to use
  * (#6335).
@@ -1538,7 +1573,7 @@ export async function handleSubscriptionCancelled(
     status: "cancelled",
     cancelledAt,
     dodoCustomerId: mergeDodoCustomerId(data, existing),
-    rawPayload: data,
+    rawPayload: mergeRawPayloadCustomer(data, existing.rawPayload),
     updatedAt: eventTimestamp,
   });
 

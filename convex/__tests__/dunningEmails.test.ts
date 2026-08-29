@@ -13,8 +13,10 @@
  *     resubscribed users, one-shot
  *   - cancellation confirmation (#7314): paid-through cancellation emails the
  *     ACCESS-END DATE once, replays don't re-send, lapsed cancellations stay
- *     silent, a new cancellation episode re-sends, and the shared episode key
- *     doesn't let the confirmation suppress the later winback
+ *     silent, a first cancellation that omits `customer` still reaches the
+ *     stored recipient when there is no customers row, a new cancellation
+ *     episode re-sends, and the shared episode key doesn't let the
+ *     confirmation suppress the later winback
  *   - cancellation copy: UTC date formatting, plan-neutral body (this step
  *     fires for api_* plans too), dateless fallback
  *   - cancellation retry: the daily scan re-queues a confirmation that never
@@ -728,6 +730,54 @@ describe("cancellation confirmation email (#7314)", () => {
     expect(sends[0]!.html).toContain("28 September 2026");
     expect(sends[0]!.subject).toContain("28 September 2026");
     expect(await ledgerRows(t)).toHaveLength(1);
+  });
+
+  test("first cancellation without customer keeps the stored recipient and still sends", async () => {
+    // The failure this covers: Dodo lifecycle events often omit `customer`.
+    // A blind rawPayload patch would erase the only stored email; with no
+    // customers row, both the webhook send and the daily retry end as
+    // `no_email`. The stored payload must keep the prior recipient so
+    // getDunningContext can resolve it after the patch.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T19:56:22Z"));
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const periodEnd = Date.parse("2026-09-28T19:01:10Z");
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: periodEnd,
+      updatedAt: Date.now() - 5000,
+    });
+    // seedSub writes the email on the subscription payload only — no
+    // customers row. Verified by mutation: a blind `rawPayload: data`
+    // patch turns this red (`no_email`).
+    const customersBefore = await t.run(async (ctx) => ctx.db.query("customers").collect());
+    expect(customersBefore).toHaveLength(0);
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_cancel_no_customer",
+      eventType: "subscription.cancelled",
+      rawPayload: { data: { subscription_id: SUB_ID } },
+      timestamp: Date.now(),
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = resendSends(fetchMock);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.to).toEqual([EMAIL]);
+    expect(sends[0]!.html).toContain("28 September 2026");
+    expect(await ledgerRows(t)).toHaveLength(1);
+
+    const sub = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID))
+        .unique(),
+    );
+    expect(
+      (sub?.rawPayload as { customer?: { email?: string } } | null)?.customer?.email,
+    ).toBe(EMAIL);
   });
 
   test("webhook replay of the same cancellation sends no second email", async () => {
