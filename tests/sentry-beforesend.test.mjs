@@ -1884,10 +1884,20 @@ describe('ignoreErrors — Android WebView Java bridge (WORLDMONITOR-117, -YN)',
   });
 
   it('drops the envelope with any host-app bridge method name', () => {
-    // The method is whichever `@JavascriptInterface` the host called, so it is
-    // matched as an identifier rather than pinned to the two observed names.
+    // The method is whichever `@JavascriptInterface` the host called, so the
+    // slot is matched by shape rather than pinned to the two observed names.
     assert.ok(isIgnored('Error invoking getDeviceInfo: Java object is gone'));
     assert.ok(isIgnored('Error invoking $handler_2: Java object is gone'));
+  });
+
+  it('drops the envelope with a non-ASCII bridge method name', () => {
+    // Java identifiers are not ASCII-only — `@JavascriptInterface
+    // obtenirDonnées()` is legal and Chromium emits the same sentence for it.
+    // An `[\w$]+` slot silently misses these because JavaScript's `\w` is
+    // ASCII-only, which is what this control exists to catch (PR #7356 review).
+    assert.ok(isIgnored('Error invoking obtenirDonnées: Java object is gone'));
+    assert.ok(isIgnored('Error invoking 获取设备信息: Java object is gone'));
+    assert.ok(isIgnored('Error invoking процесс: Java bridge method invocation error'));
   });
 
   // THE control that matters, and the one the superseded substring entries

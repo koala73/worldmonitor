@@ -98,8 +98,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // either: WORLDMONITOR-YN's own stack carries `/assets/main-*.js`, so
       // `hasFirstParty` is true and a `!hasFirstParty` rule would never fire.
       //
-      // The method name is matched as an identifier, not pinned to the two
-      // observed names, because it is whichever bridge the host app called. The
+      // The method slot is matched as "anything but whitespace or a colon",
+      // not as `[\w$]+`, because it is whichever bridge the host app called and
+      // Java identifiers are NOT ASCII-only — `@JavascriptInterface
+      // obtenirDonnées()` is legal, and JavaScript's `\w` would miss it (PR
+      // #7356 review). Widening the slot cannot loosen the rule: the envelope
+      // is anchored at both ends and the reason is enumerated, so a message
+      // only matches if our own bundle emits the whole Chromium sentence, which
+      // the source scan below forbids. Java method names contain no colon, so
+      // excluding one keeps the slot from swallowing the reason separator. The
       // reasons ARE enumerated: a Chromium reason we have not seen should
       // surface as a new issue and be added deliberately, which is the safe
       // failure direction — under-suppression announces itself, over-suppression
@@ -107,7 +114,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `api/` or `index.html`, which is what licenses matching it at all;
       // tests/sentry-beforesend.test.mjs pins that so the licence cannot rot.
       // Marketing-surface copy of the first reason is PR #7356.
-      /^Error invoking [\w$]+: (?:Java object is gone|Java bridge method invocation error)$/,
+      /^Error invoking [^\s:]+: (?:Java object is gone|Java bridge method invocation error)$/,
       /^Object captured as promise rejection with keys:/,
       /Unable to load image/,
       /Non-Error promise rejection captured with value:/,
