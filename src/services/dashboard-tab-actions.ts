@@ -79,6 +79,20 @@ export type DashboardTabActionResult = DashboardTabListSnapshot | DashboardTabMu
 
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 
+function tabCapDenial(cap: Extract<TabCapVerdict, { allowed: false }>): {
+  ok: false;
+  reason: DashboardTabDenialReason;
+  message: string;
+  lockReason: ExportGateLockReason;
+} {
+  return {
+    ok: false,
+    reason: 'tab_cap',
+    message: 'Dashboard tab limit reached for this account.',
+    lockReason: cap.reason,
+  };
+}
+
 export const DASHBOARD_TAB_UNAVAILABLE_RESULT: DashboardTabMutationResult = {
   ok: false,
   status: 'denied',
@@ -119,7 +133,7 @@ export function describeDashboardTabs(
     tabCount: tabs.length,
     tabsTruncated: false,
     canCreate: cap.allowed,
-    cap: cap.allowed ? cap.cap : cap.cap,
+    cap: cap.cap,
   };
   if (!cap.allowed) snapshot.createBlockReason = cap.reason;
   return snapshot;
@@ -167,22 +181,12 @@ export function resolveCreateDashboardTab(
       return { ok: true, unchanged: true, alreadyExisted: true, tab: existing };
     }
     if (!cap.allowed) {
-      return {
-        ok: false,
-        reason: 'tab_cap',
-        message: 'Dashboard tab limit reached for this account.',
-        lockReason: cap.reason,
-      };
+      return tabCapDenial(cap);
     }
     return { ok: true, unchanged: false, name };
   }
   if (!cap.allowed) {
-    return {
-      ok: false,
-      reason: 'tab_cap',
-      message: 'Dashboard tab limit reached for this account.',
-      lockReason: cap.reason,
-    };
+    return tabCapDenial(cap);
   }
   return { ok: true, unchanged: false, name: '' };
 }
