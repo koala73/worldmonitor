@@ -319,17 +319,18 @@ describe('webmcp.ts: current API contract', () => {
     );
 
     // openCountryBrief can consume daily LLM allowance after caller
-    // cancellation. set_map_layers and open_search_result persist
-    // STORAGE_KEYS.mapLayers. All three stay fail-closed without a target
-    // signal; the remaining dashboard-changing tools only move reversible
-    // visible view state.
+    // cancellation. set_map_layers persists STORAGE_KEYS.mapLayers. Both stay
+    // fail-closed without a target signal. open_search_result is
+    // result-dependent: the tool wrapper must reach the binding so the issued
+    // effect class can decide. The remaining dashboard-changing tools only
+    // move reversible visible view state.
     //
     // Every tool is pinned to its EXACT return, gated and ungated alike.
     // `notDeepEqual(result, denial)` excluded exactly one literal object, so a
     // swallowed error, a differently shaped failure, a wrong country name, or a
     // dropped actionType all passed it. createBindings() is deterministic, so
     // there is nothing environment-dependent left to hedge against.
-    const gated = ['openCountryBrief', 'set_map_layers', 'open_search_result'];
+    const gated = ['openCountryBrief', 'set_map_layers'];
     const denial = {
       ok: false,
       status: 'denied',
@@ -353,7 +354,7 @@ describe('webmcp.ts: current API contract', () => {
       open_dashboard_panel: appliedAction('open_panel'),
       set_map_view: appliedAction('set_view'),
       set_map_layers: denial,
-      open_search_result: denial,
+      open_search_result: { ok: true, status: 'opened' },
     };
     assert.deepEqual(
       Object.keys(expected).sort(),

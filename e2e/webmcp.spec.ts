@@ -354,6 +354,140 @@ test.describe('top-level WebMCP dashboard contract', () => {
       await expect(page.locator('.search-overlay')).toHaveCount(0);
     }
 
+    type SearchResultEffectProbe = {
+      allowed: MutationExecutionProbe & {
+        executable?: boolean;
+        query?: string;
+      };
+      denied?: MutationExecutionProbe & {
+        executable?: boolean;
+        query?: string;
+      };
+    };
+    let searchResultEffects: SearchResultEffectProbe | null = null;
+    if (!productionSmoke) {
+      searchResultEffects = await page.evaluate(async (
+        targetCancellationSupported: boolean | undefined,
+      ): Promise<SearchResultEffectProbe> => {
+        type ExecutableModelContext = WebMCP.ModelContext & {
+          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+        };
+        const parseOutput = (value: unknown): unknown => {
+          if (typeof value !== 'string') return value;
+          try {
+            return JSON.parse(value);
+          } catch {
+            return value;
+          }
+        };
+        const provider = document.modelContext as ExecutableModelContext;
+        const tools = await provider.getTools();
+        const byName = new Map(tools.map((tool) => [tool.name, tool]));
+        const searchTool = byName.get('search_dashboard');
+        const openTool = byName.get('open_search_result');
+        if (!searchTool || !openTool) {
+          throw new Error('Expected dashboard search tools were not discovered.');
+        }
+        const execute = async (tool: WebMCP.RegisteredTool, input: string) => {
+          try {
+            return { ok: true as const, output: parseOutput(await provider.executeTool(tool, input)) };
+          } catch (error) {
+            return {
+              errorMessage: error && typeof error === 'object' && 'message' in error
+                ? String(error.message).slice(0, 500)
+                : String(error).slice(0, 500),
+              errorName: error && typeof error === 'object' && 'name' in error
+                ? String(error.name)
+                : 'unknown',
+              ok: false as const,
+            };
+          }
+        };
+        const panelSearch = await execute(searchTool, JSON.stringify({
+          query: 'live webcams',
+          scope: 'panels',
+          limit: 8,
+        }));
+        const panelResults = panelSearch.ok
+          && panelSearch.output
+          && typeof panelSearch.output === 'object'
+          && 'results' in panelSearch.output
+          && Array.isArray((panelSearch.output as { results: unknown }).results)
+          ? (panelSearch.output as {
+            results: Array<{ key?: string; executable?: boolean }>;
+          }).results
+          : [];
+        const allowedResult = panelResults.find((result) => result.executable === true) ?? panelResults[0];
+        const allowedOpen = allowedResult?.key
+          ? await execute(openTool, JSON.stringify({ resultKey: allowedResult.key }))
+          : {
+            ok: false as const,
+            errorName: 'missing_result',
+            errorMessage: 'search_dashboard did not return an executable panel result.',
+          };
+        const probe: SearchResultEffectProbe = {
+          allowed: {
+            ...allowedOpen,
+            executable: allowedResult?.executable,
+            query: 'live webcams',
+          },
+        };
+        if (targetCancellationSupported === true) return probe;
+
+        const layerSearch = await execute(searchTool, JSON.stringify({
+          query: 'conflicts',
+          scope: 'map',
+          limit: 8,
+        }));
+        const layerResults = layerSearch.ok
+          && layerSearch.output
+          && typeof layerSearch.output === 'object'
+          && 'results' in layerSearch.output
+          && Array.isArray((layerSearch.output as { results: unknown }).results)
+          ? (layerSearch.output as {
+            results: Array<{ key?: string; executable?: boolean }>;
+          }).results
+          : [];
+        const deniedResult = layerResults.find((result) => result.executable === false)
+          ?? layerResults[0];
+        const deniedOpen = deniedResult?.key
+          ? await execute(openTool, JSON.stringify({ resultKey: deniedResult.key }))
+          : {
+            ok: false as const,
+            errorName: 'missing_result',
+            errorMessage: 'search_dashboard did not return a persistent map result.',
+          };
+        probe.denied = {
+          ...deniedOpen,
+          executable: deniedResult?.executable,
+          query: 'conflicts',
+        };
+        return probe;
+      }, coldStart.targetCancellationSupported);
+
+      expect(searchResultEffects).not.toBeNull();
+      expect(searchResultEffects!.allowed).toMatchObject({
+        ok: true,
+        executable: true,
+        output: {
+          ok: true,
+          status: 'opened',
+          type: 'command',
+        },
+      });
+      if (coldStart.targetCancellationSupported !== true) {
+        expect(searchResultEffects!.denied).toMatchObject({
+          ok: true,
+          executable: false,
+          output: {
+            ok: false,
+            status: 'denied',
+            reason: 'target_cancellation_unsupported',
+          },
+        });
+      }
+    }
+
     await attachJsonEvidence(testInfo, 'webmcp-smoke.json', {
       target: response!.url(),
       deployedSha,
@@ -381,6 +515,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           ...panelProbe,
         },
         ...(visibleMutation ? { visibleMutation: { tool: 'openSearch', ...visibleMutation } } : {}),
+        ...(searchResultEffects ? { searchResultEffects } : {}),
       },
     });
   });

@@ -78,7 +78,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 在这些版本上，WorldMonitor 仍会执行只读工具和可逆的仪表板视图变更。`openSearch`、`open_dashboard_panel` 与 `set_map_view` 均可正常使用。`set_map_view` 会通过 `history.replaceState` 写入地址栏，生成的分享 URL 与页面复制链接控件生成的相同，并会在刷新时被仪表板还原；这次写入在地址栏中可见，并会被下一次人工移动地图覆盖。
 
-`openCountryBrief`、`set_map_layers` 与 `open_search_result` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。后两个工具会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。这些影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时，这些工具才可用。
+`openCountryBrief` 与 `set_map_layers` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。`set_map_layers` 会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。`open_search_result` 是选择器：已启用面板等视图状态结果可以执行；会持久化、消耗配额或离开当前页面的结果仍被拒绝。后一类影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时才可用。
 
 <Note>
 如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
@@ -101,7 +101,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 六个仪表板变体都注册相同的八个命令式工具。登录和权益变化不会改变注册集合；每次调用都会重新检查实时状态。
 
-在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 会返回不可用。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，后两个工具则会把图层选择持久化并影响本次会话之外的状态。参见[可用性](#availability)。
+在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief` 与 `set_map_layers` 会返回不可用。`open_search_result` 仍会执行视图状态结果（例如打开已启用的实时摄像头面板），并拒绝持久化、消耗配额或离开当前页面的结果。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，图层写入则会把选择持久化并影响本次会话之外的状态。参见[可用性](#availability)。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|
@@ -112,9 +112,9 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | `set_map_view` | 二选一且只能选一：`view`；或 `lat` 加 `lon`。`view` 可为 `global`、`america`、`mena`、`eu`、`asia`、`latam`、`africa`、`oceania`；`lat` 范围 -85.051129–85.051129，`lon` 范围 -180–180，可选 `zoom` 范围 1–10。 | 移动可见地图。 |
 | `set_map_layers` | 必填对象 `layers`，含 1–10 个布尔项；键长 1–30，匹配 `^[a-z][A-Za-z0-9_-]*$`；顶层不允许其他属性。 | 启用或禁用允许的可见图层，并返回逐图层结果。 |
 | `search_dashboard` | 必填字符串 `query`，长度 1–160；可选 `scope` 为 `all`、`signals`、`map`、`panels`、`actions`，默认 `all`；可选整数 `limit` 为 1–10，默认 8；不允许其他属性。 | 只读、受限地搜索当前国家、信号、地图、面板、金融和动作索引；返回内容标记为不可信。 |
-| `open_search_result` | 必填字符串 `resultKey`，模式 `^sr_[a-f0-9]{32}$`；不允许其他属性。 | 重新检查可用性、兼容性、认证和权益后，打开本页此前返回的一项结果。 |
+| `open_search_result` | 必填字符串 `resultKey`，模式 `^sr_[a-f0-9]{32}$`；不允许其他属性。 | 重新检查可用性、兼容性、认证、权益以及该结果绑定的效果类别后，打开本页此前返回的一项结果。 |
 
-`search_dashboard` 返回精简描述符，不暴露隐藏仪表板状态。不透明结果键只能使用一次，两分钟后过期，最多保留最近 64 个；相关运行时、认证、权益、变体或组件访问发生变化时也会失效。过期或无效键会被拒绝，不会被当作 URL 或命令执行。
+`search_dashboard` 返回精简描述符，不暴露隐藏仪表板状态。不透明结果键只能使用一次，两分钟后过期，最多保留最近 64 个；相关运行时、认证、权益、变体或组件访问发生变化时也会失效。过期或无效键会被拒绝，不会被当作 URL 或命令执行。仅当实时仪表板能运行该结果、且当前宿主能满足该结果的取消要求时，`executable` 才为 true。效果类别在签发时绑定到不透明令牌上，调用方不能提供或降级它。
 
 ### 声明式采购工具
 
@@ -245,7 +245,7 @@ Inspector 的自然语言工作流默认会把提示词发送给外部 Gemini �
 | `getTools()` 一直等待，或 Origin Trial 页面最终没有清单 | 页面可能在注册完成前访问了 provider | 重新加载页面，等待文档加载和 WorldMonitor 注册完成，然后只读取一次清单。不要轮询 `document.modelContext`。 |
 | 只能看到首页工具清单 | 智能体位于静态首页 | 调用 `launchWorldMonitor`，或导航到 `/dashboard` 以使用命令式仪表板清单。 |
 | 能看到命令式仪表板清单，但没有 `search_procurement` | 条件式声明表单当前不符合条件 | 打开并启用全球采购面板，满足权益要求，等待数据稳定，并确保表单可见且空闲。 |
-| 调用返回 `target_cancellation_unsupported` | 浏览器接受了 WebMCP，但没有把调用的 `AbortSignal` 交给页面 | 使用只读工具或可逆视图状态工具。不得绕过 `openCountryBrief`、`set_map_layers` 或 `open_search_result` 的拒绝。 |
+| 调用返回 `target_cancellation_unsupported` | 浏览器接受了 WebMCP，但没有把调用的 `AbortSignal` 交给页面 | 使用只读工具或可逆视图状态工具。不得绕过 `openCountryBrief` 或 `set_map_layers` 的拒绝。对于 `open_search_result`，请选择视图状态结果，或等待能够取消持久化工作的宿主。 |
 | 面板或图层被拒绝 | 当前页面状态未通过实时变体、渲染器、启用状态或权益检查 | 读取 `reason` 和每个目标状态。通过正常可见控件改变状态，或询问用户；不得强制走隐藏路径。 |
 | `open_search_result` 报告键无效、过期、状态已变化或目标不可用 | 一次性能力已失效，或搜索后仪表板状态发生变化 | 重新运行 `search_dashboard`，在打开前向用户展示新结果。不得把键重新解释为 URL。 |
 | 调用方收到 `AbortError`，但 UI 随后仍发生变化 | 浏览器取消了调用方 Promise，但没有取消页面执行 | 以可见页面为准。等待页面稳定后再执行后续操作，并在问题报告中记录浏览器版本。 |
@@ -284,7 +284,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-该套件断言线上构建 SHA、`Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、被测浏览器上的调用方侧取消与“幽灵完成”不变式——即便调用方自己的调用看到 `AbortError`，页面工作仍会完成、其可见效果仍会生效——针对 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 的取消能力门禁、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
+该套件断言线上构建 SHA、`Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、被测浏览器上的调用方侧取消与“幽灵完成”不变式——即便调用方自己的调用看到 `AbortError`，页面工作仍会完成、其可见效果仍会生效——针对 `openCountryBrief` 与 `set_map_layers` 的取消能力门禁、`open_search_result` 按结果效果类别的取消判断、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
 
 还要确认 `/embed` 与 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档和嵌入页面没有获得顶层清单。部署控制平面的 SHA 检查、响应头、清单、UI 行为和终态结果应视为独立断言；仅有部署成功或注册日志不等于验收通过。
 
@@ -296,7 +296,7 @@ npm run test:e2e:webmcp:production
 
 1. 在 `src/config/webmcp.ts` 中添加或更改规范名称与清单。不要创建第二套名称注册表。
 2. 在 `src/services/webmcp.ts` 中定义每个命令式工具的描述符和受限执行路径。复用现有人工 UI 路径；不得添加具有额外权限的后端捷径。
-3. 将工具归类为 `read-only`、`view-state` 或 `cancellation-required`。新的命令式工具必须先有明确取消策略，TypeScript 才能接受该清单。
+3. 将工具归类为 `read-only`、`view-state`、`cancellation-required` 或 `result-dependent`。新的命令式工具必须先有明确取消策略，TypeScript 才能接受该清单。
 4. 正确设置 `readOnlyHint` 和 `untrustedContentHint`。名称、描述、参数描述、schema、输出和错误都必须符合 `WEBMCP_TOOL_BUDGETS`。
 5. 在每次调用时重新检查认证、权益、变体、渲染器、挂载状态和能力状态。工具发现不能授予持久权限。
 6. 对于声明式工具，只在真实表单已连接且可用时暴露属性。在等待、隐藏、重置、销毁或不符合条件的状态下移除这些属性。
@@ -312,7 +312,7 @@ npm run test:e2e:webmcp:production
 | `src/config/webmcp.ts` | 规范的首页、仪表板、声明式和逐变体清单，以及共享 schema 和输出预算。 |
 | `src/services/webmcp.ts` | 命令式工具描述符、schema、注册生命周期、安全结果/错误边界、遥测和取消策略。 |
 | `src/App.ts` 和 `src/app/webmcp-dashboard.ts` | 启动顺序、UI 就绪门禁、销毁、仪表板上下文和人工路径操作绑定。 |
-| `src/app/webmcp-search-controller.ts` 和 `src/app/search-selection-dispatcher.ts` | 不透明搜索能力、失效、实时状态复核和可见结果选择。 |
+| `src/app/webmcp-search-controller.ts`、`src/app/webmcp-search-effects.ts` 和 `src/app/search-selection-dispatcher.ts` | 不透明搜索能力、绑定的结果效果类别、失效、实时状态复核和可见结果选择。 |
 | `src/components/GlobalProcurementPanel.ts` | 条件式声明工具 `search_procurement` 的表单、可见等待状态、重置、取消和受限结果。 |
 | `pro-test/welcome.html` | `launchWorldMonitor` 和 `getWorldMonitorMcpEndpoint` 的零导入首页注册。 |
 | `vercel.json`、`docker/nginx-security-headers.conf`、`docker/nginx-embed-security-headers.conf`、`vite.config.ts` 和 `pro-test/vite.config.ts` | Trial 注册、源隔离、同源许可、本地测试一致性和明确的 embed 拒绝。 |
@@ -330,6 +330,7 @@ npm run docs:check
   tests/docs-i18n-parity.test.mjs \
   tests/webmcp-inventory.test.mts \
   tests/webmcp.test.mjs \
+  tests/webmcp-search-effects.test.mts \
   tests/webmcp-dashboard.test.mts \
   tests/webmcp-runtime.test.mjs \
   tests/webmcp-analytics-policy.test.mjs \
@@ -338,7 +339,7 @@ npm run docs:check
 npm run typecheck
 ```
 
-如果改动浏览器可见契约，还要运行 `npm run test:e2e:webmcp`。发布时，完成上文的生产同 SHA 冒烟测试，并保存其 JSON 证据文件。缺少浏览器、Origin Trial token、凭据或已部署 SHA 是明确的验证门禁；不能因此削弱测试套件。
+如果改动浏览器可见契约，还要运行 `npm run test:dom` 和 `npm run test:e2e:webmcp`。发布时，完成上文的生产同 SHA 冒烟测试，并保存其 JSON 证据文件。缺少浏览器、Origin Trial token、凭据或已部署 SHA 是明确的验证门禁；不能因此削弱测试套件。
 
 ## 兼容与移除策略
 

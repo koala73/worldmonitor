@@ -19,11 +19,17 @@ import {
   isLayerEntitled,
   isLayerExecutable,
 } from '../src/config/map-layer-definitions.ts';
+import {
+  classifySearchMatchEffect,
+  isSearchResultEffectHostExecutable,
+  searchResultEffectRequiresCancellation,
+} from '../src/app/webmcp-search-effects.ts';
 import { searchMatchIdentity, type SearchMatch, type SearchResult } from '../src/components/search-types.ts';
 import { OpaqueResultCache } from '../src/services/opaque-result-cache.ts';
 import {
   raceWebMcpAbort,
   throwIfWebMcpAborted,
+  WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
 } from '../src/services/webmcp.ts';
 import { withTimeout } from '../src/utils/with-timeout.ts';
 
@@ -203,6 +209,10 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     'fetchAircraftPositions',
     'raceWebMcpAbort',
     'throwIfWebMcpAborted',
+    'classifySearchMatchEffect',
+    'isSearchResultEffectHostExecutable',
+    'searchResultEffectRequiresCancellation',
+    'WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE',
   ];
   // Regular `function`s, not arrow functions: the receiver check below only
   // reflects how the caller invoked us (arrow functions ignore call-site
@@ -320,6 +330,10 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     },
     raceWebMcpAbort,
     throwIfWebMcpAborted,
+    classifySearchMatchEffect,
+    isSearchResultEffectHostExecutable,
+    searchResultEffectRequiresCancellation,
+    WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
   ];
 
   // eslint-disable-next-line no-new-func
@@ -507,6 +521,36 @@ function makeScenario(
   };
   manager.searchSelection.dispatchPanelTabAfterPresentation = () => true;
   manager.destroyed = false;
+
+  // Existing tests omit the host signal the way a capable caller would. Chrome
+  // 149–151 passes explicit `undefined`; those cases must keep being able to
+  // name the missing signal, so only an omitted argument is filled in.
+  const searchDashboard = manager.searchDashboard.bind(manager);
+  manager.searchDashboard = function (
+    query: string,
+    scope: string,
+    limit: number,
+    signal?: AbortSignal,
+  ) {
+    return searchDashboard(
+      query,
+      scope,
+      limit,
+      arguments.length < 4 ? new AbortController().signal : signal,
+    );
+  };
+  const openSearchResult = manager.openSearchResult.bind(manager);
+  manager.openSearchResult = function (
+    resultKey: string,
+    waitForMapReady?: () => Promise<void>,
+    signal?: AbortSignal,
+  ) {
+    return openSearchResult(
+      resultKey,
+      waitForMapReady,
+      arguments.length < 3 ? new AbortController().signal : signal,
+    );
+  };
 
   return { manager, runtime, modal, ctx, calls, state };
 }
@@ -2585,5 +2629,56 @@ describe('SearchManager programmatic dashboard search (#6212)', () => {
         .filter((variant) => getAllowedLayerKeys(variant).has('bases')),
       ['full'],
     );
+  });
+
+  it('opens view-state results without a target signal and blocks persistent ones', async () => {
+    const viewScenario = makeScenario([
+      commandMatch('nav:eu', 'navigate', 'Map: Europe'),
+    ]);
+    const viewResponse = await viewScenario.manager.searchDashboard(
+      'needle',
+      'all',
+      10,
+      undefined,
+    );
+    assert.equal(viewResponse.results[0]?.executable, true);
+    assert.deepEqual(
+      await viewScenario.manager.openSearchResult(
+        viewResponse.results[0]!.key,
+        async () => {},
+        undefined,
+      ),
+      { ok: true, status: 'opened', type: 'command' },
+    );
+    assert.deepEqual(viewScenario.calls.views, ['eu']);
+
+    const layerScenario = makeScenario([
+      commandMatch('layer:conflicts', 'layers', 'Toggle conflict zones'),
+    ]);
+    const layerResponse = await layerScenario.manager.searchDashboard(
+      'needle',
+      'all',
+      10,
+      undefined,
+    );
+    const layerKey = layerResponse.results[0]?.key;
+    assert.ok(layerKey);
+    assert.equal(layerResponse.results[0]?.executable, false);
+    assert.deepEqual(
+      await layerScenario.manager.openSearchResult(layerKey, async () => {}, undefined),
+      {
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+        message: WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
+      },
+    );
+    assert.deepEqual(layerScenario.calls.layers, []);
+    const capable = new AbortController();
+    assert.deepEqual(
+      await layerScenario.manager.openSearchResult(layerKey, async () => {}, capable.signal),
+      { ok: true, status: 'opened', type: 'command' },
+    );
+    assert.deepEqual(layerScenario.calls.layers, ['conflicts']);
   });
 });

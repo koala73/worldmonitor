@@ -99,13 +99,15 @@ export type DashboardSearchOpenReason =
   | 'invalid_or_expired_key'
   | 'search_state_changed'
   | 'result_no_longer_available'
-  | 'result_no_longer_executable';
+  | 'result_no_longer_executable'
+  | 'target_cancellation_unsupported';
 
 export interface DashboardSearchOpenResult {
   ok: boolean;
   status: 'opened' | 'denied';
   type?: string;
   reason?: DashboardSearchOpenReason;
+  message?: string;
 }
 
 export interface DashboardContextSnapshot {
@@ -198,6 +200,7 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
   'search_state_changed',
   'result_no_longer_available',
   'result_no_longer_executable',
+  'target_cancellation_unsupported',
 ]);
 // Cancellation policy per tool. Chrome documents the callback as
 // `execute(input, { signal })`, but shipped builds through 151 invoke it with
@@ -209,11 +212,15 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 // describes the runtime requirement instead of one particular reason for it.
 //   - 'cancellation-required' (gated): set_map_layers writes
 //     STORAGE_KEYS.mapLayers to local storage (and for `ais` opens a network
-//     stream); open_search_result reaches the same writes through the search
-//     selection dispatcher. Putting the map back by hand restores neither.
-//     openCountryBrief can start server-side LLM generation that consumes the
-//     caller's daily allowance. The gateway cannot refund a request merely
-//     because browser-side execution was cancelled.
+//     stream). Putting the map back by hand restores neither. openCountryBrief
+//     can start server-side LLM generation that consumes the caller's daily
+//     allowance. The gateway cannot refund a request merely because
+//     browser-side execution was cancelled.
+//   - 'result-dependent': open_search_result is a selector. Cancellation is
+//     evaluated for the issued result's bound effect class, not the tool as a
+//     whole. View-state results (opening an already-enabled panel, moving the
+//     map) run without a target-side signal; persistent, quota-consuming, and
+//     external-navigation results stay blocked.
 //   - 'view-state': set_map_view also writes share-URL state via
 //     history.replaceState — visible in the address bar and overwritten by the
 //     next human map move.
@@ -222,7 +229,10 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 // Keyed by WebMcpSpaToolName, so adding a ninth tool without a policy entry is
 // a TypeScript error. That is the forcing function: nothing ships unclassified.
 export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
-  Record<WebMcpSpaToolName, 'read-only' | 'view-state' | 'cancellation-required'>
+  Record<
+    WebMcpSpaToolName,
+    'read-only' | 'view-state' | 'cancellation-required' | 'result-dependent'
+  >
 > = Object.freeze({
   [WEBMCP_SPA_TOOL.getDashboardContext]: 'read-only',
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
@@ -231,7 +241,7 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
   [WEBMCP_SPA_TOOL.openCountryBrief]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.setMapLayers]: 'cancellation-required',
-  [WEBMCP_SPA_TOOL.openSearchResult]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.openSearchResult]: 'result-dependent',
 });
 
 /** Tools the page refuses to run without a target-side AbortSignal. */
@@ -287,7 +297,7 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   search_dashboard: 'World Monitor could not search the dashboard.',
   open_search_result: 'World Monitor could not open that search result.',
 };
-const UNSUPPORTED_MUTATION_MESSAGE =
+export const WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE =
   'This browser cannot cancel work already running in the page, so World Monitor '
   + 'will not run tools whose effects can outlive cancellation. Read-only and '
   + 'reversible view-state dashboard tools still work.';
@@ -297,7 +307,7 @@ function unsupportedCancellationResult(): Record<string, unknown> {
     ok: false,
     status: 'denied',
     reason: 'target_cancellation_unsupported',
-    message: UNSUPPORTED_MUTATION_MESSAGE,
+    message: WEBMCP_UNSUPPORTED_CANCELLATION_MESSAGE,
   };
 }
 
@@ -664,11 +674,15 @@ function boundSearchOpenResult(result: DashboardSearchOpenResult): DashboardSear
   const reason = result.reason && DASHBOARD_SEARCH_OPEN_REASONS.has(result.reason)
     ? result.reason
     : 'invalid_or_expired_key';
+  const message = !opened && typeof result.message === 'string' && result.message.trim()
+    ? boundedText(result.message, WEBMCP_TOOL_BUDGETS.errorMessageChars)
+    : '';
   return {
     ok: opened,
     status: opened ? 'opened' : 'denied',
     ...(result.type ? { type: boundedText(result.type, 32) } : {}),
     ...(!opened ? { reason } : {}),
+    ...(message ? { message } : {}),
   };
 }
 
