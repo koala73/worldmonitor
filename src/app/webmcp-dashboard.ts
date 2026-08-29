@@ -449,14 +449,37 @@ export function applyWebMcpMissionPreset(
   try {
     const { changed } = options.apply(decision.presetId);
     if (ctx.isDestroyed) {
+      // Apply already committed through the mission path. Prefer reporting the
+      // durable outcome over a post-commit deny that would mislead callers into
+      // retrying a state that already landed.
       return {
-        ok: false,
-        status: 'denied',
-        reason: 'app_destroyed',
-        message: 'Dashboard is no longer available.',
+        ok: true,
+        status: changed ? 'applied' : 'unchanged',
+        presetId: preset.id,
+        label: preset.label,
+        changed,
+        monitor: variant,
+        message: changed
+          ? `Mission preset applied: ${preset.label}.`
+          : `Mission preset already active: ${preset.label}.`,
       };
     }
-    const context = getWebMcpDashboardContext(ctx, variant);
+    let context;
+    try {
+      context = getWebMcpDashboardContext(ctx, variant);
+    } catch {
+      return {
+        ok: true,
+        status: changed ? 'applied' : 'unchanged',
+        presetId: preset.id,
+        label: preset.label,
+        changed,
+        monitor: variant,
+        message: changed
+          ? `Mission preset applied: ${preset.label}.`
+          : `Mission preset already active: ${preset.label}.`,
+      };
+    }
     return {
       ok: true,
       status: changed ? 'applied' : 'unchanged',

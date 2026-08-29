@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { applyWebMcpMissionPreset } from '../src/app/webmcp-dashboard.ts';
+import type { AppContext } from '../src/app/app-context.ts';
 import { SITE_VARIANTS } from '../src/config/variant.ts';
 import { MISSION_PRESETS } from '../src/services/mission-presets.ts';
 import {
@@ -17,6 +19,42 @@ import {
   listMissionPresetCatalog,
   MISSION_PRESET_MIN_PANEL_MATCHES,
 } from '../src/services/webmcp-mission-preset-catalog.ts';
+import type { MapLayers } from '../src/types/index.ts';
+
+function makeApplyContext(overrides: Partial<AppContext> = {}): AppContext {
+  const mapLayers = {
+    conflicts: true,
+    weather: false,
+  } as unknown as MapLayers;
+  return {
+    isDestroyed: false,
+    panels: {},
+    panelSettings: {},
+    mapLayers,
+    map: {
+      getState: () => ({
+        view: 'global',
+        zoom: 2,
+        pan: { x: 0, y: 0 },
+        timeRange: '7d',
+        layers: mapLayers,
+      }),
+      getCenter: () => ({ lat: 0, lon: 0 }),
+      setCenter: () => 1,
+      setView: () => {},
+      setLayers: () => {},
+      setTimeRange: () => {},
+      getTimeRange: () => '7d',
+      switchToGlobe: () => {},
+      switchToFlat: () => {},
+      whenRendererReady: () => Promise.resolve(),
+      whenViewportSettled: () => Promise.resolve(),
+      isDeckGLActive: () => false,
+      isGlobeMode: () => false,
+    },
+    ...overrides,
+  } as AppContext;
+}
 
 function live(overrides: {
   variant?: string;
@@ -63,12 +101,17 @@ describe('webmcp mission preset catalog', () => {
     assert.equal(crisis.available, false);
     assert.equal(crisis.unavailableReason, 'preset_incompatible');
     assert.equal(crisis.panelCount, 0);
+    assert.equal(crisis.layerCount, 0);
+    assert.equal('view' in crisis, false);
+    assert.equal('timeRange' in crisis, false);
 
     const goodNews = result.presets.find((preset) => preset.id === 'good-news-explorer');
     assert.ok(goodNews);
     assert.equal(goodNews.monitorCompatible, true);
     assert.equal(goodNews.available, true);
     assert.equal(goodNews.unavailableReason, undefined);
+    assert.equal(goodNews.view, 'global');
+    assert.equal(goodNews.timeRange, '7d');
   });
 
   it('reports entitlement denials without leaking premium payloads', () => {
@@ -94,6 +137,18 @@ describe('webmcp mission preset catalog', () => {
     assert.equal(supply.entitled, true);
     assert.equal(supply.available, false);
     assert.equal(supply.unavailableReason, 'target_cancellation_unsupported');
+  });
+
+  it('keeps list output under budget for every monitor without a cancellation flag', () => {
+    for (const variant of SITE_VARIANTS) {
+      const result = listMissionPresetCatalog(live({ variant }));
+      const serialized = JSON.stringify(result);
+      assert.ok(
+        serialized.length <= 1_500,
+        `${variant} catalog is ${serialized.length} chars`,
+      );
+      assert.ok(result.presets.some((preset) => preset.available));
+    }
   });
 
   it('filters available=true to eligible presets only', () => {
@@ -123,6 +178,61 @@ describe('webmcp mission preset catalog', () => {
     assert.deepEqual(evaluateMissionPresetApply('', live()).reason, 'malformed_arguments');
     assert.deepEqual(evaluateMissionPresetApply(null, live()).reason, 'malformed_arguments');
     assert.deepEqual(evaluateMissionPresetApply('custom-user-preset', live()).reason, 'unknown_preset');
+  });
+});
+
+describe('webmcp mission preset apply outcomes', () => {
+  it('reports success when the app is destroyed after the apply commits', () => {
+    const ctx = makeApplyContext();
+    let applyCalls = 0;
+    const result = applyWebMcpMissionPreset(ctx, 'full', 'supply-chain-risk', {
+      hasPremium: true,
+      apply: (id) => {
+        applyCalls += 1;
+        assert.equal(id, 'supply-chain-risk');
+        ctx.isDestroyed = true;
+        return { changed: true, priorPresetId: null };
+      },
+    });
+    assert.equal(applyCalls, 1);
+    assert.equal(result.ok, true);
+    assert.equal(result.status, 'applied');
+    assert.equal(result.presetId, 'supply-chain-risk');
+    assert.equal(result.changed, true);
+    assert.equal(result.map, undefined);
+  });
+
+  it('reports success when post-commit context snapshot fails', () => {
+    const ctx = makeApplyContext({ map: null });
+    let applyCalls = 0;
+    const result = applyWebMcpMissionPreset(ctx, 'full', 'supply-chain-risk', {
+      hasPremium: true,
+      apply: (id) => {
+        applyCalls += 1;
+        assert.equal(id, 'supply-chain-risk');
+        return { changed: true, priorPresetId: null };
+      },
+    });
+    assert.equal(applyCalls, 1);
+    assert.equal(result.ok, true);
+    assert.equal(result.status, 'applied');
+    assert.equal(result.presetId, 'supply-chain-risk');
+    assert.equal(result.map, undefined);
+    assert.equal(result.panels, undefined);
+  });
+
+  it('denies and surfaces apply_failed when the apply callback throws', () => {
+    const ctx = makeApplyContext();
+    const result = applyWebMcpMissionPreset(ctx, 'full', 'supply-chain-risk', {
+      hasPremium: true,
+      apply: () => {
+        throw new Error('commit blew up');
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'apply_failed');
+    assert.match(result.message, /commit blew up/);
   });
 });
 

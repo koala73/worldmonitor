@@ -1158,21 +1158,32 @@ const MISSION_PRESET_APPLY_REASONS = new Set<MissionPresetApplyDenyReason>([
 ]);
 
 function boundMissionPresetCatalog(result: MissionPresetCatalogResult): MissionPresetCatalogResult {
-  const presets = (Array.isArray(result.presets) ? result.presets : []).map((preset) => ({
-    id: boundedText(preset.id, 48) as MissionPresetId,
-    label: boundedText(preset.label, 48),
-    view: boundedText(preset.view, 24) as MissionPresetCatalogResult['presets'][number]['view'],
-    timeRange: boundedText(preset.timeRange, 8) as MissionPresetCatalogResult['presets'][number]['timeRange'],
-    panelCount: Math.max(0, Math.floor(boundedNumber(preset.panelCount))),
-    layerCount: Math.max(0, Math.floor(boundedNumber(preset.layerCount))),
-    active: preset.active === true,
-    monitorCompatible: preset.monitorCompatible === true,
-    entitled: preset.entitled === true,
-    available: preset.available === true,
-    ...(preset.unavailableReason
-      ? { unavailableReason: preset.unavailableReason }
-      : {}),
-  }));
+  const presets = (Array.isArray(result.presets) ? result.presets : []).map((preset) => {
+    const available = preset.available === true;
+    return {
+      id: boundedText(preset.id, 48) as MissionPresetId,
+      label: boundedText(preset.label, 48),
+      ...(available && preset.view
+        ? { view: boundedText(preset.view, 24) as NonNullable<MissionPresetCatalogResult['presets'][number]['view']> }
+        : {}),
+      ...(available && preset.timeRange
+        ? {
+          timeRange: boundedText(preset.timeRange, 8) as NonNullable<
+            MissionPresetCatalogResult['presets'][number]['timeRange']
+          >,
+        }
+        : {}),
+      panelCount: Math.max(0, Math.floor(boundedNumber(preset.panelCount))),
+      layerCount: Math.max(0, Math.floor(boundedNumber(preset.layerCount))),
+      active: preset.active === true,
+      monitorCompatible: preset.monitorCompatible === true,
+      entitled: preset.entitled === true,
+      available,
+      ...(preset.unavailableReason
+        ? { unavailableReason: preset.unavailableReason }
+        : {}),
+    };
+  });
   return {
     ok: true,
     variant: boundedText(result.variant, 24),

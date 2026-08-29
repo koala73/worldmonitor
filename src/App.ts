@@ -2081,7 +2081,6 @@ export class App {
         }
         return listWebMcpMissionPresets(this.state, SITE_VARIANT, query, {
           hasPremium: hasPremiumAccess(getAuthState()),
-          targetCancellationSupported: Boolean(execution?.signal),
           isPanelEntitled: (panelId) => {
             const config = this.state.panelSettings[panelId]
               ?? getEffectivePanelConfig(panelId, SITE_VARIANT);

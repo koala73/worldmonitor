@@ -142,7 +142,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | `create_dashboard_tab` | 可选字符串 `name`，长度 1–40；不允许其他属性。 | 创建并激活工作区。同名工作区会复用。达到上限时返回 `tab_cap`。 |
 | `rename_dashboard_tab` | 必填 `tabId` 与必填 `name`，名称长度 1–40；不允许其他属性。 | 按稳定 ID 重命名标签页。 |
 | `delete_dashboard_tab` | 必填 `tabId` 与必填布尔值 `confirm`；不允许其他属性。 | 仅当 `confirm` 为 true 时删除。最后一个标签页不能删除。 |
-| `list_mission_presets` | 可选布尔值 `available`；不允许其他属性。 | 只读返回当前监视器下的全部捆绑任务预设。每项使用稳定预设 ID，并包含目标视图、时间范围以及面板/图层数量，不暴露付费内容。包含 active、monitorCompatible、entitled、available 标志，以及 gated 时的稳定 `unavailableReason`。 |
+| `list_mission_presets` | 可选布尔值 `available`；不允许其他属性。 | 只读返回当前监视器下的全部捆绑任务预设。每项使用稳定预设 ID 与面板/图层数量，不暴露付费内容。可用项还包含目标视图与时间范围。包含 active、monitorCompatible、entitled、available 标志，以及 gated 时的稳定 `unavailableReason`。 |
 | `apply_mission_preset` | 必填字符串 `presetId`，长度 1–48，模式 `^[a-z][a-z0-9-]*$`；不允许其他属性。 | 经用户使用的同一任务控制路径应用捆绑任务预设。写入前报告权益与监视器兼容性。返回最终监视器、地图视图、时间范围、启用图层与启用面板 ID。需要目标侧取消。失败时恢复先前仪表板状态。 |
 | `open_mission_picker` | 空对象；不允许其他属性。 | 打开任务预设选择器，不应用预设。 |
 | `get_access_context` | 空对象；不允许其他属性。 | 只读返回此标签页是已退出、仍在加载账户状态，还是已登录，以及产品档位、能力标志、面板与仪表板标签页限额，以及主机能否取消工具。不包含姓名、电子邮件、账户 ID、令牌或会话详情。 |

@@ -1239,9 +1239,13 @@ export class EventHandlerManager implements AppModule {
     try {
       this.applyMissionPreset(presetId);
       const nextPresetId = loadStoredMissionPreset()?.id ?? null;
+      const mapState = this.ctx.map?.getState();
       const changed = snapshot.presetId !== nextPresetId
         || JSON.stringify(snapshot.panelSettings) !== JSON.stringify(this.ctx.panelSettings)
-        || JSON.stringify(snapshot.mapLayers) !== JSON.stringify(this.ctx.mapLayers);
+        || JSON.stringify(snapshot.mapLayers) !== JSON.stringify(this.ctx.mapLayers)
+        || snapshot.mapView !== (mapState?.view ?? snapshot.mapView)
+        || snapshot.mapZoom !== (mapState?.zoom ?? snapshot.mapZoom)
+        || snapshot.timeRange !== (mapState?.timeRange ?? snapshot.timeRange);
       return { changed, priorPresetId: snapshot.presetId };
     } catch (error) {
       this.restoreMissionDashboardState(snapshot);
@@ -1291,6 +1295,10 @@ export class EventHandlerManager implements AppModule {
     mapZoom: number;
     timeRange: string;
   }): void {
+    if (this.missionDataRefreshTimer) {
+      window.clearTimeout(this.missionDataRefreshTimer);
+      this.missionDataRefreshTimer = null;
+    }
     const previousMapLayers = { ...this.ctx.mapLayers };
     this.ctx.panelSettings = structuredClone(snapshot.panelSettings);
     this.ctx.mapLayers = { ...snapshot.mapLayers };

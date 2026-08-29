@@ -27,8 +27,10 @@ export type MissionPresetApplyDenyReason =
 export interface MissionPresetCatalogItem {
   id: MissionPresetId;
   label: string;
-  view: MissionMapView;
-  timeRange: MissionTimeRange;
+  /** Present for available presets; omitted on gated rows to keep list budgets tight. */
+  view?: MissionMapView;
+  /** Present for available presets; omitted on gated rows to keep list budgets tight. */
+  timeRange?: MissionTimeRange;
   panelCount: number;
   layerCount: number;
   active: boolean;
@@ -163,10 +165,17 @@ export function buildMissionPresetCatalogItem(
   return {
     id: preset.id,
     label: preset.label,
-    view: preset.view,
-    timeRange: preset.timeRange,
-    panelCount: panelIds.length,
-    layerCount: preset.layers.length,
+    ...(available
+      ? {
+        view: preset.view,
+        timeRange: preset.timeRange,
+        panelCount: panelIds.length,
+        layerCount: preset.layers.length,
+      }
+      : {
+        panelCount: 0,
+        layerCount: 0,
+      }),
     active: live.activePresetId === preset.id,
     monitorCompatible,
     entitled,
