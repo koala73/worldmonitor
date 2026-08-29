@@ -3975,14 +3975,27 @@ export const grantComplimentaryEntitlement = internalMutation({
  * erasing the subscription. Reach for the delete only when the row's eventual
  * `subscription.expired` webhook would clobber a DIFFERENT active entitlement.
  *
+ * REQUIRES the provider cancellation to have landed first: the row must
+ * already be `cancelled` or `expired`. A still-`active`/`on_hold` row is LIVE
+ * at Dodo, and a refund does not cancel it — ending coverage locally would
+ * diverge from the provider until the next `subscription.renewed` rebilled the
+ * customer AND restored the refunded entitlement (`handleSubscriptionRenewed`
+ * patches status and period back). The local status is a trustworthy
+ * precondition because only the Dodo webhook (`handleSubscriptionCancelled`)
+ * and `applyDodoSubscriptionReconciliation` (which reads live remote state)
+ * ever write it. Cancel in Dodo first, let the webhook land, then run this.
+ *
  * Semantics:
  *   - `currentPeriodEnd` moves to now, never forward (an already-lapsed sub
  *     keeps its earlier end date — this can only take access away).
- *   - `expired` stays `expired`; it is already terminal and non-covering, so
- *     regressing it to `cancelled` would falsify the churn record. Everything
- *     else becomes `cancelled`.
+ *   - `status` is left as-is: both permitted statuses are already terminal,
+ *     and regressing `expired` to `cancelled` would falsify the churn record.
  *   - `cancelledAt` is stamped only if absent — the original cancellation
  *     timestamp is history and is never overwritten by cleanup.
+ *   - `updatedAt` never moves backward. Provider payload timestamps drive it,
+ *     so clock skew can leave it ahead of Convex's clock; lowering it would
+ *     drop the `isNewerEvent` fence and let a delayed lifecycle webhook
+ *     clobber this cleanup.
  *   - A complimentary floor (`compUntil`) still wins: `recomputeEntitlement-
  *     FromAllSubs` preserves goodwill grants, so the returned
  *     `entitlementAfter` may legitimately still be paid. Check it.
@@ -4009,21 +4022,37 @@ export const endSubscriptionCoverageNow = internalMutation({
       );
     }
 
+    // Provider cancellation is a hard precondition — see the header. An
+    // `active`/`on_hold` row is still live at Dodo, so ending coverage here
+    // would be silently undone (and the customer rebilled) by the next
+    // renewal. Refuse rather than write a local state the provider contradicts.
+    if (sub.status !== "cancelled" && sub.status !== "expired") {
+      throw new Error(
+        `[billing] endSubscriptionCoverageNow: subscription ${args.dodoSubscriptionId} is "${sub.status}" — still live at Dodo. ` +
+          `Cancel it in Dodo first and let the subscription.cancelled webhook land, then re-run.`,
+      );
+    }
+
     const now = Date.now();
     const before = {
       status: sub.status,
       currentPeriodEnd: sub.currentPeriodEnd,
       cancelledAt: sub.cancelledAt ?? null,
+      updatedAt: sub.updatedAt,
     };
     // Only ever shortens. Math.min keeps a sub that already lapsed at its real
     // end date so the churn record stays truthful.
     const currentPeriodEnd = Math.min(sub.currentPeriodEnd, now);
-    const status: SubscriptionStatus = sub.status === "expired" ? "expired" : "cancelled";
+    // Both permitted statuses are already terminal, so cleanup never restates
+    // them — `expired` in particular must not regress to `cancelled`.
+    const status: SubscriptionStatus = sub.status;
 
     await ctx.db.patch(sub._id, {
       status,
       currentPeriodEnd,
-      updatedAt: now,
+      // Never lower the ordering fence (see header): a provider-stamped
+      // updatedAt can sit ahead of Convex's clock under skew.
+      updatedAt: Math.max(sub.updatedAt, now),
       ...(status === "cancelled" ? { cancelledAt: sub.cancelledAt ?? now } : {}),
       // The row can no longer be in the stale-active set, so the reconciler's
       // backoff bookkeeping and the request-path renewal-verification lease are

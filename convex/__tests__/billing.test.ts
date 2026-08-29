@@ -6601,24 +6601,65 @@ describe("payments billing endSubscriptionCoverageNow (refund cleanup)", () => {
     expect(sub!.currentPeriodEnd).toBe(endedAt);
   });
 
-  test("flips an active refunded sub to cancelled and stamps cancelledAt", async () => {
+  // A row that is still `active`/`on_hold` locally is still LIVE at Dodo. Ending
+  // its coverage here would diverge from the provider, and the next
+  // `subscription.renewed` would both rebill the customer and restore the
+  // refunded entitlement (handleSubscriptionRenewed patches status + period).
+  for (const status of ["active", "on_hold"] as const) {
+    test(`refuses a ${status} row until the provider cancellation lands`, async () => {
+      const t = convexTest(schema, modules);
+      await seedSubscription(t, {
+        planKey: "pro_monthly",
+        dodoProductId: PRO_PRODUCT_ID,
+        status,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        suffix: `refund_cleanup_${status}`,
+      });
+
+      await expect(
+        t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
+          dodoSubscriptionId: `sub_billing_refund_cleanup_${status}`,
+          reason: "refunded before cancellation",
+        }),
+      ).rejects.toThrow(/still live at Dodo/);
+
+      // Untouched — no half-applied local divergence.
+      const sub = await readSub(t, `refund_cleanup_${status}`);
+      expect(sub!.status).toBe(status);
+      expect(sub!.currentPeriodEnd).toBe(NOW + 30 * DAY_MS);
+    });
+  }
+
+  test("keeps updatedAt monotonic when the row carries a future provider timestamp", async () => {
     const t = convexTest(schema, modules);
+    // Provider payload timestamps drive `updatedAt`, so clock skew can leave it
+    // ahead of Convex's own clock. Writing a lower value would drop the
+    // `isNewerEvent` fence and let a delayed lifecycle webhook clobber cleanup.
+    const futureStamp = NOW + 60_000;
     await seedSubscription(t, {
       planKey: "pro_monthly",
       dodoProductId: PRO_PRODUCT_ID,
-      status: "active",
+      status: "cancelled",
       currentPeriodEnd: NOW + 30 * DAY_MS,
-      suffix: "refund_cleanup_active",
+      suffix: "refund_cleanup_fence",
+    });
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", "sub_billing_refund_cleanup_fence"),
+        )
+        .unique();
+      await ctx.db.patch(sub!._id, { updatedAt: futureStamp });
     });
 
     await t.mutation(internal.payments.billing.endSubscriptionCoverageNow, {
-      dodoSubscriptionId: "sub_billing_refund_cleanup_active",
-      reason: "refunded before cancellation",
+      dodoSubscriptionId: "sub_billing_refund_cleanup_fence",
+      reason: "refund cleanup under clock skew",
     });
 
-    const sub = await readSub(t, "refund_cleanup_active");
-    expect(sub!.status).toBe("cancelled");
-    expect(sub!.cancelledAt).toBeGreaterThanOrEqual(NOW);
+    const sub = await readSub(t, "refund_cleanup_fence");
+    expect(sub!.updatedAt).toBe(futureStamp);
     expect(sub!.currentPeriodEnd).toBeLessThanOrEqual(Date.now());
   });
 
@@ -6681,7 +6722,7 @@ describe("payments billing endSubscriptionCoverageNow (refund cleanup)", () => {
     await seedSubscription(t, {
       planKey: "pro_monthly",
       dodoProductId: PRO_PRODUCT_ID,
-      status: "active",
+      status: "cancelled",
       currentPeriodEnd: NOW - DAY_MS,
       suffix: "refund_cleanup_lease",
       renewalVerificationState: "pending",
