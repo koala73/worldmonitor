@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/monitor-health-alerts/SKILL.md

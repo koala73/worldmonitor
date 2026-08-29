@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/assess-energy-shock/SKILL.md

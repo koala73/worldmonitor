@@ -46,7 +46,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -2858,6 +2858,7 @@ describe('agent readiness: api-catalog + openapi build', () => {
     );
     assert.ok(hrefs.includes('https://worldmonitor.app/support.md'), 'service-meta must advertise support.md');
     assert.ok(hrefs.includes('https://worldmonitor.app/agents.md'), 'service-meta must advertise agents.md (#4952)');
+    assert.ok(hrefs.includes('https://worldmonitor.app/plugin.json'), 'service-meta must advertise /plugin.json');
     // The Commerce spec lives outside the root openapi bundle (size budget,
     // #4853) — without this link no advertised descriptor reaches it
     // (post-#4867 review finding); Mintlify serves the raw YAML at this URL.
@@ -2941,6 +2942,20 @@ describe('agent readiness: api-catalog + openapi build', () => {
       SPA_HTML_CACHE_SOURCE.includes('openapi'),
       'HTML cache catch-all must keep excluding openapi.json'
     );
+  });
+
+  it('no dashboard-serving rewrite can shadow the static /plugin.json Agent Plugin manifest', () => {
+    const shadow = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test('/plugin.json')
+    );
+    assert.equal(shadow, undefined, '/plugin.json must serve the static manifest, not the app shell');
+    assert.ok(
+      SPA_HTML_CACHE_SOURCE.includes('plugin\\.json'),
+      'HTML cache catch-all must keep excluding plugin.json'
+    );
+    assert.equal(getHeaderValueForSource('/plugin.json', 'Content-Type'), 'application/json; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/plugin.json', 'Access-Control-Allow-Origin'), '*');
+    assert.equal(effectiveCacheControl('/plugin.json'), 'public, max-age=3600');
   });
 
   it('every web-variant build regenerates inventory facts and OpenAPI', () => {
@@ -4031,7 +4046,7 @@ describe('markdown canonical Link headers (#4999)', () => {
     });
   }
 
-  const CORPUS_PAGES = ['/llms.txt', '/llms-full.txt', '/agent.txt', '/openapi.yaml', '/openapi.json', '/schemamap.xml'];
+  const CORPUS_PAGES = ['/llms.txt', '/llms-full.txt', '/agent.txt', '/openapi.yaml', '/openapi.json', '/plugin.json', '/schemamap.xml'];
 
   for (const page of CORPUS_PAGES) {
     it(`${page} declares a www canonical Link header`, () => {

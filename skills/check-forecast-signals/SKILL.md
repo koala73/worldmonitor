@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/check-forecast-signals/SKILL.md

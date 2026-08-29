@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/track-military-flights/SKILL.md

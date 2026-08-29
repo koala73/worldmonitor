@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/fetch-resilience-score/SKILL.md

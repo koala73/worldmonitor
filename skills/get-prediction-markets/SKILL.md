@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/get-prediction-markets/SKILL.md

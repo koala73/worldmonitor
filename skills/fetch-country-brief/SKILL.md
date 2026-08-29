@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/fetch-country-brief/SKILL.md

@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/scan-cyber-threats/SKILL.md

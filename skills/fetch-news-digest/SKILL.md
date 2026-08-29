@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/fetch-news-digest/SKILL.md

@@ -1,0 +1,1 @@
+../../public/.well-known/agent-skills/track-earthquakes/SKILL.md

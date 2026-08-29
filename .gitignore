@@ -54,12 +54,15 @@ CLAUDE.md
 .agent/
 .factory/
 .windsurf/
-skills/
-!api/skills/
-# Cursor project skills (agentskills.io). The `skills/` rule above would
-# otherwise hide `.agents/skills/` and keep `/sentry-triage` local-only.
-!.agents/skills/
-!.agents/skills/**/
+# Root /skills/ is the Agent Plugin skill tree (tracked SKILL.md entrypoints
+# that symlink into public/.well-known/agent-skills/) and the default landing
+# zone for local `npx skills add` installs. Ignore extra install files; keep
+# SKILL.md. Scope to the repo root so api/skills/ and .agents/skills/ stay
+# tracked — a trailing-slash `skills/` rule would hide those nested trees.
+/skills/**
+!/skills/
+!/skills/*/
+!/skills/*/SKILL.md
 ideas/
 docs/internal/
 docs/ideation/
