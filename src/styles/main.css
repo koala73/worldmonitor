@@ -14736,9 +14736,51 @@ a.prediction-link:hover {
   .credit-link,
   .github-link,
   .region-selector,
-  .mobile-settings-btn,
-  .header-right {
+  .mobile-settings-btn {
     display: none !important;
+  }
+
+  .header-right {
+    display: flex !important;
+    flex: 0 0 auto;
+    gap: 0;
+    margin-left: auto;
+    padding-left: 0 !important;
+  }
+
+  .header-right > :not(#authWidgetMount),
+  #authWidgetMount .auth-signup-link,
+  #authWidgetMount .auth-header-skeleton-signup {
+    display: none !important;
+  }
+
+  #authWidgetMount {
+    min-width: 0 !important;
+    min-height: 44px;
+  }
+
+  #authWidgetMount .auth-header-widget {
+    gap: 0;
+  }
+
+  #authWidgetMount .auth-signin-btn {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  #authWidgetMount .auth-header-widget-pending {
+    width: 72px;
+  }
+
+  #authWidgetMount .auth-header-skeleton-signin {
+    flex-basis: 72px;
+    height: 44px;
+  }
+
+  #authWidgetMount .auth-clerk-user-button,
+  #authWidgetMount .cl-userButtonTrigger {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .header {
