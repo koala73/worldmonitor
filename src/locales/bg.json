@@ -2667,16 +2667,16 @@
       "sourceCbr": "Източник: Банк на Русия"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Да запазите ключ за достъп?",
+      "body": "Влезте следващия път с вашия отпечатък, лице или PIN код на устройството — без парола за запомняне.",
+      "accept": "Запазване на ключ за достъп",
+      "dismiss": "Не сега",
+      "close": "Затвори",
+      "announce": "Запазете ключ за достъп, за да влезете по-бързо следващия път.",
+      "busy": "Очаквам вашето устройство…",
+      "succeeded": "Ключът за достъп е запазен. Можете да го използвате следващия път, когато влезете.",
+      "retryable": "Това не се завърши. Можете да опитате отново.",
+      "failed": "Не можахме да запазим ключ за достъп на това устройство."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Влез",
     "createAccount": "Създай профил",
     "settings": "Настройки",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Свързване на MCP",

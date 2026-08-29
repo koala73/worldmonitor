@@ -2369,16 +2369,16 @@
       "sourceCbr": "Fonte: Banco da Rússia"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Salvar uma chave de acesso?",
+      "body": "Entre na próxima vez com sua impressão digital, rosto ou PIN do dispositivo — sem senha para lembrar.",
+      "accept": "Salvar chave de acesso",
+      "dismiss": "Agora não",
+      "close": "Fechar",
+      "announce": "Salve uma chave de acesso para entrar mais rápido na próxima vez.",
+      "busy": "Aguardando seu dispositivo…",
+      "succeeded": "Chave de acesso salva. Você pode usá-la na próxima vez que entrar.",
+      "retryable": "Isso não foi concluído. Você pode tentar novamente.",
+      "failed": "Não conseguimos salvar uma chave de acesso neste dispositivo."
     }
   },
   "popups": {
@@ -3478,18 +3478,7 @@
     "signIn": "Entrar",
     "createAccount": "Criar conta",
     "settings": "Configurações",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Conectar MCP",

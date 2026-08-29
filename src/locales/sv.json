@@ -2352,16 +2352,16 @@
       "sourceCbr": "Källa: Rysslands centralbank"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Spara en passkey?",
+      "body": "Logga in nästa gång med ditt fingeravtryck, ansikte eller enhets-PIN — inget lösenord att komma ihåg.",
+      "accept": "Spara passkey",
+      "dismiss": "Inte nu",
+      "close": "Stäng",
+      "announce": "Spara en passkey för att logga in snabbare nästa gång.",
+      "busy": "Väntar på din enhet…",
+      "succeeded": "Passkey sparad. Du kan använda den nästa gång du loggar in.",
+      "retryable": "Det blev inte klart. Du kan försöka igen.",
+      "failed": "Vi kunde inte spara en passkey på den här enheten."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Logga in",
     "createAccount": "Skapa konto",
     "settings": "Inställningar",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Anslut MCP",

@@ -2774,16 +2774,16 @@
       "sourceCbr": "Джерело: Банк Росії"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Зберегти пропуск?",
+      "body": "Наступного разу увійдіть за допомогою відбитка пальця, обличчя або PIN-коду пристрою — без необхідності запам'ятовувати пароль.",
+      "accept": "Зберегти пропуск",
+      "dismiss": "Не зараз",
+      "close": "Закрити",
+      "announce": "Збережіть пропуск, щоб входити швидше наступного разу.",
+      "busy": "Очікування вашого пристрою…",
+      "succeeded": "Пропуск збережено. Ви можете використовувати його при наступному вході.",
+      "retryable": "Це не завершилось. Ви можете спробувати ще раз.",
+      "failed": "Нам не вдалося зберегти пропуск на цьому пристрої."
     }
   },
   "popups": {
@@ -3497,18 +3497,7 @@
     "signIn": "Sign In",
     "createAccount": "Create account",
     "settings": "Settings",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connect MCP",

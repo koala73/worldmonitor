@@ -2705,16 +2705,16 @@
       "sourceCbr": "Zdroj: Ruská centrální banka"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Uložit přístupový klíč?",
+      "body": "Při příštím přihlášení se použijte otisk prstu, obličej nebo PIN zařízení – žádné heslo k zapamatování.",
+      "accept": "Uložit přístupový klíč",
+      "dismiss": "Nyní ne",
+      "close": "Zavřít",
+      "announce": "Uložte přístupový klíč pro rychlejší přihlášení příště.",
+      "busy": "Čekání na vaše zařízení…",
+      "succeeded": "Přístupový klíč uložen. Můžete jej použít při příštím přihlášení.",
+      "retryable": "To se nedokončilo. Můžete to zkusit znovu.",
+      "failed": "Na tomto zařízení se nám nepodařilo uložit přístupový klíč."
     }
   },
   "popups": {
@@ -3497,18 +3497,7 @@
     "signIn": "Přihlášení",
     "createAccount": "Vytvořit účet",
     "settings": "Nastavení",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Připojit MCP",

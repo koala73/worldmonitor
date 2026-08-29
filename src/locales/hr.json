@@ -2762,16 +2762,16 @@
       "sourceCbr": "Izvor: Središnja banka Rusije"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Spremi ključ pristupa?",
+      "body": "Sljedeći put se prijavi otiscima prstiju, licem ili PIN-om uređaja — bez lozinke koju trebaš zapamtiti.",
+      "accept": "Spremi ključ pristupa",
+      "dismiss": "Ne sada",
+      "close": "Zatvori",
+      "announce": "Spremi ključ pristupa da se sljedeći put brže prijaviš.",
+      "busy": "Čekam na tvoj uređaj…",
+      "succeeded": "Ključ pristupa je spreman. Možeš ga koristiti sljedeći put kada se prijaviš.",
+      "retryable": "To nije završeno. Možeš pokušati ponovno.",
+      "failed": "Nismo mogli spremiti ključ pristupa na ovaj uređaj."
     }
   },
   "popups": {
@@ -3489,18 +3489,7 @@
     "signIn": "Prijava",
     "createAccount": "Kreiraj račun",
     "settings": "Postavke",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Poveži MCP",

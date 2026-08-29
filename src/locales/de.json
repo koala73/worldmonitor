@@ -2667,16 +2667,16 @@
       "sourceCbr": "Quelle: Russische Zentralbank"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Passkey speichern?",
+      "body": "Melden Sie sich beim nächsten Mal mit Ihrem Fingerabdruck, Gesicht oder der Geräte-PIN an — kein Passwort zum Merken.",
+      "accept": "Passkey speichern",
+      "dismiss": "Später",
+      "close": "Schließen",
+      "announce": "Speichern Sie einen Passkey, um sich beim nächsten Anmelden schneller anzumelden.",
+      "busy": "Gerät wird vorbereitet…",
+      "succeeded": "Passkey gespeichert. Sie können ihn beim nächsten Anmelden verwenden.",
+      "retryable": "Das konnte nicht abgeschlossen werden. Sie können es erneut versuchen.",
+      "failed": "Wir konnten keinen Passkey auf diesem Gerät speichern."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Anmelden",
     "createAccount": "Konto erstellen",
     "settings": "Einstellungen",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP verbinden",

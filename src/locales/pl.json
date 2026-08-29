@@ -2705,16 +2705,16 @@
       "sourceCbr": "Źródło: Bank Rosji"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Zapisać klucz dostępu?",
+      "body": "Zaloguj się następnym razem za pomocą odcisku palca, twarzy lub kodu PIN urządzenia — bez hasła do zapamiętania.",
+      "accept": "Zapisz klucz dostępu",
+      "dismiss": "Nie teraz",
+      "close": "Zamknij",
+      "announce": "Zapisz klucz dostępu, aby zalogować się szybciej następnym razem.",
+      "busy": "Oczekiwanie na urządzenie…",
+      "succeeded": "Klucz dostępu zapisany. Możesz go użyć przy następnym logowaniu.",
+      "retryable": "To się nie powiodło. Możesz spróbować ponownie.",
+      "failed": "Nie udało się zapisać klucza dostępu na tym urządzeniu."
     }
   },
   "popups": {
@@ -3497,18 +3497,7 @@
     "signIn": "Zaloguj się",
     "createAccount": "Utwórz konto",
     "settings": "Ustawienia",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Połącz MCP",

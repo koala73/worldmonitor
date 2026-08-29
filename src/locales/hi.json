@@ -2736,16 +2736,16 @@
       "sourceCbr": "स्रोत: बैंक ऑफ रूस"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "एक पासकी सेव करें?",
+      "body": "अगली बार अपने फिंगरप्रिंट, चेहरे या डिवाइस PIN से साइन इन करें — याद रखने के लिए कोई पासवर्ड नहीं।",
+      "accept": "पासकी सेव करें",
+      "dismiss": "अभी नहीं",
+      "close": "बंद करें",
+      "announce": "अगली बार तेजी से साइन इन करने के लिए एक पासकी सेव करें।",
+      "busy": "आपके डिवाइस की प्रतीक्षा की जा रही है…",
+      "succeeded": "पासकी सेव हो गई। आप इसे अगली बार साइन इन करते समय उपयोग कर सकते हैं।",
+      "retryable": "वह पूरी नहीं हुई। आप फिर से कोशिश कर सकते हैं।",
+      "failed": "हम इस डिवाइस पर एक पासकी सेव नहीं कर सके।"
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "साइन इन करें",
     "createAccount": "खाता बनाएं",
     "settings": "सेटिंग्स",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP से जुड़ें",

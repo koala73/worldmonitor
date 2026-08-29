@@ -2667,16 +2667,16 @@
       "sourceCbr": "Πηγή: Τράπεζα της Ρωσίας"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Να αποθηκευθεί ένα κλειδί πρόσβασης;",
+      "body": "Συνδέσου την επόμενη φορά με το δακτυλικό σου αποτύπωμα, το πρόσωπό σου ή το PIN της συσκευής σου — χωρίς κωδικό πρόσβασης να θυμάσαι.",
+      "accept": "Αποθήκευση κλειδιού πρόσβασης",
+      "dismiss": "Όχι τώρα",
+      "close": "Κλείσιμο",
+      "announce": "Αποθήκευσε ένα κλειδί πρόσβασης για να συνδεθείς πιο γρήγορα την επόμενη φορά.",
+      "busy": "Αναμονή της συσκευής σου…",
+      "succeeded": "Το κλειδί πρόσβασης αποθηκεύτηκε. Μπορείς να το χρησιμοποιήσεις την επόμενη φορά που θα συνδεθείς.",
+      "retryable": "Δεν ολοκληρώθηκε. Μπορείς να προσπαθήσεις ξανά.",
+      "failed": "Δεν μπορέσαμε να αποθηκεύσουμε ένα κλειδί πρόσβασης σε αυτήν τη συσκευή."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Σύνδεση",
     "createAccount": "Δημιουργία λογαριασμού",
     "settings": "Ρυθμίσεις",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Σύνδεση MCP",

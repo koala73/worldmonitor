@@ -2736,16 +2736,16 @@
       "sourceCbr": "منبع: بانک مرکزی روسیه"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "ذخیره کلید دسترسی؟",
+      "body": "دفعه بعد با اثر انگشت، چهره یا کد PIN دستگاه خود وارد شوید — نیازی نیست رمز عبور را یادداشت کنید.",
+      "accept": "ذخیره کلید دسترسی",
+      "dismiss": "اکنون نه",
+      "close": "بستن",
+      "announce": "کلید دسترسی را ذخیره کنید تا دفعه بعد سریع‌تر وارد شوید.",
+      "busy": "در انتظار دستگاه شما…",
+      "succeeded": "کلید دسترسی ذخیره شد. می‌توانید آن را دفعه بعد هنگام ورود استفاده کنید.",
+      "retryable": "این کار تکمیل نشد. می‌توانید دوباره تلاش کنید.",
+      "failed": "نتوانستیم کلید دسترسی را در این دستگاه ذخیره کنیم."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Sign In",
     "createAccount": "Create account",
     "settings": "Settings",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connect MCP",

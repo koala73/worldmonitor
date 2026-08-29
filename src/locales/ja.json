@@ -2648,16 +2648,16 @@
       "sourceCbr": "出典: ロシア中央銀行"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "パスキーを保存しますか?",
+      "body": "次回は指紋、顔、またはデバイスPINで簡単にサインインできます。覚えておくべきパスワードはありません。",
+      "accept": "パスキーを保存",
+      "dismiss": "後で",
+      "close": "閉じる",
+      "announce": "次回のサインインを高速化するためにパスキーを保存してください。",
+      "busy": "デバイスの処理を待機中…",
+      "succeeded": "パスキーが保存されました。次回のサインイン時に使用できます。",
+      "retryable": "完了しませんでした。もう一度試すことができます。",
+      "failed": "このデバイスにパスキーを保存できませんでした。"
     }
   },
   "popups": {
@@ -3440,18 +3440,7 @@
     "signIn": "サインイン",
     "createAccount": "アカウントを作成",
     "settings": "設定",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCPを接続",

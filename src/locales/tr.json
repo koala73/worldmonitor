@@ -2667,16 +2667,16 @@
       "sourceCbr": "Kaynak: Rusya Merkez Bankası"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Passkey kaydedilsin mi?",
+      "body": "Bir sonraki oturum açışında parmak izi, yüz veya cihaz PIN'i ile giriş yapın — hatırlanacak parola yok.",
+      "accept": "Passkey'i kaydet",
+      "dismiss": "Şimdi değil",
+      "close": "Kapat",
+      "announce": "Bir sonraki oturum açışında daha hızlı giriş yapmak için passkey'i kaydedin.",
+      "busy": "Cihazınızdan bekleniyor…",
+      "succeeded": "Passkey kaydedildi. Bir sonraki oturum açışında kullanabilirsiniz.",
+      "retryable": "Bu tamamlanmadı. Yeniden deneyebilirsiniz.",
+      "failed": "Bu cihaza passkey kaydedilemedi."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Oturum Aç",
     "createAccount": "Hesap oluştur",
     "settings": "Ayarlar",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP'yi Bağla",

@@ -2352,16 +2352,16 @@
       "sourceCbr": "Bron: Centrale Bank van Rusland"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Wachtsleutel opslaan?",
+      "body": "Volgende keer inloggen met je vingerafdruk, gezicht of apparaat-pincode — geen wachtwoord om te onthouden.",
+      "accept": "Wachtsleutel opslaan",
+      "dismiss": "Nu niet",
+      "close": "Sluiten",
+      "announce": "Sla een wachtsleutel op om volgende keer sneller in te loggen.",
+      "busy": "Je apparaat wordt gecontroleerd…",
+      "succeeded": "Wachtsleutel opgeslagen. Je kunt deze gebruiken wanneer je volgende keer inlogt.",
+      "retryable": "Dit is niet afgerond. Je kunt het opnieuw proberen.",
+      "failed": "We konden geen wachtsleutel op dit apparaat opslaan."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Aanmelden",
     "createAccount": "Account aanmaken",
     "settings": "Instellingen",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP Verbinden",

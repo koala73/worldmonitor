@@ -2736,16 +2736,16 @@
       "sourceCbr": "Forrás: Orosz jegybank"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Passkey mentése?",
+      "body": "Következő alkalommal ujjlenyomatoddal, arcod felismerésével vagy eszközöd PIN-kódjával jelentkezz be — nincs szükség jelszóra.",
+      "accept": "Passkey mentése",
+      "dismiss": "Később",
+      "close": "Bezárás",
+      "announce": "Mentsen egy passkey-t a gyorsabb bejelentkezéshez.",
+      "busy": "Az eszköz válaszára várakozás…",
+      "succeeded": "Passkey mentve. Használhatod a következő bejelentkezéskor.",
+      "retryable": "Ez nem fejeződött be. Megpróbálhatod újra.",
+      "failed": "Erre az eszközre nem sikerült passkey-t menteni."
     }
   },
   "popups": {
@@ -3459,18 +3459,7 @@
     "signIn": "Bejelentkezés",
     "createAccount": "Fiók létrehozása",
     "settings": "Beállítások",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP csatlakoztatása",

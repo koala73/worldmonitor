@@ -2686,16 +2686,16 @@
       "sourceCbr": "Fonte: Banca di Russia"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "Salvare una passkey?",
+      "body": "La prossima volta accedi con l'impronta digitale, il volto o il PIN del dispositivo — nessuna password da ricordare.",
+      "accept": "Salva passkey",
+      "dismiss": "Non ora",
+      "close": "Chiudi",
+      "announce": "Salva una passkey per accedere più velocemente la prossima volta.",
+      "busy": "In attesa del tuo dispositivo…",
+      "succeeded": "Passkey salvata. Puoi usarla la prossima volta che accedi.",
+      "retryable": "Non è andato a buon fine. Puoi provare di nuovo.",
+      "failed": "Non siamo riusciti a salvare una passkey su questo dispositivo."
     }
   },
   "popups": {
@@ -3478,18 +3478,7 @@
     "signIn": "Accedi",
     "createAccount": "Crea account",
     "settings": "Impostazioni",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connetti MCP",

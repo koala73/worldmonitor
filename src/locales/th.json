@@ -2648,16 +2648,16 @@
       "sourceCbr": "แหล่งที่มา: ธนาคารกลางรัสเซีย"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "บันทึกพาสคีย์ใช่ไหม?",
+      "body": "ลงชื่อเข้าครั้งต่อไปด้วยลายนิ้วมือ ใบหน้า หรือ PIN ของอุปกรณ์ — ไม่มีรหัสผ่านให้จำ",
+      "accept": "บันทึกพาสคีย์",
+      "dismiss": "ไม่ใช่ตอนนี้",
+      "close": "ปิด",
+      "announce": "บันทึกพาสคีย์เพื่อลงชื่อเข้าได้เร็วขึ้นครั้งต่อไป",
+      "busy": "กำลังรอการยืนยันจากอุปกรณ์ของคุณ…",
+      "succeeded": "บันทึกพาสคีย์แล้ว คุณสามารถใช้ได้ในครั้งต่อไปที่คุณลงชื่อเข้า",
+      "retryable": "ไม่เสร็จสิ้น คุณสามารถลองใหม่ได้",
+      "failed": "เราไม่สามารถบันทึกพาสคีย์บนอุปกรณ์นี้ได้"
     }
   },
   "popups": {
@@ -3440,18 +3440,7 @@
     "signIn": "ลงชื่อเข้าใช้",
     "createAccount": "สร้างบัญชี",
     "settings": "การตั้งค่า",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "เชื่อมต่อ MCP",

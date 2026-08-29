@@ -2686,16 +2686,16 @@
       "sourceCbr": "Fuente: Banco de Rusia"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "¿Guardar una llave de acceso?",
+      "body": "La próxima vez inicia sesión con tu huella dactilar, rostro o PIN del dispositivo — sin contraseña que recordar.",
+      "accept": "Guardar llave de acceso",
+      "dismiss": "Ahora no",
+      "close": "Cerrar",
+      "announce": "Guarda una llave de acceso para iniciar sesión más rápido la próxima vez.",
+      "busy": "Esperando tu dispositivo…",
+      "succeeded": "Llave de acceso guardada. Puedes usarla la próxima vez que inicies sesión.",
+      "retryable": "No se completó. Puedes intentar de nuevo.",
+      "failed": "No pudimos guardar una llave de acceso en este dispositivo."
     }
   },
   "popups": {
@@ -3478,18 +3478,7 @@
     "signIn": "Iniciar Sesión",
     "createAccount": "Crear cuenta",
     "settings": "Configuración",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Conectar MCP",

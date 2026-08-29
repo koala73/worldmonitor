@@ -2648,16 +2648,16 @@
       "sourceCbr": "来源：俄罗斯央行"
     },
     "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
+      "title": "保存通行密钥？",
+      "body": "下次登录时使用指纹、面容或设备PIN即可——无需记住密码。",
+      "accept": "保存通行密钥",
+      "dismiss": "暂不保存",
+      "close": "关闭",
+      "announce": "保存通行密钥以便下次更快登录。",
+      "busy": "正在等待设备响应…",
+      "succeeded": "通行密钥已保存。下次登录时可以使用。",
+      "retryable": "操作未完成。您可以重试。",
+      "failed": "无法在此设备上保存通行密钥。"
     }
   },
   "popups": {
@@ -3440,18 +3440,7 @@
     "signIn": "登录",
     "createAccount": "创建账户",
     "settings": "设置",
-    "passkeyOffer": {
-      "title": "Save a passkey?",
-      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
-      "accept": "Save passkey",
-      "dismiss": "Not now",
-      "close": "Close",
-      "announce": "Save a passkey to sign in faster next time.",
-      "busy": "Waiting for your device…",
-      "succeeded": "Passkey saved. You can use it next time you sign in.",
-      "retryable": "That didn't finish. You can try again.",
-      "failed": "We couldn't save a passkey on this device."
-    }
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "连接 MCP",
