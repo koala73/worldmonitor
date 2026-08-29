@@ -75,9 +75,14 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-weight: 700;
   font-size: 0.875rem;
   letter-spacing: -0.01em;
+}
+
+.site-header .logo-mark {
+  display: flex;
+  color: inherit;
   transition: opacity 0.2s;
 }
-.site-header .logo:hover { opacity: 0.8; color: var(--wm-text); }
+.site-header .logo-mark:hover { opacity: 0.8; }
 
 .site-header .logo .logo-icon-img {
   width: 32px;
@@ -96,7 +101,10 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-size: 0.8rem;
   letter-spacing: 0.02em;
   line-height: 1;
+  color: var(--wm-text);
+  transition: opacity 0.2s;
 }
+.site-header .logo .logo-name:hover { opacity: 0.8; }
 
 .site-header .logo .logo-sub {
   font-family: var(--font-mono);
@@ -106,7 +114,9 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   letter-spacing: 0.1em;
   line-height: 1;
   margin-top: 3px;
+  transition: color 0.2s;
 }
+.site-header .logo .logo-sub:hover { color: var(--wm-text); }
 
 .site-header .nav-links {
   display: flex;
@@ -184,7 +194,9 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   color: var(--wm-muted);
   text-transform: uppercase;
   letter-spacing: 2px;
+  transition: color 0.2s;
 }
+.site-footer .footer-sub:hover { color: var(--wm-text); }
 
 .site-footer .footer-links {
   display: flex;
@@ -684,6 +696,11 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
+}
+
+.author-bio--header {
+  margin: 0 0 2rem;
+  max-width: none;
 }
 
 .author-avatar {

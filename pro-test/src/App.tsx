@@ -40,6 +40,8 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
+import { PressFooterNav } from './components/PressFooterNav';
+import { ABOUT_DOCS_PATH, SOMEONE_CEO_URL } from '../../shared/press';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -1352,13 +1354,20 @@ const EnterprisePage = () => (
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
-          <div className="flex flex-col">
+          <div className="flex flex-col text-left">
             <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-            <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
+            <a
+              href={SOMEONE_CEO_URL}
+              className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5 hover:opacity-100 hover:text-wm-text transition-colors"
+              rel="noopener noreferrer"
+            >
+              by Someone.ceo
+            </a>
           </div>
         </div>
         <div className="flex items-center gap-6">
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href={ABOUT_DOCS_PATH} className="hover:text-wm-text transition-colors">About</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
           <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
@@ -1368,6 +1377,7 @@ const EnterprisePage = () => (
         </div>
         <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
+      <PressFooterNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}

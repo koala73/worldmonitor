@@ -2,11 +2,19 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by [2M+ people](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/) across 190+ countries, as featured in [WIRED](https://www.wired.com/story/world-monitor-elie-habib/). It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
 A single codebase produces specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), positive news (Happy Monitor), and energy (Energy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
 
 The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. Browser-side clustering, local ML, and offline analysis run in the client; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data with documented methodology and provenance.
+
+## In the press
+
+- [WIRED — How a music-streaming CEO built an open-source global threat map in his spare time](https://www.wired.com/story/world-monitor-elie-habib/)
+- [Entrepreneur Middle East — How Elie Habib built World Monitor to track global events in real time](https://mena.entrepreneur.com/business-news/how-elie-habib-built-world-monitor-to-track-global-events-in-real-time)
+- [Silicon Canals — Anghami CEO's side project now has 2 million users](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/)
+- [L'Orient Today — How the Anghami CEO's side project became a go-to for geopolitics research](https://today.lorientlejour.com/article/1496089/world-monitor-how-anghami-ceos-side-project-became-a-go-to-for-geopolitics-research.html)
+- Human about page: https://www.worldmonitor.app/docs/about
 
 ## When to Use World Monitor (Agent Guidance)
 
