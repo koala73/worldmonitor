@@ -7308,13 +7308,16 @@
     },
     {
       "host": "query.wikidata.org",
-      "provider": "query.wikidata.org",
+      "provider": "Wikidata",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit query.wikidata.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "Creative Commons CC0 1.0 Universal",
+      "attribution": "Wikidata structured data is CC0. Credit Wikidata and link each reused entity identifier as a best practice.",
+      "status": "reviewed",
       "references": [
+        {
+          "path": "scripts/freeze-resilience-ranking.mjs"
+        },
         {
           "path": "server/worldmonitor/intelligence/v1/get-country-facts.ts"
         }
@@ -14068,6 +14071,9 @@
         },
         {
           "path": "scripts/discover-content-corpus-pages.mjs"
+        },
+        {
+          "path": "scripts/freeze-resilience-ranking.mjs"
         },
         {
           "path": "scripts/generate-sandbox-fixtures.mjs"

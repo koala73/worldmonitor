@@ -39,8 +39,9 @@ const DEFAULT_ROOT = resolve(__dirname, '..');
 const DEFAULT_OUT_DIR = join(DEFAULT_ROOT, 'public');
 const DEFAULT_BASE_URL = 'https://www.worldmonitor.app';
 const SCHEMA_ORG_CONTEXT_URL = 'https://schema.org';
-const RESILIENCE_SNAPSHOT_PATH = 'docs/snapshots/resilience-ranking-2026-05-28.json';
+const RESILIENCE_SNAPSHOT_PATH = 'docs/snapshots/resilience-ranking-2026-08-29.json';
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
+const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
 const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
 const TRADE_ROUTES_PATH = 'src/config/trade-routes.ts';
 const GLOSSARY_DATA_PATH = 'blog-site/src/data/glossary.ts';
@@ -62,11 +63,11 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
-export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
-const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-29';
+const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-29';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
-const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-29';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
   name: 'World Monitor Terms of Service (27 July 2026)',
@@ -155,10 +156,9 @@ const CHOKEPOINT_CONTENT = {
   },
 };
 
-// Search-friendly display names for ISO2 codes whose committed snapshot /
-// bbox labels are formal long forms, truncated tokens ("Uk", "Korea Rep",
-// "Lao Pdr"), or bare codes. Applied AFTER slug computation so every live
-// URL stays stable; this only changes what readers and SERPs see.
+// Search-friendly common names for ISO2 codes whose source identities use a
+// formal long form, truncated token ("Uk", "Korea Rep", "Lao Pdr"), or code.
+// Legacy source-name slugs are redirected to the common-name canonical route.
 const COUNTRY_DISPLAY_NAMES = {
   AE: 'United Arab Emirates',
   AG: 'Antigua and Barbuda',
@@ -169,11 +169,15 @@ const COUNTRY_DISPLAY_NAMES = {
   EH: 'Western Sahara',
   FM: 'Micronesia',
   GB: 'United Kingdom',
+  HK: 'Hong Kong',
   KG: 'Kyrgyzstan',
   KN: 'Saint Kitts and Nevis',
   KP: 'North Korea',
   KR: 'South Korea',
   LA: 'Laos',
+  LC: 'Saint Lucia',
+  MM: 'Myanmar',
+  MO: 'Macau',
   NC: 'New Caledonia',
   PR: 'Puerto Rico',
   PS: 'Palestine',
@@ -181,6 +185,7 @@ const COUNTRY_DISPLAY_NAMES = {
   SK: 'Slovakia',
   ST: 'São Tomé and Príncipe',
   TL: 'Timor-Leste',
+  TR: 'Turkey',
   TT: 'Trinidad and Tobago',
   VC: 'Saint Vincent and the Grenadines',
   VE: 'Venezuela',
@@ -552,46 +557,62 @@ function normalizeChokepoints(entries) {
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
+function normalizeCountry(item, sourceStatus, seen, reverseNames) {
+  const code = String(item.countryCode || '').toUpperCase();
+  const identity = item.identity || {};
+  const commonName = displayCountryName(
+    code,
+    identity.commonName || item.countryName || reverseNames.get(code) || code,
+  );
+  const officialName = identity.officialName || commonName;
+  const sameAs = String(identity.sameAs || '');
+  if (!/^[A-Z]{2}$/.test(code) || !commonName || !/^https:\/\/www\.wikidata\.org\/wiki\/Q\d+$/.test(sameAs)) {
+    throw new Error(`Invalid country identity in resilience snapshot: ${code || 'unknown'}`);
+  }
+  const slug = uniqueSlug(commonName, code, seen);
+  const legacySlugs = [...new Set((identity.legacyNames || [])
+    .map((name) => slugify(name))
+    .filter((legacySlug) => legacySlug && legacySlug !== slug))];
+  return {
+    code,
+    name: commonName,
+    slug,
+    legacySlugs,
+    identity: {
+      commonName,
+      officialName,
+      alternateNames: [...new Set(identity.alternateNames || [])],
+      sameAs,
+    },
+    rank: sourceStatus === 'ranked' ? Number(item.rank) : null,
+    overallScore: item.overallScore,
+    baselineScore: item.baselineScore ?? null,
+    stressScore: item.stressScore ?? null,
+    stressFactor: item.stressFactor ?? null,
+    level: item.level || (sourceStatus === 'ranked' ? 'unclassified' : 'low-confidence'),
+    lowConfidence: sourceStatus === 'ranked' ? Boolean(item.lowConfidence) : true,
+    dimensionCoverage: item.dimensionCoverage ?? item.overallCoverage ?? null,
+    headlineEligible: item.headlineEligible === true,
+    trend: item.trend || 'unknown',
+    change30d: item.change30d ?? null,
+    imputationShare: item.imputationShare ?? null,
+    dataVersion: item.dataVersion || '',
+    domains: Array.isArray(item.domains) ? item.domains : [],
+    pillars: Array.isArray(item.pillars) ? item.pillars : [],
+    sourceStatus,
+  };
+}
+
 function normalizeCountries(snapshot, reverseNames) {
   const seen = new Set();
-  const ranked = (snapshot.items || []).map((item) => {
-    const code = String(item.countryCode || '').toUpperCase();
-    // Slugs derive from the raw snapshot name so live URLs stay stable even
-    // when the reader-facing display name is aliased.
-    const rawName = item.countryName || reverseNames.get(code) || code;
-    return {
-      code,
-      name: displayCountryName(code, rawName),
-      slug: uniqueSlug(rawName, code, seen),
-      rank: Number(item.rank),
-      overallScore: item.overallScore,
-      level: item.level || 'unclassified',
-      lowConfidence: Boolean(item.lowConfidence),
-      dimensionCoverage: item.dimensionCoverage ?? item.overallCoverage ?? null,
-      headlineEligible: item.headlineEligible !== false,
-      sourceStatus: 'ranked',
-    };
-  });
+  const ranked = (snapshot.items || []).map(
+    (item) => normalizeCountry(item, 'ranked', seen, reverseNames),
+  );
 
   const rankedCodes = new Set(ranked.map((country) => country.code));
   const greyedOut = (snapshot.greyedOut || [])
     .filter((item) => !rankedCodes.has(String(item.countryCode || '').toUpperCase()))
-    .map((item) => {
-      const code = String(item.countryCode || '').toUpperCase();
-      const rawName = item.countryName || reverseNames.get(code) || code;
-      return {
-        code,
-        name: displayCountryName(code, rawName),
-        slug: uniqueSlug(rawName, code, seen),
-        rank: null,
-        overallScore: item.overallScore ?? null,
-        level: item.level || 'low-confidence',
-        lowConfidence: true,
-        dimensionCoverage: item.overallCoverage ?? item.dimensionCoverage ?? null,
-        headlineEligible: item.headlineEligible === true,
-        sourceStatus: 'low-confidence',
-      };
-    });
+    .map((item) => normalizeCountry(item, 'low-confidence', seen, reverseNames));
 
   return [...ranked, ...greyedOut].sort((a, b) => {
     if (a.rank == null && b.rank == null) return a.name.localeCompare(b.name);
@@ -674,6 +695,63 @@ function normalizeCrises(entries) {
       overview: String(entry.overview),
       coverage,
       dashboardPath,
+    };
+  });
+}
+
+const REGION_LABELS = {
+  'north-america': 'North America',
+  latam: 'Latin America and the Caribbean',
+  europe: 'Europe',
+  mena: 'the Middle East and North Africa',
+  'sub-saharan-africa': 'sub-Saharan Africa',
+  'south-asia': 'South Asia',
+  'east-asia': 'East Asia and the Pacific',
+};
+
+function addCountryContext(countries, regionsByCode, crises) {
+  const ranked = countries.filter((country) => country.rank != null);
+  return countries.map((country) => {
+    const regionId = regionsByCode[country.code] || 'global';
+    const peerCandidates = country.rank == null
+      ? countries.filter((candidate) => candidate.code !== country.code)
+      : ranked.filter((candidate) => candidate.code !== country.code);
+    const peers = peerCandidates
+      .filter((candidate) => Number.isFinite(candidate.overallScore))
+      .sort((left, right) => {
+        const distanceDifference = country.rank == null
+          ? Math.abs(left.overallScore - country.overallScore)
+            - Math.abs(right.overallScore - country.overallScore)
+          : Math.abs(left.rank - country.rank)
+            - Math.abs(right.rank - country.rank);
+        return distanceDifference
+          || (country.rank == null ? 0 : left.rank - right.rank)
+          || left.name.localeCompare(right.name);
+      })
+      .slice(0, 4);
+    const regionalPeers = countries
+      .filter((candidate) => (
+        candidate.code !== country.code
+        && regionsByCode[candidate.code] === regionId
+        && Number.isFinite(candidate.overallScore)
+      ))
+      .sort((left, right) => (
+        Math.abs(left.overallScore - country.overallScore)
+        - Math.abs(right.overallScore - country.overallScore)
+        || left.name.localeCompare(right.name)
+      ))
+      .slice(0, 5);
+    const crisisMemberships = crises.filter(
+      (crisis) => crisis.coverage.some((coveredCountry) => coveredCountry.code === country.code),
+    );
+    return {
+      ...country,
+      regionId,
+      regionName: REGION_LABELS[regionId] || 'the global comparison set',
+      peers,
+      regionalPeers,
+      crisisMemberships,
+      crisisRegistrySize: crises.length,
     };
   });
 }
@@ -794,6 +872,7 @@ export function gitFileLastmod(rootDir, relativePath) {
 export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const resilience = readJson(rootDir, RESILIENCE_SNAPSHOT_PATH);
   const reverseNames = reverseCountryNames(readJson(rootDir, COUNTRY_NAMES_PATH));
+  const regionsByCode = readJson(rootDir, COUNTRY_REGIONS_PATH);
   const [
     { CHOKEPOINT_REGISTRY },
     { TRADE_ROUTES },
@@ -811,9 +890,13 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     report,
     snapshot: readJson(rootDir, report.snapshotPath),
   }));
-  const countries = normalizeCountries(resilience, reverseNames);
-  const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const crises = normalizeCrises(readJson(rootDir, CRISIS_REGISTRY_PATH));
+  const countries = addCountryContext(
+    normalizeCountries(resilience, reverseNames),
+    regionsByCode,
+    crises,
+  );
+  const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
   const tradeRoutesById = new Map(
     (TRADE_ROUTES || []).map((route) => [route.id, {
@@ -827,6 +910,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
   const countriesLastmod = laterDate(
     resilience.capturedAt,
+    gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
     DATASET_SCHEMA_CONTENT_VERSION,
@@ -889,6 +973,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     sources: {
       resilienceSnapshot: RESILIENCE_SNAPSHOT_PATH,
       countryNames: COUNTRY_NAMES_PATH,
+      countryRegions: COUNTRY_REGIONS_PATH,
       chokepointRegistry: CHOKEPOINT_REGISTRY_PATH,
       glossaryData: GLOSSARY_DATA_PATH,
       changelog: CHANGELOG_PATH,
@@ -962,7 +1047,10 @@ function pageDocument({
   ogImageAlt = OG_IMAGE_ALT,
 }) {
   const canonical = absoluteUrl(baseUrl, path);
-  const ld = [jsonLd, breadcrumbs].filter(Boolean);
+  const ld = [
+    ...(Array.isArray(jsonLd) ? jsonLd : [jsonLd]),
+    breadcrumbs,
+  ].filter(Boolean);
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>
@@ -1058,6 +1146,8 @@ function pageDocument({
       .related a { display: inline-flex; align-items: center; min-height: 44px; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
       table { border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }
+      .table-scroll { max-width: 100%; overflow-x: auto; }
+      .table-scroll table { min-width: 680px; }
       caption { caption-side: top; text-align: left; color: var(--muted); font-size: 13px; padding-bottom: 8px; }
       th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; }
       th { color: var(--muted); font-weight: 600; background: var(--panel); }
@@ -1090,13 +1180,23 @@ ${body}
 function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod }) {
   const path = '/countries/';
   const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
+  const itemList = countries.map((country, index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    name: country.name,
+    url: absoluteUrl(baseUrl, `/countries/${country.slug}/`),
+  }));
   const body = `      <p class="eyebrow">Country corpus</p>
       <h1>Country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <p>For the evergreen monitoring procedure that uses these pages as evidence, see <a href="/use-cases/monitor-country-risk/">Monitor country risk</a>.</p>
-      <div class="grid">
-${countries.map((country) => `        <a class="card" href="/countries/${country.slug}/"><strong>${escapeHtml(country.name)}</strong><br><span>${country.rank == null ? 'Low-confidence listing' : `Rank ${country.rank}`} &middot; ${escapeHtml(country.code)}</span></a>`).join('\n')}
-      </div>
+      <div class="table-scroll"><table data-country-ranking>
+        <caption>${escapeHtml(prettyDate(capturedAt))} Country Resilience Index snapshot</caption>
+        <thead><tr><th scope="col">Rank</th><th scope="col">Country</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Confidence</th></tr></thead>
+        <tbody>
+${countries.map((country) => `          <tr><td>${country.rank == null ? 'Outside headline ranking' : `#${country.rank}`}</td><td><a href="/countries/${country.slug}/">${escapeHtml(country.name)}</a> <small>${escapeHtml(country.code)}</small></td><td><data value="${escapeHtml(country.overallScore)}">${escapeHtml(formatScore(country.overallScore))}</data></td><td>${escapeHtml(formatPercent(country.dimensionCoverage))}</td><td>${country.lowConfidence ? 'Low' : 'Standard'}</td></tr>`).join('\n')}
+        </tbody>
+      </table></div>
       <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH} (${escapeHtml(prettyDate(capturedAt))}). Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   return pageDocument({
     baseUrl,
@@ -1104,20 +1204,208 @@ ${countries.map((country) => `        <a class="card" href="/countries/${country
     title: 'Country Risk and Resilience | World Monitor',
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'Country risk and resilience',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: 'Country risk and resilience',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: 'Country Resilience Index ranking',
+        numberOfItems: countries.length,
+        itemListOrder: 'https://schema.org/ItemListOrderAscending',
+        itemListElement: itemList,
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Dataset',
+        name: `World Monitor Country Resilience Index snapshot for ${capturedAt}`,
+        description,
+        url: absoluteUrl(baseUrl, path),
+        identifier: `country-resilience-ranking-${capturedAt}`,
+        creator: { '@type': 'Organization', name: 'World Monitor', url: 'https://www.worldmonitor.app/' },
+        license: DATASET_LICENSE,
+        datePublished: capturedAt,
+        temporalCoverage: capturedAt,
+        spatialCoverage: 'Worldwide',
+        isAccessibleForFree: true,
+        variableMeasured: {
+          '@type': 'PropertyValue',
+          name: 'Country resilience score',
+          minValue: 0,
+          maxValue: 100,
+          unitText: 'index points',
+        },
+        distribution: {
+          '@type': 'DataDownload',
+          contentUrl: absoluteUrl(baseUrl, path),
+          encodingFormat: 'text/html',
+        },
+      },
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Countries', path },
     ]),
     body,
   });
+}
+
+const PILLAR_LABELS = {
+  'structural-readiness': 'Structural readiness',
+  'live-shock-exposure': 'Live shock exposure',
+  'recovery-capacity': 'Recovery capacity',
+};
+
+const DOMAIN_LABELS = {
+  economic: 'Economic capacity',
+  infrastructure: 'Infrastructure',
+  energy: 'Energy security',
+  'social-governance': 'Social and governance',
+  'health-food': 'Health, food and water',
+  recovery: 'Recovery capacity',
+};
+
+const DIMENSION_LABELS = {
+  macroFiscal: 'Macro-fiscal position',
+  currencyExternal: 'Currency and external balance',
+  tradePolicy: 'Trade policy resilience',
+  financialSystemExposure: 'Financial-system exposure',
+  cyberDigital: 'Cyber and digital capacity',
+  logisticsSupply: 'Logistics and supply chains',
+  infrastructure: 'Core infrastructure',
+  energy: 'Energy system resilience',
+  governanceInstitutional: 'Governance and institutions',
+  socialCohesion: 'Social cohesion',
+  borderSecurity: 'Border security',
+  informationCognitive: 'Information environment',
+  education: 'Education capacity',
+  healthPublicService: 'Health and public services',
+  foodWater: 'Food and water security',
+  fiscalSpace: 'Fiscal space',
+  reserveAdequacy: 'Reserve adequacy',
+  externalDebtCoverage: 'External-debt coverage',
+  importConcentration: 'Import concentration',
+  stateContinuity: 'State continuity',
+  fuelStockDays: 'Fuel-stock buffer',
+  liquidReserveAdequacy: 'Liquid-reserve adequacy',
+  sovereignFiscalBuffer: 'Sovereign fiscal buffer',
+};
+
+function humanizeId(value) {
+  return String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/-/g, ' ')
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function formatSignedScore(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'not available';
+  if (numeric === 0) return '0';
+  return `${numeric > 0 ? '+' : ''}${formatScore(numeric)}`;
+}
+
+function countryFaqs(country, capturedAt, rankedCount) {
+  const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
+  const weakest = pillars[0];
+  const second = pillars[1];
+  const rankText = country.rank == null
+    ? 'outside the headline ranking because the snapshot labels its evidence low-confidence'
+    : `#${country.rank} of ${rankedCount} ranked countries`;
+  return [
+    {
+      question: `What is ${country.name}'s resilience score?`,
+      answer: `${country.name} scores ${formatScore(country.overallScore)} out of 100 in the ${prettyDate(capturedAt)} structural snapshot and sits ${rankText}. This is a comparative index, not a crisis probability.`,
+    },
+    {
+      question: `Which resilience pillars are weakest for ${country.name}?`,
+      answer: `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is lowest at ${formatScore(weakest.score)}, followed by ${PILLAR_LABELS[second.id] || humanizeId(second.id)} at ${formatScore(second.score)}. Their evidence coverage is ${formatPercent(weakest.coverage)} and ${formatPercent(second.coverage)}.`,
+    },
+    {
+      question: `Is ${country.name}'s resilience score rising or falling?`,
+      answer: `The 30-day reading is ${country.trend || 'unknown'}, with a change of ${formatSignedScore(country.change30d)} points. It is structural and separate from the live instability monitor.`,
+    },
+  ];
+}
+
+function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount }) {
+  const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
+  const domains = [...country.domains].sort((left, right) => left.score - right.score);
+  if (pillars.length < 3 || domains.length < 6) {
+    throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
+  }
+  const [weakestPillar, secondPillar] = pillars;
+  const strongestPillar = pillars.at(-1);
+  const [weakestDomain] = domains;
+  const strongestDomain = domains.at(-1);
+  const rankSentence = country.rank == null
+    ? `${country.name} is outside the headline ranking because the snapshot classifies its evidence as low-confidence.`
+    : `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore)} out of 100.`;
+  const trendSentence = Number.isFinite(Number(country.change30d))
+    ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d)} points.`
+    : 'The committed snapshot does not contain a comparable 30-day change.';
+  const weakestPillarLabel = PILLAR_LABELS[weakestPillar.id] || humanizeId(weakestPillar.id);
+  const secondPillarLabel = PILLAR_LABELS[secondPillar.id] || humanizeId(secondPillar.id);
+  const strongestPillarLabel = PILLAR_LABELS[strongestPillar.id] || humanizeId(strongestPillar.id);
+  const weakestDomainLabel = DOMAIN_LABELS[weakestDomain.id] || humanizeId(weakestDomain.id);
+  const strongestDomainLabel = DOMAIN_LABELS[strongestDomain.id] || humanizeId(strongestDomain.id);
+  const summary = `${rankSentence} ${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score)}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score)}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score)}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score)}. ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
+  const dimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
+    ...dimension,
+    domainId: domain.id,
+  }))).sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
+  const peerLinks = country.peers.map((peer) => (
+    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)} (${escapeHtml(formatScore(peer.overallScore))})</a>`
+  )).join(', ');
+  const regionalLinks = country.regionalPeers.map((peer) => (
+    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)} (${escapeHtml(formatScore(peer.overallScore))})</a>`
+  )).join(', ');
+  const crisisText = country.crisisMemberships.length > 0
+    ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
+    : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
+  const faqs = countryFaqs(country, capturedAt, rankedCount);
+  const html = `      <article data-country-analysis>
+        <h2>${escapeHtml(country.name)} resilience analysis</h2>
+        <p>${escapeHtml(summary)}</p>
+        <h3>Pillar profile</h3>
+        <ul class="routes">
+${pillars.map((pillar) => `          <li><strong>${escapeHtml(PILLAR_LABELS[pillar.id] || humanizeId(pillar.id))}: ${escapeHtml(formatScore(pillar.score))}</strong>; coverage ${escapeHtml(formatPercent(pillar.coverage))}; domains ${pillar.domainIds.map((id) => escapeHtml(DOMAIN_LABELS[id] || humanizeId(id))).join(', ')}.</li>`).join('\n')}
+        </ul>
+        <h3>Six-domain profile</h3>
+        <ul class="routes">
+${domains.map((domain) => {
+    const dimensions = [...domain.dimensions].sort((left, right) => left.score - right.score);
+    const weakest = dimensions[0];
+    const strongest = dimensions.at(-1);
+    const dimensionSummary = dimensions.length === 1
+      ? `${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}`
+      : `low ${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}; high ${DIMENSION_LABELS[strongest.id] || humanizeId(strongest.id)} ${formatScore(strongest.score)}`;
+    return `          <li><strong>${escapeHtml(DOMAIN_LABELS[domain.id] || humanizeId(domain.id))}: ${escapeHtml(formatScore(domain.score))}</strong>; weight ${escapeHtml(formatPercent(domain.weight))}; ${escapeHtml(dimensionSummary)}.</li>`;
+  }).join('\n')}
+        </ul>
+        <h3>Dimension evidence, weakest first</h3>
+        <div class="table-scroll"><table>
+          <thead><tr><th scope="col">Dimension</th><th scope="col">Domain</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Evidence state</th></tr></thead>
+          <tbody>
+${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id))}</td><td>${escapeHtml(DOMAIN_LABELS[dimension.domainId] || humanizeId(dimension.domainId))}</td><td>${escapeHtml(formatScore(dimension.score))}</td><td>${escapeHtml(formatPercent(dimension.coverage))}</td><td>${escapeHtml(humanizeId(dimension.imputationClass || dimension.freshness?.staleness || 'observed'))}</td></tr>`).join('\n')}
+          </tbody>
+        </table></div>
+        <h3>Comparison set</h3>
+        <p>${country.rank == null ? 'Closest scores' : 'Nearest ranked peers'}: ${peerLinks}. Comparisons in ${escapeHtml(country.regionName)}: ${regionalLinks}. Similar scores do not mean equal conditions.</p>
+        <h3>Tracked crisis context</h3>
+        <p>${crisisText}</p>
+        <h3>Reading limits</h3>
+        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. Top domain: ${escapeHtml(strongestDomainLabel)}, ${escapeHtml(formatScore(strongestDomain.score))}. Weak pillars reduce the result; compare with coverage and imputation visible.</p>
+        <h3>Questions about ${escapeHtml(country.name)}</h3>
+${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
+      </article>`;
+  return { html, faqs };
 }
 
 function renderCountryPage({
@@ -1138,10 +1426,19 @@ function renderCountryPage({
     absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`),
     'seo-country',
   );
+  const analysis = renderCountryAnalysis({
+    country,
+    capturedAt,
+    methodologyFormula,
+    rankedCount,
+  });
+  const officialNameNote = country.identity.officialName !== country.identity.commonName
+    ? `      <p><strong>Official name:</strong> ${escapeHtml(country.identity.officialName)}. <a href="${escapeHtml(country.identity.sameAs)}">Wikidata identity record</a>.</p>\n`
+    : '';
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} country risk and resilience</h1>
-      <p class="lede">${escapeHtml(description)} The structural snapshot is dated and source-labelled; the current instability tool below loads separately from the live World Monitor API.</p>
-      <section class="live-tool" data-live-country-risk data-country-code="${escapeHtml(country.code)}" data-country-name="${escapeHtml(country.name)}" data-state="loading">
+      <p class="lede">${escapeHtml(description)} The structural snapshot is dated and source-labelled; the live monitor loads separately.</p>
+${officialNameNote}      <section class="live-tool" data-live-country-risk data-country-code="${escapeHtml(country.code)}" data-country-name="${escapeHtml(country.name)}" data-state="loading">
         <div class="tool-head">
           <div>
             <p class="eyebrow">Current signal</p>
@@ -1149,7 +1446,7 @@ function renderCountryPage({
           </div>
           <span class="live-status" data-live-status role="status" aria-live="polite">Connecting…</span>
         </div>
-        <p class="tool-note">Instability is a fast-moving composite of current information, unrest, armed-conflict and security-mobility signals. It is different from the slower structural resilience snapshot below; the two scores should not be combined.</p>
+        <p class="tool-note">Instability combines current information, unrest, conflict and security-mobility signals. It is separate from structural resilience; do not combine the scores.</p>
         <div class="grid" data-live-grid aria-label="Current country instability metrics" aria-busy="true">
           <div class="metric"><span>Instability score</span><strong><span data-live-score>—</span><small data-live-band>Loading</small></strong></div>
           <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>—</strong></div>
@@ -1170,11 +1467,61 @@ function renderCountryPage({
         <div class="metric"><span>Dimension coverage</span><strong>${escapeHtml(formatPercent(country.dimensionCoverage))}</strong></div>
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
       </section>
+${analysis.html}
       <h2>How to read this page</h2>
-      <p>World Monitor's Country Resilience Index is a 0-100 structural resilience score. This page records the committed ${escapeHtml(prettyDate(capturedAt))} snapshot using the ${escapeHtml(methodologyFormula)} methodology tag. The full scoring approach — dimensions, sources, and confidence rules — is documented in the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a>.</p>
-      <p>Use it as a crawlable reference and stable landing page. For the current live picture — active alerts, conflict events, market and energy signals — open ${escapeHtml(country.name)} on the live map above.</p>
+      <p>The index is a 0-100 structural score from ${escapeHtml(prettyDate(capturedAt))} using ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">methodology</a> for dimensions, sources and confidence rules.</p>
+      <p>Use this stable reference with the live map for current alerts, conflict, market and energy signals.</p>
       <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = `${country.name} Country Risk and Resilience`;
+  const datasetId = `${absoluteUrl(baseUrl, path)}#resilience-dataset`;
+  const dataset = {
+    '@context': 'https://schema.org',
+    '@type': 'Dataset',
+    '@id': datasetId,
+    name: `World Monitor Country Resilience snapshot for ${country.name}`,
+    description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, 30-day change, confidence classification, pillars, domains, and evidence state used for this page.`,
+    url: absoluteUrl(baseUrl, path),
+    identifier: country.code,
+    creator: {
+      '@type': 'Organization',
+      name: 'World Monitor',
+      url: 'https://www.worldmonitor.app/',
+    },
+    license: DATASET_LICENSE,
+    datePublished: capturedAt,
+    temporalCoverage: capturedAt,
+    spatialCoverage: {
+      '@type': 'Country',
+      name: country.identity.commonName,
+      identifier: country.code,
+      sameAs: country.identity.sameAs,
+    },
+    isAccessibleForFree: true,
+    includedInDataCatalog: {
+      '@type': 'DataCatalog',
+      name: 'World Monitor country risk and resilience',
+      url: absoluteUrl(baseUrl, '/countries/'),
+    },
+    distribution: {
+      '@type': 'DataDownload',
+      contentUrl: absoluteUrl(baseUrl, path),
+      encodingFormat: 'text/html',
+    },
+    measurementTechnique: methodologyFormula,
+    variableMeasured: [
+      { '@type': 'PropertyValue', name: 'Overall resilience score', value: country.overallScore, minValue: 0, maxValue: 100 },
+      { '@type': 'PropertyValue', name: 'Rank', value: country.rank ?? 'Outside headline ranking' },
+      { '@type': 'PropertyValue', name: 'Dimension coverage', value: country.dimensionCoverage, minValue: 0, maxValue: 1 },
+      { '@type': 'PropertyValue', name: '30-day score change', value: country.change30d, unitText: 'index points' },
+      ...country.pillars.map((pillar) => ({
+        '@type': 'PropertyValue',
+        name: `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} score`,
+        value: pillar.score,
+        minValue: 0,
+        maxValue: 100,
+      })),
+    ],
+  };
   return pageDocument({
     baseUrl,
     path,
@@ -1184,32 +1531,34 @@ function renderCountryPage({
     title: coreTitle.length > 44 ? coreTitle : `${coreTitle} | World Monitor`,
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebPage',
-      name: `${country.name} country risk and resilience`,
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      about: {
-        '@type': 'Country',
-        name: country.name,
-        identifier: country.code,
-      },
-      mainEntity: {
-        '@type': 'Dataset',
-        name: `World Monitor Country Resilience snapshot for ${country.name}`,
-        description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
-        creator: {
-          '@type': 'Organization',
-          name: 'World Monitor',
-          url: 'https://www.worldmonitor.app/',
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: `${country.name} country risk and resilience`,
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        about: {
+          '@type': 'Country',
+          name: country.identity.commonName,
+          alternateName: country.identity.alternateNames,
+          identifier: country.code,
+          sameAs: country.identity.sameAs,
         },
-        license: DATASET_LICENSE,
-        datePublished: capturedAt,
-        measurementTechnique: methodologyFormula,
+        mainEntity: { '@id': datasetId },
       },
-    },
+      dataset,
+      {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: analysis.faqs.map((faq) => ({
+          '@type': 'Question',
+          name: faq.question,
+          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+        })),
+      },
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Countries', path: '/countries/' },
