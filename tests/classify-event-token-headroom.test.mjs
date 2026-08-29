@@ -12,15 +12,16 @@
 // 2026-08-28T19:01:35Z: `validate_reject`, `tokens_completion: 50`, exactly
 // the ceiling.
 //
-// Measured against the live Groq API, six representative headlines from the
-// stage's own system prompt:
+// Measured against the live Groq API, eight representative headlines driven
+// through the stage's own system prompt and enums:
 //
-//   no reasoning control @ 50   0/6 valid   6 hit the cap   (pre-#7289)
-//   reasoning_effort low @ 50   4/6 valid   2 hit the cap   (the residue)
-//   reasoning_effort low @ 120  6/6 valid   0 hit the cap
+//   max_tokens=50   no effort   0/8 valid   8 truncated   (pre-#7289)
+//   max_tokens=50   low         5/8 valid   3 truncated   (the residue)
+//   max_tokens=120  low         7/8 valid   1 truncated
+//   max_tokens=200  low         8/8 valid   0 truncated
 //
 // The truncation is dispositive rather than inferred — the returned content
-// was the literal string `{"level":"`.
+// was the literal string `{"level":"`, and at 120 the fragment `{"`.
 //
 // Raising a `max_tokens` CEILING costs nothing for a model that answers in 10
 // tokens; it only changes who gets truncated. This is the fallback-only
@@ -37,11 +38,18 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = resolve(root, 'server/worldmonitor/intelligence/v1/classify-event.ts');
 
 /**
- * Worst-case hidden-reasoning overhead observed from `gpt-oss-20b` at
- * `reasoning_effort: 'low'`, plus the ~12 tokens the JSON itself needs. The
- * floor is what the test enforces; the exact configured value may exceed it.
+ * The lowest budget MEASURED to truncate nothing — not a rounded-down
+ * guess at one.
+ *
+ * This started at 100 and was raised in review: the table above records
+ * `max_tokens=120` truncating 1 of 8, so any floor below 200 leaves the guard
+ * green on a value already shown to reintroduce the fallback failure it exists
+ * to prevent. A regression floor set beneath the evidence is not a floor.
+ *
+ * Raise it only alongside a fresh measurement; lower it only if a measurement
+ * shows a smaller budget is clean.
  */
-const MIN_HEADROOM_TOKENS = 100;
+const MIN_HEADROOM_TOKENS = 200;
 
 describe('classify-event token budget leaves room for a reasoning fallback', () => {
   const src = readFileSync(SRC, 'utf8');
@@ -52,7 +60,8 @@ describe('classify-event token budget leaves room for a reasoning fallback', () 
     const maxTokens = Number(m[1]);
     assert.ok(
       maxTokens >= MIN_HEADROOM_TOKENS,
-      `maxTokens=${maxTokens} truncates the Groq fallback mid-JSON — measured 4/6 valid at 50, 6/6 at 120`,
+      `maxTokens=${maxTokens} is below the measured-clean budget of ${MIN_HEADROOM_TOKENS}: `
+      + 'against the live API, 50 gave 5/8 valid (3 truncated) and 120 gave 7/8 (1 truncated)',
     );
   });
 
