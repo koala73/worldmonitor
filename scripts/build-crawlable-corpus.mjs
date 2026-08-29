@@ -63,7 +63,7 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
-const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
+const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-29';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
@@ -1138,6 +1138,13 @@ function renderCountryPage({
     absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`),
     'seo-country',
   );
+  const scorePublished = country.headlineEligible !== false;
+  const scoreDisclosure = scorePublished
+    ? ''
+    : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)}. Input coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))}, below the threshold for a ranked score.</p>`;
+  const datasetDescription = scorePublished
+    ? `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`
+    : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because input coverage is below the ranking threshold.`;
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)} The structural snapshot is dated and source-labelled; the current instability tool below loads separately from the live World Monitor API.</p>
@@ -1166,10 +1173,10 @@ function renderCountryPage({
       <h2>Structural resilience snapshot</h2>
       <section class="grid" aria-label="Country resilience metrics">
         <div class="metric"><span>Rank</span><strong>${escapeHtml(country.rank == null ? 'Not ranked' : `#${country.rank}`)}</strong></div>
-        <div class="metric"><span>Overall score</span><strong>${escapeHtml(formatScore(country.overallScore))}</strong></div>
+        <div class="metric"><span>Overall score</span><strong>${escapeHtml(scorePublished ? formatScore(country.overallScore) : '—')}</strong></div>
         <div class="metric"><span>Dimension coverage</span><strong>${escapeHtml(formatPercent(country.dimensionCoverage))}</strong></div>
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
-      </section>
+      </section>${scoreDisclosure}
       <h2>How to read this page</h2>
       <p>World Monitor's Country Resilience Index is a 0-100 structural resilience score. This page records the committed ${escapeHtml(prettyDate(capturedAt))} snapshot using the ${escapeHtml(methodologyFormula)} methodology tag. The full scoring approach — dimensions, sources, and confidence rules — is documented in the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a>.</p>
       <p>Use it as a crawlable reference and stable landing page. For the current live picture — active alerts, conflict events, market and energy signals — open ${escapeHtml(country.name)} on the live map above.</p>
@@ -1199,7 +1206,7 @@ function renderCountryPage({
       mainEntity: {
         '@type': 'Dataset',
         name: `World Monitor Country Resilience snapshot for ${country.name}`,
-        description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
+        description: datasetDescription,
         creator: {
           '@type': 'Organization',
           name: 'World Monitor',
