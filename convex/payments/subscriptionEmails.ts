@@ -582,8 +582,9 @@ const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
 export const SEND_SPACING_MS = 250;
 
 // Shared-cursor key in the generic `counters` table: the epoch-ms timestamp of
-// the next free Resend send slot for the dunning/winback fleet.
-const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
+// the next free Resend send slot for the dunning/winback fleet. Exported so
+// tests can park a future slot and mutate state during the uncapped wait.
+export const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
 
 const dunningStepValidator = v.union(
   v.literal("dunning_day0"),
@@ -851,6 +852,75 @@ export function resendPacingWaitMs(slotAt: number, now: number): number {
   return Math.max(0, slotAt - now);
 }
 
+type DunningContext = {
+  userId: string;
+  planKey: string;
+  status: string;
+  episodeAnchor: number;
+  cancelledAt: number | null;
+  currentPeriodEnd: number;
+  email: string;
+  hasLiveSub: boolean;
+  entitlementCoveredUntil: number;
+};
+
+type DunningSkipReason =
+  | "unknown_subscription"
+  | "not_cancelled"
+  | "stale_episode"
+  | "not_covering"
+  | "still_entitled"
+  | "resubscribed"
+  | "recovered"
+  | "no_email"
+  | "suppressed"
+  | "already_sent";
+
+/**
+ * Live-state gates for a detached send. The Resend wait is uncapped, so
+ * eligibility / episode / coverage can change while queued — this is run
+ * before the pacer and again immediately after it (PR #7328 review).
+ */
+function evaluateDunningEligibility(
+  step: DunningStep,
+  episodeAt: number,
+  sub: DunningContext,
+  now: number,
+): { ok: true } | { ok: false; reason: DunningSkipReason } {
+  if (step === "winback_day30") {
+    // Winback only for genuinely-gone users: still cancelled, paid period
+    // actually over, and no other covering subscription on the account.
+    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
+    // Same stale-episode discipline as dunning (PR #4935 review round 2,
+    // finding 1): a pending winback scheduled for cancellation T1 must not
+    // fire after the row moved to a different cancellation episode T2 —
+    // the T2 window gets its own ledger entry and its own single send.
+    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    if (sub.currentPeriodEnd > now) return { ok: false, reason: "still_entitled" };
+    // Comp floor / recomputed entitlement window (round-4 F5): a comped
+    // user is covered even with every subscription ended.
+    if (sub.entitlementCoveredUntil > now) return { ok: false, reason: "still_entitled" };
+    if (sub.hasLiveSub) return { ok: false, reason: "resubscribed" };
+    return { ok: true };
+  }
+  if (step === "cancellation_confirm") {
+    // Mirror-image of the winback guards: this email is only correct while
+    // the cancelled sub is STILL covering. Re-checked here, not just at
+    // schedule time, because the action runs detached — a reactivation or
+    // an expiry can land in between, and "your access continues until
+    // <past date>" is worse than saying nothing.
+    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
+    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
+    return { ok: true };
+  }
+  // Dunning only while THIS episode is still open — a recovery or a
+  // newer episode (different anchor) invalidates the scheduled send.
+  if (sub.status !== "on_hold") return { ok: false, reason: "recovered" };
+  if (sub.episodeAnchor !== episodeAt) return { ok: false, reason: "stale_episode" };
+  return { ok: true };
+}
+
 export const sendDunningEmail = internalAction({
   args: {
     dodoSubscriptionId: v.string(),
@@ -864,57 +934,39 @@ export const sendDunningEmail = internalAction({
       return { sent: false, reason: "no_api_key" as const };
     }
 
-    const sub = await ctx.runQuery(
-      internal.payments.subscriptionEmails.getDunningContext,
-      { dodoSubscriptionId: args.dodoSubscriptionId },
-    );
-    if (!sub) return { sent: false, reason: "unknown_subscription" as const };
+    const resolveSend = async (): Promise<
+      { ok: true; sub: DunningContext } | { ok: false; reason: DunningSkipReason }
+    > => {
+      const sub = await ctx.runQuery(
+        internal.payments.subscriptionEmails.getDunningContext,
+        { dodoSubscriptionId: args.dodoSubscriptionId },
+      );
+      if (!sub) return { ok: false, reason: "unknown_subscription" };
+      const eligibility = evaluateDunningEligibility(
+        args.step,
+        args.episodeAt,
+        sub,
+        Date.now(),
+      );
+      if (!eligibility.ok) return eligibility;
+      if (!sub.email) {
+        console.warn(`[dunning] no resolvable email for ${args.dodoSubscriptionId} — skipping ${args.step}`);
+        return { ok: false, reason: "no_email" };
+      }
+      const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
+        email: sub.email,
+      });
+      if (suppressed) return { ok: false, reason: "suppressed" };
+      const alreadySent = await ctx.runQuery(
+        internal.payments.subscriptionEmails.wasDunningStepSent,
+        args,
+      );
+      if (alreadySent) return { ok: false, reason: "already_sent" };
+      return { ok: true, sub };
+    };
 
-    if (args.step === "winback_day30") {
-      // Winback only for genuinely-gone users: still cancelled, paid period
-      // actually over, and no other covering subscription on the account.
-      if (sub.status !== "cancelled") return { sent: false, reason: "not_cancelled" as const };
-      // Same stale-episode discipline as dunning (PR #4935 review round 2,
-      // finding 1): a pending winback scheduled for cancellation T1 must not
-      // fire after the row moved to a different cancellation episode T2 —
-      // the T2 window gets its own ledger entry and its own single send.
-      if (sub.cancelledAt !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
-      if (sub.currentPeriodEnd > Date.now()) return { sent: false, reason: "still_entitled" as const };
-      // Comp floor / recomputed entitlement window (round-4 F5): a comped
-      // user is covered even with every subscription ended.
-      if (sub.entitlementCoveredUntil > Date.now()) return { sent: false, reason: "still_entitled" as const };
-      if (sub.hasLiveSub) return { sent: false, reason: "resubscribed" as const };
-    } else if (args.step === "cancellation_confirm") {
-      // Mirror-image of the winback guards: this email is only correct while
-      // the cancelled sub is STILL covering. Re-checked here, not just at
-      // schedule time, because the action runs detached — a reactivation or
-      // an expiry can land in between, and "your access continues until
-      // <past date>" is worse than saying nothing.
-      if (sub.status !== "cancelled") return { sent: false, reason: "not_cancelled" as const };
-      if (sub.cancelledAt !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
-      if (sub.currentPeriodEnd <= Date.now()) return { sent: false, reason: "not_covering" as const };
-    } else {
-      // Dunning only while THIS episode is still open — a recovery or a
-      // newer episode (different anchor) invalidates the scheduled send.
-      if (sub.status !== "on_hold") return { sent: false, reason: "recovered" as const };
-      if (sub.episodeAnchor !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
-    }
-
-    if (!sub.email) {
-      console.warn(`[dunning] no resolvable email for ${args.dodoSubscriptionId} — skipping ${args.step}`);
-      return { sent: false, reason: "no_email" as const };
-    }
-
-    const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
-      email: sub.email,
-    });
-    if (suppressed) return { sent: false, reason: "suppressed" as const };
-
-    const alreadySent = await ctx.runQuery(
-      internal.payments.subscriptionEmails.wasDunningStepSent,
-      args,
-    );
-    if (alreadySent) return { sent: false, reason: "already_sent" as const };
+    const first = await resolveSend();
+    if (!first.ok) return { sent: false, reason: first.reason };
 
     // CTA: only the dunning steps mint a freshly minted Dodo portal session —
     // card update is their whole point. Winback goes to pricing. A
@@ -926,7 +978,7 @@ export const sendDunningEmail = internalAction({
     let ctaUrl = args.step === "winback_day30" ? PRICING_URL : DASHBOARD_URL;
     if (args.step !== "winback_day30" && args.step !== "cancellation_confirm") {
       try {
-        ctaUrl = (await createCustomerPortalUrlForUser(ctx, sub.userId)).portal_url;
+        ctaUrl = (await createCustomerPortalUrlForUser(ctx, first.sub.userId)).portal_url;
       } catch (err) {
         // Designed degradation, not a failure (Sentry-coverage gate: no
         // warn without capture; convex has no silent-capture helper and
@@ -940,13 +992,6 @@ export const sendDunningEmail = internalAction({
       }
     }
 
-    const planName = PLAN_DISPLAY[sub.planKey] ?? sub.planKey;
-    const { subject, html } = buildDunningEmail(
-      args.step,
-      planName,
-      ctaUrl,
-      sub.currentPeriodEnd,
-    );
     // Pace the actual POST (not just the scheduled start): the portal mint above
     // has variable latency, so reserve the Resend slot HERE — after the mint —
     // and wait for it. This bounds the true POST rate to <= 1/SEND_SPACING_MS
@@ -960,7 +1005,21 @@ export const sendDunningEmail = internalAction({
     );
     const waitMs = resendPacingWaitMs(slotAt, Date.now());
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-    await sendEmail(apiKey, sub.email, subject, html, ADMIN_EMAIL);
+
+    // Re-read after the uncapped wait. Resume / expiry / a new cancellation
+    // episode / suppression / a concurrent ledger write can all land while
+    // queued; sending the pre-wait snapshot would be the wrong email.
+    const fresh = await resolveSend();
+    if (!fresh.ok) return { sent: false, reason: fresh.reason };
+
+    const planName = PLAN_DISPLAY[fresh.sub.planKey] ?? fresh.sub.planKey;
+    const { subject, html } = buildDunningEmail(
+      args.step,
+      planName,
+      ctaUrl,
+      fresh.sub.currentPeriodEnd,
+    );
+    await sendEmail(apiKey, fresh.sub.email, subject, html, ADMIN_EMAIL);
     // Ledger write AFTER the send: a Resend failure throws above, leaving no
     // row, so the next cron tick retries. The narrow crash window between
     // send and record risks one duplicate email — the right side to err on.
@@ -971,7 +1030,7 @@ export const sendDunningEmail = internalAction({
     // trade it for silently never sending on a crash, which is worse.
     await ctx.runMutation(internal.payments.subscriptionEmails.recordDunningStepSent, {
       ...args,
-      email: sub.email,
+      email: fresh.sub.email,
     });
     console.log(`[dunning] sent ${args.step} for ${args.dodoSubscriptionId}`);
     return { sent: true as const };

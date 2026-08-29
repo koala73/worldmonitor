@@ -24,6 +24,9 @@
  *     because RESEND_API_KEY was missing), dedups against the ledger, and is
  *     age-capped (index-bounded by cancelledAt) so the first deploy doesn't
  *     mass-mail every historic paid-through canceller
+ *   - cancellation send re-reads after the uncapped Resend wait: a resume
+ *     (or expiry / new episode / suppression) during pacing must not send
+ *     the pre-wait snapshot
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -36,6 +39,7 @@ import {
   WINBACK_MAX_AGE_MS,
   CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS,
   SEND_SPACING_MS,
+  RESEND_SLOT_COUNTER,
   resendPacingWaitMs,
   buildDunningEmail,
 } from "../payments/subscriptionEmails";
@@ -1042,6 +1046,60 @@ describe("cancellation confirmation email (#7314)", () => {
     });
     expect(result).toEqual({ sent: false, reason: "suppressed" });
     expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("send action re-reads after the uncapped pacing wait (PR #7328 review)", async () => {
+    // Eligibility is checked, then reserveResendSlot can sleep for an
+    // uncapped backlog. A resume during that wait must not send the
+    // pre-wait "your access continues until <date>" snapshot.
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 60_000;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() + 20 * DAY_MS,
+    });
+
+    const parkedUntil = Date.now() + 1_500;
+    await t.run(async (ctx) => {
+      await ctx.db.insert("counters", {
+        name: RESEND_SLOT_COUNTER,
+        value: parkedUntil,
+      });
+    });
+
+    const sendPromise = t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelledAt,
+    });
+
+    // The action has reserved its slot once the cursor moves past the park.
+    await vi.waitFor(async () => {
+      const row = await t.run(async (ctx) =>
+        ctx.db
+          .query("counters")
+          .withIndex("by_name", (q) => q.eq("name", RESEND_SLOT_COUNTER))
+          .unique(),
+      );
+      expect(row?.value).toBeGreaterThan(parkedUntil);
+    });
+
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID))
+        .unique();
+      if (!sub) throw new Error("missing subscription");
+      await ctx.db.patch(sub._id, { status: "active" });
+    });
+
+    const result = await sendPromise;
+    expect(result).toEqual({ sent: false, reason: "not_cancelled" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+    expect(await ledgerRows(t)).toHaveLength(0);
   });
 });
 
