@@ -1603,6 +1603,51 @@ describe('webmcp App.ts binding invariants', () => {
     );
   });
 
+  it('enables catalog panels through settings after UI readiness and waits until live', () => {
+    const setPanelEnabled = objectPropertyInitializer(bindings, appFile, 'setPanelEnabled');
+    const ready = callByExpression(
+      setPanelEnabled,
+      appFile,
+      'this.waitForDashboardReady',
+      'set_panel_enabled readiness',
+    );
+    assertCallArguments(ready, appFile, ['false', 'execution?.signal']);
+    const apply = callByExpression(
+      setPanelEnabled,
+      appFile,
+      'this.eventHandlers.setPanelEnabledById',
+    );
+    assertCallArguments(apply, appFile, ['panelId', 'enabled']);
+    assert.ok(ready.getStart(appFile) < apply.getStart(appFile));
+    findNode(
+      setPanelEnabled,
+      (node) => (
+        ts.isNewExpression(node)
+        && node.expression.getText(appFile) === 'DashboardBindingError'
+        && node.arguments?.[0]?.getText(appFile) === "'app_destroyed'"
+      ),
+      'set_panel_enabled app_destroyed guard',
+    );
+    const waitLive = callByExpression(setPanelEnabled, appFile, 'waitUntilPanelLive');
+    assert.ok(apply.getStart(appFile) < waitLive.getStart(appFile));
+    findNode(
+      setPanelEnabled,
+      (node) => (
+        ts.isPropertyAccessExpression(node)
+        && node.getText(appFile) === 'result.effectiveEnabled'
+      ),
+      'wait-until-live only after a successful enable',
+    );
+    findNode(
+      setPanelEnabled,
+      (node) => (
+        ts.isCallExpression(node)
+        && node.expression.getText(appFile) === 'isCatalogPanelLive'
+      ),
+      'live check uses catalog panel presence',
+    );
+  });
+
   it('resolves UI readiness after Phase 4 and wakes pending tools during destroy cleanup', () => {
     const appConstructor = findNode(appClass, ts.isConstructorDeclaration, 'App constructor');
     for (const [promiseName, resolverName] of [

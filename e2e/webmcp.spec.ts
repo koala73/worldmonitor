@@ -438,8 +438,25 @@ test.describe('top-level WebMCP dashboard contract', () => {
         };
       }
       const enableGiving = await execute({ panelId: 'giving', enabled: true });
+      let openGiving: unknown = null;
+      if (
+        enableGiving
+        && typeof enableGiving === 'object'
+        && (enableGiving as { ok?: boolean }).ok === true
+      ) {
+        const openTool = (await provider.getTools())
+          .find((candidate) => candidate.name === 'open_dashboard_panel');
+        if (!openTool) throw new Error('open_dashboard_panel was not discovered.');
+        const controller = new AbortController();
+        openGiving = parseOutput(await provider.executeTool(
+          openTool,
+          JSON.stringify({ panelId: 'giving' }),
+          { signal: controller.signal },
+        ));
+      }
       return {
         output: enableGiving,
+        openOutput: openGiving,
         stored: window.localStorage.getItem('worldmonitor-panels'),
       };
     });
@@ -451,10 +468,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       changed?: boolean;
     };
     if (output?.reason === 'target_cancellation_unsupported') {
-      expect(output.ok).toBe(false);
-      const stored = first.stored ? JSON.parse(first.stored) as Record<string, { enabled?: boolean }> : {};
-      expect(stored.giving?.enabled === true).toBe(false);
-      return;
+      test.skip(true, 'Host omitted the target-side AbortSignal; persist proof requires cancellation.');
     }
 
     expect(output).toMatchObject({
@@ -463,6 +477,10 @@ test.describe('top-level WebMCP dashboard contract', () => {
       panelId: 'giving',
       requestedEnabled: true,
       effectiveEnabled: true,
+    });
+    expect(first.openOutput).toMatchObject({
+      ok: true,
+      status: 'applied',
     });
     const storedBeforeReload = JSON.parse(String(first.stored)) as Record<string, { enabled?: boolean }>;
     expect(storedBeforeReload.giving?.enabled).toBe(true);
@@ -498,9 +516,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
     expect(storedAfterReload.giving?.enabled).toBe(true);
     const enabledPanels = (afterReload.context as { panels?: { enabled?: string[] } })
       .panels?.enabled ?? [];
-    if (enabledPanels.length > 0) {
-      expect(enabledPanels).toContain('giving');
-    }
+    expect(enabledPanels).toContain('giving');
   });
 
   // Production collection is intentionally restricted to this spec. Keep a

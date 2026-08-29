@@ -5,6 +5,9 @@ import {
   type SetPanelEnabledResult,
 } from '@/config/panel-enablement';
 
+/** Matches SearchSelectionDispatcher's deferred-panel presentation wait. */
+export const PANEL_LIVE_WAIT_TIMEOUT_MS = 30_000;
+
 export interface SetPanelEnabledContext {
   panelSettings: Record<string, PanelConfig>;
   panels?: Record<string, unknown>;
@@ -67,8 +70,96 @@ export function applySetPanelEnabled(
       && 'fetchData' in panel
       && typeof (panel as { fetchData: unknown }).fetchData === 'function'
     ) {
-      (panel as { fetchData: () => void }).fetchData();
+      try {
+        void Promise.resolve((panel as { fetchData: () => unknown }).fetchData()).catch(() => {});
+      } catch {
+        // Persist already committed; a data refresh must not fail the tool.
+      }
     }
   }
   return decision;
+}
+
+export function isCatalogPanelLive(
+  panelId: string,
+  panels?: Record<string, unknown> | null,
+): boolean {
+  if (panels?.[panelId]) return true;
+  if (typeof document === 'undefined') return false;
+  const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+    ? CSS.escape(panelId)
+    : panelId.replace(/["\\]/g, '\\$&');
+  const node = document.querySelector(`[data-panel="${escaped}"]:not([data-deferred-panel])`);
+  return Boolean(node?.isConnected);
+}
+
+function observeDocumentMutations(onChange: () => void): () => void {
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') {
+    return () => {};
+  }
+  const root = document.body ?? document.documentElement;
+  if (!root) return () => {};
+  const observer = new MutationObserver(onChange);
+  observer.observe(root, { childList: true, subtree: true });
+  return () => observer.disconnect();
+}
+
+/**
+ * Wait until a just-enabled catalog panel is addressable by `open_dashboard_panel`.
+ * Timeout still resolves so a successful persist is not rewritten as a denial.
+ */
+export async function waitUntilPanelLive(options: {
+  isLive: () => boolean;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  observe?: (onChange: () => void) => () => void;
+}): Promise<'live' | 'timeout'> {
+  const signal = options.signal;
+  if (signal?.aborted) {
+    signal.throwIfAborted();
+    throw new DOMException('Tool execution was aborted.', 'AbortError');
+  }
+  if (options.isLive()) return 'live';
+
+  const timeoutMs = options.timeoutMs ?? PANEL_LIVE_WAIT_TIMEOUT_MS;
+  const startObserve = options.observe ?? observeDocumentMutations;
+
+  return new Promise<'live' | 'timeout'>((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stop = (): void => {};
+    const finish = (outcome: 'live' | 'timeout'): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      signal?.removeEventListener('abort', handleAbort);
+      stop();
+      resolve(outcome);
+    };
+    const fail = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      signal?.removeEventListener('abort', handleAbort);
+      stop();
+      reject(error);
+    };
+    const handleAbort = (): void => {
+      try {
+        if (!signal?.aborted) return;
+        signal.throwIfAborted();
+        fail(new DOMException('Tool execution was aborted.', 'AbortError'));
+      } catch (error) {
+        fail(error);
+      }
+    };
+    const check = (): void => {
+      if (options.isLive()) finish('live');
+    };
+    stop = startObserve(check);
+    signal?.addEventListener('abort', handleAbort, { once: true });
+    timer = setTimeout(() => finish(options.isLive() ? 'live' : 'timeout'), timeoutMs);
+    check();
+    if (signal?.aborted) handleAbort();
+  });
 }

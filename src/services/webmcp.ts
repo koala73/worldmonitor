@@ -844,7 +844,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.setPanelEnabled,
       title: 'Set Panel Enabled',
       description:
-        'Enable or disable a dashboard panel by its stable ID through the same settings path a person uses. Returns the requested state, effective state, and whether anything changed. Refuses unknown, incompatible, unentitled, and free-tier-capped panels. Requires target-side cancellation because it persists dashboard settings.',
+        'Enable or disable a dashboard panel by its stable ID through the same settings path a person uses. Returns the requested state, effective state, and whether anything changed. Enabling unknown, incompatible, unentitled, or free-tier-capped panels is denied; disabling a live catalog panel still succeeds. Requires target-side cancellation because it persists dashboard settings.',
       inputSchema: {
         type: 'object',
         properties: {

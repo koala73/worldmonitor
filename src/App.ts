@@ -180,6 +180,7 @@ import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
+import { isCatalogPanelLive, waitUntilPanelLive } from '@/app/panel-enablement';
 import {
   FreeTierGate,
   panelGateStateChanged,
@@ -1972,7 +1973,20 @@ export class App {
         if (this.state.isDestroyed) {
           throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
         }
-        return this.eventHandlers.setPanelEnabledById(panelId, enabled);
+        const result = this.eventHandlers.setPanelEnabledById(panelId, enabled);
+        if (
+          result.ok
+          && result.changed
+          && result.effectiveEnabled
+          && typeof panelId === 'string'
+        ) {
+          await waitUntilPanelLive({
+            isLive: () => isCatalogPanelLive(panelId, this.state.panels),
+            signal: execution?.signal,
+          });
+          throwIfWebMcpAborted(execution?.signal);
+        }
+        return result;
       },
     });
 

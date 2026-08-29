@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import {
   applySetPanelEnabled,
+  isCatalogPanelLive,
+  waitUntilPanelLive,
 } from '../src/app/panel-enablement.ts';
 import {
   ALL_PANELS,
@@ -302,6 +304,7 @@ describe('applySetPanelEnabled', () => {
     let toggleCount = 0;
     let fetchCount = 0;
     let toastCount = 0;
+    let refreshCount = 0;
     const deps = {
       variant: 'full',
       isPro: false,
@@ -321,9 +324,14 @@ describe('applySetPanelEnabled', () => {
     const panels = {
       'windy-webcams': { fetchData: () => { fetchCount += 1; } },
     };
+    const unifiedSettings = {
+      refreshPanelToggles: () => {
+        refreshCount += 1;
+      },
+    };
 
     const first = applySetPanelEnabled(
-      { panelSettings, panels },
+      { panelSettings, panels, unifiedSettings },
       'windy-webcams',
       true,
       deps,
@@ -336,10 +344,11 @@ describe('applySetPanelEnabled', () => {
     assert.equal(applyCount, 1);
     assert.equal(toggleCount, 1);
     assert.equal(fetchCount, 1);
+    assert.equal(refreshCount, 1);
     assert.equal(toastCount, 0);
 
     const repeat = applySetPanelEnabled(
-      { panelSettings, panels },
+      { panelSettings, panels, unifiedSettings },
       'windy-webcams',
       true,
       deps,
@@ -349,6 +358,58 @@ describe('applySetPanelEnabled', () => {
     assert.equal(applyCount, 1);
     assert.equal(toggleCount, 1);
     assert.equal(fetchCount, 1);
+    assert.equal(refreshCount, 1);
+  });
+
+  it('still returns applied when fetchData throws or rejects after persist', async () => {
+    const panelSettings = settingsWithFreeSlots('full');
+    let persistCount = 0;
+    const deps = {
+      variant: 'full',
+      isPro: false,
+      persist: () => {
+        persistCount += 1;
+      },
+      applyPanelSettings: () => {},
+      trackToggle: () => {},
+    };
+    const thrown = applySetPanelEnabled(
+      {
+        panelSettings,
+        panels: {
+          'windy-webcams': {
+            fetchData: () => {
+              throw new Error('fetch failed');
+            },
+          },
+        },
+      },
+      'windy-webcams',
+      true,
+      deps,
+    );
+    assert.equal(thrown.ok, true);
+    assert.equal(thrown.changed, true);
+    assert.equal(persistCount, 1);
+
+    panelSettings['windy-webcams']!.enabled = false;
+    const rejected = applySetPanelEnabled(
+      {
+        panelSettings,
+        panels: {
+          'windy-webcams': {
+            fetchData: () => Promise.reject(new Error('async fetch failed')),
+          },
+        },
+      },
+      'windy-webcams',
+      true,
+      deps,
+    );
+    assert.equal(rejected.ok, true);
+    assert.equal(rejected.changed, true);
+    await Promise.resolve();
+    await Promise.resolve();
   });
 
   it('persists a disable without deleting the catalog entry', () => {
@@ -403,6 +464,24 @@ describe('applySetPanelEnabled', () => {
       deps,
     );
     assert.equal(unknown.reason, 'unknown_panel');
+    assert.equal(persistCount, 0);
+
+    const unentitledSettings = settingsWithFreeSlots('full');
+    unentitledSettings['stock-analysis'] = {
+      ...unentitledSettings['stock-analysis']!,
+      enabled: false,
+    };
+    const unentitled = applySetPanelEnabled(
+      { panelSettings: unentitledSettings },
+      'stock-analysis',
+      true,
+      {
+        ...deps,
+        isPanelAllowed: () => false,
+      },
+    );
+    assert.equal(unentitled.reason, 'panel_not_entitled');
+    assert.equal(unentitledSettings['stock-analysis']?.enabled, false);
     assert.equal(persistCount, 0);
   });
 
@@ -494,5 +573,146 @@ describe('set_panel_enabled WebMCP adapter', () => {
     );
     assert.equal((applied as { ok?: boolean }).ok, true);
     assert.equal(calls, 1);
+  });
+
+  it('preserves denial reasons and maps entitlement vs validation analytics', async () => {
+    const events: Array<{ event: string; data?: { outcome?: string; reason?: string; tool?: string } }> = [];
+    const tools = buildProductionWebMcpTools({
+      openCountryBriefByCode: async () => true,
+      resolveCountryName: (code: string) => `Country ${code}`,
+      openSearch: async () => true,
+      getDashboardContext: async () => ({
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      }),
+      applyDashboardAction: async (action: { type: string }) => ({
+        ok: true,
+        status: 'applied' as const,
+        actionType: action.type as 'open_panel',
+        message: 'Applied.',
+        targets: [],
+      }),
+      searchDashboard: async (query: string) => ({
+        queryLength: query.length,
+        results: [],
+        resultCount: 0,
+        truncated: false,
+      }),
+      openSearchResult: async () => ({ ok: true, status: 'opened' as const }),
+      setPanelEnabled: async (panelId) => {
+        if (panelId === 'stock-analysis') {
+          return {
+            ok: false,
+            status: 'denied' as const,
+            panelId: 'stock-analysis',
+            requestedEnabled: true,
+            effectiveEnabled: false,
+            changed: false,
+            reason: 'panel_not_entitled' as const,
+            message: 'Panel is not available on this plan.',
+          };
+        }
+        if (panelId === 'not-a-real-panel') {
+          return {
+            ok: false,
+            status: 'denied' as const,
+            panelId: 'not-a-real-panel',
+            requestedEnabled: true,
+            effectiveEnabled: false,
+            changed: false,
+            reason: 'unknown_panel' as const,
+            message: 'Unknown panel.',
+          };
+        }
+        return {
+          ok: false,
+          status: 'denied' as const,
+          panelId: String(panelId),
+          requestedEnabled: true,
+          effectiveEnabled: false,
+          changed: false,
+          reason: 'panel_incompatible' as const,
+          message: 'Panel is not available on this monitor.',
+        };
+      },
+    }, (event, data) => events.push({ event, data }));
+    const tool = tools.find((candidate) => candidate.name === 'set_panel_enabled');
+    assert.ok(tool);
+    const signal = { signal: new AbortController().signal };
+
+    const unentitled = await tool.execute({ panelId: 'stock-analysis', enabled: true }, signal);
+    assert.equal((unentitled as { status?: string }).status, 'denied');
+    assert.equal((unentitled as { reason?: string }).reason, 'panel_not_entitled');
+    assert.equal(events.at(-1)?.data?.outcome, 'denied');
+    assert.equal(events.at(-1)?.data?.reason, 'entitlement');
+
+    const unknown = await tool.execute({ panelId: 'not-a-real-panel', enabled: true }, signal);
+    assert.equal((unknown as { reason?: string }).reason, 'unknown_panel');
+    assert.equal(events.at(-1)?.data?.reason, 'validation');
+
+    const incompatible = await tool.execute({ panelId: 'positive-feed', enabled: true }, signal);
+    assert.equal((incompatible as { reason?: string }).reason, 'panel_incompatible');
+    assert.equal(events.at(-1)?.data?.reason, 'unavailable');
+  });
+});
+
+describe('waitUntilPanelLive', () => {
+  it('treats a registered panel instance as live', () => {
+    assert.equal(isCatalogPanelLive('giving', { giving: {} }), true);
+    assert.equal(isCatalogPanelLive('giving', {}), false);
+  });
+
+  it('resolves immediately when the panel is already live', async () => {
+    const outcome = await waitUntilPanelLive({
+      isLive: () => true,
+      timeoutMs: 50,
+      observe: () => () => {},
+    });
+    assert.equal(outcome, 'live');
+  });
+
+  it('resolves live when the panel appears before timeout', async () => {
+    let live = false;
+    let notify = (): void => {};
+    const pending = waitUntilPanelLive({
+      isLive: () => live,
+      timeoutMs: 500,
+      observe: (onChange) => {
+        notify = onChange;
+        return () => {};
+      },
+    });
+    await Promise.resolve();
+    live = true;
+    notify();
+    assert.equal(await pending, 'live');
+  });
+
+  it('times out without throwing when the panel never appears', async () => {
+    const outcome = await waitUntilPanelLive({
+      isLive: () => false,
+      timeoutMs: 20,
+      observe: () => () => {},
+    });
+    assert.equal(outcome, 'timeout');
+  });
+
+  it('rejects when the invocation is aborted during the wait', async () => {
+    const controller = new AbortController();
+    const pending = waitUntilPanelLive({
+      isLive: () => false,
+      signal: controller.signal,
+      timeoutMs: 1_000,
+      observe: () => () => {},
+    });
+    controller.abort();
+    await assert.rejects(pending, (error: Error) => error.name === 'AbortError');
   });
 });

@@ -363,8 +363,10 @@ export class EventHandlerManager implements AppModule {
   /**
    * Enables a registered panel (undo-restore, CMD+K "Add", etc.). Returns
    * false when the panel is unknown or the free-tier cap blocks it. Already
-   * enabled → true (no-op). Single source of truth for runtime panel-enable
-   * so search-add and undo-restore stay in lockstep.
+   * enabled → true (no-op). Search-add and undo-restore stay in lockstep
+   * here so closing an unentitled or cross-monitor panel can still restore it.
+   * WebMCP catalog toggles use `applySetPanelEnabled`, which also enforces
+   * monitor compatibility and entitlements on enable.
    */
   enablePanelById(panelId: string, options?: { trackAnalytics?: boolean }): boolean {
     const config = this.ctx.panelSettings[panelId];
