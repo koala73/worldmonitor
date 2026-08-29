@@ -65,7 +65,7 @@ import {
   markProActivationPending,
   ProActivationController,
 } from '@/app/pro-activation-controller';
-import { PasskeyOfferController } from '@/app/passkey-offer-controller';
+import { PasskeyOfferBoot } from '@/app/passkey-offer-boot';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { PanelTabBar, tabCapGateCopy } from '@/components/PanelTabBar';
 import {
@@ -432,7 +432,7 @@ export class PanelLayoutManager implements AppModule {
   private scheduledLoadAllIdle: number | null = null;
   private responsiveZoneListener: ResponsiveZoneListener | null = null;
   private readonly proActivationController: ProActivationController;
-  private readonly passkeyOfferController: PasskeyOfferController;
+  private readonly passkeyOfferController: PasskeyOfferBoot;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -463,7 +463,9 @@ export class PanelLayoutManager implements AppModule {
       openAiAnalyst: () => this.revealAnalystPanel(),
       openSearch: callbacks.openSearch,
     });
-    this.passkeyOfferController = new PasskeyOfferController(ctx);
+    // Boot shim only — the controller, prompt, and passkey services load on
+    // demand, keeping ~12 KB out of the first-paint chunk (see #7353 follow-up).
+    this.passkeyOfferController = new PasskeyOfferBoot(ctx);
     if (returnedFromCheckout) {
       // Funnel (#4931): the purchase-complete signal on the client side.
       // Queued by the analytics facade until Umami loads after first paint.
