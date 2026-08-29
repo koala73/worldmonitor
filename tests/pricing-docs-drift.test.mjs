@@ -242,6 +242,26 @@ const assertJsonLdOffersMatchCatalog = (sourceOffers, deployedOffers) => {
 // which `npm run build:pro` produces rather than git (#6898). The guard suites
 // below run on source fixtures and stay unconditional.
 guardProBuiltOutput();
+
+// AI crawlers often skip JS. Visible USD figures must live in the static
+// noscript body (and not only in JSON-LD Offers) so "how much does it cost?"
+// answers remain extractable (#7381).
+test('/pro noscript body exposes catalog USD prices as visible text (#7381)', () => {
+  const html = read('pro-test/index.html');
+  const noscript = html.match(/<noscript>([\s\S]*?)<\/noscript>/i)?.[1];
+  assert.ok(noscript, 'pro-test/index.html must include a noscript fallback');
+  assert.match(noscript, /How much does World Monitor Pro cost\?/);
+  for (const planKey of PLAN_KEYS) {
+    const cents = priceCentsFor(planKey);
+    const dollars = (cents / 100).toFixed(2);
+    assert.match(
+      noscript,
+      new RegExp(`\\$${dollars.replace('.', '\\.')}`),
+      `noscript must show $${dollars} for ${planKey}`
+    );
+  }
+});
+
 test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', { skip: shouldSkipProBuiltOutput() }, () => {
   assertJsonLdOffersMatchCatalog(
     jsonLdOffersFor('pro-test/index.html'),

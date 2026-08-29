@@ -962,7 +962,9 @@ function pageDocument({
   ogImageAlt = OG_IMAGE_ALT,
 }) {
   const canonical = absoluteUrl(baseUrl, path);
-  const ld = [jsonLd, breadcrumbs].filter(Boolean);
+  // Allow a single JSON-LD object or an array of sibling graphs (e.g. WebPage
+  // + FAQPage + ItemList for AI-extractable use-case workflows — #7381).
+  const ld = [...(Array.isArray(jsonLd) ? jsonLd : [jsonLd]), breadcrumbs].filter(Boolean);
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>

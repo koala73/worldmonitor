@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const USE_CASES_CONTENT_VERSION = '2026-08-18';
+export const USE_CASES_CONTENT_VERSION = '2026-08-29';
 
 export const USE_CASE_PAGES = [
   {
@@ -100,6 +100,34 @@ function assertMetaDescription(description, label) {
   if (length < 155 || length > 160) {
     throw new Error(`${label} meta description must be 155–160 chars (got ${length})`);
   }
+}
+
+
+/** FAQPage + ItemList companions for HowTo-shaped use-case pages (#7381). */
+function faqPageLd(questions) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: questions.map(([name, text]) => ({
+      '@type': 'Question',
+      name,
+      acceptedAnswer: { '@type': 'Answer', text },
+    })),
+  };
+}
+
+function itemListLd(name, steps) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name,
+    numberOfItems: steps.length,
+    itemListElement: steps.map((step, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: step,
+    })),
+  };
 }
 
 function renderUseCasesIndex({ tpl, baseUrl, lastmod }) {
@@ -268,15 +296,38 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
     description,
     lastmod,
     ogType: 'article',
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebPage',
-      name: 'Monitor country risk',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      dateModified: lastmod,
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: 'Monitor country risk',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        dateModified: lastmod,
+      },
+      faqPageLd([
+        [
+          'How do you monitor country risk with World Monitor?',
+          'Establish a baseline with the Country Instability Index and Country Resilience Index, review live instability and forecasts, check corroborating economic and security signals, record uncertainty, then set the follow-up or escalation into an exact product state.',
+        ],
+        [
+          'Who is the country-risk workflow for?',
+          'Risk analysts, corporate security, procurement, investors, and NGO security officers who need a repeatable monitoring decision for a defined country set — not emergency dispatch, legal certification, or military targeting.',
+        ],
+        [
+          'What is the expected output of a country-risk watch?',
+          'A dated monitoring note with baseline, live pressure, corroboration, uncertainty, and the next action, continuing into an exact World Monitor country brief rather than a generic homepage.',
+        ],
+      ]),
+      itemListLd('Country-risk end-to-end workflow', [
+        'Establish a baseline',
+        'Review current instability and forecasts',
+        'Check corroborating economic and security signals',
+        'Record uncertainty',
+        'Set the follow-up or escalation',
+      ]),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Use cases', path: '/use-cases/' },
@@ -412,15 +463,39 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
     description,
     lastmod,
     ogType: 'article',
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebPage',
-      name: 'Verify breaking news',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      dateModified: lastmod,
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: 'Verify breaking news',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        dateModified: lastmod,
+      },
+      faqPageLd([
+        [
+          'How do you verify breaking news with World Monitor?',
+          'Treat a viral claim as a hypothesis: capture the exact claim and window, assess the source chain, test only the World Monitor signal families that can support or contradict it, record contradictions and coverage gaps, then assign a qualified outcome before you brief anyone.',
+        ],
+        [
+          'Who is the breaking-news verification workflow for?',
+          'Newsroom researchers, OSINT analysts, duty-of-care officers, and desk editors who need a bounded verification record in minutes — not a rewritten article and not a generic homepage tour.',
+        ],
+        [
+          'What can World Monitor not prove about a breaking claim?',
+          'That a quiet map means nothing happened, or that repeated headlines are independent confirmations. Correlated sensors are evidence, not certainty, and this workflow does not certify that an event is true.',
+        ],
+      ]),
+      itemListLd('Breaking-news verification workflow', [
+        'Capture the claim precisely',
+        'Assess the original source',
+        'Check news velocity without equating repetition to proof',
+        'Test only relevant independent signals',
+        'Record freshness, fit, and contradictions',
+        'Assign a qualified outcome',
+      ]),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Use cases', path: '/use-cases/' },
@@ -565,15 +640,42 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
     description,
     lastmod,
     ogType: 'article',
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebPage',
-      name: 'Monitor supply-chain disruptions',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      dateModified: lastmod,
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: 'Monitor supply-chain disruptions',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        dateModified: lastmod,
+      },
+      faqPageLd([
+        [
+          'How do you monitor supply-chain disruptions with World Monitor?',
+          'Define the exposure first, keep a routine baseline, then switch to incident mode only when a signal can touch that exposure. Separate observed evidence, forecasts, and analyst inference before you escalate.',
+        ],
+        [
+          'What is the difference between routine monitoring and incident response?',
+          'Routine monitoring defines exposure, establishes a baseline, runs the daily scan, and sets watch thresholds. Incident response identifies the first-order constraint, tests exposure fit, maps transmission paths, separates evidence classes, and records stale or contradictory sources before escalating.',
+        ],
+        [
+          'What can World Monitor not prove about a disruption?',
+          'That an event will cause a specific price, shortage, delay, or customer impact. Market moves are confirmation signals, not causal proof.',
+        ],
+      ]),
+      itemListLd('Supply-chain disruption monitoring steps', [
+        'Define the exposure',
+        'Establish a baseline',
+        'Run the daily scan',
+        'Set watch thresholds',
+        'Identify the first-order constraint',
+        'Test exposure fit',
+        'Map transmission paths',
+        'Separate evidence classes',
+        'Record stale, missing, or contradictory sources',
+      ]),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Use cases', path: '/use-cases/' },

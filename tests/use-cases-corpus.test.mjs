@@ -165,6 +165,21 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
     const [pageLd] = jsonLdObjects(supplyChainHtml);
     assert.equal(hubLd['@type'], 'CollectionPage');
     assert.equal(pageLd['@type'], 'WebPage');
+
+    for (const [label, html] of [
+      ['country-risk', countryRiskHtml],
+      ['breaking-news', breakingNewsHtml],
+      ['supply-chain', supplyChainHtml],
+    ]) {
+      const types = new Set(jsonLdObjects(html).map((ld) => ld['@type']));
+      assert.ok(types.has('WebPage'), `${label} missing WebPage JSON-LD`);
+      assert.ok(types.has('FAQPage'), `${label} missing FAQPage JSON-LD for AI extraction (#7381)`);
+      assert.ok(types.has('ItemList'), `${label} missing ItemList JSON-LD for AI extraction (#7381)`);
+      const faq = jsonLdObjects(html).find((ld) => ld['@type'] === 'FAQPage');
+      assert.ok(Array.isArray(faq.mainEntity) && faq.mainEntity.length >= 2, `${label} FAQPage needs questions`);
+      const list = jsonLdObjects(html).find((ld) => ld['@type'] === 'ItemList');
+      assert.ok(Array.isArray(list.itemListElement) && list.itemListElement.length >= 3, `${label} ItemList needs steps`);
+    }
   });
 
   it('emits bounded URL and Umami attribution for every product handoff', () => {
