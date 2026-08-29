@@ -11,7 +11,7 @@
 
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from './_cors.js';
-import { DEPRECATION_POLICY_LINK } from '../server/_shared/deprecation-policy';
+import { appendDeprecationPolicyLinkToRecord, DEPRECATION_POLICY_LINK } from '../server/_shared/deprecation-policy';
 
 export const MD_TWIN_LOOP_HEADER = 'x-wm-md-twin';
 const MAX_TWIN_CHARS = 80_000;
@@ -220,6 +220,7 @@ export async function buildMarkdownTwinResponse(
   const corsHeaders = getPublicCorsHeaders('GET, HEAD, OPTIONS');
 
   if (req.method === 'OPTIONS') {
+    appendDeprecationPolicyLinkToRecord(corsHeaders);
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
