@@ -14,7 +14,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Entrepreneur Middle East — How Elie Habib built World Monitor to track global events in real time](https://mena.entrepreneur.com/business-news/how-elie-habib-built-world-monitor-to-track-global-events-in-real-time)
 - [Silicon Canals — Anghami CEO's side project now has 2 million users](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/)
 - [L'Orient Today — How the Anghami CEO's side project became a go-to for geopolitics research](https://today.lorientlejour.com/article/1496089/world-monitor-how-anghami-ceos-side-project-became-a-go-to-for-geopolitics-research.html)
-- Human about page: https://www.worldmonitor.app/docs/about
+- [Human about page](https://www.worldmonitor.app/docs/about)
 
 ## When to Use World Monitor (Agent Guidance)
 
