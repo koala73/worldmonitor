@@ -48,8 +48,12 @@ function countryMatch(): SearchMatch {
 function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boolean> = {}) {
   const mapLayers = { conflicts: false };
   const enableLayer = vi.fn();
+  const enablePanel = vi.fn(() => true);
   const closeForProgrammaticSelection = vi.fn();
   const openCountryBriefByCode = vi.fn(() => true);
+  const panelSettings = Object.fromEntries(
+    Object.entries(enabledPanels).map(([panelId, enabled]) => [panelId, { enabled }]),
+  );
   const modal = {
     search: vi.fn(() => ({ orderedMatches: matches })),
     resolveMatchByIdentity: vi.fn((identity: string) => (
@@ -71,15 +75,13 @@ function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boo
         setView: vi.fn(),
         setLayers: vi.fn(),
       },
-      panelSettings: Object.fromEntries(
-        Object.entries(enabledPanels).map(([panelId, enabled]) => [panelId, { enabled }]),
-      ),
+      panelSettings,
       newsPanels: {},
     } as never,
     getVariant: () => 'full',
     hasPremiumAccess: () => false,
     openCountryBriefByCode,
-    enablePanel: vi.fn(() => true),
+    enablePanel,
     trackSearchResultSelected: vi.fn(),
     trackCountrySelected: vi.fn(),
     runWithAgentAnalyticsSuppressed: (callback) => callback(),
@@ -118,9 +120,11 @@ function createHarness(matches: SearchMatch[], enabledPanels: Record<string, boo
     controller,
     dispatcher,
     enableLayer,
+    enablePanel,
     mapLayers,
     modal,
     openCountryBriefByCode,
+    panelSettings,
   };
 }
 
@@ -235,7 +239,7 @@ describe('open_search_result evaluates cancellation per issued effect', () => {
   });
 
   it('blocks enabling a disabled panel without a target-side signal', async () => {
-    const { controller, dispatcher } = createHarness(
+    const { controller, closeForProgrammaticSelection, dispatcher, enablePanel } = createHarness(
       [commandMatch('panel:windy-webcams')],
       { 'windy-webcams': false },
     );
@@ -245,6 +249,55 @@ describe('open_search_result evaluates cancellation per issued effect', () => {
     await expect(controller.open(response.results[0]!.key, async () => {})).resolves.toStrictEqual(
       cancellationDenial,
     );
+    expect(enablePanel).not.toHaveBeenCalled();
+    expect(closeForProgrammaticSelection).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.panels)).toBeNull();
+
+    controller.destroy();
+    dispatcher.destroy();
+  });
+
+  it('denies an issued enabled panel after it is disabled without a target-side signal', async () => {
+    const enabledPanels = { 'live-webcams': true };
+    const { controller, closeForProgrammaticSelection, dispatcher, enablePanel, panelSettings } =
+      createHarness([commandMatch('panel:live-webcams')], enabledPanels);
+    dispatcher.scrollToPanelWhenReady = vi.fn(async () => true) as never;
+
+    const response = await controller.search('webcam', 'panels', 10);
+    expect(response.results[0]?.executable).toBe(true);
+
+    enabledPanels['live-webcams'] = false;
+    panelSettings['live-webcams']!.enabled = false;
+
+    await expect(controller.open(response.results[0]!.key, async () => {})).resolves.toStrictEqual(
+      cancellationDenial,
+    );
+    expect(enablePanel).not.toHaveBeenCalled();
+    expect(closeForProgrammaticSelection).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.panels)).toBeNull();
+
+    controller.destroy();
+    dispatcher.destroy();
+  });
+
+  it('keeps the bound persistent class when a disabled panel is later enabled', async () => {
+    const enabledPanels = { 'windy-webcams': false };
+    const { controller, closeForProgrammaticSelection, dispatcher, enablePanel } = createHarness(
+      [commandMatch('panel:windy-webcams')],
+      enabledPanels,
+    );
+
+    const response = await controller.search('webcam', 'panels', 10);
+    expect(response.results[0]?.executable).toBe(false);
+
+    enabledPanels['windy-webcams'] = true;
+
+    await expect(controller.open(response.results[0]!.key, async () => {})).resolves.toStrictEqual(
+      cancellationDenial,
+    );
+    expect(enablePanel).not.toHaveBeenCalled();
+    expect(closeForProgrammaticSelection).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.panels)).toBeNull();
 
     controller.destroy();
     dispatcher.destroy();
