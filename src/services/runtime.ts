@@ -85,9 +85,48 @@ function isWorldMonitorWebHost(hostname: string): boolean {
     || hostname.endsWith('.worldmonitor.app');
 }
 
+// Loopback page origins the API deliberately refuses in production. Keep in
+// step with the bare-localhost entries in api/_cors.js and server/cors.ts.
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+function isLoopbackHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(hostname);
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * A page on loopback may not send /api/ to a remote origin.
+ *
+ * `api/_cors.js` and `server/cors.ts` both drop bare localhost/127.0.0.1 from
+ * the allow-list in production, so every such call returns 403 and the whole
+ * dashboard renders unavailable. `VITE_WS_API_URL=https://api.worldmonitor.app`
+ * in a developer's .env.local used to do exactly that to `npm run dev`, where
+ * the Vite sebuf plugin serves those routes same-origin anyway.
+ *
+ * Deliberately narrow. The Tauri shell is exempt: its tauri:// and asset://
+ * origins are allow-listed by name and it has no same-origin API to fall back
+ * to. A loopback base stays honoured, so pointing dev at a local API on another
+ * port still works. Deployed and self-hosted pages are untouched — and the
+ * self-hosted image proxies /api/ server-side (docker/nginx.conf.template).
+ */
+function suppressesRemoteBase(configuredBaseUrl: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (isDesktopRuntime()) return false;
+  if (!isLoopbackHostname(window.location?.hostname ?? '')) return false;
+  return !isLoopbackHostname(hostnameOf(configuredBaseUrl));
+}
+
 export function getConfiguredWebApiBaseUrl(): string {
   if (WS_API_URL) {
-    return normalizeBaseUrl(WS_API_URL);
+    const configured = normalizeBaseUrl(WS_API_URL);
+    return suppressesRemoteBase(configured) ? '' : configured;
   }
 
   if (typeof window === 'undefined') {
