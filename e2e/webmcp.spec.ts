@@ -249,59 +249,20 @@ test.describe('dashboard tab persistence', () => {
         tabCount: 1,
         tabs: [{ name: originalName, active: true, canDelete: false }],
       });
-      const originalId = (listed.tabs as Array<{ id: string }>)[0]?.id;
-      expect(originalId).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
+      expect((listed.tabs as Array<{ id: string }>)[0]?.id).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
 
+      // Current Chrome still omits the target-side AbortSignal, so persistent
+      // tab mutations fail closed. Prove the denial, then drive persistence
+      // through the visible tab bar like the model-free path.
       const created = await executeDashboardTabTool(page, 'create_dashboard_tab', {
         name: 'Draft Workspace',
       });
-      expect(created).toMatchObject({ ok: true, status: 'applied' });
-      const createdId = created.tabId;
-      expect(createdId).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
-      expect(createdId).not.toBe(originalId);
-      await expect(labels).toHaveCount(2);
-
-      const renamed = await executeDashboardTabTool(page, 'rename_dashboard_tab', {
-        tabId: createdId,
-        name: 'WebMCP Workspace',
+      expect(created).toMatchObject({
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
       });
-      expect(renamed).toMatchObject({ ok: true, status: 'applied', name: 'WebMCP Workspace' });
-      await expect(labels.nth(1)).toHaveText('WebMCP Workspace');
-      await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
-
-      const selectedOriginal = await executeDashboardTabTool(page, 'select_dashboard_tab', {
-        tabId: originalId,
-      });
-      expect(selectedOriginal).toMatchObject({ ok: true, status: 'applied' });
-      await expect(labels.first()).toHaveAttribute('aria-selected', 'true');
-
-      const selectedCreated = await executeDashboardTabTool(page, 'select_dashboard_tab', {
-        tabId: createdId,
-      });
-      expect(selectedCreated).toMatchObject({ ok: true, status: 'applied' });
-      await expect(labels.nth(1)).toHaveAttribute('aria-selected', 'true');
-
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await expect(page.locator('.dashboard-tab-label')).toHaveCount(2);
-      await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveText('WebMCP Workspace');
-      await expect(page.locator('.dashboard-tab-label').nth(1)).toHaveAttribute('aria-selected', 'true');
-      await closeMissionPresetIfOpen(page);
-      await expect.poll(async () => page.evaluate(async () => (
-        (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
-      )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
-
-      const deleted = await executeDashboardTabTool(page, 'delete_dashboard_tab', {
-        tabId: createdId,
-        confirm: true,
-      });
-      expect(deleted).toMatchObject({ ok: true, status: 'applied' });
-      await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
-      await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
-
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await expect(page.locator('.dashboard-tab-label')).toHaveCount(1);
-      await expect(page.locator('.dashboard-tab-label')).toHaveText(originalName);
-      return;
+      await expect(labels).toHaveCount(1);
     }
 
     await page.locator('.dashboard-tab-add').click();
