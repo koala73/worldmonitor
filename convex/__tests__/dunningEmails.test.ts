@@ -38,8 +38,11 @@ import {
   SEND_SPACING_MS,
   resendPacingWaitMs,
   buildDunningEmail,
-  formatAccessEndDate,
 } from "../payments/subscriptionEmails";
+import {
+  buildCancellationConfirmEmail,
+  formatAccessEndDate,
+} from "../payments/cancellationEmailCopy";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -1051,8 +1054,7 @@ describe("cancellation confirmation copy (#7314)", () => {
     // This step fires for EVERY plan key. The winback template names Pro
     // features unconditionally; this one must not copy that, or an
     // api_starter canceller is told their "briefs and WM Analyst" continue.
-    const { subject, html } = buildDunningEmail(
-      "cancellation_confirm",
+    const { subject, html } = buildCancellationConfirmEmail(
       "API Starter (Monthly)",
       "https://www.worldmonitor.app/dashboard",
       Date.parse("2026-09-28T19:01:10Z"),
@@ -1069,8 +1071,7 @@ describe("cancellation confirmation copy (#7314)", () => {
   });
 
   test("falls back to a dateless phrase rather than printing an invalid date", () => {
-    const { subject, html } = buildDunningEmail(
-      "cancellation_confirm",
+    const { subject, html } = buildCancellationConfirmEmail(
       "Pro (Monthly)",
       "https://www.worldmonitor.app/dashboard",
     );
@@ -1078,6 +1079,24 @@ describe("cancellation confirmation copy (#7314)", () => {
     expect(html).toContain("until the end of your paid period");
     expect(subject).not.toContain("undefined");
     expect(html).not.toContain("NaN");
+  });
+
+  test("the lifecycle builder delegates cancellation copy to the copy module", () => {
+    const accessUntil = Date.parse("2026-09-28T19:01:10Z");
+    expect(
+      buildDunningEmail(
+        "cancellation_confirm",
+        "Pro (Monthly)",
+        "https://www.worldmonitor.app/dashboard",
+        accessUntil,
+      ),
+    ).toEqual(
+      buildCancellationConfirmEmail(
+        "Pro (Monthly)",
+        "https://www.worldmonitor.app/dashboard",
+        accessUntil,
+      ),
+    );
   });
 });
 

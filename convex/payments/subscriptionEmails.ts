@@ -10,6 +10,9 @@ import { internalAction, internalMutation, internalQuery } from "../_generated/s
 import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createCustomerPortalUrlForUser } from "./billing";
+import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
+
+export { formatAccessEndDate } from "./cancellationEmailCopy";
 
 const RESEND_URL = "https://api.resend.com/emails";
 const FROM = "World Monitor <noreply@worldmonitor.app>";
@@ -596,27 +599,6 @@ type DunningStep =
   | "winback_day30"
   | "cancellation_confirm";
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-] as const;
-
-/**
- * Render an access-end date for email copy, in UTC.
- *
- * Deliberately hand-rolled rather than `toLocaleDateString`: the Convex
- * runtime carries no user locale, so a locale-formatted date is both
- * non-deterministic across runtimes and untestable. UTC (not local) because
- * `currentPeriodEnd` is a UTC instant from Dodo — formatting it in a server
- * timezone would print the wrong calendar day for periods ending near
- * midnight, and this date is the entire point of the cancellation email.
- * Exported for tests.
- */
-export function formatAccessEndDate(epochMs: number): string {
-  const d = new Date(epochMs);
-  return `${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-}
-
 /** Everything the send action needs to decide + address one email. */
 export const getDunningContext = internalQuery({
   args: { dodoSubscriptionId: v.string() },
@@ -773,28 +755,8 @@ export function buildDunningEmail(
   accessUntil?: number,
 ): { subject: string; html: string } {
   switch (step) {
-    case "cancellation_confirm": {
-      // Lead with the date, in the subject line as well as the body. The
-      // escalation that motivated this email (#7314) came from a subscriber
-      // who read "cancelled" as "cut off" and asked for a refund of a month
-      // he still held — so the reassurance has to survive being read in a
-      // notification preview, not just by someone who opens the mail.
-      const until = accessUntil === undefined ? null : formatAccessEndDate(accessUntil);
-      const untilPhrase = until ? `until ${until}` : "until the end of your paid period";
-      return {
-        subject: `Your World Monitor ${planName} access continues ${untilPhrase}`,
-        html: dunningEmailShell(
-          // Plan-neutral on purpose: this step fires for every plan key,
-          // api_starter and api_business included, so naming Pro features
-          // here would tell an API subscriber about things they never had.
-          `Your access continues ${untilPhrase}.`,
-          `<p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">We've cancelled the renewal on your ${planName} subscription — you won't be charged again. Nothing is switched off today: your ${planName} access keeps working ${untilPhrase}, the period you've already paid for. After that, this subscription ends.</p>`,
-          "Open dashboard",
-          ctaUrl,
-          "You're receiving this because you cancelled a World Monitor subscription. No further charges will be taken.",
-        ),
-      };
-    }
+    case "cancellation_confirm":
+      return buildCancellationConfirmEmail(planName, ctaUrl, accessUntil);
     case "dunning_day0":
       return {
         subject: `Your World Monitor payment failed — access continues while you fix it`,
