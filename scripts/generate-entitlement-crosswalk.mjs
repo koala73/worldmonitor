@@ -15,6 +15,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { dirname } from 'node:path';
+import { argv } from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const OUT = 'docs/generated/entitlement-crosswalk.json';
 const missingSources = [];
@@ -81,7 +83,20 @@ for (const ln of out.split('\n')) {
   const t = text.trim();
   if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) continue;   // comments
   if (/^(import|export type|type |interface )/.test(t)) continue;                 // decls
-  sites.push({ rule: `site:${file}:${line}`, source: 'site', file, line: +line, detail: t.slice(0, 130) });
+  // Predicate kind is part of the identity. Keying on filename alone let a NEW
+  // gate of a different kind inside an already-mapped file inherit that file's
+  // capability silently — a real blind spot found in review.
+  const pred =
+      /features\.apiAccess/.test(t)  ? 'apiAccess'
+    : /features\.mcpAccess/.test(t)  ? 'mcpAccess'
+    : /features\.dataExport/.test(t) ? 'dataExport'
+    : /requiresPremium/.test(t)      ? 'requiresPremium'
+    : /isCallerPremium\(/.test(t)    ? 'isCallerPremium'
+    : /hasPremiumAccess\(\)/.test(t)  ? 'hasPremiumAccess'
+    : /isProUser\(\)/.test(t)         ? 'isProUser'
+    : /features\.tier|tier\s*[<>]=?\s*1/.test(t) ? 'tier'
+    : 'other';
+  sites.push({ rule: `site:${file}:${line}`, source: 'site', file, line: +line, pred, detail: t.slice(0, 130) });
 }
 
 // ------------------------------------------------------------- crosswalk
@@ -174,62 +189,78 @@ const MAP = [
 
 const SITE_MAP = [
   // --- capabilities the hand-built ledger never found ---
-  [/convex\/companyMonitoring\//,             { cap: 'monitoring.company', note: 'requires planKey!==free && tier>0' }],
-  [/_shared\/direct-llm-quota\.ts/,           { cap: 'llm.direct_quota', note: 'entitlement-derived daily LLM ceiling' }],
-  [/_shared\/embed-entitlement\.ts/,          { cap: 'embed.panels', note: 'apiAccess-gated embeddable panels' }],
+  [/convex\/companyMonitoring\//,             { cap: 'monitoring.company', note: 'requires planKey!==free && tier>0' , preds: ['tier'] }],
+  [/_shared\/direct-llm-quota\.ts/,           { cap: 'llm.direct_quota', note: 'entitlement-derived daily LLM ceiling' , preds: ['tier'] }],
+  [/_shared\/embed-entitlement\.ts/,          { cap: 'embed.panels', note: 'apiAccess-gated embeddable panels' , preds: ['apiAccess'] }],
   // --- false positive: data LOD tier, not an entitlement tier ---
-  [/list-military-bases\.ts/,                 { exclude: 'meta.tier is a base-importance LOD tier for zoom filtering, NOT an entitlement tier' }],
+  [/list-military-bases\.ts/,                 { exclude: 'meta.tier is a base-importance LOD tier for zoom filtering, NOT an entitlement tier' , preds: ['tier'] }],
   // --- server route enforcement points of already-mapped API paths ---
-  [/server\/worldmonitor\/supply-chain\/v1\/(get-country-chokepoint-index|get-bypass-options)/, { cap: 'supplychain.chokepoints', note: 'enforcement point' }],
-  [/server\/worldmonitor\/supply-chain\/v1\/(get-route-explorer-lane|get-route-impact)/,        { cap: 'supplychain.routes', note: 'enforcement point' }],
-  [/server\/worldmonitor\/supply-chain\/v1\//,{ cap: 'supplychain.costshock', note: 'enforcement point' }],
-  [/server\/worldmonitor\/trade\/v1\//,      { cap: 'trade.flows', note: 'enforcement point' }],
-  [/server\/worldmonitor\/economic\/v1\/get-national-debt/, { cap: 'economic.debt', note: 'enforcement point' }],
-  [/api\/me\/entitlement\.ts/,               { exclude: 'entitlement read endpoint — reports state, gates nothing' }],
-  [/convex\/notificationChannels\.ts/,        { cap: 'notifications.channels' }],
-  [/convex\/alertRules\.ts/,                  { cap: 'alerts.rules' }],
-  [/api\/notification-channels\.ts/,          { cap: 'notifications.channels' }],
-  [/api\/widget-agent\.ts/,                   { cap: 'widgets.custom' }],
-  [/summarize-article\.ts/,                   { cap: 'news.summarization' }],
-  [/gates\/playback/,                         { cap: 'playback.historical' }],
-  [/convex\/apiKeys\.ts/,                     { cap: 'api.keys' }],
-  [/pro-mcp-gate\.ts|mcp-grant|mcp-store|McpConnectModal|McpDataPanel|api\/mcp-proxy\.ts|api\/mcp\//, { cap: 'mcp.access' }],
-  [/gates\/export/,                           { cap: 'export.data' }],
-  [/analysis-framework-store\.ts/,            { cap: 'analysis.frameworks' }],
-  [/correlation-engine\/engine\.ts/,          { cap: 'correlation.llm' }],
-  [/followed-countries|followedCountries/,    { cap: 'limits.followed_countries' }],
-  [/search-manager\.ts/,                      { cap: 'aviation.data', note: 'callsign search' }],
-  [/ChatAnalystPanel|chat-analyst/,           { cap: 'analyst.chat' }],
-  [/supply-chain\/index\.ts|RouteExplorer/,   { cap: 'supplychain.routes' }],
-  [/services\/scenario\//,                    { cap: 'scenario.engine' }],
-  [/sanctions-pressure/,                      { cap: 'sanctions.pressure' }],
-  [/global-tenders/,                          { cap: 'procurement.tenders' }],
-  [/stock-analysis|stock-backtest|insider-transactions/, { cap: 'markets.stock_analysis' }],
-  [/DailyMarketBriefPanel|daily-market-brief/,{ cap: 'markets.brief' }],
-  [/MarketImplicationsPanel/,                 { cap: 'markets.implications' }],
-  [/LatestBriefPanel/,                        { cap: 'digest.scheduled' }],
-  [/DeductionPanel|deduct-situation/,         { cap: 'intel.deduction' }],
-  [/RegionalIntelligenceBoard/,               { cap: 'intel.regional' }],
-  [/country-intel|CountryBriefPage|CountryDeepDivePanel/, { cap: 'intel.country_brief' }],
-  [/services\/economic\//,                    { cap: 'economic.debt' }],
-  [/services\/trade\//,                       { cap: 'trade.flows' }],
-  [/threat-classifier|classify-gate/,         { cap: 'news.classification' }],
-  [/summarization\.ts|summarize-gate/,        { cap: 'news.summarization' }],
-  [/panels\.ts|panel-layout|panel-gating|Panel\.ts|PanelTabBar|settings-window|App\.ts|event-handlers/, { cap: 'limits.panels', note: 'cap + gate CTA plumbing' }],
-  [/widget-store/,                            { cap: 'widgets.custom' }],
-  [/entitlements|entitlement-check|entitlement-watchdog|premium-check|pro-entitlement|premium-fetch|premium-denial|premium-intent|wm-session|runtime\.ts|billing|checkout|payments\//, { exclude: 'entitlement plumbing — resolves/propagates state, gates nothing itself' }],
-  [/UnifiedSettings|ProBanner|pro-banner-policy|ProActivation|MapPopup|DeckGLMap|MapContainer|InsightsPanel|follow-button|watchlist-modal|notifications-settings|data-loader|agent-bus-applier|CIIPanel|ResilienceWidget|SupplyChainPanel|WidgetChatModal|stock-analysis-targets|analytics|oauth|http\.ts|schema\.ts|constants\.ts|productCatalog|apiPlanLimitUsage|mcpProTokens|gateway\.ts|shipping/, { exclude: 'consumer of a gate mapped elsewhere — renders or forwards, does not define' }],
+  [/server\/worldmonitor\/supply-chain\/v1\/(get-country-chokepoint-index|get-bypass-options)/, { cap: 'supplychain.chokepoints', note: 'enforcement point' , preds: ['isCallerPremium'] }],
+  [/server\/worldmonitor\/supply-chain\/v1\/(get-route-explorer-lane|get-route-impact)/,        { cap: 'supplychain.routes', note: 'enforcement point' , preds: ['isCallerPremium'] }],
+  [/server\/worldmonitor\/supply-chain\/v1\//,{ cap: 'supplychain.costshock', note: 'enforcement point' , preds: ['isCallerPremium'] }],
+  [/server\/worldmonitor\/trade\/v1\//,      { cap: 'trade.flows', note: 'enforcement point' , preds: ['isCallerPremium'] }],
+  [/server\/worldmonitor\/economic\/v1\/get-national-debt/, { cap: 'economic.debt', note: 'enforcement point' , preds: ['isCallerPremium'] }],
+  [/api\/me\/entitlement\.ts/,               { exclude: 'entitlement read endpoint — reports state, gates nothing' , preds: ['isCallerPremium'] }],
+  [/convex\/notificationChannels\.ts/,        { cap: 'notifications.channels' , preds: ['tier'] }],
+  [/convex\/alertRules\.ts/,                  { cap: 'alerts.rules' , preds: ['tier'] }],
+  [/api\/notification-channels\.ts/,          { cap: 'notifications.channels' , preds: ['tier'] }],
+  [/api\/widget-agent\.ts/,                   { cap: 'widgets.custom' , preds: ['tier'] }],
+  [/summarize-article\.ts/,                   { cap: 'news.summarization' , preds: ['requiresPremium'] }],
+  [/gates\/playback/,                         { cap: 'playback.historical' }], // NOTE: matches no current gate
+  [/convex\/apiKeys\.ts/,                     { cap: 'api.keys' , preds: ['apiAccess'] }],
+  [/pro-mcp-gate\.ts|api\/mcp-proxy\.ts|api\/mcp\//, { cap: 'mcp.access' , preds: ['isCallerPremium','mcpAccess','tier'] }],
+  [/gates\/export/,                           { cap: 'export.data' , preds: ['dataExport'] }],
+  [/analysis-framework-store\.ts/,            { cap: 'analysis.frameworks' , preds: ['hasPremiumAccess'] }],
+  [/correlation-engine\/engine\.ts/,          { cap: 'correlation.llm' , preds: ['hasPremiumAccess'] }],
+  [/followedCountries/,    { cap: 'limits.followed_countries' , preds: ['tier'] }],
+  [/search-manager\.ts/,                      { cap: 'aviation.data', note: 'callsign search' }], // NOTE: matches no current gate
+  [/ChatAnalystPanel|chat-analyst/,           { cap: 'analyst.chat' }], // NOTE: matches no current gate
+  [/supply-chain\/index\.ts/,   { cap: 'supplychain.routes' , preds: ['hasPremiumAccess'] }],
+  [/services\/scenario\//,                    { cap: 'scenario.engine' }], // NOTE: matches no current gate
+  [/sanctions-pressure/,                      { cap: 'sanctions.pressure' , preds: ['hasPremiumAccess','isCallerPremium'] }],
+  [/global-tenders/,                          { cap: 'procurement.tenders' }], // NOTE: matches no current gate
+  [/stock-analysis|stock-backtest|insider-transactions/, { cap: 'markets.stock_analysis' }], // NOTE: matches no current gate
+  [/DailyMarketBriefPanel|daily-market-brief/,{ cap: 'markets.brief' }], // NOTE: matches no current gate
+  [/MarketImplicationsPanel/,                 { cap: 'markets.implications' }], // NOTE: matches no current gate
+  [/LatestBriefPanel/,                        { cap: 'digest.scheduled' }], // NOTE: matches no current gate
+  [/deduct-situation/,         { cap: 'intel.deduction' , preds: ['isCallerPremium'] }],
+  [/RegionalIntelligenceBoard/,               { cap: 'intel.regional' , preds: ['hasPremiumAccess'] }],
+  [/country-intel/, { cap: 'intel.country_brief' , preds: ['isCallerPremium'] }],
+  [/services\/economic\//,                    { cap: 'economic.debt' , preds: ['hasPremiumAccess'] }],
+  [/services\/trade\//,                       { cap: 'trade.flows' }], // NOTE: matches no current gate
+  [/threat-classifier|classify-gate/,         { cap: 'news.classification' }], // NOTE: matches no current gate
+  [/summarization\.ts|summarize-gate/,        { cap: 'news.summarization' }], // NOTE: matches no current gate
+  [/panel-layout|settings-window|event-handlers/, { cap: 'limits.panels', note: 'cap + gate CTA plumbing' , preds: ['hasPremiumAccess','isProUser'] }],
+  [/widget-store/,                            { cap: 'widgets.custom' }], // NOTE: matches no current gate
+  [/entitlements|entitlement-check|premium-check|pro-entitlement|billing|payments\//, { exclude: 'entitlement plumbing — resolves/propagates state, gates nothing itself' , preds: ['apiAccess','isCallerPremium','tier'] }],
+  [/UnifiedSettings|data-loader|http\.ts|apiPlanLimitUsage|mcpProTokens|gateway\.ts|shipping/, { exclude: 'consumer of a gate mapped elsewhere — renders or forwards, does not define' , preds: ['apiAccess','hasPremiumAccess','isCallerPremium','isProUser','mcpAccess','tier'] }],
 ];
 
+
+/**
+ * Resolve one raw rule to a capability id or an exclusion.
+ *
+ * Exported so tests can assert the property that matters: a gate of a DIFFERENT
+ * kind, or in a file nobody mapped, must come back unmapped rather than
+ * inheriting a neighbour's capability. Keying sites on filename alone used to
+ * break that (a synthetic hasPremiumAccess() gate in src/App.ts was silently
+ * absorbed into limits.panels); identity is now file + predicate kind.
+ */
+export function classify(rule) {
+  const table = rule.source === 'site' ? SITE_MAP : MAP;
+  const key   = rule.source === 'site' ? rule.file : rule.rule;
+  const hit = table.find(([re, v]) =>
+    re.test(key) && (rule.source !== 'site' || !v.preds || v.preds.includes(rule.pred)));
+  return hit ? hit[1] : null;
+}
+
+export { MAP, SITE_MAP };
 
 const all = [...rules, ...sites];
 const caps = new Map(); const exclusions = []; const unmapped = [];
 for (const r of all) {
-  const table = r.source === 'site' ? SITE_MAP : MAP;
-  const key   = r.source === 'site' ? r.file : r.rule;
-  const hit = table.find(([re]) => re.test(key));
-  if (!hit) { unmapped.push(r); continue; }
-  const v = hit[1];
+  const v = classify(r);
+  if (!v) { unmapped.push(r); continue; }
   if (v.exclude) { exclusions.push({ rule: r.rule, reason: v.exclude }); continue; }
   if (!caps.has(v.cap)) caps.set(v.cap, { id: v.cap, rules: [] });
   caps.get(v.cap).rules.push({ rule: r.rule, detail: r.detail, note: v.note });
@@ -245,7 +276,10 @@ const payload = {
   unmapped,
 };
 
-if (process.argv.includes('--check')) {
+// Importing this module must not write files or exit — tests import `classify`.
+const isCli = argv[1] && fileURLToPath(import.meta.url) === argv[1];
+if (!isCli) { /* imported as a library */ }
+else if (process.argv.includes('--check')) {
   const { rawRules, capabilities, exclusions: ex, unmappedGates } = payload.totals;
   console.log(`raw rules ${rawRules} · capabilities ${capabilities} · exclusions ${ex} · unmappedGates ${unmappedGates}`);
   if (missingSources.length) {
@@ -262,6 +296,8 @@ if (process.argv.includes('--check')) {
   process.exit(0);
 }
 
+else {
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(payload, null, 2) + '\n');
 console.log(`${OUT}  —  ${payload.totals.rawRules} rules → ${payload.totals.capabilities} capabilities, ${payload.totals.exclusions} excluded, unmappedGates ${payload.totals.unmappedGates}`);
+}
