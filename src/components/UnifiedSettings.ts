@@ -48,6 +48,7 @@ import {
   deriveBillingUxState,
   getReactivationHref,
   getSubscriptionStatusTone,
+  isBusinessSeatOwnerAt,
   type BillingStatusTone,
 } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
@@ -628,13 +629,11 @@ export class UnifiedSettings {
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = onSubscriptionChange(() => {
       this.replaceUpgradeSection();
-      const sub = getSubscription();
-      if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+      if (isBusinessSeatOwnerAt(getSubscription(), Date.now())) {
         void this.businessSeatsSection.load();
       }
     });
-    const sub = getSubscription();
-    if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+    if (isBusinessSeatOwnerAt(getSubscription(), Date.now())) {
       void this.businessSeatsSection.load();
     }
   }
@@ -1111,7 +1110,7 @@ export class UnifiedSettings {
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
           ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
-        ${sub?.planKey === 'api_business' && sub?.status === 'active' ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
+        ${isBusinessSeatOwnerAt(sub, now) ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
     }
 

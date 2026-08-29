@@ -16,6 +16,7 @@ import {
   getBillingGateOverride,
   getReactivationHref,
   getSubscriptionStatusTone,
+  isBusinessSeatOwnerAt,
   isSubscriptionCoveringAt,
   type BillingSubscriptionSnapshot,
   type BillingEntitlementSnapshot,
@@ -322,6 +323,57 @@ describe('isSubscriptionCoveringAt (#7315)', () => {
   it('an unrecognised runtime status does not cover (fail closed)', () => {
     const bogus = sub({ status: 'paused' as unknown as 'active' });
     assert.equal(isSubscriptionCoveringAt(bogus, NOW), false);
+  });
+});
+
+describe('isBusinessSeatOwnerAt', () => {
+  function bizSub(overrides: Partial<BillingSubscriptionSnapshot> = {}) {
+    return { planKey: 'api_business', ...sub(overrides) };
+  }
+
+  it('mirrors the server: every covering status keeps the owner authorized', () => {
+    // convex/payments/businessSeats.ts authorizes on
+    // `planKey === "api_business" && isCoveringAt(s, at)`. on_hold and
+    // cancelled-but-paid-through both cover there, so both must here.
+    assert.equal(isBusinessSeatOwnerAt(bizSub({ status: 'active' }), NOW), true);
+    assert.equal(isBusinessSeatOwnerAt(bizSub({ status: 'on_hold' }), NOW), true);
+    assert.equal(isBusinessSeatOwnerAt(bizSub({ status: 'cancelled' }), NOW), true);
+  });
+
+  it('drops the owner once coverage actually ends', () => {
+    assert.equal(
+      isBusinessSeatOwnerAt(bizSub({ status: 'cancelled', currentPeriodEnd: NOW - DAY }), NOW),
+      false,
+    );
+    assert.equal(
+      isBusinessSeatOwnerAt(bizSub({ status: 'expired', currentPeriodEnd: NOW + DAY }), NOW),
+      false,
+    );
+  });
+
+  it('requires the api_business plan, not merely coverage', () => {
+    // A covering pro_monthly row is a paying customer with no seats to manage.
+    assert.equal(isBusinessSeatOwnerAt({ planKey: 'pro_monthly', ...sub() }, NOW), false);
+  });
+
+  it('is false for a null subscription rather than throwing', () => {
+    assert.equal(isBusinessSeatOwnerAt(null, NOW), false);
+  });
+
+  it('agrees with the shared coverage predicate for every api_business row', () => {
+    // Guards the pair against drift: the seat surface must appear exactly when
+    // the row covers, never on a status-string reading of its own.
+    const statuses = ['active', 'on_hold', 'cancelled', 'expired'] as const;
+    for (const status of statuses) {
+      for (const currentPeriodEnd of [NOW - DAY, NOW, NOW + DAY]) {
+        const row = bizSub({ status, currentPeriodEnd });
+        assert.equal(
+          isBusinessSeatOwnerAt(row, NOW),
+          isSubscriptionCoveringAt(row, NOW),
+          `${status} @ ${currentPeriodEnd - NOW} diverged from the coverage predicate`,
+        );
+      }
+    }
   });
 });
 

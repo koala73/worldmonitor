@@ -102,3 +102,43 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     );
   });
 });
+
+describe('Business seats surface gates on coverage, not the status string', () => {
+  // The server authorizes listSeats/inviteSeats on
+  // `planKey === "api_business" && isCoveringAt(s, at)`
+  // (convex/payments/businessSeats.ts). Every client gate must mirror that, or
+  // an owner in the payment-retry window or a paid-through cancellation loses
+  // the surface while their invitees are still holding Pro through the grant.
+  // These are source-text locks because both files are DOM modules that cannot
+  // be imported under `tsx --test`; the rendered behaviour is covered by
+  // tests/dom/business-seats-coverage-gate.test.mts.
+  const SEAT_GATE_FILES = [
+    'src/components/UnifiedSettings.ts',
+    'src/components/BusinessSeatsSection.ts',
+  ];
+
+  for (const file of SEAT_GATE_FILES) {
+    it(`${file} never re-derives the seat gate from a status string`, async () => {
+      const src = await read(file);
+      assert.doesNotMatch(
+        src,
+        /planKey === 'api_business'\s*&&\s*sub\??\.status === 'active'/,
+        `${file} must call isBusinessSeatOwnerAt instead of comparing status to 'active'`,
+      );
+    });
+
+    it(`${file} calls the shared seat-owner predicate`, async () => {
+      const src = await read(file);
+      assert.match(
+        src,
+        /isBusinessSeatOwnerAt\(/,
+        `${file} should gate the seats surface on the shared predicate`,
+      );
+      assert.match(
+        src,
+        /import \{[^}]*isBusinessSeatOwnerAt[^}]*\} from '@\/services\/billing-state'/s,
+        `${file} should import isBusinessSeatOwnerAt from billing-state`,
+      );
+    });
+  }
+});

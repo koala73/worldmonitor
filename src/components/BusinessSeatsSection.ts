@@ -14,6 +14,7 @@ import {
   removeBusinessSeat,
   type BusinessSeat,
 } from '@/services/billing';
+import { isBusinessSeatOwnerAt } from '@/services/billing-state';
 
 export class BusinessSeatsSection {
   private seats: BusinessSeat[] = [];
@@ -72,7 +73,7 @@ export class BusinessSeatsSection {
 
   renderContent(): string {
     const sub = getSubscription();
-    const isBusinessOwner = sub?.planKey === 'api_business' && sub?.status === 'active';
+    const isBusinessOwner = isBusinessSeatOwnerAt(sub, Date.now());
     const isCorporateDomain = this.ownerIsCorporateDomain;
 
     if (!isBusinessOwner) return '';
