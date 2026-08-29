@@ -198,5 +198,17 @@ describe('agent readiness: Agent Plugins manifest', () => {
     assert.ok(hrefs.includes('https://worldmonitor.app/plugin.json'), 'api-catalog must advertise /plugin.json');
     const view = JSON.parse(readFileSync(join(ROOT, 'public/agent-view.json'), 'utf-8'));
     assert.equal(view.discovery.agentPlugin, 'https://worldmonitor.app/plugin.json');
+    for (const path of ['docs/agent-discovery.mdx', 'docs/zh/agent-discovery.mdx']) {
+      const body = readFileSync(join(ROOT, path), 'utf-8');
+      assert.ok(
+        body.includes('skills/*/SKILL.md'),
+        `${path} must describe the plugin skill glob in MDX-safe form (angle-bracket placeholders render away)`,
+      );
+      assert.equal(
+        body.includes('skills/<name>/SKILL.md'),
+        false,
+        `${path} must not use <name> — MDX treats it as a tag and emits skills//SKILL.md`,
+      );
+    }
   });
 });
