@@ -418,6 +418,10 @@ export default {
     // KV always mints a 200, and serveFromKv spreads what it is handed — resolve the union here so
     // the bag it receives is a bag, never a status function whose spread would yield no CORS at all.
     const kvCorsHeaders = publicBootstrapShape ? corsPolicy : buildCorsHeaders(origin);
+    // serveFromKv spreads this bag and never enters passThroughToOrigin, so the
+    // policy Link has to live on the bag itself. Production is
+    // BOOTSTRAP_KV_SERVE="all".
+    appendDeprecationPolicyLink(kvCorsHeaders);
     // The single origin path for this request. maybeServeBootstrapFromKv (U-K4) may invoke it once
     // internally when it hedges/falls back; every other request runs it directly below. Either way
     // origin is fetched at most once.
