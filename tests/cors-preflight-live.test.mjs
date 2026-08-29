@@ -209,6 +209,47 @@ for (const tier of ['fast', 'slow']) {
   });
 }
 
+const PUBLIC_SINGLE_KEY_PROBES = [
+  ['weather', 'weatherAlerts'],
+  ['on-demand', 'forecasts'],
+];
+
+for (const [label, key] of PUBLIC_SINGLE_KEY_PROBES) {
+  const url = `https://api.worldmonitor.app/api/bootstrap?keys=${key}&public=1`;
+
+  test(`GET marked ${label} bootstrap serves the public header shape through the edge`, { skip: !SHOULD_RUN }, async () => {
+    const resp = await fetch(url, { headers: { Origin: ORIGIN, 'User-Agent': BROWSER_UA } });
+    await resp.arrayBuffer();
+    assert.equal(resp.status, 200, `marked ${label} bootstrap should serve 200; got ${resp.status}`);
+    assertPublicBootstrapCorsHeaders({ assert, resp, label: `marked ${label} bootstrap` });
+    assertPublicBootstrapSharedCacheHeaders({ assert, resp, label: `marked ${label} bootstrap` });
+  });
+
+  test(`OPTIONS marked ${label} bootstrap preflight matches its GET`, { skip: !SHOULD_RUN }, async () => {
+    const resp = await fetch(url, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: ORIGIN,
+        'User-Agent': BROWSER_UA,
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+    await resp.arrayBuffer();
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+    assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  });
+}
+
+test('GET marked non-public bootstrap key stays credentialed', { skip: !SHOULD_RUN }, async () => {
+  const resp = await fetch('https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes&public=1', {
+    headers: { Origin: ORIGIN, 'User-Agent': BROWSER_UA },
+  });
+  await resp.arrayBuffer();
+  assert.equal(resp.status, 401);
+  assert.equal(resp.headers.get('access-control-allow-origin'), ORIGIN);
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
 test('GET /api/story keeps cacheable crawler HTML isolated from browser redirects', { skip: !SHOULD_RUN }, async () => {
   // The unique query string guarantees a cold cache key. Both requests use the
   // exact same URL and run back-to-back from one runner, so a Worker that ignores

@@ -673,3 +673,58 @@ test('the credentialed bootstrap URL (no public=1) keeps the Origin-echoing shap
     globalThis.fetch = original;
   }
 });
+
+const PUBLIC_SINGLE_KEY_URLS = [
+  ['weather', 'https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1'],
+  ['on-demand', 'https://api.worldmonitor.app/api/bootstrap?keys=forecasts&public=1'],
+];
+
+for (const [label, url] of PUBLIC_SINGLE_KEY_URLS) {
+  test(`marked ${label} bootstrap pass-through keeps the public shape`, async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => new Response('{"data":{},"missing":[]}', {
+      status: 200,
+      headers: {
+        'Cache-Control': 'max-age=300',
+        'CDN-Cache-Control': 'public, s-maxage=600',
+        'Timing-Allow-Origin': '*',
+      },
+    });
+    try {
+      const resp = await worker.fetch(makeRequest('GET', url, { Origin: KNOWN_GOOD }));
+      assertPublicBootstrapCorsHeaders({ assert, resp, label: `${label} pass-through` });
+      assert.equal(resp.headers.get('cdn-cache-control'), 'public, s-maxage=600');
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test(`marked ${label} bootstrap preflight matches its GET`, async () => {
+    const resp = await worker.fetch(makeRequest('OPTIONS', url, {
+      Origin: KNOWN_GOOD,
+      'Access-Control-Request-Method': 'GET',
+    }));
+    assert.equal(resp.status, 204);
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+    assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+    assert.equal(resp.headers.get('vary'), null);
+  });
+}
+
+test('a marked non-public bootstrap key keeps the credentialed shape', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"error":"Invalid API key"}', { status: 401 });
+  try {
+    const resp = await worker.fetch(makeRequest(
+      'GET',
+      'https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes&public=1',
+      { Origin: KNOWN_GOOD },
+    ));
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
+    assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+    assert.match(resp.headers.get('vary') || '', /Origin/i);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
