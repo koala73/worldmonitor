@@ -78,7 +78,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 在这些版本上，WorldMonitor 仍会执行只读工具和可逆的仪表板视图变更。`openSearch`、`open_dashboard_panel` 与 `set_map_view` 均可正常使用。`set_map_view` 会通过 `history.replaceState` 写入地址栏，生成的分享 URL 与页面复制链接控件生成的相同，并会在刷新时被仪表板还原；这次写入在地址栏中可见，并会被下一次人工移动地图覆盖。
 
-`openCountryBrief` 与 `set_map_layers` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。`set_map_layers` 会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。`open_search_result` 是选择器：已启用面板等视图状态结果可以执行；会持久化、消耗配额或离开当前页面的结果仍被拒绝。后一类影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时才可用。
+`openCountryBrief` 与 `set_map_layers` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。`set_map_layers` 会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。`open_search_result` 是选择器：无标签深链的已启用面板等视图状态结果可以执行；会持久化、消耗配额或离开当前页面的结果仍被拒绝。`panel:consumer-prices@world` 这类标签深链会写入面板设置，因此在没有目标侧信号时保持拦截。后一类影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时才可用。
 
 <Note>
 如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
@@ -101,7 +101,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 六个仪表板变体都注册相同的八个命令式工具。登录和权益变化不会改变注册集合；每次调用都会重新检查实时状态。
 
-在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief` 与 `set_map_layers` 会返回不可用。`open_search_result` 仍会执行视图状态结果（例如打开已启用的实时摄像头面板），并拒绝持久化、消耗配额或离开当前页面的结果。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，图层写入则会把选择持久化并影响本次会话之外的状态。参见[可用性](#availability)。
+在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief` 与 `set_map_layers` 会返回不可用。`open_search_result` 仍会执行视图状态结果（例如打开已启用的实时摄像头面板），并拒绝持久化、消耗配额或离开当前页面的结果，包括会写入设置的面板标签深链。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，图层写入则会把选择持久化并影响本次会话之外的状态。参见[可用性](#availability)。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|

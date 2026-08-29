@@ -6,8 +6,8 @@ import type { SearchMatch } from '@/components/search-types';
  *
  *   - read-only: no dashboard mutation. Reserved; current openers always
  *     change something visible or persistent.
- *   - view-state: reversible visible dashboard change (open an enabled panel,
- *     move the map, scroll a live feed).
+ *   - view-state: reversible visible dashboard change (open an enabled panel
+ *     with no tab deep-link, move the map, scroll a live feed).
  *   - persistent: writes storage or starts a session-outliving stream (layer
  *     toggles, enabling a disabled panel, theme).
  *   - quota-consuming: can spend the caller's daily LLM allowance.
@@ -98,7 +98,11 @@ export function classifySearchMatchEffect(
     case 'layers':
       return 'persistent';
     case 'panel': {
-      const panelId = action.split('@')[0] ?? '';
+      const [panelId = '', subAction = ''] = action.split('@');
+      // Tab deep-links such as panel:consumer-prices@world write panel
+      // settings to localStorage after presentation. Fail closed for any
+      // @sub-action rather than treating an enabled panel as view-state.
+      if (subAction) return 'persistent';
       return panelId && isPanelEnabled(panelId) ? 'view-state' : 'persistent';
     }
     case 'view':

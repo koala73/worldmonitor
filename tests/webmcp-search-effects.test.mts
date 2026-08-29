@@ -80,8 +80,16 @@ describe('WebMCP search-result effect classes', () => {
       'view-state',
     );
     assert.equal(
-      classifySearchMatchEffect(command('panel:markets@overview'), isPanelEnabled),
+      classifySearchMatchEffect(command('panel:markets'), isPanelEnabled),
       'view-state',
+    );
+    assert.equal(
+      classifySearchMatchEffect(command('panel:markets@overview'), isPanelEnabled),
+      'persistent',
+    );
+    assert.equal(
+      classifySearchMatchEffect(command('panel:consumer-prices@world'), () => true),
+      'persistent',
     );
     assert.equal(classifySearchMatchEffect(entity('news'), isPanelEnabled), 'view-state');
     assert.equal(classifySearchMatchEffect(entity('market'), isPanelEnabled), 'view-state');

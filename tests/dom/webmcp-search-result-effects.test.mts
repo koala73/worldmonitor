@@ -258,6 +258,33 @@ describe('open_search_result evaluates cancellation per issued effect', () => {
     dispatcher.destroy();
   });
 
+  it('does not advertise or run an enabled panel tab deep-link without a target-side signal', async () => {
+    const { controller, closeForProgrammaticSelection, dispatcher } = createHarness(
+      [commandMatch('panel:consumer-prices@world')],
+      { 'consumer-prices': true },
+    );
+    mountPanel('consumer-prices');
+    const openedTabs: string[] = [];
+    const onOpenTab = (event: Event): void => {
+      const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab;
+      if (tab) openedTabs.push(tab);
+    };
+    window.addEventListener('wm-consumer-prices-open-tab', onOpenTab);
+
+    const response = await controller.search('inflation', 'panels', 10);
+    expect(response.results[0]?.executable).toBe(false);
+    await expect(controller.open(response.results[0]!.key, async () => {})).resolves.toStrictEqual(
+      cancellationDenial,
+    );
+    expect(closeForProgrammaticSelection).not.toHaveBeenCalled();
+    expect(openedTabs).toEqual([]);
+    expect(localStorage.getItem('wm-consumer-prices-v1')).toBeNull();
+
+    window.removeEventListener('wm-consumer-prices-open-tab', onOpenTab);
+    controller.destroy();
+    dispatcher.destroy();
+  });
+
   it('blocks an external-navigation settings result without a target-side signal', async () => {
     const { controller, closeForProgrammaticSelection, dispatcher, openSettings } = createHarness(
       [commandMatch('view:settings')],

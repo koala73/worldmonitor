@@ -218,9 +218,9 @@ const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
 //     browser-side execution was cancelled.
 //   - 'result-dependent': open_search_result is a selector. Cancellation is
 //     evaluated for the issued result's bound effect class, not the tool as a
-//     whole. View-state results (opening an already-enabled panel, moving the
-//     map) run without a target-side signal; persistent, quota-consuming, and
-//     external-navigation results stay blocked.
+//     whole. View-state results (opening an already-enabled panel with no tab
+//     deep-link, moving the map) run without a target-side signal; persistent,
+//     quota-consuming, and external-navigation results stay blocked.
 //   - 'view-state': set_map_view also writes share-URL state via
 //     history.replaceState — visible in the address bar and overwritten by the
 //     next human map move.
