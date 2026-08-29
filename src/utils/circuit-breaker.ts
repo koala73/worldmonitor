@@ -1,3 +1,5 @@
+import { isDesktopRuntime } from '@/services/desktop-runtime';
+
 interface CircuitState {
   failures: number;
   cooldownUntil: number;
@@ -60,8 +62,10 @@ const DEFAULT_RECOVERY_PROBE_TIMEOUT_MS = 30_000;
 
 function isDesktopOfflineMode(): boolean {
   if (typeof window === 'undefined') return false;
-  const hasTauri = Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
-  return hasTauri && typeof navigator !== 'undefined' && navigator.onLine === false;
+  // isDesktopRuntime(), not a raw bridge-globals sniff (#5912): "offline
+  // desktop app" is a property of the desktop runtime, and the raw global is
+  // absent during desktop:dev early boot even though the app IS the desktop.
+  return isDesktopRuntime() && typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
 export class CircuitBreaker<T> {

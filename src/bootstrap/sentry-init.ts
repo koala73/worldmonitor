@@ -9,6 +9,7 @@
 import { isIosLikeUserAgent } from './platform-ua';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata } from './sentry-build-metadata';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 
 type SentryNs = typeof import('@sentry/browser');
 
@@ -64,7 +65,10 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
     environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
       : location.hostname.includes('vercel.app') ? 'preview'
       : 'development',
-    enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
+    // !isDesktopRuntime(), not a raw bridge-globals sniff (#5912): the
+    // desktop shell must not double-report to browser Sentry, and the raw
+    // check enabled it during desktop:dev early boot (bridge not yet attached).
+    enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !isDesktopRuntime(),
     allowUrls: SENTRY_ALLOW_URLS,
     sendDefaultPii: true,
     tracesSampleRate: 0.1,
