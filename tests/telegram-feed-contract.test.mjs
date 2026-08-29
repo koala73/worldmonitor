@@ -327,6 +327,20 @@ describe('api/telegram-feed contract normalization', () => {
     assert.equal(res.headers.get('cache-control'), 'no-store');
     assert.equal(called, false);
   });
+
+  it('fails closed when the relay returns an invalid channel preview', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      username: 'bad handle',
+      title: 'Untrusted shape',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest('/api/telegram-feed?mode=resolve&username=warintel'));
+
+    assert.equal(res.status, 502);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await res.json(), { error: 'Invalid Telegram channel response' });
+  });
 });
 
 describe('api/telegram-feed first-party boundary', () => {

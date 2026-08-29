@@ -54,6 +54,7 @@ describe('telegram-watchlist', () => {
   it('normalizes handles and public Telegram URLs', () => {
     assert.equal(normalizeTelegramUsername('@Ukraine_News'), 'ukraine_news');
     assert.equal(normalizeTelegramUsername('https://t.me/Ukraine_News/'), 'ukraine_news');
+    assert.equal(normalizeTelegramUsername('https://t.me/Ukraine_News/?ref=wm'), 'ukraine_news');
     assert.equal(normalizeTelegramUsername('bad handle'), '');
   });
 

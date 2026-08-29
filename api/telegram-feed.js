@@ -323,11 +323,17 @@ export default async function handler(req) {
         'Vary': VARY_CREDENTIAL,
       });
     } catch (normalizeError) {
-      // Fall through to the raw relay body so a shape change upstream still
-      // serves data, but never silently: clients receive an un-normalized
-      // payload, which is a bug worth an alert.
+      // Feed/channel modes retain the established raw-body fallback so a shape
+      // change still serves data, but never silently. Resolve fails closed
+      // below because the UI must not persist an unvalidated channel identity.
       console.warn('[telegram-feed] normalization failed:', normalizeError?.message || String(normalizeError));
       void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' } });
+      if (mode === 'resolve') {
+        return jsonResponse({ error: 'Invalid Telegram channel response' }, 502, {
+          'Cache-Control': 'no-store',
+          ...corsHeaders,
+        });
+      }
     }
 
     return buildRelayResponse(response, body, {

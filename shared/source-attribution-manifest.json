@@ -8655,6 +8655,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/telegram-feed.js"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {

@@ -20,8 +20,8 @@ export function normalizeTelegramUsername(raw: string): string {
   value = value
     .replace(/^https?:\/\/t\.me\//i, '')
     .replace(/^@+/, '')
-    .replace(/\/+$/, '')
     .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
     .trim();
 
   if (!USERNAME_RE.test(value)) return '';

@@ -143,7 +143,7 @@ export class TelegramIntelPanel extends Panel {
   }
 
   public setData(response: TelegramFeedResponse & { error?: string }): void {
-    this.relayEnabled = response.enabled !== false;
+    this.relayEnabled = response.enabled !== false && !response.error;
     this.baseItems = response.items || [];
 
     if (this.inputEl) {
@@ -453,6 +453,8 @@ export class TelegramIntelPanel extends Panel {
   }
 
   public destroy(): void {
+    this.previewRequestId++;
+    this.watchlistRequestId++;
     if (this.previewTimer) {
       clearTimeout(this.previewTimer);
       this.previewTimer = null;

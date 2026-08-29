@@ -1067,8 +1067,8 @@ function sanitizeTelegramUsername(raw) {
     .trim()
     .replace(/^https?:\/\/t\.me\//i, '')
     .replace(/^@+/, '')
-    .replace(/\/+$/, '')
     .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
     .trim();
 
   if (!TELEGRAM_USERNAME_RE.test(value)) {
@@ -1214,6 +1214,8 @@ function destroyTelegramClient() {
   const client = telegramState.client;
   telegramState.client = null;
   telegramState.api = null;
+  telegramResolveCache.clear();
+  telegramChannelCache.clear();
   if (!client) return;
   try { client.disconnect(); } catch {}
   try {
@@ -11166,11 +11168,11 @@ const server = http.createServer(async (req, res) => {
       const { preview } = await resolveTelegramChannel(username);
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600',
-        'CDN-Cache-Control': 'public, max-age=86400',
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
       }, JSON.stringify(preview));
     } catch (e) {
-      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json' });
+      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
     }
   } else if (pathname === '/telegram/channel') {
@@ -11181,11 +11183,13 @@ const server = http.createServer(async (req, res) => {
       const payload = await fetchTelegramChannelFeed(username, limit);
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=30',
-        'CDN-Cache-Control': 'public, max-age=60',
+        // Post bodies are R4. The relay's bounded in-memory cache absorbs
+        // repeated lookups; shared HTTP caches must not bypass relay auth.
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
       }, JSON.stringify(payload));
     } catch (e) {
-      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json' });
+      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
     }
   } else if (pathname === '/telegram' || pathname === '/telegram/feed') {

@@ -52,11 +52,30 @@ const STALE_FALLBACK_TTL = 600_000;
 const MISSING_TIMESTAMP_ISO = new Date(0).toISOString();
 const RESOLVE_CACHE_TTL = 60 * 60 * 1000;
 const CHANNEL_CACHE_TTL = CACHE_TTL;
+const LOOKUP_CACHE_MAX_ENTRIES = 64;
 
 const previewCache = new Map<string, { data: TelegramChannelPreview; expiresAt: number }>();
 const previewInflight = new Map<string, Promise<TelegramChannelPreview>>();
 const channelCache = new Map<string, { data: TelegramFeedResponse; expiresAt: number }>();
 const channelInflight = new Map<string, Promise<TelegramFeedResponse>>();
+
+function setLookupCache<T>(
+  cache: Map<string, { data: T; expiresAt: number }>,
+  key: string,
+  data: T,
+  ttl: number,
+): void {
+  const now = Date.now();
+  for (const [cachedKey, cached] of cache) {
+    if (cached.expiresAt + STALE_FALLBACK_TTL <= now) cache.delete(cachedKey);
+  }
+  while (cache.size >= LOOKUP_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey == null) break;
+    cache.delete(oldestKey);
+  }
+  cache.set(key, { data, expiresAt: now + ttl });
+}
 
 function telegramFeedUrl(limit: number): string {
   const path = `/api/telegram-feed?limit=${limit}`;
@@ -156,7 +175,7 @@ export async function fetchTelegramChannelPreview(username: string): Promise<Tel
 
   const request = (async () => {
     const preview = await readJson<TelegramChannelPreview>(await fetch(telegramResolveUrl(cacheKey)));
-    previewCache.set(cacheKey, { data: preview, expiresAt: Date.now() + RESOLVE_CACHE_TTL });
+    setLookupCache(previewCache, cacheKey, preview, RESOLVE_CACHE_TTL);
     return preview;
   })();
 
@@ -173,19 +192,27 @@ export async function fetchTelegramChannelFeed(username: string, limit = 20): Pr
   const cacheKey = `${username.toLowerCase()}:${safeLimit}`;
   const cached = channelCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const stale = cached && cached.expiresAt + STALE_FALLBACK_TTL > Date.now()
+    ? cached.data
+    : null;
 
   const inflight = channelInflight.get(cacheKey);
   if (inflight) return inflight;
 
   const request = (async () => {
-    const response = await readJson<TelegramFeedResponse>(await fetch(telegramChannelUrl(username, safeLimit)));
-    const normalized: TelegramFeedResponse = {
-      ...response,
-      items: applyWatchlistMetadata(response.items || []),
-      count: Array.isArray(response.items) ? response.items.length : 0,
-    };
-    channelCache.set(cacheKey, { data: normalized, expiresAt: Date.now() + CHANNEL_CACHE_TTL });
-    return normalized;
+    try {
+      const response = await readJson<TelegramFeedResponse>(await fetch(telegramChannelUrl(username, safeLimit)));
+      const normalized: TelegramFeedResponse = {
+        ...response,
+        items: applyWatchlistMetadata(response.items || []),
+        count: Array.isArray(response.items) ? response.items.length : 0,
+      };
+      setLookupCache(channelCache, cacheKey, normalized, CHANNEL_CACHE_TTL);
+      return normalized;
+    } catch (error) {
+      if (stale) return stale;
+      throw error;
+    }
   })();
 
   channelInflight.set(cacheKey, request);
