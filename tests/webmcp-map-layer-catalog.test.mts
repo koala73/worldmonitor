@@ -328,7 +328,7 @@ describe('listMapLayerCatalog', () => {
     const gated: MapLayerRuntimeAvailability = {
       cyberLayerEnabled: false,
       aisConfigured: false,
-      outagesConfigured: false,
+      outagesAvailable: false,
     };
     const cyber = catalogEntry('cyberThreats', { runtimeAvailability: gated });
     const ais = catalogEntry('ais', { runtimeAvailability: gated });
@@ -355,13 +355,6 @@ describe('listMapLayerCatalog', () => {
     assert.equal(
       resolveMapLayerRuntimeUnavailableReason('outages', true, gated),
       'layer_not_configured',
-    );
-    assert.equal(
-      resolveMapLayerRuntimeUnavailableReason('outages', true, {
-        ...gated,
-        outagesConfigured: null,
-      }),
-      undefined,
     );
   });
 

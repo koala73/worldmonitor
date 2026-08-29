@@ -332,4 +332,3 @@ export function listMapLayerCatalog(
 
   return result;
 }
-

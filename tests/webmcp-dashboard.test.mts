@@ -228,7 +228,7 @@ describe('WebMCP live dashboard bindings', () => {
     const gated = {
       cyberLayerEnabled: false,
       aisConfigured: false,
-      outagesConfigured: false,
+      outagesAvailable: false,
     };
     const catalogSnapshot = getWebMcpMapLayerCatalogSnapshot(
       ctx,

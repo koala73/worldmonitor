@@ -420,7 +420,7 @@ describe('agent bus applier', () => {
       getMapLayerRuntimeAvailability: () => ({
         cyberLayerEnabled: false,
         aisConfigured: false,
-        outagesConfigured: false,
+        outagesAvailable: false,
       }),
     });
     const mapCalls = (ctx.map as never as { _calls: { setLayersCalls: MapLayers[] } })._calls;

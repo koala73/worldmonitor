@@ -173,6 +173,7 @@ import {
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '@/app/webmcp-dashboard';
+import type { MapLayerRuntimeAvailability } from '@/services/map-layer-runtime-availability';
 import { runDashboardActionBinding } from '@/app/dashboard-action-binding';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
@@ -397,6 +398,11 @@ export class App {
     const detail = (ev as CustomEvent<CloudPrefsAppliedDetail>).detail;
     this.applyCloudSyncedPrefsToRuntime(detail?.keys ?? [], detail?.syncVersion);
   };
+  private readonly getMapLayerRuntimeAvailability = (): MapLayerRuntimeAvailability => ({
+    cyberLayerEnabled: CYBER_LAYER_ENABLED,
+    aisConfigured: isAisConfigured(),
+    outagesAvailable: isOutagesConfigured() !== false,
+  });
   private readonly handleCloudPrefsSignInTerminal = (ev: Event): void => {
     const detail = (ev as CustomEvent<CloudPrefsSignInTerminalDetail>).detail;
     const pendingGeneration = this.pendingPreferenceHandoffGeneration;
@@ -1906,11 +1912,7 @@ export class App {
           SITE_VARIANT,
           hasPremiumAccess(getAuthState()),
           t,
-          {
-            cyberLayerEnabled: CYBER_LAYER_ENABLED,
-            aisConfigured: isAisConfigured(),
-            outagesConfigured: isOutagesConfigured(),
-          },
+          this.getMapLayerRuntimeAvailability(),
         );
       },
       applyDashboardAction: async (action, execution) => {
@@ -1928,11 +1930,7 @@ export class App {
             applyViewChange: (viewAction) => {
               if (viewAction.view) trackMapViewChange(viewAction.view);
             },
-            getMapLayerRuntimeAvailability: () => ({
-              cyberLayerEnabled: CYBER_LAYER_ENABLED,
-              aisConfigured: isAisConfigured(),
-              outagesConfigured: isOutagesConfigured(),
-            }),
+            getMapLayerRuntimeAvailability: this.getMapLayerRuntimeAvailability,
             applyLayerChange: (layer, enabled, source) => (
               this.eventHandlers.applyMapLayerChange(layer, enabled, source)
             ),

@@ -1553,11 +1553,21 @@ describe('webmcp App.ts binding invariants', () => {
       appFile,
       ['true', 'execution?.signal'],
     );
-    callByExpression(
+    const catalogSnapshotCall = callByExpression(
       listMapLayerCatalog,
       appFile,
       'getWebMcpMapLayerCatalogSnapshot',
       'map-layer catalog snapshot',
+    );
+    assert.equal(
+      catalogSnapshotCall.arguments[4]?.getText(appFile),
+      'this.getMapLayerRuntimeAvailability()',
+    );
+    assert.equal(
+      objectPropertyInitializer(applierOptions, appFile, 'getMapLayerRuntimeAvailability')
+        .getText(appFile),
+      'this.getMapLayerRuntimeAvailability',
+      'catalog and setter must share the App runtime-availability source',
     );
 
     const syncUrlStateNow = objectPropertyInitializer(options, appFile, 'syncUrlStateNow');
