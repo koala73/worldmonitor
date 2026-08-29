@@ -38,6 +38,85 @@ export type BillingUxState =
   | 'renewal_verification_failed'
   | 'lapsed';
 
+/** Coverage-derived visual tone for a subscription row. See getSubscriptionStatusTone. */
+export type BillingStatusTone = 'active' | 'attention' | 'ending' | 'ended' | 'unknown';
+
+/**
+ * Whether this row's status/period FIELDS say it covers `at`.
+ *
+ * NOT an access decision, and never safe as an entitlement gate. `active` and
+ * `on_hold` return true regardless of `currentPeriodEnd`, so a row whose
+ * renewal webhook was missed still "covers" here while `deriveBillingUxState`
+ * correctly routes it to `renewal_verification_*`/`lapsed` — the exact case
+ * this module was built for (#4770/#4771). Anything deciding access must call
+ * `deriveBillingUxState`; this only answers the narrower field-level question.
+ *
+ * Its purpose is to be the single shared spelling of that question, so the
+ * cancelled-but-paid-through rule cannot be re-derived from status-string
+ * intuition in one place and not another (#7315 — the settings panel had its
+ * own inline ternary and painted a paid-through plan the same red as a dead
+ * one). `deriveBillingUxState` and `getSubscriptionStatusTone` both read it.
+ *
+ * Mirrors `isCoveringAt` in convex/payments/subscriptionHelpers.ts: active,
+ * on_hold (retry window keeps entitlement per business policy), or
+ * cancelled-but-paid-through. `expired` never covers, whatever its period end.
+ * Boundary differs deliberately from the server helper's `>`: the client keeps
+ * the inclusive `>=` this module has always used, so a row landing exactly on
+ * `now` never blinks locked between snapshots. That exception is recorded in
+ * CONCEPTS.md § Covering Subscription — a later dedup of the two helpers has to
+ * preserve both boundaries rather than picking one.
+ */
+export function isSubscriptionCoveringAt(
+  sub: Pick<BillingSubscriptionSnapshot, 'status' | 'currentPeriodEnd'>,
+  at: number,
+): boolean {
+  return (
+    sub.status === 'active'
+    || sub.status === 'on_hold'
+    || (sub.status === 'cancelled' && sub.currentPeriodEnd >= at)
+  );
+}
+
+/**
+ * How a subscription row should be *painted*, as a tone rather than a colour —
+ * the palette stays in the component.
+ *
+ * Split from `deriveBillingUxState` on purpose: that answers "does access
+ * work", which is the same `active` for a renewing plan and a cancelled one
+ * still inside its paid window. The panel needs to tell those apart, because a
+ * cancelled-but-paid-through plan IS ending — just not today (#7315).
+ *
+ * `unknown` is the explicit escape for a provider status this client does not
+ * model yet. It exists so a new Dodo status cannot be swallowed into the
+ * end-of-coverage tone and assert to an entitled user that their plan is dead.
+ *
+ * The `default` arm is a RUNTIME escape only. Left bare it would also silence
+ * the compiler: widening the status union (convex/schema.ts keeps it to these
+ * four) would then typecheck clean and ship as a permanently unexplained grey
+ * card. The `never` assignment keeps the runtime fallback while making that
+ * widening a build error, so a new status has to be given a tone deliberately.
+ */
+export function getSubscriptionStatusTone(
+  sub: Pick<BillingSubscriptionSnapshot, 'status' | 'currentPeriodEnd'>,
+  at: number,
+): BillingStatusTone {
+  switch (sub.status) {
+    case 'active':
+      return 'active';
+    case 'on_hold':
+      return 'attention';
+    case 'cancelled':
+      return isSubscriptionCoveringAt(sub, at) ? 'ending' : 'ended';
+    case 'expired':
+      return 'ended';
+    default: {
+      const unhandled: never = sub.status;
+      void unhandled;
+      return 'unknown';
+    }
+  }
+}
+
 /**
  * Precedence, mirroring the affirmative-denial philosophy of panel gating
  * (never over-gate on missing data):
@@ -73,7 +152,9 @@ export function deriveBillingUxState(
     if (sub.currentPeriodEnd >= now) return 'active';
     return 'renewal_verification_pending';
   }
-  if (sub.status === 'cancelled' && sub.currentPeriodEnd >= now) return 'active';
+  // Only `cancelled`/`expired`/unknown reach here (on_hold and active returned
+  // above), so this is the cancelled-but-paid-through arm of the predicate.
+  if (isSubscriptionCoveringAt(sub, now)) return 'active';
   return 'lapsed';
 }
 

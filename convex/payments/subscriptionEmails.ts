@@ -10,6 +10,9 @@ import { internalAction, internalMutation, internalQuery } from "../_generated/s
 import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createCustomerPortalUrlForUser } from "./billing";
+import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
+
+export { formatAccessEndDate } from "./cancellationEmailCopy";
 
 const RESEND_URL = "https://api.resend.com/emails";
 const FROM = "World Monitor <noreply@worldmonitor.app>";
@@ -544,6 +547,14 @@ export const DUNNING_DAY7_AGE_MS = 7 * DAY_MS;
 // Winback window bounds, measured from currentPeriodEnd (access end).
 export const WINBACK_MIN_AGE_MS = 30 * DAY_MS;
 export const WINBACK_MAX_AGE_MS = 60 * DAY_MS;
+// How long after `cancelledAt` the daily scan will still retry an unsent
+// cancellation confirmation (#7314, PR #7328 review). This is a RETRY window,
+// not a backfill: an annual subscriber who cancelled months ago is still paid
+// through, so an unbounded sweep would mail every historic canceller on the
+// first tick after deploy — the same trap WINBACK_MAX_AGE_MS exists to avoid.
+// Three days outlives a multi-day Resend outage while keeping the message
+// timely enough to still be about a cancellation the subscriber remembers.
+export const CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS = 3 * DAY_MS;
 
 const DASHBOARD_URL = "https://www.worldmonitor.app/dashboard";
 const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
@@ -571,16 +582,23 @@ const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
 export const SEND_SPACING_MS = 250;
 
 // Shared-cursor key in the generic `counters` table: the epoch-ms timestamp of
-// the next free Resend send slot for the dunning/winback fleet.
-const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
+// the next free Resend send slot for the dunning/winback fleet. Exported so
+// tests can park a future slot and mutate state during the uncapped wait.
+export const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
 
 const dunningStepValidator = v.union(
   v.literal("dunning_day0"),
   v.literal("dunning_day3"),
   v.literal("dunning_day7"),
   v.literal("winback_day30"),
+  v.literal("cancellation_confirm"),
 );
-type DunningStep = "dunning_day0" | "dunning_day3" | "dunning_day7" | "winback_day30";
+type DunningStep =
+  | "dunning_day0"
+  | "dunning_day3"
+  | "dunning_day7"
+  | "winback_day30"
+  | "cancellation_confirm";
 
 /** Everything the send action needs to decide + address one email. */
 export const getDunningContext = internalQuery({
@@ -735,8 +753,11 @@ export function buildDunningEmail(
   step: DunningStep,
   planName: string,
   ctaUrl: string,
+  accessUntil?: number,
 ): { subject: string; html: string } {
   switch (step) {
+    case "cancellation_confirm":
+      return buildCancellationConfirmEmail(planName, ctaUrl, accessUntil);
     case "dunning_day0":
       return {
         subject: `Your World Monitor payment failed — access continues while you fix it`,
@@ -831,6 +852,75 @@ export function resendPacingWaitMs(slotAt: number, now: number): number {
   return Math.max(0, slotAt - now);
 }
 
+type DunningContext = {
+  userId: string;
+  planKey: string;
+  status: string;
+  episodeAnchor: number;
+  cancelledAt: number | null;
+  currentPeriodEnd: number;
+  email: string;
+  hasLiveSub: boolean;
+  entitlementCoveredUntil: number;
+};
+
+type DunningSkipReason =
+  | "unknown_subscription"
+  | "not_cancelled"
+  | "stale_episode"
+  | "not_covering"
+  | "still_entitled"
+  | "resubscribed"
+  | "recovered"
+  | "no_email"
+  | "suppressed"
+  | "already_sent";
+
+/**
+ * Live-state gates for a detached send. The Resend wait is uncapped, so
+ * eligibility / episode / coverage can change while queued — this is run
+ * before the pacer and again immediately after it (PR #7328 review).
+ */
+function evaluateDunningEligibility(
+  step: DunningStep,
+  episodeAt: number,
+  sub: DunningContext,
+  now: number,
+): { ok: true } | { ok: false; reason: DunningSkipReason } {
+  if (step === "winback_day30") {
+    // Winback only for genuinely-gone users: still cancelled, paid period
+    // actually over, and no other covering subscription on the account.
+    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
+    // Same stale-episode discipline as dunning (PR #4935 review round 2,
+    // finding 1): a pending winback scheduled for cancellation T1 must not
+    // fire after the row moved to a different cancellation episode T2 —
+    // the T2 window gets its own ledger entry and its own single send.
+    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    if (sub.currentPeriodEnd > now) return { ok: false, reason: "still_entitled" };
+    // Comp floor / recomputed entitlement window (round-4 F5): a comped
+    // user is covered even with every subscription ended.
+    if (sub.entitlementCoveredUntil > now) return { ok: false, reason: "still_entitled" };
+    if (sub.hasLiveSub) return { ok: false, reason: "resubscribed" };
+    return { ok: true };
+  }
+  if (step === "cancellation_confirm") {
+    // Mirror-image of the winback guards: this email is only correct while
+    // the cancelled sub is STILL covering. Re-checked here, not just at
+    // schedule time, because the action runs detached — a reactivation or
+    // an expiry can land in between, and "your access continues until
+    // <past date>" is worse than saying nothing.
+    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
+    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
+    return { ok: true };
+  }
+  // Dunning only while THIS episode is still open — a recovery or a
+  // newer episode (different anchor) invalidates the scheduled send.
+  if (sub.status !== "on_hold") return { ok: false, reason: "recovered" };
+  if (sub.episodeAnchor !== episodeAt) return { ok: false, reason: "stale_episode" };
+  return { ok: true };
+}
+
 export const sendDunningEmail = internalAction({
   args: {
     dodoSubscriptionId: v.string(),
@@ -844,57 +934,51 @@ export const sendDunningEmail = internalAction({
       return { sent: false, reason: "no_api_key" as const };
     }
 
-    const sub = await ctx.runQuery(
-      internal.payments.subscriptionEmails.getDunningContext,
-      { dodoSubscriptionId: args.dodoSubscriptionId },
-    );
-    if (!sub) return { sent: false, reason: "unknown_subscription" as const };
+    const resolveSend = async (): Promise<
+      { ok: true; sub: DunningContext } | { ok: false; reason: DunningSkipReason }
+    > => {
+      const sub = await ctx.runQuery(
+        internal.payments.subscriptionEmails.getDunningContext,
+        { dodoSubscriptionId: args.dodoSubscriptionId },
+      );
+      if (!sub) return { ok: false, reason: "unknown_subscription" };
+      const eligibility = evaluateDunningEligibility(
+        args.step,
+        args.episodeAt,
+        sub,
+        Date.now(),
+      );
+      if (!eligibility.ok) return eligibility;
+      if (!sub.email) {
+        console.warn(`[dunning] no resolvable email for ${args.dodoSubscriptionId} — skipping ${args.step}`);
+        return { ok: false, reason: "no_email" };
+      }
+      const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
+        email: sub.email,
+      });
+      if (suppressed) return { ok: false, reason: "suppressed" };
+      const alreadySent = await ctx.runQuery(
+        internal.payments.subscriptionEmails.wasDunningStepSent,
+        args,
+      );
+      if (alreadySent) return { ok: false, reason: "already_sent" };
+      return { ok: true, sub };
+    };
 
-    if (args.step === "winback_day30") {
-      // Winback only for genuinely-gone users: still cancelled, paid period
-      // actually over, and no other covering subscription on the account.
-      if (sub.status !== "cancelled") return { sent: false, reason: "not_cancelled" as const };
-      // Same stale-episode discipline as dunning (PR #4935 review round 2,
-      // finding 1): a pending winback scheduled for cancellation T1 must not
-      // fire after the row moved to a different cancellation episode T2 —
-      // the T2 window gets its own ledger entry and its own single send.
-      if (sub.cancelledAt !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
-      if (sub.currentPeriodEnd > Date.now()) return { sent: false, reason: "still_entitled" as const };
-      // Comp floor / recomputed entitlement window (round-4 F5): a comped
-      // user is covered even with every subscription ended.
-      if (sub.entitlementCoveredUntil > Date.now()) return { sent: false, reason: "still_entitled" as const };
-      if (sub.hasLiveSub) return { sent: false, reason: "resubscribed" as const };
-    } else {
-      // Dunning only while THIS episode is still open — a recovery or a
-      // newer episode (different anchor) invalidates the scheduled send.
-      if (sub.status !== "on_hold") return { sent: false, reason: "recovered" as const };
-      if (sub.episodeAnchor !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
-    }
+    const first = await resolveSend();
+    if (!first.ok) return { sent: false, reason: first.reason };
 
-    if (!sub.email) {
-      console.warn(`[dunning] no resolvable email for ${args.dodoSubscriptionId} — skipping ${args.step}`);
-      return { sent: false, reason: "no_email" as const };
-    }
-
-    const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
-      email: sub.email,
-    });
-    if (suppressed) return { sent: false, reason: "suppressed" as const };
-
-    const alreadySent = await ctx.runQuery(
-      internal.payments.subscriptionEmails.wasDunningStepSent,
-      args,
-    );
-    if (alreadySent) return { sent: false, reason: "already_sent" as const };
-
-    // CTA: a freshly minted Dodo portal session for dunning (card update is
-    // the whole point); pricing page for winback. Portal minting can fail
-    // (no customer id, Dodo error) — fall back to the dashboard, where the
-    // payment-failure banner routes to the same portal after sign-in.
+    // CTA: only the dunning steps mint a freshly minted Dodo portal session —
+    // card update is their whole point. Winback goes to pricing. A
+    // cancellation confirmation goes to the dashboard the subscriber still
+    // has access to; a billing-portal link there would read as "there's
+    // something left to fix", the opposite of the message. Portal minting can
+    // fail (no customer id, Dodo error) — fall back to the dashboard, where
+    // the payment-failure banner routes to the same portal after sign-in.
     let ctaUrl = args.step === "winback_day30" ? PRICING_URL : DASHBOARD_URL;
-    if (args.step !== "winback_day30") {
+    if (args.step !== "winback_day30" && args.step !== "cancellation_confirm") {
       try {
-        ctaUrl = (await createCustomerPortalUrlForUser(ctx, sub.userId)).portal_url;
+        ctaUrl = (await createCustomerPortalUrlForUser(ctx, first.sub.userId)).portal_url;
       } catch (err) {
         // Designed degradation, not a failure (Sentry-coverage gate: no
         // warn without capture; convex has no silent-capture helper and
@@ -908,8 +992,6 @@ export const sendDunningEmail = internalAction({
       }
     }
 
-    const planName = PLAN_DISPLAY[sub.planKey] ?? sub.planKey;
-    const { subject, html } = buildDunningEmail(args.step, planName, ctaUrl);
     // Pace the actual POST (not just the scheduled start): the portal mint above
     // has variable latency, so reserve the Resend slot HERE — after the mint —
     // and wait for it. This bounds the true POST rate to <= 1/SEND_SPACING_MS
@@ -923,7 +1005,21 @@ export const sendDunningEmail = internalAction({
     );
     const waitMs = resendPacingWaitMs(slotAt, Date.now());
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-    await sendEmail(apiKey, sub.email, subject, html, ADMIN_EMAIL);
+
+    // Re-read after the uncapped wait. Resume / expiry / a new cancellation
+    // episode / suppression / a concurrent ledger write can all land while
+    // queued; sending the pre-wait snapshot would be the wrong email.
+    const fresh = await resolveSend();
+    if (!fresh.ok) return { sent: false, reason: fresh.reason };
+
+    const planName = PLAN_DISPLAY[fresh.sub.planKey] ?? fresh.sub.planKey;
+    const { subject, html } = buildDunningEmail(
+      args.step,
+      planName,
+      ctaUrl,
+      fresh.sub.currentPeriodEnd,
+    );
+    await sendEmail(apiKey, fresh.sub.email, subject, html, ADMIN_EMAIL);
     // Ledger write AFTER the send: a Resend failure throws above, leaving no
     // row, so the next cron tick retries. The narrow crash window between
     // send and record risks one duplicate email — the right side to err on.
@@ -934,7 +1030,7 @@ export const sendDunningEmail = internalAction({
     // trade it for silently never sending on a crash, which is worse.
     await ctx.runMutation(internal.payments.subscriptionEmails.recordDunningStepSent, {
       ...args,
-      email: sub.email,
+      email: fresh.sub.email,
     });
     console.log(`[dunning] sent ${args.step} for ${args.dodoSubscriptionId}`);
     return { sent: true as const };
@@ -994,6 +1090,46 @@ export const runDunningScan = internalMutation({
       due.push({ dodoSubscriptionId: sub.dodoSubscriptionId, step: "winback_day30", episodeAt: sub.cancelledAt });
     }
 
+    // Durable retry for the cancellation confirmation (#7314, PR #7328
+    // review). The webhook enqueues it once, on the enteringCancelled
+    // transition — but sendEmail throws BEFORE the ledger write and
+    // internalActions are not auto-retried, so a transient Resend error (or a
+    // RESEND_API_KEY missing at webhook time) would otherwise lose that
+    // customer's confirmation permanently. Every other step in this module
+    // recovers through this scan; this one now does too.
+    //
+    // The still-covering filter is DISJOINT from the winback range above —
+    // currentPeriodEnd >= now versus lapsed 30-60 days — so no subscription
+    // can be due for both steps in the same tick.
+    //
+    // Bound the READ by cancelledAt, not currentPeriodEnd. An annual who
+    // cancelled months ago stays paid-through until period end, so a
+    // currentPeriodEnd >= now collect() would re-read that row every day
+    // for the rest of the year and can exceed Convex's per-transaction
+    // read cap (PR #7328 review). The three-day retry window is the
+    // natural cohort; period-end is then an in-memory still-covering check.
+    const recentCancellations = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_status_cancelledAt", (q) =>
+        q
+          .eq("status", "cancelled")
+          .gte("cancelledAt", now - CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS),
+      )
+      .collect();
+    const paidThroughCancelled: typeof recentCancellations = [];
+    for (const sub of recentCancellations) {
+      // Same rule as winback: no cancelledAt means no stable episode key.
+      // The index omits missing fields; this guard keeps episodeAt typed.
+      if (sub.cancelledAt === undefined) continue;
+      if (sub.currentPeriodEnd < now) continue;
+      paidThroughCancelled.push(sub);
+      due.push({
+        dodoSubscriptionId: sub.dodoSubscriptionId,
+        step: "cancellation_confirm",
+        episodeAt: sub.cancelledAt,
+      });
+    }
+
     let scheduled = 0;
     for (const item of due) {
       // Ledger pre-check keeps the steady-state tick write-free; the send
@@ -1019,8 +1155,13 @@ export const runDunningScan = internalMutation({
     }
 
     console.log(
-      `[dunning] scan: ${onHold.length} on_hold, ${cancelled.length} cancelled, ${scheduled} sends scheduled`,
+      `[dunning] scan: ${onHold.length} on_hold, ${cancelled.length} cancelled, ${paidThroughCancelled.length} paid-through cancelled, ${scheduled} sends scheduled`,
     );
-    return { onHold: onHold.length, cancelled: cancelled.length, scheduled };
+    return {
+      onHold: onHold.length,
+      cancelled: cancelled.length,
+      paidThroughCancelled: paidThroughCancelled.length,
+      scheduled,
+    };
   },
 });

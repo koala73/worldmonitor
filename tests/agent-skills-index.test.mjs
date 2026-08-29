@@ -66,7 +66,7 @@ function listSkillDirs() {
 // served SKILL.md bytes, every downstream verification check fails.
 describe('agent readiness: agent-skills index', () => {
   it('index.json is up to date relative to SKILL.md sources', () => {
-    // `--check` exits non-zero if rebuilding the index would change it.
+    // `--check` exits non-zero if rebuilding the index or plugin skills would change them.
     execFileSync(
       process.execPath,
       ['scripts/build-agent-skills-index.mjs', '--check'],

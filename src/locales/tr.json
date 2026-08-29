@@ -2665,6 +2665,18 @@
       "rubBase": "Rusya Merkez Bankası — 1 birim için ruble",
       "rubPerUnit": "Birim başına ruble",
       "sourceCbr": "Kaynak: Rusya Merkez Bankası"
+    },
+    "passkeyOffer": {
+      "title": "Passkey kaydedilsin mi?",
+      "body": "Bir sonraki oturum açışında parmak izi, yüz veya cihaz PIN'i ile giriş yapın — hatırlanacak parola yok.",
+      "accept": "Passkey'i kaydet",
+      "dismiss": "Şimdi değil",
+      "close": "Kapat",
+      "announce": "Bir sonraki oturum açışında daha hızlı giriş yapmak için passkey'i kaydedin.",
+      "busy": "Cihazınızdan bekleniyor…",
+      "succeeded": "Passkey kaydedildi. Bir sonraki oturum açışında kullanabilirsiniz.",
+      "retryable": "Bu tamamlanmadı. Yeniden deneyebilirsiniz.",
+      "failed": "Bu cihaza passkey kaydedilemedi."
     }
   },
   "popups": {
@@ -3446,7 +3458,8 @@
   "auth": {
     "signIn": "Oturum Aç",
     "createAccount": "Hesap oluştur",
-    "settings": "Ayarlar"
+    "settings": "Ayarlar",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP'yi Bağla",

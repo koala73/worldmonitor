@@ -2646,6 +2646,18 @@
       "rubBase": "Ngân hàng Trung ương Nga — rúp cho 1 đơn vị",
       "rubPerUnit": "Rúp trên mỗi đơn vị",
       "sourceCbr": "Nguồn: Ngân hàng Trung ương Nga"
+    },
+    "passkeyOffer": {
+      "title": "Lưu khóa truy cập?",
+      "body": "Lần tới hãy đăng nhập bằng vân tay, khuôn mặt hoặc mã PIN của thiết bị — không cần nhớ mật khẩu.",
+      "accept": "Lưu khóa truy cập",
+      "dismiss": "Để sau",
+      "close": "Đóng",
+      "announce": "Lưu khóa truy cập để đăng nhập nhanh hơn lần tới.",
+      "busy": "Đang chờ thiết bị của bạn…",
+      "succeeded": "Khóa truy cập đã lưu. Bạn có thể sử dụng nó lần tới khi đăng nhập.",
+      "retryable": "Quá trình chưa hoàn tất. Bạn có thể thử lại.",
+      "failed": "Chúng tôi không thể lưu khóa truy cập trên thiết bị này."
     }
   },
   "popups": {
@@ -3427,7 +3439,8 @@
   "auth": {
     "signIn": "Đăng nhập",
     "createAccount": "Tạo tài khoản",
-    "settings": "Cài đặt"
+    "settings": "Cài đặt",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Kết nối MCP",

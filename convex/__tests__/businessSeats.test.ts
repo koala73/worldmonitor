@@ -158,6 +158,8 @@ async function fireWebhook(
     eventTimestamp: number;
     cancelledAt?: number;
     productId?: string;
+    /** `null` omits next_billing_date so the handler keeps the stored period end. */
+    nextBillingDate?: number | null;
   },
 ) {
   await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
@@ -172,7 +174,13 @@ async function fireWebhook(
         customer: { customer_id: "cus_test" },
         metadata: { wm_user_id: OWNER_ID },
         previous_billing_date: new Date(NOW - DAY_MS).toISOString(),
-        next_billing_date: new Date(NOW + 30 * DAY_MS).toISOString(),
+        ...(opts.nextBillingDate === null
+          ? {}
+          : {
+              next_billing_date: new Date(
+                opts.nextBillingDate ?? NOW + 30 * DAY_MS,
+              ).toISOString(),
+            }),
         ...(opts.cancelledAt ? { cancelled_at: new Date(opts.cancelledAt).toISOString() } : {}),
       },
     },
@@ -1261,6 +1269,9 @@ describe("payments businessSeats revoke-on-lapse", () => {
       status: "cancelled",
       eventTimestamp: NOW + 1000,
       cancelledAt: NOW - DAY_MS,
+      // Omit the payload date so this stays a truly-lapsed cancel, not the
+      // missed-renewal case that must persist a newer next_billing_date.
+      nextBillingDate: null,
     });
 
     const grants = await t.run(async (ctx) =>

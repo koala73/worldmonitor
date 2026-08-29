@@ -2734,6 +2734,18 @@
       "rubBase": "Bank of Russia — RUB per 1 unit",
       "rubPerUnit": "RUB per unit",
       "sourceCbr": "Source: Bank of Russia"
+    },
+    "passkeyOffer": {
+      "title": "Save a passkey?",
+      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
+      "accept": "Save passkey",
+      "dismiss": "Not now",
+      "close": "Close",
+      "announce": "Save a passkey to sign in faster next time.",
+      "busy": "Waiting for your device…",
+      "succeeded": "Passkey saved. You can use it next time you sign in.",
+      "retryable": "That didn't finish. You can try again.",
+      "failed": "We couldn't save a passkey on this device."
     }
   },
   "popups": {

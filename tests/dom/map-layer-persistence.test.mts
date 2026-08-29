@@ -1,11 +1,13 @@
 /**
- * The persistence proof behind the WebMCP cancellation gate (#7186).
+ * The persistence proof behind the WebMCP cancellation gate (#7186, #7320).
  *
  * `WEBMCP_TOOL_CANCELLATION_POLICY` classifies `set_map_layers` as
  * 'cancellation-required', so it is refused outright when the browser cannot
- * deliver a target-side AbortSignal. That justification rests on
- * one concrete claim: applying a map-layer change writes STORAGE_KEYS.mapLayers
- * to local storage, so a phantom completion outlives the session.
+ * deliver a target-side AbortSignal. `open_search_result` is result-dependent:
+ * a persistent layer result is refused for the same reason, while a view-state
+ * result is not. That justification rests on one concrete claim: applying a
+ * map-layer change writes STORAGE_KEYS.mapLayers to local storage, so a
+ * phantom completion outlives the session.
  *
  * `tests/webmcp*.test.mjs` stub the final action, so they prove the gate's
  * plumbing and never reach the write. The first tests run the real
@@ -138,6 +140,7 @@ describe('open_search_result persists an executable layer result', () => {
       getAuthContext: () => 'anonymous:settled:free',
       getVariant: () => 'full',
       isMatchExecutable: () => true,
+      isPanelCurrentlyEnabled: () => false,
       selectMatch: (candidate, signal) => dispatcher.selectProgrammaticMatch(
         candidate,
         () => candidate,
@@ -151,12 +154,14 @@ describe('open_search_result persists an executable layer result', () => {
       cancelPendingSelection: () => dispatcher.cancelPendingProgrammaticSelection(),
     });
 
-    const response = await controller.search('conflicts', 'all', 10);
+    const host = new AbortController();
+    const response = await controller.search('conflicts', 'all', 10, host.signal);
     const issued = response.results[0];
     if (!issued) throw new Error('Expected an issued conflicts search result');
+    expect(issued.executable).toBe(true);
     expect(localStorage.getItem(STORAGE_KEYS.mapLayers)).toBeNull();
 
-    await expect(controller.open(issued.key, async () => {})).resolves.toStrictEqual({
+    await expect(controller.open(issued.key, async () => {}, host.signal)).resolves.toStrictEqual({
       ok: true,
       status: 'opened',
       type: 'command',

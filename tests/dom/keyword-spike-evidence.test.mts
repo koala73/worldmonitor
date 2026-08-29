@@ -32,7 +32,7 @@ type SpikeData = CorrelationSignal['data'];
  * repeatedly and keep everything seen — a bare `drainTrendingSignals()` splices
  * the queue, so a non-matching signal drained on an early pass would be lost.
  */
-async function drainSpikeFor(term: RegExp): Promise<CorrelationSignal> {
+async function drainSpikesUntil(term: RegExp): Promise<CorrelationSignal[]> {
   const seen: CorrelationSignal[] = [];
   for (let attempt = 0; attempt < 80; attempt += 1) {
     seen.push(...drainTrendingSignals());
@@ -41,12 +41,28 @@ async function drainSpikeFor(term: RegExp): Promise<CorrelationSignal> {
         signal.type === 'keyword_spike' &&
         term.test(String((signal.data as SpikeData).term ?? '')),
     );
-    if (match) return match;
+    if (match) return seen;
     await new Promise(resolve => setTimeout(resolve, 25));
   }
   throw new Error(
     `[keyword-spike] no keyword_spike matching ${term} was emitted; saw ${JSON.stringify(seen.map(s => (s.data as SpikeData).term))}`,
   );
+}
+
+async function drainSpikeFor(term: RegExp): Promise<CorrelationSignal> {
+  const seen = await drainSpikesUntil(term);
+  return seen.find(
+    signal =>
+      signal.type === 'keyword_spike' &&
+      term.test(String((signal.data as SpikeData).term ?? '')),
+  )!;
+}
+
+function spikeTermsIn(signals: CorrelationSignal[], term: RegExp): string[] {
+  return signals
+    .filter(signal => signal.type === 'keyword_spike')
+    .map(signal => String((signal.data as SpikeData).term ?? ''))
+    .filter(value => term.test(value));
 }
 
 function dataOf(signal: CorrelationSignal): SpikeData {
@@ -419,17 +435,38 @@ describe('keyword_spike payload excludes unusable source names from the count', 
       autoSummarize: false,
     });
     const pubDate = new Date();
+    // Kelmarq arrives on five Reuters DESKS — one publisher wearing five feed
+    // labels — so the gate must reject it. Tessaline is the positive control in
+    // the SAME batch: same shape, same count, but three genuinely distinct
+    // publishers, so it must spike.
+    //
+    // The control is what makes Kelmarq's absence provable. Both terms are
+    // decided by the one synchronous checkForSpikes() pass inside
+    // ingestHeadlines, so the moment the control's signal lands, that pass has
+    // demonstrably run and Kelmarq's silence is a verdict rather than a race.
+    //
+    // Waiting a fixed period instead — which is what this test used to do, by
+    // letting an 80 x 25ms poll run to exhaustion — cannot distinguish "the
+    // gate rejected it" from "the pipeline had not got to it yet", so it would
+    // stay green if ingest broke entirely. It also cost a guaranteed 2000ms
+    // against a 15000ms budget, making it the slowest test in the DOM suite and
+    // the next one to fail under load (#6677).
     ingestHeadlines([
       { source: 'Reuters World', title: 'Ports brace for Kelmarq tariff review', link: 'https://example.com/k/1' },
       { source: 'Reuters US', title: 'Growers protest Kelmarq tariff schedule', link: 'https://example.com/k/2' },
       { source: 'Reuters Business', title: 'Retailers model Kelmarq tariff costs', link: 'https://example.com/k/3' },
       { source: 'Reuters Asia', title: 'Analysts weigh Kelmarq tariff fallout', link: 'https://example.com/k/4' },
       { source: 'Reuters Energy', title: 'Traders watch Kelmarq tariff deadline', link: 'https://example.com/k/5' },
+      { source: 'Reuters', title: 'Ports brace for Tessaline levy review', link: 'https://example.com/t/1' },
+      { source: 'AP', title: 'Growers protest Tessaline levy schedule', link: 'https://example.com/t/2' },
+      { source: 'BBC', title: 'Retailers model Tessaline levy costs', link: 'https://example.com/t/3' },
+      { source: 'AP', title: 'Analysts weigh Tessaline levy fallout', link: 'https://example.com/t/4' },
+      { source: 'BBC', title: 'Traders watch Tessaline levy deadline', link: 'https://example.com/t/5' },
     ].map(item => ({ ...item, pubDate })));
 
-    // Five Reuters desks are one publisher, so the two-publisher gate rejects
-    // the spike outright — no signal is emitted at all.
-    await expect(drainSpikeFor(/kelmarq/i)).rejects.toThrow();
+    const seen = await drainSpikesUntil(/tessaline/i);
+
+    expect(spikeTermsIn(seen, /kelmarq/i)).toEqual([]);
   });
 
   it('still counts genuinely independent publishers, and names them once each', async () => {
