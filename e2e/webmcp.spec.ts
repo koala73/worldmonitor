@@ -385,12 +385,12 @@ test.describe('top-level WebMCP dashboard contract', () => {
         const layers = listed && typeof listed === 'object' && 'layers' in listed
           ? (listed as { layers?: Array<{ available?: boolean; id?: string }> }).layers
           : undefined;
-        const chosen = layers?.find((layer) => layer.available)?.id ?? layers?.[0]?.id ?? null;
+        const chosen = layers?.find((layer) => layer.available === true)?.id ?? null;
         if (!chosen) {
           return {
             firstId: null,
             listed,
-            setResult: { ok: false, errorName: 'missing_layer', errorMessage: 'Catalog returned no layer IDs.' },
+            setResult: { ok: false, errorName: 'missing_available_layer', errorMessage: 'Catalog returned no currently available layer IDs.' },
           };
         }
         try {
@@ -425,11 +425,29 @@ test.describe('top-level WebMCP dashboard contract', () => {
         ok: true,
         layers: expect.any(Array),
       });
+      expect(
+        (layerCatalogChainResult.listed as { layers: Array<{ available?: boolean }> }).layers
+          .some((layer) => layer.available === true),
+      ).toBe(true);
       expect(layerCatalogChainResult.firstId).toMatch(/^[a-z][A-Za-z0-9_-]*$/);
       expect(layerCatalogChainResult.setResult.ok).toBe(true);
-      expect(layerCatalogChainResult.setResult.output).toEqual(expect.objectContaining({
-        ok: expect.any(Boolean),
-      }));
+      if (coldStart.targetCancellationSupported) {
+        expect(layerCatalogChainResult.setResult.output).toEqual(expect.objectContaining({
+          ok: true,
+          status: 'applied',
+          targets: expect.arrayContaining([
+            expect.objectContaining({
+              target: layerCatalogChainResult.firstId,
+              status: 'applied',
+            }),
+          ]),
+        }));
+      } else {
+        expect(layerCatalogChainResult.setResult.output).toEqual(expect.objectContaining({
+          ok: false,
+          reason: 'target_cancellation_unsupported',
+        }));
+      }
       layerCatalogChain = layerCatalogChainResult;
     }
 

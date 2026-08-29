@@ -78,7 +78,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 在这些版本上，WorldMonitor 仍会执行只读工具和可逆的仪表板视图变更。`openSearch`、`open_dashboard_panel` 与 `set_map_view` 均可正常使用。`set_map_view` 会通过 `history.replaceState` 写入地址栏，生成的分享 URL 与页面复制链接控件生成的相同，并会在刷新时被仪表板还原；这次写入在地址栏中可见，并会被下一次人工移动地图覆盖。
 
-`openCountryBrief`、`set_map_layers` 与 `open_search_result` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。后两个工具会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。这些影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时，这些工具才可用。
+`openCountryBrief`、`set_map_layers` 与 `open_search_result` 则继续被拦截并返回不可用。`openCountryBrief` 可能启动服务器端 LLM 简报生成（`premiumFetch` → `/api/intelligence/v1/get-country-intel-brief` → `callLlm`）；即使浏览器随后取消调用方的 Promise，这次生成仍会消耗调用者的每日额度。`set_map_layers` 与 `open_search_result` 会把地图图层选择持久化到浏览器存储，启用 AIS 图层时还会建立网络连接。这些影响可能在取消后继续存在，因此只有浏览器提供目标侧信号时，这些工具才可用。只读的 `list_map_layers` 目录仍可调用。
 
 <Note>
 如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
@@ -101,14 +101,14 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 六个仪表板变体都注册相同的九个命令式工具。登录和权益变化不会改变注册集合；每次调用都会重新检查实时状态。
 
-在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 会返回不可用。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，后两个工具则会把图层选择持久化并影响本次会话之外的状态。参见[可用性](#availability)。
+在没有提供目标侧调用信号的浏览器上，可逆的视图状态工具仍会执行：由于此类浏览器无法取消它们，你中止的调用仍会执行完毕，其可见的仪表板变化也会生效。而 `openCountryBrief`、`set_map_layers` 与 `open_search_result` 会返回不可用。国家简报工具可能在调用方取消后继续消耗每日 LLM 额度，而 `set_map_layers` 与 `open_search_result` 会把图层选择持久化并影响本次会话之外的状态。只读的 `list_map_layers` 目录仍会执行。参见[可用性](#availability)。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|
 | `openCountryBrief` | 必填字符串 `iso2`，模式 `^[A-Z]{2}$`；不允许其他属性。 | 打开现有国家深度分析路径。 |
 | `openSearch` | 空对象；不允许其他属性。 | 打开全局搜索面板。 |
 | `get_dashboard_context` | 空对象；不允许其他属性。 | 只读、受限地返回可见变体、地图视图、中心点、缩放、时间范围、启用图层及已挂载/启用面板 ID。 |
-| `list_map_layers` | 可选 `monitor`：`world`、`tech`、`finance`、`commodity`、`energy`、`happy`。可选 `renderer`：`2d` 或 `3d`。可选 `state`：`enabled` 或 `available`。可选 `cursor`，匹配 `^[a-z][A-Za-z0-9_-]*$`，长度 1–30。可选整数 `limit`：1–8（默认 6）。不允许其他属性。 | 分页返回已注册地图图层的规范目录，包括已禁用图层。每一行含稳定 ID、标签、启用状态、监视器可用性、渲染器兼容性、权益，以及 `set_map_layers` 无法启用时的机器可读原因。不会加载地图数据集。 |
+| `list_map_layers` | 可选 `monitor`：`world`、`tech`、`finance`、`commodity`、`energy`、`happy`。可选 `renderer`：`2d` 或 `3d`。可选 `state`：`enabled` 或 `available`。可选 `cursor`，匹配 `^[a-z][A-Za-z0-9_-]*$`，长度 1–30。可选整数 `limit`：1–8（默认 6）。不允许其他属性。 | 分页返回已注册地图图层的规范目录，包括已禁用图层。省略 `monitor` 会列出全部未下线的已注册图层；`monitor=world` 只列出 world 变体。每一行含稳定 ID、标签、启用状态、监视器可用性、渲染器兼容性、权益，以及当前页面无法用 `set_map_layers` 启用该图层时的机器可读原因。`available` 与 `reason` 以当前页面门控为准，不以请求的监视器为准。不会加载地图数据集。 |
 | `open_dashboard_panel` | 必填字符串 `panelId`，长度 1–96，模式 `^[a-z0-9][a-z0-9@_-]*$`；不允许其他属性。 | 经权益感知 UI 路径打开并滚动到当前已启用的可用面板。已禁用面板返回 `panel_disabled`；用户可从仪表板搜索或设置中启用它们。此工具不会自行启用面板。 |
 | `set_map_view` | 二选一且只能选一：`view`；或 `lat` 加 `lon`。`view` 可为 `global`、`america`、`mena`、`eu`、`asia`、`latam`、`africa`、`oceania`；`lat` 范围 -85.051129–85.051129，`lon` 范围 -180–180，可选 `zoom` 范围 1–10。 | 移动可见地图。 |
 | `set_map_layers` | 必填对象 `layers`，含 1–10 个布尔项；键长 1–30，匹配 `^[a-z][A-Za-z0-9_-]*$`；顶层不允许其他属性。 | 启用或禁用允许的可见图层，并返回逐图层结果。 |
@@ -139,7 +139,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | 查找并打开仪表板内容 | `search_dashboard` → `open_search_result` | 使用第一次调用返回的精确 `resultKey`。不得编造、保存或复用该键。第二次调用会重新检查当前状态，并可能拒绝操作。 |
 | 移动地图 | `set_map_view` | 区域请求优先使用命名视图。只有用户提供或批准了具体位置时才使用坐标。确认可见地图和地址栏状态。 |
 | 禁用当前已启用的地图图层 | `get_dashboard_context` → `set_map_layers` | `get_dashboard_context` 只返回已启用的图层 ID。把其中一个精确 ID 传给 `set_map_layers`；检查每个目标结果，因为同一请求可能应用允许的图层，同时拒绝其他图层。 |
-| 发现地图图层 ID（含已禁用图层） | `list_map_layers` | 分页浏览目录。若有 `nextCursor` 则继续翻页。启用前检查 `available` 和 `reason`。此工具只读，不会加载地图数据集。 |
+| 发现地图图层 ID（含已禁用图层） | `list_map_layers` | 分页浏览目录。若有 `nextCursor` 则继续翻页。启用前检查 `available` 和 `reason`；这两个字段是当前页面的 `set_map_layers` 门控，不是请求的监视器。此工具只读，不会加载地图数据集。 |
 | 启用目录中的地图图层 | `list_map_layers` → `set_map_layers` | 使用返回的目录 ID，不得猜测 ID。检查每个目标结果，因为同一请求可能应用允许的图层，同时拒绝其他图层。 |
 | 按名称查找并启用已禁用的地图图层 | 使用 `scope: "map"` 调用 `search_dashboard` → 展示精确结果 → `open_search_result` | 当用户给出的是图层名称而不是 ID 时，使用搜索返回的精确一次性 `resultKey`。仅当用户、`list_map_layers` 或可信的当前状态提供了精确图层 ID 时，才使用 `set_map_layers`。 |
 | 打开国家简报 | `openCountryBrief` | 使用大写 ISO alpha-2 代码。该路径可能消耗已登录用户的每日 LLM 配额；若浏览器不能提供目标侧取消，则该工具不可用。 |

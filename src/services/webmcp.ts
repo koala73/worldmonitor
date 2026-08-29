@@ -796,13 +796,13 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.listMapLayers,
       title: 'List Map Layers',
       description:
-        'Page the canonical map-layer catalog, including disabled layers. Each result has the stable ID, label, enabled state, monitor availability, renderer compatibility, entitlement, and a machine-readable reason when set_map_layers cannot enable it. Does not load map datasets.',
+        'Page the canonical map-layer catalog, including disabled layers. Omit monitor for every registered layer; world lists only that variant. Each result has the stable ID, label, enabled state, monitor availability, renderer compatibility, entitlement, and a reason when the current page cannot enable it with set_map_layers. Does not load map datasets.',
       inputSchema: {
         type: 'object',
         properties: {
           monitor: {
             type: 'string',
-            description: 'Optional monitor catalog. Defaults to every registered layer.',
+            description: 'Optional monitor ID set. Omit for all registered layers; world is not omit.',
             enum: [...WEBMCP_MAP_LAYER_MONITORS],
           },
           renderer: {
@@ -812,7 +812,7 @@ export function buildWebMcpTools(
           },
           state: {
             type: 'string',
-            description: 'Optional enabled or currently available filter.',
+            description: 'Filter to enabled layers, or layers the current page can enable.',
             enum: [...WEBMCP_MAP_LAYER_STATES],
           },
           cursor: {

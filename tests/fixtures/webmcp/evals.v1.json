@@ -141,14 +141,14 @@
       "id": "dashboard_layers_direct",
       "category": "dashboard_control",
       "promptKind": "direct",
-      "prompt": "Enable the earthquakes layer and disable the flights layer.",
+      "prompt": "Enable the natural layer and disable the flights layer.",
       "expectedPlans": [
         [
           {
             "tool": "set_map_layers",
             "arguments": {
               "layers": {
-                "earthquakes": true,
+                "natural": true,
                 "flights": false
               }
             }
@@ -190,6 +190,70 @@
         "open_search_result",
         "search_procurement"
       ]
+    },
+    {
+      "id": "dashboard_layers_ambiguous",
+      "category": "dashboard_control",
+      "promptKind": "ambiguous",
+      "prompt": "Turn on the earthquakes overlay.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_map_layers",
+            "arguments": {}
+          },
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "natural": true
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_procurement"
+      ]
+    },
+    {
+      "id": "dashboard_layers_catalog_unavailable_failure",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List the map layers, then enable the resilienceScore layer.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_map_layers",
+            "arguments": {}
+          },
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "resilienceScore": true
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "search_procurement"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "set_map_layers",
+        "reason": "layer_not_entitled",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "set_map_view",
+          "open_dashboard_panel"
+        ]
+      }
     },
     {
       "id": "country_brief_direct",

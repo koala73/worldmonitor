@@ -103,6 +103,9 @@ describe('listMapLayerCatalog', () => {
     assert.equal(total, getCompleteLayerCatalogKeys('full').length);
     assert.deepEqual(ids, getCompleteLayerCatalogKeys('full'));
     assert.equal(new Set(ids).size, ids.length);
+    const world = collectPages({ monitor: 'world', limit: MAX_MAP_LAYER_PAGE_SIZE });
+    assert.equal(world.total, getOrderedLayerKeys('full').length);
+    assert.ok(ids.length > world.ids.length);
   });
 
   it('lists only the requested monitor variant and keeps current-page set_map_layers availability', () => {
@@ -164,22 +167,12 @@ describe('listMapLayerCatalog', () => {
   });
 
   it('explains premium-gated layers with the same reason set_map_layers uses', () => {
-    const free = listMapLayerCatalog(snapshot({ hasPremium: false, deckGlActive: true }), {
-      monitor: 'full',
-      limit: MAX_MAP_LAYER_PAGE_SIZE,
-    }, BUDGETS);
-    assert.equal(free.ok, true);
-    if (!free.ok) return;
-    const { ids } = collectPages({ monitor: 'world', limit: MAX_MAP_LAYER_PAGE_SIZE });
-    assert.ok(ids.includes('resilienceScore'));
-
-    const resilience = collectPages({ monitor: 'world', limit: MAX_MAP_LAYER_PAGE_SIZE })
-      .ids.includes('resilienceScore');
-    assert.equal(resilience, true);
-    const all = collectPages({ monitor: 'world', limit: MAX_MAP_LAYER_PAGE_SIZE });
+    const world = collectPages({ monitor: 'world', limit: MAX_MAP_LAYER_PAGE_SIZE });
+    assert.ok(world.ids.includes('resilienceScore'));
+    const cursor = world.ids[world.ids.indexOf('resilienceScore') - 1];
     const entry = listMapLayerCatalog(snapshot({ hasPremium: false }), {
       monitor: 'world',
-      cursor: all.ids[all.ids.indexOf('resilienceScore') - 1],
+      cursor,
       limit: 1,
     }, BUDGETS);
     assert.equal(entry.ok, true);
@@ -192,7 +185,7 @@ describe('listMapLayerCatalog', () => {
 
     const premium = listMapLayerCatalog(snapshot({ hasPremium: true }), {
       monitor: 'world',
-      cursor: all.ids[all.ids.indexOf('resilienceScore') - 1],
+      cursor,
       limit: 1,
     }, BUDGETS);
     assert.equal(premium.ok, true);
