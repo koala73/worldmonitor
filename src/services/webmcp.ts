@@ -18,20 +18,24 @@
 //   8. open_alerts()              — opens the alerts/notifications tab.
 //   9. open_dashboard_panel()     — opens an already-live panel.
 //  10. set_panel_enabled()        — enables or disables a catalog panel.
-//  11. set_map_view()             — moves the visible map.
-//  12. set_map_layers()           — changes allowed visible map layers.
-//  13. set_time_range()           — sets the visible map time range.
-//  14. focus_country()            — focuses a country bbox without a briefing.
-//  15. set_map_mode()             — switches the visible 2D/3D map renderer.
-//  16. search_dashboard()         — searches the live dashboard index.
-//  17. open_search_result()       — selects an opaque, revalidated result.
-//  18. list_dashboard_tabs()      — enumerates persistent workspace tabs.
-//  19. select_dashboard_tab()     — switches the active workspace tab.
-//  20. create_dashboard_tab()     — creates a workspace, or returns one by name.
-//  21. rename_dashboard_tab()     — renames a workspace tab by stable ID.
-//  22. delete_dashboard_tab()     — deletes a workspace tab after confirm=true.
-//  23. get_access_context()       — reads signed-out / loading / signed-in access.
-//  24. open_sign_in()             — opens the existing Clerk sign-in dialog.
+//  11. get_panel_layout()         — reads region order, collapse, fullscreen.
+//  12. set_panel_collapsed()      — collapses or expands a collapsible panel.
+//  13. move_panel()               — moves a panel by region and index.
+//  14. set_panel_fullscreen()     — toggles panel fullscreen when supported.
+//  15. set_map_view()             — moves the visible map.
+//  16. set_map_layers()           — changes allowed visible map layers.
+//  17. set_time_range()           — sets the visible map time range.
+//  18. focus_country()            — focuses a country bbox without a briefing.
+//  19. set_map_mode()             — switches the visible 2D/3D map renderer.
+//  20. search_dashboard()         — searches the live dashboard index.
+//  21. open_search_result()       — selects an opaque, revalidated result.
+//  22. list_dashboard_tabs()      — enumerates persistent workspace tabs.
+//  23. select_dashboard_tab()     — switches the active workspace tab.
+//  24. create_dashboard_tab()     — creates a workspace, or returns one by name.
+//  25. rename_dashboard_tab()     — renames a workspace tab by stable ID.
+//  26. delete_dashboard_tab()     — deletes a workspace tab after confirm=true.
+//  27. get_access_context()       — reads signed-out / loading / signed-in access.
+//  28. open_sign_in()             — opens the existing Clerk sign-in dialog.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -98,6 +102,14 @@ import {
   type MapLayerCatalogSnapshot,
 } from './webmcp-map-layer-catalog';
 import type { SetPanelEnabledResult } from '../config/panel-enablement';
+import type {
+  PanelLayoutMutationResult,
+  PanelLayoutSnapshot,
+} from './panel-layout-actions';
+import {
+  PANEL_LAYOUT_ID_MAX_CHARS,
+  PANEL_LAYOUT_REGIONS,
+} from './panel-layout-actions';
 
 export interface WebMcpAppBindings {
   openCountryBriefByCode(
@@ -154,6 +166,25 @@ export interface WebMcpAppBindings {
     enabled: unknown,
     options?: WebMcpExecutionOptions,
   ): SetPanelEnabledResult | Promise<SetPanelEnabledResult>;
+  getPanelLayout(
+    options?: WebMcpExecutionOptions,
+  ): PanelLayoutSnapshot | Promise<PanelLayoutSnapshot>;
+  setPanelCollapsed(
+    panelId: unknown,
+    collapsed: unknown,
+    options?: WebMcpExecutionOptions,
+  ): PanelLayoutMutationResult | Promise<PanelLayoutMutationResult>;
+  movePanel(
+    panelId: unknown,
+    region: unknown,
+    index: unknown,
+    options?: WebMcpExecutionOptions,
+  ): PanelLayoutMutationResult | Promise<PanelLayoutMutationResult>;
+  setPanelFullscreen(
+    panelId: unknown,
+    fullscreen: unknown,
+    options?: WebMcpExecutionOptions,
+  ): PanelLayoutMutationResult | Promise<PanelLayoutMutationResult>;
   getAccessContext(
     options?: WebMcpExecutionOptions,
   ): AccessContextSnapshot | Promise<AccessContextSnapshot>;
@@ -398,6 +429,7 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.listMapLayers]: 'read-only',
   [WEBMCP_SPA_TOOL.listDashboardPanels]: 'read-only',
   [WEBMCP_SPA_TOOL.searchDashboard]: 'read-only',
+  [WEBMCP_SPA_TOOL.getPanelLayout]: 'read-only',
   [WEBMCP_SPA_TOOL.openSearch]: 'view-state',
   [WEBMCP_SPA_TOOL.switchMonitor]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.openSettings]: 'view-state',
@@ -405,6 +437,9 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.openSignIn]: 'view-state',
   [WEBMCP_SPA_TOOL.openDashboardPanel]: 'view-state',
   [WEBMCP_SPA_TOOL.setPanelEnabled]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.setPanelCollapsed]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.movePanel]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.setPanelFullscreen]: 'view-state',
   [WEBMCP_SPA_TOOL.setMapView]: 'view-state',
   [WEBMCP_SPA_TOOL.setTimeRange]: 'view-state',
   [WEBMCP_SPA_TOOL.focusCountry]: 'view-state',
@@ -473,6 +508,10 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   open_alerts: 'World Monitor could not open alerts.',
   open_dashboard_panel: 'World Monitor could not open that dashboard panel.',
   set_panel_enabled: 'World Monitor could not update that dashboard panel.',
+  get_panel_layout: 'World Monitor could not read the panel layout.',
+  set_panel_collapsed: 'World Monitor could not update that panel collapse state.',
+  move_panel: 'World Monitor could not move that panel.',
+  set_panel_fullscreen: 'World Monitor could not update that panel fullscreen state.',
   set_map_view: 'World Monitor could not move the map.',
   set_map_layers: 'World Monitor could not update map layers.',
   set_time_range: 'World Monitor could not set the map time range.',
@@ -1096,6 +1135,175 @@ function boundSetPanelEnabledResult(result: SetPanelEnabledResult): SetPanelEnab
   };
 }
 
+const PANEL_LAYOUT_DENIAL_REASONS = new Set([
+  'malformed_arguments',
+  'panel_not_found',
+  'panel_not_mounted',
+  'region_unavailable',
+  'invalid_region',
+  'invalid_index',
+  'collapse_unsupported',
+  'fullscreen_unsupported',
+  'panel_fixed',
+  'persist_failed',
+  'layout_unavailable',
+  'app_destroyed',
+]);
+
+function boundPanelLayoutSnapshot(
+  snapshot: PanelLayoutSnapshot,
+  cursor?: string,
+): PanelLayoutSnapshot | PanelLayoutMutationResult {
+  const panels = (Array.isArray(snapshot.panels) ? snapshot.panels : []).map((panel, index) => {
+    const rawIndex = panel?.index;
+    const resolvedIndex = typeof rawIndex === 'number' && Number.isFinite(rawIndex)
+      ? rawIndex
+      : index;
+    return {
+      id: boundedText(panel?.id, PANEL_LAYOUT_ID_MAX_CHARS),
+      region: panel?.region === 'bottom' ? 'bottom' as const : 'sidebar' as const,
+      // Preserve regional index 0; `||` would coerce it to the flatten fallback.
+      index: Math.max(0, Math.floor(resolvedIndex)),
+      collapsed: panel?.collapsed === true,
+      fullscreen: panel?.fullscreen === true,
+      collapsible: panel?.collapsible === true,
+      fullscreenCapable: panel?.fullscreenCapable === true,
+      fixed: panel?.fixed === true,
+    };
+  }).filter((panel) => panel.id);
+
+  let startIndex = 0;
+  if (cursor !== undefined) {
+    if (typeof cursor !== 'string' || !cursor) {
+      return boundPanelLayoutMutationResult({
+        ok: false,
+        status: 'invalid',
+        actionType: 'move',
+        reason: 'malformed_arguments',
+        message: 'cursor must be a stable panel ID from get_panel_layout.',
+      });
+    }
+    startIndex = panels.findIndex((panel) => panel.id === cursor);
+    if (startIndex < 0) {
+      return boundPanelLayoutMutationResult({
+        ok: false,
+        status: 'denied',
+        actionType: 'move',
+        reason: 'panel_not_found',
+        message: 'That panel layout cursor is no longer available.',
+        panelId: cursor,
+      });
+    }
+  }
+
+  const remaining = panels.slice(startIndex);
+  const page: typeof panels = [];
+  let nextCursor: string | undefined;
+  const resolvePanelCount = (raw: unknown, fallback: number): number => {
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      return Math.max(0, Math.floor(raw));
+    }
+    return Math.max(0, fallback);
+  };
+  const regionMeta = {
+    sidebar: {
+      available: snapshot.regions?.sidebar?.available !== false,
+      panelCount: resolvePanelCount(
+        snapshot.regions?.sidebar?.panelCount,
+        panels.filter((panel) => panel.region === 'sidebar').length,
+      ),
+    },
+    bottom: {
+      available: snapshot.regions?.bottom?.available === true,
+      panelCount: resolvePanelCount(
+        snapshot.regions?.bottom?.panelCount,
+        panels.filter((panel) => panel.region === 'bottom').length,
+      ),
+    },
+  };
+  const panelCount = Math.max(
+    resolvePanelCount(snapshot.panelCount, panels.length),
+    panels.length,
+  );
+
+  for (let index = 0; index < remaining.length; index += 1) {
+    const panel = remaining[index];
+    if (!panel) continue;
+    const candidate = [...page, panel];
+    const envelope = {
+      regions: regionMeta,
+      panels: candidate,
+      panelCount,
+      panelsTruncated: true,
+      nextCursor: remaining[index + 1]?.id,
+    };
+    if (JSON.stringify(envelope).length > TARGET_OUTPUT_CHARS && page.length > 0) {
+      nextCursor = panel.id;
+      break;
+    }
+    page.push(panel);
+  }
+
+  return {
+    regions: regionMeta,
+    panels: page,
+    panelCount,
+    ...(nextCursor || snapshot.panelsTruncated
+      ? {
+        panelsTruncated: true,
+        ...(nextCursor ? { nextCursor: boundedText(nextCursor, PANEL_LAYOUT_ID_MAX_CHARS) } : {}),
+      }
+      : {}),
+  };
+}
+
+function boundPanelLayoutMutationResult(
+  result: PanelLayoutMutationResult,
+): PanelLayoutMutationResult {
+  const actionType = result.actionType === 'set_collapsed'
+    || result.actionType === 'move'
+    || result.actionType === 'set_fullscreen'
+    ? result.actionType
+    : 'move';
+  const status = result.status === 'applied' || result.status === 'denied' || result.status === 'invalid'
+    ? result.status
+    : 'denied';
+  const ok = result.ok === true && status === 'applied';
+  const reason = result.reason && PANEL_LAYOUT_DENIAL_REASONS.has(result.reason)
+    ? result.reason
+    : undefined;
+  const region = result.region === 'sidebar' || result.region === 'bottom'
+    ? result.region
+    : undefined;
+  return {
+    ok,
+    status: ok ? 'applied' : status === 'invalid' ? 'invalid' : 'denied',
+    actionType,
+    ...(result.panelId !== undefined
+      ? { panelId: boundedText(result.panelId, PANEL_LAYOUT_ID_MAX_CHARS) }
+      : {}),
+    ...(region ? { region } : {}),
+    ...(typeof result.index === 'number' ? { index: Math.max(0, Math.floor(result.index)) } : {}),
+    ...(typeof result.requestedCollapsed === 'boolean'
+      ? { requestedCollapsed: result.requestedCollapsed }
+      : {}),
+    ...(typeof result.effectiveCollapsed === 'boolean'
+      ? { effectiveCollapsed: result.effectiveCollapsed }
+      : {}),
+    ...(typeof result.requestedFullscreen === 'boolean'
+      ? { requestedFullscreen: result.requestedFullscreen }
+      : {}),
+    ...(typeof result.effectiveFullscreen === 'boolean'
+      ? { effectiveFullscreen: result.effectiveFullscreen }
+      : {}),
+    ...(ok ? { changed: result.changed === true } : { changed: false }),
+    ...(result.unchanged === true ? { unchanged: true } : {}),
+    ...(typeof result.persisted === 'boolean' ? { persisted: result.persisted } : {}),
+    ...(!ok && reason ? { reason } : {}),
+    message: boundedText(result.message, 160) || (ok ? 'Panel layout updated.' : 'Panel layout change denied.'),
+  };
+}
+
 function boundDashboardTabList(
   snapshot: DashboardTabListSnapshot,
   cursor?: string,
@@ -1661,6 +1869,182 @@ export function buildWebMcpTools(
         }
         return boundSetPanelEnabledResult(
           await app.setPanelEnabled(args.panelId, args.enabled, extra),
+        );
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.getPanelLayout,
+      title: 'Get Panel Layout',
+      description:
+        'Read the effective dashboard panel layout: stable panel IDs, named regions (sidebar or bottom), order index, collapsed state, and fullscreen state. When panelsTruncated is true, pass nextCursor to continue. Use before collapse, move, or fullscreen tools.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cursor: {
+            type: 'string',
+            description: 'Optional panel ID cursor from a previous truncated get_panel_layout page.',
+            minLength: 1,
+            maxLength: PANEL_LAYOUT_ID_MAX_CHARS,
+            pattern: DASHBOARD_PANEL_ID_PATTERN,
+          },
+        },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getPanelLayout, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['cursor'])) {
+          return boundPanelLayoutMutationResult({
+            ok: false,
+            status: 'invalid',
+            actionType: 'move',
+            reason: 'malformed_arguments',
+            message: 'get_panel_layout accepts only an optional cursor.',
+          });
+        }
+        if (args.cursor !== undefined && typeof args.cursor !== 'string') {
+          return boundPanelLayoutMutationResult({
+            ok: false,
+            status: 'invalid',
+            actionType: 'move',
+            reason: 'malformed_arguments',
+            message: 'cursor must be a stable panel ID from get_panel_layout.',
+          });
+        }
+        const cursor = typeof args.cursor === 'string' ? args.cursor : undefined;
+        return boundPanelLayoutSnapshot(await app.getPanelLayout(extra), cursor);
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.setPanelCollapsed,
+      title: 'Set Panel Collapsed',
+      description:
+        'Collapse or expand a mounted panel by stable ID through the same control and persistence path as the visible collapse button. Idempotent when the state already matches. Requires target-side cancellation because collapsed state persists.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          panelId: {
+            type: 'string',
+            description: 'Dashboard panel ID from get_panel_layout.',
+            minLength: 1,
+            maxLength: PANEL_LAYOUT_ID_MAX_CHARS,
+            pattern: DASHBOARD_PANEL_ID_PATTERN,
+          },
+          collapsed: {
+            type: 'boolean',
+            description: 'True to collapse the panel, false to expand it.',
+          },
+        },
+        required: ['panelId', 'collapsed'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setPanelCollapsed, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['panelId', 'collapsed'])) {
+          return boundPanelLayoutMutationResult({
+            ok: false,
+            status: 'invalid',
+            actionType: 'set_collapsed',
+            reason: 'malformed_arguments',
+            message: 'panelId must be a stable dashboard panel ID and collapsed must be a boolean.',
+            panelId: typeof args.panelId === 'string' ? args.panelId : '',
+            requestedCollapsed: args.collapsed === true,
+            effectiveCollapsed: false,
+            changed: false,
+          });
+        }
+        return boundPanelLayoutMutationResult(
+          await app.setPanelCollapsed(args.panelId, args.collapsed, extra),
+        );
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.movePanel,
+      title: 'Move Panel',
+      description:
+        'Move a mounted panel to a named layout region (sidebar or bottom) at a 0-based index through the same persistence path as keyboard reorder. Do not use pointer coordinates. Requires target-side cancellation because order persists.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          panelId: {
+            type: 'string',
+            description: 'Dashboard panel ID from get_panel_layout.',
+            minLength: 1,
+            maxLength: PANEL_LAYOUT_ID_MAX_CHARS,
+            pattern: DASHBOARD_PANEL_ID_PATTERN,
+          },
+          region: {
+            type: 'string',
+            description: 'Target layout region.',
+            enum: [...PANEL_LAYOUT_REGIONS],
+          },
+          index: {
+            type: 'integer',
+            description: '0-based destination index in the target region after the move.',
+            minimum: 0,
+            maximum: 200,
+          },
+        },
+        required: ['panelId', 'region', 'index'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.movePanel, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['panelId', 'region', 'index'])) {
+          return boundPanelLayoutMutationResult({
+            ok: false,
+            status: 'invalid',
+            actionType: 'move',
+            reason: 'malformed_arguments',
+            message: 'move_panel requires panelId, region, and index.',
+            panelId: typeof args.panelId === 'string' ? args.panelId : '',
+            changed: false,
+          });
+        }
+        return boundPanelLayoutMutationResult(
+          await app.movePanel(args.panelId, args.region, args.index, extra),
+        );
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.setPanelFullscreen,
+      title: 'Set Panel Fullscreen',
+      description:
+        'Enter or exit panel fullscreen by stable ID through the same visible fullscreen control as Live News and Live Webcams. Idempotent when the state already matches. Session view-state only; it does not persist across reload.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          panelId: {
+            type: 'string',
+            description: 'Dashboard panel ID from get_panel_layout.',
+            minLength: 1,
+            maxLength: PANEL_LAYOUT_ID_MAX_CHARS,
+            pattern: DASHBOARD_PANEL_ID_PATTERN,
+          },
+          fullscreen: {
+            type: 'boolean',
+            description: 'True to enter fullscreen, false to exit.',
+          },
+        },
+        required: ['panelId', 'fullscreen'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setPanelFullscreen, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['panelId', 'fullscreen'])) {
+          return boundPanelLayoutMutationResult({
+            ok: false,
+            status: 'invalid',
+            actionType: 'set_fullscreen',
+            reason: 'malformed_arguments',
+            message: 'panelId must be a stable dashboard panel ID and fullscreen must be a boolean.',
+            panelId: typeof args.panelId === 'string' ? args.panelId : '',
+            requestedFullscreen: args.fullscreen === true,
+            effectiveFullscreen: false,
+            changed: false,
+          });
+        }
+        return boundPanelLayoutMutationResult(
+          await app.setPanelFullscreen(args.panelId, args.fullscreen, extra),
         );
       }, trackEvent),
     },

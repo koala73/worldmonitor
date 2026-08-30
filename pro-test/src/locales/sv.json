@@ -271,7 +271,22 @@
     "fKeyAuth": "Nyckel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Kärnplattformen förblir gratis. Betalplaner låser upp equity research, makroanalys, AI-briefingar och organisatorisk användning.",
-    "f50plus": "Tillgänglig"
+    "f50plus": "Tillgänglig",
+    "sourcesRow": "Källor",
+    "followedRow": "Övervakade länder",
+    "tabsRow": "Instrumentpanelflikar",
+    "fUnlimited": "Obegränsat",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alla lager",
+    "fLayersNoResilience": "Alla förutom Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Marknadsnoteringar: 30s",
+    "panelsRow": "Paneler aktiverade",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alla"
   },
   "faq": {
     "title": "Vanliga frågor",
@@ -298,7 +313,7 @@
     "q11": "Hur personlig är digesten?",
     "a11": "Välj din cadence — dagligen, två gånger dagligen eller veckovis. Vi omvärdesätter varje övervakad nyhetsartikel mot dina varningsregler och bevakningslista, avduplicerar över källor och skickar upp till 30 rankade objekt med en AI-bedömning och signaler att bevaka skrivna till din kontext. Realtidsaviseringar är också tillgängliga för kritiska händelser.",
     "q12": "Vad är uppdateringsfrekvensen?",
-    "a12": "Nästan realtid för Pro. 5–15 minuter på Free.",
+    "a12": "Pro uppdaterar marknadsnoteringar var 30:e sekund. Övriga data följer källans egen kadens. Free stannar på standardkällans kadens.",
     "q13": "Vart tar min data vägen?",
     "a13": "Notifikationskanaler är AES-256-krypterade i vila. Digester lämnar aldrig vår pipeline oredigerade."
   },

@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth klíčem",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití.",
-    "f50plus": "Dostupné"
+    "f50plus": "Dostupné",
+    "sourcesRow": "Zdroje",
+    "followedRow": "Sledované země",
+    "tabsRow": "Záložky dashboardu",
+    "fUnlimited": "Neomezeno",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Všechny vrstvy",
+    "fLayersNoResilience": "Všechny kromě Resilience",
+    "fStandardCadence": "Standardní",
+    "fQuotes30s": "Tržní kotace: 30s",
+    "panelsRow": "Panely povoleny",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Všechny"
   },
   "faq": {
     "title": "Často kladené otázky",
@@ -298,7 +313,7 @@
     "q11": "Jak personalizovaný je digest?",
     "a11": "Zvolte si svůj rytmus — denně, dvakrát denně nebo týdně. Přehodnocujeme každý sledovaný příspěvek podle vašich pravidel upozornění a sledovacího seznamu, deduplikujeme napříč zdroji a posíláme až 30 řazených položek s AI vyhodnocením a signály k monitorování zapsanými do vašeho kontextu. Upozornění v reálném čase jsou také dostupná pro kritické události.",
     "q12": "Jaká je frekvence obnovování?",
-    "a12": "Téměř v reálném čase pro Pro. 5–15 minut na Free.",
+    "a12": "Pro obnovuje tržní kotace každých 30 sekund. Ostatní data se řídí kadencí svého zdroje. Free zůstává na standardní kadenci zdroje.",
     "q13": "Kam jdou má data?",
     "a13": "Notifikační kanály jsou šifrovány AES-256 v klidu. Digesty nikdy neopouštějí naši pipeline bez redakce."
   },

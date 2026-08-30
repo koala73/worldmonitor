@@ -390,7 +390,22 @@
     "fKeyAuth": "Uthibitisho wa ufunguo",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Jukwaa la msingi linabaki libre. Mipango ya kulipwa inafungua utafiti wa hisa, uchambuzi wa uchumi mkuu, na arifa za AI, na matumizi ya shirikishi.",
-    "f50plus": "Inapatikana"
+    "f50plus": "Inapatikana",
+    "sourcesRow": "Vyanzo",
+    "followedRow": "Nchi zilizofuatiliwa",
+    "tabsRow": "Kichupo cha dashboard",
+    "fUnlimited": "Bila kikomo",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Safu zote",
+    "fLayersNoResilience": "Zote isipokuwa Upinzani",
+    "fStandardCadence": "Kawaida",
+    "fQuotes30s": "Nukuu za soko: 30s",
+    "panelsRow": "Paneli zilizowezeshwa",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Zote"
   },
   "faq": {
     "title": "Maswali Yanayoulizwa Mara Kwa Mara",
@@ -417,7 +432,7 @@
     "q11": "Je, hazina inajifanya jinsi gani?",
     "a11": "Chagua matangatanga yako — kila siku, mara mbili kwa siku, au kila wiki. Tunapima upya kila hadithi iliyofuatiliwa dhidi ya sheria yako za onyo na orodha ya ufuatiliaji, kuduliwa katika vyanzo, na kutuma hadi vipengee 50 vilivyoainishwa na Tathmini ya AI na Ishara za ufuatiliaji zilizoandikwa katika muktadha wako. Onyo za moja kwa moja pia zinapatikana kwa matukio muhimu.",
     "q12": "Kasi ya kuonyesha upya ni nini?",
-    "a12": "Karibu wakati halisi kwa Pro. 5–15 dakika kwa Free.",
+    "a12": "Pro husasisha nukuu za soko kila sekunde 30. Data nyingine hufuata mdundo wa chanzo chake. Free inabaki kwenye mdundo wa kawaida wa chanzo.",
     "q13": "Data yangu inaenda wapi?",
     "a13": "Mitandao ya arifa inakamatia AES-256 iliyobanwa wakati wa kupumzika. Hazina hazijapita kwenye mzigo wetu bila kukataliwa."
   },

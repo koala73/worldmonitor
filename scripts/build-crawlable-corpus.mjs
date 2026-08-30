@@ -70,12 +70,25 @@ export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-29';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
-const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-30';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
   name: 'World Monitor Terms of Service (27 July 2026)',
   url: 'https://www.worldmonitor.app/docs/terms',
 };
+const COUNTRY_DATASET_DOWNLOAD = 'resilience.json';
+const CHOKEPOINT_DATASET_DOWNLOAD = 'reference.json';
+const CRISIS_DATASET_DOWNLOAD = 'tracker.json';
+const DATA_CATALOG_FRAGMENT = '#data-catalog';
+const WORLD_MONITOR_ORG = Object.freeze({
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: 'https://www.worldmonitor.app/',
+});
+// Approximate monitoring footprint around each registry centroid (degrees).
+// Registry entries are points; GeoShape.box lets crawlers treat the waterway as
+// a corridor envelope rather than a zero-area pin.
+const CHOKEPOINT_GEO_HALF_SPAN_DEG = 0.75;
 const CHANGELOG_PAGE_SIZE = 2;
 const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
@@ -278,6 +291,159 @@ function absoluteUrl(baseUrl, pathname) {
 // would pollute purchase attribution.
 function withUtmSource(url, utmSource) {
   return `${url}${url.includes('?') ? '&' : '?'}utm_source=${utmSource}`;
+}
+
+function dataCatalogId(baseUrl) {
+  return `${normalizeBaseUrl(baseUrl)}/${DATA_CATALOG_FRAGMENT}`;
+}
+
+function dataCatalogLd(baseUrl) {
+  return {
+    '@context': SCHEMA_ORG_CONTEXT_URL,
+    '@type': 'DataCatalog',
+    '@id': dataCatalogId(baseUrl),
+    name: 'World Monitor open data catalog',
+    description:
+      'Crawlable World Monitor datasets for country resilience, maritime chokepoint reference, bounded crisis trackers, and research snapshots, with static JSON downloads generated from committed data.',
+    url: `${normalizeBaseUrl(baseUrl)}/`,
+    publisher: { ...WORLD_MONITOR_ORG },
+    creator: { ...WORLD_MONITOR_ORG },
+    inLanguage: 'en-US',
+    isAccessibleForFree: true,
+    license: DATASET_LICENSE,
+  };
+}
+
+function includedInDataCatalog(baseUrl) {
+  return {
+    '@type': 'DataCatalog',
+    '@id': dataCatalogId(baseUrl),
+    name: 'World Monitor open data catalog',
+  };
+}
+
+function dataDownload(contentUrl, encodingFormat = 'application/json') {
+  return {
+    '@type': 'DataDownload',
+    encodingFormat,
+    contentUrl,
+  };
+}
+
+const OBSERVATION_COVERAGE_RE = /^\d{4}-\d{2}-\d{2}(?:\/\d{4}-\d{2}-\d{2})?$/;
+
+/** Dataset temporalCoverage from a committed observation date or closed interval.
+ *  Omit when the artifact has no build-time window. Never pass page lastmod. */
+export function datasetTemporalCoverage(observationInterval) {
+  if (typeof observationInterval !== 'string') return undefined;
+  const trimmed = observationInterval.trim();
+  return OBSERVATION_COVERAGE_RE.test(trimmed) ? trimmed : undefined;
+}
+
+function datasetDownloadHref(pagePath, filename) {
+  return `${pagePath}${filename}`;
+}
+
+function datasetDownloadFile(pagePath, filename) {
+  return datasetDownloadHref(pagePath, filename).replace(/^\/+/, '');
+}
+
+function stableJson(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function countryDatasetDownload(country, { capturedAt, methodologyFormula, rankedCount }) {
+  return stableJson({
+    dataset: 'country-resilience-snapshot',
+    countryCode: country.code,
+    countryName: country.name,
+    slug: country.slug,
+    rank: country.rank,
+    overallScore: country.overallScore,
+    dimensionCoverage: country.dimensionCoverage,
+    confidence: country.lowConfidence ? 'low' : 'standard',
+    level: country.level,
+    sourceStatus: country.sourceStatus,
+    headlineEligible: country.headlineEligible,
+    capturedAt,
+    methodologyFormula,
+    rankedCount,
+    source: RESILIENCE_SNAPSHOT_PATH,
+    license: DATASET_LICENSE.url,
+  });
+}
+
+function chokepointDatasetDownload(chokepoint, { tradeRoutesById }) {
+  const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
+  const modelledTradeRoutes = chokepoint.routeIds
+    .map((id) => tradeRoutesById.get(id))
+    .filter(Boolean)
+    .map((route) => ({
+      id: route.id,
+      name: route.name,
+      volumeDesc: route.volumeDesc || null,
+      category: route.category || null,
+    }));
+  return stableJson({
+    dataset: 'chokepoint-reference',
+    id: chokepoint.id,
+    displayName: chokepoint.displayName,
+    slug: chokepoint.slug,
+    lat: Number.isFinite(chokepoint.lat) ? chokepoint.lat : null,
+    lon: Number.isFinite(chokepoint.lon) ? chokepoint.lon : null,
+    region: content.region || null,
+    shockModelSupported: chokepoint.shockModelSupported,
+    modelledTradeRoutes,
+    source: [CHOKEPOINT_REGISTRY_PATH, TRADE_ROUTES_PATH],
+    license: DATASET_LICENSE.url,
+  });
+}
+
+function crisisDatasetDownload(crisis) {
+  return stableJson({
+    dataset: 'crisis-tracker',
+    slug: crisis.slug,
+    title: crisis.title,
+    shortTitle: crisis.shortTitle,
+    description: crisis.description,
+    overview: crisis.overview,
+    coverage: crisis.coverage,
+    source: CRISIS_REGISTRY_PATH,
+    license: DATASET_LICENSE.url,
+  });
+}
+
+function geoShapeBox(south, west, north, east) {
+  const round = (value) => Math.round(Number(value) * 1000) / 1000;
+  return {
+    '@type': 'GeoShape',
+    box: `${round(south)} ${round(west)} ${round(north)} ${round(east)}`,
+  };
+}
+
+function chokepointGeoShape(lat, lon, halfSpan = CHOKEPOINT_GEO_HALF_SPAN_DEG) {
+  return geoShapeBox(lat - halfSpan, lon - halfSpan, lat + halfSpan, lon + halfSpan);
+}
+
+function countrySpatialCoverage(country, bbox) {
+  const place = {
+    '@type': 'Country',
+    name: country.name,
+    identifier: country.code,
+  };
+  if (Array.isArray(bbox) && bbox.length === 4 && bbox.every((value) => Number.isFinite(Number(value)))) {
+    const [south, west, north, east] = bbox.map(Number);
+    place.geo = geoShapeBox(south, west, north, east);
+  }
+  return place;
+}
+
+function propertyValue(name, value) {
+  return {
+    '@type': 'PropertyValue',
+    name,
+    value,
+  };
 }
 
 const OG_IMAGE_PATH = '/favico/og-image.png';
@@ -817,6 +983,16 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   }));
   const countries = normalizeCountries(resilience, reverseNames);
   const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
+  const countryBboxByCode = new Map(
+    Object.entries(countryBboxes || {})
+      .map(([code, rawBounds]) => {
+        if (!/^[A-Z]{2}$/.test(code) || !Array.isArray(rawBounds) || rawBounds.length !== 4) return null;
+        const bounds = rawBounds.map(Number);
+        if (bounds.some((value) => !Number.isFinite(value))) return null;
+        return [code, bounds];
+      })
+      .filter(Boolean),
+  );
   const crises = normalizeCrises(readJson(rootDir, CRISIS_REGISTRY_PATH));
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
   const tradeRoutesById = new Map(
@@ -844,6 +1020,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
     CORPUS_GENERATOR_CONTENT_VERSION,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const toolsLastmod = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
@@ -852,6 +1029,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const crisesLastmod = laterDate(
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     CORPUS_GENERATOR_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
@@ -923,6 +1101,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     resilience,
     countries,
     countryBounds,
+    countryBboxByCode,
     crises,
     chokepoints,
     tradeRoutesById,
@@ -967,7 +1146,10 @@ function pageDocument({
   robots = INDEXABLE_ROBOTS_CONTENT,
 }) {
   const canonical = absoluteUrl(baseUrl, path);
-  const ld = [jsonLd, breadcrumbs].filter(Boolean);
+  const ld = [
+    ...(Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : []),
+    breadcrumbs,
+  ].filter(Boolean);
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>
@@ -1109,14 +1291,17 @@ ${countries.map((country) => `        <a class="card" href="/countries/${country
     title: 'Country Risk and Resilience | World Monitor',
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'Country risk and resilience',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: 'Country risk and resilience',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+      },
+      dataCatalogLd(baseUrl),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Countries', path },
@@ -1132,6 +1317,7 @@ function renderCountryPage({
   lastmod,
   methodologyFormula,
   rankedCount,
+  bbox = null,
 }) {
   const path = `/countries/${country.slug}/`;
   const description = countryMetaDescription({
@@ -1178,8 +1364,9 @@ function renderCountryPage({
       <h2>How to read this page</h2>
       <p>World Monitor's Country Resilience Index is a 0-100 structural resilience score. This page records the committed ${escapeHtml(prettyDate(capturedAt))} snapshot using the ${escapeHtml(methodologyFormula)} methodology tag. The full scoring approach — dimensions, sources, and confidence rules — is documented in the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a>.</p>
       <p>Use it as a crawlable reference and stable landing page. For the current live picture — active alerts, conflict events, market and energy signals — open ${escapeHtml(country.name)} on the live map above.</p>
-      <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = `${country.name} Country Risk and Resilience`;
+  const resilienceDownload = absoluteUrl(baseUrl, datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD));
   return pageDocument({
     baseUrl,
     path,
@@ -1189,32 +1376,44 @@ function renderCountryPage({
     title: coreTitle.length > 44 ? coreTitle : `${coreTitle} | World Monitor`,
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebPage',
-      name: `${country.name} country risk and resilience`,
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      about: {
-        '@type': 'Country',
-        name: country.name,
-        identifier: country.code,
-      },
-      mainEntity: {
-        '@type': 'Dataset',
-        name: `World Monitor Country Resilience snapshot for ${country.name}`,
-        description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
-        creator: {
-          '@type': 'Organization',
-          name: 'World Monitor',
-          url: 'https://www.worldmonitor.app/',
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: `${country.name} country risk and resilience`,
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        about: {
+          '@type': 'Country',
+          name: country.name,
+          identifier: country.code,
         },
-        license: DATASET_LICENSE,
-        datePublished: capturedAt,
-        measurementTechnique: methodologyFormula,
+        mainEntity: {
+          '@type': 'Dataset',
+          name: `World Monitor Country Resilience snapshot for ${country.name}`,
+          description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
+          creator: { ...WORLD_MONITOR_ORG },
+          license: DATASET_LICENSE,
+          datePublished: capturedAt,
+          temporalCoverage: datasetTemporalCoverage(capturedAt),
+          measurementTechnique: methodologyFormula,
+          isAccessibleForFree: true,
+          includedInDataCatalog: includedInDataCatalog(baseUrl),
+          variableMeasured: [
+            'Country Resilience Index overall score',
+            'Rank among scored countries',
+            'Dimension coverage',
+            'Confidence classification',
+          ],
+          spatialCoverage: countrySpatialCoverage(country, bbox),
+          distribution: [
+            dataDownload(resilienceDownload),
+          ],
+        },
       },
-    },
+      dataCatalogLd(baseUrl),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Countries', path: '/countries/' },
@@ -1248,14 +1447,17 @@ ${chokepoints.map((cp) => {
     title: 'Maritime Chokepoints | World Monitor',
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'Maritime chokepoints and waterways',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: 'Maritime chokepoints and waterways',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+      },
+      dataCatalogLd(baseUrl),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Chokepoints', path },
@@ -1340,33 +1542,75 @@ ${tiles}
       <ul class="related">
 ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
       </ul>
-      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}. Methodology: <a href="/docs/methodology/chokepoints">how chokepoint disruption is scored</a>.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CHOKEPOINT_DATASET_DOWNLOAD))}">${CHOKEPOINT_DATASET_DOWNLOAD}</a>. Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}. Methodology: <a href="/docs/methodology/chokepoints">how chokepoint disruption is scored</a>.</p>`;
+  const hasCoordinates = Number.isFinite(chokepoint.lat) && Number.isFinite(chokepoint.lon);
+  const geoCoordinates = hasCoordinates
+    ? {
+        '@type': 'GeoCoordinates',
+        latitude: chokepoint.lat,
+        longitude: chokepoint.lon,
+      }
+    : undefined;
+  const geoShape = hasCoordinates ? chokepointGeoShape(chokepoint.lat, chokepoint.lon) : undefined;
+  const additionalProperty = [
+    content.region ? propertyValue('Connects', content.region) : null,
+    routes.length
+      ? propertyValue(
+        'Modelled trade routes',
+        routes.map((route) => route.name).join('; '),
+      )
+      : null,
+  ].filter(Boolean);
+  const referenceDownload = absoluteUrl(baseUrl, datasetDownloadHref(path, CHOKEPOINT_DATASET_DOWNLOAD));
   return pageDocument({
     baseUrl,
     path,
     title: `${chokepoint.displayName} Chokepoint Status | World Monitor`,
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebPage',
-      name: `${chokepoint.displayName} chokepoint`,
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      about: {
-        '@type': 'Place',
-        name: chokepoint.displayName,
-        identifier: chokepoint.id,
-        geo: Number.isFinite(chokepoint.lat) && Number.isFinite(chokepoint.lon)
-          ? {
-              '@type': 'GeoCoordinates',
-              latitude: chokepoint.lat,
-              longitude: chokepoint.lon,
-            }
-          : undefined,
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: `${chokepoint.displayName} chokepoint`,
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        about: {
+          '@type': 'Place',
+          name: chokepoint.displayName,
+          identifier: chokepoint.id,
+          geo: [geoCoordinates, geoShape].filter(Boolean),
+          additionalProperty: additionalProperty.length ? additionalProperty : undefined,
+        },
+        mainEntity: {
+          '@type': 'Dataset',
+          name: `World Monitor chokepoint reference for ${chokepoint.displayName}`,
+          description: `A World Monitor maritime reference dataset for ${chokepoint.displayName}, with its position, connected waters, energy shock model support, and modelled trade-route corridors.`,
+          creator: { ...WORLD_MONITOR_ORG },
+          license: DATASET_LICENSE,
+          dateModified: lastmod,
+          isAccessibleForFree: true,
+          includedInDataCatalog: includedInDataCatalog(baseUrl),
+          variableMeasured: [
+            'Geographic coordinates',
+            'Connected waters',
+            'Energy shock model support',
+            'Modelled trade routes',
+          ],
+          spatialCoverage: {
+            '@type': 'Place',
+            name: chokepoint.displayName,
+            identifier: chokepoint.id,
+            geo: [geoCoordinates, geoShape].filter(Boolean),
+          },
+          distribution: [
+            dataDownload(referenceDownload),
+          ],
+        },
       },
-    },
+      dataCatalogLd(baseUrl),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Chokepoints', path: '/chokepoints/' },
@@ -1408,14 +1652,17 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
     title: 'Current Crisis Trackers | World Monitor',
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'Current crisis trackers',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: 'Current crisis trackers',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+      },
+      dataCatalogLd(baseUrl),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Crises', path },
@@ -1461,26 +1708,49 @@ ${crisis.coverage.map((country) => `          <li data-crisis-country data-count
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
       <h2>How to read this tracker</h2>
       <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger.</p>
-      <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>, served through the World Monitor API.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))}">${CRISIS_DATASET_DOWNLOAD}</a>. Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>, served through the World Monitor API.</p>`;
+  const coveragePlaces = crisis.coverage.map((country) => ({
+    '@type': 'Country',
+    name: country.name,
+    identifier: country.code,
+  }));
+  const distribution = [
+    dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))),
+  ];
   return pageDocument({
     baseUrl,
     path,
     title: `${crisis.title} | World Monitor`,
     description: crisis.description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebPage',
-      name: crisis.title,
-      description: crisis.description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      about: crisis.coverage.map((country) => ({
-        '@type': 'Country',
-        name: country.name,
-        identifier: country.code,
-      })),
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: crisis.title,
+        description: crisis.description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        about: coveragePlaces,
+        mainEntity: {
+          '@type': 'Dataset',
+          name: `World Monitor crisis tracker reference: ${crisis.shortTitle || crisis.title}`,
+          description: `A bounded World Monitor crisis tracker reference for ${crisis.title}, defining the maintained geographic scope across ${crisis.coverage.map((country) => country.name).join(', ')}.`,
+          creator: { ...WORLD_MONITOR_ORG },
+          license: DATASET_LICENSE,
+          dateModified: lastmod,
+          isAccessibleForFree: true,
+          includedInDataCatalog: includedInDataCatalog(baseUrl),
+          variableMeasured: [
+            'Tracker scope',
+            'Covered countries',
+          ],
+          spatialCoverage: coveragePlaces.length === 1 ? coveragePlaces[0] : coveragePlaces,
+          distribution,
+        },
+      },
+      dataCatalogLd(baseUrl),
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Crises', path: '/crises/' },
@@ -1865,14 +2135,25 @@ export async function buildCorpus({
   );
   const rankedCount = data.countries.filter((country) => country.rank != null).length;
   for (const country of data.countries) {
+    const pagePath = `/countries/${country.slug}/`;
     writeGeneratedFile(
       outDir,
-      routeFile(`/countries/${country.slug}/`),
+      routeFile(pagePath),
       renderCountryPage({
         country,
         baseUrl,
         capturedAt: data.resilience.capturedAt,
         lastmod: data.lastmod.countries,
+        methodologyFormula: data.resilience.methodologyFormula || 'unknown',
+        rankedCount,
+        bbox: data.countryBboxByCode.get(country.code) || null,
+      }),
+    );
+    writeGeneratedFile(
+      outDir,
+      datasetDownloadFile(pagePath, COUNTRY_DATASET_DOWNLOAD),
+      countryDatasetDownload(country, {
+        capturedAt: data.resilience.capturedAt,
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
         rankedCount,
       }),
@@ -1889,15 +2170,23 @@ export async function buildCorpus({
     }),
   );
   for (const chokepoint of data.chokepoints) {
+    const pagePath = `/chokepoints/${chokepoint.slug}/`;
     writeGeneratedFile(
       outDir,
-      routeFile(`/chokepoints/${chokepoint.slug}/`),
+      routeFile(pagePath),
       renderChokepointPage({
         chokepoint,
         baseUrl,
         lastmod: data.lastmod.chokepoints,
         tradeRoutesById: data.tradeRoutesById,
         researchReports: data.researchReports,
+      }),
+    );
+    writeGeneratedFile(
+      outDir,
+      datasetDownloadFile(pagePath, CHOKEPOINT_DATASET_DOWNLOAD),
+      chokepointDatasetDownload(chokepoint, {
+        tradeRoutesById: data.tradeRoutesById,
       }),
     );
   }
@@ -1907,6 +2196,8 @@ export async function buildCorpus({
     outDir,
     baseUrl,
     tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+    dataCatalog: dataCatalogLd(baseUrl),
+    includedInDataCatalog: includedInDataCatalog(baseUrl),
   });
 
   writeUseCasesSection({
@@ -1958,14 +2249,20 @@ export async function buildCorpus({
     }),
   );
   for (const crisis of data.crises) {
+    const pagePath = `/crises/${crisis.slug}/`;
     writeGeneratedFile(
       outDir,
-      routeFile(`/crises/${crisis.slug}/`),
+      routeFile(pagePath),
       renderCrisisPage({
         crisis,
         baseUrl,
         lastmod: data.lastmod.crises,
       }),
+    );
+    writeGeneratedFile(
+      outDir,
+      datasetDownloadFile(pagePath, CRISIS_DATASET_DOWNLOAD),
+      crisisDatasetDownload(crisis),
     );
   }
 

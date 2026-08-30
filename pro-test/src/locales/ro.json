@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth cu cheie",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Platforma de bază rămâne gratuită. Planurile plătite deblochează equity research, analitică macro, briefinguri IA și utilizare organizațională.",
-    "f50plus": "Disponibil"
+    "f50plus": "Disponibil",
+    "sourcesRow": "Surse",
+    "followedRow": "Țări monitorizate",
+    "tabsRow": "File de tablou de bord",
+    "fUnlimited": "Nelimitat",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Toate straturile",
+    "fLayersNoResilience": "Toate cu excepția Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Citate de piață: 30s",
+    "panelsRow": "Panouri activate",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Toate"
   },
   "faq": {
     "title": "Întrebări frecvente",
@@ -298,7 +313,7 @@
     "q11": "Cât de personalizat este digest-ul?",
     "a11": "Alege cadența — zilnic, de două ori pe zi sau săptămânal. Re-evaluăm fiecare articol urmărit în raport cu regulile tale de alertă și lista de monitorizare, deduplicate pe surse, și trimitem până la 30 de articole clasate cu o Evaluare AI și Semnale de urmărit scrise în contextul tău. Alertele în timp real sunt de asemenea disponibile pentru evenimente critice.",
     "q12": "Care este rata de refresh?",
-    "a12": "Aproape în timp real pentru Pro. 5–15 minute pe Free.",
+    "a12": "Pro reîmprospătează cotațiile de piață la fiecare 30 de secunde. Celelalte date urmează cadența sursei lor. Free rămâne la cadența standard a sursei.",
     "q13": "Unde ajung datele mele?",
     "a13": "Canalele de notificare sunt criptate AES-256 în repaus. Digesturile nu părăsesc niciodată pipeline-ul nostru neredactate."
   },

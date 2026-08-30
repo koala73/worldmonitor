@@ -390,7 +390,22 @@
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use.",
-    "f50plus": "Доступно"
+    "f50plus": "Доступно",
+    "sourcesRow": "Джерела",
+    "followedRow": "Відстежувані країни",
+    "tabsRow": "Вкладки панелі керування",
+    "fUnlimited": "Без обмежень",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Усі шари",
+    "fLayersNoResilience": "Усі, крім Resilience",
+    "fStandardCadence": "Стандартна",
+    "fQuotes30s": "Котирування ринку: 30 с",
+    "panelsRow": "Увімкнені панелі",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Усі"
   },
   "faq": {
     "title": "Frequently Asked Questions",
@@ -417,7 +432,7 @@
     "q11": "How personalized is the digest?",
     "a11": "Обирай частоту — щоденно, двічі на день чи щотижня. Ми переоцінюємо кожну відстежену новину за твоїми правилами оповіщень та контрольною панеллю, дедубльовуємо по джерелам і надсилаємо до 30 ранжованих елементів з AI Assessment та Signals to watch, написаними у твій контекст. Оповіщення в реальному часі також доступні для критичних подій.",
     "q12": "What's the refresh rate?",
-    "a12": "Near real time for Pro. 5–15 minutes on Free.",
+    "a12": "Pro оновлює ринкові котирування кожні 30 секунд. Інші дані йдуть у ритмі свого джерела. Free залишається на стандартному ритмі джерела.",
     "q13": "Where does my data go?",
     "a13": "Notification channels are AES-256 encrypted at rest. Digests never leave our pipeline unredacted."
   },

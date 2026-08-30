@@ -271,7 +271,22 @@
     "fKeyAuth": "Schlüssel-Auth",
     "fSsoMfa": "SSO/MFA/RBAC/Audit",
     "noteBelow": "Die Kernplattform bleibt kostenlos. Bezahlpläne schalten Equity Research, Makroanalytik, KI-Briefings und organisatorische Nutzung frei.",
-    "f50plus": "Verfügbar"
+    "f50plus": "Verfügbar",
+    "sourcesRow": "Quellen",
+    "followedRow": "Überwachte Länder",
+    "tabsRow": "Dashboard-Reiter",
+    "fUnlimited": "Unbegrenzt",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alle Layer",
+    "fLayersNoResilience": "Alle außer Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Marktnotierungen: 30s",
+    "panelsRow": "Panels aktiviert",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alle"
   },
   "faq": {
     "title": "Häufig gestellte Fragen",
@@ -298,7 +313,7 @@
     "q11": "Wie personalisiert ist der Digest?",
     "a11": "Wählen Sie Ihren Rhythmus – täglich, zweimal täglich oder wöchentlich. Wir bewerten jede überwachte Story gegen Ihre Warnregeln und Watchlist neu, deduplizieren über Quellen und senden bis zu 30 bewertete Elemente mit KI-Bewertung und zu beobachtenden Signalen in Ihren Kontext. Echtzeit-Warnungen sind auch für kritische Events verfügbar.",
     "q12": "Wie hoch ist die Refresh-Rate?",
-    "a12": "Nahezu Echtzeit für Pro. 5–15 Minuten bei Free.",
+    "a12": "Pro aktualisiert Marktnotierungen alle 30 Sekunden. Andere Datensätze folgen der Kadenz ihrer Quelle. Free bleibt bei der Standard-Quellenkadenz.",
     "q13": "Wohin gehen meine Daten?",
     "a13": "Benachrichtigungskanäle sind AES-256 verschlüsselt im Ruhezustand. Digests verlassen unsere Pipeline nie unredigiert."
   },

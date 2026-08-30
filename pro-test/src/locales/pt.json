@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth por chave",
     "fSsoMfa": "SSO/MFA/RBAC/auditoria",
     "noteBelow": "A plataforma principal continua grátis. Planos pagos desbloqueiam equity research, analítica macro, briefings IA e uso organizacional.",
-    "f50plus": "Disponível"
+    "f50plus": "Disponível",
+    "sourcesRow": "Fontes",
+    "followedRow": "Países monitorados",
+    "tabsRow": "Abas do dashboard",
+    "fUnlimited": "Ilimitado",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Todas as camadas",
+    "fLayersNoResilience": "Todas exceto Resilience",
+    "fStandardCadence": "Padrão",
+    "fQuotes30s": "Cotações de mercado: 30s",
+    "panelsRow": "Painéis ativados",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Todos"
   },
   "faq": {
     "title": "Perguntas frequentes",
@@ -298,7 +313,7 @@
     "q11": "Quão personalizado é o digest?",
     "a11": "Escolha sua cadência — diária, duas vezes ao dia ou semanal. Reavaliamos cada história monitorada contra suas regras de alerta e watchlist, dedupamos entre fontes e enviamos até 30 itens classificados com uma Avaliação IA e Sinais para monitorar escritos em seu contexto. Alertas em tempo real também estão disponíveis para eventos críticos.",
     "q12": "Qual é a taxa de atualização?",
-    "a12": "Quase tempo real para Pro. 5–15 minutos no Free.",
+    "a12": "O Pro atualiza as cotações de mercado a cada 30 segundos. Os outros conjuntos de dados seguem a cadência da respectiva fonte. O Free permanece na cadência padrão da fonte.",
     "q13": "Para onde vão os meus dados?",
     "a13": "Os canais de notificação são cifrados AES-256 em repouso. Os digests nunca saem do nosso pipeline sem redação."
   },

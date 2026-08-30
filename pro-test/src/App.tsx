@@ -40,6 +40,8 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
+import { PressFooterNav } from './components/PressFooterNav';
+import { ABOUT_DOCS_PATH, SOMEONE_CEO_URL } from '../../shared/press';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -1064,13 +1066,16 @@ const EnterpriseShowcase = () => (
 /* ─── 11. Comparison Table (simplified columns, kept technical rows) ─── */
 const PricingTable = () => {
   const rows = [
-    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.f5_15min'), pro: t('pricingTable.fLt60s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
-    { feature: t('pricingTable.dashboard'), free: t('pricingTable.f50panels'), pro: t('pricingTable.f50panels'), api: "\u2014", ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.fStandardCadence'), pro: t('pricingTable.fQuotes30s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
+    { feature: t('pricingTable.panelsRow'), free: t('pricingTable.f40'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.tabsRow'), free: t('pricingTable.f3'), pro: t('pricingTable.f10'), api: t('pricingTable.f25'), ent: t('pricingTable.fUnlimited') },
+    { feature: t('pricingTable.sourcesRow'), free: t('pricingTable.f80'), pro: t('pricingTable.fAll'), api: t('pricingTable.fAll'), ent: t('pricingTable.fAll') },
+    { feature: t('pricingTable.followedRow'), free: t('pricingTable.f3'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fUnlimited') },
     { feature: t('pricingTable.ai'), free: t('pricingTable.fBYOK'), pro: t('pricingTable.fIncluded'), api: "\u2014", ent: t('pricingTable.fAgentsPersonas') },
     { feature: t('pricingTable.briefsAlerts'), free: "\u2014", pro: t('pricingTable.fDailyFlash'), api: "\u2014", ent: t('pricingTable.fTeamDist') },
     { feature: t('pricingTable.delivery'), free: "\u2014", pro: t('pricingTable.fSlackTgWa'), api: t('pricingTable.fWebhook'), ent: t('pricingTable.fSiemMcp') },
     { feature: t('pricingTable.apiRow'), free: "\u2014", pro: "\u2014", api: t('pricingTable.fRestWebhook'), ent: t('pricingTable.fMcpBulk') },
-    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.f50plus'), pro: t('pricingTable.f50plus'), api: "\u2014", ent: t('pricingTable.fTensOfThousands') },
+    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.fLayersNoResilience'), pro: t('pricingTable.fAllLayers'), api: t('pricingTable.fAllLayers'), ent: t('pricingTable.fTensOfThousands') },
     { feature: t('pricingTable.satellite'), free: t('pricingTable.fLiveTracking'), pro: t('pricingTable.fPassAlerts'), api: "\u2014", ent: t('pricingTable.fImagerySar') },
     { feature: t('pricingTable.connectorsRow'), free: "\u2014", pro: "\u2014", api: "\u2014", ent: t('pricingTable.f100plus') },
     { feature: t('pricingTable.deployment'), free: t('pricingTable.fCloud'), pro: t('pricingTable.fCloud'), api: t('pricingTable.fCloud'), ent: t('pricingTable.fCloudOnPrem') },
@@ -1352,13 +1357,20 @@ const EnterprisePage = () => (
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
-          <div className="flex flex-col">
+          <div className="flex flex-col text-left">
             <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-            <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
+            <a
+              href={SOMEONE_CEO_URL}
+              className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5 hover:opacity-100 hover:text-wm-text transition-colors"
+              rel="noopener noreferrer"
+            >
+              by Someone.ceo
+            </a>
           </div>
         </div>
         <div className="flex items-center gap-6">
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href={ABOUT_DOCS_PATH} className="hover:text-wm-text transition-colors">About</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
           <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
@@ -1368,6 +1380,7 @@ const EnterprisePage = () => (
         </div>
         <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
+      <PressFooterNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}

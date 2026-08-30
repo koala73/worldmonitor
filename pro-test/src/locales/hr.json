@@ -271,7 +271,22 @@
     "fKeyAuth": "Autentifikacija ključem",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Temeljna platforma ostaje besplatna. Plaćeni planovi otključavaju istraživanje dionica, makro analitiku, AI sažetke i organizacijsku upotrebu.",
-    "f50plus": "Dostupno"
+    "f50plus": "Dostupno",
+    "sourcesRow": "Izvori",
+    "followedRow": "Pratene zemlje",
+    "tabsRow": "Kartice kontrolne ploče",
+    "fUnlimited": "Neograničeno",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Svi slojevi",
+    "fLayersNoResilience": "Svi osim otpornosti",
+    "fStandardCadence": "Standardna",
+    "fQuotes30s": "Tržišne cijene: 30s",
+    "panelsRow": "Paneli omogućeni",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Sve"
   },
   "faq": {
     "title": "Često postavljana pitanja",
@@ -298,7 +313,7 @@
     "q11": "Koliko je sažetak personaliziran?",
     "a11": "Odaberi ritam — dnevno, dva puta dnevno ili tjedno. Ponovno ocjenjujemo svaki praćeni članak prema tvojim pravilima upozorenja i watchlisti, deduplicirajmo kroz izvore i šaljemo do 30 rangiranih stavki s AI Procjenom i Signalima za praćenje napisanim u tvoj kontekst. Upozorenja u stvarnom vremenu su dostupna i za kritične događaje.",
     "q12": "Koja je stopa osvježavanja?",
-    "a12": "Gotovo u stvarnom vremenu za Pro. 5–15 minuta na besplatnom planu.",
+    "a12": "Pro osvježava tržišne cijene svakih 30 sekundi. Ostali podaci slijede ritam svog izvora. Free ostaje na standardnom ritmu izvora.",
     "q13": "Kamo idu moji podaci?",
     "a13": "Kanali obavijesti šifrirani su AES-256 u mirovanju. Sažeci nikada ne napuštaju naš obradni tok bez uklanjanja osjetljivih podataka."
   },

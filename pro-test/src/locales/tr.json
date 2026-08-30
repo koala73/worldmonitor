@@ -271,7 +271,22 @@
     "fKeyAuth": "Anahtar kimlik doğrulama",
     "fSsoMfa": "SSO/MFA/RBAC/denetim",
     "noteBelow": "Temel platform ücretsiz kalır. Ücretli planlar equity research, makro analitik, AI briflerini ve kurumsal kullanımı açar.",
-    "f50plus": "Mevcut"
+    "f50plus": "Mevcut",
+    "sourcesRow": "Kaynaklar",
+    "followedRow": "İzlenen ülkeler",
+    "tabsRow": "Dashboard sekmeler",
+    "fUnlimited": "Sınırsız",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Tüm katmanlar",
+    "fLayersNoResilience": "Dayanıklılık hariç tümü",
+    "fStandardCadence": "Standart",
+    "fQuotes30s": "Pazar teklifleri: 30s",
+    "panelsRow": "Etkin paneller",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tümü"
   },
   "faq": {
     "title": "Sık sorulan sorular",
@@ -298,7 +313,7 @@
     "q11": "Özet ne kadar kişiselleştirilmiş?",
     "a11": "Cadenceini seç — günlük, iki günlük veya haftalık. Her izlenen haberi uyarı kurallarına ve izleme listene karşı yeniden puanlarız, kaynaklar arasında kopyasız işleriz ve AI Değerlendirmesi ve İzlenecek Sinyallerle birlikte 30'a kadar sıralanmış öğe göndeririz. Kritik olaylar için gerçek zamanlı uyarılar da mevcuttur.",
     "q12": "Yenileme hızı nedir?",
-    "a12": "Pro için neredeyse gerçek zamanlı. Free'de 5–15 dakika.",
+    "a12": "Pro piyasa tekliflerini her 30 saniyede yeniler. Diğer veriler kendi kaynağının ritmini izler. Free standart kaynak ritminde kalır.",
     "q13": "Verilerim nereye gidiyor?",
     "a13": "Bildirim kanalları durağan durumda AES-256 şifrelidir. Özetler pipeline'ımızı asla redakte edilmeden terk etmez."
   },

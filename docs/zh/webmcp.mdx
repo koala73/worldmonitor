@@ -50,7 +50,7 @@ Origin Trial 令牌有时限。发布检查必须验证实际部署的响应头�
 1. 打开 `chrome://flags/#enable-webmcp-testing`。
 2. 将 **WebMCP for testing** 设为 **Enabled**。
 3. 完全重新启动 Chrome。
-4. 本地启动 WorldMonitor。打开 `/dashboard` 检查含二十四个工具的仪表板；不要使用 `/embed`。若要检查含两个工具的静态首页，请先运行 `npm run build:pro`，再打开 `/pro/welcome.html`。本地 Vite 的 `/` 会加载仪表板 SPA，只有生产环境才把 `/` 重写到欢迎页。
+4. 本地启动 WorldMonitor。打开 `/dashboard` 检查含二十八个工具的仪表板；不要使用 `/embed`。若要检查含两个工具的静态首页，请先运行 `npm run build:pro`，再打开 `/pro/welcome.html`。本地 Vite 的 `/` 会加载仪表板 SPA，只有生产环境才把 `/` 重写到欢迎页。
 5. 在 DevTools 中确认特性检测：
 
 ```js
@@ -65,7 +65,7 @@ Boolean(document.modelContext?.registerTool)
 
 1. 更新 ChatGPT 桌面应用，并选择当前支持站点工具的模型和工作区。
 2. 在内置浏览器中打开 `https://www.worldmonitor.app/`。测试仪表板清单时请使用 `/dashboard`。
-3. 在浏览器地址栏中选择 **Site tools**，再选择 **Available site tools**。首页列出两个命令式工具，仪表板列出二十四个。
+3. 在浏览器地址栏中选择 **Site tools**，再选择 **Available site tools**。首页列出两个命令式工具，仪表板列出二十八个。
 4. 保持该页面打开，并要求 ChatGPT Work 或 Codex 使用 WorldMonitor 工具。
 5. 如果没有显示工具，请在内置浏览器中重新加载页面，再次检查 **Available site tools**。
 
@@ -84,9 +84,9 @@ WorldMonitor 注册完整仪表板清单，并在调用时应用以下取消类�
 
 | 类别 | 工具 | 宿主未提供目标侧 `AbortSignal` 时的行为 |
 |---|---|---|
-| `read-only` | `get_dashboard_context`、`get_access_context`、`list_map_layers`、`list_dashboard_panels`、`search_dashboard`、`list_dashboard_tabs` | 正常执行。 |
-| `view-state` | `openSearch`、`open_settings`、`open_alerts`、`open_sign_in`、`open_dashboard_panel`、`set_map_view`、`set_time_range`、`focus_country` | 正常执行，但调用方取消无法停止已开始的可见变更。 |
-| `cancellation-required` | `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_map_layers`、`set_map_mode`、`select_dashboard_tab`、`create_dashboard_tab`、`rename_dashboard_tab`、`delete_dashboard_tab` | 在动作开始前返回 `target_cancellation_unsupported`。 |
+| `read-only` | `get_dashboard_context`、`get_access_context`、`list_map_layers`、`list_dashboard_panels`、`search_dashboard`、`list_dashboard_tabs`、`get_panel_layout` | 正常执行。 |
+| `view-state` | `openSearch`、`open_settings`、`open_alerts`、`open_sign_in`、`open_dashboard_panel`、`set_map_view`、`set_time_range`、`focus_country`、`set_panel_fullscreen` | 正常执行，但调用方取消无法停止已开始的可见变更。 |
+| `cancellation-required` | `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_panel_collapsed`、`move_panel`、`set_map_layers`、`set_map_mode`、`select_dashboard_tab`、`create_dashboard_tab`、`rename_dashboard_tab`、`delete_dashboard_tab` | 在动作开始前返回 `target_cancellation_unsupported`。 |
 | `result-dependent` | `open_search_result` | 执行视图状态结果，拒绝持久化、消耗配额或外部导航结果。 |
 
 <Warning>
@@ -116,7 +116,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 ### 仪表板命令式工具
 
-六个仪表板变体都注册相同的二十四个命令式工具。登录和权益变化不会改变注册集合。每次调用都会重新检查实时状态与[宿主的取消支持](#宿主支持与取消)。
+六个仪表板变体都注册相同的二十八个命令式工具。登录和权益变化不会改变注册集合。每次调用都会重新检查实时状态与[宿主的取消支持](#宿主支持与取消)。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|
@@ -130,6 +130,10 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | `open_alerts` | 空对象；不允许其他属性。 | 打开提醒浮层并停留在 notifications 标签，不修改提醒内容。桌面应用中不可用。 |
 | `open_dashboard_panel` | 必填字符串 `panelId`，长度 1–96，模式 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`；不允许其他属性。 | 经权益感知 UI 路径打开并滚动到当前已启用的可用面板。已禁用面板返回 `panel_disabled`；使用 `set_panel_enabled` 更改目录面板是否启用。此工具不会自行启用面板。 |
 | `set_panel_enabled` | 必填字符串 `panelId`，长度 1–96，模式 `^[a-z0-9][a-z0-9@_-]*$`；必填布尔值 `enabled`；不允许其他属性。 | 经用户使用的同一设置持久化/应用路径启用或禁用目录面板。返回请求状态、实际状态及是否变更。启用未知、不兼容、无权益或达到免费档上限的面板会被拒绝。需要目标侧取消。 |
+| `get_panel_layout` | 可选字符串 `cursor`（上一页 `nextCursor` 面板 ID）；不允许其他属性。 | 只读返回有效布局：稳定面板 ID、命名区域（`sidebar` / `bottom`）、顺序索引、折叠与全屏状态，以及区域可用性。`panelsTruncated` 为 true 时用 `nextCursor` 继续。 |
+| `set_panel_collapsed` | 必填字符串 `panelId`，长度 1–96，模式 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`；必填布尔值 `collapsed`；不允许其他属性。 | 经可见折叠控件与持久化路径折叠或展开已挂载面板。状态已匹配时幂等成功。不支持的面板返回 `collapse_unsupported`。需要目标侧取消。 |
+| `move_panel` | 必填字符串 `panelId`；必填字符串 `region`（`sidebar` 或 `bottom`）；必填整数 `index` ≥ 0；不允许其他属性。 | 经与键盘重排相同的持久化路径，将已挂载面板移到命名区域与从 0 开始的索引。不使用指针坐标。底部区域不可用时返回 `region_unavailable`。需要目标侧取消。 |
+| `set_panel_fullscreen` | 必填字符串 `panelId`；必填布尔值 `fullscreen`；不允许其他属性。 | 经可见全屏控件进入或退出面板全屏（直播新闻 / 网络摄像头）。仅会话视图状态；不支持的面板返回 `fullscreen_unsupported`。 |
 | `set_map_view` | 二选一且只能选一：`view`；或 `lat` 加 `lon`。`view` 可为 `global`、`america`、`mena`、`eu`、`asia`、`latam`、`africa`、`oceania`；`lat` 范围 -85.051129–85.051129，`lon` 范围 -180–180，可选 `zoom` 范围 1–10。 | 移动可见地图。 |
 | `set_map_layers` | 必填对象 `layers`，含 1–10 个布尔项；键长 1–30，匹配 `^[a-z][A-Za-z0-9_-]*$`；顶层不允许其他属性。 | 启用或禁用允许的可见图层，并返回逐图层结果。 |
 | `set_time_range` | 必填字符串 `timeRange`：`1h`、`6h`、`24h`、`48h`、`7d` 或 `all`；不允许其他属性。 | 通过仪表板控件设置可见地图时间范围。返回请求值与生效值。 |
@@ -169,6 +173,10 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | 枚举全部面板 | `list_dashboard_panels` | 跟随 `nextCursor` 直到 `hasMore` 为 false。已禁用、未挂载和被门禁的面板仍出现在目录中，并带有稳定的 `unavailableReason`。 |
 | 打开已知面板 | `list_dashboard_panels` 或 `get_dashboard_context` → `open_dashboard_panel` | 使用当前页面返回的面板 ID。面板即使已挂载，也可能被禁用或不适用于当前方案。 |
 | 启用或禁用目录面板 | `list_dashboard_panels` → `set_panel_enabled` | 使用返回的稳定面板 ID，而不是标签或 CSS 选择器。检查 `effectiveEnabled` 和 `changed`。重复同一请求会成功且 `changed: false`。若浏览器不能提供目标侧取消，则该工具不可用。 |
+| 查看面板顺序与折叠/全屏状态 | `get_panel_layout` | 使用返回的面板 ID、区域（`sidebar` / `bottom`）与索引。`panelsTruncated` 为 true 时跟随 `nextCursor`。 |
+| 折叠或展开面板 | `get_panel_layout` → `set_panel_collapsed` | 仅 `collapsible: true` 的面板会成功。重复同一状态会成功且 `changed: false`。需要目标侧取消。 |
+| 移动或重排面板 | `get_panel_layout` → `move_panel` | 传入稳定面板 ID、命名区域与从 0 开始的索引。分栏布局未激活时底部移动返回 `region_unavailable`。需要目标侧取消。 |
+| 进入或退出面板全屏 | `get_panel_layout` → `set_panel_fullscreen` | 仅 `fullscreenCapable: true` 的面板会成功。会话视图状态，不会跨重新加载持久化。 |
 | 切换监视器 | `switch_monitor` | 传入稳定键（`full`、`tech`、`finance`、`happy`、`commodity`、`energy`），不要使用显示标签。确认 `context.variant` 和可见的页头选中项。 |
 | 打开设置 | `open_settings` | 确认设置浮层和 Settings 标签。此工具不会修改设置内容。 |
 | 打开提醒 | `open_alerts` | 确认 notifications 标签。将 `unavailable` 视为终止的门禁结果，不得推断账户细节。此工具不会修改提醒内容。 |
@@ -296,7 +304,7 @@ Inspector 的自然语言工作流默认会把提示词发送给外部 Gemini �
 | `getTools()` 一直等待，或 Origin Trial 页面最终没有清单 | 页面可能在注册完成前访问了 provider | 重新加载页面，等待文档加载和 WorldMonitor 注册完成，然后只读取一次清单。不要轮询 `document.modelContext`。 |
 | 只能看到首页工具清单 | 智能体位于静态首页 | 调用 `launchWorldMonitor`，或导航到 `/dashboard` 以使用命令式仪表板清单。 |
 | 能看到命令式仪表板清单，但没有 `search_procurement` | 宿主不支持声明式工具，或条件式表单当前不符合条件 | 在 ChatGPT 内置浏览器中，这是预期行为。在 Chrome 中，请打开并启用全球采购面板，满足权益要求，等待数据稳定，并确保表单可见且空闲。 |
-| 调用返回 `target_cancellation_unsupported` | 浏览器接受了 WebMCP，但没有把调用的 `AbortSignal` 交给页面 | 使用只读工具或可逆视图状态工具。不得绕过 `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_map_layers`、`set_map_mode` 或仪表板标签页变更的拒绝。对于 `open_search_result`，请选择视图状态结果，或等待能够取消持久化工作的宿主。 |
+| 调用返回 `target_cancellation_unsupported` | 浏览器接受了 WebMCP，但没有把调用的 `AbortSignal` 交给页面 | 使用只读工具或可逆视图状态工具。不得绕过 `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_panel_collapsed`、`move_panel`、`set_map_layers`、`set_map_mode` 或仪表板标签页变更的拒绝。对于 `open_search_result`，请选择视图状态结果，或等待能够取消持久化工作的宿主。 |
 | 面板或图层被拒绝 | 当前页面状态未通过实时变体、渲染器、启用状态或权益检查 | 读取 `reason` 和每个目标状态。通过正常可见控件改变状态，或询问用户；不得强制走隐藏路径。 |
 | `open_search_result` 报告键无效、过期、状态已变化或目标不可用 | 一次性能力已失效，或搜索后仪表板状态发生变化 | 重新运行 `search_dashboard`，在打开前向用户展示新结果。不得把键重新解释为 URL。 |
 | 标签页变更返回 `tab_cap`、`last_tab` 或 `confirmation_required` | 仪表板标签栏也会拒绝同一操作 | 重新列出标签页。删除需要 `confirm: true`，且不能移除最后一个标签页。 |
