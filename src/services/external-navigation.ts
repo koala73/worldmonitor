@@ -243,11 +243,15 @@ export async function openExternalUrl(
       }
     } catch {
       // Chrome Mobile iOS / WKWebView: assigning href on a blank tab reserved
-      // via window.open('') throws SecurityError (DOMException 18). Close the
-      // orphan and fall through to a fresh open / same-tab assign so a normal
-      // https portal URL never rejects (WORLDMONITOR-11C).
-      closeWindowQuietly(preopened);
+      // via window.open('') throws SecurityError (DOMException 18). Fall
+      // through to a fresh open / same-tab assign so a normal https portal
+      // URL never rejects (WORLDMONITOR-11C).
     }
+    // Close whenever we did not navigate the reserved handle — including
+    // when `.closed` itself threw (isWindowStillOpen returns false and the
+    // try above does not catch). An orphaned blank tab plus same-tab
+    // fallback is the WORLDMONITOR-11C user-visible failure mode.
+    closeWindowQuietly(preopened);
   }
   const fresh = openWindowWithHandle(targetUrl);
   if (fresh) return 'popup';

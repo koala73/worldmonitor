@@ -72,15 +72,22 @@ function makeTab(options?: {
   close: () => void;
   opener: unknown;
 } {
+  let closedState = false;
   const tab = {
-    closed: false,
+    get closed() {
+      if (options?.closedAccessThrows) throw makeSecurityError();
+      return closedState;
+    },
+    set closed(value: boolean) {
+      closedState = value;
+    },
     location: { href: '' },
     // Starts non-null so `opener === null` proves the code severed it, rather
     // than passing because the fake never had one. This is the property that
     // replaced `noopener` in the feature string.
     opener: {} as unknown,
     close(): void {
-      tab.closed = true;
+      closedState = true;
       probe.closedTabs += 1;
     },
   };
@@ -89,14 +96,6 @@ function makeTab(options?: {
       configurable: true,
       get: () => '',
       set: () => {
-        throw makeSecurityError();
-      },
-    });
-  }
-  if (options?.closedAccessThrows) {
-    Object.defineProperty(tab, 'closed', {
-      configurable: true,
-      get: () => {
         throw makeSecurityError();
       },
     });
@@ -440,6 +439,7 @@ describe('openExternalUrl — web', () => {
     const outcome = await openExternalUrl(PORTAL_URL, reserved);
 
     assert.equal(outcome, 'popup');
+    assert.equal(probe.closedTabs, 1, 'an unreadable reserved handle must still be closed');
     assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
   });
 });
