@@ -448,6 +448,17 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     ["Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'", 'SyntaxError'],
     ["Failed to execute 'appendChild' on 'Node': Unexpected token '}'", 'SyntaxError'],
     ["SyntaxError: Failed to execute 'appendChild' on 'Node': Unexpected end of input", 'SyntaxError'],
+    // Chromium's WebAuthn / Credential Management bridge wording when the
+    // OS-side credential service is unavailable (WORLDMONITOR-11B: Android 10 /
+    // Chrome Mobile 150, /pro). It arrives as an unhandled rejection out of
+    // Clerk's sign-in passkey autofill (`navigator.credentials.get`), which runs
+    // wholly inside the Clerk bundle — zero captured frames. Our only passkey
+    // call site, `createPasskey()` in src/services/passkeys.ts, try/catches
+    // `user.createPasskey()` and returns a classified outcome, and
+    // `navigator.credentials` appears nowhere else in src/ or api/ — so a
+    // first-party frame here would mean a NEW call site, which the "lets
+    // through" arm of this loop keeps visible.
+    ['NotReadableError: An unknown error occurred while talking to the credential manager.', 'Error'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {

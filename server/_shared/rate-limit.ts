@@ -433,6 +433,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // Country Resilience ranking can synchronously warm the full country table
   // on cold/stale cache paths; keep it well below the global 600/min fallback.
   '/api/resilience/v1/get-resilience-ranking': { limit: 30, window: '60 s' },
+  // Indicator drill-down fans out across the full scorer source graph on a
+  // cold per-country cache miss. Match the MCP minute ceiling and fail closed.
+  '/api/resilience/v1/get-resilience-indicators': { limit: 60, window: '60 s' },
   // #3805 / PR #3821: MCP proxy is a top-level Vercel Edge Function in
   // `api/mcp-proxy.ts` (registered as `external-protocol` in
   // api/api-route-exceptions.json — JSON-RPC shape dictated by the MCP spec),
@@ -610,6 +613,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/resilience/v1/get-resilience-ranking': {
     reason: 'Cold/stale cache paths can synchronously warm the full country table.',
+  },
+  '/api/resilience/v1/get-resilience-indicators': {
+    reason: 'Cold per-country diagnostic builds fan out across the full resilience source graph.',
   },
   '/api/infrastructure/v1/reverse-geocode': {
     reason: 'Proxies Nominatim (egress-IP ban enforcement), same provider and egress IPs as the legacy edge route. Must fail closed on a Redis outage rather than inherit the fail-open 600/min fallback.',

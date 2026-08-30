@@ -905,6 +905,7 @@
       "scripts/shared/rankable-universe.mjs",
       "scripts/shared/sovereign-status.json",
       "scripts/shared/wgi-indicator-keys.json",
+      "scripts/shared/wgi-source-provenance.js",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json",
       "scripts/scorecard/v1/_input-registry.mts",
@@ -1017,6 +1018,7 @@
       "server/worldmonitor/resilience/v1/_dimension-freshness.ts",
       "server/worldmonitor/resilience/v1/_dimension-scorers.ts",
       "server/worldmonitor/resilience/v1/_indicator-registry.ts",
+      "server/worldmonitor/resilience/v1/_indicator-trace.ts",
       "server/worldmonitor/resilience/v1/_language-coverage.ts",
       "server/worldmonitor/resilience/v1/_macro-fiscal-weights.ts",
       "server/worldmonitor/resilience/v1/_pillar-membership.ts",
@@ -1027,6 +1029,7 @@
       "shared/country-names.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json",
+      "shared/wgi-source-provenance.js",
       "shared/wgi-indicator-keys.json",
       "tsconfig.api.json",
       "tsconfig.json"

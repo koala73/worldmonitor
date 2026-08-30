@@ -263,12 +263,16 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(/initialize\.instructions/i.test(mod.JMESPATH_SCHEMA.description));
     });
 
-    it('every tool in tools/list advertises jmespath in inputSchema.properties', async () => {
+    it('every projection-safe tool in tools/list advertises jmespath', async () => {
       const res = await mod.default(makeReq({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }));
       const body = await res.json();
       const tools = body.result.tools;
       assert.ok(tools.length > 0);
       for (const tool of tools) {
+        if (tool.name === 'get_resilience_indicators') {
+          assert.equal(tool.inputSchema?.properties?.jmespath, undefined);
+          continue;
+        }
         assert.ok(tool.inputSchema?.properties?.jmespath,
           `tool "${tool.name}" missing inputSchema.properties.jmespath`);
         assert.equal(tool.inputSchema.properties.jmespath.type, 'string');
@@ -292,7 +296,10 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const withoutSummary = tools.filter(t => !t.inputSchema?.properties?.summary);
       assert.ok(withSummary.length > 0, 'expected at least one cache tool with summary');
       assert.ok(withoutSummary.length > 0, 'expected at least one RPC tool without summary');
-      // All of them advertise jmespath universally (already asserted above).
+      assert.equal(
+        tools.find((tool) => tool.name === 'get_resilience_indicators')?.inputSchema?.properties?.jmespath,
+        undefined,
+      );
     });
   });
 
@@ -321,6 +328,7 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const body = await res.json();
       const inst = body.result.instructions;
       assert.ok(inst.includes('https://jmespath.org'), 'missing grammar URL');
+      assert.match(inst, /when a tool input schema advertises it/i);
       assert.ok(inst.includes(String(mod.JMESPATH_MAX_EXPR_BYTES)), 'missing expression cap value');
       assert.ok(inst.includes(String(mod.JMESPATH_MAX_OUTPUT_BYTES)), 'missing output cap value');
       assert.ok(/daily quota/i.test(inst), 'missing quota note');
@@ -407,6 +415,21 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const body = await res.json();
       return { res, body };
     }
+
+    it('rejects projection for attribution-bound resilience raw values before execution', async () => {
+      let executed = false;
+      globalThis.fetch = async () => {
+        executed = true;
+        throw new Error('resilience downstream must not execute');
+      };
+      const { body } = await callTool('get_resilience_indicators', {
+        country_code: 'DE',
+        jmespath: 'indicators[].rawValue',
+      });
+      assert.equal(body.error?.code, -32602);
+      assert.match(body.error?.message ?? '', /JMESPath.*attribution-bound/);
+      assert.equal(executed, false);
+    });
 
     it('omitting jmespath returns the v1.3.0 payload byte-for-byte (additive guarantee)', async () => {
       mockMarketDataCache();

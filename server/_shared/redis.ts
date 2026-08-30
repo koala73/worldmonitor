@@ -117,6 +117,11 @@ export async function readCachedJson(key: string, raw = false): Promise<CacheRea
   return readCachedJsonInternal(key, raw, true);
 }
 
+/** Status-aware read that preserves the runSeed contract envelope. */
+export async function readCachedEnvelopeJson(key: string, raw = false): Promise<CacheReadResult> {
+  return readCachedJsonInternal(key, raw, false);
+}
+
 function logCacheReadError(key: string, err: unknown): void {
   // Structured timeout log goes to Sentry via Vercel integration. Large-
   // payload timeouts used to silently return null and let downstream callers

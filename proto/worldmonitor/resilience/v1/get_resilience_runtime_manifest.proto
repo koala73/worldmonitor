@@ -29,6 +29,8 @@ message ResilienceRuntimeConstructVersions {
   string energy = 1;
   // Safe derived education construct version. Valid values: "active" or "rollback".
   string education = 2;
+  // Safe derived financial-system construct version. Valid values: "active" or "rollback".
+  string financial_system_exposure = 3;
 }
 
 message ResilienceRuntimeIntervalState {

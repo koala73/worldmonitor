@@ -422,6 +422,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // reads are POSTs and cache successful results inside their handlers.
   '/api/intelligence/v1/get-intel-timeline': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
+  '/api/resilience/v1/get-resilience-indicators': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
   '/api/resilience/v1/get-food-stocks': 'slow',
   '/api/resilience/v1/get-demographics-capability': 'slow',
@@ -2272,6 +2273,28 @@ export function createDomainGateway(
       // See server/_shared/response-projection.ts + /docs/mcp-jmespath.
       let responseView = new Uint8Array(bodyBytes);
       const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
+      if (
+        pathname === '/api/resilience/v1/get-resilience-indicators'
+        && jmespathExpr
+      ) {
+        const errorBody = JSON.stringify({
+          violations: [{
+            field: 'jmespath',
+            description: 'JMESPath projection is not available for this attribution-bound response',
+          }],
+        });
+        emitRequest(400, 'malformed_request', null, errorBody.length);
+        maybeAttachDevHealthHeader(mergedHeaders);
+        return new Response(errorBody, {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json; charset=utf-8',
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'no-store',
+          },
+        });
+      }
       if (jmespathExpr && (mergedHeaders.get('Content-Type') ?? '').includes('application/json')) {
         const projection = projectJsonResponse(bodyStr, jmespathExpr);
         if (!projection.ok) {

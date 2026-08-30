@@ -96,7 +96,9 @@ export function buildPublicTool(
   if (isCacheTool) {
     clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
   }
-  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  if (tool._jmespathDisabled !== true) {
+    clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  }
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)

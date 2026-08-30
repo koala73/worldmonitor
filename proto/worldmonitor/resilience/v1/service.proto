@@ -5,6 +5,7 @@ package worldmonitor.resilience.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/resilience/v1/get_demographics_capability.proto";
 import "worldmonitor/resilience/v1/get_food_stocks.proto";
+import "worldmonitor/resilience/v1/get_resilience_indicators.proto";
 import "worldmonitor/resilience/v1/get_resilience_ranking.proto";
 import "worldmonitor/resilience/v1/get_resilience_runtime_manifest.proto";
 import "worldmonitor/resilience/v1/get_resilience_score.proto";
@@ -14,6 +15,11 @@ service ResilienceService {
 
   rpc GetResilienceScore(GetResilienceScoreRequest) returns (GetResilienceScoreResponse) {
     option (sebuf.http.config) = {path: "/get-resilience-score", method: HTTP_METHOD_GET};
+  }
+
+  // GetResilienceIndicators explains one country's score at indicator level.
+  rpc GetResilienceIndicators(GetResilienceIndicatorsRequest) returns (GetResilienceIndicatorsResponse) {
+    option (sebuf.http.config) = {path: "/get-resilience-indicators", method: HTTP_METHOD_GET};
   }
 
   // GetFoodStocks returns per-country and WORLD cereal stocks-to-use from the seeded USDA PSD snapshot.
