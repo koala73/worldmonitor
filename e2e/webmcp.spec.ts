@@ -195,6 +195,59 @@ async function installReadinessRecorder(page: Page): Promise<void> {
   await page.addInitScript(() => localStorage.setItem('wm_lcp_debug', '1'));
 }
 
+async function installSignalCapableModelContext(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type ToolDefinition = {
+      annotations?: Record<string, unknown>;
+      description: string;
+      execute: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => unknown;
+      inputSchema: Record<string, unknown>;
+      name: string;
+      title?: string;
+    };
+    type ToolDescriptor = {
+      annotations?: Record<string, unknown>;
+      description: string;
+      inputSchema: string;
+      name: string;
+      title?: string;
+    };
+    const tools = new Map<string, { definition: ToolDefinition; descriptor: ToolDescriptor }>();
+    const provider = {
+      registerTool(definition: ToolDefinition, options: { signal?: AbortSignal } = {}) {
+        const descriptor: ToolDescriptor = Object.freeze({
+          annotations: definition.annotations,
+          description: definition.description,
+          inputSchema: JSON.stringify(definition.inputSchema),
+          name: definition.name,
+          title: definition.title,
+        });
+        tools.set(definition.name, { definition, descriptor });
+        options.signal?.addEventListener('abort', () => tools.delete(definition.name), { once: true });
+        return Promise.resolve();
+      },
+      async getTools() {
+        return [...tools.values()]
+          .map(({ descriptor }) => descriptor)
+          .sort((left, right) => left.name.localeCompare(right.name));
+      },
+      async executeTool(descriptor: ToolDescriptor, input: string) {
+        const entry = tools.get(descriptor.name);
+        if (!entry || entry.descriptor !== descriptor) {
+          throw new DOMException('Tool descriptor is stale or foreign.', 'InvalidStateError');
+        }
+        return entry.definition.execute(JSON.parse(input), {
+          signal: new AbortController().signal,
+        });
+      },
+    };
+    Object.defineProperty(document, 'modelContext', {
+      configurable: true,
+      value: provider,
+    });
+  });
+}
+
 async function dismissMissionPreset(page: Page): Promise<void> {
   await page.addInitScript(() => {
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
@@ -208,6 +261,37 @@ async function closeMissionPresetIfOpen(page: Page): Promise<void> {
     await expect(page.locator('.mission-preset-popover')).toBeHidden({ timeout: 5_000 });
   }
 }
+
+test('persists a first-session panel move through reload', async ({ page }) => {
+  await dismissMissionPreset(page);
+  await installSignalCapableModelContext(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await waitForDashboardTools(page);
+  await expect(page.locator(
+    '#panelsGrid > .panel[data-panel="live-news"]:not([data-deferred-panel])',
+  )).toBeVisible({ timeout: 60_000 });
+
+  const initial = await readFullPanelLayout(page);
+  const liveNews = initial.panels.find((panel) => panel.id === 'live-news');
+  const insights = initial.panels.find((panel) => panel.id === 'insights');
+  expect(liveNews).toMatchObject({ region: 'sidebar' });
+  expect(insights).toMatchObject({ region: 'sidebar' });
+  const targetIndex = (insights?.index ?? 0)
+    + ((liveNews?.index ?? 0) < (insights?.index ?? 0) ? 0 : 1);
+
+  await expect(executeDashboardTool(page, 'move_panel', {
+    panelId: 'live-news',
+    region: 'sidebar',
+    index: targetIndex,
+  })).resolves.toMatchObject({ ok: true, persisted: true });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForDashboardTools(page);
+
+  const restored = await readFullPanelLayout(page);
+  const restoredLiveNews = restored.panels.find((panel) => panel.id === 'live-news');
+  const restoredInsights = restored.panels.find((panel) => panel.id === 'insights');
+  expect(restoredLiveNews?.index).toBe((restoredInsights?.index ?? -1) + 1);
+});
 
 async function executeDashboardTabTool(
   page: Page,
