@@ -13,14 +13,28 @@ import handler, {
 } from '../api/docs-mcp.ts';
 
 const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+
+function clearUpstashEnv() {
+  // This suite assumes Redis is absent so checkScopedRateLimit fails open
+  // without an Upstash fetch. Cloud agent / local envs may inject UPSTASH_*.
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+}
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
 });
 
 // No Upstash env is set in this suite, so checkScopedRateLimit degrades
 // availability-first (fail-open) and the handler proceeds to the upstream —
 // which every test below mocks.
 function mockUpstream(body, { contentType = 'text/event-stream', status = 200 } = {}) {
+  clearUpstashEnv();
   const calls = [];
   globalThis.fetch = async (url, init = {}) => {
     calls.push({ url: String(url), init });
@@ -173,18 +187,8 @@ describe('docs-mcp normalizeToolCallResponseBody', () => {
 });
 
 describe('docs-mcp handler', () => {
-  const originalEnv = { ...process.env };
-
-  afterEach(() => {
-    for (const key of Object.keys(process.env)) {
-      if (!(key in originalEnv)) delete process.env[key];
-    }
-    Object.assign(process.env, originalEnv);
-  });
-
   it('rejects a UTF-8 request body whose encoded size exceeds 256 KiB', async () => {
-    delete process.env.UPSTASH_REDIS_REST_URL;
-    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    clearUpstashEnv();
     const upstreamCalls = [];
     globalThis.fetch = async (url) => {
       upstreamCalls.push(String(url));
@@ -210,8 +214,7 @@ describe('docs-mcp handler', () => {
   });
 
   it('counts a leading UTF-8 BOM against the raw 256 KiB request limit', async () => {
-    delete process.env.UPSTASH_REDIS_REST_URL;
-    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    clearUpstashEnv();
     const upstreamCalls = [];
     globalThis.fetch = async (url) => {
       upstreamCalls.push(String(url));
@@ -239,6 +242,7 @@ describe('docs-mcp handler', () => {
   });
 
   it('answers malformed JSON locally with a structured -32700 error and CORS headers', async () => {
+    clearUpstashEnv();
     let upstreamCalled = false;
     globalThis.fetch = async () => {
       upstreamCalled = true;
@@ -255,6 +259,7 @@ describe('docs-mcp handler', () => {
   });
 
   it('answers non-JSON-RPC envelopes locally with -32600', async () => {
+    clearUpstashEnv();
     const res = await handler(post('{"hello":"world","id":5}'));
     assert.equal(res.status, 400);
     const body = await res.json();
@@ -306,6 +311,7 @@ describe('docs-mcp handler', () => {
   });
 
   it('maps upstream fetch failures to a structured -32603 error', async () => {
+    clearUpstashEnv();
     globalThis.fetch = async () => {
       throw new Error('connect ETIMEDOUT');
     };
