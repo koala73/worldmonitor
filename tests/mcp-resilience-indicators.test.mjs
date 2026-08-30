@@ -30,6 +30,11 @@ describe('get_resilience_indicators MCP tool', () => {
     assert.ok(tool.outputSchema.properties.indicators.items.properties.state);
     assert.ok(tool.outputSchema.properties.indicators.items.properties.effectiveContribution);
     assert.ok(tool.outputSchema.properties.indicators.items.properties.rawValue);
+    assert.ok(tool.outputSchema.properties.indicators.items.properties.sources.items.properties.observationProvenance);
+    assert.match(
+      tool.outputSchema.properties.indicators.items.properties.rawValue.properties.status.description,
+      /audit-incomplete/,
+    );
     assert.ok(tool.outputSchema.properties.constructVersions);
     for (const key of [
       'resilience:low-carbon-generation:v1',

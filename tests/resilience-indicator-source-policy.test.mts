@@ -27,7 +27,6 @@ describe('resilience indicator raw-source policy', () => {
     for (const [indicatorId, source] of [
       ['fxReservesAdequacy', WORLD_BANK],
       ['femaleUpperSecondaryAttainment', UNESCO_VIA_WDI],
-      ['lowCarbonGenerationShare', OWID],
     ] as const) {
       const decision = decideIndicatorRawRedistribution({ indicatorId, observationState: 'observed', sources: [source] });
       assert.equal(decision.expose, true, indicatorId);
@@ -68,7 +67,7 @@ describe('resilience indicator raw-source policy', () => {
   });
 
   it('denies audit-incomplete sources despite permissive legacy registry labels', () => {
-    for (const indicatorId of ['govRevenuePct', 'uhcIndex', 'recoveryImportHhi', 'energyPriceStress']) {
+    for (const indicatorId of ['govRevenuePct', 'uhcIndex', 'recoveryImportHhi', 'energyPriceStress', 'lowCarbonGenerationShare']) {
       const decision = decideIndicatorRawRedistribution({
         indicatorId,
         observationState: 'observed',
@@ -108,22 +107,17 @@ describe('resilience indicator raw-source policy', () => {
     const auditedFossil = decideIndicatorRawRedistribution({
       indicatorId: 'importedFossilDependence',
       observationState: 'observed',
-      sources: [OWID, WORLD_BANK],
+      sources: [
+        { providerName: 'World Bank Open Data', sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/EG.ELC.FOSL.ZS' },
+        WORLD_BANK,
+      ],
     });
     assert.equal(auditedFossil.expose, true);
-
-    const missingOwidFossil = decideIndicatorRawRedistribution({
-      indicatorId: 'importedFossilDependence',
-      observationState: 'observed',
-      sources: [WORLD_BANK],
-    });
-    assert.equal(missingOwidFossil.expose, false);
-    assert.equal(missingOwidFossil.reason, 'required-provider-provenance-missing');
 
     const eurostatFossil = decideIndicatorRawRedistribution({
       indicatorId: 'importedFossilDependence',
       observationState: 'observed',
-      sources: [OWID, { providerName: 'Eurostat' }],
+      sources: [WORLD_BANK, { providerName: 'Eurostat', sourceUrl: 'https://ec.europa.eu/eurostat/' }],
     });
     assert.equal(eurostatFossil.expose, false);
     assert.equal(eurostatFossil.reason, 'provider-not-audited-for-redistribution');

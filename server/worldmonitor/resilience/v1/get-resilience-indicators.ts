@@ -9,7 +9,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import {
   RESILIENCE_SCHEMA_V2_ENABLED,
   RESILIENCE_STATIC_META_KEY,
@@ -19,6 +19,7 @@ import {
 import { getConstructVersions } from './get-resilience-runtime-manifest';
 import {
   scoreAllDimensions,
+  strictResilienceSeedReader,
   type ResilienceDimensionId,
   type ResilienceDimensionScore,
   type ResilienceSeedReader,
@@ -32,9 +33,11 @@ import {
 import {
   decideIndicatorRawRedistribution,
   getIndicatorSourcePolicy,
+  getObservedSourceDisplayMetadata,
 } from './_indicator-source-policy';
 
 export const RESILIENCE_INDICATOR_METHODOLOGY = 'request-local-scorer-trace-v1';
+const RESILIENCE_INDICATOR_CACHE_TTL_SECONDS = 300;
 
 type Clock = () => Date;
 type StaticMetaReader = () => Promise<unknown>;
@@ -43,6 +46,10 @@ export interface ResilienceIndicatorHandlerDependencies {
   reader?: ResilienceSeedReader;
   now?: Clock;
   readStaticMeta?: StaticMetaReader;
+  responseCache?: null | ((
+    key: string,
+    fetcher: () => Promise<GetResilienceIndicatorsResponse>,
+  ) => Promise<GetResilienceIndicatorsResponse | null>);
 }
 
 interface ResponseBuildOptions {
@@ -98,28 +105,28 @@ function observationAge(
 
 function indicatorSources(row: IndicatorTraceRow): ResilienceIndicatorSource[] {
   const policy = getIndicatorSourcePolicy(row.indicatorId);
-  const hasObservationProvenance = row.observedSources.length > 0;
-  const sourceHints = hasObservationProvenance
-    ? row.observedSources
-    : [{ providerName: policy?.providerName ?? '', sourceUrl: policy?.sourceUrl ?? undefined }];
+  const sourceHints = row.state === 'observed' ? row.observedSources : [];
   const count = Math.max(row.sourceKeys.length, sourceHints.length);
   const sources: ResilienceIndicatorSource[] = [];
   const seen = new Set<string>();
   for (let index = 0; index < count; index += 1) {
-    const hint = sourceHints[index] ?? sourceHints[0];
+    const hint = sourceHints[index];
     const key = row.sourceKeys[index] ?? row.sourceKeys[0] ?? '';
-    const name = hint?.providerName || policy?.providerName || key;
-    const url = hint?.sourceUrl || policy?.sourceUrl || '';
+    const metadata = hint
+      ? getObservedSourceDisplayMetadata(policy, hint)
+      : null;
+    const name = metadata?.providerName || policy?.providerName || key;
+    const url = hint?.sourceUrl || metadata?.sourceUrl || policy?.sourceUrl || '';
     const identity = `${key}\u0000${name}\u0000${url}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
     sources.push({
       key,
       name,
-      attribution: policy?.attribution ?? '',
-      license: policy?.licenseLabel ?? row.license,
+      attribution: metadata?.attribution ?? policy?.attribution ?? '',
+      license: metadata?.licenseLabel ?? policy?.licenseLabel ?? row.license,
       url,
-      observationProvenance: hasObservationProvenance,
+      observationProvenance: hint != null,
     });
   }
   return sources;
@@ -150,7 +157,7 @@ function rawValue(row: IndicatorTraceRow): ResilienceIndicatorRawValue {
 function toIndicator(row: IndicatorTraceRow, now: Date): ResilienceIndicator {
   const normalizedScoreAvailable = Number.isFinite(row.normalizedScore);
   const isActive = row.state !== 'inactive' && row.state !== 'retired';
-  const hasRuntimeWeights = isActive && row.state !== 'source-failure';
+  const hasRuntimeWeights = isActive;
   const observedAt = toIsoTimestamp(row.observedAtMs);
   return {
     id: row.indicatorId,
@@ -228,6 +235,16 @@ export function createGetResilienceIndicators(
   const now = dependencies.now ?? (() => new Date());
   const readStaticMeta = dependencies.readStaticMeta
     ?? (() => getCachedJson(RESILIENCE_STATIC_META_KEY, true));
+  const hasInjectedBuildDependency = dependencies.reader != null
+    || dependencies.now != null
+    || dependencies.readStaticMeta != null;
+  const responseCache = dependencies.responseCache === undefined
+    ? hasInjectedBuildDependency
+      ? null
+      : (key: string, fetcher: () => Promise<GetResilienceIndicatorsResponse>) => (
+          cachedFetchJson(key, RESILIENCE_INDICATOR_CACHE_TTL_SECONDS, fetcher)
+        )
+    : dependencies.responseCache;
 
   return async (
     _ctx: ServerContext,
@@ -241,20 +258,36 @@ export function createGetResilienceIndicators(
       }]);
     }
 
-    const trace = createIndicatorTraceCollector();
-    const [scores, staticMeta] = await Promise.all([
-      scoreAllDimensions(countryCode, dependencies.reader, { trace }),
-      readStaticMeta(),
-    ]);
-    const dataVersion = staticMeta && typeof staticMeta === 'object'
-      ? toResilienceDataVersion((staticMeta as { fetchedAt?: unknown }).fetchedAt)
-      : '';
-    return toGetResilienceIndicatorsResponse(
+    const buildResponse = async (): Promise<GetResilienceIndicatorsResponse> => {
+      const trace = createIndicatorTraceCollector();
+      const [scores, staticMeta] = await Promise.all([
+        scoreAllDimensions(countryCode, dependencies.reader ?? strictResilienceSeedReader, { trace }),
+        readStaticMeta(),
+      ]);
+      const dataVersion = staticMeta && typeof staticMeta === 'object'
+        ? toResilienceDataVersion((staticMeta as { fetchedAt?: unknown }).fetchedAt)
+        : '';
+      return toGetResilienceIndicatorsResponse(
+        countryCode,
+        scores,
+        materializeIndicatorTrace(trace, scores),
+        { now: now(), dataVersion },
+      );
+    };
+
+    if (!responseCache) return buildResponse();
+    const constructs = getConstructVersions();
+    const cacheKey = [
+      'resilience:indicator-trace:v1',
       countryCode,
-      scores,
-      materializeIndicatorTrace(trace, scores),
-      { now: now(), dataVersion },
-    );
+      getCurrentCacheFormula(),
+      RESILIENCE_SCHEMA_V2_ENABLED ? 'schema-v2' : 'schema-v1',
+      `energy-${constructs.energy}`,
+      `education-${constructs.education}`,
+    ].join(':');
+    const cached = await responseCache(cacheKey, buildResponse);
+    if (cached == null) throw new Error('Resilience indicator response cache returned no data');
+    return cached;
   };
 }
 

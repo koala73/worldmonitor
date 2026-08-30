@@ -171,4 +171,19 @@ describe('resilience indicator trace', () => {
       assert.equal(sum, Number(dimension.score.toFixed(4)), dimension.id);
     }
   });
+
+  it('keeps substituted source-failure rows in the published score reconciliation', () => {
+    const trace = createIndicatorTraceCollector();
+    trace.recordManual('currencyExternal', 50, [
+      { indicatorId: 'inflationStability', score: 50, weight: 0.6, imputed: true },
+      { indicatorId: 'fxReservesAdequacy', score: 50, weight: 0.4, imputed: true },
+    ]);
+    trace.recordSourceFailure('currencyExternal');
+
+    const rows = rowsFor(trace, 'currencyExternal', 50);
+    const included = rows.filter((row) => row.includedInDimensionScore);
+    assert.equal(included.length, 2);
+    assert.ok(included.every((row) => row.state === 'source-failure'));
+    assert.equal(included.reduce((sum, row) => sum + row.effectiveContribution, 0), 50);
+  });
 });

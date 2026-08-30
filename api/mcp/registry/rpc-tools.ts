@@ -699,6 +699,7 @@ const RESILIENCE_INDICATOR_SOURCE_OUTPUT_SCHEMA = {
     attribution: { type: 'string' as const },
     license: { type: 'string' as const },
     url: { type: 'string' as const },
+    observationProvenance: { type: 'boolean' as const, description: 'True only for a source recorded for the selected-country observation.' },
   },
 };
 
@@ -712,7 +713,7 @@ const RESILIENCE_INDICATOR_RAW_VALUE_OUTPUT_SCHEMA = {
     textValue: { type: 'string' as const },
     textValueAvailable: { type: 'boolean' as const },
     unit: { type: 'string' as const },
-    status: { type: 'string' as const, description: 'For example available, withheld-license, absent, or not-applicable.' },
+    status: { type: 'string' as const, description: 'available, absent, restricted, audit-incomplete, conditional, ineligible-observation, or unknown-indicator.' },
     reason: { type: 'string' as const },
   },
 };

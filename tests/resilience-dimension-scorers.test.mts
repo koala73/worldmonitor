@@ -40,6 +40,7 @@ import {
   CYBER_SNAPSHOT_WEIGHT_CAP,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
+import { createIndicatorTraceCollector } from '../server/worldmonitor/resilience/v1/_indicator-trace.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -1910,6 +1911,14 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       // normalize 1..12 → (8.03 − 1) / 11 = 0.639 → ~64
       assert.ok(score.score >= 62 && score.score <= 66, `expected ~64 with re-export adjustment, got ${score.score}`);
       assert.equal(score.imputationClass, null, 'observed path must not carry imputation class');
+    });
+
+    it('uses the oldest contributing year when a re-export adjustment is applied', async () => {
+      const trace = createIndicatorTraceCollector();
+      await scoreLiquidReserveAdequacy('AE', makeReader(5.18, 0.355), { trace });
+      const row = trace.readDimension('liquidReserveAdequacy')?.contributions[0];
+      assert.equal(row?.sourceYear, 2023);
+      assert.equal(row?.observedSources.length, 2);
     });
 
     it('clamps to anchor ceiling when adjusted months exceed 12', async () => {

@@ -14,6 +14,10 @@ import {
   createGetResilienceIndicators,
   toGetResilienceIndicatorsResponse,
 } from '../server/worldmonitor/resilience/v1/get-resilience-indicators.ts';
+import {
+  ENDPOINT_RATE_POLICIES,
+  FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+} from '../server/_shared/rate-limit.ts';
 
 function emptyScore(score = 0): ResilienceDimensionScore {
   return {
@@ -93,9 +97,81 @@ describe('GetResilienceIndicators materialization', () => {
     assert.ok(row.sources[0]?.attribution.includes('Bank for International Settlements'));
     assert.equal(row.sources[0]?.observationProvenance, true);
   });
+
+  test('marks only exact observed composite sources as provenance', () => {
+    const trace = createIndicatorTraceCollector();
+    trace.recordBlend('liquidReserveAdequacy', 50, [{
+      indicatorId: 'recoveryLiquidReserveMonths',
+      score: 50,
+      weight: 1,
+      rawValue: 6.5,
+      observedSources: [{
+        providerName: 'World Bank Open Data',
+        sourceUrl: 'https://api.worldbank.org/v2/',
+      }],
+    }]);
+    const scores = scoreMap({ liquidReserveAdequacy: { ...emptyScore(50), coverage: 1 } });
+    const response = toGetResilienceIndicatorsResponse(
+      'DE', scores, materializeIndicatorTrace(trace, scores),
+      { now: new Date('2026-08-30T00:00:00.000Z'), dataVersion: '' },
+    );
+    const row = response.indicators.find((indicator) => indicator.id === 'recoveryLiquidReserveMonths');
+    assert.ok(row);
+    assert.equal(row.sources.length, 2);
+    assert.equal(row.sources[0]?.observationProvenance, true);
+    assert.equal(row.sources[0]?.name, 'World Bank Open Data');
+    assert.equal(row.sources[1]?.observationProvenance, false);
+  });
+
+  test('does not claim observation provenance for a missing or imputed source', () => {
+    const trace = createIndicatorTraceCollector();
+    trace.recordBlend('currencyExternal', 50, [{
+      indicatorId: 'fxReservesAdequacy',
+      score: 50,
+      weight: 1,
+      imputed: true,
+      rawValue: null,
+      observedSources: [{ providerName: 'World Bank Open Data', sourceUrl: 'https://api.worldbank.org/v2/' }],
+    }]);
+    const scores = scoreMap({ currencyExternal: emptyScore(50) });
+    const response = toGetResilienceIndicatorsResponse(
+      'DE', scores, materializeIndicatorTrace(trace, scores),
+      { now: new Date('2026-08-30T00:00:00.000Z'), dataVersion: '' },
+    );
+    const row = response.indicators.find((indicator) => indicator.id === 'fxReservesAdequacy');
+    assert.ok(row);
+    assert.equal(row.state, 'imputed');
+    assert.equal(row.sources[0]?.observationProvenance, false);
+  });
+
+  test('labels an observed Eurostat override with its own audit status', () => {
+    const trace = createIndicatorTraceCollector();
+    trace.recordBlend('energy', 50, [{
+      indicatorId: 'energyImportDependency',
+      score: 50,
+      weight: 1,
+      rawValue: 50,
+      observedSources: [{ providerName: 'Eurostat', sourceUrl: 'https://ec.europa.eu/eurostat/' }],
+    }]);
+    const scores = scoreMap({ energy: { ...emptyScore(50), coverage: 1 } });
+    const response = toGetResilienceIndicatorsResponse(
+      'DE', scores, materializeIndicatorTrace(trace, scores),
+      { now: new Date('2026-08-30T00:00:00.000Z'), dataVersion: '' },
+    );
+    const row = response.indicators.find((indicator) => indicator.id === 'energyImportDependency');
+    assert.ok(row);
+    assert.equal(row.sources[0]?.name, 'Eurostat');
+    assert.equal(row.sources[0]?.license, 'Redistribution audit incomplete');
+    assert.match(row.sources[0]?.attribution ?? '', /Eurostat/);
+  });
 });
 
 describe('GetResilienceIndicators handler', () => {
+  test('uses a fail-closed route budget for cold scorer fan-out', () => {
+    const path = '/api/resilience/v1/get-resilience-indicators';
+    assert.deepEqual(ENDPOINT_RATE_POLICIES[path], { limit: 60, window: '60 s' });
+    assert.ok(path in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED);
+  });
   test('rejects an invalid country before source reads', async () => {
     let reads = 0;
     const handler = createGetResilienceIndicators({
@@ -153,5 +229,53 @@ describe('GetResilienceIndicators handler', () => {
       warnings.mock.restore();
       infos.mock.restore();
     }
+  });
+
+  test('uses the same versioned response cache entry for repeated country requests', async () => {
+    let cacheBuilds = 0;
+    const cache = new Map<string, Awaited<ReturnType<ReturnType<typeof createGetResilienceIndicators>>>>();
+    const handler = createGetResilienceIndicators({
+      reader: async () => null,
+      readStaticMeta: async () => null,
+      responseCache: async (key, fetcher) => {
+        const existing = cache.get(key);
+        if (existing) return existing;
+        cacheBuilds += 1;
+        const built = await fetcher();
+        cache.set(key, built);
+        return built;
+      },
+    });
+    const ctx = { request: new Request('https://example.test/api/resilience/v1/get-resilience-indicators?countryCode=DE') } as never;
+    const first = await handler(ctx, { countryCode: 'DE' });
+    const second = await handler(ctx, { countryCode: 'de' });
+    assert.equal(cacheBuilds, 1);
+    assert.deepEqual(second, first);
+  });
+
+  test('does not cache a diagnostic seed-read failure as a valid response', async () => {
+    let fail = true;
+    const cache = new Map<string, Awaited<ReturnType<ReturnType<typeof createGetResilienceIndicators>>>>();
+    const handler = createGetResilienceIndicators({
+      reader: async () => {
+        if (fail) throw new Error('redis unavailable');
+        return null;
+      },
+      readStaticMeta: async () => null,
+      responseCache: async (key, fetcher) => {
+        const existing = cache.get(key);
+        if (existing) return existing;
+        const built = await fetcher();
+        cache.set(key, built);
+        return built;
+      },
+    });
+    const ctx = { request: new Request('https://example.test/api/resilience/v1/get-resilience-indicators?countryCode=DE') } as never;
+    await assert.rejects(handler(ctx, { countryCode: 'DE' }), /redis unavailable/);
+    assert.equal(cache.size, 0);
+    fail = false;
+    const response = await handler(ctx, { countryCode: 'DE' });
+    assert.equal(response.indicators.length, 72);
+    assert.equal(cache.size, 1);
   });
 });

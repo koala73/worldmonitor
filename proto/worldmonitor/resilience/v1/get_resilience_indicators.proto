@@ -38,7 +38,8 @@ message ResilienceIndicatorRawValue {
   bool text_value_available = 5;
   // Unit attached to the raw observation, for example percent or days.
   string unit = 6;
-  // Stable state such as available, withheld-license, absent, or not-applicable.
+  // available, absent, restricted, audit-incomplete, conditional,
+  // ineligible-observation, or unknown-indicator.
   string status = 7;
   // Human-readable explanation for an unavailable or withheld value.
   string reason = 8;

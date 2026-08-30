@@ -89,6 +89,13 @@ export interface IndicatorRawRedistributionDecision {
   attribution: string;
 }
 
+export interface IndicatorSourceDisplayMetadata {
+  providerName: string;
+  attribution: string;
+  licenseLabel: string;
+  sourceUrl: string | null;
+}
+
 const WORLD_BANK_SOURCE: AuditedRawSource = {
   providerName: 'World Bank Open Data',
   sourceUrl: 'https://api.worldbank.org/v2/',
@@ -249,6 +256,12 @@ const YAHOO = incompletePolicy('Yahoo Finance', 'https://finance.yahoo.com/', 'Y
 const TRANSIT = incompletePolicy('IMF PortWatch / corridor-risk and AIS providers', 'https://portwatch.imf.org/', 'Credit every contributing transit and AIS provider.');
 const GIE = incompletePolicy('Gas Infrastructure Europe AGSI', 'https://agsi.gie.eu/', 'Gas Infrastructure Europe AGSI; link to the source series.');
 const ENERGY_PRICES = incompletePolicy('FRED and upstream energy-price providers', 'https://fred.stlouisfed.org/', 'Credit the exact upstream energy-price series provider.');
+const OWID_LOW_CARBON = incompletePolicy(
+  'Our World in Data / Ember / Energy Institute',
+  'https://ourworldindata.org/grapher/share-electricity-low-carbon',
+  'Our World in Data; also preserve the attribution and terms of the Ember and Energy Institute source dataset.',
+  'The OWID chart uses third-party Ember and Energy Institute data. Raw redistribution remains disabled until the exact dataset terms are recorded.',
+);
 const UNHCR = incompletePolicy('UNHCR', 'https://www.unhcr.org/refugee-statistics/', 'UNHCR Refugee Data Finder; link to the source dataset.');
 const UNREST = incompletePolicy('ACLED / GDELT', null, 'Credit the exact ACLED or GDELT source used for the observation.');
 const RSF = incompletePolicy('Reporters Without Borders', 'https://rsf.org/en/index', 'Reporters Without Borders, World Press Freedom Index.');
@@ -267,18 +280,24 @@ const ENERGY_IMPORT_CONDITIONAL = conditionalPolicy(
 );
 const IMPORTED_FOSSIL_CONDITIONAL: IndicatorSourcePolicy = {
   status: 'conditional',
-  providerName: 'Our World in Data plus World Bank Open Data, with a possible Eurostat import-dependency override',
-  sourceUrl: null,
-  licenseLabel: 'CC BY 4.0, subject to each dataset page',
-  licenseUrl: null,
-  attribution: `${OWID_SOURCE.attribution} ${WORLD_BANK_SOURCE.attribution}`,
-  allowedRawSources: [OWID_SOURCE, WORLD_BANK_SOURCE],
-  requiredRawSources: [OWID_SOURCE, WORLD_BANK_SOURCE],
-  note: 'Allow only with exact OWID fossil-electricity and World Bank net-import provenance. An Eurostat-backed constituent denies raw redistribution.',
+  providerName: 'World Bank Open Data, with a possible Eurostat net-import override',
+  sourceUrl: WORLD_BANK_SOURCE.sourceUrl,
+  licenseLabel: WORLD_BANK_SOURCE.licenseLabel,
+  licenseUrl: WORLD_BANK_SOURCE.licenseUrl,
+  attribution: WORLD_BANK_SOURCE.attribution,
+  allowedRawSources: [WORLD_BANK_SOURCE],
+  requiredRawSources: [WORLD_BANK_SOURCE],
+  note: 'The fossil-electricity input is World Bank EG.ELC.FOSL.ZS. Allow only when net-import provenance is also World Bank; an Eurostat constituent denies raw redistribution.',
 };
 const LIQUID_RESERVE_CONDITIONAL = conditionalPolicy(
   'World Bank Open Data, optionally adjusted with UN Comtrade',
   'Allow the unadjusted World Bank observation only. If a Comtrade re-export adjustment contributed, raw redistribution is audit-incomplete.',
+);
+
+const EUROSTAT_DISPLAY = incompletePolicy(
+  'Eurostat',
+  'https://ec.europa.eu/eurostat/',
+  'Eurostat; link to the exact source dataset.',
 );
 
 /** Exhaustive policy table for the 72 entries in INDICATOR_REGISTRY. */
@@ -317,7 +336,7 @@ export const INDICATOR_SOURCE_POLICIES = {
   energyPriceStress: ENERGY_PRICES,
   electricityConsumption: WORLD_BANK,
   importedFossilDependence: IMPORTED_FOSSIL_CONDITIONAL,
-  lowCarbonGenerationShare: OWID,
+  lowCarbonGenerationShare: OWID_LOW_CARBON,
   powerLossesPct: WORLD_BANK,
   wgiVoiceAccountability: WORLD_BANK,
   wgiPoliticalStability: WORLD_BANK,
@@ -386,6 +405,48 @@ function matchesAuditedSource(hint: IndicatorObservedSourceHint, source: Audited
     && (source.sourceUrlContains?.every((part) => url.includes(part)) ?? true)
   );
   return providerMatches && urlMatches;
+}
+
+function metadataFromPolicy(policy: IndicatorSourcePolicy): IndicatorSourceDisplayMetadata {
+  return {
+    providerName: policy.providerName,
+    attribution: policy.attribution,
+    licenseLabel: policy.licenseLabel,
+    sourceUrl: policy.sourceUrl,
+  };
+}
+
+/** Resolve display metadata for the exact observed provider, never the aggregate policy. */
+export function getObservedSourceDisplayMetadata(
+  policy: IndicatorSourcePolicy | null,
+  hint: IndicatorObservedSourceHint,
+): IndicatorSourceDisplayMetadata {
+  const audited = policy?.allowedRawSources.find((source) => matchesAuditedSource(hint, source));
+  if (audited) {
+    return {
+      providerName: audited.providerName,
+      attribution: audited.attribution,
+      licenseLabel: audited.licenseLabel,
+      sourceUrl: audited.sourceUrl,
+    };
+  }
+
+  const provider = normalizeProvider(hint.providerName ?? '');
+  if (provider === 'eurostat') return metadataFromPolicy(EUROSTAT_DISPLAY);
+  if (provider === 'united nations comtrade' || provider === 'un comtrade') {
+    return metadataFromPolicy(COMTRADE);
+  }
+  if (policy && normalizeProvider(policy.providerName).includes(provider) && provider.length > 0) {
+    return metadataFromPolicy(policy);
+  }
+  return {
+    providerName: hint.providerName?.trim() || 'Unknown observed provider',
+    attribution: hint.providerName?.trim()
+      ? `${hint.providerName.trim()}; link to the exact source observation.`
+      : 'Observed provider metadata unavailable.',
+    licenseLabel: 'Redistribution audit incomplete',
+    sourceUrl: hint.sourceUrl ?? null,
+  };
 }
 
 function deniedDecision(

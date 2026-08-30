@@ -337,7 +337,9 @@ export function materializeIndicatorTrace(
     }
     const { recorded, effective, finalScore, retired, sourceFailure } = derived;
     const recordedRow = derived.contributions.get(indicatorId);
-    const included = recordedRow != null && recordedRow.scoringWeightShare > 0 && !sourceFailure;
+    // A source failure changes the disclosed state, but it does not remove the
+    // fallback values that the scorer used for the published dimension score.
+    const included = recordedRow != null && recordedRow.scoringWeightShare > 0;
     const state: IndicatorTraceState = sourceFailure
       ? 'source-failure'
       : retired

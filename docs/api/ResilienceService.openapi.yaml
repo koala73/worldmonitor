@@ -1347,7 +1347,9 @@ components:
                     description: Unit attached to the raw observation, for example percent or days.
                 status:
                     type: string
-                    description: Stable state such as available, withheld-license, absent, or not-applicable.
+                    description: |-
+                        available, absent, restricted, audit-incomplete, conditional,
+                         ineligible-observation, or unknown-indicator.
                 reason:
                     type: string
                     description: Human-readable explanation for an unavailable or withheld value.

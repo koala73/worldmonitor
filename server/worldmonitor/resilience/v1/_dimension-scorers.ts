@@ -2,7 +2,7 @@ import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
-import { getCachedEnvelopeJson, getCachedJson, readCachedJson } from '../../../_shared/redis';
+import { getCachedEnvelopeJson, getCachedJson, readCachedEnvelopeJson, readCachedJson } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
@@ -36,15 +36,33 @@ const UNESCO_VIA_WORLD_BANK_SOURCES = [
   { providerName: 'UNESCO Institute for Statistics via World Bank WDI', sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/SE.SEC.CUAT.UP.FE.ZS' },
 ] as const;
 const OWID_ENERGY_SOURCE = [{ providerName: 'Our World in Data', sourceUrl: 'https://ourworldindata.org/energy' }] as const;
+const OWID_LOW_CARBON_SOURCE = [{
+  providerName: 'Our World in Data',
+  sourceUrl: 'https://ourworldindata.org/grapher/share-electricity-low-carbon',
+}] as const;
+const WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE = [{
+  providerName: 'World Bank Open Data',
+  sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/EG.ELC.FOSL.ZS',
+}] as const;
 
 function energyDependencyObservedSources(source: unknown): readonly IndicatorObservedSource[] {
   if (typeof source !== 'string') return [];
   const normalized = source.toLowerCase();
   if (normalized.includes('eurostat')) {
-    return [{ providerName: 'Eurostat', sourceUrl: 'https://ec.europa.eu/eurostat/' }];
+    return [{ providerName: 'Eurostat', sourceUrl: 'https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_id/default/table?lang=en' }];
   }
-  if (normalized.includes('world bank') || normalized.includes('worldbank')) return WORLD_BANK_SOURCE;
+  if (normalized.includes('world bank') || normalized.includes('worldbank')) {
+    return [{
+      providerName: 'World Bank Open Data',
+      sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/EG.IMP.CONS.ZS',
+    }];
+  }
   return [];
+}
+
+function oldestSourceYear(...years: readonly (number | null | undefined)[]): number | null {
+  const observed = years.filter((year): year is number => Number.isFinite(year));
+  return observed.length > 0 ? Math.min(...observed) : null;
 }
 
 export type ResilienceDimensionId =
@@ -1203,6 +1221,18 @@ async function defaultSeedReader(key: string): Promise<unknown | null> {
   return key === RESILIENCE_WB_EXTERNAL_DEBT_KEY
     ? getCachedEnvelopeJson(key, true)
     : getCachedJson(key, true);
+}
+
+/** Strict reader for diagnostic surfaces that must distinguish a miss from an outage. */
+export async function strictResilienceSeedReader(key: string): Promise<unknown | null> {
+  const read = key === RESILIENCE_WB_EXTERNAL_DEBT_KEY
+    ? await readCachedEnvelopeJson(key, true)
+    : await readCachedJson(key, true);
+  if (read.status === 'hit') return read.value;
+  if (read.status === 'miss') return null;
+  const error = new Error(`Resilience diagnostic seed read failed for ${key}`) as Error & { cause?: unknown };
+  error.cause = read.error;
+  throw error;
 }
 
 interface MemoizedSeedReaderOptions {
@@ -3048,8 +3078,8 @@ async function scoreEnergyV2(
   const dependencyRecord = staticRecord?.iea?.energyImportDependency;
   const dependencySources = energyDependencyObservedSources(dependencyRecord?.source);
   return tracedBlend('energy', [
-    tracedMetric('importedFossilDependence', { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35, rawValue: importedFossilDependence, rawUnit: 'percent_weighted_dependency', sourceYear: fossilEntry?.year ?? dependencyRecord?.year ?? null, observedSources: importedFossilDependence == null ? [] : [...OWID_ENERGY_SOURCE, ...dependencySources], provenanceHint: dependencyRecord?.source ?? '' }),
-    tracedMetric('lowCarbonGenerationShare', { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80), weight: 0.20, rawValue: lowCarbonGenerationShare, rawUnit: 'percent_generation', sourceYear: lowCarbonEntry?.year ?? null, observedSources: OWID_ENERGY_SOURCE }),
+    tracedMetric('importedFossilDependence', { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35, rawValue: importedFossilDependence, rawUnit: 'percent_weighted_dependency', sourceYear: oldestSourceYear(fossilEntry?.year, dependencyRecord?.year), observedSources: importedFossilDependence == null ? [] : [...WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE, ...dependencySources], provenanceHint: dependencyRecord?.source ?? '' }),
+    tracedMetric('lowCarbonGenerationShare', { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80), weight: 0.20, rawValue: lowCarbonGenerationShare, rawUnit: 'percent_generation', sourceYear: lowCarbonEntry?.year ?? null, observedSources: OWID_LOW_CARBON_SOURCE }),
     tracedMetric('powerLossesPct', { score: powerLosses == null ? null : normalizeLowerBetter(powerLosses, 3, 25), weight: 0.20, rawValue: powerLosses, rawUnit: 'percent_output', sourceYear: powerLossesEntry?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
     tracedMetric('euGasStorageStress', { score: euStorageStress == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100), weight: 0.10, rawValue: storageFillPct, rawUnit: 'percent_fill' }),
     tracedMetric('energyPriceStress', { score: exposedEnergyStress, weight: 0.15, rawValue: energyStress, rawUnit: 'mean_absolute_percent_change', provenanceHint: `fossil-exposure=${exposure}` }),
@@ -3560,13 +3590,14 @@ export async function scoreReserveAdequacy(
 async function readReexportShareForCountry(
   countryCode: string,
   reader: ResilienceSeedReader,
-): Promise<number | null> {
+): Promise<{ share: number; year: number | null } | null> {
   const raw = await reader(RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY);
-  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null } | undefined> } | null | undefined;
-  const share = payload?.countries?.[countryCode]?.reexportShareOfImports;
+  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null; year?: number | null } | undefined> } | null | undefined;
+  const entry = payload?.countries?.[countryCode];
+  const share = entry?.reexportShareOfImports;
   if (typeof share !== 'number' || !Number.isFinite(share)) return null;
   if (share < 0 || share >= 1) return null;
-  return share;
+  return { share, year: Number.isFinite(entry?.year) ? Number(entry?.year) : null };
 }
 
 export async function scoreLiquidReserveAdequacy(
@@ -3583,10 +3614,10 @@ export async function scoreLiquidReserveAdequacy(
   }
   const reexportShare = await readReexportShareForCountry(countryCode, reader);
   const adjustedMonths = reexportShare !== null
-    ? entry.reserveMonths / (1 - reexportShare)
+    ? entry.reserveMonths / (1 - reexportShare.share)
     : entry.reserveMonths;
   return tracedBlend('liquidReserveAdequacy', [
-    tracedMetric('recoveryLiquidReserveMonths', { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0, rawValue: adjustedMonths, rawUnit: 'adjusted_months_of_imports', sourceYear: entry.year ?? null, observedSources: reexportShare == null ? WORLD_BANK_SOURCE : [...WORLD_BANK_SOURCE, { providerName: 'United Nations Comtrade', sourceUrl: 'https://comtradeplus.un.org/' }], provenanceHint: reexportShare == null ? '' : `reexport-share=${reexportShare}` }),
+    tracedMetric('recoveryLiquidReserveMonths', { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0, rawValue: adjustedMonths, rawUnit: 'adjusted_months_of_imports', sourceYear: oldestSourceYear(entry.year, reexportShare?.year), observedSources: reexportShare == null ? WORLD_BANK_SOURCE : [...WORLD_BANK_SOURCE, { providerName: 'United Nations Comtrade', sourceUrl: 'https://comtradeplus.un.org/' }], provenanceHint: reexportShare == null ? '' : `reexport-share=${reexportShare.share}` }),
   ], options);
 }
 
