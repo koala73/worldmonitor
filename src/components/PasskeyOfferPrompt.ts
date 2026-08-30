@@ -129,7 +129,9 @@ export class PasskeyOfferPrompt {
   announceOnMount(schedule: (cb: () => void) => number = requestAnimationFrame): void {
     this.announceFrame = schedule(() => {
       this.announceFrame = null;
-      if (this.state === 'offered') this.announce.textContent = t('components.passkeyOffer.announce');
+      if (this.state === 'offered' && !this.root.hidden) {
+        this.announce.textContent = t('components.passkeyOffer.announce');
+      }
     });
   }
 
@@ -186,6 +188,9 @@ export class PasskeyOfferPrompt {
     this.root.hidden = false;
     const pending = statusTextFor(this.state);
     if (pending) schedule(() => { this.status.textContent = pending; });
+    else if (this.state === 'offered' && !this.announce.textContent && this.announceFrame === null) {
+      this.announceOnMount(schedule);
+    }
 
     const target = this.focusBeforeHide;
     this.focusBeforeHide = null;
