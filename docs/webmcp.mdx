@@ -50,7 +50,7 @@ For discovery and read-only dashboard tools, use Chrome 149 or newer:
 1. Open `chrome://flags/#enable-webmcp-testing`.
 2. Set **WebMCP for testing** to **Enabled**.
 3. Relaunch Chrome completely.
-4. Start WorldMonitor locally. Open `/dashboard` for the twenty-four-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
+4. Start WorldMonitor locally. Open `/dashboard` for the twenty-eight-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
 5. Confirm feature detection in DevTools:
 
 ```js
@@ -65,7 +65,7 @@ Follow OpenAI's [Site tools flow](https://learn.chatgpt.com/docs/webmcp), not th
 
 1. Update the ChatGPT desktop app, then select a model and workspace that currently support Site tools.
 2. Open `https://www.worldmonitor.app/` in the built-in browser. Use `/dashboard` to test the dashboard inventory.
-3. Select **Site tools** in the browser address bar, then select **Available site tools**. The homepage lists two imperative tools. The dashboard lists twenty-four.
+3. Select **Site tools** in the browser address bar, then select **Available site tools**. The homepage lists two imperative tools. The dashboard lists twenty-eight.
 4. Ask ChatGPT Work or Codex to use a WorldMonitor tool while that page remains open.
 5. If no tools appear, reload the page in the built-in browser and inspect **Available site tools** again.
 
@@ -84,9 +84,9 @@ WorldMonitor registers the full dashboard inventory, then applies one cancellati
 
 | Class | Tools | Behavior when the host omits the target-side `AbortSignal` |
 |---|---|---|
-| `read-only` | `get_dashboard_context`, `get_access_context`, `list_map_layers`, `list_dashboard_panels`, `search_dashboard`, `list_dashboard_tabs` | Runs normally. |
-| `view-state` | `openSearch`, `open_settings`, `open_alerts`, `open_sign_in`, `open_dashboard_panel`, `set_map_view`, `set_time_range`, `focus_country` | Runs normally, but caller cancellation cannot stop a visible change that is already in progress. |
-| `cancellation-required` | `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_map_layers`, `set_map_mode`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, `delete_dashboard_tab` | Returns `target_cancellation_unsupported` before starting the action. |
+| `read-only` | `get_dashboard_context`, `get_access_context`, `list_map_layers`, `list_dashboard_panels`, `search_dashboard`, `list_dashboard_tabs`, `get_panel_layout` | Runs normally. |
+| `view-state` | `openSearch`, `open_settings`, `open_alerts`, `open_sign_in`, `open_dashboard_panel`, `set_map_view`, `set_time_range`, `focus_country`, `set_panel_fullscreen` | Runs normally, but caller cancellation cannot stop a visible change that is already in progress. |
+| `cancellation-required` | `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_panel_collapsed`, `move_panel`, `set_map_layers`, `set_map_mode`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, `delete_dashboard_tab` | Returns `target_cancellation_unsupported` before starting the action. |
 | `result-dependent` | `open_search_result` | Runs a view-state result. Rejects a persistent, quota-consuming, or external-navigation result. |
 
 <Warning>
@@ -116,7 +116,7 @@ The static `https://www.worldmonitor.app/` welcome page registers two imperative
 
 ### Dashboard imperative tools
 
-Every dashboard variant registers the same twenty-four imperative tools. Registration is stable across sign-in and entitlement changes. Each invocation rechecks live state and the [host's cancellation support](#host-support-and-cancellation).
+Every dashboard variant registers the same twenty-eight imperative tools. Registration is stable across sign-in and entitlement changes. Each invocation rechecks live state and the [host's cancellation support](#host-support-and-cancellation).
 
 | Tool | Input schema | Visible result |
 |---|---|---|
@@ -130,6 +130,10 @@ Every dashboard variant registers the same twenty-four imperative tools. Registr
 | `open_alerts` | Empty object; no additional properties. | Opens the alerts overlay on the notifications tab without changing alert contents. Unavailable in the desktop app. |
 | `open_dashboard_panel` | Required string `panelId`, 1–96 characters, pattern `^[A-Za-z0-9][A-Za-z0-9@_-]*$`; no additional properties. | Opens and scrolls to an available, currently enabled panel through the entitlement-aware UI path. Disabled panels return `panel_disabled`; use `set_panel_enabled` to change whether a catalog panel is enabled. This tool does not enable panels itself. |
 | `set_panel_enabled` | Required string `panelId`, 1–96 characters, pattern `^[a-z0-9][a-z0-9@_-]*$`; required boolean `enabled`; no additional properties. | Enables or disables a catalog panel through the same settings persist/apply path a person uses. Returns requested and effective state plus whether anything changed. Enabling an unknown, incompatible, unentitled, or free-tier-capped panel is denied. Requires target-side cancellation. |
+| `get_panel_layout` | Optional string `cursor` matching a previous `nextCursor` panel ID; no additional properties. | Read-only effective layout: stable panel IDs, named regions (`sidebar` / `bottom`), order index, collapsed and fullscreen state, and region availability. When `panelsTruncated` is true, pass `nextCursor` to continue. |
+| `set_panel_collapsed` | Required string `panelId`, 1–96 characters, pattern `^[A-Za-z0-9][A-Za-z0-9@_-]*$`; required boolean `collapsed`; no additional properties. | Collapses or expands a mounted panel through the visible collapse control and persistence path. Idempotent when unchanged. Unsupported panels return `collapse_unsupported`. Requires target-side cancellation. |
+| `move_panel` | Required string `panelId`; required string `region` enum `sidebar` or `bottom`; required integer `index` ≥ 0; no additional properties. | Moves a mounted panel to a named region and 0-based index through the same persistence path as keyboard reorder. No pointer coordinates. Bottom moves are denied when that region is inactive. Requires target-side cancellation. |
+| `set_panel_fullscreen` | Required string `panelId`; required boolean `fullscreen`; no additional properties. | Enters or exits panel fullscreen through the visible control (Live News / Live Webcams). Session view-state only; unsupported panels return `fullscreen_unsupported`. |
 | `set_map_view` | Exactly one of: `view`; or `lat` plus `lon`. `view` is `global`, `america`, `mena`, `eu`, `asia`, `latam`, `africa`, or `oceania`. `lat` is -85.051129–85.051129, `lon` is -180–180, and optional `zoom` is 1–10. | Moves the visible map. |
 | `set_map_layers` | Required object `layers` with 1–10 boolean entries. Keys are 1–30 characters and match `^[a-z][A-Za-z0-9_-]*$`; no additional top-level properties. | Enables or disables allowed visible layers and returns a per-layer outcome. |
 | `set_time_range` | Required string `timeRange`: `1h`, `6h`, `24h`, `48h`, `7d`, or `all`; no additional properties. | Sets the visible map time range through the dashboard control. Returns requested and effective range. |
@@ -169,6 +173,10 @@ Discover the inventory only after the page has finished registering tools. Then 
 | Enumerate every panel | `list_dashboard_panels` | Follow `nextCursor` until `hasMore` is false. Disabled, unmounted, and gated panels remain in the catalog with a stable `unavailableReason`. |
 | Open a known panel | `list_dashboard_panels` or `get_dashboard_context` → `open_dashboard_panel` | Use a panel ID returned by the current page. A mounted panel can still be disabled or unavailable to the current plan. |
 | Enable or disable a catalog panel | `list_dashboard_panels` → `set_panel_enabled` | Use a returned stable panel ID, not a label or CSS selector. Inspect `effectiveEnabled` and `changed`. Repeating the same request is success with `changed: false`. Unavailable when the browser cannot deliver target-side cancellation. |
+| Inspect panel order and collapse/fullscreen state | `get_panel_layout` | Use returned panel IDs, regions (`sidebar` / `bottom`), and indices. When `panelsTruncated` is true, pass `nextCursor`. |
+| Collapse or expand a panel | `get_panel_layout` → `set_panel_collapsed` | Only panels with `collapsible: true` succeed. Repeating the same state is success with `changed: false`. Requires target-side cancellation. |
+| Move or reorder a panel | `get_panel_layout` → `move_panel` | Pass a stable panel ID, named region, and 0-based index. Bottom moves fail with `region_unavailable` when the split layout is inactive. Requires target-side cancellation. |
+| Enter or exit panel fullscreen | `get_panel_layout` → `set_panel_fullscreen` | Only panels with `fullscreenCapable: true` succeed. Session view-state; it does not persist across reload. |
 | Switch monitor | `switch_monitor` | Pass a stable key (`full`, `tech`, `finance`, `happy`, `commodity`, `energy`), not a display label. Confirm `context.variant` and the visible header selection. |
 | Open settings | `open_settings` | Confirm the settings overlay and Settings tab. This tool does not change settings contents. |
 | Open alerts | `open_alerts` | Confirm the notifications tab. Treat `unavailable` as a terminal gated result and do not infer account details. This tool does not change alert contents. |
@@ -296,7 +304,7 @@ The Inspector's natural-language workflow sends prompts to an external Gemini mo
 | `getTools()` hangs or an origin-trial page settles with no inventory | The page provider may have been touched before registration completed | Reload the page, wait for document load and WorldMonitor registration to settle, then perform one inventory read. Do not poll `document.modelContext`. |
 | Only the homepage inventory is visible | The agent is on the static homepage | Invoke `launchWorldMonitor` or navigate to `/dashboard` for the imperative dashboard inventory. |
 | The imperative dashboard inventory is visible but `search_procurement` is absent | The host does not support declarative tools, or the conditional form is not eligible | In ChatGPT's built-in browser, this is expected. In Chrome, open and enable the Global Procurement panel, satisfy entitlement, wait for data to settle, and ensure the form is visible and idle. |
-| A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_map_layers`, `set_map_mode`, or dashboard tab mutations. For `open_search_result`, choose a view-state result or wait for a host that can cancel persistent work. |
+| A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_panel_collapsed`, `move_panel`, `set_map_layers`, `set_map_mode`, or dashboard tab mutations. For `open_search_result`, choose a view-state result or wait for a host that can cancel persistent work. |
 | A panel or layer is denied | The current page state failed a live variant, renderer, enabled-state, or entitlement check | Read `reason` and each target status. Change state through normal visible controls or ask the person; do not force a hidden path. |
 | `open_search_result` reports an invalid, expired, changed, or unavailable key | The one-use capability is stale or the dashboard changed after search | Run `search_dashboard` again and present the new result before opening it. Never reinterpret a key as a URL. |
 | A tab mutation returns `tab_cap`, `last_tab`, or `confirmation_required` | The dashboard tab bar would refuse the same action | List tabs again. Use a current tab ID. Delete requires `confirm: true` and will not remove the last remaining tab. |

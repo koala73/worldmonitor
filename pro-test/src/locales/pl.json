@@ -271,7 +271,22 @@
     "fKeyAuth": "Uwierzytelnianie kluczem",
     "fSsoMfa": "SSO/MFA/RBAC/audyt",
     "noteBelow": "Rdzeń platformy pozostaje bezpłatny. Plany płatne odblokowują equity research, analizę makro, briefy AI i użycie organizacyjne.",
-    "f50plus": "Dostępne"
+    "f50plus": "Dostępne",
+    "sourcesRow": "Źródła",
+    "followedRow": "Monitorowane kraje",
+    "tabsRow": "Karty dashboardu",
+    "fUnlimited": "Bez ograniczeń",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Wszystkie warstwy",
+    "fLayersNoResilience": "Wszystkie poza Odpornością",
+    "fStandardCadence": "Standardowa",
+    "fQuotes30s": "Notowania rynkowe: 30s",
+    "panelsRow": "Włączone panele",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Wszystkie"
   },
   "faq": {
     "title": "Często zadawane pytania dotyczące World Monitor Pro",
@@ -298,7 +313,7 @@
     "q11": "Jak spersonalizowany jest digest?",
     "a11": "Wybierz częstotliwość — codziennie, dwa razy dziennie lub tygodniowo. Przeliczamy co monitorowany artykuł względem Twoich reguł alertów i listy monitorowania, deduplikujemy w źródłach i wysyłamy do 30 rankingowanych pozycji z oceną AI i sygnałami do obserwacji napisanymi w Twoim kontekście. Alerty w czasie rzeczywistym są też dostępne dla krytycznych zdarzeń.",
     "q12": "Jakie jest tempo odświeżania?",
-    "a12": "Niemal w czasie rzeczywistym dla Pro. 5–15 minut na Free.",
+    "a12": "Pro odświeża notowania rynkowe co 30 sekund. Pozostałe dane podążają za kadencją swojego źródła. Free pozostaje przy standardowej kadencji źródła.",
     "q13": "Gdzie trafiają moje dane?",
     "a13": "Kanały powiadomień są szyfrowane AES-256 w spoczynku. Digesty nigdy nie opuszczają naszego pipeline'u nieoczyszczone."
   },

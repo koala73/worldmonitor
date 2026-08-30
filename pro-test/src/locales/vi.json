@@ -271,7 +271,22 @@
     "fKeyAuth": "Xác thực khóa",
     "fSsoMfa": "SSO/MFA/RBAC/kiểm toán",
     "noteBelow": "Nền tảng cốt lõi vẫn miễn phí. Các gói trả phí mở khóa Equity research, phân tích vĩ mô, bản tóm tắt AI và sử dụng tổ chức.",
-    "f50plus": "Có sẵn"
+    "f50plus": "Có sẵn",
+    "sourcesRow": "Nguồn",
+    "followedRow": "Quốc gia được theo dõi",
+    "tabsRow": "Tab dashboard",
+    "fUnlimited": "Không giới hạn",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Tất cả lớp",
+    "fLayersNoResilience": "Tất cả ngoại trừ Resilience",
+    "fStandardCadence": "Tiêu chuẩn",
+    "fQuotes30s": "Giá thị trường: 30 giây",
+    "panelsRow": "Các panel được bật",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tất cả"
   },
   "faq": {
     "title": "Các câu hỏi thường gặp về World Monitor Pro",
@@ -298,7 +313,7 @@
     "q11": "Digest được cá nhân hóa như thế nào?",
     "a11": "Chọn lịch của bạn — hàng ngày, hai lần mỗi ngày hoặc hàng tuần. Chúng tôi cho mỗi bài báo theo dõi được chấm điểm lại so với các quy tắc cảnh báo và danh sách theo dõi của bạn, loại bỏ trùng lặp trên các nguồn, và gửi lên đến 30 mục xếp hạng với Đánh giá AI và Tín hiệu cần theo dõi được viết vào ngữ cảnh của bạn. Cảnh báo thời gian thực cũng có sẵn cho các sự kiện quan trọng.",
     "q12": "Tốc độ làm mới là bao nhiêu?",
-    "a12": "Gần thời gian thực cho Pro. 5–15 phút trên Free.",
+    "a12": "Pro làm mới giá thị trường mỗi 30 giây. Các bộ dữ liệu khác theo nhịp của nguồn. Free giữ nhịp nguồn tiêu chuẩn.",
     "q13": "Dữ liệu của tôi đi đâu?",
     "a13": "Các kênh thông báo được mã hóa AES-256 ở trạng thái nghỉ. Digest không bao giờ rời khỏi pipeline của chúng tôi mà không được hiệu đính."
   },

@@ -271,7 +271,22 @@
     "fKeyAuth": "Auth par clé",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "La plateforme de base reste gratuite. Les offres payantes débloquent recherche actions, analytique macro, briefings IA et usage organisationnel.",
-    "f50plus": "Disponible"
+    "f50plus": "Disponible",
+    "sourcesRow": "Sources",
+    "followedRow": "Pays suivis",
+    "tabsRow": "Onglets du tableau de bord",
+    "fUnlimited": "Illimité",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Toutes les couches",
+    "fLayersNoResilience": "Toutes sauf Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Cotations de marché : 30s",
+    "panelsRow": "Panneaux activés",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tous"
   },
   "faq": {
     "title": "Questions fréquemment posées sur World Monitor Pro",
@@ -298,7 +313,7 @@
     "q11": "Quel est le degré de personnalisation du digest ?",
     "a11": "Choisissez votre cadence — quotidienne, bi-quotidienne ou hebdomadaire. Nous re-notons chaque histoire surveillée selon vos règles d'alerte et votre liste de surveillance, dédupliquons entre les sources et envoyons jusqu'à 30 éléments classés avec une Évaluation IA et des Signaux à surveiller écrits dans votre contexte. Des alertes en temps réel sont aussi disponibles pour les événements critiques.",
     "q12": "Quel est le taux de rafraîchissement ?",
-    "a12": "Quasi temps réel pour Pro. 5–15 minutes sur Free.",
+    "a12": "Pro actualise les cotations de marché toutes les 30 secondes. Les autres jeux de données suivent la cadence de leur source. Free reste sur la cadence source standard.",
     "q13": "Où vont mes données ?",
     "a13": "Les canaux de notification sont chiffrés AES-256 au repos. Les digests ne quittent jamais notre pipeline non rédigés."
   },

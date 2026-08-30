@@ -681,7 +681,17 @@ function trackedLink(href, text, target, escapeHtml, extraAttrs = '') {
   return `<a href="${escapeHtml(href)}" data-umami-event="research-cta" data-umami-event-target="${escapeHtml(target)}"${extraAttrs}>${text}</a>`;
 }
 
-export function renderResearchReportPage({ report, snapshot, metrics, tpl, baseUrl, lastmod, chokepointSlug }) {
+export function renderResearchReportPage({
+  report,
+  snapshot,
+  metrics,
+  tpl,
+  baseUrl,
+  lastmod,
+  chokepointSlug,
+  dataCatalog,
+  includedInDataCatalog,
+}) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
   const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
   if (!SLUG_PATTERN.test(report.slug) || !SLUG_PATTERN.test(report.id)) {
@@ -872,7 +882,20 @@ ${justification}
         'Daily AIS-observed vessel transit calls by class with deadweight-tonnage aggregates, from IMF PortWatch, frozen in a versioned snapshot.',
       creator: { '@type': 'Organization', name: report.author.name, url: report.author.url },
       license: DATASET_LICENSE,
+      datePublished: report.datePublished,
       temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
+      isAccessibleForFree: true,
+      includedInDataCatalog,
+      variableMeasured: [
+        'Daily vessel transit calls',
+        'Transit calls by vessel class',
+        'Deadweight-tonnage aggregates',
+      ],
+      spatialCoverage: {
+        '@type': 'Place',
+        name: focus.portwatchName,
+        identifier: report.focusChokepointId,
+      },
       isBasedOn: 'https://portwatch.imf.org/',
       distribution: [
         {
@@ -895,7 +918,7 @@ ${justification}
     title: `${report.metaTitle} | World Monitor`,
     description,
     lastmod,
-    jsonLd,
+    jsonLd: [jsonLd, dataCatalog].filter(Boolean),
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Research', path: '/research/' },
@@ -909,7 +932,7 @@ ${justification}
   return html;
 }
 
-export function renderResearchIndex({ reports, tpl, baseUrl, lastmod }) {
+export function renderResearchIndex({ reports, tpl, baseUrl, lastmod, dataCatalog }) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/research/';
   const description =
@@ -930,14 +953,17 @@ ${reports.map((report) => `        <a class="card" href="/research/${escapeHtml(
     title: 'Research Reports | World Monitor',
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'World Monitor research reports',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: 'World Monitor research reports',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+      },
+      dataCatalog,
+    ].filter(Boolean),
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Research', path },
@@ -951,7 +977,12 @@ ${reports.map((report) => `        <a class="card" href="/research/${escapeHtml(
 // Renders and writes the whole /research/ section (hub, report pages,
 // downloads). Owns its own file IO so build-crawlable-corpus.mjs stays the
 // template owner without also carrying the research wiring.
-export function writeResearchSection({ data, outDir, baseUrl, tpl }) {
+export function writeResearchSection({ data, outDir, baseUrl, tpl, dataCatalog, includedInDataCatalog }) {
+  if (!dataCatalog?.['@id'] || !includedInDataCatalog?.['@id']) {
+    throw new Error(
+      'writeResearchSection requires the canonical DataCatalog identity so research Datasets can join the catalog graph',
+    );
+  }
   mkdirSync(join(outDir, 'research'), { recursive: true });
   writeFileSync(
     join(outDir, 'research', 'index.html'),
@@ -960,6 +991,7 @@ export function writeResearchSection({ data, outDir, baseUrl, tpl }) {
       tpl,
       baseUrl,
       lastmod: data.lastmod.research,
+      dataCatalog,
     }),
   );
   const chokepointSlugById = new Map(data.chokepoints.map((entry) => [entry.id, entry.slug]));
@@ -977,6 +1009,8 @@ export function writeResearchSection({ data, outDir, baseUrl, tpl }) {
         baseUrl,
         lastmod: data.lastmod.research,
         chokepointSlug: chokepointSlugById.get(report.focusChokepointId),
+        dataCatalog,
+        includedInDataCatalog,
       }),
     );
     const downloadFiles = downloadFileNames(report);

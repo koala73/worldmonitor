@@ -271,7 +271,22 @@
     "fKeyAuth": "Sleutel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik.",
-    "f50plus": "Beschikbaar"
+    "f50plus": "Beschikbaar",
+    "sourcesRow": "Bronnen",
+    "followedRow": "Gevolgde landen",
+    "tabsRow": "Dashboard-tabbladen",
+    "fUnlimited": "Onbeperkt",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alle lagen",
+    "fLayersNoResilience": "Alle behalve Resilience",
+    "fStandardCadence": "Standaard",
+    "fQuotes30s": "Marktkoersen: 30s",
+    "panelsRow": "Panelen ingeschakeld",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alles"
   },
   "faq": {
     "title": "Veelgestelde vragen over World Monitor Pro",
@@ -298,7 +313,7 @@
     "q11": "Hoe gepersonaliseerd is de digest?",
     "a11": "Kies je ritme — dagelijks, tweemaal per dag of wekelijks. We scoren elk gemonitord verhaal opnieuw tegen je waarschuwingsregels en watchlist, dededupliceren over bronnen, en verzenden tot 30 gerangschikte items met een AI-beoordeling en signalen om op te letten naar je context. Real-time waarschuwingen zijn ook beschikbaar voor kritieke events.",
     "q12": "Wat is de refresh-snelheid?",
-    "a12": "Bijna realtime voor Pro. 5–15 minuten op Free.",
+    "a12": "Pro vernieuwt marktkoersen elke 30 seconden. Overige datasets volgen de cadans van hun bron. Free blijft op de standaard broncadans.",
     "q13": "Waar gaat mijn data naartoe?",
     "a13": "Notificatiekanalen zijn AES-256 versleuteld in rust. Digests verlaten onze pipeline nooit ongeredigeerd."
   },

@@ -1,5 +1,6 @@
 ---
 import productFacts from '../../../shared/product-facts.generated.json';
+import { SOMEONE_CEO_URL } from '../../../shared/press';
 import TrackedProductLink from '../components/TrackedProductLink.astro';
 
 interface Props {
@@ -103,13 +104,15 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
   <body>
     <header class="site-header">
       <nav>
-        <a href="/blog/" class="logo">
-          <img src="/favico/favicon-32x32.png" alt="World Monitor" width="28" height="28" class="logo-icon-img" />
+        <div class="logo">
+          <a href="/blog/" class="logo-mark" aria-label="World Monitor Blog — Home">
+            <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="logo-icon-img" />
+          </a>
           <div class="logo-text">
-            <span class="logo-name">WORLD MONITOR</span>
-            <span class="logo-sub">by Someone.ceo</span>
+            <a href="/blog/" class="logo-name">WORLD MONITOR</a>
+            <a href={SOMEONE_CEO_URL} class="logo-sub" rel="noopener noreferrer">by Someone.ceo</a>
           </div>
-        </a>
+        </div>
         <ul class="nav-links">
           <li><a href="/blog/">Blog</a></li>
           <li><a href="/blog/glossary/">Glossary</a></li>
@@ -148,7 +151,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="footer-icon-img" />
           <div class="footer-brand-text">
             <span class="footer-name">WORLD MONITOR</span>
-            <span class="footer-sub">by Someone.ceo</span>
+            <a href={SOMEONE_CEO_URL} class="footer-sub" rel="noopener noreferrer">by Someone.ceo</a>
           </div>
         </div>
         <div class="footer-links">
