@@ -17,6 +17,7 @@ import {
   getCurrentEducationCacheState,
   isCurrentResilienceIntervalPayload,
   isEnergyV2Enabled,
+  toResilienceDataVersion,
   type ResilienceIntervalPayload,
 } from './_shared';
 
@@ -31,7 +32,7 @@ const PUBLIC_CACHE_STATE = {
   intervalMethodology: '',
 };
 
-function getConstructVersions(): { energy: 'legacy' | 'v2'; education: 'active' | 'rollback' } {
+export function getConstructVersions(): { energy: 'legacy' | 'v2'; education: 'active' | 'rollback' } {
   return {
     energy: isEnergyV2Enabled() ? 'v2' : 'legacy',
     education: getCurrentEducationCacheState() === 'education-on' ? 'active' : 'rollback',
@@ -47,11 +48,6 @@ interface RankingMeta {
   count?: unknown;
   scored?: unknown;
   total?: unknown;
-}
-
-function toIsoDate(value: unknown): string {
-  const iso = toIsoTimestamp(value);
-  return iso ? iso.slice(0, 10) : '';
 }
 
 function toIsoTimestamp(value: unknown): string {
@@ -111,7 +107,7 @@ export const getResilienceRuntimeManifest: ResilienceServiceHandler['getResilien
     deployedCommitSha: '',
     vercelEnv: '',
     formulaTag: getCurrentCacheFormula(),
-    dataVersion: toIsoDate(staticMeta?.fetchedAt),
+    dataVersion: toResilienceDataVersion(staticMeta?.fetchedAt),
     flags: [],
     cache: PUBLIC_CACHE_STATE,
     rankingCache: {

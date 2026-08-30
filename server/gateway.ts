@@ -422,6 +422,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // reads are POSTs and cache successful results inside their handlers.
   '/api/intelligence/v1/get-intel-timeline': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
+  '/api/resilience/v1/get-resilience-indicators': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
   '/api/resilience/v1/get-food-stocks': 'slow',
   '/api/resilience/v1/get-demographics-capability': 'slow',

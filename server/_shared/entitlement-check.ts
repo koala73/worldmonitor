@@ -171,6 +171,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/trade/v1/get-tariff-trends': 1,
   '/api/resilience/v1/get-food-stocks': 1,
   '/api/resilience/v1/get-demographics-capability': 1,
+  '/api/resilience/v1/get-resilience-indicators': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';

@@ -691,6 +691,84 @@ const DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA = {
   },
 };
 
+const RESILIENCE_INDICATOR_SOURCE_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    key: { type: 'string' as const },
+    name: { type: 'string' as const },
+    attribution: { type: 'string' as const },
+    license: { type: 'string' as const },
+    url: { type: 'string' as const },
+  },
+};
+
+const RESILIENCE_INDICATOR_RAW_VALUE_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  description: 'Selectively exposed raw observation. Read availability fields before numeric or text values.',
+  properties: {
+    available: { type: 'boolean' as const },
+    numericValue: { type: 'number' as const },
+    numericValueAvailable: { type: 'boolean' as const },
+    textValue: { type: 'string' as const },
+    textValueAvailable: { type: 'boolean' as const },
+    unit: { type: 'string' as const },
+    status: { type: 'string' as const, description: 'For example available, withheld-license, absent, or not-applicable.' },
+    reason: { type: 'string' as const },
+  },
+};
+
+const RESILIENCE_INDICATOR_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    id: { type: 'string' as const },
+    dimension: { type: 'string' as const },
+    tier: { type: 'string' as const, description: 'core, enrichment, or experimental.' },
+    active: { type: 'boolean' as const },
+    includedInDimensionScore: { type: 'boolean' as const },
+    state: { type: 'string' as const, description: 'observed, imputed, missing, fallback, source-failure, inactive, retired, or not-applicable.' },
+    reason: { type: 'string' as const, description: 'Explains exclusion, inactivity, retirement, or fallback.' },
+    normalizedScoreAvailable: { type: 'boolean' as const },
+    normalizedScore: { type: 'number' as const },
+    nominalWeight: { type: 'number' as const },
+    runtimeWeightAvailable: { type: 'boolean' as const },
+    runtimeWeight: { type: 'number' as const },
+    scoringWeightShareAvailable: { type: 'boolean' as const },
+    scoringWeightShare: { type: 'number' as const },
+    literalContribution: { type: 'number' as const },
+    effectiveContribution: { type: 'number' as const, description: 'Reconciled effective contribution to the exposed dimension score.' },
+    imputationClass: { type: 'string' as const },
+    sourceYearAvailable: { type: 'boolean' as const },
+    sourceYear: { type: 'integer' as const },
+    observationAgeAvailable: { type: 'boolean' as const },
+    observationAgeValue: { type: 'integer' as const },
+    observationAgeUnit: { type: 'string' as const, description: 'days or years.' },
+    observationAgeBasis: { type: 'string' as const, description: 'observation-timestamp or source-year; never retrieval time.' },
+    retrievedAtAvailable: { type: 'boolean' as const },
+    retrievedAt: { type: 'string' as const },
+    observedAtAvailable: { type: 'boolean' as const },
+    observedAt: { type: 'string' as const },
+    sources: { type: 'array' as const, items: RESILIENCE_INDICATOR_SOURCE_OUTPUT_SCHEMA },
+    rawValue: RESILIENCE_INDICATOR_RAW_VALUE_OUTPUT_SCHEMA,
+  },
+};
+
+const RESILIENCE_INDICATOR_DIMENSION_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    id: { type: 'string' as const },
+    score: { type: 'number' as const },
+    coverage: { type: 'number' as const },
+    prePolicyScore: { type: 'number' as const },
+    policyCapName: { type: 'string' as const },
+    policyCapFactor: { type: 'number' as const },
+    literalContributionTotal: { type: 'number' as const },
+    effectiveContributionTotal: { type: 'number' as const, description: 'Reconciles exactly to score.' },
+    active: { type: 'boolean' as const },
+    reconciliationAvailable: { type: 'boolean' as const, description: 'False for retired or runtime-disabled placeholder dimensions.' },
+    reason: { type: 'string' as const },
+  },
+};
+
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_defense_industrial_base',
@@ -1683,6 +1761,66 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     _apiPaths: [
       'GET /api/resilience/v1/get-demographics-capability',
+    ],
+  },
+  {
+    name: 'get_resilience_indicators',
+    _outputBudgetBytes: 262144,
+    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Requires an ISO-2 country code and a WorldMonitor Pro subscription.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: {
+          type: 'string',
+          description: 'Required ISO 3166-1 alpha-2 country code (for example "DE"). Case-insensitive.',
+        },
+      },
+      required: ['country_code'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        countryCode: { type: 'string' },
+        methodology: { type: 'string', description: 'Stable contribution-reconciliation method identifier.' },
+        formula: { type: 'string', description: 'Active score formula tag, for example d6 or pc.' },
+        dataVersion: { type: 'string', description: 'Source snapshot version used for the score.' },
+        schemaVersion: { type: 'string', description: 'Public resilience score schema version.' },
+        constructVersions: {
+          type: 'object',
+          properties: {
+            energy: { type: 'string', description: 'Active energy construct version.' },
+            education: { type: 'string', description: 'Active education construct version.' },
+          },
+        },
+        dimensions: { type: 'array', items: RESILIENCE_INDICATOR_DIMENSION_OUTPUT_SCHEMA },
+        indicators: { type: 'array', items: RESILIENCE_INDICATOR_OUTPUT_SCHEMA },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _coverageKeys: [
+      'resilience:low-carbon-generation:v1',
+      'resilience:power-losses:v1',
+      'resilience:education-attainment:v1',
+      'resilience:recovery:fiscal-space:v1',
+      'resilience:recovery:reserve-adequacy:v1',
+      'resilience:recovery:reexport-share:v1',
+      'resilience:recovery:sovereign-wealth:v1',
+      'resilience:recovery:external-debt:v1',
+      'resilience:recovery:import-hhi:v1',
+    ],
+    _execute: async (params, base, context) => {
+      const countryCode = String(params.country_code ?? '').trim().toUpperCase();
+      const url = `${base}/api/resilience/v1/get-resilience-indicators?countryCode=${encodeURIComponent(countryCode)}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertToolFetchOk(res, 'get-resilience-indicators');
+      return res.json();
+    },
+    _apiPaths: [
+      'GET /api/resilience/v1/get-resilience-indicators',
     ],
   },
   {

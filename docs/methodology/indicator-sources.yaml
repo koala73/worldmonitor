@@ -1065,13 +1065,13 @@
   weight: 0.40
   direction: composite
   scoringTier: core
-  source: FAO AQUASTAT
-  seriesId: Indicator-tagged water stress / withdrawal / dependency / availability / renewable / access reading
-  seriesUrl: https://www.fao.org/aquastat/
+  source: World Bank WDI
+  seriesId: ER.H2O.FWST.ZS (current selected observation; legacy field accepts older indicator-tagged shapes)
+  seriesUrl: https://data.worldbank.org/indicator/ER.H2O.FWST.ZS
   coveragePct: 0.85
-  lastObservedYear: 2020
-  license: Open
-  mechanismTestRationale: The scorer uses one AQUASTAT slot. `scoreAquastatValue()` routes stress/withdrawal/dependency tags through lower-better 0-100 anchors and availability/renewable/access tags through higher-better 0-100 or 0-5000 anchors.
+  lastObservedYear: 2022
+  license: CC BY 4.0
+  mechanismTestRationale: The scorer uses one legacy `aquastatScore` slot. The current World Bank adapter publishes water stress; `scoreAquastatValue()` retains indicator-tag routing for backward-compatible seed shapes.
   constructStatus: observed-mechanism
 
 # RECOVERY DOMAIN (weight 0.25) ------------------------------------------

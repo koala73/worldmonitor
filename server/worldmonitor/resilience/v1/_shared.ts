@@ -45,6 +45,14 @@ import { buildPillarList } from './_pillar-membership';
 export const RESILIENCE_SCHEMA_V2_ENABLED =
   (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
 
+export function toResilienceDataVersion(value: unknown): string {
+  const timestamp = typeof value === 'number' || typeof value === 'string'
+    ? new Date(value)
+    : null;
+  if (!timestamp || !Number.isFinite(timestamp.getTime())) return '';
+  return timestamp.toISOString().slice(0, 10);
+}
+
 // Phase 2 T2.3 activation: feature flag that switches `overallScore`
 // from the 6-domain weighted aggregate (legacy compensatory form) to
 // the 3-pillar combined form with the min-pillar penalty term defined

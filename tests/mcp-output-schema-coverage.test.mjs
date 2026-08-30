@@ -417,6 +417,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_food_stocks',
     'get_intel_timeline',
     'get_mineral_production',
+    'get_resilience_indicators',
     'get_similar_events',
     'search_flight_prices_by_date',
     'search_flights',

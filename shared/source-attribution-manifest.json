@@ -1325,6 +1325,12 @@
         },
         {
           "path": "server/worldmonitor/economic/v1/list-world-bank-indicators.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_dimension-scorers.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -6844,6 +6850,12 @@
       "references": [
         {
           "path": "scripts/seed-low-carbon-generation.mjs"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_dimension-scorers.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -7373,6 +7385,20 @@
         },
         {
           "path": "server/worldmonitor/market/v1/get-country-stock-index.ts"
+        }
+      ]
+    },
+    {
+      "host": "radar.cloudflare.com",
+      "provider": "radar.cloudflare.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit radar.cloudflare.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -9513,6 +9539,20 @@
         },
         {
           "path": "scripts/seed-ucdp-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "uis.unesco.org",
+      "provider": "uis.unesco.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit uis.unesco.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -14021,6 +14061,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.worldbank.org",
+      "provider": "www.worldbank.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.worldbank.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },

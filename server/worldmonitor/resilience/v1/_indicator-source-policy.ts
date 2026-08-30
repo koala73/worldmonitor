@@ -1,0 +1,462 @@
+/**
+ * Raw redistribution policy for the indicator drill-down API.
+ *
+ * This policy is intentionally separate from IndicatorSpec.license. That
+ * registry field describes a broad source category; it is not a legal grant
+ * to republish an observed value. Raw values are allowed only when every
+ * provider used for the exact observation matches a reviewed source below.
+ */
+
+export type RawRedistributionPolicyStatus =
+  | 'allow'
+  | 'restricted'
+  | 'audit-incomplete'
+  | 'conditional';
+
+export type IndicatorObservationState =
+  | 'observed'
+  | 'imputed'
+  | 'fallback'
+  | 'missing'
+  | 'inactive'
+  | 'retired'
+  | 'not-applicable'
+  | 'source-failure';
+
+export type RawRedistributionDecisionStatus =
+  | 'allow'
+  | 'restricted'
+  | 'audit-incomplete'
+  | 'conditional'
+  | 'ineligible-observation'
+  | 'unknown-indicator';
+
+export type RawRedistributionDecisionReason =
+  | 'audited-observed-source'
+  | 'observation-not-observed'
+  | 'provider-provenance-required'
+  | 'required-provider-provenance-missing'
+  | 'provider-not-audited-for-redistribution'
+  | 'redistribution-restricted'
+  | 'source-audit-incomplete'
+  | 'unknown-indicator';
+
+export interface AuditedRawSource {
+  providerName: string;
+  sourceUrl: string;
+  licenseLabel: string;
+  licenseUrl: string;
+  attribution: string;
+  attributionUrl?: string;
+  providerAliases: readonly string[];
+  sourceUrlPrefixes: readonly string[];
+  sourceUrlContains?: readonly string[];
+}
+
+export interface IndicatorSourcePolicy {
+  status: RawRedistributionPolicyStatus;
+  providerName: string;
+  sourceUrl: string | null;
+  licenseLabel: string;
+  licenseUrl: string | null;
+  attribution: string;
+  allowedRawSources: readonly AuditedRawSource[];
+  requiredRawSources: readonly AuditedRawSource[];
+  note: string;
+}
+
+export interface IndicatorObservedSourceHint {
+  providerName?: string | null;
+  sourceUrl?: string | null;
+}
+
+export interface IndicatorRawRedistributionInput {
+  indicatorId: string;
+  observationState: IndicatorObservationState;
+  /** Every provider that contributed to this exact observation. */
+  sources?: readonly IndicatorObservedSourceHint[];
+}
+
+export interface IndicatorRawRedistributionDecision {
+  expose: boolean;
+  status: RawRedistributionDecisionStatus;
+  policyStatus: RawRedistributionPolicyStatus | 'unknown';
+  reason: RawRedistributionDecisionReason;
+  providerName: string;
+  sourceUrl: string | null;
+  licenseLabel: string;
+  licenseUrl: string | null;
+  attribution: string;
+}
+
+const WORLD_BANK_SOURCE: AuditedRawSource = {
+  providerName: 'World Bank Open Data',
+  sourceUrl: 'https://api.worldbank.org/v2/',
+  licenseLabel: 'CC BY 4.0',
+  licenseUrl: 'https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets',
+  attribution: 'World Bank Open Data; include the indicator source URL and extraction date.',
+  providerAliases: [
+    'world bank',
+    'world bank open data',
+    'world development indicators',
+    'worldwide governance indicators',
+    'wdi',
+    'wgi',
+  ],
+  sourceUrlPrefixes: ['https://api.worldbank.org/v2/'],
+};
+
+const OWID_SOURCE: AuditedRawSource = {
+  providerName: 'Our World in Data',
+  sourceUrl: 'https://ourworldindata.org/',
+  licenseLabel: 'CC BY 4.0 for the dataset unless its dataset page states otherwise',
+  licenseUrl: 'https://ourworldindata.org/how-to-use-our-world-in-data',
+  attribution: 'Our World in Data; link to the exact dataset page.',
+  providerAliases: ['our world in data', 'owid'],
+  sourceUrlPrefixes: [
+    'https://ourworldindata.org/energy',
+    'https://ourworldindata.org/grapher/',
+    'https://owid-public.owid.io/',
+  ],
+};
+
+const UNESCO_VIA_WDI_SOURCE: AuditedRawSource = {
+  providerName: 'UNESCO Institute for Statistics via World Bank WDI',
+  sourceUrl: 'https://uis.unesco.org/',
+  licenseLabel: 'CC BY 4.0 through World Bank WDI, with UNESCO UIS attribution',
+  licenseUrl: 'https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets',
+  attribution: 'UNESCO Institute for Statistics via World Bank WDI; include the UIS source URL and extraction date.',
+  attributionUrl: 'https://uis.unesco.org/',
+  providerAliases: [
+    'unesco institute for statistics via world bank wdi',
+    'unesco uis via world bank wdi',
+    'unesco institute for statistics',
+    'unesco uis',
+  ],
+  sourceUrlPrefixes: ['https://api.worldbank.org/v2/'],
+  sourceUrlContains: ['/indicator/SE.SEC.CUAT.UP.FE.ZS'],
+};
+
+function allowPolicy(
+  source: AuditedRawSource,
+  note = 'Raw redistribution was reviewed for this provider.',
+): IndicatorSourcePolicy {
+  return {
+    status: 'allow',
+    providerName: source.providerName,
+    sourceUrl: source.sourceUrl,
+    licenseLabel: source.licenseLabel,
+    licenseUrl: source.licenseUrl,
+    attribution: source.attribution,
+    allowedRawSources: [source],
+    requiredRawSources: [source],
+    note,
+  };
+}
+
+function restrictedPolicy(
+  providerName: string,
+  sourceUrl: string,
+  licenseLabel: string,
+  licenseUrl: string | null,
+  attribution: string,
+  note: string,
+): IndicatorSourcePolicy {
+  return {
+    status: 'restricted',
+    providerName,
+    sourceUrl,
+    licenseLabel,
+    licenseUrl,
+    attribution,
+    allowedRawSources: [],
+    requiredRawSources: [],
+    note,
+  };
+}
+
+function incompletePolicy(
+  providerName: string,
+  sourceUrl: string | null,
+  attribution: string,
+  note = 'Current provider terms require a completed redistribution review.',
+): IndicatorSourcePolicy {
+  return {
+    status: 'audit-incomplete',
+    providerName,
+    sourceUrl,
+    licenseLabel: 'Redistribution audit incomplete',
+    licenseUrl: null,
+    attribution,
+    allowedRawSources: [],
+    requiredRawSources: [],
+    note,
+  };
+}
+
+function conditionalPolicy(providerName: string, note: string): IndicatorSourcePolicy {
+  return {
+    status: 'conditional',
+    providerName,
+    sourceUrl: WORLD_BANK_SOURCE.sourceUrl,
+    licenseLabel: WORLD_BANK_SOURCE.licenseLabel,
+    licenseUrl: WORLD_BANK_SOURCE.licenseUrl,
+    attribution: WORLD_BANK_SOURCE.attribution,
+    allowedRawSources: [WORLD_BANK_SOURCE],
+    requiredRawSources: [WORLD_BANK_SOURCE],
+    note,
+  };
+}
+
+const WORLD_BANK = allowPolicy(WORLD_BANK_SOURCE);
+const WORLD_BANK_EDUCATION = allowPolicy(
+  UNESCO_VIA_WDI_SOURCE,
+  'The exact observed provider must identify UNESCO UIS via World Bank WDI.',
+);
+const OWID = allowPolicy(OWID_SOURCE);
+const BIS = restrictedPolicy(
+  'Bank for International Settlements',
+  'https://data.bis.org/',
+  'Non-commercial / redistribution restricted',
+  'https://www.bis.org/terms_conditions.htm',
+  'Bank for International Settlements; link to the relevant BIS statistics page.',
+  'Derived normalized scores may be served, but raw BIS observations are not redistributed.',
+);
+const GPI = restrictedPolicy(
+  'Institute for Economics & Peace / Global Peace Index',
+  'https://www.visionofhumanity.org/maps/',
+  'Non-commercial',
+  'https://www.visionofhumanity.org/terms-and-conditions/',
+  'Institute for Economics & Peace, Global Peace Index / Vision of Humanity.',
+  'The repository classifies GPI as non-commercial; public raw redistribution is denied.',
+);
+const UCDP = restrictedPolicy(
+  'Uppsala Conflict Data Program',
+  'https://ucdp.uu.se/downloads/',
+  'Runtime deny pending exact-dataset redistribution review',
+  'https://ucdp.uu.se/downloads/',
+  'Uppsala Conflict Data Program; link to the UCDP dataset page.',
+  'The downloads page advertises CC BY 4.0, but the repository has not updated its exact-dataset redistribution decision. The scoring exception is not a redistribution grant.',
+);
+
+const IMF = incompletePolicy('International Monetary Fund', 'https://www.imf.org/en/Data', 'International Monetary Fund; link to the exact dataset.');
+const WTO = incompletePolicy('World Trade Organization', 'https://data.wto.org/', 'World Trade Organization; link to the exact dataset.');
+const FATF = incompletePolicy('Financial Action Task Force', 'https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html', 'Financial Action Task Force; link to the source publication.');
+const CYBER_FEEDS = incompletePolicy('Feodo Tracker / URLhaus / C2Intel / OTX / AbuseIPDB', null, 'Credit every contributing threat-intelligence provider.');
+const CLOUDFLARE = incompletePolicy('Cloudflare Radar', 'https://radar.cloudflare.com/', 'Cloudflare Radar; link to the source observation.');
+const GPSJAM = incompletePolicy('GPSJam / ADS-B Exchange', 'https://gpsjam.org/', 'GPSJam and ADS-B Exchange; link to the source map.');
+const YAHOO = incompletePolicy('Yahoo Finance', 'https://finance.yahoo.com/', 'Yahoo Finance; link to the relevant market series.');
+const TRANSIT = incompletePolicy('IMF PortWatch / corridor-risk and AIS providers', 'https://portwatch.imf.org/', 'Credit every contributing transit and AIS provider.');
+const GIE = incompletePolicy('Gas Infrastructure Europe AGSI', 'https://agsi.gie.eu/', 'Gas Infrastructure Europe AGSI; link to the source series.');
+const ENERGY_PRICES = incompletePolicy('FRED and upstream energy-price providers', 'https://fred.stlouisfed.org/', 'Credit the exact upstream energy-price series provider.');
+const UNHCR = incompletePolicy('UNHCR', 'https://www.unhcr.org/refugee-statistics/', 'UNHCR Refugee Data Finder; link to the source dataset.');
+const UNREST = incompletePolicy('ACLED / GDELT', null, 'Credit the exact ACLED or GDELT source used for the observation.');
+const RSF = incompletePolicy('Reporters Without Borders', 'https://rsf.org/en/index', 'Reporters Without Borders, World Press Freedom Index.');
+const REDDIT = incompletePolicy('Reddit / ScrapeCreators', 'https://www.reddit.com/', 'Credit Reddit and the exact upstream collection provider.');
+const NEWS = incompletePolicy('WorldMonitor derived news signal and upstream publishers', null, 'Credit the contributing publishers and link to source items.');
+const WHO = incompletePolicy('World Health Organization Global Health Observatory', 'https://www.who.int/data/gho', 'World Health Organization Global Health Observatory; link to the source indicator.');
+const IPC = incompletePolicy('IPC via Humanitarian Data Exchange', 'https://data.humdata.org/', 'Integrated Food Security Phase Classification via HDX; link to the source dataset.');
+const WIKIPEDIA_SWF = incompletePolicy('Wikipedia and sovereign-wealth source pages', 'https://www.wikipedia.org/', 'Credit each sovereign-wealth source; retain applicable CC BY-SA attribution.');
+const COMTRADE = incompletePolicy('UN Comtrade', 'https://comtradeplus.un.org/', 'United Nations Comtrade; link to the source dataset.');
+const FUEL_STOCKS = incompletePolicy('IEA / EIA', null, 'Credit the exact IEA or EIA fuel-stock series.');
+const NATIONAL_DEBT = incompletePolicy('IMF / United States Treasury national-debt sources', null, 'Credit the exact national-debt provider used for the observation.');
+
+const ENERGY_IMPORT_CONDITIONAL = conditionalPolicy(
+  'World Bank Open Data or Eurostat',
+  'Allow only a World Bank observation. Eurostat-backed observations remain audit-incomplete.',
+);
+const IMPORTED_FOSSIL_CONDITIONAL: IndicatorSourcePolicy = {
+  status: 'conditional',
+  providerName: 'Our World in Data plus World Bank Open Data, with a possible Eurostat import-dependency override',
+  sourceUrl: null,
+  licenseLabel: 'CC BY 4.0, subject to each dataset page',
+  licenseUrl: null,
+  attribution: `${OWID_SOURCE.attribution} ${WORLD_BANK_SOURCE.attribution}`,
+  allowedRawSources: [OWID_SOURCE, WORLD_BANK_SOURCE],
+  requiredRawSources: [OWID_SOURCE, WORLD_BANK_SOURCE],
+  note: 'Allow only with exact OWID fossil-electricity and World Bank net-import provenance. An Eurostat-backed constituent denies raw redistribution.',
+};
+const LIQUID_RESERVE_CONDITIONAL = conditionalPolicy(
+  'World Bank Open Data, optionally adjusted with UN Comtrade',
+  'Allow the unadjusted World Bank observation only. If a Comtrade re-export adjustment contributed, raw redistribution is audit-incomplete.',
+);
+
+/** Exhaustive policy table for the 72 entries in INDICATOR_REGISTRY. */
+export const INDICATOR_SOURCE_POLICIES = {
+  govRevenuePct: IMF,
+  debtGrowthRate: NATIONAL_DEBT,
+  currentAccountPct: IMF,
+  unemploymentPct: IMF,
+  householdDebtService: BIS,
+  inflationStability: IMF,
+  fxReservesAdequacy: WORLD_BANK,
+  fxVolatility: BIS,
+  fxDeviation: BIS,
+  tradeRestrictions: WTO,
+  tradeBarriers: WTO,
+  appliedTariffRate: WORLD_BANK,
+  shortTermExternalDebtPctGni: WORLD_BANK,
+  bisLbsXborderPctGdp: BIS,
+  fatfListingStatus: FATF,
+  financialCenterRedundancy: BIS,
+  cyberThreats: CYBER_FEEDS,
+  internetOutages: CLOUDFLARE,
+  gpsJamming: GPSJAM,
+  roadsPavedLogistics: WORLD_BANK,
+  shippingStress: YAHOO,
+  transitDisruption: TRANSIT,
+  electricityAccess: WORLD_BANK,
+  roadsPavedInfra: WORLD_BANK,
+  infraOutages: CLOUDFLARE,
+  broadband: WORLD_BANK,
+  energyImportDependency: ENERGY_IMPORT_CONDITIONAL,
+  gasShare: OWID,
+  coalShare: OWID,
+  renewShare: OWID,
+  euGasStorageStress: GIE,
+  energyPriceStress: ENERGY_PRICES,
+  electricityConsumption: WORLD_BANK,
+  importedFossilDependence: IMPORTED_FOSSIL_CONDITIONAL,
+  lowCarbonGenerationShare: OWID,
+  powerLossesPct: WORLD_BANK,
+  wgiVoiceAccountability: WORLD_BANK,
+  wgiPoliticalStability: WORLD_BANK,
+  wgiGovernmentEffectiveness: WORLD_BANK,
+  wgiRegulatoryQuality: WORLD_BANK,
+  wgiRuleOfLaw: WORLD_BANK,
+  wgiControlOfCorruption: WORLD_BANK,
+  gpiScore: GPI,
+  displacementTotal: UNHCR,
+  unrestEvents: UNREST,
+  ucdpConflict: UCDP,
+  displacementHosted: UNHCR,
+  rsfPressFreedom: RSF,
+  socialVelocity: REDDIT,
+  newsThreatScore: NEWS,
+  femaleUpperSecondaryAttainment: WORLD_BANK_EDUCATION,
+  uhcIndex: WHO,
+  measlesCoverage: WHO,
+  hospitalBeds: WHO,
+  physiciansPer1k: WHO,
+  healthExpPerCapitaUsd: WHO,
+  ipcPeopleInCrisis: IPC,
+  ipcPhase: IPC,
+  aquastatScore: WORLD_BANK,
+  recoveryGovRevenue: IMF,
+  recoveryFiscalBalance: IMF,
+  recoveryDebtToGdp: IMF,
+  debtSustainabilityGap: IMF,
+  recoveryReserveMonths: WORLD_BANK,
+  recoveryLiquidReserveMonths: LIQUID_RESERVE_CONDITIONAL,
+  recoverySovereignWealthEffectiveMonths: WIKIPEDIA_SWF,
+  recoveryDebtToReserves: WORLD_BANK,
+  recoveryImportHhi: COMTRADE,
+  recoveryWgiContinuity: WORLD_BANK,
+  recoveryConflictPressure: UCDP,
+  recoveryDisplacementVelocity: UNHCR,
+  recoveryFuelStockDays: FUEL_STOCKS,
+} as const satisfies Record<string, IndicatorSourcePolicy>;
+
+export type IndicatorSourcePolicyId = keyof typeof INDICATOR_SOURCE_POLICIES;
+
+export function getIndicatorSourcePolicy(indicatorId: string): IndicatorSourcePolicy | null {
+  return Object.prototype.hasOwnProperty.call(INDICATOR_SOURCE_POLICIES, indicatorId)
+    ? INDICATOR_SOURCE_POLICIES[indicatorId as IndicatorSourcePolicyId]
+    : null;
+}
+
+function normalizeProvider(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function normalizedSourceUrl(value: string): string | null {
+  try {
+    return new URL(value).toString();
+  } catch {
+    return null;
+  }
+}
+
+function matchesAuditedSource(hint: IndicatorObservedSourceHint, source: AuditedRawSource): boolean {
+  const provider = typeof hint.providerName === 'string' ? normalizeProvider(hint.providerName) : '';
+  const url = typeof hint.sourceUrl === 'string' ? normalizedSourceUrl(hint.sourceUrl) : null;
+  const providerMatches = !provider || source.providerAliases.some((alias) => normalizeProvider(alias) === provider);
+  const urlMatches = url != null && (
+    source.sourceUrlPrefixes.some((prefix) => url.startsWith(prefix))
+    && (source.sourceUrlContains?.every((part) => url.includes(part)) ?? true)
+  );
+  return providerMatches && urlMatches;
+}
+
+function deniedDecision(
+  policy: IndicatorSourcePolicy,
+  status: RawRedistributionDecisionStatus,
+  reason: RawRedistributionDecisionReason,
+): IndicatorRawRedistributionDecision {
+  return {
+    expose: false,
+    status,
+    policyStatus: policy.status,
+    reason,
+    providerName: policy.providerName,
+    sourceUrl: policy.sourceUrl,
+    licenseLabel: policy.licenseLabel,
+    licenseUrl: policy.licenseUrl,
+    attribution: policy.attribution,
+  };
+}
+
+export function decideIndicatorRawRedistribution(
+  input: IndicatorRawRedistributionInput,
+): IndicatorRawRedistributionDecision {
+  const policy = getIndicatorSourcePolicy(input.indicatorId);
+  if (!policy) {
+    return {
+      expose: false,
+      status: 'unknown-indicator',
+      policyStatus: 'unknown',
+      reason: 'unknown-indicator',
+      providerName: '',
+      sourceUrl: null,
+      licenseLabel: 'No redistribution policy',
+      licenseUrl: null,
+      attribution: '',
+    };
+  }
+
+  if (input.observationState !== 'observed') {
+    return deniedDecision(policy, 'ineligible-observation', 'observation-not-observed');
+  }
+  if (policy.status === 'restricted') {
+    return deniedDecision(policy, 'restricted', 'redistribution-restricted');
+  }
+  if (policy.status === 'audit-incomplete') {
+    return deniedDecision(policy, 'audit-incomplete', 'source-audit-incomplete');
+  }
+
+  const sources = input.sources?.filter((source) => source.providerName || source.sourceUrl) ?? [];
+  if (sources.length === 0) {
+    return deniedDecision(policy, 'conditional', 'provider-provenance-required');
+  }
+
+  const matched = sources.map((hint) => policy.allowedRawSources.find((source) => matchesAuditedSource(hint, source)));
+  if (matched.some((source) => source == null)) {
+    return deniedDecision(policy, 'conditional', 'provider-not-audited-for-redistribution');
+  }
+
+  const auditedSources = [...new Set(matched.filter((source): source is AuditedRawSource => source != null))];
+  if (policy.requiredRawSources.some((required) => !auditedSources.includes(required))) {
+    return deniedDecision(policy, 'conditional', 'required-provider-provenance-missing');
+  }
+  return {
+    expose: true,
+    status: 'allow',
+    policyStatus: policy.status,
+    reason: 'audited-observed-source',
+    providerName: auditedSources.map((source) => source.providerName).join(' + '),
+    sourceUrl: auditedSources.length === 1 ? auditedSources[0]!.sourceUrl : policy.sourceUrl,
+    licenseLabel: auditedSources.map((source) => source.licenseLabel).join('; '),
+    licenseUrl: auditedSources.length === 1 ? auditedSources[0]!.licenseUrl : policy.licenseUrl,
+    attribution: policy.attribution,
+  };
+}

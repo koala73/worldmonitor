@@ -59,6 +59,92 @@ export interface ResiliencePillar {
   domains: ResilienceDomain[];
 }
 
+export interface GetResilienceIndicatorsRequest {
+  countryCode: string;
+}
+
+export interface GetResilienceIndicatorsResponse {
+  countryCode: string;
+  methodology: string;
+  formula: string;
+  dataVersion: string;
+  schemaVersion: string;
+  constructVersions?: ResilienceRuntimeConstructVersions;
+  dimensions: ResilienceIndicatorDimension[];
+  indicators: ResilienceIndicator[];
+}
+
+export interface ResilienceRuntimeConstructVersions {
+  energy: string;
+  education: string;
+}
+
+export interface ResilienceIndicatorDimension {
+  id: string;
+  score: number;
+  coverage: number;
+  prePolicyScore: number;
+  policyCapName: string;
+  policyCapFactor: number;
+  literalContributionTotal: number;
+  effectiveContributionTotal: number;
+  active: boolean;
+  reconciliationAvailable: boolean;
+  reason: string;
+}
+
+export interface ResilienceIndicator {
+  id: string;
+  dimension: string;
+  tier: string;
+  active: boolean;
+  includedInDimensionScore: boolean;
+  state: string;
+  reason: string;
+  normalizedScoreAvailable: boolean;
+  normalizedScore: number;
+  nominalWeight: number;
+  runtimeWeightAvailable: boolean;
+  runtimeWeight: number;
+  scoringWeightShareAvailable: boolean;
+  scoringWeightShare: number;
+  literalContribution: number;
+  effectiveContribution: number;
+  imputationClass: string;
+  sourceYearAvailable: boolean;
+  sourceYear: number;
+  observationAgeAvailable: boolean;
+  observationAgeValue: number;
+  observationAgeUnit: string;
+  observationAgeBasis: string;
+  retrievedAtAvailable: boolean;
+  retrievedAt: string;
+  observedAtAvailable: boolean;
+  observedAt: string;
+  sources: ResilienceIndicatorSource[];
+  rawValue?: ResilienceIndicatorRawValue;
+}
+
+export interface ResilienceIndicatorSource {
+  key: string;
+  name: string;
+  attribution: string;
+  license: string;
+  url: string;
+  observationProvenance: boolean;
+}
+
+export interface ResilienceIndicatorRawValue {
+  available: boolean;
+  numericValue: number;
+  numericValueAvailable: boolean;
+  textValue: string;
+  textValueAvailable: boolean;
+  unit: string;
+  status: string;
+  reason: string;
+}
+
 export interface GetFoodStocksRequest {
   countryCode: string;
   commodity: string;
@@ -202,11 +288,6 @@ export interface ResilienceRankingCacheState {
   total: number;
 }
 
-export interface ResilienceRuntimeConstructVersions {
-  energy: string;
-  education: string;
-}
-
 export interface ResilienceRuntimeIntervalState {
   available: boolean;
   methodology: string;
@@ -260,6 +341,7 @@ export interface RouteDescriptor {
 
 export interface ResilienceServiceHandler {
   getResilienceScore(ctx: ServerContext, req: GetResilienceScoreRequest): Promise<GetResilienceScoreResponse>;
+  getResilienceIndicators(ctx: ServerContext, req: GetResilienceIndicatorsRequest): Promise<GetResilienceIndicatorsResponse>;
   getFoodStocks(ctx: ServerContext, req: GetFoodStocksRequest): Promise<GetFoodStocksResponse>;
   getDemographicsCapability(ctx: ServerContext, req: GetDemographicsCapabilityRequest): Promise<GetDemographicsCapabilityResponse>;
   getResilienceRanking(ctx: ServerContext, req: GetResilienceRankingRequest): Promise<GetResilienceRankingResponse>;
@@ -297,6 +379,53 @@ export function createResilienceServiceRoutes(
 
           const result = await handler.getResilienceScore(ctx, body);
           return new Response(JSON.stringify(result as GetResilienceScoreResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/resilience/v1/get-resilience-indicators",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetResilienceIndicatorsRequest = {
+            countryCode: params.get("countryCode") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getResilienceIndicators", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getResilienceIndicators(ctx, body);
+          return new Response(JSON.stringify(result as GetResilienceIndicatorsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

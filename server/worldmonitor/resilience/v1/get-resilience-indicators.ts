@@ -1,0 +1,261 @@
+import type {
+  GetResilienceIndicatorsRequest,
+  GetResilienceIndicatorsResponse,
+  ResilienceIndicator,
+  ResilienceIndicatorRawValue,
+  ResilienceIndicatorSource,
+  ResilienceServiceHandler,
+  ServerContext,
+} from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
+
+import { getCachedJson } from '../../../_shared/redis';
+import {
+  RESILIENCE_SCHEMA_V2_ENABLED,
+  RESILIENCE_STATIC_META_KEY,
+  getCurrentCacheFormula,
+  toResilienceDataVersion,
+} from './_shared';
+import { getConstructVersions } from './get-resilience-runtime-manifest';
+import {
+  scoreAllDimensions,
+  type ResilienceDimensionId,
+  type ResilienceDimensionScore,
+  type ResilienceSeedReader,
+} from './_dimension-scorers';
+import {
+  createIndicatorTraceCollector,
+  materializeIndicatorTrace,
+  type IndicatorTraceRow,
+  type ResilienceIndicatorTraceSnapshot,
+} from './_indicator-trace';
+import {
+  decideIndicatorRawRedistribution,
+  getIndicatorSourcePolicy,
+} from './_indicator-source-policy';
+
+export const RESILIENCE_INDICATOR_METHODOLOGY = 'request-local-scorer-trace-v1';
+
+type Clock = () => Date;
+type StaticMetaReader = () => Promise<unknown>;
+
+export interface ResilienceIndicatorHandlerDependencies {
+  reader?: ResilienceSeedReader;
+  now?: Clock;
+  readStaticMeta?: StaticMetaReader;
+}
+
+interface ResponseBuildOptions {
+  now: Date;
+  dataVersion: string;
+}
+
+function normalizedCountryCode(value: unknown): string | null {
+  const countryCode = String(value ?? '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(countryCode) ? countryCode : null;
+}
+
+function toIsoTimestamp(value: number | null): string {
+  if (!Number.isFinite(value) || Number(value) <= 0) return '';
+  return new Date(Number(value)).toISOString();
+}
+
+function roundFour(value: number): number {
+  return Number(value.toFixed(4));
+}
+
+function observationAge(
+  row: IndicatorTraceRow,
+  now: Date,
+): Pick<
+  ResilienceIndicator,
+  'observationAgeAvailable' | 'observationAgeValue' | 'observationAgeUnit' | 'observationAgeBasis'
+> {
+  if (Number.isFinite(row.observedAtMs) && Number(row.observedAtMs) > 0) {
+    const ageDays = Math.floor(Math.max(0, now.getTime() - Number(row.observedAtMs)) / 86_400_000);
+    return {
+      observationAgeAvailable: true,
+      observationAgeValue: ageDays,
+      observationAgeUnit: 'days',
+      observationAgeBasis: 'observation-timestamp',
+    };
+  }
+  if (Number.isInteger(row.sourceYear) && Number(row.sourceYear) > 0) {
+    return {
+      observationAgeAvailable: true,
+      observationAgeValue: Math.max(0, now.getUTCFullYear() - Number(row.sourceYear)),
+      observationAgeUnit: 'years',
+      observationAgeBasis: 'source-year',
+    };
+  }
+  return {
+    observationAgeAvailable: false,
+    observationAgeValue: 0,
+    observationAgeUnit: '',
+    observationAgeBasis: '',
+  };
+}
+
+function indicatorSources(row: IndicatorTraceRow): ResilienceIndicatorSource[] {
+  const policy = getIndicatorSourcePolicy(row.indicatorId);
+  const hasObservationProvenance = row.observedSources.length > 0;
+  const sourceHints = hasObservationProvenance
+    ? row.observedSources
+    : [{ providerName: policy?.providerName ?? '', sourceUrl: policy?.sourceUrl ?? undefined }];
+  const count = Math.max(row.sourceKeys.length, sourceHints.length);
+  const sources: ResilienceIndicatorSource[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < count; index += 1) {
+    const hint = sourceHints[index] ?? sourceHints[0];
+    const key = row.sourceKeys[index] ?? row.sourceKeys[0] ?? '';
+    const name = hint?.providerName || policy?.providerName || key;
+    const url = hint?.sourceUrl || policy?.sourceUrl || '';
+    const identity = `${key}\u0000${name}\u0000${url}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    sources.push({
+      key,
+      name,
+      attribution: policy?.attribution ?? '',
+      license: policy?.licenseLabel ?? row.license,
+      url,
+      observationProvenance: hasObservationProvenance,
+    });
+  }
+  return sources;
+}
+
+function rawValue(row: IndicatorTraceRow): ResilienceIndicatorRawValue {
+  const decision = decideIndicatorRawRedistribution({
+    indicatorId: row.indicatorId,
+    observationState: row.state,
+    sources: row.observedSources,
+  });
+  const hasNumeric = typeof row.rawValue === 'number' && Number.isFinite(row.rawValue);
+  const hasText = typeof row.rawValue === 'string';
+  const hasValue = hasNumeric || hasText;
+  const available = decision.expose && hasValue;
+  return {
+    available,
+    numericValue: available && hasNumeric ? row.rawValue as number : 0,
+    numericValueAvailable: available && hasNumeric,
+    textValue: available && hasText ? row.rawValue as string : '',
+    textValueAvailable: available && hasText,
+    unit: available ? row.rawUnit : '',
+    status: available ? 'available' : hasValue ? decision.status : 'absent',
+    reason: available ? '' : hasValue ? decision.reason : 'no-observed-raw-value',
+  };
+}
+
+function toIndicator(row: IndicatorTraceRow, now: Date): ResilienceIndicator {
+  const normalizedScoreAvailable = Number.isFinite(row.normalizedScore);
+  const isActive = row.state !== 'inactive' && row.state !== 'retired';
+  const hasRuntimeWeights = isActive && row.state !== 'source-failure';
+  const observedAt = toIsoTimestamp(row.observedAtMs);
+  return {
+    id: row.indicatorId,
+    dimension: row.dimension,
+    tier: row.tier,
+    active: isActive,
+    includedInDimensionScore: row.includedInDimensionScore,
+    state: row.state,
+    reason: row.reason,
+    normalizedScoreAvailable,
+    normalizedScore: normalizedScoreAvailable ? Number(row.normalizedScore) : 0,
+    nominalWeight: row.nominalWeight,
+    runtimeWeightAvailable: hasRuntimeWeights,
+    runtimeWeight: hasRuntimeWeights ? row.runtimeWeight : 0,
+    scoringWeightShareAvailable: hasRuntimeWeights,
+    scoringWeightShare: hasRuntimeWeights ? row.scoringWeightShare : 0,
+    literalContribution: roundFour(row.literalContribution),
+    effectiveContribution: roundFour(row.effectiveContribution),
+    imputationClass: row.imputationClass ?? '',
+    sourceYearAvailable: Number.isInteger(row.sourceYear) && Number(row.sourceYear) > 0,
+    sourceYear: Number.isInteger(row.sourceYear) && Number(row.sourceYear) > 0 ? Number(row.sourceYear) : 0,
+    ...observationAge(row, now),
+    retrievedAtAvailable: false,
+    retrievedAt: '',
+    observedAtAvailable: observedAt.length > 0,
+    observedAt,
+    sources: indicatorSources(row),
+    rawValue: rawValue(row),
+  };
+}
+
+export function toGetResilienceIndicatorsResponse(
+  countryCode: string,
+  scores: Readonly<Record<ResilienceDimensionId, ResilienceDimensionScore>>,
+  snapshot: ResilienceIndicatorTraceSnapshot,
+  options: ResponseBuildOptions,
+): GetResilienceIndicatorsResponse {
+  return {
+    countryCode,
+    methodology: RESILIENCE_INDICATOR_METHODOLOGY,
+    formula: getCurrentCacheFormula(),
+    dataVersion: options.dataVersion,
+    schemaVersion: RESILIENCE_SCHEMA_V2_ENABLED ? '2.0' : '1.0',
+    constructVersions: getConstructVersions(),
+    dimensions: snapshot.dimensions.map((dimension) => {
+      const literalContributionTotal = roundFour(dimension.indicators.reduce(
+        (sum, row) => sum + row.literalContribution,
+        0,
+      ));
+      const effectiveContributionTotal = roundFour(dimension.indicators.reduce(
+        (sum, row) => sum + row.effectiveContribution,
+        0,
+      ));
+      return {
+        id: dimension.id,
+        score: dimension.score,
+        coverage: scores[dimension.id]?.coverage ?? 0,
+        prePolicyScore: dimension.prePolicyScore,
+        policyCapName: dimension.policyCapName,
+        policyCapFactor: dimension.policyCapFactor,
+        literalContributionTotal,
+        effectiveContributionTotal,
+        active: dimension.active,
+        reconciliationAvailable: dimension.active,
+        reason: dimension.reason,
+      };
+    }),
+    indicators: snapshot.indicators.map((row) => toIndicator(row, options.now)),
+  };
+}
+
+export function createGetResilienceIndicators(
+  dependencies: ResilienceIndicatorHandlerDependencies = {},
+): ResilienceServiceHandler['getResilienceIndicators'] {
+  const now = dependencies.now ?? (() => new Date());
+  const readStaticMeta = dependencies.readStaticMeta
+    ?? (() => getCachedJson(RESILIENCE_STATIC_META_KEY, true));
+
+  return async (
+    _ctx: ServerContext,
+    req: GetResilienceIndicatorsRequest,
+  ): Promise<GetResilienceIndicatorsResponse> => {
+    const countryCode = normalizedCountryCode(req.countryCode);
+    if (!countryCode) {
+      throw new ValidationError([{
+        field: 'countryCode',
+        description: 'countryCode must be a 2-letter ISO 3166-1 alpha-2 code',
+      }]);
+    }
+
+    const trace = createIndicatorTraceCollector();
+    const [scores, staticMeta] = await Promise.all([
+      scoreAllDimensions(countryCode, dependencies.reader, { trace }),
+      readStaticMeta(),
+    ]);
+    const dataVersion = staticMeta && typeof staticMeta === 'object'
+      ? toResilienceDataVersion((staticMeta as { fetchedAt?: unknown }).fetchedAt)
+      : '';
+    return toGetResilienceIndicatorsResponse(
+      countryCode,
+      scores,
+      materializeIndicatorTrace(trace, scores),
+      { now: now(), dataVersion },
+    );
+  };
+}
+
+export const getResilienceIndicators = createGetResilienceIndicators();

@@ -334,6 +334,13 @@
       }
     },
     {
+      "name": "get_resilience_indicators",
+      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Requires an ISO-2 country code and a WorldMonitor Pro subscription.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
       "name": "get_consumer_prices",
       "description": "Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).",
       "_meta": {

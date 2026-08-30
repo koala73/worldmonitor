@@ -28,6 +28,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/intelligence/v1/get-intel-timeline',
   '/api/intelligence/v1/get-similar-events',
   '/api/resilience/v1/get-resilience-score',
+  '/api/resilience/v1/get-resilience-indicators',
   '/api/resilience/v1/get-resilience-ranking',
   '/api/resilience/v1/get-food-stocks',
   '/api/resilience/v1/get-demographics-capability',

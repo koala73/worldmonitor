@@ -47,6 +47,8 @@ CRI is surfaced across three places in the product, all driven from the same cur
 
 All three dashboard surfaces are free to view. Direct score and ranking API calls require the normal Pro/API auth path, while the runtime manifest is public at `/api/resilience/v1/get-runtime-manifest`; see [Resilience service](https://github.com/koala73/worldmonitor/blob/main/docs/api/ResilienceService.openapi.yaml) for the HTTP contract.
 
+The Pro-only `/api/resilience/v1/get-resilience-indicators` method explains one country across the complete 72-row registry. It reports the exact normalized component scores and runtime weights used by the active scorer, then reconciles post-policy effective contributions to each published dimension score. Rows also distinguish observed, imputed, missing, fallback, source-failure, inactive, retired, and not-applicable states. The existing `get-resilience-score` response remains unchanged. Raw source values are selective and fail closed under the [indicator redistribution audit](./resilience-indicator-licensing.mdx); restricted rows still return WorldMonitor's normalized score, contribution, source attribution, and source year when known.
+
 ## Overview
 
 The WorldMonitor Country Resilience Index scores the 196-country public rankable universe on a 0-100 scale using 72 indicators across 21 active dimensions and 6 domains (plus 2 structurally-retired dimensions kept in the registry at `coverage=0` for schema continuity). The ranking handler can still route low-confidence or headline-ineligible countries to `greyedOut[]`, but the rankable universe itself is fixed by the committed UN-member + SAR whitelist. It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) and recovery-capacity indicators (fiscal space, reserves, import concentration) to produce a single resilience score updated every 6 hours.
@@ -388,7 +390,7 @@ Goalposts are fixed 0 and 100, never observed extremes. An observed-max anchor w
 |---|---|---|---|---|---|---|
 | ipcPeopleInCrisis | IPC/FAO people in food crisis (log10 scale) | Lower is better | 7 - 0 | 0.45 | FAO/IPC | Annual |
 | ipcPhase | IPC food crisis phase (1-5) | Lower is better | 5 - 1 | 0.15 | FAO/IPC | Annual |
-| aquastatScore | FAO AQUASTAT value scored from its indicator tag: stress/withdrawal/dependency readings are lower-better; availability/renewable/access readings are higher-better | Indicator semantics | Indicator-dependent | 0.40 | FAO AQUASTAT | Annual |
+| aquastatScore | Legacy field name for the selected World Bank water-stress observation; indicator-tag routing remains for backward-compatible seed shapes | Indicator semantics | Indicator-dependent | 0.40 | World Bank WDI | Annual |
 
 ### Recovery Domain (weight 0.25)
 
@@ -667,7 +669,7 @@ The API response includes `imputationShare` (0.0-1.0), representing the fraction
 | WTO | Trade restrictions, trade barriers | Weekly | ~50 reporters |
 | WHO | UHC index, measles coverage, hospital beds | Annual | Global |
 | FAO (IPC) | People in food crisis, crisis phase | Annual | Affected countries |
-| FAO (AQUASTAT) | Water stress, water availability | Annual | Global |
+| World Bank (WDI water stress) | Current observation behind the legacy `aquastatScore` field | Annual | Global |
 | IEA / national energy balance inputs | Net energy import dependency used inside `importedFossilDependence`; legacy standalone energy-import-dependency path is rollback only | Annual | Global |
 | IEP | Global Peace Index | Annual | Global |
 | RSF | Press freedom score | Annual | Global |
