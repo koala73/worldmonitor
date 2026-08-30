@@ -10,7 +10,7 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
-import { SITE_VARIANT } from '@/config/variant';
+import { SITE_VARIANT, isSiteVariant } from '@/config/variant';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
 import {
   collectorFailureFromError,
@@ -976,7 +976,7 @@ function sanitizePendingConversionData(
   };
   if (typeof data.missionId === 'string') out.missionId = bucketMissionIdForAnalytics(data.missionId);
   if (typeof data.panelKey === 'string') out.panelKey = bucketPanelKeyForAnalytics(data.panelKey);
-  if (typeof data.variant === 'string' && data.variant.length <= 20) out.variant = data.variant;
+  if (typeof data.variant === 'string' && isSiteVariant(data.variant)) out.variant = data.variant;
   if (data.deviceClass === 'mobile' || data.deviceClass === 'desktop') out.deviceClass = data.deviceClass;
   return out;
 }
@@ -1327,7 +1327,21 @@ export function bucketMissionIdForAnalytics(missionId: string): string {
  */
 const PANEL_KEY_PATTERN = /^[a-z][a-zA-Z0-9-]{0,39}$/;
 
+/**
+ * User-created panels carry generated ids (`cw-<uuid>` custom widgets,
+ * `mcp-<uuid>` MCP panels) that pass the structural guard but would fragment
+ * the funnel into one Umami row per widget instance. Collapse each family to
+ * a stable bucket before the shape check.
+ */
+const DYNAMIC_PANEL_KEY_BUCKETS: ReadonlyArray<[prefix: string, bucket: string]> = [
+  ['cw-', 'custom-widget'],
+  ['mcp-', 'mcp-panel'],
+];
+
 export function bucketPanelKeyForAnalytics(panelKey: string): string {
+  for (const [prefix, bucket] of DYNAMIC_PANEL_KEY_BUCKETS) {
+    if (panelKey.startsWith(prefix)) return bucket;
+  }
   return PANEL_KEY_PATTERN.test(panelKey) ? panelKey : 'unknown';
 }
 

@@ -1079,6 +1079,7 @@ export async function startCheckout(
           productId,
           referralCode: options?.referralCode,
           discountCode: options?.discountCode,
+          analyticsAttribution: behavior?.analyticsAttribution,
         });
         openSignIn();
         return false;

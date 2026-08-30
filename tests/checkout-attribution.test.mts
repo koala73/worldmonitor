@@ -157,6 +157,7 @@ describe('mission-attributed checkout-start (U2)', () => {
           authed: 'yes',
           missionId: 'crafted-mission',
           panelKey: 'crafted panel!',
+          variant: 'crafted-variant',
           injected: 'x'.repeat(500),
         },
       },
@@ -172,6 +173,7 @@ describe('mission-attributed checkout-start (U2)', () => {
     assert.equal(start.data!.missionId, 'unknown');
     assert.equal(start.data!.panelKey, 'unknown');
     assert.equal('injected' in start.data!, false, 'unknown keys must be dropped on replay');
+    assert.equal('variant' in start.data!, false, 'a variant outside SITE_VARIANTS must be dropped on replay');
     assert.equal(start.data!.replayed, true);
     const failed = calls.find((c) => c.name === 'checkout-failed')!;
     assert.equal(failed.data!.status, 'other');
@@ -207,5 +209,9 @@ describe('checkout service threading', () => {
       'PendingCheckoutIntent must keep attribution for the post-sign-in resume');
     assert.ok(src.includes('analyticsAttribution: intent.analyticsAttribution'),
       'resumePendingCheckout must re-thread the stored attribution');
+    assert.ok(
+      (src.match(/analyticsAttribution: behavior\?\.analyticsAttribution/g) ?? []).length >= 2,
+      'both pending-intent writes (signed-out AND token-expiry recovery) must carry analyticsAttribution',
+    );
   });
 });

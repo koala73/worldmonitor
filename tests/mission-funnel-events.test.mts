@@ -198,6 +198,16 @@ describe('closed-vocabulary bucketing', () => {
     assert.equal(analytics.bucketPanelKeyForAnalytics('__proto__'), 'unknown');
     assert.equal(analytics.bucketPanelKeyForAnalytics('<script>alert(1)</script>'), 'unknown');
     assert.equal(analytics.bucketPanelKeyForAnalytics('a'.repeat(60)), 'unknown');
+    // Generated per-instance ids collapse to stable family buckets, not
+    // one Umami row per widget.
+    assert.equal(
+      analytics.bucketPanelKeyForAnalytics('cw-8b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d'),
+      'custom-widget',
+    );
+    assert.equal(
+      analytics.bucketPanelKeyForAnalytics('mcp-8b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d'),
+      'mcp-panel',
+    );
   });
 
   it('pins the duplicated mission vocabulary against mission-presets (no drift)', async () => {
