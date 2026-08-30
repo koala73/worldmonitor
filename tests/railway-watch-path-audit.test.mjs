@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { sourceBootstrapsTsx } from './helpers/tsx-bootstrap.mjs';
 
 import {
   auditRailwayServiceConfig,
@@ -285,6 +286,25 @@ function extractLiteralPathDependencies(files, repoRootDir) {
   return found;
 }
 
+// A scripts-root seeder can self-register tsx immediately before a dynamic
+// TypeScript import. The plain-Node import walker sees the entry module but
+// cannot follow the loader-enabled graph, so those seeders declare each exact
+// transitive file. Missing declarations fail the normal closure comparison;
+// stale or missing paths fail here instead of silently widening the watch set.
+function extractDeclaredRuntimeDependencies(files, repoRootDir) {
+  const found = new Set();
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/@railway-runtime-dependency\s+(\.{1,2}\/[^\s*]+)/gu)) {
+      const candidate = resolve(dirname(file), match[1]);
+      assert.ok(candidate.startsWith(repoRootDir), `runtime dependency escapes repository: ${match[1]}`);
+      assert.ok(existsSync(candidate) && statSync(candidate).isFile(), `runtime dependency does not exist: ${match[1]}`);
+      found.add(candidate);
+    }
+  }
+  return found;
+}
+
 /**
  * The resolution model a Dockerfile-built container actually runs under.
  *
@@ -337,13 +357,28 @@ function resolveRuntimeSurface(entry, repoRootDir) {
       .map((member) => resolve(repoRootDir, 'scripts', member)),
   ]);
 
+  // A scripts-root seeder can self-register the tsx loader and then dynamically
+  // import `.mts`. Hardcoding hasTsx:false made the walker blind to those edges,
+  // so the closure came out too NARROW: a transitive `.mts` nobody remembered to
+  // declare with @railway-runtime-dependency was invisible to BOTH checks -- the
+  // declared-set comparison never saw it, and the walk never reached it -- and
+  // Railway would skip the deploy behind a green badge.
+  //
+  // The registration lives in the bundle MEMBER, not the bundle entry, so this
+  // asks every root, not just entryPath. Erring toward following the edges is
+  // the safe direction here, for the same reason containment stays permissive
+  // below: a closure that is too wide costs a build, one that is too narrow
+  // strands the service.
+  const rootsBootstrapTsx = (candidates) => [...candidates]
+    .some((root) => existsSync(root) && statSync(root).isFile() && sourceBootstrapsTsx(readFileSync(root, 'utf8')));
+
   // Containment stays permissive at the repository root on purpose: including
   // a file the image does not ship costs a build, excluding one the image DOES
   // ship strands the service. Only the dynamic-follow roots and the loader
   // model come from the image, because those decide which edges exist at all.
   const container = entry.dockerfile
     ? dockerfileContainerContract(entry.dockerfile, repoRootDir)
-    : { dynamicRoots: [scriptsDir], hasTsx: false };
+    : { dynamicRoots: [scriptsDir], hasTsx: rootsBootstrapTsx(roots) };
 
   let visited = new Set();
   let unresolved = [];
@@ -372,6 +407,8 @@ function resolveRuntimeSurface(entry, repoRootDir) {
 
   const runtimeFiles = new Set([
     ...[...visited].map((file) => relative(repoRootDir, file)),
+    ...[...extractDeclaredRuntimeDependencies(visited, repoRootDir)]
+      .map((file) => relative(repoRootDir, file)),
     ...extractSharedConfigDependencies(visited, entry.deployMode),
     ...extractFileReadDependencies(visited, repoRootDir),
     ...[...literals].map((file) => relative(repoRootDir, file)),
@@ -1315,6 +1352,12 @@ describe('closure detection layers', () => {
       const watched = new Set(entry.watchPatterns);
       assert.ok(watched.has('shared/stocks.json'), 'the copy requireShared actually loads');
       assert.ok(watched.has('scripts/shared/stocks.json'), 'and the mirrored sibling');
+    });
+
+    it('includes exact tsx runtime declarations from a scripts-root seeder', () => {
+      const entry = registry.find((candidate) => candidate.service === 'seed-bundle-resilience');
+      const { runtimeFiles } = resolveRuntimeSurface(entry, repoRoot);
+      assert.ok(runtimeFiles.has('scripts/scorecard/v1/_score-country.mts'));
     });
   });
 

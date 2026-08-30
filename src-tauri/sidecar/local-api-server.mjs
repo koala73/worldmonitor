@@ -712,11 +712,13 @@ const cloudPreferredExact = new Set([
   '/api/bootstrap',
   '/api/military/v1/get-defense-industrial-base',
 ]);
+const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
 
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
   if (cloudPreferredExact.has(pathname)) return true;
-  return cloudPreferredPrefixes.some(p => pathname.startsWith(p));
+  return cloudPreferredAlwaysPrefixes.some(p => pathname.startsWith(p))
+    || cloudPreferredPrefixes.some(p => pathname.startsWith(p));
 }
 
 const TRAFFIC_LOG_MAX = 200;

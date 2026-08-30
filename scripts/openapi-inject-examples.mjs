@@ -570,6 +570,7 @@ function patternString(pattern, key) {
 
 function stringExample(name, schema = {}, context = {}) {
   const key = normalizeKey(name || context.name || context.operationId);
+  const parent = normalizeKey(context.parent || '');
   const description = String(schema.description ?? context.description ?? '').toLowerCase();
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   // The ODP Patent File Wrapper source cannot populate this compatibility
@@ -581,6 +582,17 @@ function stringExample(name, schema = {}, context = {}) {
   // If the contract's pattern ever changes this falls through to the generic
   // heuristic and the schema-validity check reds — the correct failure mode.
   if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  if (schema.pattern === '^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$') return 'NATO';
+  if (key === 'unavailablereason') return '';
+  if (key === 'countrycode' && parent === 'inputs') return '';
+  if (key === 'quality') return 'observed';
+  if (schema.pattern === '^(?:food|energy|demographics|technology|defense)$') return 'food';
+  if (schema.pattern === '^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$') return 'mixed-capability';
+  if (schema.pattern === '^(?:country-weighted-components|aggregate-physical-inputs|population-weighted-continuous-score)$') return 'country-weighted-components';
+  if (schema.pattern?.includes('source-unavailable|country-unavailable|invalid-value')) return 'source-unavailable';
+  if (schema.pattern === '^(?:|observed|retained|derived)$') return 'observed';
+  if (schema.pattern === '^[A-Z]{2}$') return 'US';
+  if (schema.pattern === '^(?:|[A-Z]{2})$') return 'US';
   // get-similar-events `situation` enforces min_len 10; the generic
   // placeholder is shorter and produces an un-runnable request sample.
   if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);
@@ -620,6 +632,7 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('toiso')) return constrainedString('US', schema);
   if (key.includes('iso3')) return constrainedString('USA', schema);
   if (key.includes('iso2') || key.includes('country') || key.includes('countrycode')) return constrainedString('US', schema);
+  if (key === 'members' || key === 'includedmembers') return constrainedString('US', schema);
   if (key.includes('bbox')) return constrainedString('-74.10,40.60,-73.70,40.90', schema);
   if (key.includes('lat')) return constrainedString('40.7128', schema);
   if (key.includes('lng') || key.includes('lon')) return constrainedString('-74.0060', schema);
@@ -659,6 +672,7 @@ function numberExample(name, schema = {}, integer = false) {
   // Deliberately `ordinal` only, NOT `index`: in this repo `index` is a price index
   // (base = 100) on ConsumerPricesService, where 0 is a nonsense example value.
   if (key === 'ordinal') value = 0;
+  else if (key === 'score' && schema.minimum === 0 && schema.maximum === 5) value = 3;
   else if (key.includes('page') || key.includes('limit')) value = 25;
   else if (key.includes('days')) value = 7;
   else if (key.includes('closuredays')) value = 30;
@@ -818,6 +832,33 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (ref) {
     if (seen.has(ref)) return {};
     seen = new Set([...seen, ref]);
+    const resolvedName = refName(ref);
+    if (resolvedName === 'ScorecardObservation') {
+      return {
+        name: 'internetUsePercent',
+        value: 92.4,
+        year: 2025,
+        unit: 'percent',
+        source: 'World Bank',
+        indicatorCode: 'IT.NET.USER.ZS',
+      };
+    }
+    if (resolvedName === 'GetFiveFactorScorecardResponse' || resolvedName === 'GetBlocScorecardResponse') {
+      return {
+        scorecard: exampleForSchema(schema.properties.scorecard, spec, { ...context, name: 'scorecard' }, depth + 1, seen),
+        unavailable: false,
+        unavailableReason: '',
+      };
+    }
+    if (resolvedName === 'ListFiveFactorScorecardsResponse') {
+      return {
+        methodologyVersion: '1.0.0',
+        computedAt: '2026-01-15T12:00:00Z',
+        scorecards: exampleForSchema(schema.properties.scorecards, spec, { ...context, name: 'scorecards' }, depth + 1, seen),
+        unavailable: false,
+        unavailableReason: '',
+      };
+    }
   }
 
   if (schema.example !== undefined) return clone(schema.example);
