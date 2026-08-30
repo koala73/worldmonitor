@@ -362,6 +362,40 @@ describe('api/telegram-feed contract normalization', () => {
     assert.equal(res.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await res.json(), { error: 'Invalid Telegram channel response' });
   });
+
+  it('maps a relay AbortError to 504 Relay timeout (WORLDMONITOR-11G)', async () => {
+    // fetchWithTimeout aborts on TELEGRAM_RELAY_TIMEOUT_MS; AbortError is the
+    // expected timeout signal. Sentry skip (`if (!isTimeout)`) mirrors
+    // api/rss-proxy.js — captureSilentError is a no-op under NODE_TEST_CONTEXT,
+    // so this asserts only the 504 mapping (same deliberate limit as rss-proxy).
+    globalThis.fetch = async () => {
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      throw err;
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest());
+    const body = await res.json();
+
+    assert.equal(res.status, 504);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(body, { error: 'Relay timeout' });
+  });
+
+  it('maps a non-timeout relay failure to 502 Relay request failed', async () => {
+    globalThis.fetch = async () => {
+      throw new Error('relay ECONNREFUSED');
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest());
+    const body = await res.json();
+
+    assert.equal(res.status, 502);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(body, { error: 'Relay request failed' });
+  });
 });
 
 describe('api/telegram-feed first-party boundary', () => {
