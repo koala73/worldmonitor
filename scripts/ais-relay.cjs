@@ -1923,6 +1923,14 @@ async function pollTelegramOnce() {
         break;
       }
     }
+
+    // Rest AFTER the channel, not merely between RPC dispatches. The queue
+    // paces start-to-start, so leaning on it alone would make this loop's
+    // effective spacing `max(interval, pair latency)` instead of the
+    // `pair latency + interval` that main ships — roughly 1.75x the request
+    // rate against a shared account whose FLOOD_WAIT takes the curated feed
+    // down with it. Outside the try so a failing channel rests too.
+    await new Promise(resolve => setTimeout(resolve, TELEGRAM_RPC_MIN_INTERVAL_MS));
   }
 
   if (newItems.length) {
@@ -13921,6 +13929,15 @@ server.listen(PORT, () => {
         shipType: 35,
         timestamp: Date.now(),
       });
+    }
+    // Opt-in seam: background loops stay off by default in test mode, but the
+    // curated Telegram poll had no coverage at all as a result — including its
+    // pacing, which is the property that keeps a shared MTProto account below
+    // Telegram's flood threshold. Gated behind RELAY_TEST_MODE *and* an
+    // explicit flag, so it cannot start outside the test harness.
+    if (process.env.RELAY_TEST_TELEGRAM_POLL === 'true') {
+      console.log('[Relay] Test mode: starting the Telegram poll loop on request');
+      startTelegramPollLoop();
     }
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;

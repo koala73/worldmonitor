@@ -354,6 +354,63 @@ test('Telegram connect timeout clears the shared initializer for recovery', asyn
 // verbatim into its lookup errors, so parsing a flood duration out of
 // error.message let one GET park the process-wide cooldown ~31 trillion years
 // out and permanently stop the curated poll along with every lookup.
+// Guards the curated poll's REQUEST RATE against the shared Telegram account.
+// The RPC queue paces start-to-start, so a poll that leans on the queue alone
+// rests only `max(interval, pair latency)` per channel instead of
+// `pair latency + interval` — roughly 1.75x main's rate, on the one account
+// whose FLOOD_WAIT takes the whole curated feed down. A lower bound is used
+// deliberately: it cannot flake upward on a slow machine.
+test('the curated poll rests after each channel, not merely between RPC dispatches', async () => {
+  const intervalMs = 25;
+  const rpcDelayMs = 25;
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '0',
+    TELEGRAM_RPC_MIN_INTERVAL_MS: String(intervalMs),
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    RELAY_TEST_TELEGRAM_RPC_DELAY_MS: String(rpcDelayMs),
+  });
+  const { child } = await relay.ready;
+
+  try {
+    let summary = null;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      summary = relay.getOutput().match(/Telegram poll: (\d+)\/\d+ channels.*?\(([\d.]+)s\)/);
+      if (summary) break;
+      await sleep(100);
+    }
+    assert.ok(summary, 'the poll cycle must log a summary');
+
+    const channelsPolled = Number(summary[1]);
+    const elapsedMs = Number(summary[2]) * 1000;
+    assert.ok(channelsPolled > 5, `expected a real channel set, polled ${channelsPolled}`);
+
+    // Two RPCs run inside one queue entry, then the loop rests.
+    const perChannelWithRest = (2 * rpcDelayMs) + intervalMs;
+    const perChannelWithoutRest = Math.max(intervalMs, 2 * rpcDelayMs);
+    // Midpoint between the two regimes, so the assertion sits ~20% clear of
+    // both: a 0.7x-of-expected floor left only a 40ms gap over 56 channels,
+    // which is flake territory rather than a real discriminator. (Verified by
+    // mutation: removing the post-channel rest drops the cycle below this.)
+    const floor = channelsPolled * ((perChannelWithRest + perChannelWithoutRest) / 2);
+
+    assert.ok(
+      perChannelWithRest > perChannelWithoutRest,
+      'the test constants must be able to tell the two pacing regimes apart',
+    );
+    assert.ok(
+      elapsedMs >= floor,
+      `poll cycle took ${elapsedMs}ms for ${channelsPolled} channels; expected >= ${Math.round(floor)}ms `
+      + `(~${perChannelWithRest}ms/channel with the post-channel rest, vs ~${perChannelWithoutRest}ms without it)`,
+    );
+  } finally {
+    await stop(child);
+  }
+});
+
 test('a username shaped like FLOOD_WAIT cannot open a cooldown', async () => {
   const hostile = 'flood_wait_999999999';
   const relay = spawnRelay({
