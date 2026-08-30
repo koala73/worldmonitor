@@ -5,7 +5,12 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
-import { dedupeErrorResponses, dedupeSharedParameters, ensureInlineTypedInput } from '../scripts/openapi-dedup-responses.mjs';
+import {
+  dedupeErrorResponses,
+  dedupeSharedParameters,
+  dedupeSharedResponseHeaders,
+  ensureInlineTypedInput,
+} from '../scripts/openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
 import { buildBundle } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
@@ -81,6 +86,24 @@ function resolveParameterRefs(spec) {
     }
   }
   delete spec.components?.parameters;
+  if (spec.components && Object.keys(spec.components).length === 0) delete spec.components;
+  return spec;
+}
+
+function resolveResponseHeaderRefs(spec) {
+  for (const site of operationResponses(spec)) {
+    const headers = site.response?.headers;
+    if (!headers || typeof headers !== 'object') continue;
+    for (const [headerName, header] of Object.entries(headers)) {
+      const ref = header?.$ref;
+      if (!ref) continue;
+      const name = ref.replace('#/components/headers/', '');
+      const target = spec.components?.headers?.[name];
+      assert.ok(target, `${site.method.toUpperCase()} ${site.path} ${site.statusCode} ${headerName}: dangling ${ref}`);
+      headers[headerName] = structuredClone(target);
+    }
+  }
+  delete spec.components?.headers;
   if (spec.components && Object.keys(spec.components).length === 0) delete spec.components;
   return spec;
 }
@@ -181,6 +204,59 @@ describe('dedupeErrorResponses (fixture)', () => {
       spec.paths['/a'].get.responses[429].$ref,
       '#/components/responses/E429_2',
     );
+  });
+});
+
+describe('dedupeSharedResponseHeaders (fixture)', () => {
+  const sharedHeader = {
+    description: 'True when the idempotent result was replayed.',
+    schema: { type: 'boolean' },
+  };
+
+  it('hoists repeated inline and component-response headers without changing unique headers', () => {
+    const spec = {
+      openapi: '3.1.0',
+      paths: {
+        '/a': {
+          post: {
+            responses: {
+              200: {
+                description: 'ok',
+                headers: {
+                  'Idempotent-Replayed': structuredClone(sharedHeader),
+                  'X-Unique': { schema: { type: 'string' } },
+                },
+              },
+              409: { $ref: '#/components/responses/E409' },
+            },
+          },
+        },
+      },
+      components: {
+        headers: { IdempotentReplayed: { description: 'pre-existing' } },
+        responses: {
+          E409: {
+            description: 'conflict',
+            headers: { 'Idempotent-Replayed': structuredClone(sharedHeader) },
+          },
+        },
+      },
+    };
+
+    const stats = dedupeSharedResponseHeaders(spec);
+
+    assert.deepEqual(stats, { hoisted: 1, replacedRefs: 2 });
+    assert.deepEqual(spec.components.headers.IdempotentReplayed, { description: 'pre-existing' });
+    assert.deepEqual(spec.components.headers.IdempotentReplayed2, sharedHeader);
+    assert.deepEqual(spec.paths['/a'].post.responses[200].headers['Idempotent-Replayed'], {
+      $ref: '#/components/headers/IdempotentReplayed2',
+    });
+    assert.deepEqual(spec.components.responses.E409.headers['Idempotent-Replayed'], {
+      $ref: '#/components/headers/IdempotentReplayed2',
+    });
+    assert.deepEqual(spec.paths['/a'].post.responses[200].headers['X-Unique'], {
+      schema: { type: 'string' },
+    });
   });
 });
 
@@ -310,12 +386,15 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   const original = loadUnifiedOpenApiSpec();
   const deduped = structuredClone(original);
   const stats = dedupeErrorResponses(deduped);
+  const headerStats = dedupeSharedResponseHeaders(deduped);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(deduped);
   const paramStats = dedupeSharedParameters(deduped);
 
   it('is lossless: resolving the $refs reproduces the original spec exactly', () => {
     assert.deepEqual(
-      resolveResponseRefs(resolveSharedChinaProvenanceRefs(resolveParameterRefs(structuredClone(deduped)))),
+      resolveResponseHeaderRefs(
+        resolveResponseRefs(resolveSharedChinaProvenanceRefs(resolveParameterRefs(structuredClone(deduped)))),
+      ),
       original,
     );
   });
@@ -337,6 +416,10 @@ describe('public OpenAPI dedupe (real bundle)', () => {
       'the per-op 429 rate-limit block must dedupe into components.responses.E429',
     );
     assert.ok(stats.replacedRefs >= 500, `expected wide dedup, got ${stats.replacedRefs} refs`);
+  });
+
+  it('actually engages on repeated response-header documentation', () => {
+    assert.ok(headerStats.replacedRefs >= 20, `expected repeated header dedup, got ${headerStats.replacedRefs} refs`);
   });
 
   it('reuses the shared China provenance value schemas only after exact comparison', () => {
@@ -425,6 +508,7 @@ describe('build-openapi-json wiring', () => {
     assert.match(src, /from '\.\/openapi-dedup-responses\.mjs'/);
     assert.match(src, /from '\.\/openapi-dedup-schemas\.mjs'/);
     assert.match(src, /dedupeErrorResponses\(spec\)/);
+    assert.match(src, /dedupeSharedResponseHeaders\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
     assert.match(src, /ensureInlineTypedInput\(spec\)/);
@@ -435,10 +519,11 @@ describe('build-openapi-json wiring', () => {
     // The source match above proves the calls are written down; this proves
     // they did something. A transform that silently stops finding work is the
     // regression the byte budget notices last and from the wrong direction.
-    const { stats, schemaStats, paramStats, inlineTypedStats, unreachableStats } = buildBundle({
+    const { stats, headerStats, schemaStats, paramStats, inlineTypedStats, unreachableStats } = buildBundle({
       spec: loadUnifiedOpenApiSpec(),
     });
     assert.ok(stats.replacedRefs >= 500, `error-response dedup: ${stats.replacedRefs} refs`);
+    assert.ok(headerStats.replacedRefs >= 20, `response-header dedup: ${headerStats.replacedRefs} refs`);
     assert.ok(paramStats.replacedRefs >= 200, `parameter dedup: ${paramStats.replacedRefs} refs`);
     assert.ok(inlineTypedStats.inlined >= 50, `inline typed-input restore: ${inlineTypedStats.inlined}`);
     // `replacedRefs === compared` alone passes at 0 === 0, which is exactly the
