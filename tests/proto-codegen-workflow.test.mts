@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -28,7 +30,11 @@ type Job = {
 
 type Workflow = {
   concurrency?: Record<string, unknown>;
+  env?: Record<string, string>;
   jobs?: Record<string, Job>;
+  on?: {
+    pull_request?: null | Record<string, unknown>;
+  };
   permissions?: Record<string, string>;
 };
 
@@ -47,17 +53,106 @@ function stepByName(jobName: string, name: string): Step {
   return value;
 }
 
+function runChangeClassifier(files?: string[]) {
+  const temp = mkdtempSync(join(tmpdir(), 'wm-proto-classifier-'));
+  const fakeBin = join(temp, 'bin');
+  const output = join(temp, 'output');
+  const classifier = stepByName('changes', 'Classify proto codegen paths');
+
+  try {
+    mkdirSync(fakeBin);
+    writeFileSync(output, '');
+    writeFileSync(
+      join(fakeBin, 'gh'),
+      files
+        ? `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify([files.map((filename) => ({ filename }))])}'\n`
+        : '#!/bin/sh\nexit 73\n',
+      { mode: 0o755 },
+    );
+
+    const result = spawnSync('bash', ['-euo', 'pipefail', '-c', classifier.run ?? ''], {
+      cwd: root,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ...workflow.env,
+        GITHUB_OUTPUT: output,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        PR_NUMBER: '7397',
+        REPOSITORY: 'koala73/worldmonitor',
+      },
+    });
+
+    return {
+      output: readFileSync(output, 'utf8'),
+      status: result.status,
+      stderr: result.stderr,
+    };
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+
 describe('proto codegen workflow trust boundaries (#3340)', () => {
   it('defaults to no token permissions and never uses pull_request_target', () => {
     assert.deepEqual(workflow.permissions, {});
     assert.doesNotMatch(workflowSource, /pull_request_target/);
     assert.equal(workflow.concurrency?.['cancel-in-progress'], true);
+    assert.ok(
+      workflow.on?.pull_request == null || Object.keys(workflow.on.pull_request).length === 0,
+      'proto-check must always publish its aggregate check; the changes job owns path filtering',
+    );
   });
 
-  it('never executes fork-controlled code in the artifact-presence job', () => {
+  it('classifies the complete codegen path domain with decoded GitHub paths', () => {
+    const input = workflow.env?.CODEGEN_INPUT_REGEX;
+    const output = workflow.env?.GENERATED_OUTPUT_REGEX;
+    const control = workflow.env?.PROTO_WORKFLOW_REGEX;
+    assert.ok(input && output && control, 'workflow must define the three path classes once');
+
+    for (const path of [
+      'proto/worldmonitor/example/v1/service.proto',
+      'proto/café.proto',
+      'scripts/openapi-inject-security.mjs',
+      'shared/openapi-filter-param-contracts.json',
+      'server/gateway.ts',
+      'src/shared/premium-paths.ts',
+      'Makefile',
+    ]) {
+      assert.match(path, new RegExp(input), `${path} must be a codegen input`);
+    }
+    assert.match('src/generated/client.ts', new RegExp(output));
+    assert.match('docs/api/worldmonitor.openapi.yaml', new RegExp(output));
+    assert.match('.github/workflows/proto-check.yml', new RegExp(control));
+
+    const unicode = runChangeClassifier(['proto/café.proto']);
+    assert.equal(unicode.status, 0, unicode.stderr);
+    assert.match(unicode.output, /^codegen=true$/m);
+    assert.match(unicode.output, /^relevant=true$/m);
+
+    const workflowOnly = runChangeClassifier(['.github/workflows/proto-check.yml']);
+    assert.equal(workflowOnly.status, 0, workflowOnly.stderr);
+    assert.match(workflowOnly.output, /^codegen=false$/m);
+    assert.match(workflowOnly.output, /^relevant=true$/m);
+
+    const unrelated = runChangeClassifier(['src/components/Panel.ts']);
+    assert.equal(unrelated.status, 0, unrelated.stderr);
+    assert.match(unrelated.output, /^codegen=false$/m);
+    assert.match(unrelated.output, /^relevant=false$/m);
+  });
+
+  it('fails closed when GitHub cannot list pull request files', () => {
+    const result = runChangeClassifier();
+    assert.equal(result.status, 73, result.stderr);
+    assert.equal(result.output, '');
+  });
+
+  it('never executes fork-controlled code and requires trusted codegen validation', () => {
     const fork = job('fork-artifact-check');
-    assert.deepEqual(fork.permissions, { contents: 'read' });
+    assert.deepEqual(fork.permissions, {});
     assert.match(fork.if ?? '', /head\.repo\.full_name != github\.repository/);
+    assert.match(fork.if ?? '', /dependabot\[bot\]/);
+    assert.match(fork.if ?? '', /needs\.changes\.outputs\.codegen == 'true'/);
 
     const executedCommands = (fork.steps ?? [])
       .flatMap((step) => (step.run ?? '').split('\n'))
@@ -65,12 +160,9 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       .filter(Boolean)
       .join('\n');
     assert.doesNotMatch(executedCommands, /^(?:make|npm|node|npx|tsx|buf)\s/m);
-    assert.equal(fork.steps?.[0]?.with?.['persist-credentials'], false);
-
-    const inspection = stepByName('fork-artifact-check', 'Require generated artifacts when codegen inputs change').run ?? '';
-    assert.match(inspection, /INPUT_CHANGED/);
-    assert.match(inspection, /scripts\/generate-request-validation/);
-    assert.match(inspection, /GENERATED_CHANGED/);
+    assert.doesNotMatch(executedCommands, /git\s+diff|grep\s+-E/);
+    assert.match(executedCommands, /trusted internal branch/i);
+    assert.match(executedCommands, /exit 1/);
   });
 
   it('uses the trusted main Makefile for the fork-visible breaking check', () => {
@@ -85,28 +177,49 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.equal(stepByName('proto-breaking', 'Check for breaking proto changes').run, 'make breaking');
   });
 
-  it('withholds the write credential until generation is complete', () => {
+  it('isolates read-only generation from the credentialed writer', () => {
+    const generation = job('internal-generate');
+    assert.deepEqual(generation.permissions, { contents: 'read' });
+    assert.match(generation.if ?? '', /user\.login != 'dependabot\[bot\]'/);
+    assert.doesNotMatch(JSON.stringify(generation), /github\.token|GH_TOKEN/);
+
     const internal = job('internal-auto-generate');
     assert.deepEqual(internal.permissions, { contents: 'write', statuses: 'write' });
+    assert.deepEqual(internal.needs, ['changes', 'internal-generate']);
+    assert.match(internal.if ?? '', /user\.login != 'dependabot\[bot\]'/);
 
     const checkout = internal.steps?.find((step) => step.uses?.startsWith('actions/checkout@'));
     assert.equal(checkout?.with?.['persist-credentials'], false);
     assert.match(String(checkout?.with?.ref), /pull_request\.head\.sha/);
 
-    const generator = stepByName('internal-auto-generate', 'Run proto generation');
-    assert.equal(generator.run, 'make generate');
-    assert.equal(generator.env?.GH_TOKEN, undefined);
+    assert.equal(internal.steps?.some((step) => step.run === 'make generate'), false);
+    assert.equal(
+      generation.steps?.some((step) => step.run === 'make generate'),
+      true,
+      'the read-only job must own generation',
+    );
+    assert.equal(
+      generation.steps?.find((step) => step.uses?.startsWith('actions/upload-artifact@'))?.uses,
+      'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f',
+    );
+    assert.equal(
+      internal.steps?.find((step) => step.uses?.startsWith('actions/download-artifact@'))?.uses,
+      'actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53',
+    );
 
     const commit = stepByName('internal-auto-generate', 'Commit generated artifacts to the internal PR branch');
     assert.match(commit.env?.GH_TOKEN ?? '', /github\.token/);
-    assert.match(commit.run ?? '', /REMOTE_HEAD.*EXPECTED_HEAD_SHA/s);
-    assert.match(commit.run ?? '', /push origin "HEAD:refs\/heads\/\$PR_HEAD_REF"/);
-    assert.doesNotMatch(commit.run ?? '', /push\s+--force|push\s+-f/);
+    assert.match(commit.run ?? '', /git apply --index --binary/);
+    assert.match(commit.run ?? '', /core\.hooksPath=\/dev\/null/);
+    assert.match(
+      commit.run ?? '',
+      /--force-with-lease="refs\/heads\/\$PR_HEAD_REF:\$EXPECTED_HEAD_SHA"/,
+    );
   });
 
   it('fails generator writes outside the two generated directories', () => {
     const guard = stepByName(
-      'internal-auto-generate',
+      'internal-generate',
       'Reject generator writes outside generated artifact directories',
     ).run ?? '';
 
@@ -126,10 +239,19 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.deepEqual(aggregate.permissions, {});
     assert.match(aggregate.if ?? '', /always\(\)/);
     assert.deepEqual(aggregate.needs, [
+      'changes',
+      'proto-breaking',
       'fork-artifact-check',
+      'internal-generate',
       'internal-auto-generate',
       'internal-merge-freshness',
     ]);
+    const aggregateRun = stepByName('proto-freshness', 'Publish aggregate proto freshness result').run ?? '';
+    assert.match(aggregateRun, /BREAKING_RESULT/);
+    assert.match(aggregateRun, /FORK_RESULT/);
+    assert.match(aggregateRun, /GENERATE_RESULT/);
+    assert.match(aggregateRun, /PUBLISH_RESULT/);
+    assert.match(aggregateRun, /MERGE_RESULT/);
   });
 
   it('documents the internal and fork contributor contracts', () => {
