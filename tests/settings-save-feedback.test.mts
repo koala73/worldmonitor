@@ -179,6 +179,10 @@ describe('settings save feedback', () => {
     assert.doesNotMatch(extractMethodBody(settings, 'private savePanelChanges()'), /showToast\(/);
     assert.doesNotMatch(settings, /function showToast\(/);
     assert.doesNotMatch(eventHandlers, /\n\s{2}showToast\(msg: string\): void/);
-    assert.doesNotMatch(countryIntel, /\n\s{2}showToast\(msg: string\): void/);
+    assert.match(
+      extractMethodBody(countryIntel, 'showToast(msg: string): void'),
+      /^\s*showGlobalToast\(msg, 3000\);\s*$/,
+    );
+    assert.doesNotMatch(countryIntel, /document\.querySelector\('\.toast-notification'\)/);
   });
 });

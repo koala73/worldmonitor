@@ -65,7 +65,7 @@ import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle 
 import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
-import { showToast } from '@/utils/toast';
+import { showToast as showGlobalToast } from '@/utils/toast';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -184,7 +184,7 @@ export class CountryIntelManager implements AppModule {
   private handleCountryBriefOpenError(err: unknown): void {
     console.error('[CountryBrief] Failed to open country brief:', err);
     this.ctx.map?.setRenderPaused(false);
-    showToast('Country brief failed to open. Please try again.', 3000);
+    this.showToast('Country brief failed to open. Please try again.');
   }
 
   private claimBriefRequest(owner: PendingCountryBriefRequest['owner']): PendingCountryBriefRequest | null {
@@ -275,7 +275,7 @@ export class CountryIntelManager implements AppModule {
       this.ctx.countryBriefPage?.hide();
       void this.openCountryStory(code, name).catch((err) => {
         console.error('[CountryStory] Failed to open story:', err);
-        showToast('Country story failed to open. Please try again.', 3000);
+        this.showToast('Country story failed to open. Please try again.');
       });
     });
     this.ctx.countryBriefPage.setExportImageHandler(async (code, name) => {
@@ -932,7 +932,7 @@ export class CountryIntelManager implements AppModule {
         const activeCode = activePage?.getCode();
         if (showedLoading && activePage?.isVisible() && (activeCode === '__loading__' || activeCode === '__error__')) activePage.hide();
         if (!this.hasVisibleRealCountryBrief()) this.ctx.map?.setRenderPaused(false);
-        showToast('Country brief failed to open. Please try again.', 3000);
+        this.showToast('Country brief failed to open. Please try again.');
       }
     } finally {
       this.clearBriefRequest(request);
@@ -1704,7 +1704,7 @@ export class CountryIntelManager implements AppModule {
 
   async openCountryStory(code: string, name: string): Promise<void> {
     if (!dataFreshness.hasSufficientData() || this.ctx.latestClusters.length === 0) {
-      showToast('Data still loading — try again in a moment', 3000);
+      this.showToast('Data still loading — try again in a moment');
       return;
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
@@ -1723,6 +1723,10 @@ export class CountryIntelManager implements AppModule {
     // reaches the caller's existing .catch() toast handler (country-intel.ts:205).
     const { openStoryModal } = await import('@/components/StoryModal');
     openStoryModal(data);
+  }
+
+  showToast(msg: string): void {
+    showGlobalToast(msg, 3000);
   }
 
   private getCountryStrikes(code: string, hasGeoShape: boolean): typeof this.ctx.intelligenceCache.iranEvents & object {
