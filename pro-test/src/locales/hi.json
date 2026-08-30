@@ -51,7 +51,7 @@
     "freeF2": "क्यूरेटेड फीड, सत्रोपित स्रोत, और मानचित्र परतें"
   },
   "whyUpgrade": {
-    "title": "अपग्रेड क्यों करें",
+    "title": "World Monitor Pro में अपग्रेड क्यों करें?",
     "noiseTitle": "सबसे पहले जानें",
     "noiseDesc": "AIS anomaly → Brent spike → आपका Slack एक मिनट से कम में। Signal, headlines नहीं।",
     "fasterTitle": "कुछ भी पूछें",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "आपका निजी इंटेलिजेंस डेस्क",
+    "title": "व्यक्तिगत इंटेलिजेंस डेस्क क्या है?",
     "body": "प्रति भेजने पर 30 तक क्रमबद्ध आइटम, स्रोतों के पार डीडुप किए गए, आपकी निगरानी सूची के विरुद्ध स्कोर किए गए। अपनी आवृत्ति चुनें — दैनिक, दिन में दो बार, या साप्ताहिक — एक AI मूल्यांकन और Slack, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत।",
     "closer": "Newsletter नहीं। एक analyst.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
@@ -93,7 +93,7 @@
     "asToldTo": "जैसा बताया गया"
   },
   "audience": {
-    "title": "उन लोगों के लिए बनाया गया जिन्हें signal तेज़ चाहिए",
+    "title": "World Monitor किसके लिए बनाया गया है?",
     "investorsTitle": "Investors और portfolio managers",
     "investorsDesc": "Global equities, analyst targets, valuation metrics और macro indicators को geopolitical risk signals के साथ track करें।",
     "tradersTitle": "Energy और commodities traders",
@@ -108,7 +108,7 @@
     "teamsDesc": "Individual use से shared workflows, API access, TV apps और managed deployments तक जाएँ।"
   },
   "dataCoverage": {
-    "title": "World Monitor क्या track करता है",
+    "title": "World Monitor क्या ट्रैक करता है?",
     "subtitle": "सेवा डोमेन एक साथ ग्रहण किए गए। बाजार, मैक्रो, भू-राजनीति, ऊर्जा, बुनियादी ढांचे — सब कुछ सामान्यीकृत और एक WebGL ग्लोब पर प्रस्तुत।",
     "markets": "Financial Markets और Equities",
     "marketsDesc": "Global stock analysis, commodities, crypto, ETF flows, analyst targets और FRED macro data",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO TIER",
-    "title": "आपका AI analyst जो कभी नहीं सोता",
+    "title": "World Monitor AI विश्लेषक क्या करता है?",
     "subtitle": "मुफ़्त डैशबोर्ड आपको दुनिया दिखाता है। Pro आपको पूछने के लिए विश्लेषक, सदस्यता लेने के लिए डाइजेस्ट और निर्माण के लिए आधार देता है। Stocks, macro, geopolitical risk — और इनके बीच के connections।",
     "equityResearch": "Equity Research",
     "equityResearchDesc": "Financials visualization, analyst price targets और valuation metrics के साथ global stock analysis. Track करें कि markets को क्या move करता है।",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API TIER",
-    "title": "Programmatic Intelligence",
+    "title": "APIs और एजेंट World Monitor का कैसे उपयोग करते हैं?",
     "subtitle": "World Monitor data पर build करने वाले developers, analysts और teams के लिए। Pro से अलग — दोनों या कोई एक use करें।",
     "restApi": "सेवा डोमेन के पार REST API — JavaScript, Python, Ruby, Go के लिए आधिकारिक SDKs",
     "authenticated": "Per-key authenticated, per-tier rate-limited",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE TIER",
-    "title": "Intelligence Infrastructure",
+    "title": "World Monitor Enterprise में क्या शामिल है?",
     "subtitle": "Governments, institutions, trading desks और organizations के लिए जिन्हें maximum security, AI agents, TV apps और data depth वाला full platform चाहिए।",
     "security": "Government-Grade Security",
     "securityDesc": "Air-gapped deployment, on-premises Docker, dedicated cloud tenant, SOC 2 Type II path, SSO/MFA और full audit trail.",
@@ -227,7 +227,7 @@
     "contactFailed": "भेजना failed. कृपया enterprise@worldmonitor.app पर email करें"
   },
   "pricingTable": {
-    "title": "Tiers की तुलना",
+    "title": "World Monitor की योजनाएं कैसे तुलना करती हैं?",
     "feature": "सुविधा",
     "freeHeader": "मुफ़्त ($0)",
     "proHeader": "Pro ($39.99)",
@@ -274,7 +274,7 @@
     "f50plus": "उपलब्ध"
   },
   "faq": {
-    "title": "अक्सर पूछे जाने वाले प्रश्न",
+    "title": "World Monitor Pro के बारे में अक्सर पूछे जाने वाले सवाल",
     "q1": "क्या World Monitor अभी भी मुफ़्त है?",
     "a1": "हां। मुख्य प्लेटफॉर्म मुक्त रहता है। Pro इक्विटी रिसर्च, मैक्रो एनालिटिक्स और AI ब्रीफिंग जोड़ता है। Pro Business वाणिज्यिक लाइसेंस और डेटा एक्सपोर्ट जोड़ता है। Enterprise टीम डिप्लॉयमेंट और TV ऐप्स जोड़ता है।",
     "q2": "Pro के लिए भुगतान क्यों करें?",
@@ -303,7 +303,7 @@
     "a13": "सूचना चैनल संग्रहित अवस्था में AES-256 से एन्क्रिप्टेड रहते हैं। डाइजेस्ट हमारी पाइपलाइन से बिना रेडैक्शन के बाहर नहीं जाते।"
   },
   "finalCta": {
-    "title": "Pro से शुरू करें। Enterprise तक scale करें।",
+    "title": "मैं Pro के साथ शुरुआत कैसे करूं या सेल्स से बात करूं?",
     "subtitle": "World Monitor को मुफ़्त इस्तेमाल करते रहें, या equity research, macro analytics और AI briefings के लिए upgrade करें। अगर आपकी organization को team access, TV apps या API support चाहिए, हमसे बात करें।",
     "talkToSales": "Sales से बात करें"
   },
@@ -326,7 +326,7 @@
     "suffixPerYear": "/yr",
     "amountCustom": "Custom",
     "opening": "खुल रहा है…",
-    "headerTitle": "अपना Plan चुनें",
+    "headerTitle": "World Monitor की कीमत कितनी है?",
     "headerSubtitle": "Real-time monitoring से full intelligence infrastructure तक। अपनी mission के लिए सही tier चुनें।",
     "billingMonthly": "Monthly",
     "billingAnnual": "Annual",
@@ -468,7 +468,7 @@
     },
     "live": {
       "eyebrow": "अभी लाइव",
-      "title": "यह पृष्ठ डैशबोर्ड के समान API से जुड़ा हुआ है।",
+      "title": "यह पृष्ठ अभी कौन सा लाइव डेटा दिखा रहा है?",
       "subtitle": "सौ से अधिक सिग्नल में से चार जो World Monitor चौबीसों घंटे देखता है।",
       "liveBadge": "लाइव",
       "sampleBadge": "नमूना",
@@ -487,7 +487,7 @@
     },
     "moments": {
       "eyebrow": "सहसंबंध इंजन",
-      "title": "एज सिग्नल को एक साथ घूमते हुए देख रहा है।",
+      "title": "World Monitor सिग्नल को कैसे संबंधित करता है?",
       "sub": "आप सौ जगहों पर फीड पा सकते हैं। एज एक सतह है जहां भू-राजनीति, शिपिंग, कमोडिटीज, मैक्रो, बाजार, मौसम, बुनियादी ढांचा, साइबर, समाचार और देश जोखिम एक दूसरे को समझा सकते हैं।",
       "signalStack": "सिग्नल फ्यूज किए गए",
       "correlation": "सहसंबंध",
@@ -551,7 +551,7 @@
     },
     "firstFive": {
       "eyebrow": "शून्य से दिशानिर्देश",
-      "title": "लाइव मानचित्र पर आपके पहले पाँच मिनट।",
+      "title": "मानचित्र पर आपके पहले पाँच मिनट में क्या होता है?",
       "sub": "कोई दौरा नहीं, कोई खाली स्थिति नहीं, कोई साइनअप दीवार नहीं। यह वही है जो वास्तव में होता है।",
       "f1Title": "मानचित्र पहले से ही चल रहा है",
       "f1Desc": "संघर्ष, जहाज, उड़ानें, आग और आउटेज पृष्ठ लोड होने पर प्रदर्शित होते हैं। पहले कुछ भी कॉन्फ़िगर करने के लिए कुछ नहीं।",
@@ -567,7 +567,7 @@
     },
     "depth": {
       "eyebrow": "पर्दे के पीछे",
-      "title": "गहराई ही उत्पाद है।",
+      "title": "World Monitor डेटा मॉडल कितना गहरा है?",
       "sub": "नीचे दी गई हर संख्या आज डैशबोर्ड में लाइव है — रोडमैप नहीं।",
       "s1v": "साझा",
       "s1l": "मानचित्र लेयरें",
@@ -617,7 +617,7 @@
     },
     "agents": {
       "eyebrow": "बिल्डर्स और AI एजेंट्स के लिए",
-      "title": "लाइव वर्ल्ड इंटेलिजेंस पर बिल्ड करें — किसी भी स्टैक से।",
+      "title": "मैं अपने स्वयं के स्टैक से World Monitor पर कैसे निर्माण करूं?",
       "sub": "मानचित्र पर सब कुछ एक API भी है। इसे Claude पर MCP के माध्यम से कनेक्ट करें, कहीं से भी REST एंडपॉइंट्स को कॉल करें, या Python, Ruby, Go, या JavaScript के लिए नेटिव क्लाइंट इंस्टॉल करें — आपका कोड प्रशिक्षण-डेटा मेमोरीज़ के बजाय लाइव डेटा के साथ शोध करता है।",
       "b1": "MCP उपकरण — जोखिम स्कोर, अड़चनें, संघर्ष, बाजार, संक्षिप्त रिपोर्ट",
       "b2": "प्रलेखित REST API — एक OpenAPI 3.1 spec, एक कुंजी",
@@ -660,7 +660,7 @@
     },
     "faq": {
       "eyebrow": "कोई पकड़ नहीं",
-      "title": "उचित प्रश्न।",
+      "title": "World Monitor के बारे में सामान्य सवाल क्या हैं?",
       "q1": "क्या World Monitor वाकई मुफ्त है?",
       "a1": "हां। लाइव मानचित्र — Resilience, क्यूरेटेड फीड, देश की संक्षिप्त रिपोर्ट, ब्रेकिंग सतर्कताएं, और निगरानी सतहों को छोड़कर हर परत — कोई साइन अप नहीं और कोई परीक्षण घड़ी नहीं के साथ स्वतंत्र है। Pro फीड के लिए भुगतान करता है: यह WM Analyst, परिदृश्य इंजन, Route Explorer, निर्धारित डाइजेस्ट, AI ग्राहकों के लिए MCP पहुंच और Resilience मानचित्र परत जोड़ता है। कोई विज्ञापन नहीं, और कोई खाता नहीं मतलब बेचने के लिए कोई उपयोगकर्ता डेटा नहीं है।",
       "q2": "वैश्विक बुद्धिमत्ता डैशबोर्ड क्या है?",
@@ -685,7 +685,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "विश्व मानचित्र आपकी प्रतीक्षा नहीं करता।",
+      "title": "मैं विश्व मानचित्र देखना कैसे शुरू करूं?",
       "subtitle": "जबकि आप इस पृष्ठ को पढ़ते हैं यह गतिमान रहता है — जलसंधियाँ, हॉटस्पॉट, बाजार, क्यूरेटेड फीड। उनमें से एक कल का सामने वाला पृष्ठ है। पहले खोजें — मुफ़्त, कोई खाता नहीं।",
       "button": "पहले यह खोजें",
       "note": "मुफ्त · कोई साइनअप नहीं · सेकंड में लोड होता है",

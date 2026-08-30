@@ -51,7 +51,7 @@
     "freeF2": "큐레이션된 피드, 출처 표시, 지도 레이어"
   },
   "whyUpgrade": {
-    "title": "왜 업그레이드해야 할까",
+    "title": "World Monitor Pro로 업그레이드해야 하는 이유는 무엇인가요?",
     "noiseTitle": "가장 먼저 알기",
     "noiseDesc": "AIS 이상 → Brent 급등 → 1분 이내 당신의 Slack. 시그널, 헤드라인이 아닙니다.",
     "fasterTitle": "무엇이든 질문",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "딜리버리 데스크",
-    "title": "당신의 개인 인텔리전스 데스크",
+    "title": "개인 인텔리전스 데스크란 무엇인가요?",
     "body": "한 번에 최대 30개의 순위가 매겨진 항목, 출처별 중복 제거, 감시 목록과 대조 점수 매김. 일일, 하루 2회 또는 주간으로 선택 — AI 평가와 주시할 신호는 Slack, Discord, Telegram, 이메일 또는 웹훅으로 전달.",
     "closer": "뉴스레터가 아닙니다. 애널리스트입니다.",
     "channels": "Slack · Discord · Telegram · 이메일 · 웹훅 · AES-256 암호화 · 무음 시간"
@@ -93,7 +93,7 @@
     "asToldTo": "전해진 대상"
   },
   "audience": {
-    "title": "빠른 시그널이 필요한 사람들을 위해",
+    "title": "World Monitor는 누구를 위해 만들어졌나요?",
     "investorsTitle": "투자자와 포트폴리오 매니저",
     "investorsDesc": "글로벌 주식, 애널리스트 목표, 평가 지표, 매크로 지표를 지정학 리스크 시그널과 함께 추적.",
     "tradersTitle": "에너지 및 원자재 트레이더",
@@ -108,7 +108,7 @@
     "teamsDesc": "개인 사용에서 공유 워크플로, API 접근, TV 앱, 관리형 배포로 이동."
   },
   "dataCoverage": {
-    "title": "World Monitor가 추적하는 것",
+    "title": "World Monitor는 무엇을 추적하나요?",
     "subtitle": "서비스 도메인 동시 수집. 시장, 거시경제, 지정학, 에너지, 인프라 — 모든 데이터 정규화 및 WebGL 지구본에 렌더링.",
     "markets": "금융 시장과 주식",
     "marketsDesc": "글로벌 주식 분석, 원자재, 크립토, ETF 플로우, 애널리스트 목표, FRED 매크로 데이터",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO 티어",
-    "title": "결코 잠들지 않는 당신의 AI 애널리스트",
+    "title": "World Monitor AI 분석가는 무엇을 하나요?",
     "subtitle": "무료 대시보드는 세상을 보여줍니다. Pro는 질문할 애널리스트, 구독할 다이제스트, 그 위에 쌓을 프리미티브를 제공합니다. 주식, 매크로, 지정학 리스크 — 그리고 그들 사이의 연결.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "재무 시각화, 애널리스트 목표 가격, 평가 지표가 포함된 글로벌 주식 분석. 시장을 움직이는 것을 추적.",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API 티어",
-    "title": "프로그래밍 인텔리전스",
+    "title": "API와 에이전트는 World Monitor를 어떻게 사용하나요?",
     "subtitle": "World Monitor 데이터 위에 구축하는 개발자, 애널리스트, 팀을 위해. Pro와 별도 — 둘 다 또는 하나를 사용.",
     "restApi": "서비스 도메인 전반의 REST API — JavaScript, Python, Ruby, Go용 공식 SDK",
     "authenticated": "키별 인증, 티어별 레이트 제한",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE 티어",
-    "title": "인텔리전스 인프라",
+    "title": "World Monitor Enterprise에는 무엇이 포함되나요?",
     "subtitle": "최대 보안, AI 에이전트, TV 앱, 데이터 깊이를 갖춘 풀 플랫폼이 필요한 정부, 기관, 트레이딩 데스크, 조직을 위해.",
     "security": "정부급 보안",
     "securityDesc": "에어갭 배포, 온프레미스 Docker, 전용 클라우드 테넌트, SOC 2 Type II 경로, SSO/MFA, 전체 감사 추적.",
@@ -227,7 +227,7 @@
     "contactFailed": "전송 실패. enterprise@worldmonitor.app 로 이메일 주세요"
   },
   "pricingTable": {
-    "title": "티어 비교",
+    "title": "World Monitor 플랜들을 어떻게 비교하나요?",
     "feature": "기능",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -274,7 +274,7 @@
     "f50plus": "사용 가능"
   },
   "faq": {
-    "title": "자주 묻는 질문",
+    "title": "World Monitor Pro 자주 묻는 질문",
     "q1": "World Monitor는 여전히 무료인가요?",
     "a1": "예. 핵심 플랫폼은 무료로 유지됩니다. Pro는 주식 리서치, 거시 분석, AI 브리핑을 추가합니다. Pro Business는 상용 라이선스와 데이터 내보내기를 추가합니다. Enterprise는 팀 배포 및 TV 앱을 추가합니다.",
     "q2": "왜 Pro를 결제해야 하나요?",
@@ -303,7 +303,7 @@
     "a13": "알림 채널은 저장 시 AES-256 암호화됩니다. 다이제스트는 편집되지 않은 상태로 파이프라인을 떠나지 않습니다."
   },
   "finalCta": {
-    "title": "Pro로 시작하세요. Enterprise로 확장하세요.",
+    "title": "Pro를 시작하거나 영업팀과 상담하려면 어떻게 하나요?",
     "subtitle": "World Monitor를 무료로 계속 사용하거나, Equity research, 매크로 분석, AI 브리핑을 위해 업그레이드하세요. 조직에 팀 액세스, TV 앱, API 지원이 필요하면 저희와 상담하세요.",
     "talkToSales": "영업 문의"
   },
@@ -326,7 +326,7 @@
     "suffixPerYear": "/년",
     "amountCustom": "맞춤형",
     "opening": "열 중…",
-    "headerTitle": "요금제 선택",
+    "headerTitle": "World Monitor의 비용은 얼마인가요?",
     "headerSubtitle": "실시간 모니터링부터 완벽한 인텔리전스 인프라까지. 당신의 미션에 맞는 요금제를 선택하세요.",
     "billingMonthly": "월간",
     "billingAnnual": "연간",
@@ -468,7 +468,7 @@
     },
     "live": {
       "eyebrow": "지금 실시간",
-      "title": "이 페이지는 대시보드와 동일한 API에 연결되어 있습니다.",
+      "title": "이 페이지는 지금 어떤 라이브 데이터를 표시하고 있나요?",
       "subtitle": "World Monitor가 24시간 감시하는 수백 개 이상의 신호 중 4개입니다.",
       "liveBadge": "실시간",
       "sampleBadge": "샘플",
@@ -487,7 +487,7 @@
     },
     "moments": {
       "eyebrow": "상관관계 엔진",
-      "title": "신호들이 함께 움직이는 모습을 실시간으로 확인하세요.",
+      "title": "World Monitor는 신호를 어떻게 상관관계로 파악하나요?",
       "sub": "피드는 수백 곳에서 찾을 수 있습니다. 하지만 지정학, 해운, 상품, 매크로, 시장, 날씨, 인프라, 사이버, 뉴스, 국가 위험이 모두 연결되어 있는 통합 화면은 여기뿐입니다.",
       "signalStack": "신호 융합",
       "correlation": "상관관계",
@@ -551,7 +551,7 @@
     },
     "firstFive": {
       "eyebrow": "0에서 시작해 방향 잡기",
-      "title": "라이브 맵에서의 첫 5분.",
+      "title": "지도에서 처음 5분 동안 무엇이 일어나나요?",
       "sub": "투어 없음, 빈 화면 없음, 가입 벽 없음. 실제로 일어나는 일입니다.",
       "f1Title": "맵이 이미 움직이고 있습니다",
       "f1Desc": "분쟁, 선박, 항공편, 화재 및 장애가 페이지 로드 시 렌더링됩니다. 먼저 설정할 것이 없습니다.",
@@ -567,7 +567,7 @@
     },
     "depth": {
       "eyebrow": "내부 구조",
-      "title": "깊이가 제품입니다.",
+      "title": "World Monitor 데이터 모델은 얼마나 깊나요?",
       "sub": "아래의 모든 숫자는 오늘 대시보드에서 라이브입니다 — 로드맵이 아닙니다.",
       "s1v": "공유됨",
       "s1l": "맵 레이어",
@@ -617,7 +617,7 @@
     },
     "agents": {
       "eyebrow": "빌더 & AI 에이전트용",
-      "title": "실시간 세계 정보로 구축하세요 — 모든 스택에서.",
+      "title": "자신의 스택에서 World Monitor를 기반으로 구축하려면 어떻게 하나요?",
       "sub": "맵의 모든 것은 API이기도 합니다. MCP를 통해 Claude에 연결하거나, 어디서나 REST 엔드포인트를 호출하거나, Python, Ruby, Go 또는 JavaScript용 네이티브 클라이언트를 설치하세요 — 코드가 학습 데이터 기억 대신 실시간 데이터로 조사합니다.",
       "b1": "MCP 도구 — 위험 점수, 병목, 분쟁, 시장, 브리핑",
       "b2": "문서화된 REST API — OpenAPI 3.1 스펙 1개, 키 1개",
@@ -660,7 +660,7 @@
     },
     "faq": {
       "eyebrow": "숨은 비용 없음",
-      "title": "합리적인 질문들.",
+      "title": "World Monitor에 대한 일반적인 질문은 무엇인가요?",
       "q1": "World Monitor가 정말 무료인가요?",
       "a1": "네, 맞습니다. 라이브 맵 — Resilience, 큐레이션된 피드, 국가 브리핑, 속보 알림, 모니터링 서피스를 제외한 모든 레이어 — 은 가입 및 평가판 없이 무료입니다. Pro는 피드 비용을 지불합니다. WM Analyst, 시나리오 엔진, Route Explorer, 예약된 요약, AI 클라이언트용 MCP 액세스, Resilience 지도 레이어가 추가됩니다. 광고 없음, 계정 없음은 판매할 사용자 데이터가 없다는 뜻입니다.",
       "q2": "글로벌 인텔리전스 대시보드란 무엇인가요?",
@@ -685,7 +685,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "세계 지도는 당신을 기다리지 않습니다.",
+      "title": "월드맵 모니터링을 시작하려면 어떻게 하나요?",
       "subtitle": "이 페이지를 읽는 동안 계속 움직였습니다 — 해협, 핫스팟, 시장, 큐레이션된 피드. 그 중 하나는 내일의 헤드라인입니다. 먼저 찾으세요 — 무료, 계정 불필요합니다.",
       "button": "먼저 찾기",
       "note": "무료 · 가입 불필요 · 몇 초 안에 로드",

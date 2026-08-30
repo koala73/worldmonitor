@@ -51,7 +51,7 @@
     "freeF2": "Các nguồn cấp được chọn lọc, nguồn được quy định và lớp bản đồ"
   },
   "whyUpgrade": {
-    "title": "Tại sao nâng cấp",
+    "title": "Tại sao nâng cấp lên World Monitor Pro?",
     "noiseTitle": "Biết đầu tiên",
     "noiseDesc": "Bất thường AIS → Brent tăng đột biến → Slack của bạn dưới một phút. Tín hiệu, không phải tiêu đề.",
     "fasterTitle": "Hỏi bất cứ điều gì",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "BÀN GIAO HÀNG",
-    "title": "Bàn tình báo cá nhân của bạn",
+    "title": "Bàn làm việc tình báo cá nhân là gì?",
     "body": "Lên đến 30 mục xếp hạng trên mỗi lần gửi, loại bỏ trùng lặp trên các nguồn, được chấm điểm so với danh sách theo dõi của bạn. Chọn lịch của bạn — hàng ngày, hai lần mỗi ngày hoặc hàng tuần — với Đánh giá AI và Tín hiệu cần theo dõi được gửi đến Slack, Discord, Telegram, Email hoặc webhook.",
     "closer": "Không phải bản tin. Là nhà phân tích.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · Mã hóa AES-256 · Giờ yên lặng"
@@ -93,7 +93,7 @@
     "asToldTo": "kể cho"
   },
   "audience": {
-    "title": "Được xây dựng cho những người cần tín hiệu nhanh",
+    "title": "World Monitor được xây dựng cho ai?",
     "investorsTitle": "Nhà đầu tư và quản lý danh mục",
     "investorsDesc": "Theo dõi cổ phiếu toàn cầu, mục tiêu của nhà phân tích, các chỉ số định giá và chỉ số vĩ mô cùng với tín hiệu rủi ro địa chính trị.",
     "tradersTitle": "Thương nhân năng lượng và hàng hóa",
@@ -108,7 +108,7 @@
     "teamsDesc": "Chuyển từ sử dụng cá nhân sang quy trình làm việc được chia sẻ, truy cập API, ứng dụng TV và triển khai được quản lý."
   },
   "dataCoverage": {
-    "title": "World Monitor theo dõi những gì",
+    "title": "World Monitor theo dõi những gì?",
     "subtitle": "Các miền dịch vụ được nạp đồng thời. Thị trường, vĩ mô, địa chính trị, năng lượng, cơ sở hạ tầng — tất cả được chuẩn hóa và hiển thị trên quả cầu WebGL.",
     "markets": "Thị trường tài chính và cổ phiếu",
     "marketsDesc": "Phân tích cổ phiếu toàn cầu, hàng hóa, tiền điện tử, dòng ETF, mục tiêu nhà phân tích và dữ liệu vĩ mô FRED",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "CẤP ĐỘ PRO",
-    "title": "Nhà phân tích AI không bao giờ ngủ của bạn",
+    "title": "Trí tuệ nhân tạo phân tích của World Monitor hoạt động như thế nào?",
     "subtitle": "Bảng điều khiển miễn phí cho bạn thấy thế giới. Pro cho bạn một nhà phân tích để hỏi, một digest để đăng ký và các nguyên thủy để xây dựng. Cổ phiếu, vĩ mô, rủi ro địa chính trị — và các kết nối giữa chúng.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Phân tích cổ phiếu toàn cầu với trực quan hóa tài chính, mục tiêu giá của nhà phân tích và chỉ số định giá. Theo dõi những gì di chuyển thị trường.",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "CẤP ĐỘ API",
-    "title": "Tình báo lập trình",
+    "title": "Các API và agent sử dụng World Monitor như thế nào?",
     "subtitle": "Dành cho nhà phát triển, nhà phân tích và các nhóm xây dựng trên dữ liệu World Monitor. Riêng biệt với Pro — sử dụng cả hai hoặc một trong hai.",
     "restApi": "REST API trên các miền dịch vụ — SDKs chính thức cho JavaScript, Python, Ruby, Go",
     "authenticated": "Xác thực theo khóa, rate-limited theo cấp độ",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "CẤP ĐỘ ENTERPRISE",
-    "title": "Cơ sở hạ tầng tình báo",
+    "title": "World Monitor Enterprise bao gồm những gì?",
     "subtitle": "Dành cho chính phủ, tổ chức, sàn giao dịch và tổ chức cần nền tảng đầy đủ với bảo mật tối đa, AI agents, ứng dụng TV và độ sâu dữ liệu.",
     "security": "Bảo mật cấp chính phủ",
     "securityDesc": "Triển khai air-gapped, Docker on-premises, tenant cloud chuyên dụng, đường SOC 2 Type II, SSO/MFA và audit trail đầy đủ.",
@@ -227,7 +227,7 @@
     "contactFailed": "Gửi thất bại. Vui lòng gửi email đến enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "So sánh các cấp độ",
+    "title": "Các gói World Monitor so sánh như thế nào?",
     "feature": "Tính năng",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -274,7 +274,7 @@
     "f50plus": "Có sẵn"
   },
   "faq": {
-    "title": "Câu hỏi thường gặp",
+    "title": "Các câu hỏi thường gặp về World Monitor Pro",
     "q1": "World Monitor vẫn miễn phí phải không?",
     "a1": "Có. Nền tảng cốt lõi vẫn miễn phí. Pro thêm nghiên cứu vốn chủ sở hữu, phân tích vĩ mô và tóm tắt AI. Pro Business thêm giấy phép thương mại và xuất dữ liệu. Enterprise thêm triển khai nhóm và ứng dụng TV.",
     "q2": "Tại sao trả tiền cho Pro?",
@@ -303,7 +303,7 @@
     "a13": "Các kênh thông báo được mã hóa AES-256 ở trạng thái nghỉ. Digest không bao giờ rời khỏi pipeline của chúng tôi mà không được hiệu đính."
   },
   "finalCta": {
-    "title": "Bắt đầu với Pro. Mở rộng đến Enterprise.",
+    "title": "Làm cách nào tôi bắt đầu với Pro hoặc liên hệ bộ phận bán hàng?",
     "subtitle": "Tiếp tục sử dụng World Monitor miễn phí, hoặc nâng cấp để có Equity research, phân tích vĩ mô và bản tóm tắt AI. Nếu tổ chức của bạn cần truy cập nhóm, ứng dụng TV hoặc hỗ trợ API — hãy trao đổi với chúng tôi.",
     "talkToSales": "Liên hệ kinh doanh"
   },
@@ -326,7 +326,7 @@
     "suffixPerYear": "/năm",
     "amountCustom": "Tùy chỉnh",
     "opening": "Đang mở…",
-    "headerTitle": "Chọn Gói Của Bạn",
+    "headerTitle": "World Monitor có giá bao nhiêu?",
     "headerSubtitle": "Từ giám sát thời gian thực đến cơ sở hạ tầng trí tuệ toàn diện. Chọn mức giá phù hợp với nhiệm vụ của bạn.",
     "billingMonthly": "Hàng tháng",
     "billingAnnual": "Hàng năm",
@@ -468,7 +468,7 @@
     },
     "live": {
       "eyebrow": "Trực tiếp ngay bây giờ",
-      "title": "Trang này kết nối với các API tương tự như bảng điều khiển.",
+      "title": "Trang này đang hiển thị dữ liệu trực tiếp nào?",
       "subtitle": "Bốn trong số hơn trăm tín hiệu mà World Monitor theo dõi quanh đồng hồ.",
       "liveBadge": "Trực tiếp",
       "sampleBadge": "Mẫu",
@@ -487,7 +487,7 @@
     },
     "moments": {
       "eyebrow": "Công cụ tương quan",
-      "title": "Lợi thế là nhìn thấy các tín hiệu chuyển động cùng nhau.",
+      "title": "World Monitor liên kết các tín hiệu như thế nào?",
       "sub": "Bạn có thể tìm thấy luồng dữ liệu ở hàng trăm nơi. Lợi thế là một bề mặt duy nhất nơi địa chính trị, vận tải hàng hải, hàng hóa, vĩ mô, thị trường, thời tiết, cơ sở hạ tầng, an ninh mạng, tin tức và rủi ro quốc gia có thể giải thích cho nhau.",
       "signalStack": "Tín hiệu tích hợp",
       "correlation": "Tương quan",
@@ -551,7 +551,7 @@
     },
     "firstFive": {
       "eyebrow": "Từ không biết gì đến định hướng",
-      "title": "Năm phút đầu tiên của bạn trên bản đồ trực tiếp.",
+      "title": "Điều gì xảy ra trong năm phút đầu tiên của bạn trên bản đồ?",
       "sub": "Không có tour, không có trạng thái trống, không có tường paywall. Đây là những gì thực sự xảy ra.",
       "f1Title": "Bản đồ đang chuyển động",
       "f1Desc": "Xung đột, tàu, chuyến bay, cháy và mất điện hiển thị khi trang tải. Không cần cấu hình trước.",
@@ -567,7 +567,7 @@
     },
     "depth": {
       "eyebrow": "Bên dưới",
-      "title": "Chiều sâu chính là sản phẩm.",
+      "title": "Mô hình dữ liệu World Monitor sâu cỡ nào?",
       "sub": "Mọi con số dưới đây đều trực tiếp trên bảng điều khiển ngày hôm nay — không phải lộ trình.",
       "s1v": "Được chia sẻ",
       "s1l": "Lớp bản đồ",
@@ -617,7 +617,7 @@
     },
     "agents": {
       "eyebrow": "Cho những người xây dựng & tác nhân AI",
-      "title": "Xây dựng trên thông tin tình báo thế giới trực tiếp — từ bất kỳ stack nào.",
+      "title": "Làm cách nào tôi xây dựng trên World Monitor từ ngăn xếp của riêng tôi?",
       "sub": "Mọi thứ trên bản đồ cũng là một API. Kết nối nó vào Claude qua MCP, gọi các điểm cuối REST từ bất cứ đâu, hoặc cài đặt máy khách gốc cho Python, Ruby, Go hoặc JavaScript — mã của bạn nghiên cứu bằng dữ liệu trực tiếp thay vì ký ức dữ liệu đào tạo.",
       "b1": "Các công cụ MCP — điểm rủi ro, các điểm nghẽn, xung đột, thị trường, bản tóm tắt",
       "b2": "REST API được ghi chép — một thông số kỹ thuật OpenAPI 3.1, một khóa",
@@ -660,7 +660,7 @@
     },
     "faq": {
       "eyebrow": "Không có điều kiện kèm theo",
-      "title": "Những câu hỏi công bằng.",
+      "title": "Các câu hỏi phổ biến về World Monitor là gì?",
       "q1": "World Monitor có thực sự miễn phí không?",
       "a1": "Có. Bản đồ trực tiếp — mọi lớp ngoại trừ Resilience, các nguồn cấp được chọn lọc, bản tóm tắt quốc gia, cảnh báo đột phá, và các bề mặt giám sát — là miễn phí mà không cần đăng ký và không có đồng hồ dùng thử. Pro thanh toán cho các nguồn cấp: nó thêm WM Analyst, công cụ tình huống, Route Explorer, bản tóm tắt được lên lịch, quyền truy cập MCP cho các khách hàng AI và lớp bản đồ Resilience. Không có quảng cáo, và không có tài khoản có nghĩa là không có dữ liệu người dùng để bán.",
       "q2": "Bảng điều khiển trí tuệ toàn cầu là gì?",
@@ -685,7 +685,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "Bản đồ thế giới không chờ bạn.",
+      "title": "Làm cách nào tôi bắt đầu theo dõi bản đồ thế giới?",
       "subtitle": "Trong khi bạn đọc trang này, nó vẫn tiếp tục thay đổi — eo biển, điểm nóng, thị trường, nguồn cấp được quản lý. Một trong số đó sẽ là trang đầu tiên ngày mai. Tìm thấy nó trước — miễn phí, không cần tài khoản.",
       "button": "Tìm thấy nó trước",
       "note": "Miễn phí · Không đăng ký · Tải trong vài giây",

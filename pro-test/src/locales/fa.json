@@ -6,7 +6,7 @@
     "suffixPerYear": "/yr",
     "amountCustom": "Custom",
     "opening": "Opening…",
-    "headerTitle": "Choose Your Plan",
+    "headerTitle": "World Monitor چقدر هزینه دارد؟",
     "headerSubtitle": "From real-time monitoring to full intelligence infrastructure. Pick the tier that fits your mission.",
     "billingMonthly": "Monthly",
     "billingAnnual": "Annual",
@@ -170,7 +170,7 @@
     "freeF2": "خوراک‌های منتخب، منابع مرجع‌شده، و لایه‌های نقشه"
   },
   "whyUpgrade": {
-    "title": "Why upgrade",
+    "title": "چرا به World Monitor Pro ارتقا دهیم؟",
     "noiseTitle": "Know first",
     "noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
     "fasterTitle": "Ask anything",
@@ -190,7 +190,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "Your personal intelligence desk",
+    "title": "میز اطلاعات شخصی چیست؟",
     "body": "تا ۳۰ مورد رتبه‌بندی شده در هر ارسال، حذف تکرار در سراسر منابع، نمره‌دهی در برابر فهرست نظارتی شما. برنامه‌ای را انتخاب کنید — روزانه، دو بار روزانه، یا هفتگی — با ارزیابی هوشمند و سیگنال‌های نظارتی، تحویل شده به Slack، Discord، Telegram، Email یا webhook.",
     "closer": "Not a newsletter. An analyst.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
@@ -212,7 +212,7 @@
     "asToldTo": "as told to"
   },
   "audience": {
-    "title": "Built for people who need signal fast",
+    "title": "World Monitor برای چه کسانی طراحی شده است؟",
     "investorsTitle": "Investors & portfolio managers",
     "investorsDesc": "Track global equities, analyst targets, valuation metrics, and macro indicators alongside geopolitical risk signals.",
     "tradersTitle": "Energy & commodities traders",
@@ -227,7 +227,7 @@
     "teamsDesc": "Move from individual use to shared workflows, API access, TV apps, and managed deployments."
   },
   "dataCoverage": {
-    "title": "What World Monitor Tracks",
+    "title": "World Monitor چه چیزهایی را رصد می‌کند؟",
     "subtitle": "دامنه‌های خدمات به‌صورت همزمان وارد شده. بازارها، کلان‌اقتصاد، ژئوپلیتیک، انرژی، زیرساخت — همه نرمال‌شده و نمایش‌داده شده روی کره WebGL.",
     "markets": "Financial Markets & Equities",
     "marketsDesc": "Global stock analysis, commodities, crypto, ETF flows, analyst targets, and FRED macro data",
@@ -264,7 +264,7 @@
   },
   "proShowcase": {
     "proTier": "PRO TIER",
-    "title": "Your AI Analyst That Never Sleeps",
+    "title": "تحلیلگر هوش مصنوعی World Monitor چه کاری انجام می‌دهد؟",
     "subtitle": "The free dashboard shows you the world. Pro gives you an analyst to ask, a digest you subscribe to, and primitives to build on. Stocks, macro, geopolitical risk — and the connections between them.",
     "equityResearch": "Equity Research",
     "equityResearchDesc": "Global stock analysis with financials visualization, analyst price targets, and valuation metrics. Track what moves markets.",
@@ -293,7 +293,7 @@
   },
   "apiSection": {
     "apiTier": "API TIER",
-    "title": "Programmatic Intelligence",
+    "title": "API‌ها و عوامل چگونه از World Monitor استفاده می‌کنند؟",
     "subtitle": "For developers, analysts, and teams building on World Monitor data. Separate from Pro — use both or either.",
     "restApi": "REST API در سراسر دامنه‌های خدمات — SDKهای رسمی برای JavaScript، Python، Ruby، Go",
     "authenticated": "Authenticated per-key, rate-limited per tier",
@@ -309,7 +309,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE TIER",
-    "title": "Intelligence Infrastructure",
+    "title": "World Monitor Enterprise شامل چه موارد است؟",
     "subtitle": "For governments, institutions, trading desks, and organizations that need the full platform with maximum security, AI agents, TV apps, and data depth.",
     "security": "Government-Grade Security",
     "securityDesc": "Air-gapped deployment, on-premises Docker, dedicated cloud tenant, SOC 2 Type II path, SSO/MFA, and full audit trail.",
@@ -346,7 +346,7 @@
     "contactFailed": "Failed to send. Please email enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Compare Tiers",
+    "title": "طرح‌های World Monitor چگونه با یکدیگر مقایسه می‌شوند؟",
     "feature": "Feature",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -393,7 +393,7 @@
     "f50plus": "دردسترس"
   },
   "faq": {
-    "title": "Frequently Asked Questions",
+    "title": "پرسش‌های متداول درباره World Monitor Pro",
     "q1": "Is World Monitor still free?",
     "a1": "بله. پلتفرم اصلی رایگان است. Pro شامل تحقیقات سهام، تحلیل کلان و خلاصه‌های AI می‌شود. Pro Business مجوز تجاری و صادرات داده را اضافه می‌کند. Enterprise استقرار تیم و برنامه‌های TV را اضافه می‌کند.",
     "q2": "Why pay for Pro?",
@@ -422,7 +422,7 @@
     "a13": "Notification channels are AES-256 encrypted at rest. Digests never leave our pipeline unredacted."
   },
   "finalCta": {
-    "title": "Start with Pro. Scale to Enterprise.",
+    "title": "چگونه با Pro شروع کنم یا با فروش صحبت کنم؟",
     "subtitle": "Keep using World Monitor for free, or upgrade for equity research, macro analytics, and AI briefings. If your organization needs team access, TV apps, or API support, talk to us.",
     "talkToSales": "Talk to Sales"
   },
@@ -468,7 +468,7 @@
     },
     "live": {
       "eyebrow": "Live right now",
-      "title": "This page is plugged into the same APIs as the dashboard.",
+      "title": "این صفحه در حال حاضر چه داده‌های زندهای را نمایش می‌دهد؟",
       "subtitle": "Four of the hundred-plus signals World Monitor watches around the clock.",
       "liveBadge": "Live",
       "sampleBadge": "Sample",
@@ -487,7 +487,7 @@
     },
     "moments": {
       "eyebrow": "Correlation engine",
-      "title": "The edge is seeing the signals move together.",
+      "title": "World Monitor سیگنال‌ها را چگونه همبستگی می‌دهد؟",
       "sub": "You can find the feeds in a hundred places. The edge is one surface where geopolitics, shipping, commodities, macro, markets, weather, infrastructure, cyber, news and country risk can explain each other.",
       "signalStack": "Signals fused",
       "correlation": "Correlation",
@@ -551,7 +551,7 @@
     },
     "firstFive": {
       "eyebrow": "Zero to oriented",
-      "title": "Your first five minutes on the live map.",
+      "title": "در پنج دقیقه اول شما در نقشه چه اتفاقی می‌افتد؟",
       "sub": "No tour, no empty states, no signup wall. This is what actually happens.",
       "f1Title": "The map is already moving",
       "f1Desc": "Conflicts, vessels, flights, fires and outages render as the page loads. Nothing to configure first.",
@@ -567,7 +567,7 @@
     },
     "depth": {
       "eyebrow": "Under the hood",
-      "title": "The depth is the product.",
+      "title": "مدل داده World Monitor چقدر عمیق است؟",
       "sub": "Every number below is live in the dashboard today — not a roadmap.",
       "s1v": "اشتراک‌شده",
       "s1l": "Map layers",
@@ -617,7 +617,7 @@
     },
     "agents": {
       "eyebrow": "For builders & AI agents",
-      "title": "Build on live world intelligence — from any stack.",
+      "title": "چگونه روی World Monitor از استک خود بسازم؟",
       "sub": "Everything on the map is also an API. Wire it into Claude over MCP, call the REST endpoints from anywhere, or install a native client for Python, Ruby, Go, or JavaScript — your code researches with live data instead of training-data memories.",
       "b1": "ابزارهای MCP — نمرات ریسک، نقاط تنگنا، درگیری‌ها، بازارها، خلاصه‌ها",
       "b2": "REST API مستند‌شده — یک مشخصه OpenAPI 3.1، یک کلید",
@@ -660,7 +660,7 @@
     },
     "faq": {
       "eyebrow": "No catch",
-      "title": "Fair questions.",
+      "title": "سؤالات متداول درباره World Monitor چیست؟",
       "q1": "Is World Monitor really free?",
       "a1": "بله. نقشه زنده — هر لایه به جز Resilience، خوراک‌های منتخب، خلاصه‌های کشوری، هشدارهای شکاف، و سطح نظارت — بدون ثبت‌نام و بدون ساعت آزمایشی رایگان است. Pro برای خوراک‌ها پرداخت می‌کند: WM Analyst، موتور سناریو، Route Explorer، خلاصه‌های برنامه‌ریزی‌شده، دسترسی MCP برای کلاینت‌های هوشمند مصنوعی و لایه نقشه Resilience را اضافه می‌کند. بدون تبلیغات، و بدون حساب به این معنی است که هیچ داده کاربری برای فروش نیست.",
       "q2": "What is a global intelligence dashboard?",
@@ -685,7 +685,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "The world map doesn't wait for you.",
+      "title": "چگونه شروع به رصد نقشه جهانی کنم؟",
       "subtitle": "در حالی‌که این صفحه را می‌خوانید، حرکت ادامه داشت — تنگه‌ها، نقاط داغ، بازارها، خوراک‌های انتخاب‌شده. یکی از آنها صفحه اول فردا است. آن را اول پیدا کنید — رایگان، بدون حساب.",
       "button": "Find it first",
       "note": "Free · No signup · Loads in seconds",

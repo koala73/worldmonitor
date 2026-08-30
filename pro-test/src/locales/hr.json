@@ -51,7 +51,7 @@
     "freeF2": "Kurirani feedovi, atribuirani izvori i slojevi karte"
   },
   "whyUpgrade": {
-    "title": "Zašto nadograditi",
+    "title": "Zašto nadograditi na World Monitor Pro?",
     "noiseTitle": "Saznajte prvi",
     "noiseDesc": "AIS anomalija → skok Brenta → vaš Slack za manje od minute. Signal, ne naslovi.",
     "fasterTitle": "Pitajte bilo što",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "Vaš osobni obavještajni desk",
+    "title": "Što je osobni obavještajni stol?",
     "body": "Do 30 rangiranih stavki po slanju, deduplikovano kroz izvore, ocijenjeno prema tvojoj watchlisti. Odaberi ritam — dnevno, dva puta dnevno ili tjedno — s AI Procjenom i Signalima za praćenje dostavljenim na Slack, Discord, Telegram, Email ili webhook.",
     "closer": "Nije newsletter. To je analitičar.",
     "channels": "Slack · Discord · Telegram · E-pošta · Webhook · AES-256 šifrirano · Mirni sati"
@@ -93,7 +93,7 @@
     "asToldTo": "kako je ispričano"
   },
   "audience": {
-    "title": "Izgrađeno za ljude kojima signal treba brzo",
+    "title": "Za koga je World Monitor napravljen?",
     "investorsTitle": "Investitori i upravitelji portfelja",
     "investorsDesc": "Pratite globalne dionice, ciljne cijene analitičara, metrike vrednovanja i makro pokazatelje uz signale geopolitičkog rizika.",
     "tradersTitle": "Trgovci energijom i robama",
@@ -108,7 +108,7 @@
     "teamsDesc": "Prijeđite s individualnog korištenja na zajedničke radne tokove, API pristup, TV aplikacije i upravljane implementacije."
   },
   "dataCoverage": {
-    "title": "Što World Monitor prati",
+    "title": "Što World Monitor prati?",
     "subtitle": "Domene servisa uključene istovremeno. Tržišta, makroekonomija, geopolitika, energija, infrastruktura — sve normalizirano i prikazano na WebGL globusu.",
     "markets": "Financijska tržišta i dionice",
     "marketsDesc": "Globalna analiza dionica, robe, kripto, ETF tokovi, ciljne cijene analitičara i FRED makro podaci",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO RAZINA",
-    "title": "Vaš AI analitičar koji nikad ne spava",
+    "title": "Što radi World Monitor AI analitičar?",
     "subtitle": "Besplatna nadzorna ploča pokazuje vam svijet. Pro vam daje analitičara kojeg možete pitati, sažetak na koji se pretplaćujete i gradivne elemente na kojima možete graditi. Dionice, makro, geopolitički rizik — i veze među njima.",
     "equityResearch": "Istraživanje dionica",
     "equityResearchDesc": "Globalna analiza dionica s vizualizacijom financijskih izvještaja, ciljnim cijenama analitičara i metrikama vrednovanja. Pratite što pokreće tržišta.",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API RAZINA",
-    "title": "Programabilna inteligencija",
+    "title": "Kako API-ji i agenti koriste World Monitor?",
     "subtitle": "Za developere, analitičare i timove koji grade na World Monitor podacima. Odvojeno od Pro plana — koristite oboje ili jedno.",
     "restApi": "REST API preko domena servisa — službeni SDK za JavaScript, Python, Ruby, Go",
     "authenticated": "Autentificirano po ključu, ograničeno po razini",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE RAZINA",
-    "title": "Obavještajna infrastruktura",
+    "title": "Što uključuje World Monitor Enterprise?",
     "subtitle": "Za vlade, institucije, trgovačke deskove i organizacije kojima treba cijela platforma s maksimalnom sigurnošću, AI agentima, TV aplikacijama i dubinom podataka.",
     "security": "Sigurnost razine javnog sektora",
     "securityDesc": "Air-gapped implementacija, on-premises Docker, namjenski cloud tenant, put prema SOC 2 Type II, SSO/MFA i puni audit trail.",
@@ -227,7 +227,7 @@
     "contactFailed": "Slanje nije uspjelo. Pišite na enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Usporedba razina",
+    "title": "Kako se World Monitor planovi međusobno razlikuju?",
     "feature": "Značajka",
     "freeHeader": "Besplatno ($0)",
     "proHeader": "Pro ($39,99)",
@@ -274,7 +274,7 @@
     "f50plus": "Dostupno"
   },
   "faq": {
-    "title": "Često postavljana pitanja",
+    "title": "Često postavljana pitanja o World Monitor Pro",
     "q1": "Je li World Monitor i dalje besplatan?",
     "a1": "Da. Osnovna platforma ostaje besplatna. Pro dodaje istraživanje kapitala, makro analitiku i AI sažetke. Pro Business dodaje komercijalnu licenciju i izvoz podataka. Enterprise dodaje timske implementacije i TV aplikacije.",
     "q2": "Zašto platiti Pro?",
@@ -303,7 +303,7 @@
     "a13": "Kanali obavijesti šifrirani su AES-256 u mirovanju. Sažeci nikada ne napuštaju naš obradni tok bez uklanjanja osjetljivih podataka."
   },
   "finalCta": {
-    "title": "Počnite s Pro. Skalirajte na Enterprise.",
+    "title": "Kako mogu početi s Pro ili razgovarati sa prodajom?",
     "subtitle": "Nastavite koristiti World Monitor besplatno ili nadogradite za istraživanje dionica, makro analitiku i AI sažetke. Ako vašoj organizaciji trebaju timski pristup, TV aplikacije ili API podrška, javite nam se.",
     "talkToSales": "Razgovarajte s prodajom"
   },
@@ -326,7 +326,7 @@
     "suffixPerYear": "/god",
     "amountCustom": "Prilagođeno",
     "opening": "Otvaranje…",
-    "headerTitle": "Odaberite svoj plan",
+    "headerTitle": "Koliko stoji World Monitor?",
     "headerSubtitle": "Od monitoringa u stvarnom vremenu do pune obavještajne infrastrukture. Odaberite razinu koja odgovara vašoj misiji.",
     "billingMonthly": "Mjesečno",
     "billingAnnual": "Godišnje",
@@ -468,7 +468,7 @@
     },
     "live": {
       "eyebrow": "Uživo sada",
-      "title": "Ova stranica je povezana na iste API-je kao nadzorna ploča.",
+      "title": "Koje uživo podatke prikazuje ova stranica upravo sada?",
       "subtitle": "Četiri od stotinu-plus signala koje World Monitor prati 24/7.",
       "liveBadge": "Uživo",
       "sampleBadge": "Primjer",
@@ -487,7 +487,7 @@
     },
     "moments": {
       "eyebrow": "Mehanizam za korelaciju",
-      "title": "Prednost je vidjeti kako se signali međusobno kreću.",
+      "title": "Kako World Monitor korelira signale?",
       "sub": "Feedove možete pronaći na stotinu mjesta. Prednost je jedna površina gdje geoopolitika, brodovlje, robe, makro, tržišta, vremenske prilike, infrastruktura, cyber, vijesti i rizik zemlje mogu objasniti jedne druge.",
       "signalStack": "Fuzioniranih signala",
       "correlation": "Korelacija",
@@ -551,7 +551,7 @@
     },
     "firstFive": {
       "eyebrow": "Od nule do orijentacije",
-      "title": "Vaših prvih pet minuta na živoj karti.",
+      "title": "Što se događa tijekom vaših prvih pet minuta na karti?",
       "sub": "Nema ture, nema praznih stanja, nema zida za prijavu. Evo što se zapravo događa.",
       "f1Title": "Karta se već kreće",
       "f1Desc": "Konflikti, plovila, letovi, požari i prekidi se prikazuju tijekom učitavanja stranice. Nema što konfigurirati prvo.",
@@ -567,7 +567,7 @@
     },
     "depth": {
       "eyebrow": "Ispod haube",
-      "title": "Dubina je proizvod.",
+      "title": "Kako detaljno je World Monitor model podataka?",
       "sub": "Svaki broj dolje je trenutno uživo na nadzornoj ploči — nije dio plana.",
       "s1v": "Dijeljeno",
       "s1l": "Slojevi karte",
@@ -617,7 +617,7 @@
     },
     "agents": {
       "eyebrow": "Za graditelje i AI agente",
-      "title": "Gradite na živim obavještajima o svijetu — iz bilo kojeg stack-a.",
+      "title": "Kako mogu graditi na World Monitor iz vlastitog stacka?",
       "sub": "Sve što se nalazi na karti je ujedno i API. Uključite ga u Claude preko MCP-a, pozovite REST krajnje točke odavde ili instalirajte nativnog klijenta za Python, Ruby, Go ili JavaScript — vaš kod provjerava s živim podacima umjesto memorija podataka o treningu.",
       "b1": "MCP alati — ocjene rizika, kritične točke, konflikti, tržišta, sažeci",
       "b2": "Dokumentirani REST API — jedna OpenAPI 3.1 specifikacija, jedan ključ",
@@ -660,7 +660,7 @@
     },
     "faq": {
       "eyebrow": "Bez skrivenih troškova",
-      "title": "Poštena pitanja.",
+      "title": "Koja su česta pitanja o World Monitor?",
       "q1": "Je li World Monitor stvarno besplatan?",
       "a1": "Da. Live karta — svaki sloj osim Resilience, kurirani feedovi, sažeci država, prekidna upozorenja i površine praćenja — je besplatna bez prijave i bez vremenskog ograničenja. Pro plaća feedove: dodaje WM Analyst, scenarijski stroj, Route Explorer, zakazane sažetke, MCP pristup za AI klijente i sloj Resilience karte. Nema oglasa i nema računa znači da nema korisničkih podataka za prodaju.",
       "q2": "Što je globalni intelligence dashboard?",
@@ -685,7 +685,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "Mapa svijeta ne čeka za tebe.",
+      "title": "Kako početi pratiti mapu svijeta?",
       "subtitle": "Dok čitate ovu stranicu ona se nastavila kretati — tjesnaci, žarišta, tržišta, oblikovani feedovi. Jedno od njih će biti naslovnica sutra. Pronađite ga prvi — besplatno, bez računa.",
       "button": "Pronađi ga prvi",
       "note": "Besplatno · Bez prijave · Učitava se u sekundama",
