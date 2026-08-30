@@ -738,7 +738,15 @@ export async function handleSeedHealth(req, options = {}) {
       || contentFreshnessInvalid
       || contentFreshnessStale;
     if (stale || poolCoveragePartial) staleCount++;
-    if (redistributionPolicyPartial) criticalCount++;
+    // A policy mismatch is an operator error only once the producer has
+    // actually activated. Before the first publish the field is legitimately
+    // absent, so escalating then would drive `overall: degraded` (HTTP 503) for
+    // the WHOLE endpoint on any ordinary API-before-seeder deploy — and, because
+    // the check keys off every configured domain rather than the offending one,
+    // it takes every unrelated seed down with it. The domain still reports
+    // `policy_incompatible` and still counts toward `stale`/warning either way.
+    const policyEnforced = !cfg.activationKey || activatedMap.get(domain) === true;
+    if (redistributionPolicyPartial && policyEnforced) criticalCount++;
 
     seeds[domain] = {
       status: redistributionPolicyPartial
