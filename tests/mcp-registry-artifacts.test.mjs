@@ -128,6 +128,10 @@ describe('mcp registry publication artifacts', () => {
       stepNamed('Prepare registry manifest').run,
       /prepare-mcp-registry-manifest\.mjs registry-server\.json/,
     );
+    assert.match(
+      stepNamed('Publish server').run,
+      /publish-mcp-registry\.mjs registry-server\.json/,
+    );
     assert.match(stepNamed('Publish server').run, /mcp-publisher publish registry-server\.json/);
 
     for (const step of steps.filter((entry) => entry.run)) {

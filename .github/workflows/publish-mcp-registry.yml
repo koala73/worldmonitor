@@ -59,4 +59,6 @@ jobs:
             --private-key "${MCP_REGISTRY_PRIVATE_KEY}"
 
       - name: Publish server
-        run: ./mcp-publisher publish registry-server.json
+        run: |
+          node scripts/publish-mcp-registry.mjs registry-server.json -- \
+            ./mcp-publisher publish registry-server.json
