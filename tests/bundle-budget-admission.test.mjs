@@ -300,8 +300,14 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
   const heavySrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
   assert.match(
     heavySrc,
-    /const sections = \[\.\.\.DAILY_SECTIONS, \.\.\.SECTIONS\.slice\(offset\)/,
-    'Supply-Vulnerability must run before the rotated heavy members on every daily tick',
+    /const sections = \[\.\.\.SECTIONS\.slice\(offset\), \.\.\.SECTIONS\.slice\(0, offset\), \.\.\.DAILY_SECTIONS\]/,
+    'the rotated heavy slot must be offered before the daily projection',
+  );
+  const military = heavy.sections.find((section) => section.label === 'Military-Bases');
+  const daily = heavy.sections.find((section) => section.label === 'Supply-Vulnerability');
+  assert.ok(
+    military.timeoutMs + daily.timeoutMs + (2 * KILL_GRACE_MS) > heavy.maxBundleMs,
+    'the ordering proof must stay necessary: these two worst cases cannot share one tick',
   );
   assert.match(
     heavySrc,

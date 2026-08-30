@@ -3,9 +3,9 @@ import { runBundle, DAY } from './_bundle-runner.mjs';
 
 // The heavy half of static-ref (#6806). The three rotated members are
 // low-cadence but expensive, and leftover's 570s tick could not hold them
-// alongside the light members. Supply-Vulnerability is a bounded Redis-only
-// projection. It always runs first and still leaves enough room for any one
-// rotated heavy member.
+// alongside the light members. The daily Supply-Vulnerability projection is
+// appended after all rotated members so it cannot consume the one heavy slot;
+// when both worst cases do not fit, the daily projection safely defers.
 //
 // ONE service, not three. Railway kills a cron container at 10 minutes, so the
 // budget is 570s and no arrangement can run Arms-Suppliers (460s worst case)
@@ -55,9 +55,8 @@ const DAILY_SECTIONS = [
     completionMetaKey: 'seed-completion:supply-chain:vulnerability',
     intervalMs: DAY,
     // This bundle owns the complete lifecycle deadline, including post-publish
-    // metadata, completion proof, verification, and cleanup. Its SIGTERM grace
-    // releases the 180s lock, and the reservation still fits beside the 400s
-    // Military-Bases reservation and both bundle kill graces.
+    // metadata, completion proof, verification, and cleanup. The daily retry
+    // keeps a heavy-member deferral inside the two-day health budget.
     timeoutMs: 160_000,
   },
 ];
@@ -67,7 +66,7 @@ const DAILY_SECTIONS = [
 // across the week boundary, giving one member two consecutive lead days.
 const dayIndex = Math.floor(Date.now() / 86_400_000);
 const offset = dayIndex % SECTIONS.length;
-const sections = [...DAILY_SECTIONS, ...SECTIONS.slice(offset), ...SECTIONS.slice(0, offset)];
+const sections = [...SECTIONS.slice(offset), ...SECTIONS.slice(0, offset), ...DAILY_SECTIONS];
 
 console.log(
   `[Bundle:static-ref-heavy] rotation offset ${offset} — order: ${sections.map((s) => s.label).join(' -> ')}`,
