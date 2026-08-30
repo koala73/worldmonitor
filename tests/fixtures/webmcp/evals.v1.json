@@ -13,6 +13,10 @@
       "open_alerts",
       "open_dashboard_panel",
       "set_panel_enabled",
+      "get_panel_layout",
+      "set_panel_collapsed",
+      "move_panel",
+      "set_panel_fullscreen",
       "set_map_view",
       "set_map_layers",
       "set_time_range",
@@ -58,7 +62,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -72,6 +75,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "set_time_range",
         "focus_country",
         "set_map_mode",
@@ -101,7 +108,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -115,6 +121,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "set_time_range",
         "focus_country",
         "set_map_mode",
@@ -146,7 +156,10 @@
         "search_dashboard",
         "open_search_result",
         "open_sign_in",
-        "search_procurement",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -175,7 +188,10 @@
         "search_dashboard",
         "open_search_result",
         "open_sign_in",
-        "search_procurement",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -201,7 +217,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -215,6 +230,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -260,7 +279,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -274,6 +292,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -301,7 +323,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -314,6 +335,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -342,7 +367,10 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -367,7 +395,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -380,6 +407,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "focus_country",
         "list_mission_presets",
         "apply_mission_preset",
@@ -425,7 +456,6 @@
       ],
       "forbiddenTools": [
         "openSearch",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -438,6 +468,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -463,7 +497,6 @@
         "openSearch",
         "open_dashboard_panel",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -477,6 +510,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -509,7 +546,6 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -523,6 +559,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -563,6 +603,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -601,6 +645,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -623,7 +671,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -637,6 +684,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "set_time_range",
         "focus_country",
         "set_map_mode",
@@ -670,7 +721,6 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -684,6 +734,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -702,7 +756,11 @@
           "create_dashboard_tab",
           "rename_dashboard_tab",
           "delete_dashboard_tab",
-          "set_panel_enabled"
+          "set_panel_enabled",
+          "set_panel_fullscreen",
+          "move_panel",
+          "set_panel_collapsed",
+          "get_panel_layout"
         ]
       }
     },
@@ -730,7 +788,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -744,6 +801,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -759,7 +820,11 @@
           "select_dashboard_tab",
           "create_dashboard_tab",
           "rename_dashboard_tab",
-          "delete_dashboard_tab"
+          "delete_dashboard_tab",
+          "get_panel_layout",
+          "set_panel_collapsed",
+          "move_panel",
+          "set_panel_fullscreen"
         ]
       }
     },
@@ -796,6 +861,10 @@
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -813,7 +882,11 @@
           "create_dashboard_tab",
           "rename_dashboard_tab",
           "delete_dashboard_tab",
-          "set_panel_enabled"
+          "set_panel_enabled",
+          "set_panel_fullscreen",
+          "move_panel",
+          "set_panel_collapsed",
+          "get_panel_layout"
         ]
       }
     },
@@ -839,7 +912,10 @@
         "focus_country",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -866,7 +942,10 @@
         "set_map_view",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -893,7 +972,10 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -924,11 +1006,14 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
         "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -957,11 +1042,14 @@
       ],
       "forbiddenTools": [
         "openSearch",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
         "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -992,11 +1080,14 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
         "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1008,7 +1099,11 @@
         "mustStop": true,
         "forbiddenAfterFailure": [
           "set_map_view",
-          "open_dashboard_panel"
+          "open_dashboard_panel",
+          "get_panel_layout",
+          "set_panel_collapsed",
+          "move_panel",
+          "set_panel_fullscreen"
         ]
       }
     },
@@ -1035,11 +1130,14 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "open_settings",
         "open_alerts",
         "list_map_layers",
         "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1068,11 +1166,14 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "open_settings",
         "open_alerts",
         "list_map_layers",
         "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1099,11 +1200,14 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_alerts",
         "list_map_layers",
         "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1130,11 +1234,14 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "list_map_layers",
         "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1162,11 +1269,14 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
         "list_map_layers",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1196,11 +1306,14 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
         "list_map_layers",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1228,11 +1341,14 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "select_dashboard_tab",
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1266,10 +1382,13 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "select_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1315,9 +1434,12 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1352,10 +1474,13 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "select_dashboard_tab",
         "create_dashboard_tab",
         "rename_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
@@ -1367,7 +1492,11 @@
         "mustStop": true,
         "forbiddenAfterFailure": [
           "create_dashboard_tab",
-          "open_dashboard_panel"
+          "open_dashboard_panel",
+          "get_panel_layout",
+          "set_panel_collapsed",
+          "move_panel",
+          "set_panel_fullscreen"
         ]
       }
     },
@@ -1395,10 +1524,131 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
         "list_mission_presets",
         "apply_mission_preset",
         "open_mission_picker"
+      ]
+    },
+    {
+      "id": "panel_layout_read_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Show me the current panel layout, including which region each panel is in.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_panel_layout",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "panel_collapse_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Collapse the live-news panel.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_panel_collapsed",
+            "arguments": {
+              "panelId": "live-news",
+              "collapsed": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "get_panel_layout",
+        "move_panel",
+        "set_panel_fullscreen",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "panel_move_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Move the giving panel to the first slot in the sidebar.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "move_panel",
+            "arguments": {
+              "panelId": "giving",
+              "region": "sidebar",
+              "index": 0
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "set_panel_fullscreen",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "panel_fullscreen_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Put the live-news panel into fullscreen.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_panel_fullscreen",
+            "arguments": {
+              "panelId": "live-news",
+              "fullscreen": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
       ]
     }
   ]

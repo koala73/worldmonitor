@@ -33,7 +33,7 @@ Treat each WebMCP change as a public UI contract change. Tool names, description
 | `src/config/panel-enablement.ts` and `src/app/panel-enablement.ts` | Panel enablement policy and the settings persist and apply path used by `set_panel_enabled`. |
 | `src/app/webmcp-access.ts`, `src/services/webmcp-access-snapshot.ts`, and `src/services/clerk.ts` | Live access context, the PII-free snapshot, and the existing Clerk sign-in dialog. |
 | `src/app/webmcp-search-controller.ts`, `src/app/webmcp-search-effects.ts`, and `src/app/search-selection-dispatcher.ts` | Opaque search capabilities, bound effect classes, invalidation, live-state revalidation, and visible result selection. |
-| `src/app/panel-layout.ts`, `src/components/PanelTabBar.ts`, `src/services/tab-store.ts`, and `src/services/dashboard-tab-actions.ts` | Dashboard-tab UI, persistence, name and ID limits, and list, select, create, rename, and delete actions. |
+| `src/services/panel-layout-actions.ts`, `src/app/panel-layout.ts`, `src/components/PanelTabBar.ts`, `src/services/tab-store.ts`, and `src/services/dashboard-tab-actions.ts` | Panel layout snapshot/collapse/move/fullscreen policy, dashboard-tab UI, persistence, name and ID limits, and list, select, create, rename, and delete actions. |
 | `src/components/GlobalProcurementPanel.ts` | Conditional declarative `search_procurement` form, visible pending state, reset, cancellation, and bounded result. |
 | `pro-test/welcome.html` | Zero-import homepage registration for `launchWorldMonitor` and `getWorldMonitorMcpEndpoint`. |
 | `vercel.json`, `docker/nginx-security-headers.conf`, `docker/nginx-embed-security-headers.conf`, `vite.config.ts`, and `pro-test/vite.config.ts` | Trial enrollment, origin isolation, same-origin permission, local testing parity, and explicit embed denial. |
@@ -55,6 +55,7 @@ npm run docs:check
   tests/webmcp-search-effects.test.mts \
   tests/webmcp-dashboard.test.mts \
   tests/dashboard-tab-actions.test.mts \
+  tests/panel-layout-actions.test.mts \
   tests/webmcp-panel-catalog.test.mts \
   tests/webmcp-mission-presets.test.mts \
   tests/agent-bus-actions.test.mts \
@@ -100,7 +101,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-The headed production suite tests the real origin trial. It verifies the served SHA, security headers, twenty-seven-tool inventory and schemas, cold-start invocation, bounded access and sign-in results, read-only catalogs, cancellation behavior, all six dashboard origins, specialized-root redirects, and cross-origin embed denial. Mutation tests that would alter production state remain local.
+The headed production suite tests the real origin trial. It verifies the served SHA, security headers, thirty-one-tool inventory and schemas, cold-start invocation, bounded access and sign-in results, read-only catalogs, cancellation behavior, all six dashboard origins, specialized-root redirects, and cross-origin embed denial. Mutation tests that would alter production state remain local.
 
 Preserve `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` from `test-results/` with the release evidence. Also verify that `/embed` and `/embed.html` return `tools=()`, and that `/?mode=agent`, preview deployments, documentation, and embed pages do not gain the top-level inventory.
 

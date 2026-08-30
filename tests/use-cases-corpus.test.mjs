@@ -8,7 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
-import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
+import {
+  buildCorpus,
+  CORPUS_GENERATOR_CONTENT_VERSION,
+} from '../scripts/build-crawlable-corpus.mjs';
 import {
   HANDOFF_PRESERVE_SCRIPT,
   USE_CASE_PAGES,
@@ -16,11 +19,122 @@ import {
 } from '../scripts/build-use-cases.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const EXPECTED_USE_CASES_LASTMOD = [
+  USE_CASES_CONTENT_VERSION,
+  CORPUS_GENERATOR_CONTENT_VERSION,
+].sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
     .map(([, raw]) => JSON.parse(raw));
 }
+
+function faqQuestion(name, text) {
+  return {
+    '@type': 'Question',
+    name,
+    acceptedAnswer: { '@type': 'Answer', text },
+  };
+}
+
+function itemListElement(steps) {
+  return steps.map((name, index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    name,
+  }));
+}
+
+/** Visible <ol> step titles from the workflow / checklist sections. */
+function visibleWorkflowStepNames(html) {
+  return [
+    ...html.matchAll(
+      /<h2>(?:End-to-end workflow|Routine monitoring checklist|Incident-response checklist)<\/h2>\s*<ol>([\s\S]*?)<\/ol>/g,
+    ),
+  ].flatMap(([, ol]) =>
+    [...ol.matchAll(/<li><strong>([^<]+)<\/strong>/g)].map(([, name]) => name.replace(/\.$/, '').trim()),
+  );
+}
+
+const USE_CASE_STRUCTURED_DATA = {
+  'country-risk': {
+    faq: [
+      faqQuestion(
+        'How do you monitor country risk with World Monitor?',
+        'Establish a baseline with the Country Instability Index and Country Resilience Index, review live instability and forecasts, check corroborating economic and security signals, record uncertainty, then set the follow-up or escalation into an exact product state.',
+      ),
+      faqQuestion(
+        'Who is the country-risk workflow for?',
+        'Risk analysts, corporate security, procurement, investors, and NGO security officers who need a repeatable monitoring decision for a defined country set — not emergency dispatch, legal certification, or military targeting.',
+      ),
+      faqQuestion(
+        'What is the expected output of a country-risk watch?',
+        'A dated monitoring note with baseline, live pressure, corroboration, uncertainty, and the next action, continuing into an exact World Monitor country brief rather than a generic homepage.',
+      ),
+    ],
+    itemListName: 'Country-risk end-to-end workflow',
+    steps: [
+      'Establish a baseline',
+      'Review current instability and forecasts',
+      'Check corroborating economic and security signals',
+      'Record uncertainty',
+      'Set the follow-up or escalation',
+    ],
+  },
+  'breaking-news': {
+    faq: [
+      faqQuestion(
+        'How do you verify breaking news with World Monitor?',
+        'Treat a viral claim as a hypothesis: capture the exact claim and window, assess the source chain, test only the World Monitor signal families that can support or contradict it, record contradictions and coverage gaps, then assign a qualified outcome before you brief anyone.',
+      ),
+      faqQuestion(
+        'Who is the breaking-news verification workflow for?',
+        'Newsroom researchers, OSINT analysts, duty-of-care officers, and desk editors who need a bounded verification record in minutes — not a rewritten article and not a generic homepage tour.',
+      ),
+      faqQuestion(
+        'What can World Monitor not prove about a breaking claim?',
+        'That a quiet map means nothing happened, or that repeated headlines are independent confirmations. Correlated sensors are evidence, not certainty, and this workflow does not certify that an event is true.',
+      ),
+    ],
+    itemListName: 'Breaking-news verification workflow',
+    steps: [
+      'Capture the claim precisely',
+      'Assess the original source',
+      'Check news velocity without equating repetition to proof',
+      'Test only relevant independent signals',
+      'Record freshness, fit, and contradictions',
+      'Assign a qualified outcome',
+    ],
+  },
+  'supply-chain': {
+    faq: [
+      faqQuestion(
+        'How do you monitor supply-chain disruptions with World Monitor?',
+        'Define the exposure first, keep a routine baseline, then switch to incident mode only when a signal can touch that exposure. Separate observed evidence, forecasts, and analyst inference before you escalate.',
+      ),
+      faqQuestion(
+        'What is the difference between routine monitoring and incident response?',
+        'Routine monitoring defines exposure, establishes a baseline, runs the daily scan, and sets watch thresholds. Incident response identifies the first-order constraint, tests exposure fit, maps transmission paths, separates evidence classes, and records stale or contradictory sources before escalating.',
+      ),
+      faqQuestion(
+        'What can World Monitor not prove about a disruption?',
+        'That an event will cause a specific price, shortage, delay, or customer impact. Market moves are confirmation signals, not causal proof.',
+      ),
+    ],
+    itemListName: 'Supply-chain disruption monitoring steps',
+    steps: [
+      'Define the exposure',
+      'Establish a baseline',
+      'Run the daily scan',
+      'Set watch thresholds',
+      'Identify the first-order constraint',
+      'Test exposure fit',
+      'Map transmission paths',
+      'Separate evidence classes',
+      'Record stale, missing, or contradictory sources',
+    ],
+  },
+};
 
 function htmlAttributes(source) {
   return Object.fromEntries(
@@ -155,16 +269,43 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
         html,
         new RegExp(`rel="canonical" href="https://www\\.worldmonitor\\.app${canonical.replaceAll('/', '\\/')}"`),
       );
-      assert.match(html, /name="robots" content="index, follow"/);
+      assert.match(html, /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/);
       const [ld] = jsonLdObjects(html);
       assert.notEqual(ld['@type'], 'BlogPosting');
-      assert.match(html, new RegExp(`<meta name="lastmod" content="${USE_CASES_CONTENT_VERSION}">`));
+      assert.match(html, new RegExp(`<meta name="lastmod" content="${EXPECTED_USE_CASES_LASTMOD}">`));
     }
 
     const [hubLd] = jsonLdObjects(hubHtml);
     const [pageLd] = jsonLdObjects(supplyChainHtml);
     assert.equal(hubLd['@type'], 'CollectionPage');
     assert.equal(pageLd['@type'], 'WebPage');
+
+    for (const [label, html] of [
+      ['country-risk', countryRiskHtml],
+      ['breaking-news', breakingNewsHtml],
+      ['supply-chain', supplyChainHtml],
+    ]) {
+      const expected = USE_CASE_STRUCTURED_DATA[label];
+      const types = new Set(jsonLdObjects(html).map((ld) => ld['@type']));
+      assert.ok(types.has('WebPage'), `${label} missing WebPage JSON-LD`);
+      assert.ok(types.has('FAQPage'), `${label} missing FAQPage JSON-LD for AI extraction (#7381)`);
+      assert.ok(types.has('ItemList'), `${label} missing ItemList JSON-LD for AI extraction (#7381)`);
+      const faq = jsonLdObjects(html).find((ld) => ld['@type'] === 'FAQPage');
+      assert.deepEqual(faq.mainEntity, expected.faq, `${label} FAQPage questions`);
+      const list = jsonLdObjects(html).find((ld) => ld['@type'] === 'ItemList');
+      assert.equal(list.name, expected.itemListName, `${label} ItemList name`);
+      assert.equal(list.numberOfItems, expected.steps.length, `${label} ItemList numberOfItems`);
+      assert.deepEqual(
+        list.itemListElement,
+        itemListElement(expected.steps),
+        `${label} ItemList steps`,
+      );
+      assert.deepEqual(
+        visibleWorkflowStepNames(html),
+        expected.steps,
+        `${label} visible workflow steps must match ItemList names`,
+      );
+    }
   });
 
   it('emits bounded URL and Umami attribution for every product handoff', () => {

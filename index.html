@@ -12,7 +12,7 @@
     <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
     <meta name="author" content="Elie Habib" />
     <meta name="theme-color" content="#0a0f0a" />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <link rel="canonical" href="https://www.worldmonitor.app/dashboard" />
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/dashboard" />
     <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard" />
@@ -240,7 +240,8 @@
       [data-variant="happy"][data-theme="dark"].wm-pro-banner-reserved #app::before{background:#222E3E;border-bottom-color:#344050}
       html:not(.js),html:not(.js) body{height:auto;min-height:100%;overflow:auto}
       html:not(.js) #app .skeleton-shell{display:none}
-      .app-heading{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+      .app-heading,.app-seo-summary{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+      .app-seo-summary p{margin:0}
       .dashboard-noscript{max-width:760px;margin:0 auto;padding:48px 24px;color:#e5e7eb;background:#0a0a0a;font:16px/1.6 system-ui,sans-serif}
       .dashboard-noscript h2{margin:0 0 12px;color:#f9fafb;font-size:28px;line-height:1.2}
       .dashboard-noscript p{margin:0 0 18px;color:#d1d5db}
@@ -429,10 +430,22 @@
   </head>
   <body>
     <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
+    <section class="app-seo-summary" aria-hidden="true">
+      <p>World Monitor is the full-spectrum real-time global intelligence dashboard: one browser workspace that combines geopolitical conflict tracking, military and civil aviation, maritime AIS, undersea cable and infrastructure maps, markets, climate hazards, cyber signals, and open-source news into a single live situation picture. Analysts, journalists, researchers, and operators use it to see how distant events connect before they harden into headlines.</p>
+      <p>On the map you can follow conflict zones and protest activity alongside earthquake and wildfire alerts, power-outage clusters, and strategic infrastructure such as military bases, nuclear facilities, and subsea cables. Aviation layers surface military and commercial flights; maritime layers track ships through chokepoints and high-risk waters. Country deep-dives open resilience, risk, and source-backed context for more than 190 states without leaving the dashboard.</p>
+      <p>Market and prediction panels sit beside the geospatial view so price moves, central-bank signals, commodities, and prediction-market odds can be read against the same map context that shows tankers, jets, and crisis corridors. Government-spending and macro indicators help separate noise from policy-relevant shifts. The goal is not another news feed — it is a continuously updating OSINT workbench with auditable upstream sources.</p>
+      <p>Reference surfaces outside the live map keep the same evidence standard: country intelligence pages, maritime chokepoint briefs, crisis trackers, live tools, research reports, and an audited source catalog. Agents and developers can also use the MCP server and REST API documented on the site. World Monitor is open source and free to start; Pro unlocks deeper analysis without hiding the core map. Specialized sibling monitors focus on tech, finance, commodities, energy infrastructure, and constructive global progress; this full dashboard remains the canonical geopolitics and multi-domain intelligence surface at www.worldmonitor.app/dashboard for humans and crawlers alike.</p>
+      <p>If you need a single citeable URL for multi-domain situation awareness — conflicts, markets, flights, ships, infrastructure, and climate hazards together — use this full dashboard rather than a specialized sibling. That separation is intentional: tech, finance, commodity, energy, and happy monitors carry their own summaries so crawlers do not treat six shells as near-duplicates.</p>
+    </section>
     <noscript>
       <main id="dashboard-noscript" class="dashboard-noscript">
-        <h2>The live dashboard requires JavaScript</h2>
-        <p>World Monitor’s interactive map, panels, alerts, and live analysis run in the browser. Visit the <a href="/">World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
+        <h2>World Monitor requires JavaScript for the live map</h2>
+        <p>World Monitor is the full-spectrum real-time global intelligence dashboard: one browser workspace that combines geopolitical conflict tracking, military and civil aviation, maritime AIS, undersea cable and infrastructure maps, markets, climate hazards, cyber signals, and open-source news into a single live situation picture. Analysts, journalists, researchers, and operators use it to see how distant events connect before they harden into headlines.</p>
+        <p>On the map you can follow conflict zones and protest activity alongside earthquake and wildfire alerts, power-outage clusters, and strategic infrastructure such as military bases, nuclear facilities, and subsea cables. Aviation layers surface military and commercial flights; maritime layers track ships through chokepoints and high-risk waters. Country deep-dives open resilience, risk, and source-backed context for more than 190 states without leaving the dashboard.</p>
+        <p>Market and prediction panels sit beside the geospatial view so price moves, central-bank signals, commodities, and prediction-market odds can be read against the same map context that shows tankers, jets, and crisis corridors. Government-spending and macro indicators help separate noise from policy-relevant shifts. The goal is not another news feed — it is a continuously updating OSINT workbench with auditable upstream sources.</p>
+        <p>Reference surfaces outside the live map keep the same evidence standard: country intelligence pages, maritime chokepoint briefs, crisis trackers, live tools, research reports, and an audited source catalog. Agents and developers can also use the MCP server and REST API documented on the site. World Monitor is open source and free to start; Pro unlocks deeper analysis without hiding the core map. Specialized sibling monitors focus on tech, finance, commodities, energy infrastructure, and constructive global progress; this full dashboard remains the canonical geopolitics and multi-domain intelligence surface at www.worldmonitor.app/dashboard for humans and crawlers alike.</p>
+        <p>If you need a single citeable URL for multi-domain situation awareness — conflicts, markets, flights, ships, infrastructure, and climate hazards together — use this full dashboard rather than a specialized sibling. That separation is intentional: tech, finance, commodity, energy, and happy monitors carry their own summaries so crawlers do not treat six shells as near-duplicates.</p>
+        <p>Visit the <a href="/" >World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
         <nav aria-label="World Monitor references">
           <ul>
             <li><a href="/countries/">Country intelligence</a></li>

@@ -83,6 +83,24 @@ const unusedNavigationBindings: Pick<
   }),
 };
 
+const unusedPanelLayoutBindings: Pick<
+  WebMcpAppBindings,
+  'getPanelLayout' | 'setPanelCollapsed' | 'movePanel' | 'setPanelFullscreen'
+> = {
+  getPanelLayout: async () => {
+    throw new Error('Unexpected panel layout read.');
+  },
+  setPanelCollapsed: async () => {
+    throw new Error('Unexpected panel layout mutation.');
+  },
+  movePanel: async () => {
+    throw new Error('Unexpected panel layout mutation.');
+  },
+  setPanelFullscreen: async () => {
+    throw new Error('Unexpected panel layout mutation.');
+  },
+};
+
 function commandMatch(id: string): SearchMatch {
   const command = COMMANDS.find((entry) => entry.id === id);
   if (!command) throw new Error(`Expected command ${id}`);
@@ -494,6 +512,7 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
       setPanelEnabled: async () => {
         throw new Error('Unexpected dashboard panel mutation.');
       },
+      ...unusedPanelLayoutBindings,
       applyDashboardTabAction: async () => {
         throw new Error('Unexpected dashboard tab action.');
       },

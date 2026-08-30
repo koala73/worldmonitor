@@ -16,8 +16,8 @@
  *     genuine signed-out session — while keeping subscribers for a retry.
  *   - **Ordering is behavioural.** Every synchronous gate runs before the async
  *     platform-authenticator probe, so a desktop environment never probes.
- *   - **Cancellation never spends the offer.** A superseded or overlay-blocked
- *     evaluation must not mount, must not write the ledger, and must not emit.
+ *   - **Cancellation before reservation spends nothing.** A superseded or
+ *     overlay-blocked evaluation must not mount or claim an account slot.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -37,20 +37,23 @@ const SIGNED_OUT: PasskeyIdentity = { accountKey: null, sessionId: null, ready: 
 function deps(overrides: Partial<PasskeyEvaluationDeps> = {}) {
   const mount = vi.fn();
   const probe = vi.fn(async () => true);
+  const reserve = vi.fn(async () => 'reserved' as const);
   const base: PasskeyEvaluationDeps = {
     armed: () => true,
     readEnvironment: () => ({ isDesktopApp: false, inIframe: false, hasPublicKeyCredential: true }),
     readIdentity: () => READY,
-    passkeyCount: () => 0,
     alreadyOffered: () => false,
+    capReached: () => false,
     platformAuthenticator: probe,
     blockedByOverlay: () => false,
     deferFrame: async () => {},
     claim: () => true,
+    reserveAccountOffer: reserve,
+    stillActive: () => true,
     mount,
     ...overrides,
   };
-  return { d: base, mount, probe };
+  return { d: base, mount, probe, reserve };
 }
 
 describe('identityMatches', () => {
@@ -120,11 +123,31 @@ describe('evaluatePasskeyOffer — capability gates', () => {
     expect(probe).not.toHaveBeenCalled();
   });
 
-  it('does not mount when the account already has a passkey (AE4)', async () => {
-    const { d, mount, probe } = deps({ passkeyCount: () => 1 });
-    expect(await evaluatePasskeyOffer(d)).toBe('already-has-passkey');
+  it('DOES mount on a new device even though the account has a passkey', async () => {
+    // AE4 reversed deliberately. A platform passkey lives in one authenticator:
+    // Touch ID on a Mac syncs to that person's Apple devices and nowhere else.
+    // The old account-wide passkey gate meant a Mac passkey blocked the offer
+    // on Windows, where no usable credential exists. The per-device record is
+    // now the only suppression, so this evaluation must reach a mount.
+    const { d, mount } = deps({ alreadyOffered: () => false, capReached: () => false });
+    expect(await evaluatePasskeyOffer(d)).toBe('mounted');
+    expect(mount).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mount once the lifetime account cap is spent', async () => {
+    // The backstop for a browser that cannot keep a device record at all and
+    // would otherwise be prompted on every single page load.
+    const { d, mount, probe } = deps({ capReached: () => true });
+    expect(await evaluatePasskeyOffer(d)).toBe('offer-cap-reached');
     expect(probe).not.toHaveBeenCalled();
     expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('reports the DEVICE record ahead of the cap when both would suppress', async () => {
+    // Diagnosis depends on telling these apart: one means "asked here before",
+    // the other means "asked too many times overall".
+    const { d } = deps({ alreadyOffered: () => true, capReached: () => true });
+    expect(await evaluatePasskeyOffer(d)).toBe('already-offered');
   });
 
   it('does not mount when the ledger already holds this account (AE6)', async () => {
@@ -222,12 +245,66 @@ describe('evaluatePasskeyOffer — stale-work cancellation', () => {
     expect(mount).not.toHaveBeenCalled();
   });
 
+  it('re-reads the account cap after the defer', async () => {
+    let capped = false;
+    const { d, mount, reserve } = deps({
+      capReached: () => capped,
+      deferFrame: async () => { capped = true; },
+    });
+    expect(await evaluatePasskeyOffer(d)).toBe('offer-cap-reached');
+    expect(reserve).not.toHaveBeenCalled();
+    expect(mount).not.toHaveBeenCalled();
+  });
+
   it('is single-flight: a losing claim does not mount', async () => {
     // Clerk can emit twice for one session during a deferred probe. Without the
     // claim, that is two mounts, two ledger writes, and two `shown` events.
-    const { d, mount } = deps({ claim: () => false });
+    const { d, mount, reserve } = deps({ claim: () => false });
+    expect(await evaluatePasskeyOffer(d)).toBe('superseded');
+    expect(reserve).not.toHaveBeenCalled();
+    expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('does not mount when the server reports the account cap spent', async () => {
+    const { d, mount } = deps({ reserveAccountOffer: async () => 'cap-reached' });
+    expect(await evaluatePasskeyOffer(d)).toBe('offer-cap-reached');
+    expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the account reservation is unavailable', async () => {
+    const { d, mount } = deps({ reserveAccountOffer: async () => 'unavailable' });
+    expect(await evaluatePasskeyOffer(d)).toBe('offer-reservation-unavailable');
+    expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('does not mount when the identity changes during the reservation', async () => {
+    let identity: PasskeyIdentity = READY;
+    const { d, mount } = deps({
+      readIdentity: () => identity,
+      reserveAccountOffer: async () => { identity = READY_B; return 'reserved'; },
+    });
     expect(await evaluatePasskeyOffer(d)).toBe('superseded');
     expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('does not mount when its controller is destroyed during the reservation', async () => {
+    let active = true;
+    const { d, mount } = deps({
+      stillActive: () => active,
+      reserveAccountOffer: async () => { active = false; return 'reserved'; },
+    });
+    expect(await evaluatePasskeyOffer(d)).toBe('superseded');
+    expect(mount).not.toHaveBeenCalled();
+  });
+
+  it('mounts hidden when an overlay opens during the reservation', async () => {
+    let overlayOpen = false;
+    const { d, mount } = deps({
+      blockedByOverlay: () => overlayOpen,
+      reserveAccountOffer: async () => { overlayOpen = true; return 'reserved'; },
+    });
+    expect(await evaluatePasskeyOffer(d)).toBe('mounted');
+    expect(mount).toHaveBeenCalledWith(READY, true);
   });
 
   it('mounts exactly once when two evaluations race for one claim', async () => {
@@ -246,6 +323,6 @@ describe('evaluatePasskeyOffer — stale-work cancellation', () => {
   it('passes the evaluated identity to mount, so the card is bound to it', async () => {
     const { d, mount } = deps();
     await evaluatePasskeyOffer(d);
-    expect(mount).toHaveBeenCalledWith(READY);
+    expect(mount).toHaveBeenCalledWith(READY, false);
   });
 });

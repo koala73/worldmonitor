@@ -73,6 +73,26 @@ function unusedNavigationBindings(): Pick<
   };
 }
 
+function unusedPanelLayoutBindings(): Pick<
+  WebMcpAppBindings,
+  'getPanelLayout' | 'setPanelCollapsed' | 'movePanel' | 'setPanelFullscreen'
+> {
+  return {
+    getPanelLayout: async () => {
+      throw new Error('Unexpected panel layout read.');
+    },
+    setPanelCollapsed: async () => {
+      throw new Error('Unexpected panel layout mutation.');
+    },
+    movePanel: async () => {
+      throw new Error('Unexpected panel layout mutation.');
+    },
+    setPanelFullscreen: async () => {
+      throw new Error('Unexpected panel layout mutation.');
+    },
+  };
+}
+
 describe('App WebMCP country binding cold start', () => {
   it('rejects a no-signal country open before the App binding starts', async () => {
     let bindingCalls = 0;
@@ -116,6 +136,7 @@ describe('App WebMCP country binding cold start', () => {
       setPanelEnabled: async () => {
         throw new Error('Unexpected dashboard panel mutation.');
       },
+      ...unusedPanelLayoutBindings(),
       applyDashboardTabAction: async () => {
         throw new Error('Unexpected dashboard tab action.');
       },
@@ -234,6 +255,7 @@ describe('App WebMCP country binding cold start', () => {
       setPanelEnabled: async () => {
         throw new Error('Unexpected dashboard panel mutation.');
       },
+      ...unusedPanelLayoutBindings(),
       applyDashboardTabAction: async () => {
         throw new Error('Unexpected dashboard tab action.');
       },

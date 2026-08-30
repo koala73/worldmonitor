@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1674700
+    "raw": 1679632
   },
   "chunks": {
     "analytics": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 923750,
+      "raw": 928682,
       "files": 1
     },
     "panel-gating": {

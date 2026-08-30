@@ -89,6 +89,28 @@ export type CollectorFailure = {
    *    when the bug is fixed (#6288).
    */
   raced?: boolean;
+  /**
+   * This overflow happened while the page was INACTIVE — the #6968
+   * visibility hold, not a parked transport.
+   *
+   * Only ever set on `kind: 'queue-overflow'`. `drainCollectorRequestQueue`
+   * deliberately dispatches nothing while the page is hidden, so a page that
+   * is hidden from install (session restore, prerender, a background-opened
+   * tab) fills the queue with NOTHING in flight and rejects every later
+   * write until it is focused or unloaded. That population is what kept
+   * WORLDMONITOR-YD firing at its pre-fix rate after #6288 (#6947): the
+   * module-owned deadline releases a parked transport, but here no transport
+   * ever ran, so no deadline fix can drain the queue. The state is by
+   * design and self-heals — visibilitychange→visible pumps the queue, and
+   * pagehide flushes it — which is exactly why it must not share a Sentry
+   * signature with the parked-latch incident that alarm exists to page on.
+   *
+   * A MARKER rather than a `kind`, like `raced` and `botFiltered`: every
+   * delivery policy (retry refusal, durable markers, health cohorts) keeps
+   * treating it as the dropped write it is; only the Sentry grouping and
+   * tags read it.
+   */
+  hiddenHold?: boolean;
 };
 
 export type CollectorRequestType = 'event' | 'identify';
@@ -794,6 +816,11 @@ function emitCollectorFailureToSentry(
         failure.kind,
         String(failure.status ?? 'none'),
         ...(failure.raced ? ['raced'] : []),
+        // A designed visibility hold (#6968) and a parked transport are the
+        // same `kind` but different incidents (#6947) — same reasoning as
+        // the raced segment above. The hold self-heals on focus/unload; the
+        // parked latch is the incident WORLDMONITOR-YD exists to page on.
+        ...(failure.hiddenHold ? ['hidden-hold'] : []),
       ],
       tags: {
         kind: 'analytics_collector_write_failed',
@@ -802,8 +829,14 @@ function emitCollectorFailureToSentry(
         requestType: request.requestType,
         healthCohort: cohort,
         raced: String(failure.raced ?? false),
+        hiddenHold: String(failure.hiddenHold ?? false),
         timeoutMechanism: request.timeoutMechanism,
         visibilityAtSend: request.visibilityAtSend ?? 'unknown',
+        // Visibility when the failure was RECORDED. visibilityAtSend is set
+        // at dispatch, which a queue-overflow never reaches — its absence is
+        // why #6947 needed a forensic build_sha reconstruction instead of a
+        // tag query.
+        pageVisibility: collectorVisibilityState(),
       },
       extra: diagnostics,
     }));
@@ -1300,7 +1333,13 @@ function flushCollectorQueueForUnload(): void {
 }
 
 function rejectOverflow(request: CollectorRequest): void {
-  const failure: CollectorFailure = { kind: 'queue-overflow' };
+  const failure: CollectorFailure = {
+    kind: 'queue-overflow',
+    // While the page is inactive the queue holds by design (#6968) — see the
+    // hiddenHold docblock. Read at rejection time: what matters is whether
+    // dispatch was gated when this entry was turned away.
+    ...(collectorPageActive ? {} : { hiddenHold: true }),
+  };
   recordCollectorOutcome(request, failure);
   const error = new CollectorDeliveryError(failure);
   request.reject(error);
