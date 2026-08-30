@@ -20,10 +20,10 @@ import {
 } from './_country-resolver.mjs';
 import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 import wgiIndicatorKeys from './shared/wgi-indicator-keys.json' with { type: 'json' };
-import { wgiUpstreamIndicatorId } from '../shared/wgi-source-provenance.js';
+import { wgiUpstreamIndicatorId } from './shared/wgi-source-provenance.js';
 
 export { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
-export { wgiUpstreamIndicatorId } from '../shared/wgi-source-provenance.js';
+export { wgiUpstreamIndicatorId } from './shared/wgi-source-provenance.js';
 
 loadEnvFile(import.meta.url);
 

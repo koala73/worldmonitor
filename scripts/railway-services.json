@@ -902,9 +902,9 @@
       "scripts/shared/rankable-universe.mjs",
       "scripts/shared/sovereign-status.json",
       "scripts/shared/wgi-indicator-keys.json",
+      "scripts/shared/wgi-source-provenance.js",
       "shared/country-names.json",
-      "shared/iso3-to-iso2.json",
-      "shared/wgi-source-provenance.js"
+      "shared/iso3-to-iso2.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-4-seed-bundle-resilience"
   },
