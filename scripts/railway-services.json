@@ -1084,6 +1084,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-hs2-chokepoint-exposure.mjs",
+      "scripts/shared/supply-vulnerability-commodities.json",
       "scripts/shared/country-port-clusters.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
@@ -1127,6 +1128,7 @@
       "scripts/shared/comtrade-reporter-overrides.json",
       "scripts/shared/comtrade-strategic-products.json",
       "scripts/shared/country-port-clusters.json",
+      "scripts/shared/supply-vulnerability-commodities.json",
       "scripts/shared/un-to-iso2.json",
       "scripts/package.json",
       "scripts/package-lock.json",
@@ -1134,6 +1136,31 @@
     ],
     "cronSchedule": "0 6 1 * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-supply-vulnerability.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-supply-vulnerability",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_TOKEN",
+      "UPSTASH_REDIS_REST_URL"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-supply-vulnerability.mjs",
+      "scripts/shared/country-port-clusters.json",
+      "scripts/shared/supply-vulnerability-commodities.json",
+      "scripts/shared/supply-vulnerability-score.mjs"
+    ],
+    "cronSchedule": "30 7 * * *",
+    "documentedAt": "docs/methodology/supply-vulnerability.mdx#publication-and-freshness"
   },
   {
     "entry": "scripts/seed-conflict-intel.mjs",

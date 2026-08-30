@@ -22,6 +22,9 @@ import "worldmonitor/supply_chain/v1/list_storage_facilities.proto";
 import "worldmonitor/supply_chain/v1/list_fuel_shortages.proto";
 import "worldmonitor/supply_chain/v1/list_energy_disruptions.proto";
 import "worldmonitor/supply_chain/v1/get_china_corridor_control_towers.proto";
+import "worldmonitor/supply_chain/v1/get_country_vulnerabilities.proto";
+import "worldmonitor/supply_chain/v1/get_chokepoint_dependencies.proto";
+import "worldmonitor/supply_chain/v1/list_vulnerability_rankings.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -161,5 +164,20 @@ service SupplyChainService {
   // explicit unavailable states; the response never emits a single risk score.
   rpc GetChinaCorridorControlTowers(GetChinaCorridorControlTowersRequest) returns (GetChinaCorridorControlTowersResponse) {
     option (sebuf.http.config) = {path: "/get-china-corridor-control-towers", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryVulnerabilities returns the full per-commodity score evidence for one country.
+  rpc GetCountryVulnerabilities(GetCountryVulnerabilitiesRequest) returns (GetCountryVulnerabilitiesResponse) {
+    option (sebuf.http.config) = {path: "/get-country-vulnerabilities", method: HTTP_METHOD_GET};
+  }
+
+  // GetChokepointDependencies returns the inverse country/commodity dependency index.
+  rpc GetChokepointDependencies(GetChokepointDependenciesRequest) returns (GetChokepointDependenciesResponse) {
+    option (sebuf.http.config) = {path: "/get-chokepoint-dependencies", method: HTTP_METHOD_GET};
+  }
+
+  // ListVulnerabilityRankings returns a bounded global ranking with optional filters.
+  rpc ListVulnerabilityRankings(ListVulnerabilityRankingsRequest) returns (ListVulnerabilityRankingsResponse) {
+    option (sebuf.http.config) = {path: "/list-vulnerability-rankings", method: HTTP_METHOD_GET};
   }
 }

@@ -2509,6 +2509,9 @@
           "path": "scripts/seed-recovery-reexport-share.mjs"
         },
         {
+          "path": "scripts/seed-supply-vulnerability.mjs"
+        },
+        {
           "path": "scripts/seed-trade-flows.mjs"
         },
         {
@@ -8217,6 +8220,9 @@
         },
         {
           "path": "scripts/seed-portwatch.mjs"
+        },
+        {
+          "path": "scripts/seed-supply-vulnerability.mjs"
         }
       ]
     },
@@ -13145,6 +13151,9 @@
       "references": [
         {
           "path": "scripts/seed-mineral-production.mjs"
+        },
+        {
+          "path": "scripts/seed-supply-vulnerability.mjs"
         }
       ]
     },

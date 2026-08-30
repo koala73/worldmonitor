@@ -1735,6 +1735,47 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_supply_vulnerabilities`
+
+Returns the reviewed commodity-vulnerability portfolio for one country. Every row includes an absolute score and band when minimum evidence exists, component detail, coverage, stale reasons, source provenance, and `methodologyVersion`. A missing score is unknown, not zero.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country_code` | string | Required ISO 3166-1 alpha-2 country code, such as `AE`, `JP`, or `DE`. Input is case-insensitive. |
+
+- **API endpoint:** `GET /api/supply-chain/v1/get-country-vulnerabilities`
+- **Access:** `free-account`
+- **Kind:** Redis projection read from `supply-chain:vulnerability:v1`.
+- **Freshness:** the daily snapshot has a 72-hour TTL. Read each row's `state`, `reasons`, and evidence `stale` fields because upstream datasets have different freshness budgets.
+- **Methodology:** [Commodity Vulnerability Methodology](/methodology/supply-vulnerability).
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_supply_vulnerabilities","arguments":{"country_code":"AE"}}}
+```
+
+### `get_chokepoint_dependencies`
+
+Returns the highest-scoring country and commodity dependencies for one maritime chokepoint. The inverse index is built from the same pass as the country index, so the score, state, transit share, and methodology version reconcile with `get_supply_vulnerabilities`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `chokepoint_id` | string | Required canonical id, such as `hormuz_strait` or `malacca_strait`. |
+| `page_size` | integer | Optional result limit from 1 to 100. Default 25. |
+
+- **API endpoint:** `GET /api/supply-chain/v1/get-chokepoint-dependencies`
+- **Access:** `free-account`
+- **Kind:** Redis projection read from `supply-chain:chokepoint-dependencies:v1`.
+- **Freshness:** the daily snapshot has a 72-hour TTL. An unscored dependency remains in the response with its explicit state and reasons.
+- **Methodology:** [Commodity Vulnerability Methodology](/methodology/supply-vulnerability).
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_chokepoint_dependencies","arguments":{"chokepoint_id":"hormuz_strait","page_size":25}}}
+```
+
 ### `get_positive_events`
 
 Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.

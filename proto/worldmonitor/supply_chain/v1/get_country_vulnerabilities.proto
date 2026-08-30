@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message VulnerabilityInput {
+  string source_key = 1;
+  string source_name = 2;
+  string source_url = 3;
+  optional double value = 4;
+  optional int32 year = 5;
+  string fetched_at = 6;
+  bool stale = 7;
+  string detail = 8;
+}
+
+message VulnerabilitySourceConcentration {
+  optional double value = 1;
+  optional double import_hhi = 2;
+  optional double mine_hhi = 3;
+  optional double refinery_hhi = 4;
+  optional double production_hhi = 5;
+  string production_coverage = 6;
+  string coverage = 7;
+  repeated VulnerabilityInput inputs = 8;
+}
+
+message VulnerabilityTransitRoute {
+  string id = 1;
+  string name = 2;
+  optional double transit_share = 3;
+  optional double weighted_transit_share = 4;
+  string status = 5;
+  repeated VulnerabilityInput inputs = 6;
+}
+
+message VulnerabilityTransitExposure {
+  optional double value = 1;
+  repeated VulnerabilityTransitRoute chokepoints = 2;
+}
+
+message VulnerabilityBuffer {
+  string state = 1;
+  optional double vulnerability = 2;
+  string kind = 3;
+  repeated VulnerabilityInput inputs = 4;
+}
+
+message VulnerabilityComponents {
+  VulnerabilitySourceConcentration source_concentration = 1;
+  VulnerabilityTransitExposure transit_exposure = 2;
+  VulnerabilityBuffer buffer = 3;
+}
+
+message CommodityVulnerability {
+  string country_iso2 = 1;
+  string country_name = 2;
+  string commodity_id = 3;
+  string commodity = 4;
+  optional double score = 5;
+  string band = 6;
+  VulnerabilityComponents components = 7;
+  repeated string coverage = 8;
+  string state = 9;
+  repeated string reasons = 10;
+  string methodology_version = 11;
+}
+
+message GetCountryVulnerabilitiesRequest {
+  string iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "iso2"}
+  ];
+}
+
+message GetCountryVulnerabilitiesResponse {
+  string iso2 = 1;
+  string country = 2;
+  repeated CommodityVulnerability vulnerabilities = 3;
+  string generated_at = 4;
+  string methodology_version = 5;
+  bool upstream_unavailable = 6;
+}

@@ -2882,6 +2882,94 @@ export const RPC_TOOLS: ToolDef[] = [
       'GET /api/supply-chain/v1/get-mineral-production',
     ],
   },
+  {
+    name: 'get_supply_vulnerabilities',
+    _outputBudgetBytes: 131072,
+    description: 'Return one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance. Missing evidence stays absent and state/reasons explain why; never interpret an absent score as zero.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string', pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 alpha-2 country code, such as AE, JP, or DE.' },
+      },
+      required: ['country_code'],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['iso2', 'country', 'vulnerabilities', 'generatedAt', 'methodologyVersion', 'upstreamUnavailable'],
+      properties: {
+        iso2: { type: 'string' },
+        country: { type: 'string' },
+        vulnerabilities: { type: 'array', items: { type: 'object', properties: {
+          commodityId: { type: 'string' }, commodity: { type: 'string' },
+          score: { type: ['number', 'null'] }, band: { type: 'string' }, state: { type: 'string' },
+          reasons: { type: 'array', items: { type: 'string' } }, coverage: { type: 'array', items: { type: 'string' } },
+          components: { type: 'object' }, methodologyVersion: { type: 'string' },
+        } } },
+        generatedAt: { type: 'string' },
+        methodologyVersion: { type: 'string' },
+        upstreamUnavailable: { type: 'boolean' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context) => {
+      const countryCode = argStr(params.country_code).trim().toUpperCase();
+      const url = `${base}/api/supply-chain/v1/get-country-vulnerabilities?iso2=${encodeURIComponent(countryCode)}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const response = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertToolFetchOk(response, 'get-country-vulnerabilities');
+      return response.json();
+    },
+    _coverageKeys: ['supply-chain:vulnerability:v1'],
+    _apiPaths: ['GET /api/supply-chain/v1/get-country-vulnerabilities'],
+  },
+  {
+    name: 'get_chokepoint_dependencies',
+    _outputBudgetBytes: 131072,
+    description: 'Return the highest-scoring country and commodity dependencies for one maritime chokepoint from the same snapshot as country vulnerabilities. Scores may be absent when coverage is insufficient; read state and reasons before drawing conclusions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        chokepoint_id: { type: 'string', pattern: '^[a-z0-9_-]+$', description: 'Canonical chokepoint id, such as hormuz_strait or malacca_strait.' },
+        page_size: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum dependencies. Defaults to 25.' },
+      },
+      required: ['chokepoint_id'],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['chokepointId', 'chokepoint', 'dependencies', 'generatedAt', 'methodologyVersion', 'upstreamUnavailable'],
+      properties: {
+        chokepointId: { type: 'string' }, chokepoint: { type: 'string' },
+        dependencies: { type: 'array', items: { type: 'object', properties: {
+          countryIso2: { type: 'string' }, countryName: { type: 'string' },
+          commodityId: { type: 'string' }, commodity: { type: 'string' },
+          transitShare: { type: 'number' }, weightedTransitShare: { type: 'number' },
+          score: { type: ['number', 'null'] }, band: { type: 'string' }, state: { type: 'string' },
+          reasons: { type: 'array', items: { type: 'string' } }, methodologyVersion: { type: 'string' },
+        } } },
+        generatedAt: { type: 'string' }, methodologyVersion: { type: 'string' },
+        upstreamUnavailable: { type: 'boolean' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context) => {
+      const chokepointId = argStr(params.chokepoint_id).trim().toLowerCase();
+      const query = new URLSearchParams({ chokepointId });
+      if (params.page_size) query.set('pageSize', String(params.page_size));
+      const url = `${base}/api/supply-chain/v1/get-chokepoint-dependencies?${query}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const response = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertToolFetchOk(response, 'get-chokepoint-dependencies');
+      return response.json();
+    },
+    _coverageKeys: ['supply-chain:chokepoint-dependencies:v1'],
+    _apiPaths: ['GET /api/supply-chain/v1/get-chokepoint-dependencies'],
+  },
   ...ANALYSIS_TOOLS,
   {
     name: 'search_intel_history',

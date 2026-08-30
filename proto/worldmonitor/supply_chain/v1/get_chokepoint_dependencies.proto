@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message ChokepointDependency {
+  string country_iso2 = 1;
+  string country_name = 2;
+  string commodity_id = 3;
+  string commodity = 4;
+  optional double transit_share = 5;
+  optional double weighted_transit_share = 6;
+  optional double score = 7;
+  string band = 8;
+  string state = 9;
+  repeated string reasons = 10;
+  string methodology_version = 11;
+}
+
+message GetChokepointDependenciesRequest {
+  string chokepoint_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 80,
+    (buf.validate.field).string.pattern = "^[a-z0-9_\\-]+$",
+    (sebuf.http.query) = {name: "chokepointId"}
+  ];
+  int32 page_size = 2 [
+    (buf.validate.field).int32 = {gte: 0, lte: 100},
+    (sebuf.http.query) = {name: "pageSize"}
+  ];
+}
+
+message GetChokepointDependenciesResponse {
+  string chokepoint_id = 1;
+  string chokepoint = 2;
+  repeated ChokepointDependency dependencies = 3;
+  string generated_at = 4;
+  string methodology_version = 5;
+  bool upstream_unavailable = 6;
+}
