@@ -66,12 +66,15 @@ export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
-const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-29';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-30';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
   name: 'World Monitor Terms of Service (27 July 2026)',
   url: 'https://www.worldmonitor.app/docs/terms',
 };
+const COUNTRY_DATASET_DOWNLOAD = 'resilience.json';
+const CHOKEPOINT_DATASET_DOWNLOAD = 'reference.json';
+const CRISIS_DATASET_DOWNLOAD = 'tracker.json';
 const DATA_CATALOG_FRAGMENT = '#data-catalog';
 const WORLD_MONITOR_ORG = Object.freeze({
   '@type': 'Organization',
@@ -297,7 +300,7 @@ function dataCatalogLd(baseUrl) {
     '@id': dataCatalogId(baseUrl),
     name: 'World Monitor open data catalog',
     description:
-      'Crawlable World Monitor datasets for country resilience, maritime chokepoint status, bounded crisis trackers, and research snapshots, with public API distributions.',
+      'Crawlable World Monitor datasets for country resilience, maritime chokepoint reference, bounded crisis trackers, and research snapshots, with static JSON downloads generated from committed data.',
     url: `${normalizeBaseUrl(baseUrl)}/`,
     publisher: { ...WORLD_MONITOR_ORG },
     creator: { ...WORLD_MONITOR_ORG },
@@ -331,6 +334,79 @@ export function datasetTemporalCoverage(observationInterval) {
   if (typeof observationInterval !== 'string') return undefined;
   const trimmed = observationInterval.trim();
   return OBSERVATION_COVERAGE_RE.test(trimmed) ? trimmed : undefined;
+}
+
+function datasetDownloadHref(pagePath, filename) {
+  return `${pagePath}${filename}`;
+}
+
+function datasetDownloadFile(pagePath, filename) {
+  return datasetDownloadHref(pagePath, filename).replace(/^\/+/, '');
+}
+
+function stableJson(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function countryDatasetDownload(country, { capturedAt, methodologyFormula, rankedCount }) {
+  return stableJson({
+    dataset: 'country-resilience-snapshot',
+    countryCode: country.code,
+    countryName: country.name,
+    slug: country.slug,
+    rank: country.rank,
+    overallScore: country.overallScore,
+    dimensionCoverage: country.dimensionCoverage,
+    confidence: country.lowConfidence ? 'low' : 'standard',
+    level: country.level,
+    sourceStatus: country.sourceStatus,
+    headlineEligible: country.headlineEligible,
+    capturedAt,
+    methodologyFormula,
+    rankedCount,
+    source: RESILIENCE_SNAPSHOT_PATH,
+    license: DATASET_LICENSE.url,
+  });
+}
+
+function chokepointDatasetDownload(chokepoint, { tradeRoutesById }) {
+  const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
+  const modelledTradeRoutes = chokepoint.routeIds
+    .map((id) => tradeRoutesById.get(id))
+    .filter(Boolean)
+    .map((route) => ({
+      id: route.id,
+      name: route.name,
+      volumeDesc: route.volumeDesc || null,
+      category: route.category || null,
+    }));
+  return stableJson({
+    dataset: 'chokepoint-reference',
+    id: chokepoint.id,
+    displayName: chokepoint.displayName,
+    slug: chokepoint.slug,
+    lat: Number.isFinite(chokepoint.lat) ? chokepoint.lat : null,
+    lon: Number.isFinite(chokepoint.lon) ? chokepoint.lon : null,
+    region: content.region || null,
+    shockModelSupported: chokepoint.shockModelSupported,
+    modelledTradeRoutes,
+    source: [CHOKEPOINT_REGISTRY_PATH, TRADE_ROUTES_PATH],
+    license: DATASET_LICENSE.url,
+  });
+}
+
+function crisisDatasetDownload(crisis) {
+  return stableJson({
+    dataset: 'crisis-tracker',
+    slug: crisis.slug,
+    title: crisis.title,
+    shortTitle: crisis.shortTitle,
+    description: crisis.description,
+    overview: crisis.overview,
+    coverage: crisis.coverage,
+    source: CRISIS_REGISTRY_PATH,
+    license: DATASET_LICENSE.url,
+  });
 }
 
 function geoShapeBox(south, west, north, east) {
@@ -1283,16 +1359,9 @@ function renderCountryPage({
       <h2>How to read this page</h2>
       <p>World Monitor's Country Resilience Index is a 0-100 structural resilience score. This page records the committed ${escapeHtml(prettyDate(capturedAt))} snapshot using the ${escapeHtml(methodologyFormula)} methodology tag. The full scoring approach — dimensions, sources, and confidence rules — is documented in the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a>.</p>
       <p>Use it as a crawlable reference and stable landing page. For the current live picture — active alerts, conflict events, market and energy signals — open ${escapeHtml(country.name)} on the live map above.</p>
-      <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = `${country.name} Country Risk and Resilience`;
-  const resilienceApi = absoluteUrl(
-    baseUrl,
-    `/api/resilience/v1/get-resilience-score?countryCode=${encodeURIComponent(country.code)}`,
-  );
-  const riskApi = absoluteUrl(
-    baseUrl,
-    `/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(country.code)}`,
-  );
+  const resilienceDownload = absoluteUrl(baseUrl, datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD));
   return pageDocument({
     baseUrl,
     path,
@@ -1334,8 +1403,7 @@ function renderCountryPage({
           ],
           spatialCoverage: countrySpatialCoverage(country, bbox),
           distribution: [
-            dataDownload(resilienceApi),
-            dataDownload(riskApi),
+            dataDownload(resilienceDownload),
           ],
         },
       },
@@ -1469,7 +1537,7 @@ ${tiles}
       <ul class="related">
 ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
       </ul>
-      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}. Methodology: <a href="/docs/methodology/chokepoints">how chokepoint disruption is scored</a>.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CHOKEPOINT_DATASET_DOWNLOAD))}">${CHOKEPOINT_DATASET_DOWNLOAD}</a>. Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}. Methodology: <a href="/docs/methodology/chokepoints">how chokepoint disruption is scored</a>.</p>`;
   const hasCoordinates = Number.isFinite(chokepoint.lat) && Number.isFinite(chokepoint.lon);
   const geoCoordinates = hasCoordinates
     ? {
@@ -1488,11 +1556,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
       )
       : null,
   ].filter(Boolean);
-  const statusApi = absoluteUrl(baseUrl, '/api/supply-chain/v1/get-chokepoint-status');
-  const historyApi = absoluteUrl(
-    baseUrl,
-    `/api/supply-chain/v1/get-chokepoint-history?chokepointId=${encodeURIComponent(chokepoint.id)}`,
-  );
+  const referenceDownload = absoluteUrl(baseUrl, datasetDownloadHref(path, CHOKEPOINT_DATASET_DOWNLOAD));
   return pageDocument({
     baseUrl,
     path,
@@ -1537,8 +1601,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
             geo: [geoCoordinates, geoShape].filter(Boolean),
           },
           distribution: [
-            dataDownload(statusApi),
-            dataDownload(historyApi),
+            dataDownload(referenceDownload),
           ],
         },
       },
@@ -1641,18 +1704,15 @@ ${crisis.coverage.map((country) => `          <li data-crisis-country data-count
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
       <h2>How to read this tracker</h2>
       <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger.</p>
-      <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>, served through the World Monitor API.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))}">${CRISIS_DATASET_DOWNLOAD}</a>. Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>, served through the World Monitor API.</p>`;
   const coveragePlaces = crisis.coverage.map((country) => ({
     '@type': 'Country',
     name: country.name,
     identifier: country.code,
   }));
-  const distribution = crisis.coverage.map((country) => dataDownload(
-    absoluteUrl(
-      baseUrl,
-      `/api/conflict/v1/get-humanitarian-summary?country_code=${encodeURIComponent(country.code)}`,
-    ),
-  ));
+  const distribution = [
+    dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))),
+  ];
   return pageDocument({
     baseUrl,
     path,
@@ -2066,9 +2126,10 @@ export async function buildCorpus({
   );
   const rankedCount = data.countries.filter((country) => country.rank != null).length;
   for (const country of data.countries) {
+    const pagePath = `/countries/${country.slug}/`;
     writeGeneratedFile(
       outDir,
-      routeFile(`/countries/${country.slug}/`),
+      routeFile(pagePath),
       renderCountryPage({
         country,
         baseUrl,
@@ -2077,6 +2138,15 @@ export async function buildCorpus({
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
         rankedCount,
         bbox: data.countryBboxByCode.get(country.code) || null,
+      }),
+    );
+    writeGeneratedFile(
+      outDir,
+      datasetDownloadFile(pagePath, COUNTRY_DATASET_DOWNLOAD),
+      countryDatasetDownload(country, {
+        capturedAt: data.resilience.capturedAt,
+        methodologyFormula: data.resilience.methodologyFormula || 'unknown',
+        rankedCount,
       }),
     );
   }
@@ -2091,15 +2161,23 @@ export async function buildCorpus({
     }),
   );
   for (const chokepoint of data.chokepoints) {
+    const pagePath = `/chokepoints/${chokepoint.slug}/`;
     writeGeneratedFile(
       outDir,
-      routeFile(`/chokepoints/${chokepoint.slug}/`),
+      routeFile(pagePath),
       renderChokepointPage({
         chokepoint,
         baseUrl,
         lastmod: data.lastmod.chokepoints,
         tradeRoutesById: data.tradeRoutesById,
         researchReports: data.researchReports,
+      }),
+    );
+    writeGeneratedFile(
+      outDir,
+      datasetDownloadFile(pagePath, CHOKEPOINT_DATASET_DOWNLOAD),
+      chokepointDatasetDownload(chokepoint, {
+        tradeRoutesById: data.tradeRoutesById,
       }),
     );
   }
@@ -2162,14 +2240,20 @@ export async function buildCorpus({
     }),
   );
   for (const crisis of data.crises) {
+    const pagePath = `/crises/${crisis.slug}/`;
     writeGeneratedFile(
       outDir,
-      routeFile(`/crises/${crisis.slug}/`),
+      routeFile(pagePath),
       renderCrisisPage({
         crisis,
         baseUrl,
         lastmod: data.lastmod.crises,
       }),
+    );
+    writeGeneratedFile(
+      outDir,
+      datasetDownloadFile(pagePath, CRISIS_DATASET_DOWNLOAD),
+      crisisDatasetDownload(crisis),
     );
   }
 

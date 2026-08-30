@@ -387,6 +387,36 @@ function isAbsoluteHttpUrl(value) {
   }
 }
 
+function assertDatasetDownloadsAreGenerated(html, outDir, route, baseUrl = 'https://www.worldmonitor.app') {
+  const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+  const downloads = datasets.flatMap((dataset) => {
+    const distributions = Array.isArray(dataset.distribution)
+      ? dataset.distribution
+      : dataset.distribution == null
+        ? []
+        : [dataset.distribution];
+    return distributions.filter((item) => isJsonLdType(item, 'DataDownload'));
+  });
+  if (datasets.length === 0) return;
+  assert.ok(downloads.length > 0, `${route} Dataset must expose at least one DataDownload`);
+  const origin = new URL(baseUrl).origin;
+  for (const item of downloads) {
+    assert.ok(isAbsoluteHttpUrl(item.contentUrl), `${route} DataDownload contentUrl must be absolute`);
+    const url = new URL(item.contentUrl);
+    assert.equal(url.origin, origin, `${route} DataDownload must stay on ${origin}`);
+    assert.doesNotMatch(
+      url.pathname,
+      /^\/api\//,
+      `${route} DataDownload must not point at an authenticated API route: ${item.contentUrl}`,
+    );
+    const relativePath = url.pathname.replace(/^\/+/, '');
+    assert.ok(
+      existsSync(join(outDir, relativePath)),
+      `${route} DataDownload ${item.contentUrl} must map to generated file ${relativePath}`,
+    );
+  }
+}
+
 function assertDatasetGoogleProperties(html, route, { requireDataset = false, requireCatalogLinkage = false } = {}) {
   const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
   if (requireDataset) {
@@ -856,6 +886,7 @@ describe('crawlable corpus generator', () => {
             });
           }
         }
+        assertDatasetDownloadsAreGenerated(html, outDir, route);
       }
       assertDataCatalogPresent(read(outDir, 'countries/index.html'), '/countries/');
       assertDataCatalogPresent(read(outDir, 'chokepoints/index.html'), '/chokepoints/');
@@ -865,10 +896,13 @@ describe('crawlable corpus generator', () => {
       for (const path of [
         'countries/index.html',
         'countries/norway/index.html',
+        'countries/norway/resilience.json',
         'chokepoints/index.html',
         'chokepoints/strait-of-hormuz/index.html',
+        'chokepoints/strait-of-hormuz/reference.json',
         'crises/index.html',
         'crises/red-sea-security/index.html',
+        'crises/red-sea-security/tracker.json',
         'tools/index.html',
         'tools/live-tools.js',
         'tools/natural-hazard-pulse/index.html',
@@ -888,7 +922,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-08-29">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-08-30">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -934,8 +968,17 @@ describe('crawlable corpus generator', () => {
       assert.ok(norwayDataset.includedInDataCatalog?.['@id']?.includes('#data-catalog'));
       assert.match(
         JSON.stringify(norwayDataset.distribution),
-        /\/api\/resilience\/v1\/get-resilience-score\?countryCode=NO/,
+        /\/countries\/norway\/resilience\.json/,
       );
+      assert.doesNotMatch(
+        JSON.stringify(norwayDataset.distribution),
+        /\/api\//,
+        'country Dataset downloads must be static artifacts, not API routes',
+      );
+      const norwaySnapshot = JSON.parse(read(outDir, 'countries/norway/resilience.json'));
+      assert.equal(norwaySnapshot.countryCode, 'NO');
+      assert.equal(norwaySnapshot.dataset, 'country-resilience-snapshot');
+      assert.match(norway, /href="\/countries\/norway\/resilience\.json"/);
       assert.ok(
         norwayDataset.spatialCoverage?.geo?.['@type'] === 'GeoShape'
           || norwayDataset.spatialCoverage?.['@type'] === 'Country',
@@ -1239,7 +1282,12 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(
         JSON.stringify(hormuzDataset.distribution),
-        /\/api\/supply-chain\/v1\/get-chokepoint-status/,
+        /\/chokepoints\/strait-of-hormuz\/reference\.json/,
+      );
+      assert.doesNotMatch(
+        JSON.stringify(hormuzDataset.distribution),
+        /\/api\//,
+        'chokepoint Dataset downloads must be static artifacts, not API routes',
       );
       const additionalProps = Array.isArray(hormuzPage.about.additionalProperty)
         ? hormuzPage.about.additionalProperty
@@ -1278,7 +1326,12 @@ describe('crawlable corpus generator', () => {
       assert.equal(redSeaDataset.isAccessibleForFree, true);
       assert.match(
         JSON.stringify(redSeaDataset.distribution),
-        /\/api\/conflict\/v1\/get-humanitarian-summary\?country_code=/,
+        /\/crises\/red-sea-security\/tracker\.json/,
+      );
+      assert.doesNotMatch(
+        JSON.stringify(redSeaDataset.distribution),
+        /\/api\//,
+        'crisis Dataset downloads must be static artifacts, not API routes',
       );
       assertDataCatalogPresent(redSea, '/crises/red-sea-security/');
 
@@ -1344,8 +1397,8 @@ describe('crawlable corpus generator', () => {
     assert.deepEqual(data.sources.sourceCatalogInputs, SOURCE_CATALOG_LASTMOD_PATHS);
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
-    assert.equal(data.lastmod.countries, '2026-08-29');
-    assert.equal(data.lastmod.research, '2026-08-29');
+    assert.equal(data.lastmod.countries, '2026-08-30');
+    assert.equal(data.lastmod.research, '2026-08-30');
     assert.equal(
       data.lastmod.sources,
       sourcePageLastmod({
