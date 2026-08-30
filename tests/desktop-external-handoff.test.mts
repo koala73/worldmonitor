@@ -43,19 +43,40 @@ interface WindowProbe {
   invokeHangs: boolean;
   /** Simulates a popup blocker: window.open returns null. */
   popupBlocked: boolean;
+  /**
+   * Chrome Mobile iOS: window.open throws SecurityError instead of returning
+   * null when the user-gesture window is spent (WORLDMONITOR-11C / 11D).
+   */
+  openThrowsSecurityError: boolean;
+  /** Same-tab assign throws SecurityError (navigation gated as insecure). */
+  assignThrowsSecurityError: boolean;
 }
 
 let probe: WindowProbe;
 
-function makeTab(): {
+function makeTab(options?: {
+  throwOnHrefAssign?: boolean;
+  throwOnClosedRead?: boolean;
+}): {
   closed: boolean;
   location: { href: string };
   close: () => void;
   opener: unknown;
 } {
+  let href = '';
   const tab = {
     closed: false,
-    location: { href: '' },
+    location: {
+      get href() {
+        return href;
+      },
+      set href(next: string) {
+        if (options?.throwOnHrefAssign) {
+          throw new DOMException('The operation is insecure.', 'SecurityError');
+        }
+        href = next;
+      },
+    },
     // Starts non-null so `opener === null` proves the code severed it, rather
     // than passing because the fake never had one. This is the property that
     // replaced `noopener` in the feature string.
@@ -65,6 +86,14 @@ function makeTab(): {
       probe.closedTabs += 1;
     },
   };
+  if (options?.throwOnClosedRead) {
+    Object.defineProperty(tab, 'closed', {
+      configurable: true,
+      get(): boolean {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+  }
   probe.handedOutTabs.push(tab);
   return tab;
 }
@@ -86,6 +115,8 @@ function installWindow(kind: 'desktop' | 'web'): void {
     invokeRejects: false,
     invokeHangs: false,
     popupBlocked: false,
+    openThrowsSecurityError: false,
+    assignThrowsSecurityError: false,
   };
 
   const desktop = kind === 'desktop';
@@ -96,6 +127,9 @@ function installWindow(kind: 'desktop' | 'web'): void {
     origin: desktop ? 'tauri://localhost' : 'https://worldmonitor.app',
     href: desktop ? 'tauri://localhost/index.html' : 'https://worldmonitor.app/dashboard',
     assign: (url: string) => {
+      if (probe.assignThrowsSecurityError) {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      }
       probe.assigned.push(url);
     },
   };
@@ -111,6 +145,9 @@ function installWindow(kind: 'desktop' | 'web'): void {
     // the tab present in the tab list.
     open: (url: string, target?: string, features?: string) => {
       probe.opened.push([url, target, features]);
+      if (probe.openThrowsSecurityError) {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      }
       if (probe.popupBlocked) return null;
       // The tab opens either way; only the HANDLE is withheld. Recording it
       // in `handedOutTabs` would be wrong — nothing can sever an opener it
@@ -349,6 +386,46 @@ describe('openExternalUrl — web', () => {
       [],
       'a settings panel with staged secrets must not be navigated out from under the user',
     );
+  });
+
+  // WORLDMONITOR-11C / 11D: Chrome Mobile iOS throws SecurityError when the
+  // reserved blank tab's location.href is assigned after an await. The module
+  // must degrade (close blank tab → same-tab) rather than reject.
+  it('degrades to same-tab when reserved-tab navigation throws SecurityError', async () => {
+    installWindow('web');
+    const reserved = makeTab({ throwOnHrefAssign: true });
+    probe.popupBlocked = true;
+
+    const outcome = await openExternalUrl(PORTAL_URL, reserved);
+
+    assert.equal(outcome, 'same-tab');
+    assert.equal(probe.closedTabs, 1, 'the unusable blank tab must be closed');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('treats a SecurityError on window.open like a blocked popup', async () => {
+    installWindow('web');
+    probe.openThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'same-tab');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('returns failed when even same-tab assign throws SecurityError', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    probe.assignThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'failed');
+    assert.deepEqual(probe.assigned, []);
+  });
+
+  it('ignores a reserved tab whose closed getter throws SecurityError', async () => {
+    installWindow('web');
+    const reserved = makeTab({ throwOnClosedRead: true });
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'popup');
+    assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
   });
 });
 

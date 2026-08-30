@@ -123,7 +123,14 @@ async function invokeOpenUrlBounded(url: string): Promise<void> {
  * (`strict-origin-when-cross-origin`) for cross-origin targets.
  */
 function openWindowWithHandle(url: string): Window | null {
-  const win = window.open(url, '_blank');
+  let win: Window | null = null;
+  try {
+    // Chrome Mobile iOS / WebKit can throw SecurityError (DOMException 18)
+    // instead of returning null when the user-gesture window is spent.
+    win = window.open(url, '_blank');
+  } catch {
+    return null;
+  }
   if (win) {
     try {
       win.opener = null;
@@ -133,6 +140,25 @@ function openWindowWithHandle(url: string): Window | null {
     }
   }
   return win;
+}
+
+/** True when a reserved tab is still usable; never throws on WebKit quirks. */
+function isReservedTabAlive(preopened: Window | null | undefined): preopened is Window {
+  if (!preopened) return false;
+  try {
+    return !preopened.closed;
+  } catch {
+    // Reading `.closed` can itself throw SecurityError on some WebKit builds.
+    return false;
+  }
+}
+
+function abandonReservedTab(preopened: Window): void {
+  try {
+    if (!preopened.closed) preopened.close();
+  } catch {
+    // Best-effort: a stuck blank tab is better than an uncaught SecurityError.
+  }
 }
 
 /**
@@ -209,19 +235,35 @@ export async function openExternalUrl(
     }
   }
 
-  if (preopened && !preopened.closed) {
-    preopened.location.href = targetUrl;
-    return 'popup';
+  // Web path must never throw: callers (billing portal, checkout) treat this
+  // module as outcome-typed. Chrome Mobile iOS throws SecurityError when
+  // assigning a cross-origin URL onto a gesture-reserved blank tab after an
+  // await, or when window.open runs without a live gesture (WORLDMONITOR-11C,
+  // WORLDMONITOR-11D). Catch and degrade — same-tab or explicit failure —
+  // instead of leaking an unhandled rejection.
+  if (isReservedTabAlive(preopened)) {
+    try {
+      preopened.location.href = targetUrl;
+      return 'popup';
+    } catch {
+      abandonReservedTab(preopened);
+    }
   }
-  const fresh = openWindowWithHandle(targetUrl);
-  if (fresh) return 'popup';
-  // Genuinely blocked, and no reserved tab. Same-tab navigation beats
-  // silently doing nothing for an upgrade CTA — but not for a caller holding
-  // unsaved input, which opts out and gets the failure instead.
-  if (options?.sameTabFallback === false) {
-    reportOpenFailure(targetUrl, 'popup-blocked');
+
+  try {
+    const fresh = openWindowWithHandle(targetUrl);
+    if (fresh) return 'popup';
+    // Genuinely blocked, and no reserved tab. Same-tab navigation beats
+    // silently doing nothing for an upgrade CTA — but not for a caller holding
+    // unsaved input, which opts out and gets the failure instead.
+    if (options?.sameTabFallback === false) {
+      reportOpenFailure(targetUrl, 'popup-blocked');
+      return 'failed';
+    }
+    window.location.assign(targetUrl);
+    return 'same-tab';
+  } catch {
+    reportOpenFailure(targetUrl, 'navigation-insecure');
     return 'failed';
   }
-  window.location.assign(targetUrl);
-  return 'same-tab';
 }

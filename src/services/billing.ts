@@ -58,6 +58,15 @@ let unsubscribeConvex: (() => void) | null = null;
 // and as `cause` (for Sentry's structured display) so events remain debuggable (WORLDMONITOR-ND).
 function normalizeCaughtError(action: string, err: unknown): Error {
   if (err instanceof Error) return err;
+  // WebKit (Chrome Mobile iOS): DOMException historically is not
+  // `instanceof Error`, so SecurityError from window.open / location.assign
+  // used to land as the synthetic "threw non-Error: SecurityError: …" shape
+  // (WORLDMONITOR-11D). Preserve name + message on a real Error instead.
+  if (typeof DOMException !== 'undefined' && err instanceof DOMException) {
+    const wrapped = new Error(`[billing] ${action}: ${err.name}: ${err.message}`);
+    (wrapped as Error & { cause?: unknown }).cause = err;
+    return wrapped;
+  }
   const rendered = err === undefined ? 'undefined' : String(err);
   const wrapped = new Error(`[billing] ${action} threw non-Error: ${rendered}`);
   // Attach the original thrown value as `cause` so Sentry shows it as structured data.
