@@ -23,6 +23,12 @@ import {
   buildWebMcpTools as buildProductionWebMcpTools,
 } from '../src/services/webmcp.ts';
 
+import { PANEL_LAYOUT_DENIAL_REASONS } from '../src/services/panel-layout-actions.ts';
+import {
+  MISSION_PRESET_APPLY_DENY_REASONS,
+  MISSION_PRESET_UNAVAILABLE_REASONS,
+} from '../src/services/webmcp-mission-preset-catalog.ts';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function buildWebMcpTools(
@@ -461,6 +467,25 @@ function assertCancellationTable(guide: string, startHeading: string, endHeading
   }
 }
 
+/**
+ * Every stable reason the panel-layout and mission-preset tools can report.
+ * A reason that reaches a caller but is absent from a guide leaves that agent
+ * with no documented recovery, so both language guides must name all of them.
+ */
+const WEBMCP_DOCUMENTED_REASONS = [...new Set([
+  ...PANEL_LAYOUT_DENIAL_REASONS,
+  ...MISSION_PRESET_UNAVAILABLE_REASONS,
+  ...MISSION_PRESET_APPLY_DENY_REASONS,
+])].sort();
+
+function assertReasonsDocumented(guide: string, label: string) {
+  const visible = visibleMdx(guide);
+  const missing = WEBMCP_DOCUMENTED_REASONS.filter(
+    (reason) => !visible.includes(`\`${reason}\``),
+  );
+  assert.deepEqual(missing, [], `${label} does not document these WebMCP reasons`);
+}
+
 function assertMaintainerSourceExists(source: string) {
   const lastSlash = source.lastIndexOf('/');
   const directory = source.slice(0, lastSlash);
@@ -514,6 +539,7 @@ function assertGuideContract(
   const focusedTestPaths = [...verification.matchAll(/^\s{2}(tests\/[^\s\\]+)(?:\s+\\)?$/gm)]
     .map((match) => match[1]);
   assert.deepEqual(focusedTestPaths, WEBMCP_FOCUSED_VERIFICATION_TESTS);
+  assertReasonsDocumented(publicGuide, 'The WebMCP public guide');
   assert.match(publicGuide, /target_cancellation_unsupported/);
   assert.match(publicGuide, /WebMcpToolError/);
   assert.match(publicGuide, /webmcp-maintenance/);
@@ -725,6 +751,16 @@ describe('WebMCP canonical inventories', () => {
         headings,
       ),
     );
+    assert.throws(() => assertGuideContract(
+      publicGuide.replaceAll('`preset_incompatible`', 'preset-incompatible'),
+      maintainerGuide,
+      headings,
+    ));
+    assert.throws(() => assertGuideContract(
+      publicGuide.replaceAll('`panel_fixed`', 'panel-fixed'),
+      maintainerGuide,
+      headings,
+    ));
     assert.throws(() => assertGuideContract(
       publicGuide,
       maintainerGuide.replace('## Source map', '## Sources'),
