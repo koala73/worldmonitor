@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
-import { buildMcpRegistryManifest } from '../scripts/prepare-mcp-registry-manifest.mjs';
+import {
+  assertPinnedToolInventory,
+  buildMcpRegistryManifest,
+} from '../scripts/prepare-mcp-registry-manifest.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
@@ -17,14 +20,30 @@ const ROOT = resolve(dirname(__filename), '..');
 //   surface. If it 404s or its format drifts, every future `mcp-publisher
 //   login http` fails and the namespace is unrecoverable without DNS access.
 // - server.json is the source registry entry. The publish workflow derives
-//   its tool count from the server card, then uses the protected domain key
-//   when a release is published.
+//   its tool count from the server card, then uses the protected domain key.
+// - The workflow must fire on the cadence this repo actually has. #7372
+//   published on `release: published` only; the last GitHub release predated
+//   that wiring by ~6 months, the workflow logged zero runs, and the registry
+//   sat at 1.13.0/39 tools against a live 1.17.0/72. Publication is driven by
+//   pushes that change the manifest inputs, with a daily self-healing
+//   backstop, mirroring desktop-release-train.yml.
+// - scripts/mcp-registry-published-versions.json pins the tool count each
+//   SERVER_VERSION declares. server-card.json::tools is held in lockstep with
+//   the code registry (tests/public-product-facts.test.mjs), so every added
+//   tool changes the published description while SERVER_VERSION stays put —
+//   68 -> 69 -> 71 -> 72 all shipped under 1.17.0. The registry refuses a
+//   changed payload for an existing version, so that drift is what turns the
+//   publish job permanently red. Changing the inventory must bump the version.
 describe('mcp registry publication artifacts', () => {
   const authFile = readFileSync(join(ROOT, 'public/.well-known/mcp-registry-auth'), 'utf-8');
   const serverJson = JSON.parse(readFileSync(join(ROOT, 'server.json'), 'utf-8'));
   const serverCard = JSON.parse(
     readFileSync(join(ROOT, 'public/.well-known/mcp/server-card.json'), 'utf-8'),
   );
+  const ledger = JSON.parse(
+    readFileSync(join(ROOT, 'scripts/mcp-registry-published-versions.json'), 'utf-8'),
+  );
+  const publishedVersions = ledger.versions;
 
   it('mcp-registry-auth carries a single MCPv1 ed25519 key line', () => {
     assert.match(
@@ -55,13 +74,70 @@ describe('mcp registry publication artifacts', () => {
   });
 
   it('builds the published registry description from the live MCP tool count', () => {
-    const published = buildMcpRegistryManifest(serverJson, serverCard);
+    const published = buildMcpRegistryManifest(serverJson, serverCard, ledger);
     assert.match(
       published.description,
       new RegExp(`\\b${serverCard.tools.length} tools\\b`),
       'registry description must report the tool inventory in the server card',
     );
     assert.ok(published.description.length <= 100, 'registry description must fit the official limit');
+  });
+
+  it('pins each SERVER_VERSION to the tool inventory it published', () => {
+    const versions = Object.keys(publishedVersions ?? {});
+    assert.ok(versions.length > 0, 'the published-version ledger must not be empty');
+    assert.match(ledger.$comment ?? '', /SERVER_VERSION/, 'the ledger must document why it exists');
+    for (const [version, count] of Object.entries(publishedVersions)) {
+      assert.match(version, /^\d+\.\d+\.\d+$/, `${version} is not a semver version`);
+      assert.ok(
+        Number.isInteger(count) && count > 0,
+        `${version} must pin a positive integer tool count`,
+      );
+    }
+    assert.deepEqual(
+      versions,
+      [...versions].sort((a, b) => a.localeCompare(b, 'en', { numeric: true })),
+      'ledger entries must stay in ascending version order',
+    );
+    assert.equal(
+      versions.at(-1),
+      serverCard.version,
+      'the newest ledger entry must be the version the server card declares',
+    );
+    assert.equal(
+      publishedVersions[serverCard.version],
+      serverCard.tools.length,
+      'adding or removing an MCP tool changes the published registry description; '
+        + 'bump SERVER_VERSION and add a ledger entry instead of editing the pinned count',
+    );
+  });
+
+  it('refuses to build a manifest whose tool count contradicts its pinned version', () => {
+    const drifted = {
+      ...serverCard,
+      tools: [...serverCard.tools, { name: 'get_unpinned_tool' }],
+    };
+    assert.throws(
+      () => assertPinnedToolInventory(drifted, ledger),
+      /SERVER_VERSION/,
+      'a tool added without a version bump must fail the manifest generator, not the publish job',
+    );
+    assert.throws(
+      () => assertPinnedToolInventory({ ...serverCard, version: '9.9.9' }, ledger),
+      /9\.9\.9/,
+      'an unpinned version must fail closed rather than publish an unreviewed inventory',
+    );
+    assert.doesNotThrow(() => assertPinnedToolInventory(serverCard, ledger));
+    assert.throws(
+      () => assertPinnedToolInventory(serverCard, {}),
+      /versions/,
+      'a ledger without a versions map must fail closed, not skip the pin',
+    );
+    assert.throws(
+      () => buildMcpRegistryManifest(serverJson, serverCard, undefined),
+      /versions/,
+      'omitting the ledger must fail closed rather than build an unpinned manifest',
+    );
   });
 
   it('runs the publication CLI and writes the derived manifest', () => {
@@ -81,7 +157,7 @@ describe('mcp registry publication artifacts', () => {
     }
   });
 
-  it('publishes registry metadata on release with protected HTTP credentials', () => {
+  it('publishes registry metadata on manifest changes with protected HTTP credentials', () => {
     const workflowPath = join(ROOT, '.github/workflows/publish-mcp-registry.yml');
     assert.equal(existsSync(workflowPath), true, 'missing MCP registry publish workflow');
 
@@ -96,9 +172,38 @@ describe('mcp registry publication artifacts', () => {
     };
 
     assert.deepEqual(triggers.release.types, ['published']);
-    assert.equal(Object.hasOwn(triggers, 'push'), false);
     assert.ok(Object.hasOwn(triggers, 'workflow_dispatch'));
     assert.equal(Object.hasOwn(triggers, 'pull_request'), false);
+    assert.deepEqual(
+      triggers.push?.branches,
+      ['main'],
+      'publication must follow merges to main — `release: published` alone logged zero runs (#7372)',
+    );
+    for (const manifestInput of [
+      '.github/workflows/publish-mcp-registry.yml',
+      'public/.well-known/mcp/server-card.json',
+      'scripts/mcp-registry-published-versions.json',
+      'scripts/prepare-mcp-registry-manifest.mjs',
+      'scripts/publish-mcp-registry.mjs',
+      'server.json',
+    ]) {
+      assert.ok(
+        triggers.push?.paths?.includes(manifestInput),
+        `${manifestInput} changes the published manifest and must trigger publication`,
+      );
+    }
+    assert.ok(
+      Array.isArray(triggers.schedule) && triggers.schedule.length > 0,
+      'a scheduled backstop must re-attempt publication when a merge-time run is lost',
+    );
+    for (const entry of triggers.schedule) {
+      assert.match(entry.cron, /^[\d*,\-/ ]+$/, `unexpected cron expression: ${entry.cron}`);
+    }
+    assert.equal(
+      workflow.concurrency['cancel-in-progress'],
+      false,
+      'a publish in flight must not be cancelled by a following merge',
+    );
     assert.deepEqual(workflow.permissions, { contents: 'read' });
     assert.equal(workflow.jobs.publish.environment, 'mcp-registry-publish');
     assert.equal(workflow.jobs.publish['timeout-minutes'], 10);

@@ -1,0 +1,6 @@
+{
+  "$comment": "The MCP registry description carries the tool count and the registry rejects a changed payload for an already-published version. server-card.json::tools tracks the code registry, so adding a tool moves that count on its own — 68, 69, 71 and 72 tools all shipped under SERVER_VERSION 1.17.0 while the registry still advertised 1.13.0/39 (#7372). Each version pins the inventory it publishes: changing the tool set means bumping SERVER_VERSION (api/mcp/constants.ts), server-card.json::serverInfo.version and server.json, then adding a new entry here — never editing an existing one.",
+  "versions": {
+    "1.17.0": 72
+  }
+}
