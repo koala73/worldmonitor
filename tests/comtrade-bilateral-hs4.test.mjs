@@ -192,15 +192,22 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
     );
   });
 
-  it('derives HS4 codes from the shared strategic-product metadata', () => {
+  it('derives HS4 codes from both reviewed registries within the two-request budget', async () => {
     assert.ok(
       src.includes("require('./shared/comtrade-strategic-products.json')"),
       'seeder: HS4 codes must come from the reviewed shared metadata',
     );
     assert.doesNotMatch(src, /const\s+HS4_CODES\s*=\s*\[/, 'seeder: must not carry an inline HS4 list');
-    const metadata = JSON.parse(readFileSync(join(root, 'scripts', 'shared', 'comtrade-strategic-products.json'), 'utf8'));
-    const codes = new Set(metadata.products.map(product => product.bilateralHs4Code).filter(Boolean));
-    assert.equal(codes.size, 20, `seeder: must preserve the two-batch 500-calls/month quota budget, got ${codes.size} codes`);
+    assert.ok(
+      src.includes("require('./shared/supply-vulnerability-commodities.json')"),
+      'supply-vulnerability HS4 mappings must extend the existing bilateral mirror',
+    );
+    const { HS4_CODES, MAX_HS4_CODES_PER_BATCH } = await import('../scripts/seed-comtrade-bilateral-hs4.mjs');
+    assert.ok(HS4_CODES.length > 20, 'the vulnerability registry must add reviewed commodity headings');
+    assert.ok(
+      HS4_CODES.length <= MAX_HS4_CODES_PER_BATCH * 2,
+      `seeder must preserve the two-request-per-country quota shape, got ${HS4_CODES.length} codes`,
+    );
   });
 
   it('does NOT write empty data to Redis on fetch failure (preserves existing data)', () => {

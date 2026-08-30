@@ -112,6 +112,7 @@ function getNextKey() {
 
 const usePublicApi = COMTRADE_KEYS.length === 0;
 const STRATEGIC_PRODUCT_METADATA = require('./shared/comtrade-strategic-products.json');
+const SUPPLY_VULNERABILITY_METADATA = require('./shared/supply-vulnerability-commodities.json');
 const COMTRADE_API_CLASSIFIER = 'HS'; // API route family; metadata tracks the active H6/HS2022 revision separately.
 const COMTRADE_FETCH_URL = usePublicApi
   ? `https://comtradeapi.un.org/public/v1/preview/C/A/${COMTRADE_API_CLASSIFIER}`
@@ -142,15 +143,37 @@ export function periodCandidates(isPublicRoute, now = new Date()) {
   return isPublicRoute ? candidatePeriods(now) : [periodWindow(now)];
 }
 
-const BILATERAL_PRODUCTS = STRATEGIC_PRODUCT_METADATA.products.filter((product) => product.bilateralHs4Code);
-const HS4_CODES = Array.from(new Set(BILATERAL_PRODUCTS.map((product) => product.bilateralHs4Code)));
+const BILATERAL_PRODUCTS_BY_CODE = new Map();
+for (const product of STRATEGIC_PRODUCT_METADATA.products) {
+  if (product.bilateralHs4Code) BILATERAL_PRODUCTS_BY_CODE.set(product.bilateralHs4Code, product);
+}
+for (const commodity of SUPPLY_VULNERABILITY_METADATA.commodities) {
+  for (const hs4 of commodity.hs4) {
+    if (!BILATERAL_PRODUCTS_BY_CODE.has(hs4)) {
+      BILATERAL_PRODUCTS_BY_CODE.set(hs4, {
+        bilateralHs4Code: hs4,
+        bilateralLabel: commodity.label,
+        label: commodity.label,
+      });
+    }
+  }
+}
+const BILATERAL_PRODUCTS = Array.from(BILATERAL_PRODUCTS_BY_CODE.values());
+export const HS4_CODES = Array.from(BILATERAL_PRODUCTS_BY_CODE.keys());
 const HS4_LABELS = Object.fromEntries(BILATERAL_PRODUCTS.map((product) => [
   product.bilateralHs4Code,
   product.bilateralLabel ?? product.label,
 ]));
 
-const BATCH_1 = HS4_CODES.slice(0, 10);
-const BATCH_2 = HS4_CODES.slice(10);
+export const MAX_HS4_CODES_PER_BATCH = 20;
+if (HS4_CODES.length > MAX_HS4_CODES_PER_BATCH * 2) {
+  throw new Error(
+    `Reviewed bilateral HS4 registry has ${HS4_CODES.length} codes; more than two `
+    + `${MAX_HS4_CODES_PER_BATCH}-code requests would exceed the monthly request budget`,
+  );
+}
+const BATCH_1 = HS4_CODES.slice(0, MAX_HS4_CODES_PER_BATCH);
+const BATCH_2 = HS4_CODES.slice(MAX_HS4_CODES_PER_BATCH);
 
 /** @type {Record<string, {nearestRouteIds: string[], coastSide: string}>} */
 const COUNTRY_PORT_CLUSTERS = require('./shared/country-port-clusters.json');

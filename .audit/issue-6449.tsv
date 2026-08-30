@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-08-30T03:29:28Z	frame	accepted the live issue contract after preflight reached ready	implementation must start from current main with complete dependencies and no duplicate PR	issue #6449; agent preflight at origin/main 2243035c	ready
+2026-08-30T03:36:00Z	architecture	selected one mapping registry plus one pure snapshot builder and one I/O seeder	keeps formula state provenance and inverse indexing in one source while staying independent of open PR #7398	scripts/shared/mineral-commodities.json; scripts/seed-hs2-chokepoint-exposure.mjs; proto/worldmonitor/supply_chain/v1/service.proto	VERIFIED design
