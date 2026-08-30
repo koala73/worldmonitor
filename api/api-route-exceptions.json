@@ -68,7 +68,14 @@
     {
       "path": "api/mcp/bounded-body.ts",
       "category": "internal-helper",
-      "reason": "Bounded sibling-response body reader shared by MCP billing-denial and downstream error classification (#6559). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "reason": "Bounded sibling-response body reader shared by MCP billing-denial and downstream error classification (#6559), plus the shared JSON-RPC request-body reader used by the MCP entry-point size cap (#7406). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/body-limits.ts",
+      "category": "internal-helper",
+      "reason": "Leaf MCP JSON-RPC POST body-size constant (#7406). Kept outside api/mcp/constants.ts so Edge facades (docs-mcp, mcp-proxy) can import the number without the MCP upgrade/attribution module graph. Pure constant module — exports no route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
