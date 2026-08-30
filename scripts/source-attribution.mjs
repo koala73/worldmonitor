@@ -937,6 +937,7 @@ const EXCLUDED_HOSTS = new Set([
   // Release links, documentation links, and repository links are control/UI
   // surfaces; GitHub API and raw-content hosts remain tracked separately.
   'github.com',
+  'registry.modelcontextprotocol.io',
   // Provider landing-page link in MapPopup; the ingested Wingbits endpoints
   // are tracked as customer-api.wingbits.com and ecs-api.wingbits.com.
   'wingbits.com',

@@ -288,6 +288,7 @@ export function parsePublishMcpRegistryCli(argv) {
 }
 
 async function main(argv = process.argv) {
+  const startedAt = Date.now();
   const { manifestPath, publishCommand } = parsePublishMcpRegistryCli(argv);
   const result = await publishMcpRegistryIdempotent({
     manifestPath,
@@ -296,9 +297,10 @@ async function main(argv = process.argv) {
   });
   if (result.outcome === 'already-published' || result.outcome === 'already-published-after-conflict') {
     console.log(`MCP registry already has equivalent ${result.name}@${result.version}; treating as success`);
-    return;
+  } else {
+    console.log(`Published ${result.name}@${result.version} (${result.outcome})`);
   }
-  console.log(`Published ${result.name}@${result.version} (${result.outcome})`);
+  console.log(`=== Done (${Date.now() - startedAt}ms) ===`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
