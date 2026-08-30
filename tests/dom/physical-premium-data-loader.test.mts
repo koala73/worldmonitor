@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DataLoaderManager,
@@ -16,7 +16,22 @@ const marketMocks = vi.hoisted(() => ({
   fetchPhysicalDivergence: vi.fn(),
 }));
 
+// Physical premiums and the divergence index are Pro (#6436/#6448), and
+// DataLoaderManager.loadPhysicalPremiumComparison() returns early without one.
+// Mutable so the last case can assert that early return instead of only the
+// happy path — a constant `true` would leave the gate itself untested here.
+const gateMocks = vi.hoisted(() => ({ isPro: true }));
+
 vi.mock('@/services/market', () => marketMocks);
+
+vi.mock('@/services/panel-gating', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/panel-gating')>(),
+  hasPremiumAccess: () => gateMocks.isPro,
+}));
+
+beforeEach(() => {
+  gateMocks.isPro = true;
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -160,5 +175,33 @@ describe('physical premium data loading', () => {
 
     expect(panel.updatePhysicalPremiums).toHaveBeenCalledTimes(1);
     expect(panel.updatePhysicalDivergence).toHaveBeenCalledTimes(1);
+  });
+
+  it('fetches nothing for a free viewer, leaving the Physical tab unbuilt (#6436/#6448)', async () => {
+    gateMocks.isPro = false;
+    marketMocks.fetchPhysicalPremiums.mockReset().mockResolvedValue({ premiums: [] });
+    marketMocks.fetchPhysicalDivergence.mockReset().mockResolvedValue({ readings: [] });
+    const panel = {
+      updatePhysicalPremiums: vi.fn(),
+      updatePhysicalDivergence: vi.fn(),
+      showPhysicalDivergenceUnavailable: vi.fn(),
+    };
+    const ctx = { panels: { commodities: panel } } as unknown as AppContext;
+    const loader = new DataLoaderManager(ctx, {
+      renderCriticalBanner: () => undefined,
+      refreshOpenCountryBrief: () => undefined,
+    });
+
+    await loader.loadPhysicalPremiumComparison();
+
+    expect(marketMocks.fetchPhysicalPremiums).not.toHaveBeenCalled();
+    expect(marketMocks.fetchPhysicalDivergence).not.toHaveBeenCalled();
+    // Nothing is pushed into the panel either. CommoditiesPanel._buildTabBar
+    // keys the Physical tab on the premium list being non-empty, so an
+    // untouched panel is what keeps the tab from appearing at all — as opposed
+    // to appearing and opening onto a 401.
+    expect(panel.updatePhysicalPremiums).not.toHaveBeenCalled();
+    expect(panel.updatePhysicalDivergence).not.toHaveBeenCalled();
+    expect(panel.showPhysicalDivergenceUnavailable).not.toHaveBeenCalled();
   });
 });

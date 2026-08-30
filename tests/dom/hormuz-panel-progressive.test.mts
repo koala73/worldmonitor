@@ -5,6 +5,17 @@ const serviceMocks = vi.hoisted(() => ({
   fetchDependencies: vi.fn(),
 }));
 
+// The commodity-dependency fan-out is Pro (#6449) while the tracker itself
+// stays free. Mutable rather than a constant `() => true`: the last case in
+// this file asserts the free path, and a per-test flag is the only way one
+// module mock can serve both.
+const gateMocks = vi.hoisted(() => ({ isPro: true }));
+
+vi.mock('@/services/panel-gating', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/panel-gating')>(),
+  hasPremiumAccess: () => gateMocks.isPro,
+}));
+
 vi.mock('@/services/hormuz-tracker', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/hormuz-tracker')>(),
   fetchHormuzTracker: serviceMocks.fetchTracker,
@@ -56,6 +67,7 @@ const dependencyResponse = {
 beforeEach(() => {
   document.body.replaceChildren();
   localStorage.clear();
+  gateMocks.isPro = true;
   serviceMocks.fetchTracker.mockReset();
   serviceMocks.fetchDependencies.mockReset();
 });
@@ -147,5 +159,31 @@ describe('HormuzPanel progressive vulnerability loading', () => {
     await Promise.resolve();
 
     expect(renderPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the tracker but locks the dependency block for a free viewer (#6449)', async () => {
+    gateMocks.isPro = false;
+    serviceMocks.fetchTracker.mockResolvedValue(tracker);
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    // The free half of the panel is untouched — gating the fan-out must not
+    // cost a free viewer the tracker it was already entitled to.
+    await vi.waitFor(() => {
+      expect(panel.getElement().textContent).toContain('Crude oil transit');
+    });
+
+    // Not fetched at all, rather than fetched and discarded: the gated call
+    // would be a guaranteed 401 on every panel open.
+    expect(serviceMocks.fetchDependencies).not.toHaveBeenCalled();
+
+    const dependencies = panel.getElement().querySelector('.hz-dependencies');
+    expect(dependencies?.getAttribute('data-state')).toBe('pro-locked');
+    // Named as a paywall, not as the generic unavailable state the same block
+    // renders when the upstream snapshot is missing.
+    expect(dependencies?.textContent).not.toContain('United Arab Emirates');
   });
 });
