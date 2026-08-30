@@ -136,6 +136,38 @@ function openWindowWithHandle(url: string): Window | null {
 }
 
 /**
+ * Close a click-reserved popup without letting a WebKit SecurityError escape.
+ *
+ * Chrome Mobile iOS / WKWebKit can throw `SecurityError: The operation is
+ * insecure` when a caller inspects or closes an about:blank tab after an
+ * await (WORLDMONITOR-11D). The handle is already unusable; swallowing here
+ * lets the caller fall through to a fresh `window.open` or same-tab assign.
+ */
+function closeReservedWindow(win: Window | null | undefined): void {
+  if (!win) return;
+  try {
+    if (!win.closed) win.close();
+  } catch {
+    // Reserved-tab inspection/close is best-effort. See WORLDMONITOR-11D.
+  }
+}
+
+/**
+ * Navigate a click-reserved popup. Returns false when the handle is gone or
+ * WebKit refuses the assignment, so the caller can fall back without throwing.
+ */
+function navigateReservedWindow(win: Window, url: string): boolean {
+  try {
+    if (win.closed) return false;
+    win.location.href = url;
+    return true;
+  } catch {
+    closeReservedWindow(win);
+    return false;
+  }
+}
+
+/**
  * Reserve a blank tab SYNCHRONOUSLY inside a click handler so an async
  * external navigation can land in it without tripping the popup blocker.
  * Callers must call this before awaiting anything, then pass the handle to
@@ -178,7 +210,7 @@ export async function openExternalUrl(
   const targetUrl = typeof url === 'string' ? url : url.toString();
   if (!isOpenableExternalUrl(targetUrl)) {
     reportOpenFailure(targetUrl, 'rejected-scheme');
-    if (preopened && !preopened.closed) preopened.close();
+    closeReservedWindow(preopened);
     return 'failed';
   }
 
@@ -186,7 +218,7 @@ export async function openExternalUrl(
     // A pre-reserved tab is a web-only workaround. Close any handle a caller
     // reserved before it knew the runtime, so the OS browser doesn't come
     // forward over an orphaned blank WebView window.
-    if (preopened && !preopened.closed) preopened.close();
+    closeReservedWindow(preopened);
     try {
       await invokeOpenUrlBounded(targetUrl);
       return 'native';
@@ -209,8 +241,7 @@ export async function openExternalUrl(
     }
   }
 
-  if (preopened && !preopened.closed) {
-    preopened.location.href = targetUrl;
+  if (preopened && navigateReservedWindow(preopened, targetUrl)) {
     return 'popup';
   }
   const fresh = openWindowWithHandle(targetUrl);
@@ -222,6 +253,11 @@ export async function openExternalUrl(
     reportOpenFailure(targetUrl, 'popup-blocked');
     return 'failed';
   }
-  window.location.assign(targetUrl);
-  return 'same-tab';
+  try {
+    window.location.assign(targetUrl);
+    return 'same-tab';
+  } catch {
+    reportOpenFailure(targetUrl, 'same-tab-assign-failed');
+    return 'failed';
+  }
 }

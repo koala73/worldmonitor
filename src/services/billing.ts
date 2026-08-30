@@ -56,8 +56,16 @@ let unsubscribeConvex: (() => void) | null = null;
 // Sentry serializes those as synthetic `Error: undefined` with zero frames — uninvestigable.
 // Normalize to a real Error carrying the offending value both in the message (for log/search)
 // and as `cause` (for Sentry's structured display) so events remain debuggable (WORLDMONITOR-ND).
+function isErrorValue(err: unknown): err is Error {
+  if (err instanceof Error) return true;
+  // Chrome Mobile iOS / WKWebKit can throw a host DOMException that fails
+  // `instanceof Error` (WORLDMONITOR-11D). Treat it as a normal Error so
+  // Sentry keeps the original name/message instead of "threw non-Error".
+  return typeof DOMException !== 'undefined' && err instanceof DOMException;
+}
+
 function normalizeCaughtError(action: string, err: unknown): Error {
-  if (err instanceof Error) return err;
+  if (isErrorValue(err)) return err;
   const rendered = err === undefined ? 'undefined' : String(err);
   const wrapped = new Error(`[billing] ${action} threw non-Error: ${rendered}`);
   // Attach the original thrown value as `cause` so Sentry shows it as structured data.
@@ -395,7 +403,13 @@ export async function openBillingPortal(
   // pre-reserved tab — still better UX than landing in a stranger's
   // portal. WORLDMONITOR-R5.
   const closeReserved = (): void => {
-    if (reservedWin && !reservedWin.closed) reservedWin.close();
+    if (!reservedWin) return;
+    try {
+      if (!reservedWin.closed) reservedWin.close();
+    } catch {
+      // WKWebKit can throw SecurityError inspecting a reserved popup after
+      // an await (WORLDMONITOR-11D). The tab is already unusable.
+    }
   };
 
   const userId = getCurrentClerkUser()?.id;

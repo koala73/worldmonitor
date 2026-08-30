@@ -43,25 +43,52 @@ interface WindowProbe {
   invokeHangs: boolean;
   /** Simulates a popup blocker: window.open returns null. */
   popupBlocked: boolean;
+  /** Simulates same-tab assign throwing (WKWebKit / locked navigation). */
+  assignThrows: boolean;
 }
 
 let probe: WindowProbe;
 
-function makeTab(): {
+function makeTab(opts?: {
+  /** WKWebKit after an await: reading `.closed` throws SecurityError. */
+  closedThrows?: boolean;
+  /** WKWebKit after an await: assigning `location.href` throws SecurityError. */
+  navigateThrows?: boolean;
+}): {
   closed: boolean;
   location: { href: string };
   close: () => void;
   opener: unknown;
 } {
+  let closed = false;
+  let href = '';
   const tab = {
-    closed: false,
-    location: { href: '' },
+    get closed(): boolean {
+      if (opts?.closedThrows) {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      }
+      return closed;
+    },
+    set closed(value: boolean) {
+      closed = value;
+    },
+    location: {
+      get href() {
+        return href;
+      },
+      set href(value: string) {
+        if (opts?.navigateThrows) {
+          throw new DOMException('The operation is insecure.', 'SecurityError');
+        }
+        href = value;
+      },
+    },
     // Starts non-null so `opener === null` proves the code severed it, rather
     // than passing because the fake never had one. This is the property that
     // replaced `noopener` in the feature string.
     opener: {} as unknown,
     close(): void {
-      tab.closed = true;
+      closed = true;
       probe.closedTabs += 1;
     },
   };
@@ -86,6 +113,7 @@ function installWindow(kind: 'desktop' | 'web'): void {
     invokeRejects: false,
     invokeHangs: false,
     popupBlocked: false,
+    assignThrows: false,
   };
 
   const desktop = kind === 'desktop';
@@ -96,6 +124,9 @@ function installWindow(kind: 'desktop' | 'web'): void {
     origin: desktop ? 'tauri://localhost' : 'https://worldmonitor.app',
     href: desktop ? 'tauri://localhost/index.html' : 'https://worldmonitor.app/dashboard',
     assign: (url: string) => {
+      if (probe.assignThrows) {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      }
       probe.assigned.push(url);
     },
   };
@@ -216,6 +247,15 @@ describe('openExternalUrl — desktop', () => {
     assert.equal(stray.closed, true, 'a blank WebView window must not be left behind the browser');
     assert.equal(stray.location.href, '', 'the reserved tab must never be navigated on desktop');
     assert.equal(probe.invocations.length, 1);
+  });
+
+  it('still hands off natively when closing the reserved tab throws SecurityError', async () => {
+    installWindow('desktop');
+    const stray = makeTab({ closedThrows: true });
+
+    assert.equal(await openExternalUrl('https://worldmonitor.app/pro', stray), 'native');
+    assert.equal(probe.invocations.length, 1);
+    assert.deepEqual(probe.assigned, []);
   });
 
   // Bounded so a regression that drops the timeout fails fast here instead of
@@ -350,6 +390,59 @@ describe('openExternalUrl — web', () => {
       'a settings panel with staged secrets must not be navigated out from under the user',
     );
   });
+
+  // WORLDMONITOR-11D: Chrome Mobile iOS / WKWebKit throws SecurityError when
+  // a click-reserved about:blank popup is inspected or navigated after an
+  // await. That used to escape openExternalUrl into billing's catch, so
+  // Manage Billing reported a failure and never opened the portal.
+  it('falls back to a fresh tab when reserved-window navigation throws SecurityError', async () => {
+    installWindow('web');
+    const reserved = makeTab({ navigateThrows: true });
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'popup');
+
+    assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
+    assert.deepEqual(probe.assigned, []);
+  });
+
+  it('falls back to same-tab when reserved navigation AND a fresh popup both fail', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    const reserved = makeTab({ navigateThrows: true });
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'same-tab');
+
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('does not throw when inspecting a reserved window .closed raises SecurityError', async () => {
+    installWindow('web');
+    const reserved = makeTab({ closedThrows: true });
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'popup');
+
+    assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
+  });
+
+  it('returns failed instead of throwing when same-tab assign also raises SecurityError', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    probe.assignThrows = true;
+    const reserved = makeTab({ navigateThrows: true });
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'failed');
+  });
+
+  it('still refuses same-tab fallback after a reserved-window SecurityError', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    const reserved = makeTab({ navigateThrows: true });
+
+    const outcome = await openExternalUrl(PORTAL_URL, reserved, { sameTabFallback: false });
+
+    assert.equal(outcome, 'failed');
+    assert.deepEqual(probe.assigned, []);
+  });
 });
 
 /**
@@ -481,6 +574,20 @@ describe('openBillingPortal — web', () => {
     });
 
     assert.equal(reserved?.location.href, PORTAL_URL);
+    assert.deepEqual(probe.invocations, []);
+  });
+
+  it('still opens the portal when reserved-tab navigation throws SecurityError', async () => {
+    installWindow('web');
+    installSignedInPortalUser();
+    const reserved = makeTab({ navigateThrows: true });
+
+    assert.deepEqual(await openBillingPortal(reserved as never), {
+      outcome: 'opened',
+      url: PORTAL_URL,
+    });
+
+    assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
     assert.deepEqual(probe.invocations, []);
   });
 });
