@@ -1213,12 +1213,13 @@ export class EventHandlerManager implements AppModule {
 
   /**
    * WebMCP entry: open the mission picker without applying a preset.
-   * Uses the desktop mission control trigger when present.
+   * Anchors to the visible trigger for the current viewport.
    */
   openMissionPresetPickerForWebMcp(): boolean {
     if (this.ctx.isDestroyed) return false;
-    const anchor = document.getElementById('missionPresetBtn');
-    this.openMissionPresetPopover(anchor, false);
+    const mobile = this.ctx.isMobile;
+    const anchor = document.getElementById(mobile ? 'mobileMenuMission' : 'missionPresetBtn');
+    this.openMissionPresetPopover(anchor, mobile);
     return this.missionPresetPopover !== null;
   }
 

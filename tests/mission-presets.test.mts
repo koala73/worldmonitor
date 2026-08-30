@@ -1152,6 +1152,34 @@ describe('mission preset shell integration', () => {
     assert.deepEqual(opened, [], 'stored mission state should cancel the delayed auto-open');
   });
 
+  it('opens the WebMCP mission picker from the visible trigger', () => {
+    const opened: Array<{ id: string | undefined; mobile: unknown }> = [];
+
+    const desktop = createMissionHarness();
+    desktop.manager.setupMissionPresets();
+    desktop.manager.openMissionPresetPopover = (anchor: unknown, mobile: unknown) => {
+      opened.push({ id: (anchor as { id?: string } | null)?.id, mobile });
+    };
+    desktop.manager.openMissionPresetPickerForWebMcp();
+    assert.deepEqual(opened, [{ id: 'missionPresetBtn', mobile: false }]);
+
+    opened.length = 0;
+    const mobileHarness = createMissionHarness({ mobile: true });
+    mobileHarness.manager.setupMissionPresets();
+    const mobileItem = document.createElement('button');
+    mobileItem.id = 'mobileMenuMission';
+    document.body.appendChild(mobileItem);
+    mobileHarness.manager.openMissionPresetPopover = (anchor: unknown, mobile: unknown) => {
+      opened.push({ id: (anchor as { id?: string } | null)?.id, mobile });
+    };
+    mobileHarness.manager.openMissionPresetPickerForWebMcp();
+    assert.deepEqual(
+      opened,
+      [{ id: 'mobileMenuMission', mobile: true }],
+      'mobile WebMCP opens should use the menu trigger and mobile popover mode',
+    );
+  });
+
   it('applies a preset through the real manager path and resets state, storage, layers, map view, and URL to defaults', async () => {
     const { ctx, callbacks, manager } = createMissionHarness();
     const baselineWorkspace = defaultWorkspacePanelKeys('full');
