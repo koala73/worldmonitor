@@ -8,7 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
-import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
+import {
+  buildCorpus,
+  CORPUS_GENERATOR_CONTENT_VERSION,
+} from '../scripts/build-crawlable-corpus.mjs';
 import {
   HANDOFF_PRESERVE_SCRIPT,
   USE_CASE_PAGES,
@@ -16,6 +19,10 @@ import {
 } from '../scripts/build-use-cases.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const EXPECTED_USE_CASES_LASTMOD = [
+  USE_CASES_CONTENT_VERSION,
+  CORPUS_GENERATOR_CONTENT_VERSION,
+].sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
@@ -158,7 +165,7 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
       assert.match(html, /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/);
       const [ld] = jsonLdObjects(html);
       assert.notEqual(ld['@type'], 'BlogPosting');
-      assert.match(html, new RegExp(`<meta name="lastmod" content="${USE_CASES_CONTENT_VERSION}">`));
+      assert.match(html, new RegExp(`<meta name="lastmod" content="${EXPECTED_USE_CASES_LASTMOD}">`));
     }
 
     const [hubLd] = jsonLdObjects(hubHtml);
