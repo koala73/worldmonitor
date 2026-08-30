@@ -64,28 +64,36 @@ export class HormuzPanel extends Panel {
   private data: HormuzTrackerData | null = null;
   private dependencies: GetChokepointDependenciesResponse | null = null;
   private tooltipBound = false;
+  private fetchGeneration = 0;
 
   constructor() {
     super({ id: 'hormuz-tracker', title: t('components.hormuzTracker.title'), showCount: false, infoTooltip: t('components.hormuzTracker.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
+    const generation = ++this.fetchGeneration;
     this.showLoading();
+    const dependenciesPromise = fetchChokepointDependencies('hormuz_strait', 25)
+      .catch(() => null);
     try {
-      const [data, dependencies] = await Promise.all([
-        fetchHormuzTracker(),
-        fetchChokepointDependencies('hormuz_strait', 25),
-      ]);
+      const data = await fetchHormuzTracker();
+      if (generation !== this.fetchGeneration) return false;
       if (!data) {
         this.showError(t('components.hormuzTracker.errors.unavailable'), () => void this.fetchData());
         return false;
       }
       this.data = data;
-      this.dependencies = dependencies;
+      this.dependencies = null;
       this.renderPanel();
       this.bindTooltip();
+      void dependenciesPromise.then((dependencies) => {
+        if (generation !== this.fetchGeneration) return;
+        this.dependencies = dependencies;
+        this.renderPanel();
+      });
       return true;
     } catch (e) {
+      if (generation !== this.fetchGeneration) return false;
       this.showError(e instanceof Error ? e.message : t('components.hormuzTracker.errors.failedToLoad'), () => void this.fetchData());
       return false;
     }

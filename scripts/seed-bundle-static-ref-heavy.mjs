@@ -54,9 +54,10 @@ const DAILY_SECTIONS = [
     canonicalKey: 'supply-chain:vulnerability:v1',
     completionMetaKey: 'seed-completion:supply-chain:vulnerability',
     intervalMs: DAY,
-    // 135s covers the seeder's 126s bounded Redis network budget and still
-    // leaves enough admission room for the 400s Military-Bases rotation.
-    timeoutMs: 135_000,
+    // The seeder enforces a 125s whole-lifecycle wall. Another 20s lets its
+    // SIGTERM cleanup release the lock before the bundle's own kill path, and
+    // the 145s reservation still leaves 415s for Military-Bases plus grace.
+    timeoutMs: 145_000,
   },
 ];
 

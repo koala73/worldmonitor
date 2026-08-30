@@ -1604,7 +1604,7 @@ export const GENERATED_MESSAGE_RULES = {
       "pageSize": {
         "kind": "int32",
         "numberGte": 0,
-        "numberLte": 100
+        "numberLte": 25
       }
     }
   },

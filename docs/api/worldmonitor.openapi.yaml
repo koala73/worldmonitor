@@ -30736,7 +30736,7 @@ paths:
                     pattern: '^$|^(ok|insufficient_data|stale_input)$'
                 - name: pageSize
                   in: query
-                  description: Maximum rows to return; zero uses the server default and the maximum is 100.
+                  description: Maximum rows to return; zero uses the server default and the maximum is 25.
                   required: false
                   example: 25
                   schema:
@@ -54402,10 +54402,10 @@ components:
                     description: 'Optional evidence state: ok, insufficient_data, or stale_input.'
                 pageSize:
                     type: integer
-                    maximum: 100
+                    maximum: 25
                     minimum: 0
                     format: int32
-                    description: Maximum rows to return; zero uses the server default and the maximum is 100.
+                    description: Maximum rows to return; zero uses the server default and the maximum is 25.
         worldmonitor_supply_chain_v1_ListVulnerabilityRankingsResponse:
             type: object
             properties:

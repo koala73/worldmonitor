@@ -2954,7 +2954,10 @@ export const RPC_TOOLS: ToolDef[] = [
       await assertToolFetchOk(response, 'get-country-vulnerabilities');
       return response.json();
     },
-    _coverageKeys: ['supply-chain:vulnerability:v1'],
+    _coverageKeys: [
+      'supply-chain:vulnerability:cohort:v1',
+      'supply-chain:vulnerability:v1',
+    ],
     _apiPaths: ['GET /api/supply-chain/v1/get-country-vulnerabilities'],
   },
   {
@@ -2999,7 +3002,10 @@ export const RPC_TOOLS: ToolDef[] = [
       await assertToolFetchOk(response, 'get-chokepoint-dependencies');
       return response.json();
     },
-    _coverageKeys: ['supply-chain:chokepoint-dependencies:v1'],
+    _coverageKeys: [
+      'supply-chain:vulnerability:cohort:v1',
+      'supply-chain:chokepoint-dependencies:v1',
+    ],
     _apiPaths: ['GET /api/supply-chain/v1/get-chokepoint-dependencies'],
   },
   ...ANALYSIS_TOOLS,

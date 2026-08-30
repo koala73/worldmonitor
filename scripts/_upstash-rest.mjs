@@ -18,8 +18,11 @@ export function getOptionalUpstashCreds() {
  * @param {{ restUrl: string; token: string }} creds
  * @param {Array<string>} command Redis command array, e.g. ['GET', 'key']
  */
-export async function upstashCommand(creds, command) {
-  const resp = await fetch(creds.restUrl, {
+export async function upstashCommand(creds, command, {
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 15_000,
+} = {}) {
+  const resp = await fetchImpl(creds.restUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${creds.token}`,
@@ -27,9 +30,21 @@ export async function upstashCommand(creds, command) {
       'User-Agent': 'worldmonitor-ops/1.0 (+https://worldmonitor.app)',
     },
     body: JSON.stringify(command),
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!resp.ok) throw new Error(`Upstash HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const error = new Error(`Upstash HTTP ${resp.status}`);
+    error.status = resp.status;
+    error.nonRetryable = resp.status !== 408
+      && resp.status !== 429
+      && !(resp.status >= 500 && resp.status <= 599);
+    const retryAfter = resp.headers?.get?.('retry-after');
+    const retryAfterSeconds = Number(retryAfter);
+    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+      error.retryAfterMs = Math.min(retryAfterSeconds * 1_000, 60_000);
+    }
+    throw error;
+  }
   const body = await resp.json();
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('Upstash returned an unexpected response');
