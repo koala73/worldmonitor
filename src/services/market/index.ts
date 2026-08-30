@@ -6,12 +6,13 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetPhysicalPremiumsResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetPhysicalDivergenceIndexResponse, GetPhysicalPremiumsResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { MarketServiceClient } from '@/services/generated-rpc-clients';
 import { proFreshRpcFetch } from '@/services/premium-fetch';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 
 // ---- Client + Circuit Breakers ----
 
@@ -19,7 +20,7 @@ const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetc
 const MARKET_QUOTES_CACHE_TTL_MS = 5 * 60 * 1000;
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const commodityBreaker = createCircuitBreaker<ListCommodityQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
-const physicalPremiumBreaker = createCircuitBreaker<GetPhysicalPremiumsResponse>({ name: 'Physical Premiums', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
+const physicalPremiumBreaker = createCircuitBreaker<GetPhysicalPremiumsResponse>({ name: 'Physical Premiums', cacheTtlMs: 0 });
 const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary v2', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes', persistCache: true });
 const cryptoSectorsBreaker = createCircuitBreaker<ListCryptoSectorsResponse>({ name: 'Crypto Sectors', persistCache: true });
@@ -212,12 +213,34 @@ export async function fetchCommodityQuotes(
   return { data: results };
 }
 
-export async function fetchPhysicalPremiums(): Promise<GetPhysicalPremiumsResponse> {
-  return physicalPremiumBreaker.execute(async () => {
-    return client.getPhysicalPremiums({ metals: [] });
+// Deliberately NOT the breaker's own cache: the premium and divergence responses have to
+// stay in the same seed cohort (the panel compares their clocks for strict equality), which
+// is why both routes are `no-store`. Retention is a different concern from caching — every
+// sibling breaker in this file keeps a `lastSuccessful*` so one failed poll cannot blank a
+// panel, and without it a single blip returns the empty fallback, overwrites good premiums,
+// and hides the Physical tab until the next markets cycle (12 min, viewport-gated).
+let lastSuccessfulPhysicalPremiums: GetPhysicalPremiumsResponse | null = null;
+
+export async function fetchPhysicalPremiums(signal?: AbortSignal): Promise<GetPhysicalPremiumsResponse> {
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
+  const response = await physicalPremiumBreaker.execute(async () => {
+    return client.getPhysicalPremiums({ metals: [] }, { signal: requestSignal });
   }, emptyPhysicalPremiumFallback, {
-    shouldCache: (response) => response.premiums.length > 0 && response.fx !== undefined,
+    shouldCache: () => false,
+    ignoreError: () => signal?.aborted === true,
   });
+  if (response.premiums.length > 0) {
+    lastSuccessfulPhysicalPremiums = response;
+    return response;
+  }
+  return lastSuccessfulPhysicalPremiums ?? response;
+}
+
+export async function fetchPhysicalDivergence(signal?: AbortSignal): Promise<GetPhysicalDivergenceIndexResponse> {
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
+  return client.getPhysicalDivergenceIndex({ metals: [] }, { signal: requestSignal });
 }
 
 // ========================================================================

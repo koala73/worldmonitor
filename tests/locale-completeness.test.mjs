@@ -11,6 +11,7 @@ import {
   flatten,
   getPluralCategories,
 } from '../scripts/translate-locales.mjs';
+import { syncFromTemplate } from '../scripts/sync-locale-keys.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, '..', 'src', 'locales');
@@ -63,6 +64,43 @@ describe('locale completeness', () => {
   it('en.json defines at least 2000 translation keys', () => {
     // inventory-contract: locale-key-completeness; classification: floor; promise: the English UI catalog remains a full product surface; reason: a 2000-key floor detects mass deletion before locale parity can pass vacuously
     assert.ok(enKeys.length >= 2000, `expected a large en catalog, got ${enKeys.length}`);
+  });
+
+  it('syncs only the plural keys in a locale CLDR projection', () => {
+    const template = {
+      cart: {
+        items_one: 'one item',
+        items_other: 'many items',
+      },
+      plain: 'Plain copy',
+    };
+    const locale = { cart: { items_one: 'uno' } };
+    const templateFlat = flatten(template);
+    const expected = expectedKeysForLocale(
+      templateFlat,
+      findPluralBases(templateFlat),
+      ['zero', 'one', 'two', 'few', 'many', 'other'],
+    );
+
+    assert.deepEqual(syncFromTemplate(template, locale, expected), {
+      cart: {
+        items_one: 'uno',
+        items_other: 'many items',
+        items_zero: 'many items',
+        items_two: 'many items',
+        items_few: 'many items',
+        items_many: 'many items',
+      },
+      plain: 'Plain copy',
+    });
+  });
+
+  it('rebuilds missing flattened array paths as arrays', () => {
+    const template = { pricing: { features: ['First', 'Second'] } };
+    const expected = { 'pricing.features[0]': 'First', 'pricing.features[1]': 'Second' };
+
+    assert.deepEqual(syncFromTemplate(template, {}, expected), template);
+    assert.equal(Array.isArray(syncFromTemplate(template, {}, expected).pricing.features), true);
   });
 
   for (const file of localeFiles) {

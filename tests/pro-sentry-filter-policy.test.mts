@@ -148,6 +148,40 @@ describe('marketing ignoreErrors', () => {
     assert.equal(isIgnored('ReferenceError', "Can't find variable: zaloJSV2Extended"), false);
   });
 
+  it('drops the injected bare-jQuery ReferenceError (WORLDMONITOR-11F)', () => {
+    // Verbatim production value. Firefox 148 / Linux, single frame on the
+    // prerendered welcome document, `sentry.javascript.react` with a null
+    // release — a marketing-bundle event, so the dashboard's own
+    // `/jQuery is not defined/` entry never ran on it.
+    assert.equal(isIgnored('ReferenceError', 'jQuery is not defined'), true);
+  });
+
+  // Positive control for the anchors. `ignoreErrors` is frame-blind, so an
+  // unanchored copy of the dashboard's pattern would also swallow a
+  // first-party message that merely contains the phrase. Drop the `^`/`$` and
+  // this goes red.
+  it('keeps a first-party message that merely contains the jQuery phrase', () => {
+    assert.equal(
+      isIgnored('Error', 'Checkout aborted: jQuery is not defined on the host page'),
+      false,
+    );
+    assert.equal(isIgnored('ReferenceError', 'jQueryUI is not defined'), false);
+  });
+
+  it('pins the marketing surface as bare-jQuery-free, which is what licenses the rule', () => {
+    // The WORLDMONITOR-11F suppression is licensed by the identifier, not by
+    // the frame: a `ReferenceError: jQuery is not defined` can only come from
+    // code that reads `jQuery` as a bare identifier, and no first-party source
+    // on this surface holds one. If that changes, the entry must move behind a
+    // frame gate — fail loudly here rather than silently hide a real bug.
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\bjQuery\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [],
+      'the marketing surface now references jQuery — re-derive the WORLDMONITOR-11F rule');
+  });
+
   // Positive control: the array must not have grown a pattern broad enough to
   // swallow an ordinary marketing-bundle bug.
   it('keeps a genuine first-party error message', () => {

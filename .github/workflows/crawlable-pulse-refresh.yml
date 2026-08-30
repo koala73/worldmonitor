@@ -1,0 +1,108 @@
+name: Refresh Crawlable Live Pulse
+
+# The committed pulse snapshot is published as "Current signal" on every
+# country, chokepoint and crisis page. build-crawlable-corpus.mjs rejects a
+# snapshot older than MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS (45), so this monthly
+# refresh is what keeps the corpus buildable as well as truthful.
+# Mirrors .github/workflows/resilience-snapshot-refresh.yml.
+
+on:
+  schedule:
+    - cron: '41 4 2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: crawlable-pulse-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          # workflow_dispatch can target a feature branch; publication must
+          # always branch from main so the review PR stays free of unrelated commits.
+          ref: refs/heads/main
+      - name: Reconcile the monthly review branch
+        id: reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          period=$(date -u +%Y-%m)
+          branch="automation/crawlable-pulse-${period}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          if [ -n "$existing_pr" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Monthly pulse PR #${existing_pr} already exists."
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore(corpus): refresh crawlable live pulse ${period}" \
+              --body "Monthly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.reconcile.outputs.skip != 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.reconcile.outputs.skip != 'true'
+        run: npm ci --ignore-scripts
+      - name: Freeze the current pulse
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          # The freeze mints an anonymous wm-session; no credential is required.
+          API_BASE: https://www.worldmonitor.app
+        run: npm run freeze:crawlable-live-pulse
+      - name: Rebuild and verify published artifacts
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
+          npm run build:crawlable-corpus
+          npm run build:sitemap
+          node --import tsx --test --test-concurrency=1 \
+            tests/crawlable-corpus.test.mjs \
+            tests/crawlable-live-tools.test.mjs \
+            tests/freeze-crawlable-live-pulse.test.mjs \
+            tests/sitemap-generation.test.mjs
+      - name: Prune superseded pulse snapshots
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
+          # Keep only the newest snapshot: resolveLatestLivePulseSnapshotPath
+          # reads the highest-dated file, so older ones are dead weight.
+          ls -1 docs/snapshots/crawlable-live-pulse-*.json \
+            | sort -r \
+            | tail -n +2 \
+            | xargs -r git rm --quiet
+      - name: Open the monthly pulse PR
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+        run: |
+          snapshot_date=$(date -u +%F)
+          snapshot_path="docs/snapshots/crawlable-live-pulse-${snapshot_date}.json"
+          git switch -c "$BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$snapshot_path" public/sitemap.xml
+          git commit -m "chore(corpus): refresh crawlable live pulse ${snapshot_date}"
+          git push --set-upstream origin "$BRANCH_NAME"
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
+            --body "Monthly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."

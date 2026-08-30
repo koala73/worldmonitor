@@ -1811,6 +1811,16 @@
       "loading": "Đang kết nối đến relay Telegram...",
       "empty": "Không có tin nhắn",
       "disabled": "Relay Telegram không hoạt động",
+      "watchlistPlaceholder": "Thêm kênh công khai bằng @username",
+      "resolving": "Đang tìm kênh...",
+      "invalidUsername": "Hãy dùng @username Telegram công khai",
+      "resolveFailed": "Không tìm thấy kênh",
+      "watchlistLimit": "Bạn có thể theo dõi tối đa {{count}} kênh tùy chỉnh",
+      "previewMembers": "{{count}} thành viên",
+      "addChannel": "Thêm kênh",
+      "added": "Đã thêm",
+      "remove": "Xóa",
+      "custom": "Tùy chỉnh",
       "filterAll": "Tất cả",
       "filterBreaking": "Nóng",
       "filterConflict": "Xung đột",
@@ -2022,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Chỉ số áp lực vật lý: {{value}} / 100",
+        "fiveDayTrend": "Xu hướng phí năm ngày giao dịch",
+        "regimes": {
+          "normal": "Bình thường",
+          "elevated": "Nâng cao",
+          "stressed": "Căng thẳng",
+          "extreme": "Cực đoan"
+        },
+        "states": {
+          "insufficientHistory": "Khởi động: {{count}} / {{required}} điểm giao dịch",
+          "staleInput": "Điểm chuẩn vật lý đã cũ",
+          "missingInput": "Tín hiệu phân kỳ không có sẵn"
+        },
+        "twentyDayTrend": "Xu hướng phí bảo hiểm trong 20 ngày giao dịch"
       }
     },
     "crypto": {

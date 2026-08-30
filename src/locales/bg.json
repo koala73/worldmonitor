@@ -1815,6 +1815,16 @@
       "loading": "Свързване към Telegram релея...",
       "empty": "Няма налични съобщения",
       "disabled": "Telegram релей не е активен",
+      "watchlistPlaceholder": "Добавете публичен канал чрез @username",
+      "resolving": "Проверка на канала...",
+      "invalidUsername": "Използвайте публично Telegram @username",
+      "resolveFailed": "Каналът не може да бъде намерен",
+      "watchlistLimit": "Можете да следвате до {{count}} персонализирани канала",
+      "previewMembers": "{{count}} членове",
+      "addChannel": "Добавяне на канал",
+      "added": "Добавен",
+      "remove": "Премахване",
+      "custom": "Персонализиран",
       "filterAll": "Всички",
       "filterBreaking": "Последни",
       "filterConflict": "Конфликт",
@@ -2026,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Индекс на физическото напрежение: {{value}} / 100",
+        "fiveDayTrend": "Тренд на премия за пет търговски дни",
+        "regimes": {
+          "normal": "Нормално",
+          "elevated": "Повишено",
+          "stressed": "Натоварено",
+          "extreme": "Екстремно"
+        },
+        "states": {
+          "insufficientHistory": "Загряване: {{count}} / {{required}} търговски точки",
+          "staleInput": "Физическият еталон е остарял",
+          "missingInput": "Сигналът за дивергенция е недостъпен"
+        },
+        "twentyDayTrend": "Тенденция на премията за двадесет търговски дни"
       }
     },
     "crypto": {

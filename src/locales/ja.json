@@ -1811,6 +1811,16 @@
       "loading": "Telegramリレーに接続中...",
       "empty": "メッセージはありません",
       "disabled": "Telegramリレーが無効です",
+      "watchlistPlaceholder": "@usernameで公開チャンネルを追加",
+      "resolving": "チャンネルを検索中...",
+      "invalidUsername": "公開されているTelegramの@usernameを使用してください",
+      "resolveFailed": "チャンネルが見つかりませんでした",
+      "watchlistLimit": "カスタムチャンネルは最大{{count}}件までフォローできます",
+      "previewMembers": "メンバー{{count}}人",
+      "addChannel": "チャンネルを追加",
+      "added": "追加済み",
+      "remove": "削除",
+      "custom": "カスタム",
       "filterAll": "すべて",
       "filterBreaking": "速報",
       "filterConflict": "紛争",
@@ -2022,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "物理的ストレス指数：{{value}} / 100",
+        "fiveDayTrend": "5営業日プレミアムトレンド",
+        "regimes": {
+          "normal": "通常",
+          "elevated": "上昇",
+          "stressed": "逼迫",
+          "extreme": "極度"
+        },
+        "states": {
+          "insufficientHistory": "ウォームアップ中：{{count}} / {{required}} 営業日ポイント",
+          "staleInput": "物理的ベンチマークが古い",
+          "missingInput": "ダイバージェンスシグナル利用不可"
+        },
+        "twentyDayTrend": "20営業日プレミアムトレンド"
       }
     },
     "crypto": {

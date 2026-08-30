@@ -48,7 +48,7 @@
     },
     {
       "name": "get_market_data",
-      "description": "Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold and silver premiums), crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.",
+      "description": "Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -69,7 +69,7 @@
     },
     {
       "name": "get_news_intelligence",
-      "description": "AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor's intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).",
+      "description": "AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor's intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).",
       "_meta": {
         "worldmonitor/access": "free-account"
       }

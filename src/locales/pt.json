@@ -1109,6 +1109,16 @@
       "loading": "Conectando ao relay do Telegram...",
       "empty": "Nenhuma mensagem disponível",
       "disabled": "Relay do Telegram não ativo",
+      "watchlistPlaceholder": "Adicionar canal público por @username",
+      "resolving": "A resolver canal...",
+      "invalidUsername": "Use um @username público do Telegram",
+      "resolveFailed": "Não foi possível resolver o canal",
+      "watchlistLimit": "Pode seguir até {{count}} canais personalizados",
+      "previewMembers": "{{count}} membros",
+      "addChannel": "Adicionar canal",
+      "added": "Adicionado",
+      "remove": "Remover",
+      "custom": "Personalizado",
       "filterAll": "Todos",
       "filterBreaking": "Urgente",
       "filterConflict": "Conflitos",
@@ -1651,6 +1661,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Índice de estresse físico: {{value}} / 100",
+        "fiveDayTrend": "Tendência de prêmio em cinco dias úteis",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Elevado",
+          "stressed": "Sob estresse",
+          "extreme": "Extremo"
+        },
+        "states": {
+          "insufficientHistory": "Aquecimento: {{count}} / {{required}} pontos de negociação",
+          "staleInput": "Benchmark físico desatualizado",
+          "missingInput": "Sinal de divergência indisponível"
+        },
+        "twentyDayTrend": "Tendência de prêmio de vinte dias úteis"
       }
     },
     "crypto": {

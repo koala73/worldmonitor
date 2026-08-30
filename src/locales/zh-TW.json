@@ -1811,6 +1811,16 @@
       "loading": "正在連線Telegram中繼...",
       "empty": "暫無訊息",
       "disabled": "Telegram中繼未啟用",
+      "watchlistPlaceholder": "透過 @username 新增公開頻道",
+      "resolving": "正在查詢頻道...",
+      "invalidUsername": "請使用公開的 Telegram @username",
+      "resolveFailed": "找不到頻道",
+      "watchlistLimit": "最多可關注 {{count}} 個自訂頻道",
+      "previewMembers": "{{count}} 位成員",
+      "addChannel": "新增頻道",
+      "added": "已新增",
+      "remove": "移除",
+      "custom": "自訂",
       "filterAll": "全部",
       "filterBreaking": "突發",
       "filterConflict": "衝突",
@@ -2022,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "物理壓力指數：{{value}} / 100",
+        "fiveDayTrend": "五個交易日溢價趨勢",
+        "regimes": {
+          "normal": "正常",
+          "elevated": "升高",
+          "stressed": "受壓",
+          "extreme": "極端"
+        },
+        "states": {
+          "insufficientHistory": "預熱中：{{count}} / {{required}} 個交易點",
+          "staleInput": "物理基準資料已過期",
+          "missingInput": "分歧訊號不可用"
+        },
+        "twentyDayTrend": "二十個交易日溢價趨勢"
       }
     },
     "crypto": {

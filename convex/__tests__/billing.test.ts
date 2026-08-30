@@ -2624,6 +2624,33 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
     expect(result).toBe("cus_onhold_only");
   });
 
+  test("prefers a paid-through cancelled customer over an expired on_hold customer", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "on_hold",
+      currentPeriodEnd: NOW - DAY_MS,
+      suffix: "portal_expired_on_hold",
+      rawPayload: { customer: { customer_id: "cus_expired_on_hold" } },
+    });
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "portal_covering_cancelled",
+      rawPayload: { customer: { customer_id: "cus_covering_cancelled" } },
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+
+    expect(result).toBe("cus_covering_cancelled");
+  });
+
   test("falls back to cancelled when only cancelled subs exist (within or past grace)", async () => {
     const t = convexTest(schema, modules);
     await seedSubscription(t, {
@@ -4972,6 +4999,34 @@ describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
     expect(result).not.toBeNull();
     expect(result!.status).toBe("expired");
     expect(result!.planKey).toBe("pro_annual");
+  });
+
+  test("multi-row: prefers a paid-through cancelled row over an expired on_hold row", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "on_hold",
+      currentPeriodEnd: NOW - DAY_MS,
+      suffix: "expired_on_hold",
+    });
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "covering_cancelled",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result).toMatchObject({
+      status: "cancelled",
+      planKey: "pro_annual",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
   });
 });
 

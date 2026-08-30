@@ -185,6 +185,7 @@ import {
 import type { MapLayerRuntimeAvailability } from '@/services/map-layer-runtime-availability';
 import { getWebMcpAccessContext, openWebMcpSignIn } from '@/app/webmcp-access';
 import { runDashboardActionBinding } from '@/app/dashboard-action-binding';
+import { selectWebMcpPanelTab } from '@/app/webmcp-panel-tab-binding';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import type { SearchManager } from '@/app/search-manager';
@@ -2000,6 +2001,17 @@ export class App {
             requireMapModePersistence: true,
           },
           syncUrlStateNow: () => this.eventHandlers.syncUrlStateNow(),
+        });
+      },
+      selectPanelTab: async (panelId, tab, execution) => {
+        return selectWebMcpPanelTab(this.state.panels, panelId, tab, {
+          waitForUiReady: () => this.waitForDashboardReady(false, execution?.signal),
+          prepareTab: (_selectedPanelId, selectedTab, signal) => (
+            selectedTab === 'physical'
+              ? this.dataLoader.loadPhysicalPremiumComparison(signal)
+              : undefined
+          ),
+          signal: execution?.signal,
         });
       },
       searchDashboard: async (query, scope, limit, execution) => {

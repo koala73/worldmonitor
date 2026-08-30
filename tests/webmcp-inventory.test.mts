@@ -12,6 +12,7 @@ import {
   WEBMCP_SPA_TOOL_NAMES,
   WEBMCP_TOOL_BUDGETS,
   WEBMCP_VARIANT_INVENTORIES,
+  WEBMCP_MISSION_PICKER_REASONS,
 } from '../src/config/webmcp.ts';
 import { SITE_VARIANTS } from '../src/config/variant.ts';
 import {
@@ -22,6 +23,12 @@ import {
   WEBMCP_TOOL_CANCELLATION_POLICY,
   buildWebMcpTools as buildProductionWebMcpTools,
 } from '../src/services/webmcp.ts';
+
+import { PANEL_LAYOUT_DENIAL_REASONS } from '../src/services/panel-layout-actions.ts';
+import {
+  MISSION_PRESET_APPLY_DENY_REASONS,
+  MISSION_PRESET_UNAVAILABLE_REASONS,
+} from '../src/services/webmcp-mission-preset-catalog.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -461,6 +468,34 @@ function assertCancellationTable(guide: string, startHeading: string, endHeading
   }
 }
 
+/**
+ * Every stable reason the panel-layout and mission-preset tools can report.
+ * A reason that reaches a caller but is absent from a guide leaves that agent
+ * with no documented recovery, so both language guides must name all of them.
+ */
+const WEBMCP_DOCUMENTED_REASONS = [...new Set([
+  ...PANEL_LAYOUT_DENIAL_REASONS,
+  ...MISSION_PRESET_UNAVAILABLE_REASONS,
+  ...MISSION_PRESET_APPLY_DENY_REASONS,
+  ...WEBMCP_MISSION_PICKER_REASONS,
+])].sort();
+
+function assertReasonsDocumented(
+  guide: string,
+  startHeading: string,
+  endHeading: string,
+  label: string,
+) {
+  // Scoped to the reasons section on purpose: several reason names also appear
+  // in unrelated prose elsewhere in the guide, so a whole-document search would
+  // pass for a reason that was never actually documented as an outcome.
+  const section = visibleMdx(sectionBetween(guide, startHeading, endHeading));
+  const missing = WEBMCP_DOCUMENTED_REASONS.filter(
+    (reason) => !section.includes(`\`${reason}\``),
+  );
+  assert.deepEqual(missing, [], `${label} does not document these WebMCP reasons`);
+}
+
 function assertMaintainerSourceExists(source: string) {
   const lastSlash = source.lastIndexOf('/');
   const directory = source.slice(0, lastSlash);
@@ -485,6 +520,8 @@ function assertGuideContract(
     journeys: string;
     cancellation: string;
     cancellationEnd: string;
+    reasons: string;
+    reasonsEnd: string;
     sourceMap: string;
     verification: string;
     verificationEnd: string;
@@ -514,6 +551,7 @@ function assertGuideContract(
   const focusedTestPaths = [...verification.matchAll(/^\s{2}(tests\/[^\s\\]+)(?:\s+\\)?$/gm)]
     .map((match) => match[1]);
   assert.deepEqual(focusedTestPaths, WEBMCP_FOCUSED_VERIFICATION_TESTS);
+  assertReasonsDocumented(publicGuide, headings.reasons, headings.reasonsEnd, 'The WebMCP public guide');
   assert.match(publicGuide, /target_cancellation_unsupported/);
   assert.match(publicGuide, /WebMcpToolError/);
   assert.match(publicGuide, /webmcp-maintenance/);
@@ -648,6 +686,8 @@ describe('WebMCP canonical inventories', () => {
           journeys: '## Common browser-agent journeys',
           cancellation: '### Host support and cancellation',
           cancellationEnd: '<Warning>',
+          reasons: '### Panel layout and mission preset reasons',
+          reasonsEnd: '## Human control and UI behavior',
           sourceMap: '## Source map',
           verification: '## Verification ladder',
           verificationEnd: '## Release smoke checklist',
@@ -663,6 +703,8 @@ describe('WebMCP canonical inventories', () => {
           journeys: '## 常见浏览器智能体流程',
           cancellation: '### 宿主支持与取消',
           cancellationEnd: '<Warning>',
+          reasons: '### 面板布局与任务预设的拒绝原因',
+          reasonsEnd: '## 人工控制与 UI 行为',
           sourceMap: '## 源文件图',
           verification: '## 验证阶梯',
           verificationEnd: '## 发布冒烟检查清单',
@@ -685,6 +727,8 @@ describe('WebMCP canonical inventories', () => {
       journeys: '## Common browser-agent journeys',
       cancellation: '### Host support and cancellation',
       cancellationEnd: '<Warning>',
+      reasons: '### Panel layout and mission preset reasons',
+      reasonsEnd: '## Human control and UI behavior',
       sourceMap: '## Source map',
       verification: '## Verification ladder',
       verificationEnd: '## Release smoke checklist',
@@ -725,6 +769,21 @@ describe('WebMCP canonical inventories', () => {
         headings,
       ),
     );
+    assert.throws(() => assertGuideContract(
+      publicGuide.replaceAll('`preset_incompatible`', 'preset-incompatible'),
+      maintainerGuide,
+      headings,
+    ));
+    assert.throws(() => assertGuideContract(
+      publicGuide.replaceAll('`panel_fixed`', 'panel-fixed'),
+      maintainerGuide,
+      headings,
+    ));
+    assert.throws(() => assertGuideContract(
+      publicGuide.replace(/^\| `unavailable` \| `open_mission_picker`.*$/m, ''),
+      maintainerGuide,
+      headings,
+    ));
     assert.throws(() => assertGuideContract(
       publicGuide,
       maintainerGuide.replace('## Source map', '## Sources'),

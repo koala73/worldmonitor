@@ -1959,6 +1959,16 @@
       "loading": "Inaunganisha kwenye upeanaji wa Telegramu...",
       "empty": "Hakuna ujumbe unaopatikana",
       "disabled": "Usambazaji wa telegramu haufanyiki",
+      "watchlistPlaceholder": "Ongeza chaneli ya umma kwa @username",
+      "resolving": "Inatafuta chaneli...",
+      "invalidUsername": "Tumia @username ya umma ya Telegram",
+      "resolveFailed": "Chaneli haikuweza kupatikana",
+      "watchlistLimit": "Unaweza kufuata hadi chaneli maalum {{count}}",
+      "previewMembers": "Wanachama {{count}}",
+      "addChannel": "Ongeza chaneli",
+      "added": "Imeongezwa",
+      "remove": "Ondoa",
+      "custom": "Maalum",
       "filterAll": "Wote",
       "filterBreaking": "Kuvunja",
       "filterConflict": "Migogoro",
@@ -2106,6 +2116,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fahirisi ya mzigo halisi: {{value}} / 100",
+        "fiveDayTrend": "Mwenendo wa ziada wa siku tano za biashara",
+        "regimes": {
+          "normal": "Kawaida",
+          "elevated": "Iliyoinuka",
+          "stressed": "Iliyosikitishwa",
+          "extreme": "Kali sana"
+        },
+        "states": {
+          "insufficientHistory": "Inaandaa: {{count}} / {{required}} alama za biashara",
+          "staleInput": "Kigezo cha halisi kimezeeka",
+          "missingInput": "Ishara ya utofauti haipatikani"
+        },
+        "twentyDayTrend": "Mwenendo wa ziada wa siku ishirini za biashara"
       }
     },
     "crypto": {

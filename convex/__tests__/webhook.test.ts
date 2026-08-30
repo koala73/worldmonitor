@@ -555,6 +555,50 @@ describe("webhook processWebhookEvent", () => {
     expect(sends[0]?.subject).toContain("Welcome back");
   });
 
+  test("new-checkout reactivation uses prior expired on-hold history instead of a new-subscriber alert", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_old_on_hold",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "on_hold",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_new_subscription_reactivation_from_hold",
+      "subscription.active",
+      makeSubscriptionPayload({ subscription_id: "sub_new_reactivated" }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.to).toEqual(["test@example.com"]);
+    expect(sends[0]?.subject).toContain("Welcome back");
+  });
+
   test("a covering sibling prevents old lapsed history from forcing welcome-back mail", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
@@ -1980,9 +2024,10 @@ describe("webhook processWebhookEvent", () => {
   });
 
   test.each([
-    ["on_hold", BASE_TIMESTAMP + 7 * 86400000],
-    ["cancelled", BASE_TIMESTAMP],
-  ] as const)("subscription.active from non-lapsed %s remains email-silent", async (status, currentPeriodEnd) => {
+    ["on_hold before paid-through end", "on_hold", BASE_TIMESTAMP + 7 * 86400000],
+    ["on_hold at paid-through end", "on_hold", BASE_TIMESTAMP],
+    ["cancelled at paid-through end", "cancelled", BASE_TIMESTAMP],
+  ] as const)("subscription.active from %s remains email-silent", async (_scenario, status, currentPeriodEnd) => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const fetchMock = vi
@@ -2067,6 +2112,8 @@ describe("webhook processWebhookEvent", () => {
   });
 
   test("subscription.on_hold marks subscription at-risk without revoking entitlements", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
     const t = convexTest(schema, modules);
 
     await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");

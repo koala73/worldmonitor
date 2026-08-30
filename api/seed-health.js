@@ -108,6 +108,13 @@ const SEED_DOMAINS = {
     minRecordCount: 2,
     activationKey: 'seed-activated:market:physical-premium',
   },
+  'market:physical-divergence': {
+    key: 'seed-meta:market:physical-divergence',
+    intervalMin: 2160,
+    minRecordCount: 2,
+    activationKey: 'seed-activated:market:physical-divergence',
+    enforceInputFreshUntil: true,
+  },
   'market:gold-extended':     { key: 'seed-meta:market:gold-extended',     intervalMin: 15 },
   'market:gold-etf-flows':    { key: 'seed-meta:market:gold-etf-flows',    intervalMin: 1440 },
   // maxStaleMin in health.js is 44640 (~31 days; IMF IFS is monthly w/ 2-3mo lag).
@@ -644,10 +651,14 @@ export async function handleSeedHealth(req, options = {}) {
       && meta.sourceState === 'blocked'
       && recordCount != null
       && recordCount > 0;
-    const sourceError = typeof meta.sourceState === 'string'
+    const inputFreshUntil = Number(meta.inputFreshUntil);
+    const inputFreshnessExpired = cfg.enforceInputFreshUntil === true
+      && meta.sourceState === 'ok'
+      && (!Number.isFinite(inputFreshUntil) || inputFreshUntil <= evaluationNow);
+    const sourceError = inputFreshnessExpired || (typeof meta.sourceState === 'string'
       && meta.sourceState !== 'ok'
       && !sourceUnavailable
-      && !sourceBlocked;
+      && !sourceBlocked);
     const isError = meta.status === 'error' || sourceError;
     const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
     const sourceMismatch = Boolean(

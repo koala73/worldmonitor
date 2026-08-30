@@ -580,6 +580,17 @@ function assertSourceDerivedTemporalCoverage(dataset, {
     expected,
     `${route} Dataset ${index} temporalCoverage must come from the artifact observation interval`,
   );
+  // Equality alone is a tautology: both sides derive from the same value through
+  // the same normalizer, so a malformed interval makes both undefined and the
+  // assertion passes over a Dataset with no temporalCoverage at all. When the
+  // artifact declared an interval, require the Dataset to actually carry it.
+  if (observationInterval) {
+    assert.match(
+      String(dataset.temporalCoverage ?? ''),
+      /^\d{4}-\d{2}(-\d{2})?(\/\d{4}-\d{2}(-\d{2})?)?$/,
+      `${route} Dataset ${index} declared observation interval ${observationInterval} but published temporalCoverage ${JSON.stringify(dataset.temporalCoverage)}`,
+    );
+  }
   if (expected && lastmod && expected !== lastmod) {
     assert.notEqual(
       dataset.temporalCoverage,
@@ -792,11 +803,11 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.countries.count, 196);
       assert.equal(manifest.sections.chokepoints.count, 13);
       assert.equal(manifest.sections.crises.count, 4);
-      assert.equal(manifest.sections.tools.count, 2);
+      assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.sources.count, 1);
-      assert.equal(manifest.generatorContentVersion, '2026-08-29');
+      assert.equal(manifest.generatorContentVersion, '2026-08-30');
       const sitemapEntries = buildSitemapEntries({
         repoRoot,
         publicDir: outDir,
@@ -895,10 +906,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.research.routes,
       ]);
       const countryObservationRoutes = new Set(manifest.sections.countries.routes);
-      const liveObservationRoutes = new Set([
-        ...manifest.sections.chokepoints.routes,
-        ...manifest.sections.crises.routes,
-      ]);
+      const liveObservationRoutes = new Set(manifest.sections.chokepoints.routes);
+      const crisisObservationRoutes = new Set(manifest.sections.crises.routes);
       for (const route of generatedRoutes) {
         const html = read(outDir, `${route.slice(1)}index.html`);
         assertDatasetGoogleProperties(
@@ -925,6 +934,18 @@ describe('crawlable corpus generator', () => {
             });
           }
         }
+        if (crisisObservationRoutes.has(route)) {
+          const tracker = JSON.parse(read(outDir, `${route.slice(1)}tracker.json`));
+          const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+          for (const [index, dataset] of datasets.entries()) {
+            assertSourceDerivedTemporalCoverage(dataset, {
+              route,
+              observationInterval: tracker.maintainedPulse?.referencePeriod,
+              lastmod: pageLastmod(html),
+              index: index + 1,
+            });
+          }
+        }
         assertDatasetDownloadsAreGenerated(html, outDir, route);
       }
       assertDataCatalogPresent(read(outDir, 'countries/index.html'), '/countries/');
@@ -946,6 +967,8 @@ describe('crawlable corpus generator', () => {
         'tools/live-tools.js',
         'tools/natural-hazard-pulse/index.html',
         'tools/airspace-disruption-checker/index.html',
+        'tools/signal-convergence/index.html',
+        'tools/signal-convergence/reference.json',
         'reference/changelog/index.html',
         'reference/changelog/page/2/index.html',
         'sources/index.html',
@@ -973,8 +996,43 @@ describe('crawlable corpus generator', () => {
       );
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
+      assert.match(norway, /data-published-pulse/);
       assert.match(norway, /Instability combines current information/);
       assert.match(norway, /do not combine the scores/);
+      // #7376: no-JS HTML ships published pulse values, never Connecting…/Loading placeholders.
+      assert.doesNotMatch(norway, /Connecting…/);
+      assert.doesNotMatch(norway, /data-live-band>Loading/);
+      assert.doesNotMatch(norway, /Requesting the latest available result/);
+      assert.match(norway, /data-live-advisory>[^<]+/);
+      assert.match(norway, /data-live-sanctions>[^<]+/);
+      // Norway is a partial record: advisory and sanctions publish, but the
+      // upstream supplied no computedAt, so the tile must carry an UNDATED
+      // <span> rather than a <time datetime> fabricated from the freeze clock.
+      assert.match(norway, /<span data-live-updated>/);
+      assert.doesNotMatch(
+        norway,
+        /<time data-live-updated/,
+        'a partial country pulse must not publish a machine-readable retrieval timestamp',
+      );
+      assert.match(norway, /data-live-score>—/);
+      assert.match(norway, /data-live-band>No current score/);
+      assert.match(norway, /data-live-trend>Unavailable/);
+      const ukraine = read(outDir, 'countries/ukraine/index.html');
+      assert.match(ukraine, /data-live-score>\d/);
+      assert.doesNotMatch(ukraine, /data-live-score>—/);
+      assert.doesNotMatch(ukraine, /Connecting…/);
+      // A scored country carries a real upstream timestamp, so it does get <time>.
+      assert.match(ukraine, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
+      // Ukraine and Norway are individually asserted above, but neither would
+      // notice a freeze that degraded published scores across the corpus. Pin a
+      // floor on how many country pages actually ship a numeric score.
+      const scoredCountryPages = manifest.sections.countries.routes.filter((route) => (
+        /data-live-score>\d/.test(read(outDir, `${route.slice(1)}index.html`))
+      )).length;
+      assert.ok(
+        scoredCountryPages >= 25,
+        `expected at least 25 country pages to publish a numeric instability score, got ${scoredCountryPages}`,
+      );
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
       // Carries utm_source (NOT ref= — that would be captured as an affiliate referral code).
@@ -1036,9 +1094,11 @@ describe('crawlable corpus generator', () => {
           `${route} analysis must contain at least 400 country-specific words, got ${articleWordCount}`,
         );
         const pageWordCount = words(countryDocument.querySelector('main')?.textContent).length;
+        // Upper bound leaves room for the published live-pulse tiles (#7376)
+        // on top of the #7371 country-analysis prose target.
         assert.ok(
-          pageWordCount >= 600 && pageWordCount <= 800,
-          `${route} main content must contain 600-800 words, got ${pageWordCount}`,
+          pageWordCount >= 600 && pageWordCount <= 900,
+          `${route} main content must contain 600-900 words, got ${pageWordCount}`,
         );
       }
 
@@ -1503,9 +1563,21 @@ describe('crawlable corpus generator', () => {
       // Cross-link to the matching glossary term.
       assert.match(hormuz, /href="\/blog\/glossary\/strait-of-hormuz\/"/);
       assert.match(hormuz, /data-live-chokepoint data-chokepoint-id="hormuz_strait"/);
+      assert.match(hormuz, /data-published-pulse/);
       assert.match(hormuz, /traffic-light badge is a disruption score, not an operational closure declaration/i);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
       assert.doesNotMatch(hormuz, /id="app"/, 'chokepoint page must be raw static HTML, not the SPA shell');
+      assert.doesNotMatch(hormuz, /Connecting…/);
+      assert.doesNotMatch(hormuz, /data-chokepoint-score>—/);
+      assert.doesNotMatch(hormuz, /data-chokepoint-band>Loading/);
+      assert.match(hormuz, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
+      assert.match(hormuz, /data-chokepoint-score>\d/);
+      // Operator-facing review-hygiene text must never reach crawlable HTML.
+      assert.doesNotMatch(
+        hormuz,
+        /review recommended/i,
+        'internal threat-baseline review notes must not be published to crawlers',
+      );
 
       const hormuzLd = jsonLdObjects(hormuz);
       const hormuzPage = hormuzLd.find((entry) => entry['@type'] === 'WebPage');
@@ -1582,14 +1654,27 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /HAPI\/HDX humanitarian conflict summaries/);
       assert.ok(redSea.includes(liveScriptTag), 'crisis live script must match the production CSP nonce');
       assert.doesNotMatch(redSea, /id="app"/);
+      assert.doesNotMatch(redSea, /Connecting…/);
+      assert.doesNotMatch(redSea, /data-crisis-events>—/);
+      assert.doesNotMatch(redSea, /data-crisis-period>Loading/);
+      assert.match(redSea, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
+      assert.match(redSea, /Maintained month snapshot/);
+      assert.match(redSea, /data-crisis-period>20\d{2}-\d{2}-\d{2}/);
       const redSeaLd = jsonLdObjects(redSea);
       const redSeaPage = redSeaLd.find((entry) => entry['@type'] === 'WebPage');
       const redSeaDataset = collectDatasets(redSeaPage)[0];
       assert.ok(redSeaDataset, 'crisis page must expose a Dataset mainEntity');
+      const redSeaReference = JSON.parse(read(outDir, 'crises/red-sea-security/tracker.json'));
       assertSourceDerivedTemporalCoverage(redSeaDataset, {
         route: '/crises/red-sea-security/',
+        observationInterval: redSeaReference.maintainedPulse?.referencePeriod,
         lastmod: pageLastmod(redSea),
       });
+      assert.match(
+        String(redSeaDataset.dateModified),
+        /^\d{4}-\d{2}-\d{2}$/,
+        'crisis Dataset dateModified must be a calendar date, not a full ISO timestamp',
+      );
       assert.equal(redSeaDataset.isAccessibleForFree, true);
       assert.match(
         JSON.stringify(redSeaDataset.distribution),
@@ -1600,21 +1685,47 @@ describe('crawlable corpus generator', () => {
         /\/api\//,
         'crisis Dataset downloads must be static artifacts, not API routes',
       );
-      const redSeaReference = JSON.parse(read(outDir, 'crises/red-sea-security/tracker.json'));
       assert.equal(redSeaReference.dataset, 'crisis-tracker');
       assert.ok(redSeaReference.coverage.some((country) => country.code === 'YE'));
-      assert.deepEqual(redSeaDataset.variableMeasured, ['Tracker scope', 'Covered countries']);
-      assert.doesNotMatch(
-        JSON.stringify(redSeaDataset),
-        /Recorded conflict events|Recorded fatalities|Political violence events|Humanitarian reference period/,
-        'crisis Dataset metadata must describe the generated tracker artifact, not live API fields',
+      assert.ok(redSeaReference.maintainedPulse?.referencePeriod);
+      // The download is a machine-readable artifact: totals must be numbers, not
+      // Intl-formatted display strings like "9,824".
+      for (const key of ['eventsTotal', 'fatalities', 'politicalViolenceEvents']) {
+        const value = redSeaReference.maintainedPulse[key];
+        assert.equal(
+          typeof value,
+          'number',
+          `maintainedPulse.${key} must be a raw number, got ${JSON.stringify(value)}`,
+        );
+      }
+      assert.equal(
+        redSeaReference.maintainedPulse.eventsTotal,
+        redSeaReference.maintainedPulse.rows.reduce((total, row) => total + row.events, 0),
+        'maintainedPulse.eventsTotal must equal the sum of its published rows',
       );
+      assert.deepEqual(redSeaDataset.variableMeasured, [
+        'Tracker scope',
+        'Covered countries',
+        'Recorded conflict events',
+        'Recorded fatalities',
+        'Political violence events',
+        'Humanitarian reference period',
+      ]);
       assertDataCatalogPresent(redSea, '/crises/red-sea-security/');
 
       const toolsIndex = read(outDir, 'tools/index.html');
       assert.match(toolsIndex, /<h1>Check a current operational signal<\/h1>/);
       assert.match(toolsIndex, /href="\/tools\/natural-hazard-pulse\/"/);
       assert.match(toolsIndex, /href="\/tools\/airspace-disruption-checker\/"/);
+      assert.match(toolsIndex, /href="\/tools\/signal-convergence\/"/);
+
+      const convergence = read(outDir, 'tools/signal-convergence/index.html');
+      assert.match(convergence, /Geographic Convergence Score/);
+      assert.match(convergence, /type_score = event_types × 25/);
+      assert.match(convergence, /Taiwan Strait Buildup/);
+      assert.match(convergence, /<strong>87<\/strong>/);
+      assert.match(convergence, /href="\/docs\/geographic-convergence"/);
+      assert.doesNotMatch(convergence, /id="app"/);
 
       const hazard = read(outDir, 'tools/natural-hazard-pulse/index.html');
       assert.match(hazard, /data-natural-hazard-tool/);
@@ -1672,6 +1783,10 @@ describe('crawlable corpus generator', () => {
     assert.match(
       data.sources.resilienceSnapshot,
       /^docs\/snapshots\/resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/,
+    );
+    assert.match(
+      data.sources.livePulseSnapshot,
+      /^docs\/snapshots\/crawlable-live-pulse-\d{4}-\d{2}-\d{2}\.json$/,
     );
     assert.equal(data.sources.liveToolsScript, 'scripts/crawlable-live-tools.mjs');
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');

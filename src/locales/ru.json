@@ -1823,6 +1823,16 @@
       "loading": "Подключение к ретранслятору Telegram...",
       "empty": "Сообщения отсутствуют",
       "disabled": "Ретранслятор Telegram неактивен",
+      "watchlistPlaceholder": "Добавить публичный канал по @username",
+      "resolving": "Поиск канала...",
+      "invalidUsername": "Используйте публичное имя @username в Telegram",
+      "resolveFailed": "Не удалось найти канал",
+      "watchlistLimit": "Можно отслеживать до {{count}} пользовательских каналов",
+      "previewMembers": "{{count}} участников",
+      "addChannel": "Добавить канал",
+      "added": "Добавлен",
+      "remove": "Удалить",
+      "custom": "Пользовательский",
       "filterAll": "Все",
       "filterBreaking": "Срочное",
       "filterConflict": "Конфликты",
@@ -2034,6 +2044,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Индекс физического стресса: {{value}} / 100",
+        "fiveDayTrend": "Тренд премии за пять торговых дней",
+        "regimes": {
+          "normal": "Нормальный",
+          "elevated": "Повышенный",
+          "stressed": "Напряженный",
+          "extreme": "Экстремальный"
+        },
+        "states": {
+          "insufficientHistory": "Прогрев: {{count}} / {{required}} торговых точек",
+          "staleInput": "Физический бенчмарк устарел",
+          "missingInput": "Сигнал дивергенции недоступен"
+        },
+        "twentyDayTrend": "Тренд премии за двадцать торговых дней"
       }
     },
     "crypto": {
