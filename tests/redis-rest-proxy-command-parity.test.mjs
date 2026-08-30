@@ -22,6 +22,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { APPEND_HISTORY_LUA } from '../scripts/seed-physical-premiums.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 const proxyPath = resolve(repoRoot, 'docker/redis-rest-proxy.mjs');
@@ -170,5 +172,16 @@ describe('redis-rest-proxy command gate', () => {
     assert.equal(accepts(gate, ['EVAL', "redis.call('FLUSHALL')", '0']), false,
       'an unpinned script must be rejected');
     assert.equal(accepts(gate, ['EVAL']), false, 'EVAL with no script must be rejected');
+  });
+
+  it('pins the physical-premium history append by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(APPEND_HISTORY_LUA), true);
+    assert.equal(accepts(gate, ['EVAL', APPEND_HISTORY_LUA, '1', 'history']), true);
+    assert.equal(
+      accepts(gate, ['EVAL', `${APPEND_HISTORY_LUA} `, '1', 'history']),
+      false,
+      'a one-character script variant must stay blocked',
+    );
   });
 });

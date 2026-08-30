@@ -65,6 +65,12 @@ function resolveCountryFilter(value: unknown): string[] {
 }
 import { utf8ByteLength } from '../utils';
 import {
+  PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA,
+  PHYSICAL_PREMIUM_OUTPUT_SCHEMA,
+  PHYSICAL_PREMIUM_SYMBOL_ALIASES,
+  normalizePhysicalDivergenceDataset,
+} from '../../../server/_shared/mcp-physical-divergence';
+import {
   CHOKEPOINT_MONITOR_UI_URI,
   CONFLICT_EVENTS_UI_URI,
   FORECASTS_UI_URI,
@@ -86,10 +92,6 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
 const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
 const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
-const PHYSICAL_PREMIUM_SYMBOL_ALIASES: Record<string, string[]> = {
-  gold: ['gold', 'xau', 'gc=f'],
-  silver: ['silver', 'xag', 'si=f'],
-};
 
 function fitConflictEventsToBudget(data: Record<string, unknown>): void {
   const lists = CONFLICT_EVENT_LISTS.flatMap((label) => {
@@ -431,7 +433,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         symbols: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot.',
+          description: 'Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium and divergence aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot.',
         },
         asset_class: {
           type: 'array',
@@ -464,26 +466,8 @@ export const CACHE_TOOLS: ToolDef[] = [
           quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
         },
       },
-      'physical-premium': {
-        type: ['object', 'null'],
-        properties: {
-          premiums: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                metal: { type: 'string', enum: ['gold', 'silver'] },
-                physical: { type: 'object', properties: { price: { type: 'number' }, currency: { type: 'string' }, unit: { type: 'string' }, source: { type: 'string' }, asOf: { type: 'string' } } },
-                paper: { type: 'object', properties: { price: { type: 'number' }, source: { type: 'string' }, asOf: { type: 'string' } } },
-                premiumUsdPerOz: { type: 'number' },
-                premiumPct: { type: 'number' },
-                computedAt: { type: 'string' },
-              },
-            },
-          },
-          fx: { type: 'object', properties: { pair: { type: 'string' }, rate: { type: 'number' }, source: { type: 'string' }, asOf: { type: 'string' } } },
-        },
-      },
+      'physical-premium': PHYSICAL_PREMIUM_OUTPUT_SCHEMA,
+      'physical-divergence': PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA,
       crypto: {
         type: ['object', 'null'],
         properties: {
@@ -590,6 +574,11 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      try {
+        normalizePhysicalDivergenceDataset(data);
+      } catch {
+        delete data['physical-divergence'];
+      }
       const symbols = argStrList(params.symbols);
       if (symbols.length > 0) {
         for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
@@ -601,6 +590,12 @@ export const CACHE_TOOLS: ToolDef[] = [
             : undefined;
           if (!aliases) return false;
           return aliases.some((alias) => matchesCode(alias, symbols));
+        });
+        narrowNested(data, 'physical-divergence', 'readings', (reading) => {
+          const aliases = typeof reading.metal === 'string'
+            ? PHYSICAL_PREMIUM_SYMBOL_ALIASES[reading.metal]
+            : undefined;
+          return aliases?.some((alias) => matchesCode(alias, symbols)) ?? false;
         });
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
         const sectorData = data.sectors;
@@ -729,7 +724,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       const cls = argStrList(params.asset_class);
       if (cls.length > 0) {
         const map: Record<string, string[]> = {
-          equity: ['stocks-bootstrap'], commodity: ['commodities-bootstrap', 'physical-premium'], crypto: ['crypto'],
+          equity: ['stocks-bootstrap'], commodity: ['commodities-bootstrap', 'physical-premium', 'physical-divergence'], crypto: ['crypto'],
           sectors: ['sectors'], etf: ['etf-flows'], gulf: ['gulf-quotes'], sentiment: ['fear-greed'],
         };
         return selectDatasets(data, cls.flatMap((assetClass) => map[assetClass] ?? []));
@@ -743,6 +738,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
       'market:physical-premium:v1',
+      'market:physical-divergence:v1',
       'market:crypto:v1',
       'market:sectors:v2',
       'market:etf-flows:v1',
@@ -763,6 +759,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     _apiPaths: [
       "GET /api/market/v1/get-fear-greed-index",
       "GET /api/market/v1/get-physical-premiums",
+      "GET /api/market/v1/get-physical-divergence-index",
       "GET /api/market/v1/get-sector-summary",
       "GET /api/market/v1/list-commodity-quotes",
       "GET /api/market/v1/list-crypto-quotes",

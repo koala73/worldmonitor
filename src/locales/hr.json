@@ -2124,6 +2124,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Indeks fizičkog stresa: {{value}} / 100",
+        "fiveDayTrend": "Trend premije za pet trgovačkih dana",
+        "regimes": {
+          "normal": "Normalno",
+          "elevated": "Povišeno",
+          "stressed": "Opterećeno",
+          "extreme": "Ekstremno"
+        },
+        "states": {
+          "insufficientHistory": "Zagrijavanje: {{count}} / {{required}} trgovačkih točaka",
+          "staleInput": "Fizička referenca je zastarjela",
+          "missingInput": "Signal divergencije nije dostupan"
+        },
+        "twentyDayTrend": "Trend premije za dvadeset trgovačkih dana"
       }
     },
     "crypto": {

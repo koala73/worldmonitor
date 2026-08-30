@@ -2116,6 +2116,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fahirisi ya mzigo halisi: {{value}} / 100",
+        "fiveDayTrend": "Mwenendo wa ziada wa siku tano za biashara",
+        "regimes": {
+          "normal": "Kawaida",
+          "elevated": "Iliyoinuka",
+          "stressed": "Iliyosikitishwa",
+          "extreme": "Kali sana"
+        },
+        "states": {
+          "insufficientHistory": "Inaandaa: {{count}} / {{required}} alama za biashara",
+          "staleInput": "Kigezo cha halisi kimezeeka",
+          "missingInput": "Ishara ya utofauti haipatikani"
+        },
+        "twentyDayTrend": "Mwenendo wa ziada wa siku ishirini za biashara"
       }
     },
     "crypto": {

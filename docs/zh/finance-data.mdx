@@ -21,6 +21,8 @@ description: "World Monitor 金融变体中的市场雷达、海湾国家 FDI �
 | 市场报价 | `GET /api/market/v1/list-market-quotes` | 市场面板、可自定义自选列表、股票 / 指数报价。 |
 | 加密货币报价 | `GET /api/market/v1/list-crypto-quotes` | 加密货币面板默认值；bootstrap 优先经由 `cryptoQuotes`。 |
 | 大宗商品报价 | `GET /api/market/v1/list-commodity-quotes` | 大宗商品、能源风险 Brent 磁贴、黄金 / 原油自选列表；bootstrap 优先经由 `commodityQuotes`。 |
+| 实物贵金属溢价 | `GET /api/market/v1/get-physical-premiums` | SGE SHAU/SHAG 基准价与 COMEX `GC=F`/`SI=F` 快照的比较。 |
+| 实物贵金属背离 | `GET /api/market/v1/get-physical-divergence-index` | 有界历史、稳健归一化、混合状态、5 日和 20 日趋势、明确数据状态及 70/30 综合指数。详见[方法](/zh/methodology/physical-divergence-index)。 |
 | 板块汇总 | `GET /api/market/v1/get-sector-summary` | 板块热力图与估值背景；bootstrap 优先经由 `sectors`。 |
 | 稳定币市场 | `GET /api/market/v1/list-stablecoin-markets` | 稳定币锚定健康面板；bootstrap 优先经由 `stablecoinMarkets`。 |
 | ETF 资金流 | `GET /api/market/v1/list-etf-flows` | BTC 现货 ETF 追踪器；bootstrap 优先经由 `etfFlows`。 |

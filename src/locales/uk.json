@@ -2126,6 +2126,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Індекс фізичного стресу: {{value}} / 100",
+        "fiveDayTrend": "Тренд премії за п'ять торгових днів",
+        "regimes": {
+          "normal": "Нормальний",
+          "elevated": "Підвищений",
+          "stressed": "Напружений",
+          "extreme": "Екстремальний"
+        },
+        "states": {
+          "insufficientHistory": "Прогрівання: {{count}} / {{required}} торгових точок",
+          "staleInput": "Фізичний орієнтир застарілий",
+          "missingInput": "Сигнал дивергенції недоступний"
+        },
+        "twentyDayTrend": "Тренд премії за двадцять торгових днів"
       }
     },
     "crypto": {

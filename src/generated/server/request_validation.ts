@@ -58,6 +58,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getIntelTimeline": "worldmonitor.intelligence.v1.GetIntelTimelineRequest",
   "getMineralProduction": "worldmonitor.supply_chain.v1.GetMineralProductionRequest",
   "getMultiSectorCostShock": "worldmonitor.supply_chain.v1.GetMultiSectorCostShockRequest",
+  "getPhysicalDivergenceIndex": "worldmonitor.market.v1.GetPhysicalDivergenceIndexRequest",
   "getPhysicalPremiums": "worldmonitor.market.v1.GetPhysicalPremiumsRequest",
   "getPipelineDetail": "worldmonitor.supply_chain.v1.GetPipelineDetailRequest",
   "getPizzintStatus": "worldmonitor.intelligence.v1.GetPizzintStatusRequest",
@@ -1144,6 +1145,9 @@ export const GENERATED_MESSAGE_RULES = {
         "stringMaxLen": 32
       }
     }
+  },
+  "worldmonitor.market.v1.GetPhysicalDivergenceIndexRequest": {
+    "fields": {}
   },
   "worldmonitor.market.v1.GetPhysicalPremiumsRequest": {
     "fields": {}

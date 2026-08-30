@@ -18,14 +18,35 @@ import {
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { isMainModule } from './lib/main-module.mjs';
+import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
+import {
+  HISTORY_LIMIT,
+  METHODOLOGY_VERSION,
+  MIN_HISTORY_POINTS,
+  TRAILING_WINDOW_POINTS,
+  TRANSITION_COOLDOWN_MS,
+  buildPhysicalDivergenceReading,
+  buildPhysicalStressComposite,
+  createPhysicalPremiumTransition,
+  isPhysicalPremiumHistoryPoint,
+  physicalPremiumHistoryPoint,
+} from './lib/physical-divergence.mjs';
 
 export const PHYSICAL_PREMIUM_KEY = 'market:physical-premium:v1';
+export const PHYSICAL_PREMIUM_HISTORY_KEY_PREFIX = 'market:physical-premium-history:v1';
+export const PHYSICAL_DIVERGENCE_KEY = 'market:physical-divergence:v1';
+export const PHYSICAL_DIVERGENCE_META_KEY = 'seed-meta:market:physical-divergence';
 export const PHYSICAL_PREMIUM_ACTIVATION_KEY = 'seed-activated:market:physical-premium';
+export const PHYSICAL_DIVERGENCE_ACTIVATION_KEY = 'seed-activated:market:physical-divergence';
 export const COMMODITY_QUOTES_KEY = 'market:commodities-bootstrap:v1';
 export const FX_RATES_KEY = 'shared:fx-rates:v1';
 export const TROY_OUNCE_GRAMS = 31.1034768;
 
 const CACHE_TTL_SECONDS = 3 * 24 * 3600;
+const DIVERGENCE_TTL_SECONDS = 16 * 24 * 3600;
+const TRANSITION_COOLDOWN_SECONDS = TRANSITION_COOLDOWN_MS / 1000;
+const DERIVED_REDIS_MAX_ATTEMPTS = 3;
+const DERIVED_REDIS_RETRY_BASE_MS = 250;
 const SGE_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 const SGE_GOLD_URL = 'https://en.sge.com.cn/data_BenchmarkPrice_Daily';
 const SGE_SILVER_URL = 'https://en.sge.com.cn/data/data_silver_daily';
@@ -57,16 +78,257 @@ export function physicalPremiumActivationWrite(env) {
     : null;
 }
 
+export function physicalDivergenceActivationWrite(env) {
+  return shouldWritePhysicalPremiumActivationMarker(env)
+    ? ['SET', PHYSICAL_DIVERGENCE_ACTIVATION_KEY, '1']
+    : null;
+}
+
 async function markPhysicalPremiumActivated({ env } = {}) {
-  const command = physicalPremiumActivationWrite(env);
-  if (!command) return;
+  const commands = [physicalPremiumActivationWrite(env), physicalDivergenceActivationWrite(env)]
+    .filter(Boolean);
+  if (commands.length === 0) return;
   try {
     const creds = getOptionalUpstashCreds();
     if (!creds) return;
-    await upstashCommand(creds, command);
+    for (const command of commands) await upstashCommand(creds, command);
   } catch (error) {
     console.warn(`  WARN: activation marker write failed: ${error?.message || error}`);
   }
+}
+
+export const APPEND_HISTORY_LUA = `
+local existing = redis.call('LRANGE', KEYS[1], 0, -1)
+for _, encoded in ipairs(existing) do
+  local ok, item = pcall(cjson.decode, encoded)
+  if ok and item.date == ARGV[1] then
+    redis.call('LREM', KEYS[1], 0, encoded)
+  end
+end
+redis.call('LPUSH', KEYS[1], ARGV[2])
+redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)
+return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)
+`.trim();
+
+export function physicalPremiumHistoryKey(metal, prefix = '') {
+  if (!METALS.some((config) => config.metal === metal)) {
+    throw nonRetryableError(`Unsupported physical premium history metal: ${metal}`);
+  }
+  return `${prefix}${PHYSICAL_PREMIUM_HISTORY_KEY_PREFIX}:${metal}`;
+}
+
+export function physicalPremiumHistoryWriteCommand(key, point) {
+  if (typeof key !== 'string' || key.length === 0 || !isPhysicalPremiumHistoryPoint(point)) {
+    throw nonRetryableError('Physical premium history append requires a key and valid point');
+  }
+  return [
+    'EVAL',
+    APPEND_HISTORY_LUA,
+    '1',
+    key,
+    point.date,
+    JSON.stringify(point),
+    String(HISTORY_LIMIT),
+    String(TRAILING_WINDOW_POINTS),
+  ];
+}
+
+export async function appendPhysicalPremiumHistory(creds, key, point, commandFn = upstashCommand) {
+  const body = await commandFn(creds, physicalPremiumHistoryWriteCommand(key, point));
+  return parsePhysicalPremiumHistory(body, key, false);
+}
+
+function parsePhysicalPremiumHistory(body, key, allowEmpty) {
+  if (!Array.isArray(body?.result)) {
+    throw nonRetryableError(`Physical premium history read returned an invalid list for ${key}`);
+  }
+  const history = body.result.map((encoded) => {
+    if (typeof encoded !== 'string') return null;
+    try {
+      const parsed = JSON.parse(encoded);
+      return isPhysicalPremiumHistoryPoint(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+  if (
+    history.some((entry) => entry == null)
+    || (!allowEmpty && history.length === 0)
+    || history.length > TRAILING_WINDOW_POINTS
+  ) {
+    throw nonRetryableError(`Physical premium history read produced invalid entries for ${key}`);
+  }
+  return history;
+}
+
+export async function readPhysicalPremiumHistory(creds, key, commandFn = upstashCommand) {
+  const body = await commandFn(creds, [
+    'LRANGE', key, '0', String(TRAILING_WINDOW_POINTS - 1),
+  ]);
+  return parsePhysicalPremiumHistory(body, key, true);
+}
+
+function parseStoredJson(body, label) {
+  if (body?.result == null) return null;
+  if (typeof body.result !== 'string') throw nonRetryableError(`${label} returned a non-string value`);
+  try {
+    return JSON.parse(body.result);
+  } catch {
+    throw nonRetryableError(`${label} returned malformed JSON`);
+  }
+}
+
+function findPriorReading(snapshot, metal) {
+  if (snapshot == null) return null;
+  if (!Array.isArray(snapshot.readings)) throw nonRetryableError('Prior physical divergence snapshot has no readings');
+  const reading = snapshot.readings.find((candidate) => candidate?.metal === metal);
+  if (!reading) return null;
+  if (!['ok', 'insufficient_history', 'stale_input', 'missing_input'].includes(reading.state)) {
+    throw nonRetryableError(`Prior physical divergence snapshot has unknown state: ${reading.state}`);
+  }
+  return reading;
+}
+
+export function buildPhysicalDivergenceSnapshot({ premiums, fx, histories, previousSnapshot, cooldowns, nowMs }) {
+  if (
+    !Array.isArray(premiums)
+    || !histories
+    || !Number.isFinite(nowMs)
+    || fx?.pair !== 'CNY/USD'
+    || typeof fx?.source !== 'string'
+    || typeof fx?.asOf !== 'string'
+  ) {
+    throw nonRetryableError('Physical divergence snapshot requires premiums, FX provenance, histories, and an evaluation clock');
+  }
+  const readings = METALS.map(({ metal }) => buildPhysicalDivergenceReading({
+    metal,
+    current: premiums.find((premium) => premium?.metal === metal) ?? null,
+    history: histories[metal] ?? [],
+    fx,
+    nowMs,
+  }));
+  const transitions = [];
+  for (const reading of readings) {
+    const previous = findPriorReading(previousSnapshot, reading.metal);
+    const transition = createPhysicalPremiumTransition({
+      previous,
+      next: reading,
+      nowMs,
+      lastEmittedAtMs: cooldowns?.[reading.metal] ?? null,
+    });
+    if (transition) transitions.push(transition);
+  }
+  return {
+    evaluatedAt: new Date(nowMs).toISOString(),
+    methodologyVersion: METHODOLOGY_VERSION,
+    readings,
+    composite: buildPhysicalStressComposite(readings),
+    transitions,
+  };
+}
+
+async function readTransitionCooldown(creds, key, commandFn) {
+  const stored = parseStoredJson(await commandFn(creds, ['GET', key]), `Transition cooldown ${key}`);
+  if (stored == null) return null;
+  return Number.isFinite(stored.emittedAt) ? stored.emittedAt : null;
+}
+
+function isTransientDerivedRedisError(error) {
+  const status = Number(error?.status ?? String(error?.message ?? '').match(/Upstash HTTP (\d{3})/)?.[1]);
+  if (status === 429 || status >= 500) return true;
+  return error?.name === 'AbortError'
+    || error?.name === 'TimeoutError'
+    || error instanceof TypeError;
+}
+
+export async function retryDerivedRedisCommand(creds, command, commandFn, delayFn) {
+  for (let attempt = 0; attempt < DERIVED_REDIS_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await commandFn(creds, command);
+    } catch (error) {
+      if (!isTransientDerivedRedisError(error) || attempt === DERIVED_REDIS_MAX_ATTEMPTS - 1) throw error;
+      const backoffMs = DERIVED_REDIS_RETRY_BASE_MS * (2 ** attempt);
+      const retryAfterMs = Number.isFinite(error?.retryAfterMs) ? error.retryAfterMs : 0;
+      await delayFn(Math.max(backoffMs, retryAfterMs));
+    }
+  }
+  throw new Error('Unreachable derived Redis retry state');
+}
+
+export async function publishPhysicalDivergenceDerivedData({
+  payload,
+  prefix = '',
+  nowMs = Date.now(),
+  commandFn = upstashCommand,
+  retryDelayFn = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+}) {
+  const creds = getOptionalUpstashCreds();
+  if (!creds) throw nonRetryableError('Physical divergence publication requires Redis credentials');
+
+  const divergenceKey = `${prefix}${PHYSICAL_DIVERGENCE_KEY}`;
+  const derivedCommand = (nextCreds, command) => (
+    retryDerivedRedisCommand(nextCreds, command, commandFn, retryDelayFn)
+  );
+  const historyEntriesPromise = Promise.all((payload?.premiums ?? []).map(async (premium) => {
+    const point = physicalPremiumHistoryPoint(premium);
+    if (!point || !METALS.some((config) => config.metal === premium.metal)) {
+      throw nonRetryableError('Physical divergence publication received an invalid premium');
+    }
+    const key = physicalPremiumHistoryKey(premium.metal, prefix);
+    const staleReason = physicalDivergenceStaleReason({
+      physicalAsOf: point.physicalAsOf,
+      paperAsOf: point.paperAsOf,
+      fxAsOf: payload.fx?.asOf ?? '',
+    }, nowMs);
+    const history = staleReason
+      ? await readPhysicalPremiumHistory(creds, key, derivedCommand)
+      : await appendPhysicalPremiumHistory(creds, key, point, derivedCommand);
+    return [premium.metal, history];
+  }));
+  const previousSnapshotPromise = derivedCommand(creds, ['GET', divergenceKey]).then((body) => (
+    parseStoredJson(body, 'Prior physical divergence snapshot')
+  ));
+  const [historyEntries, previousSnapshot] = await Promise.all([
+    historyEntriesPromise,
+    previousSnapshotPromise,
+  ]);
+  const histories = Object.fromEntries(historyEntries);
+
+  const cooldownEntries = await Promise.all(METALS.map(async ({ metal }) => {
+    const previous = findPriorReading(previousSnapshot, metal);
+    const currentHistory = histories[metal] ?? [];
+    if (previous?.state !== 'ok' || currentHistory.length < MIN_HISTORY_POINTS) return null;
+    const cooldownKey = `${prefix}market:physical-divergence-transition-cooldown:v1:${metal}`;
+    const cooldown = await readTransitionCooldown(creds, cooldownKey, derivedCommand);
+    return [metal, cooldown];
+  }));
+  const cooldowns = Object.fromEntries(cooldownEntries.filter((entry) => entry != null));
+
+  const snapshot = buildPhysicalDivergenceSnapshot({
+    premiums: payload.premiums,
+    fx: payload.fx,
+    histories,
+    previousSnapshot,
+    cooldowns,
+    nowMs,
+  });
+  await derivedCommand(creds, [
+    'SET', divergenceKey, JSON.stringify(snapshot), 'EX', String(DIVERGENCE_TTL_SECONDS),
+  ]);
+  const publicationCommands = snapshot.transitions.map((transition) => {
+    const cooldownKey = `${prefix}market:physical-divergence-transition-cooldown:v1:${transition.metal}`;
+    return [
+      'SET', cooldownKey, JSON.stringify({ emittedAt: nowMs, transitionId: transition.id }),
+      'EX', String(TRANSITION_COOLDOWN_SECONDS),
+    ];
+  });
+  publicationCommands.push([
+    'SET', `${prefix}${PHYSICAL_DIVERGENCE_META_KEY}`,
+    JSON.stringify({ fetchedAt: nowMs, recordCount: snapshot.readings.length, methodologyVersion: METHODOLOGY_VERSION }),
+    'EX', String(DIVERGENCE_TTL_SECONDS),
+  ]);
+  await Promise.all(publicationCommands.map((command) => derivedCommand(creds, command)));
+  return snapshot;
 }
 
 function nonRetryableError(message) {
@@ -374,7 +636,10 @@ export async function runPhysicalPremiumSeed(args = process.argv.slice(2)) {
     maxStaleMin: 3 * DAY_MIN,
     contentMeta: physicalPremiumContentMeta,
     maxContentAgeMin: SGE_MAX_CONTENT_AGE_MIN,
-    afterPublish: () => markPhysicalPremiumActivated({ env }),
+    afterPublish: async (payload) => {
+      await publishPhysicalDivergenceDerivedData({ payload, prefix });
+      await markPhysicalPremiumActivated({ env });
+    },
   });
 }
 

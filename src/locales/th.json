@@ -2032,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "ดัชนีความเครียดทางกายภาพ: {{value}} / 100",
+        "fiveDayTrend": "แนวโน้มพรีเมียมห้าวันซื้อขาย",
+        "regimes": {
+          "normal": "ปกติ",
+          "elevated": "สูงขึ้น",
+          "stressed": "ความเครียด",
+          "extreme": "รุนแรง"
+        },
+        "states": {
+          "insufficientHistory": "วอร์มอัป: {{count}} / {{required}} จุดซื้อขาย",
+          "staleInput": "เกณฑ์มาตรฐานทางกายภาพล้าสมัย",
+          "missingInput": "สัญญาณความแตกต่างไม่พร้อมใช้งาน"
+        },
+        "twentyDayTrend": "แนวโน้มพรีเมียมในรอบ 20 วันการค้า"
       }
     },
     "crypto": {

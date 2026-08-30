@@ -2044,6 +2044,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Wskaźnik stresu fizycznego: {{value}} / 100",
+        "fiveDayTrend": "Trend premii pięciodniowej",
+        "regimes": {
+          "normal": "Normalny",
+          "elevated": "Podwyższony",
+          "stressed": "Stresowany",
+          "extreme": "Ekstremalny"
+        },
+        "states": {
+          "insufficientHistory": "Rozgrzewanie: {{count}} / {{required}} punktów handlowych",
+          "staleInput": "Benchmark fizyczny jest nieaktualny",
+          "missingInput": "Sygnał dywergencji niedostępny"
+        },
+        "twentyDayTrend": "Trend premii za dwadzieścia dni handlowych"
       }
     },
     "crypto": {

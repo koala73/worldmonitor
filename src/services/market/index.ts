@@ -6,7 +6,7 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetPhysicalPremiumsResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetPhysicalDivergenceIndexResponse, GetPhysicalPremiumsResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
@@ -19,7 +19,7 @@ const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetc
 const MARKET_QUOTES_CACHE_TTL_MS = 5 * 60 * 1000;
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const commodityBreaker = createCircuitBreaker<ListCommodityQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
-const physicalPremiumBreaker = createCircuitBreaker<GetPhysicalPremiumsResponse>({ name: 'Physical Premiums', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
+const physicalPremiumBreaker = createCircuitBreaker<GetPhysicalPremiumsResponse>({ name: 'Physical Premiums', cacheTtlMs: 0 });
 const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary v2', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes', persistCache: true });
 const cryptoSectorsBreaker = createCircuitBreaker<ListCryptoSectorsResponse>({ name: 'Crypto Sectors', persistCache: true });
@@ -216,8 +216,12 @@ export async function fetchPhysicalPremiums(): Promise<GetPhysicalPremiumsRespon
   return physicalPremiumBreaker.execute(async () => {
     return client.getPhysicalPremiums({ metals: [] });
   }, emptyPhysicalPremiumFallback, {
-    shouldCache: (response) => response.premiums.length > 0 && response.fx !== undefined,
+    shouldCache: () => false,
   });
+}
+
+export async function fetchPhysicalDivergence(): Promise<GetPhysicalDivergenceIndexResponse> {
+  return client.getPhysicalDivergenceIndex({ metals: [] });
 }
 
 // ========================================================================

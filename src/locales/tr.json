@@ -2036,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fiziksel stress endeksi: {{value}} / 100",
+        "fiveDayTrend": "Beş işlem günü prim trendi",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Yükseltilmiş",
+          "stressed": "Stresli",
+          "extreme": "Aşırı"
+        },
+        "states": {
+          "insufficientHistory": "Isınıyor: {{count}} / {{required}} işlem noktası",
+          "staleInput": "Fiziksel benchmark eski",
+          "missingInput": "Sapma sinyali kullanılamıyor"
+        },
+        "twentyDayTrend": "Yirmi işlem günü prim trendi"
       }
     },
     "crypto": {

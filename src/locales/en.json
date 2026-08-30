@@ -2113,6 +2113,22 @@
       "paper": "Paper",
       "premium": "Premium",
       "asOf": "As of {{date}}",
+      "divergence": {
+        "compositeValue": "Physical stress index: {{value}} / 100",
+        "fiveDayTrend": "Five-trading-day premium trend",
+        "twentyDayTrend": "Twenty-trading-day premium trend",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Elevated",
+          "stressed": "Stressed",
+          "extreme": "Extreme"
+        },
+        "states": {
+          "insufficientHistory": "Warming up: {{count}} / {{required}} trading points",
+          "staleInput": "Physical benchmark is stale",
+          "missingInput": "Divergence signal unavailable"
+        }
+      },
       "metals": {
         "gold": "Gold",
         "silver": "Silver"

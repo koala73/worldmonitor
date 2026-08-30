@@ -375,11 +375,89 @@ type CommoditiesTab = 'commodities' | 'physical' | 'fx' | 'xau';
 // Use the generated types directly — never hand-roll a subset, which silently
 // drifts when the proto gains fields.
 import type {
+  GetPhysicalDivergenceIndexResponse,
   GetPhysicalPremiumsResponse,
   GetHyperliquidFlowResponse,
   HyperliquidAssetFlow,
+  PhysicalDivergenceReading,
+  PhysicalDivergenceState,
+  PhysicalPremiumRegime,
+  PhysicalPremiumTrend,
   PhysicalPremium,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
+
+function physicalDivergenceStateCopy(
+  state: PhysicalDivergenceState,
+  historyPoints: number,
+): string {
+  switch (state) {
+    case 'PHYSICAL_DIVERGENCE_STATE_OK':
+      return '';
+    case 'PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY':
+      return t('components.commodities.divergence.states.insufficientHistory', {
+        count: historyPoints,
+        required: 60,
+      });
+    case 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT':
+      return t('components.commodities.divergence.states.staleInput');
+    case 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT':
+      return t('components.commodities.divergence.states.missingInput');
+    case 'PHYSICAL_DIVERGENCE_STATE_UNSPECIFIED':
+      throw new Error('Physical divergence state is unspecified');
+    default: {
+      const exhaustive: never = state;
+      throw new Error(`Unknown physical divergence state: ${String(exhaustive)}`);
+    }
+  }
+}
+
+function physicalRegimeLabel(regime: PhysicalPremiumRegime): string {
+  switch (regime) {
+    case 'PHYSICAL_PREMIUM_REGIME_NORMAL':
+      return t('components.commodities.divergence.regimes.normal');
+    case 'PHYSICAL_PREMIUM_REGIME_ELEVATED':
+      return t('components.commodities.divergence.regimes.elevated');
+    case 'PHYSICAL_PREMIUM_REGIME_STRESSED':
+      return t('components.commodities.divergence.regimes.stressed');
+    case 'PHYSICAL_PREMIUM_REGIME_EXTREME':
+      return t('components.commodities.divergence.regimes.extreme');
+    case 'PHYSICAL_PREMIUM_REGIME_UNSPECIFIED':
+      throw new Error('Ok physical divergence reading has no regime');
+    default: {
+      const exhaustive: never = regime;
+      throw new Error(`Unknown physical premium regime: ${String(exhaustive)}`);
+    }
+  }
+}
+
+function physicalRegimeColor(regime: PhysicalPremiumRegime): string {
+  switch (regime) {
+    case 'PHYSICAL_PREMIUM_REGIME_NORMAL': return 'var(--green)';
+    case 'PHYSICAL_PREMIUM_REGIME_ELEVATED': return 'var(--yellow)';
+    case 'PHYSICAL_PREMIUM_REGIME_STRESSED': return 'var(--orange, #f97316)';
+    case 'PHYSICAL_PREMIUM_REGIME_EXTREME': return 'var(--red)';
+    case 'PHYSICAL_PREMIUM_REGIME_UNSPECIFIED':
+      throw new Error('Ok physical divergence reading has no regime color');
+    default: {
+      const exhaustive: never = regime;
+      throw new Error(`Unknown physical premium regime color: ${String(exhaustive)}`);
+    }
+  }
+}
+
+function physicalTrendArrow(trend: PhysicalPremiumTrend): string {
+  switch (trend) {
+    case 'PHYSICAL_PREMIUM_TREND_WIDENING': return '↑';
+    case 'PHYSICAL_PREMIUM_TREND_STABLE': return '→';
+    case 'PHYSICAL_PREMIUM_TREND_NARROWING': return '↓';
+    case 'PHYSICAL_PREMIUM_TREND_UNSPECIFIED':
+      throw new Error('Ok physical divergence reading has no trend');
+    default: {
+      const exhaustive: never = trend;
+      throw new Error(`Unknown physical premium trend: ${String(exhaustive)}`);
+    }
+  }
+}
 
 function parseFiniteNumber(s: string): number | null {
   if (typeof s !== 'string' || s === '') return null;
@@ -503,6 +581,9 @@ export class CommoditiesPanel extends Panel {
   private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[]; symbol?: string }> = [];
   private _fxRates: EcbFxRateItem[] = [];
   private _physicalPremiums: PhysicalPremium[] = [];
+  private _physicalPremiumFxAsOf = '';
+  private _physicalDivergence: GetPhysicalDivergenceIndexResponse | null = null;
+  private _physicalDivergenceUnavailable = false;
 
   constructor() {
     super({ id: 'commodities', title: t('panels.commodities'), infoTooltip: t('components.commodities.infoTooltip') });
@@ -534,6 +615,19 @@ export class CommoditiesPanel extends Panel {
 
   public updatePhysicalPremiums(response: GetPhysicalPremiumsResponse): void {
     this._physicalPremiums = response.premiums;
+    this._physicalPremiumFxAsOf = response.fx?.asOf ?? '';
+    this._render();
+  }
+
+  public updatePhysicalDivergence(response: GetPhysicalDivergenceIndexResponse): void {
+    this._physicalDivergence = response;
+    this._physicalDivergenceUnavailable = false;
+    this._render();
+  }
+
+  public showPhysicalDivergenceUnavailable(): void {
+    this._physicalDivergence = null;
+    this._physicalDivergenceUnavailable = true;
     this._render();
   }
 
@@ -558,15 +652,75 @@ export class CommoditiesPanel extends Panel {
       const paperPrice = premium.paper.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const premiumUsd = `${premium.premiumUsdPerOz >= 0 ? '+' : '-'}$${Math.abs(premium.premiumUsdPerOz).toFixed(2)}`;
       const premiumPct = `${premium.premiumPct >= 0 ? '+' : ''}${premium.premiumPct.toFixed(2)}%`;
+      const divergence = this._physicalDivergence?.readings.find((reading) => reading.metal === premium.metal);
+      const cohortMatches = divergence
+        ? this._physicalDivergenceCohortMatches(divergence, premium)
+        : false;
+      const divergenceStatus = this._physicalDivergenceUnavailable
+        ? ''
+        : divergence && cohortMatches
+        ? this._renderPhysicalDivergenceReading(divergence)
+        : this._renderPhysicalDivergenceReading({
+          state: 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT',
+          historyPoints: 0,
+        } as PhysicalDivergenceReading);
       return `<div class="commodity-item physical-premium-item">
         <div class="commodity-name">${escapeHtml(metal)}</div>
         <div class="commodity-price">${escapeHtml(t('components.commodities.physical'))}: CNY ${escapeHtml(physicalPrice)}/${unit}</div>
         <div class="commodity-price">${escapeHtml(t('components.commodities.paper'))}: $${escapeHtml(paperPrice)}/oz</div>
         <div class="commodity-change ${getChangeClass(premium.premiumPct)}">${escapeHtml(t('components.commodities.premium'))}: ${escapeHtml(premiumUsd)}/oz (${escapeHtml(premiumPct)})</div>
+        ${divergenceStatus}
         <div style="margin-top:4px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)" title="${escapeHtml(premium.physical.source)}">${escapeHtml(premium.physical.source)}<br>${escapeHtml(t('components.commodities.asOf', { date: premium.physical.asOf }))}</div>
       </div>`;
     });
-    return `<div class="commodities-grid">${rows.join('')}</div>`;
+    const composite = this._renderPhysicalDivergenceComposite();
+    return `${composite}<div class="commodities-grid">${rows.join('')}</div>`;
+  }
+
+  private _renderPhysicalDivergenceReading(reading: PhysicalDivergenceReading): string {
+    if (reading.state !== 'PHYSICAL_DIVERGENCE_STATE_OK') {
+      return `<div class="physical-divergence-state" style="margin-top:4px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(physicalDivergenceStateCopy(reading.state, reading.historyPoints))}</div>`;
+    }
+    const label = physicalRegimeLabel(reading.regime);
+    const color = physicalRegimeColor(reading.regime);
+    const arrow5d = physicalTrendArrow(reading.trend5d);
+    const arrow20d = physicalTrendArrow(reading.trend20d);
+    return `<div class="physical-divergence-state" style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:calc(10px * var(--wm-panel-effective-scale, 1))">
+      <span style="border:1px solid ${color};color:${color};border-radius:999px;padding:1px 6px">${escapeHtml(label)}</span>
+      <span title="${escapeHtml(t('components.commodities.divergence.fiveDayTrend'))}">${escapeHtml(arrow5d)} 5d</span>
+      <span title="${escapeHtml(t('components.commodities.divergence.twentyDayTrend'))}">${escapeHtml(arrow20d)} 20d</span>
+    </div>`;
+  }
+
+  private _renderPhysicalDivergenceComposite(): string {
+    if (this._physicalDivergenceUnavailable) {
+      return `<div class="physical-divergence-transport-error" style="margin-bottom:8px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('common.failedMarketData'))}</div>`;
+    }
+    const composite = this._physicalDivergence?.composite;
+    if (!composite) return '';
+    let label: string;
+    const cohortsMatch = this._physicalPremiums.every((premium) => {
+      const reading = this._physicalDivergence?.readings.find((candidate) => candidate.metal === premium.metal);
+      return reading ? this._physicalDivergenceCohortMatches(reading, premium) : false;
+    });
+    if (!cohortsMatch) {
+      label = physicalDivergenceStateCopy('PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT', 0);
+    } else if (composite.state === 'PHYSICAL_DIVERGENCE_STATE_OK') {
+      if (composite.index == null) throw new Error('Ok physical divergence composite has no index');
+      label = t('components.commodities.divergence.compositeValue', { value: composite.index.toFixed(1) });
+    } else {
+      label = physicalDivergenceStateCopy(composite.state, 0);
+    }
+    return `<div class="physical-divergence-composite" style="margin-bottom:8px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(label)}</div>`;
+  }
+
+  private _physicalDivergenceCohortMatches(
+    reading: PhysicalDivergenceReading,
+    premium: PhysicalPremium,
+  ): boolean {
+    return reading.physicalAsOf === premium.physical?.asOf
+      && reading.paperAsOf === premium.paper?.asOf
+      && reading.provenance?.fxAsOf === this._physicalPremiumFxAsOf;
   }
 
   private _renderXau(): string {

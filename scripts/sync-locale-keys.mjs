@@ -25,7 +25,13 @@ import { flattenKeys } from './_locale-keys.mjs';
 // Imported rather than restated: this file would otherwise be a third place
 // that has to be told zh-TW is generated, after translate-locales.mjs and the
 // catalogue test.
-import { GENERATED_LOCALES } from './translate-locales.mjs';
+import {
+  GENERATED_LOCALES,
+  expectedKeysForLocale,
+  findPluralBases,
+  flatten,
+  getPluralCategories,
+} from './translate-locales.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, '..', 'src', 'locales');
@@ -51,7 +57,7 @@ const GENERATED_HINT = 'Run: npm run locales:zh-tw';
  * @param {unknown} template
  * @param {unknown} locale
  */
-function syncFromTemplate(template, locale) {
+export function syncFromTemplate(template, locale, expectedKeys, prefix = '') {
   if (typeof template === 'string') {
     return typeof locale === 'string' ? locale : template;
   }
@@ -74,13 +80,21 @@ function syncFromTemplate(template, locale) {
     // Keep the locale's own key order (and recurse to preserve nested order).
     // Locale-only keys (legacy / in-flight translations) are carried through.
     for (const [key, value] of Object.entries(localeObj)) {
-      out[key] = key in templateObj ? syncFromTemplate(templateObj[key], value) : value;
+      const keyPath = prefix ? `${prefix}.${key}` : key;
+      out[key] = key in templateObj
+        ? syncFromTemplate(templateObj[key], value, expectedKeys, keyPath)
+        : value;
     }
 
     // Append keys present in en but missing from the locale, in en's order.
     for (const [key, value] of Object.entries(templateObj)) {
       if (!(key in out)) {
-        out[key] = syncFromTemplate(value, localeObj[key]);
+        const keyPath = prefix ? `${prefix}.${key}` : key;
+        const isExpected = expectedKeys.has(keyPath)
+          || [...expectedKeys].some((candidate) => candidate.startsWith(`${keyPath}.`));
+        if (isExpected) {
+          out[key] = syncFromTemplate(value, localeObj[key], expectedKeys, keyPath);
+        }
       }
     }
 
@@ -106,7 +120,8 @@ function readJson(path, label) {
 
 function main() {
   const en = readJson(EN_PATH, 'en.json');
-  const enKeys = new Set(flattenKeys(en));
+  const enFlat = flatten(en);
+  const pluralBases = findPluralBases(enFlat);
   const localeFiles = readdirSync(LOCALES_DIR)
     .filter((name) => name.endsWith('.json') && name !== 'en.json' && !name.endsWith('.shell.json'))
     .sort();
@@ -120,7 +135,12 @@ function main() {
     const localeCode = file.replace(/\.json$/, '');
     const locale = readJson(path, file);
     const localeKeys = new Set(flattenKeys(locale));
-    const missing = [...enKeys].filter((key) => !localeKeys.has(key));
+    const expectedKeys = new Set(Object.keys(expectedKeysForLocale(
+      enFlat,
+      pluralBases,
+      getPluralCategories(localeCode),
+    )));
+    const missing = [...expectedKeys].filter((key) => !localeKeys.has(key));
 
     if (missing.length === 0) {
       console.log(`${file}: up to date (${localeKeys.size} keys)`);
@@ -143,7 +163,7 @@ function main() {
     console.log(`${file}: missing ${missing.length} key(s)`);
 
     if (!CHECK_ONLY) {
-      const synced = syncFromTemplate(en, locale);
+      const synced = syncFromTemplate(en, locale, expectedKeys);
       writeFileSync(path, `${JSON.stringify(synced, null, 2)}\n`, 'utf8');
     }
   }
@@ -156,12 +176,12 @@ function main() {
       }
       process.exit(1);
     }
-    console.log(`All ${localeFiles.length} locale files match en.json (${enKeys.size} keys each).`);
+    console.log(`All ${localeFiles.length} locale files match their CLDR projection of en.json.`);
     return;
   }
 
   if (totalMissing === 0) {
-    console.log(`All locale files already match en.json (${enKeys.size} keys).`);
+    console.log('All locale files already match their CLDR projection of en.json.');
     return;
   }
 

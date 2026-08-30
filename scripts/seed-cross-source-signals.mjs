@@ -38,6 +38,7 @@ const SOURCE_KEYS = [
   'weather:alerts:v1',
   CII_RISK_SCORE_CACHE_KEYS.stale,
   'regulatory:actions:v1',
+  'market:physical-divergence:v1',
 ];
 
 // Reject preserved contract envelopes after the same age budgets used by
@@ -58,6 +59,7 @@ const SOURCE_MAX_AGE_MIN = Object.freeze({
   'wildfire:fires:v1': 360,
   'forecast:predictions:v2': 90,
   'weather:alerts:v1': 45,
+  'market:physical-divergence:v1': 2160,
 });
 
 // ── Theater classification helpers ────────────────────────────────────────────
@@ -157,6 +159,7 @@ const TYPE_CATEGORY = {
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 'information',
   CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE: 'intelligence',
   CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 'policy',
+  CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION: 'financial',
 };
 
 // Base severity weights for each signal type
@@ -188,6 +191,7 @@ const BASE_WEIGHT = {
   CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 1.5,        // environmental — regional
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 1.5, // sentiment — lagging
   CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 2.0,      // policy action — direct market impact
+  CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION: 2.0,
 };
 
 function scoreTier(score) {
@@ -950,6 +954,39 @@ function extractRegulatoryAction(d) {
   });
 }
 
+function extractPhysicalPremiumRegimeTransition(d) {
+  const payload = d['market:physical-divergence:v1'];
+  const transitions = Array.isArray(payload?.transitions) ? payload.transitions : [];
+  const targetMultiplier = { normal: 0.75, elevated: 1, stressed: 1.5, extreme: 2 };
+  const cutoff = Date.now() - 48 * 3600 * 1000;
+  return transitions.flatMap((transition) => {
+    if (
+      !['gold', 'silver'].includes(transition?.metal)
+      || !Object.hasOwn(targetMultiplier, transition?.toRegime)
+      || !Object.hasOwn(targetMultiplier, transition?.fromRegime)
+      || transition.fromRegime === transition.toRegime
+      || !Number.isFinite(transition?.detectedAt)
+      || transition.detectedAt <= cutoff
+      || typeof transition?.id !== 'string'
+      || transition.id !== `physical-premium:${transition.metal}:${transition.fromRegime}-${transition.toRegime}:${transition.detectedAt}`
+      || transition.methodologyVersion !== 'physical-divergence-v1'
+    ) return [];
+    const score = BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION
+      * targetMultiplier[transition.toRegime];
+    return [{
+      id: transition.id,
+      type: 'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
+      theater: 'Global Markets',
+      summary: `${transition.metal === 'gold' ? 'Gold' : 'Silver'} physical premium regime changed from ${transition.fromRegime} to ${transition.toRegime}`,
+      severity: scoreTier(score),
+      severityScore: score,
+      detectedAt: transition.detectedAt,
+      contributingTypes: [],
+      signalCount: 0,
+    }];
+  });
+}
+
 // ── Extractor registry ────────────────────────────────────────────────────────
 // Module scope (rather than inline in the aggregator) so the envelope-regression
 // suite can drive every extractor from one list: an extractor added without a
@@ -977,6 +1014,7 @@ const EXTRACTORS = Object.freeze([
   extractMediaToneDeterioration,
   extractRiskScoreSpike,
   extractRegulatoryAction,
+  extractPhysicalPremiumRegimeTransition,
 ]);
 
 // ── Composite escalation detector ─────────────────────────────────────────────
@@ -1125,6 +1163,7 @@ export {
   extractOrefAlertCluster,
   extractRadiationAnomaly,
   extractRegulatoryAction,
+  extractPhysicalPremiumRegimeTransition,
   extractRiskScoreSpike,
   extractSanctionsSurge,
   extractShippingDisruption,

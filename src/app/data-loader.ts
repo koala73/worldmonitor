@@ -168,6 +168,7 @@ import type { PredictionPanel } from '@/components/PredictionPanel';
 import type { InsightsPanel } from '@/components/InsightsPanel';
 import type { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+
 import type { EconomicPanel } from '@/components/EconomicPanel';
 import type { GlobalProcurementPanel } from '@/components/GlobalProcurementPanel';
 import type { GlobalTenderFilters } from '@/services/global-tenders';
@@ -226,6 +227,28 @@ import { EconomicServiceClient, MarketServiceClient, ResearchServiceClient } fro
 // The proto-level -> label map lives in shared/news-clustering-core.js so the
 // client digest loader and the server-side MCP tools cannot drift (#5697).
 import { protoThreatLevelToLabel } from '../../shared/news-clustering-core.js';
+
+type PhysicalPremiumFetcher = typeof import('@/services/market')['fetchPhysicalPremiums'];
+type PhysicalDivergenceFetcher = typeof import('@/services/market')['fetchPhysicalDivergence'];
+
+export async function loadPhysicalPremiumComparison(
+  panel: Pick<CommoditiesPanel, 'updatePhysicalPremiums' | 'updatePhysicalDivergence' | 'showPhysicalDivergenceUnavailable'>,
+  isCurrent: () => boolean,
+  fetchPremiums: PhysicalPremiumFetcher,
+  fetchDivergence: PhysicalDivergenceFetcher,
+): Promise<void> {
+  const [premiumsResult, divergenceResult] = await Promise.allSettled([
+    fetchPremiums(),
+    fetchDivergence(),
+  ]);
+  if (!isCurrent()) return;
+  if (premiumsResult.status === 'fulfilled') panel.updatePhysicalPremiums(premiumsResult.value);
+  if (divergenceResult.status === 'fulfilled') {
+    panel.updatePhysicalDivergence(divergenceResult.value);
+  } else {
+    panel.showPhysicalDivergenceUnavailable();
+  }
+}
 
 const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
   STORY_PHASE_BREAKING:   'breaking',
@@ -2360,7 +2383,7 @@ export class DataLoaderManager implements AppModule {
       return;
     }
     const {
-      fetchMultipleStocks, fetchCommodityQuotes, fetchPhysicalPremiums, fetchSectors, warmCommodityCache, warmSectorCache,
+      fetchMultipleStocks, fetchCommodityQuotes, fetchPhysicalDivergence, fetchPhysicalPremiums, fetchSectors, warmCommodityCache, warmSectorCache,
       fetchCrypto, fetchCryptoSectors, fetchDefiTokens, fetchAiTokens, fetchOtherTokens,
     } = marketMod;
     try {
@@ -2568,8 +2591,12 @@ export class DataLoaderManager implements AppModule {
 
       if (commoditiesPanel) {
         try {
-          const physicalPremiums = await fetchPhysicalPremiums();
-          if (isCurrent()) commoditiesPanel.updatePhysicalPremiums(physicalPremiums);
+          await loadPhysicalPremiumComparison(
+            commoditiesPanel,
+            isCurrent,
+            fetchPhysicalPremiums,
+            fetchPhysicalDivergence,
+          );
         } catch {
           // The physical comparison is an optional tab; a failure must not
           // downgrade the existing commodity tape or its provider status.

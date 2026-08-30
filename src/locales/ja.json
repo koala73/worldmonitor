@@ -2032,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "物理的ストレス指数：{{value}} / 100",
+        "fiveDayTrend": "5営業日プレミアムトレンド",
+        "regimes": {
+          "normal": "通常",
+          "elevated": "上昇",
+          "stressed": "逼迫",
+          "extreme": "極度"
+        },
+        "states": {
+          "insufficientHistory": "ウォームアップ中：{{count}} / {{required}} 営業日ポイント",
+          "staleInput": "物理的ベンチマークが古い",
+          "missingInput": "ダイバージェンスシグナル利用不可"
+        },
+        "twentyDayTrend": "20営業日プレミアムトレンド"
       }
     },
     "crypto": {

@@ -354,6 +354,7 @@ const STANDALONE_KEYS = {
   // here (not in BOOTSTRAP_KEYS) is what makes the activation-marker cutover
   // pending before the first successful publish and strict after it.
   physicalPremiums:      'market:physical-premium:v1',
+  physicalDivergence:    'market:physical-divergence:v1',
   bisPropertyResidential: 'economic:bis:property-residential:v1',
   bisPropertyCommercial:  'economic:bis:property-commercial:v1',
   imfMacro:             'economic:imf:macro:v2',
@@ -668,6 +669,18 @@ const SEED_META = {
       fromKey: null,
       issue: 6436,
       activationKey: 'seed-activated:market:physical-premium',
+    },
+  },
+  physicalDivergence: {
+    key: 'seed-meta:market:physical-divergence',
+    maxStaleMin: 4320,
+    minRecordCount: 2,
+    activationKey: 'seed-activated:market:physical-divergence',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 6448,
+      activationKey: 'seed-activated:market:physical-divergence',
     },
   },
   goldExtended:     { key: 'seed-meta:market:gold-extended',  maxStaleMin: 30 },
@@ -1430,6 +1443,7 @@ const ON_DEMAND_KEYS = new Set([
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
   'physicalPremiums',
+  'physicalDivergence',
   // Five-factor scorecard (#6441). Vercel can ship this probe before the
   // Railway resilience bundle publishes the first daily cohort. The seeder
   // writes a permanent marker in the same EVAL as that first successful
@@ -1515,6 +1529,7 @@ const ACTIVATION_MARKERS = {
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
+  physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',

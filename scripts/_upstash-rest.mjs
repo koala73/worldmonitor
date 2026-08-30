@@ -29,7 +29,19 @@ export async function upstashCommand(creds, command) {
     body: JSON.stringify(command),
     signal: AbortSignal.timeout(15_000),
   });
-  if (!resp.ok) throw new Error(`Upstash HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const error = new Error(`Upstash HTTP ${resp.status}`);
+    error.status = resp.status;
+    const retryAfter = resp.headers.get('retry-after');
+    if (retryAfter) {
+      const seconds = Number(retryAfter);
+      const retryAt = Date.parse(retryAfter);
+      error.retryAfterMs = Number.isFinite(seconds)
+        ? Math.max(0, seconds * 1000)
+        : Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : undefined;
+    }
+    throw error;
+  }
   const body = await resp.json();
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('Upstash returned an unexpected response');

@@ -2032,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "물리적 스트레스 지수: {{value}} / 100",
+        "fiveDayTrend": "5거래일 프리미엄 추세",
+        "regimes": {
+          "normal": "정상",
+          "elevated": "상승",
+          "stressed": "스트레스",
+          "extreme": "극심"
+        },
+        "states": {
+          "insufficientHistory": "워밍업 중: {{count}} / {{required}} 거래 데이터 포인트",
+          "staleInput": "물리적 벤치마크 만료됨",
+          "missingInput": "발산 신호 불가능"
+        },
+        "twentyDayTrend": "20거래일 프리미엄 추세"
       }
     },
     "crypto": {

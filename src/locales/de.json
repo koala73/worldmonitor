@@ -2036,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Physischer Stressindex: {{value}} / 100",
+        "fiveDayTrend": "Fünf-Handelstage-Prämientrend",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Erhöht",
+          "stressed": "Angespannt",
+          "extreme": "Extrem"
+        },
+        "states": {
+          "insufficientHistory": "Wird aufgewärmt: {{count}} / {{required}} Handelspunkte",
+          "staleInput": "Physische Benchmark ist veraltet",
+          "missingInput": "Divergenzsignal nicht verfügbar"
+        },
+        "twentyDayTrend": "Aufschlag-Trend über 20 Handelstage"
       }
     },
     "crypto": {

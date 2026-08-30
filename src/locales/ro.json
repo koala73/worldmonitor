@@ -2040,6 +2040,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Indice de stres fizic: {{value}} / 100",
+        "fiveDayTrend": "Tendință premium pe cinci zile de tranzacționare",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Ridicat",
+          "stressed": "Sub stres",
+          "extreme": "Extrem"
+        },
+        "states": {
+          "insufficientHistory": "Încălzire: {{count}} / {{required}} puncte de tranzacționare",
+          "staleInput": "Benchmark-ul fizic este depășit",
+          "missingInput": "Semnal de divergență indisponibil"
+        },
+        "twentyDayTrend": "Tendința primei de pe o perioadă de douăzeci de zile de tranzacționare"
       }
     },
     "crypto": {

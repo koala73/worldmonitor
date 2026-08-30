@@ -2116,6 +2116,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "شاخص تنش فیزیکی: {{value}} / 100",
+        "fiveDayTrend": "روند حق‌الاضافه پنج روز معاملاتی",
+        "regimes": {
+          "normal": "عادی",
+          "elevated": "افزایش‌یافته",
+          "stressed": "تحت فشار",
+          "extreme": "شدید"
+        },
+        "states": {
+          "insufficientHistory": "گرم‌شدن: {{count}} / {{required}} نقطه معاملاتی",
+          "staleInput": "معیار فیزیکی منسوخ است",
+          "missingInput": "سیگنال واگرایی در دسترس نیست"
+        },
+        "twentyDayTrend": "روند حق بیمه بیست روز معاملاتی"
       }
     },
     "crypto": {

@@ -1661,6 +1661,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Índice de estresse físico: {{value}} / 100",
+        "fiveDayTrend": "Tendência de prêmio em cinco dias úteis",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Elevado",
+          "stressed": "Sob estresse",
+          "extreme": "Extremo"
+        },
+        "states": {
+          "insufficientHistory": "Aquecimento: {{count}} / {{required}} pontos de negociação",
+          "staleInput": "Benchmark físico desatualizado",
+          "missingInput": "Sinal de divergência indisponível"
+        },
+        "twentyDayTrend": "Tendência de prêmio de vinte dias úteis"
       }
     },
     "crypto": {

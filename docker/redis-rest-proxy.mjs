@@ -218,10 +218,27 @@ const MCP_QUOTA_RESERVE_SCRIPT = [
   'end',
   'return {0, n}',
 ].join('\n');
+
+// PINNED COPY of scripts/seed-physical-premiums.mjs APPEND_HISTORY_LUA.
+// The daily publisher uses this script to replace a print-date duplicate,
+// append one point, and trim the history as one atomic Redis operation.
+const PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT = [
+  "local existing = redis.call('LRANGE', KEYS[1], 0, -1)",
+  'for _, encoded in ipairs(existing) do',
+  '  local ok, item = pcall(cjson.decode, encoded)',
+  '  if ok and item.date == ARGV[1] then',
+  "    redis.call('LREM', KEYS[1], 0, encoded)",
+  '  end',
+  'end',
+  "redis.call('LPUSH', KEYS[1], ARGV[2])",
+  "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)",
+  "return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)",
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
+  PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
 ]);
 
 // Exact-text pin, not a pattern: any change to the script — including

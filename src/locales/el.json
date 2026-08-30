@@ -2036,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Δείκτης φυσικής πίεσης: {{value}} / 100",
+        "fiveDayTrend": "Τάση ασφαλίστρου πέντε ημερών διαπραγμάτευσης",
+        "regimes": {
+          "normal": "Κανονικό",
+          "elevated": "Υψηλό",
+          "stressed": "Επιβαρυμένο",
+          "extreme": "Ακραίο"
+        },
+        "states": {
+          "insufficientHistory": "Προθέρμανση: {{count}} / {{required}} σημεία διαπραγμάτευσης",
+          "staleInput": "Φυσικό σημείο αναφοράς ανενημέρωτο",
+          "missingInput": "Σήμα απόκλισης μη διαθέσιμο"
+        },
+        "twentyDayTrend": "Τάση premium είκοσι ημερών διαπραγμάτευσης"
       }
     },
     "crypto": {

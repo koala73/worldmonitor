@@ -550,6 +550,144 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-physical-divergence-index:
+        get:
+            tags:
+                - MarketService
+            summary: GetPhysicalDivergenceIndex
+            description: |-
+                GetPhysicalDivergenceIndex classifies current physical premiums against
+                 their bounded trailing histories and returns an all-metal stress composite.
+            operationId: GetPhysicalDivergenceIndex
+            parameters:
+                - name: metals
+                  in: query
+                  description: Accepted values are "gold" and "silver". Empty returns both metals.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "gold"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "composite":
+                                    "index": 1.5
+                                    "methodologyVersion": "example"
+                                    "reason": "example"
+                                    "state": "PHYSICAL_DIVERGENCE_STATE_OK"
+                                    "weights":
+                                        - "metal": "example"
+                                          "methodologyVersion": "example"
+                                          "weight": 1.5
+                                "evaluatedAt": "2026-01-15T12:00:00Z"
+                                "methodologyVersion": "example"
+                                "readings":
+                                    - "delta20d": 1.5
+                                      "delta5d": 1.5
+                                      "historyKey": "example"
+                                      "historyPoints": 1
+                                      "historyWindowEnd": "example"
+                            schema:
+                                $ref: '#/components/schemas/GetPhysicalDivergenceIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/get-sector-summary:
         get:
             tags:
@@ -3536,6 +3674,165 @@ components:
                 asOf:
                     type: string
             description: FxSnapshot records the conversion input shared by both metals.
+        GetPhysicalDivergenceIndexRequest:
+            type: object
+            properties:
+                metals:
+                    type: array
+                    items:
+                        type: string
+                        description: Accepted values are "gold" and "silver". Empty returns both metals.
+        GetPhysicalDivergenceIndexResponse:
+            type: object
+            properties:
+                readings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PhysicalDivergenceReading'
+                composite:
+                    $ref: '#/components/schemas/PhysicalStressComposite'
+                evaluatedAt:
+                    type: string
+                methodologyVersion:
+                    type: string
+        PhysicalDivergenceReading:
+            type: object
+            properties:
+                metal:
+                    type: string
+                state:
+                    type: string
+                    enum:
+                        - PHYSICAL_DIVERGENCE_STATE_UNSPECIFIED
+                        - PHYSICAL_DIVERGENCE_STATE_OK
+                        - PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY
+                        - PHYSICAL_DIVERGENCE_STATE_STALE_INPUT
+                        - PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT
+                    description: PhysicalDivergenceState is exhaustive for every divergence consumer.
+                reason:
+                    type: string
+                regime:
+                    type: string
+                    enum:
+                        - PHYSICAL_PREMIUM_REGIME_UNSPECIFIED
+                        - PHYSICAL_PREMIUM_REGIME_NORMAL
+                        - PHYSICAL_PREMIUM_REGIME_ELEVATED
+                        - PHYSICAL_PREMIUM_REGIME_STRESSED
+                        - PHYSICAL_PREMIUM_REGIME_EXTREME
+                index:
+                    type: number
+                    format: double
+                premiumPct:
+                    type: number
+                    format: double
+                premiumUsdPerOz:
+                    type: number
+                    format: double
+                percentile:
+                    type: number
+                    format: double
+                robustZ:
+                    type: number
+                    format: double
+                delta5d:
+                    type: number
+                    format: double
+                delta20d:
+                    type: number
+                    format: double
+                trend5d:
+                    type: string
+                    enum:
+                        - PHYSICAL_PREMIUM_TREND_UNSPECIFIED
+                        - PHYSICAL_PREMIUM_TREND_WIDENING
+                        - PHYSICAL_PREMIUM_TREND_STABLE
+                        - PHYSICAL_PREMIUM_TREND_NARROWING
+                trend20d:
+                    type: string
+                    enum:
+                        - PHYSICAL_PREMIUM_TREND_UNSPECIFIED
+                        - PHYSICAL_PREMIUM_TREND_WIDENING
+                        - PHYSICAL_PREMIUM_TREND_STABLE
+                        - PHYSICAL_PREMIUM_TREND_NARROWING
+                historyPoints:
+                    type: integer
+                    format: int32
+                historyWindowStart:
+                    type: string
+                historyWindowEnd:
+                    type: string
+                physicalAsOf:
+                    type: string
+                paperAsOf:
+                    type: string
+                historyKey:
+                    type: string
+                methodologyVersion:
+                    type: string
+                provenance:
+                    $ref: '#/components/schemas/PhysicalDivergenceProvenance'
+        PhysicalDivergenceProvenance:
+            type: object
+            properties:
+                physicalSource:
+                    type: string
+                physicalSymbol:
+                    type: string
+                physicalAsOf:
+                    type: string
+                paperSource:
+                    type: string
+                paperSymbol:
+                    type: string
+                paperAsOf:
+                    type: string
+                fxSource:
+                    type: string
+                fxPair:
+                    type: string
+                fxAsOf:
+                    type: string
+                historyKey:
+                    type: string
+                historyWindowPoints:
+                    type: integer
+                    format: int32
+                methodologyVersion:
+                    type: string
+            description: PhysicalDivergenceProvenance preserves the exact inputs used for one reading.
+        PhysicalStressComposite:
+            type: object
+            properties:
+                state:
+                    type: string
+                    enum:
+                        - PHYSICAL_DIVERGENCE_STATE_UNSPECIFIED
+                        - PHYSICAL_DIVERGENCE_STATE_OK
+                        - PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY
+                        - PHYSICAL_DIVERGENCE_STATE_STALE_INPUT
+                        - PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT
+                    description: PhysicalDivergenceState is exhaustive for every divergence consumer.
+                reason:
+                    type: string
+                index:
+                    type: number
+                    format: double
+                weights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PhysicalStressWeight'
+                methodologyVersion:
+                    type: string
+        PhysicalStressWeight:
+            type: object
+            properties:
+                metal:
+                    type: string
+                weight:
+                    type: number
+                    format: double
+                methodologyVersion:
+                    type: string
         GetSectorSummaryRequest:
             type: object
             properties:

@@ -34,6 +34,7 @@ import {
   extractMediaToneDeterioration,
   extractMilitaryFlightSurge,
   extractOrefAlertCluster,
+  extractPhysicalPremiumRegimeTransition,
   extractRadiationAnomaly,
   extractRegulatoryAction,
   extractRiskScoreSpike,
@@ -510,6 +511,24 @@ const FIXTURES = [
       recordCount: 1,
     },
   },
+  {
+    extractor: extractPhysicalPremiumRegimeTransition,
+    expectTheater: 'Global Markets',
+    expectDetectedAt: (p) => p.transitions[0].detectedAt,
+    key: 'market:physical-divergence:v1',
+    enveloped: false,
+    payload: {
+      methodologyVersion: 'physical-divergence-v1',
+      transitions: [{
+        id: `physical-premium:gold:normal-elevated:${now - HOUR}`,
+        metal: 'gold',
+        fromRegime: 'normal',
+        toRegime: 'elevated',
+        detectedAt: now - HOUR,
+        methodologyVersion: 'physical-divergence-v1',
+      }],
+    },
+  },
 ];
 
 // extractDisplacementSurge is deliberately absent from FIXTURES: its key
@@ -538,6 +557,24 @@ describe('every extractor fires on the shape its writer actually publishes', () 
         assert.equal(signals[0].detectedAt, expectDetectedAt(payload),
           `${extractor.name} did not carry the timestamp its payload published`);
       }
+      if (extractor === extractPhysicalPremiumRegimeTransition) {
+        assert.equal(signals.length, 1, 'one stored regime transition must emit exactly one signal');
+        assert.deepEqual({
+          id: signals[0].id,
+          type: signals[0].type,
+          theater: signals[0].theater,
+          severity: signals[0].severity,
+          severityScore: signals[0].severityScore,
+          detectedAt: signals[0].detectedAt,
+        }, {
+          id: payload.transitions[0].id,
+          type: 'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
+          theater: 'Global Markets',
+          severity: 'CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM',
+          severityScore: 2,
+          detectedAt: payload.transitions[0].detectedAt,
+        });
+      }
     });
   }
 
@@ -548,6 +585,44 @@ describe('every extractor fires on the shape its writer actually publishes', () 
       void enveloped;
       assert.deepEqual(extractor({ [key]: seedEnvelope(payload) }), []);
     });
+  }
+});
+
+it('physical premium transitions expire after the 48-hour emission cooldown', () => {
+  const now = Date.now();
+  const signals = extractPhysicalPremiumRegimeTransition({
+    'market:physical-divergence:v1': {
+      transitions: [{
+        id: 'physical-premium:gold:normal-elevated:stale',
+        metal: 'gold',
+        fromRegime: 'normal',
+        toRegime: 'elevated',
+        detectedAt: now - 48 * HOUR,
+      }],
+    },
+  });
+
+  assert.deepEqual(signals, []);
+});
+
+it('rejects non-canonical physical premium transitions', () => {
+  const now = Date.now();
+  const base = {
+    id: `physical-premium:gold:normal-elevated:${now}`,
+    metal: 'gold',
+    fromRegime: 'normal',
+    toRegime: 'elevated',
+    detectedAt: now,
+    methodologyVersion: 'physical-divergence-v1',
+  };
+  for (const transition of [
+    { ...base, fromRegime: '<script>' },
+    { ...base, methodologyVersion: 'future-method' },
+    { ...base, id: 'attacker-controlled' },
+  ]) {
+    assert.deepEqual(extractPhysicalPremiumRegimeTransition({
+      'market:physical-divergence:v1': { transitions: [transition] },
+    }), []);
   }
 });
 
