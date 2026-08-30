@@ -982,7 +982,11 @@ function readTelegramNumberEnv(name, fallback, min = 0, max = Number.POSITIVE_IN
 }
 
 const TELEGRAM_ENABLED = Boolean(process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH && process.env.TELEGRAM_SESSION);
-const TELEGRAM_POLL_INTERVAL_MS = Math.max(15_000, Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 60_000));
+const TELEGRAM_POLL_INTERVAL_FLOOR_MS = RELAY_TEST_MODE ? 10 : 15_000;
+const TELEGRAM_POLL_INTERVAL_MS = Math.max(
+  TELEGRAM_POLL_INTERVAL_FLOOR_MS,
+  Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 60_000),
+);
 const TELEGRAM_MAX_FEED_ITEMS = Math.max(50, Number(process.env.TELEGRAM_MAX_FEED_ITEMS || 200));
 const TELEGRAM_MAX_TEXT_CHARS = Math.max(200, Number(process.env.TELEGRAM_MAX_TEXT_CHARS || 800));
 const TELEGRAM_STARTUP_DELAY_MS = readTelegramNumberEnv('TELEGRAM_STARTUP_DELAY_MS', 120_000);
@@ -1740,6 +1744,13 @@ async function connectTelegramClient() {
             return new Promise((_, reject) => pendingLookupRejects.add(reject));
           }
           await rpcDelay();
+          const delayedRejects = String(process.env.RELAY_TEST_TELEGRAM_RPC_REJECT_USERNAMES || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          if (delayedRejects.includes('*') || delayedRejects.includes(String(username).toLowerCase())) {
+            throw new Error('TEST_TELEGRAM_RPC_FAILED');
+          }
           const csvEnv = name => String(process.env[name] || '')
             .split(',')
             .map(value => value.trim().toLowerCase())
@@ -1833,6 +1844,13 @@ async function connectTelegramClient() {
 
 const TELEGRAM_CHANNEL_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_CHANNEL_TIMEOUT_MS', 15_000, 10);
 const TELEGRAM_POLL_CYCLE_TIMEOUT_MS = 180_000; // 3min max for entire poll cycle
+const TELEGRAM_POLL_STUCK_AFTER_MS = RELAY_TEST_MODE
+  ? readTelegramNumberEnv(
+    'RELAY_TEST_TELEGRAM_POLL_STUCK_AFTER_MS',
+    TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000,
+    10,
+  )
+  : TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -1974,7 +1992,7 @@ let telegramPollStartedAt = 0;
 function guardedTelegramPoll() {
   if (telegramPollInFlight) {
     const stuck = Date.now() - telegramPollStartedAt;
-    if (stuck > TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000) {
+    if (stuck > TELEGRAM_POLL_STUCK_AFTER_MS) {
       console.warn(`[Relay] Telegram poll stuck for ${Math.round(stuck / 1000)}s — force-clearing in-flight flag`);
       telegramPollInFlight = false;
     } else {

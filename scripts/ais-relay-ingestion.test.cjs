@@ -411,6 +411,82 @@ test('the curated poll rests after each channel, not merely between RPC dispatch
   }
 });
 
+test('the curated poll rests after recoverable channel failures', async () => {
+  const intervalMs = 25;
+  const rpcDelayMs = 25;
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '0',
+    TELEGRAM_RPC_MIN_INTERVAL_MS: String(intervalMs),
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    RELAY_TEST_TELEGRAM_RPC_DELAY_MS: String(rpcDelayMs),
+    RELAY_TEST_TELEGRAM_RPC_REJECT_USERNAMES: '*',
+  });
+  const { child } = await relay.ready;
+
+  try {
+    let summary = null;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      summary = relay.getOutput().match(/Telegram poll: (\d+)\/(\d+) channels.*?, (\d+) errors.*?\(([\d.]+)s\)/);
+      if (summary) break;
+      await sleep(100);
+    }
+    assert.ok(summary, 'the failed poll cycle must log a summary');
+
+    const channelsPolled = Number(summary[1]);
+    const totalChannels = Number(summary[2]);
+    const channelsFailed = Number(summary[3]);
+    const elapsedMs = Number(summary[4]) * 1000;
+    assert.equal(channelsPolled, 0);
+    assert.equal(channelsFailed, totalChannels);
+    assert.ok(channelsFailed > 5, `expected a real failed channel set, got ${channelsFailed}`);
+
+    const perFailureWithRest = rpcDelayMs + intervalMs;
+    const perFailureWithoutRest = Math.max(intervalMs, rpcDelayMs);
+    const floor = channelsFailed * ((perFailureWithRest + perFailureWithoutRest) / 2);
+    assert.ok(
+      elapsedMs >= floor,
+      `failed poll cycle took ${elapsedMs}ms for ${channelsFailed} errors; expected >= ${Math.round(floor)}ms `
+      + `(~${perFailureWithRest}ms/failure with the post-channel rest, vs ~${perFailureWithoutRest}ms without it)`,
+    );
+  } finally {
+    await stop(child);
+  }
+});
+
+test('a stuck curated poll never starts a second poll owner', async () => {
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '0',
+    TELEGRAM_POLL_INTERVAL_MS: '20',
+    TELEGRAM_CHANNEL_TIMEOUT_MS: '500',
+    TELEGRAM_RPC_MIN_INTERVAL_MS: '1',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    RELAY_TEST_TELEGRAM_POLL_STUCK_AFTER_MS: '40',
+    RELAY_TEST_TELEGRAM_RPC_NEVER_USERNAMES: 'abualiexpress',
+  });
+  const { child } = await relay.ready;
+
+  try {
+    await sleep(180);
+    const output = relay.getOutput();
+    assert.match(output, /Telegram poll stuck/);
+    assert.equal(
+      (output.match(/\[Relay\]\[TestTelegram\] getEntity VahidOnline/g) || []).length,
+      1,
+      'the unresolved poll must keep sole ownership of the scheduler slot',
+    );
+  } finally {
+    await stop(child);
+  }
+});
+
 test('a username shaped like FLOOD_WAIT cannot open a cooldown', async () => {
   const hostile = 'flood_wait_999999999';
   const relay = spawnRelay({
