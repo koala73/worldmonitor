@@ -216,19 +216,33 @@ function parsePhysicalPremiumHistory(body, key, allowEmpty) {
   if (!Array.isArray(body?.result)) {
     throw nonRetryableError(`Physical premium history read returned an invalid list for ${key}`);
   }
-  const history = body.result.map((encoded) => {
-    if (typeof encoded !== 'string') return null;
+  // A stored point that does not match the CURRENT methodology is not corrupt — it is a
+  // point from a previous methodology sharing the same unversioned key. Dropping it (the
+  // same thing buildPhysicalDivergenceReading's own `.filter` does) lets a
+  // METHODOLOGY_VERSION bump ride out naturally as the window refills; throwing here would
+  // wedge every run for the ~250 print dates the old points take to age out, and — because
+  // this runs under afterPublish — would previously have taken the whole premium seed with
+  // it. The insufficient-history gate is what fails closed on the shrunken window.
+  const decoded = body.result.map((encoded) => {
+    if (typeof encoded !== 'string') return { malformed: true, point: null };
     try {
       const parsed = JSON.parse(encoded);
-      return isPhysicalPremiumHistoryPoint(parsed) ? parsed : null;
+      if (isPhysicalPremiumHistoryPoint(parsed)) return { malformed: false, point: parsed };
+      // Structurally a point, just a foreign methodology -> drop, do not fail.
+      const foreignMethodology = !!parsed
+        && typeof parsed === 'object'
+        && typeof parsed.methodologyVersion === 'string'
+        && parsed.methodologyVersion !== METHODOLOGY_VERSION;
+      return { malformed: !foreignMethodology, point: null };
     } catch {
-      return null;
+      return { malformed: true, point: null };
     }
   });
+  const history = decoded.filter((entry) => entry.point != null).map((entry) => entry.point);
   if (
-    history.some((entry) => entry == null)
-    || (!allowEmpty && history.length === 0)
-    || history.length > TRAILING_WINDOW_POINTS
+    decoded.some((entry) => entry.malformed)
+    || (!allowEmpty && decoded.length === 0)
+    || decoded.length > TRAILING_WINDOW_POINTS
   ) {
     throw nonRetryableError(`Physical premium history read produced invalid entries for ${key}`);
   }
@@ -288,7 +302,8 @@ export function buildPhysicalDivergenceSnapshot({ premiums, fx, histories, previ
       previous,
       next: reading,
       nowMs,
-      lastEmittedAtMs: cooldowns?.[reading.metal] ?? null,
+      lastEmittedAtMs: cooldowns?.[reading.metal]?.emittedAt ?? null,
+      lastEmittedRegime: cooldowns?.[reading.metal]?.toRegime ?? null,
     });
     if (transition) transitions.push(transition);
   }
@@ -304,7 +319,14 @@ export function buildPhysicalDivergenceSnapshot({ premiums, fx, histories, previ
 async function readTransitionCooldown(creds, key, commandFn) {
   const stored = parseStoredJson(await commandFn(creds, ['GET', key]), `Transition cooldown ${key}`);
   if (stored == null) return null;
-  return Number.isFinite(stored.emittedAt) ? stored.emittedAt : null;
+  if (!Number.isFinite(stored.emittedAt)) return null;
+  // `toRegime` is what the cooldown is actually keyed on — the regime we last announced.
+  // Records written before this field existed read back as null, which the classifier
+  // treats as "nothing announced yet" and therefore does not suppress.
+  return {
+    emittedAt: stored.emittedAt,
+    toRegime: typeof stored.toRegime === 'string' ? stored.toRegime : null,
+  };
 }
 
 function isTransientDerivedRedisError(error) {
@@ -370,6 +392,17 @@ export function physicalDivergenceMeta(snapshot, nowMs) {
     sourceReason: typeof snapshot?.composite?.reason === 'string'
       ? snapshot.composite.reason.slice(0, 160)
       : '',
+    // Health gates read sourceState and inputFreshUntil, and `insufficient_history` maps to
+    // 'ok' on both (correctly — it is the expected state for the first ~60 print days).
+    // Publishing the window depth as well is what lets a probe tell "still ramping up" apart
+    // from "was working, history list is now gone", which is otherwise invisible: the
+    // history key carries no TTL, so a regression means eviction or deletion, and every
+    // clock stays fresh throughout.
+    minHistoryPoints: Array.isArray(snapshot?.readings) && snapshot.readings.length > 0
+      ? Math.min(...snapshot.readings.map((reading) => (
+        Number.isFinite(reading?.historyPoints) ? reading.historyPoints : 0
+      )))
+      : 0,
     stateCounts,
     inputFreshUntil: physicalDivergenceInputFreshUntil(snapshot),
   };
@@ -385,7 +418,11 @@ export function physicalDivergencePublishCommand({
 }) {
   const cooldownWrites = snapshot.transitions.map((transition) => ({
     key: `${prefix}market:physical-divergence-transition-cooldown:v1:${transition.metal}`,
-    payload: JSON.stringify({ emittedAt: nowMs, transitionId: transition.id }),
+    payload: JSON.stringify({
+      emittedAt: nowMs,
+      transitionId: transition.id,
+      toRegime: transition.toRegime,
+    }),
   }));
   const keys = [
     divergenceKey,
@@ -829,8 +866,20 @@ export async function runPhysicalPremiumSeed(
     publishAtomically: async (_payload, { canonicalKey, payload, ttlSeconds }) => {
       await publishPremiumFn({ canonicalKey, payload, ttlSeconds, env });
     },
+    // The DERIVED divergence index must not be able to fail the RAW premium seed. The
+    // canonical premium is already published by the time this runs, but
+    // writeFreshnessMetadataSafely — which refreshes the premium's own seed-meta that
+    // /api/health reads — runs AFTER us, so an unguarded throw here strands fresh data
+    // behind a stalled freshness clock and exits the run non-zero. Degrade instead, the
+    // same contract writeFreshnessMetadataSafely established for issue #5478. The
+    // divergence key keeps its previous value and its own seed-meta goes stale, which is
+    // what the physicalDivergence health probe is there to catch.
     afterPublish: async (payload) => {
-      await publishDivergenceFn({ payload, prefix });
+      try {
+        await publishDivergenceFn({ payload, prefix });
+      } catch (error) {
+        console.warn(`  WARNING: physical divergence publication failed (premium seed unaffected): ${error?.message ?? error}`);
+      }
     },
   };
   if (runSeedFn === runSeed) {

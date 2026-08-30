@@ -87,10 +87,23 @@ export function classifyPhysicalPremiumRegime(metal, premiumPct, percentile) {
   else if (premiumPct >= floors.stressed) absolute = 'stressed';
   else if (premiumPct >= floors.elevated) absolute = 'elevated';
 
+  // #6448: "Percentile-only classification is forbidden ... historical percentile refines
+  // WITHIN the floors." `premiumPct > 0` is a SIGN test, not a magnitude test, and a
+  // percentile over a rolling window makes any new high the maximum reading regardless of
+  // size — so a 0.05% gold premium (20x under the 1% elevated floor) scored percentile 100
+  // and classified `extreme` with index 100/100 against a calm, discounted window.
+  //
+  // The gate is a magnitude floor at half the `elevated` floor rather than the elevated
+  // floor itself: gating at `elevated` would make the 80th-percentile tier unreachable
+  // (anything clearing it is already `elevated` absolutely), collapsing a documented
+  // three-tier ladder to two. Half keeps all three tiers live while still requiring a
+  // premium of real size before relative history can speak.
+  const relativeFloor = floors.elevated / 2;
+  const clearsRelativeFloor = premiumPct >= relativeFloor;
   let relative = 'normal';
-  if (premiumPct > 0 && percentile >= 99) relative = 'extreme';
-  else if (premiumPct > 0 && percentile >= 95) relative = 'stressed';
-  else if (premiumPct > 0 && percentile >= 80) relative = 'elevated';
+  if (clearsRelativeFloor && percentile >= 99) relative = 'extreme';
+  else if (clearsRelativeFloor && percentile >= 95) relative = 'stressed';
+  else if (clearsRelativeFloor && percentile >= 80) relative = 'elevated';
   return higherRegime(absolute, relative);
 }
 
@@ -219,6 +232,14 @@ export function buildPhysicalDivergenceReading({ metal, current, history, fx, no
   if (window.length < MIN_HISTORY_POINTS) {
     return nonOkReading(base, 'insufficient_history', 'history_points_below_60');
   }
+  // delta5d/delta20d index the window POSITIONALLY, which is only the true 5- and 20-print
+  // delta when the current print is the newest stored one. The window is sorted by date, so
+  // a print older than what is already stored (a re-published SGE row, a --sha/--env replay)
+  // would silently shift both offsets while the reading still reported `ok`. Fail closed
+  // instead of publishing a quietly wrong trend.
+  if (window[0].date !== current.physical.asOf) {
+    return nonOkReading(base, 'missing_input', 'history_window_not_aligned');
+  }
 
   const values = window.map((entry) => entry.premiumPct);
   const percentile = percentileRank(current.premiumPct, values);
@@ -296,15 +317,36 @@ export function buildPhysicalStressComposite(readings) {
   };
 }
 
-export function createPhysicalPremiumTransition({ previous, next, nowMs = Date.now(), lastEmittedAtMs }) {
+export function createPhysicalPremiumTransition({
+  previous,
+  next,
+  nowMs = Date.now(),
+  lastEmittedAtMs,
+  lastEmittedRegime = null,
+}) {
   if (!next || next.state !== 'ok' || !next.regime || !previous || previous.state !== 'ok' || !previous.regime) {
     return null;
   }
   if (previous.metal !== next.metal || previous.regime === next.regime) return null;
-  if (
-    finite(lastEmittedAtMs)
-    && nowMs - lastEmittedAtMs < TRANSITION_COOLDOWN_MS
-  ) return null;
+  // The cooldown suppresses a REPEAT of an already-emitted transition, never a move to a
+  // regime we have not announced. `previous` is the last PUBLISHED snapshot, which advances
+  // even on a suppressed run — so a bare time gate here would drop a genuinely new regime
+  // change permanently rather than defer it (T0 normal->elevated emitted; T0+30h
+  // elevated->stressed suppressed; T0+54h the regimes match and it never fires).
+  //
+  // Two guards, matching this repo's own cooldown model in
+  // scripts/lib/digest-cooldown-decision.mjs: suppression is keyed to the last DELIVERED
+  // state, and a severity escalation is a universal re-allow trigger. Alertmanager works the
+  // same way — notifications repeat only when nothing has changed since the last group.
+  // Inside the window we announce only an ESCALATION beyond the worst regime already
+  // announced; repeats and de-escalations wait for the window to clear. A transition to a
+  // regime strictly worse than the last emitted one is never dropped.
+  const withinCooldown = finite(lastEmittedAtMs) && nowMs - lastEmittedAtMs < TRANSITION_COOLDOWN_MS;
+  const lastRank = REGIME_RANK[lastEmittedRegime];
+  const suppressed = withinCooldown
+    && finite(lastRank)
+    && REGIME_RANK[next.regime] <= lastRank;
+  if (suppressed) return null;
   return {
     id: `physical-premium:${next.metal}:${previous.regime}-${next.regime}:${nowMs}`,
     metal: next.metal,

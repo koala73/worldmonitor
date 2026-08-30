@@ -965,6 +965,16 @@ function extractPhysicalPremiumRegimeTransition(d) {
       throw new TypeError(`Unknown physical divergence state: ${String(reading?.state)}`);
     }
   }
+  // SOURCE_MAX_AGE_MIN is enforced against a `_seed` envelope, and this key is written by a
+  // raw Lua SET that carries none — so its budget is inert unless applied here, against the
+  // snapshot's own clock. `evaluatedAt` is already published and already validated
+  // server-side.
+  // Applied only when the snapshot actually carries the clock: a legacy bare payload without
+  // `evaluatedAt` still falls through to the per-reading freshness checks below, which are
+  // what has been doing this work all along.
+  const maxAgeMs = SOURCE_MAX_AGE_MIN['market:physical-divergence:v1'] * 60_000;
+  const evaluatedAt = Date.parse(payload?.evaluatedAt ?? '');
+  if (Number.isFinite(evaluatedAt) && nowMs - evaluatedAt > maxAgeMs) return [];
   const readingsByMetal = new Map(readings.map((reading) => [reading?.metal, reading]));
   const inputsFresh = ['gold', 'silver'].every((metal) => {
     const reading = readingsByMetal.get(metal);
@@ -1098,6 +1108,14 @@ async function aggregateCrossSourceSignals({ readSourceData = readAllSourceKeys 
       const extracted = extractor(sourceData);
       allSignals.push(...extracted);
     } catch (err) {
+      // One flaky extractor must not sink the whole aggregate — except for a state this
+      // build does not implement. #6448: "an unknown/unhandled state must surface as an
+      // error, never silently map to 'normal'." Warning past it would publish a signal set
+      // that silently omits a source the producer believes is reporting, which is
+      // indistinguishable from "that source had nothing to say".
+      if (typeof err?.message === 'string' && err.message.startsWith('Unknown physical divergence state:')) {
+        throw err;
+      }
       console.warn(`  Extractor ${extractor.name} failed: ${err.message}`);
     }
   }

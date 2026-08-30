@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   METHODOLOGY_VERSION,
+  TRANSITION_COOLDOWN_MS,
   buildPhysicalStressComposite,
   buildPhysicalDivergenceReading,
   classifyPhysicalPremiumRegime,
@@ -329,7 +330,51 @@ describe('physical divergence methodology v1', () => {
     };
     const next = { ...base, regime: 'elevated', index: 55 };
     const first = createPhysicalPremiumTransition({ previous: base, next, nowMs: NOW_MS, lastEmittedAtMs: null });
-    const repeat = createPhysicalPremiumTransition({ previous: base, next, nowMs: NOW_MS + DAY_MS, lastEmittedAtMs: NOW_MS });
+    // The cooldown is keyed on the regime we last ANNOUNCED, not merely on elapsed time:
+    // a flap back to a regime already announced inside the window is suppressed...
+    const repeat = createPhysicalPremiumTransition({
+      previous: base,
+      next,
+      nowMs: NOW_MS + DAY_MS,
+      lastEmittedAtMs: NOW_MS,
+      lastEmittedRegime: 'elevated',
+    });
+    // ...and a de-escalation inside the window is too.
+    const deEscalationInWindow = createPhysicalPremiumTransition({
+      previous: next,
+      next: base,
+      nowMs: NOW_MS + DAY_MS,
+      lastEmittedAtMs: NOW_MS,
+      lastEmittedRegime: 'elevated',
+    });
+    // But an ESCALATION beyond what we announced is never dropped, even mid-window. Without
+    // this the second regime change is lost permanently rather than deferred: `previous` is
+    // the last PUBLISHED snapshot, which advances even on a suppressed run, so once the
+    // window clears the regimes match and the transition can never fire.
+    const escalationInWindow = createPhysicalPremiumTransition({
+      previous: next,
+      next: { ...base, regime: 'stressed', index: 80 },
+      nowMs: NOW_MS + DAY_MS,
+      lastEmittedAtMs: NOW_MS,
+      lastEmittedRegime: 'elevated',
+    });
+    // Positive control on the boundary itself: once the window has elapsed, a repeat of the
+    // same transition emits again. A guard mutated to suppress whenever a cooldown record
+    // exists would leave every other assertion here green.
+    const afterCooldown = createPhysicalPremiumTransition({
+      previous: base,
+      next,
+      nowMs: NOW_MS + TRANSITION_COOLDOWN_MS,
+      lastEmittedAtMs: NOW_MS,
+      lastEmittedRegime: 'elevated',
+    });
+    const justInsideCooldown = createPhysicalPremiumTransition({
+      previous: base,
+      next,
+      nowMs: NOW_MS + TRANSITION_COOLDOWN_MS - 1,
+      lastEmittedAtMs: NOW_MS,
+      lastEmittedRegime: 'elevated',
+    });
     const unchangedNormal = createPhysicalPremiumTransition({
       previous: base,
       next: { ...base },
@@ -353,9 +398,19 @@ describe('physical divergence methodology v1', () => {
       metal: 'gold', from: 'normal', to: 'elevated',
     });
     assert.equal(repeat, null);
+    assert.equal(deEscalationInWindow, null);
+    assert.equal(justInsideCooldown, null);
     assert.equal(unchangedNormal, null);
     assert.equal(unchangedElevated, null);
     assert.equal(dead, null);
+    assert.deepEqual(
+      escalationInWindow && { from: escalationInWindow.fromRegime, to: escalationInWindow.toRegime },
+      { from: 'elevated', to: 'stressed' },
+    );
+    assert.deepEqual(
+      afterCooldown && { from: afterCooldown.fromRegime, to: afterCooldown.toRegime },
+      { from: 'normal', to: 'elevated' },
+    );
   });
 
 });

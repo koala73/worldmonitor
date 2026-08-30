@@ -848,6 +848,10 @@ describe('physical premium seed', () => {
     assert.equal(PHYSICAL_DIVERGENCE_KEY, 'market:physical-divergence:v1');
     assert.equal(snapshot.readings.length, 2);
     assert.equal(snapshot.composite.state, 'ok');
+    // Pin the count before the predicate: `every` is true on an empty array, so asserting
+    // only the predicate would stay green if this stopped emitting transitions altogether —
+    // which is this test's stated subject.
+    assert.ok(snapshot.transitions.length > 0);
     assert.ok(snapshot.transitions.every((transition) => transition.fromRegime === 'normal'));
     assert.equal(snapshot.methodologyVersion, METHODOLOGY_VERSION);
     assert.deepEqual(snapshot.readings[0].provenance, {

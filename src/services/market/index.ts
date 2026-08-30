@@ -213,15 +213,28 @@ export async function fetchCommodityQuotes(
   return { data: results };
 }
 
+// Deliberately NOT the breaker's own cache: the premium and divergence responses have to
+// stay in the same seed cohort (the panel compares their clocks for strict equality), which
+// is why both routes are `no-store`. Retention is a different concern from caching — every
+// sibling breaker in this file keeps a `lastSuccessful*` so one failed poll cannot blank a
+// panel, and without it a single blip returns the empty fallback, overwrites good premiums,
+// and hides the Physical tab until the next markets cycle (12 min, viewport-gated).
+let lastSuccessfulPhysicalPremiums: GetPhysicalPremiumsResponse | null = null;
+
 export async function fetchPhysicalPremiums(signal?: AbortSignal): Promise<GetPhysicalPremiumsResponse> {
   const timeoutSignal = createTimeoutSignal(15_000);
   const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
-  return physicalPremiumBreaker.execute(async () => {
+  const response = await physicalPremiumBreaker.execute(async () => {
     return client.getPhysicalPremiums({ metals: [] }, { signal: requestSignal });
   }, emptyPhysicalPremiumFallback, {
     shouldCache: () => false,
     ignoreError: () => signal?.aborted === true,
   });
+  if (response.premiums.length > 0) {
+    lastSuccessfulPhysicalPremiums = response;
+    return response;
+  }
+  return lastSuccessfulPhysicalPremiums ?? response;
 }
 
 export async function fetchPhysicalDivergence(signal?: AbortSignal): Promise<GetPhysicalDivergenceIndexResponse> {

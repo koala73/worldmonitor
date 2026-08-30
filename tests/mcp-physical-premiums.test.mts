@@ -180,26 +180,30 @@ describe('get_market_data physical premium coverage', () => {
     assert.equal((unrelated['physical-divergence'] as { composite?: unknown }).composite, undefined);
   });
 
-  it('contains an unknown divergence state without breaking unrelated market data', () => {
+  // #6448: "an unknown/unhandled state must surface as an error, never silently map to
+  // 'normal'". Containing this one is not equivalent to dropping a corrupt blob — an
+  // unrecognised state means the producer knows something this build does not, and quietly
+  // omitting the dataset presents an incomplete answer as a complete one. Contrast the
+  // methodology case below, which IS contained: that is ordinary deploy skew and self-heals.
+  it('surfaces an unknown divergence state rather than silently omitting the dataset', () => {
     const corrupted = structuredClone(dataset);
     corrupted['physical-divergence'].readings[0].state = 'future_state';
-    const filtered = tool._postFilter?.(corrupted, { asset_class: ['equity'], limit: 0 });
 
-    assert.deepEqual(
-      filtered,
-      { 'stocks-bootstrap': { quotes: [{ symbol: 'AAPL' }, { symbol: 'MSFT' }] } },
+    assert.throws(
+      () => tool._postFilter?.(corrupted, { asset_class: ['equity'], limit: 0 }),
+      /Unknown physical divergence state/,
     );
   });
 
-  it('contains an unknown divergence state through the real MCP execution path', async () => {
+  it('surfaces an unknown divergence state through the real MCP execution path', async () => {
     const corrupted = structuredClone(dataset['physical-divergence']);
     corrupted.readings[0].state = 'future_state';
-    const result = await executeWithStoredData({ symbols: ['AAPL'], limit: 0 }, corrupted);
 
-    assert.equal(result.data['physical-divergence'], undefined);
-    assert.deepEqual(
-      (result.data['stocks-bootstrap'] as { quotes: Array<{ symbol: string }> }).quotes,
-      [{ symbol: 'AAPL' }],
+    // Must not fall through to the unfiltered payload either: that would serve the raw
+    // unvalidated blob the filter just refused.
+    await assert.rejects(
+      () => executeWithStoredData({ symbols: ['AAPL'], limit: 0 }, corrupted),
+      /Unknown physical divergence state/,
     );
   });
 

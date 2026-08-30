@@ -15,6 +15,7 @@ import {
   type PhysicalDivergenceRawRegime,
   type PhysicalDivergenceRawState,
   type PhysicalDivergenceRawTrend,
+  isUnsupportedPhysicalDivergenceMethodology,
   normalizePhysicalDivergenceSnapshot,
 } from '../../../_shared/physical-divergence-snapshot';
 import { readCachedJson } from '../../../_shared/redis';
@@ -95,13 +96,16 @@ function mapComposite(raw: PhysicalDivergenceRawComposite): PhysicalStressCompos
   };
 }
 
-function missingResponse(metals: readonly string[]): GetPhysicalDivergenceIndexResponse {
+function missingResponse(
+  metals: readonly string[],
+  reason = 'divergence_snapshot_unavailable',
+): GetPhysicalDivergenceIndexResponse {
   const selected = metals.length > 0 ? metals : PHYSICAL_DIVERGENCE_METALS;
   return {
     readings: selected.map((metal) => ({
       metal,
       state: 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT',
-      reason: 'divergence_snapshot_unavailable',
+      reason,
       regime: 'PHYSICAL_PREMIUM_REGIME_UNSPECIFIED',
       trend5d: 'PHYSICAL_PREMIUM_TREND_UNSPECIFIED',
       trend20d: 'PHYSICAL_PREMIUM_TREND_UNSPECIFIED',
@@ -115,7 +119,7 @@ function missingResponse(metals: readonly string[]): GetPhysicalDivergenceIndexR
     })),
     composite: {
       state: 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT',
-      reason: 'divergence_snapshot_unavailable',
+      reason,
       weights: [
         { metal: 'gold', weight: 0.7, methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION },
         { metal: 'silver', weight: 0.3, methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION },
@@ -134,7 +138,22 @@ export const getPhysicalDivergenceIndex: MarketServiceHandler['getPhysicalDiverg
   if (cacheRead.status !== 'hit') {
     return markNoStoreFallbackResponse(ctx.request, missingResponse(metals));
   }
-  const snapshot = normalizePhysicalDivergenceSnapshot(cacheRead.value, Date.now());
+  // The Railway seeder and this API deploy independently, so a methodology bump lands on one
+  // side first. Fail closed with a reason for the length of that window rather than turning
+  // every request into a 500 — the same graceful shape an absent key already returns. An
+  // unknown STATE is not covered here: #6448 requires that surface as an error.
+  let snapshot: ReturnType<typeof normalizePhysicalDivergenceSnapshot>;
+  try {
+    snapshot = normalizePhysicalDivergenceSnapshot(cacheRead.value, Date.now());
+  } catch (error) {
+    if (isUnsupportedPhysicalDivergenceMethodology(error)) {
+      return markNoStoreFallbackResponse(
+        ctx.request,
+        missingResponse(metals, 'divergence_methodology_unsupported'),
+      );
+    }
+    throw error;
+  }
   const readings = snapshot.readings.map(mapReading);
   const selected = new Set(metals);
   return {

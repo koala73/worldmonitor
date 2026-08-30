@@ -143,6 +143,16 @@ the shared CNY/USD rate and snapshot time, and the derived USD-per-troy-ounce
 premium. SHAU is quoted in CNY per gram. SHAG is quoted in CNY per kilogram.
 The conversion uses exactly `31.1034768` grams per troy ounce.
 
+Both `get-physical-premiums` and `get-physical-divergence-index` are served
+`no-store` and are not held in any shared or CDN cache. The premium route was
+previously cached on the daily tier; it was moved to `no-store` when the
+divergence RPC shipped because the two responses form one cohort. The panel
+compares the physical, paper, and FX clocks of the two payloads for strict
+equality and hides the derived reading when they disagree, so independently
+evicted cache entries would have surfaced as a spurious unavailable state. The
+client keeps the last successful premium response in memory so a single failed
+poll does not blank the panel.
+
 The divergence RPC adds a bounded statistical view without hiding input quality.
 It keeps at most 750 print-date points per metal, uses a trailing 250-point
 window, and needs 60 points before it returns an `ok` index. Each metal is

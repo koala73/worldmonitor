@@ -438,8 +438,38 @@ function applyFreshness(
       delta20d: null,
       trend5d: null,
       trend20d: null,
+      // Match the shape of a seeder-produced reading in the same state: the window bounds
+      // describe an analysis that no longer stands behind this reading.
+      historyWindowStart: '',
+      historyWindowEnd: '',
     };
   });
+}
+
+/**
+ * A state this build does not implement — as opposed to ordinary malformed stored data.
+ *
+ * #6448 requires that "an unknown/unhandled state must surface as an error, never silently
+ * map to 'normal'", so a consumer must not swallow this one. Everything else the validator
+ * rejects (corrupt shapes, a foreign methodology) is data a consumer may isolate and drop.
+ *
+ * Matched on message prefix rather than a subclass on purpose: `err.constructor.name` is
+ * mangled in the minified `api/` bundles, so class identity does not survive the build.
+ */
+export function isPhysicalDivergenceContractError(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.startsWith('Unknown physical divergence state:');
+}
+
+/**
+ * A snapshot written under a methodology this build does not implement. Distinct from an
+ * unknown state: this is ordinary producer/consumer deploy skew (the Railway seeder and the
+ * Vercel API ship independently), so a read path should fail closed with a reason rather
+ * than 500 for the length of the rollout window.
+ */
+export function isUnsupportedPhysicalDivergenceMethodology(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.startsWith('Unsupported physical divergence methodology:');
 }
 
 export function normalizePhysicalDivergenceSnapshot(
