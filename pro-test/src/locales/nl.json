@@ -51,7 +51,7 @@
     "freeF2": "Samengestelde feeds, geattribueerde bronnen en kaartlagen"
   },
   "whyUpgrade": {
-    "title": "Waarom upgraden",
+    "title": "Waarom upgraden naar World Monitor Pro?",
     "noiseTitle": "Weet het eerst",
     "noiseDesc": "AIS-anomalie → Brent-piek → jouw Slack in minder dan een minuut. Signaal, geen koppen.",
     "fasterTitle": "Vraag alles",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "Jouw persoonlijk intelligence desk",
+    "title": "Wat is het persoonlijke inlichtingenburo?",
     "body": "Tot 30 gerangschikte items per verzending, gededupliceerd over bronnen, gescoord tegen je watchlist. Kies je ritme — dagelijks, tweemaal per dag of wekelijks — met een AI-beoordeling en signalen om op te letten, verzonden naar Slack, Discord, Telegram, Email of webhook.",
     "closer": "Geen nieuwsbrief. Een analist.",
     "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 versleuteld · Stille uren"
@@ -93,7 +93,7 @@
     "asToldTo": "verteld aan"
   },
   "audience": {
-    "title": "Gebouwd voor wie snel signaal nodig heeft",
+    "title": "Voor wie is World Monitor gebouwd?",
     "investorsTitle": "Beleggers en portefeuillemanagers",
     "investorsDesc": "Volg wereldwijde aandelen, analistenkoersen, waarderingsmetrics en macro-indicatoren samen met geopolitieke risicosignalen.",
     "tradersTitle": "Energie- en grondstoffentraders",
@@ -108,7 +108,7 @@
     "teamsDesc": "Ga van individueel gebruik naar gedeelde workflows, API-toegang, TV-apps en beheerde deployments."
   },
   "dataCoverage": {
-    "title": "Wat World Monitor volgt",
+    "title": "Wat volgt World Monitor?",
     "subtitle": "Servicedomein tegelijk opgenomen. Markten, macro-economie, geopolitiek, energie, infrastructuur — alles genormaliseerd en weergegeven op een WebGL-globe.",
     "markets": "Financiële markten en aandelen",
     "marketsDesc": "Wereldwijde aandelenanalyse, grondstoffen, crypto, ETF-stromen, analistenkoersen en FRED macro-data",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO-NIVEAU",
-    "title": "Jouw AI-analist die nooit slaapt",
+    "title": "Wat doet de World Monitor AI-analist?",
     "subtitle": "Het gratis dashboard toont je de wereld. Pro geeft je een analist om te bevragen, een digest om op te abonneren en primitieven om op te bouwen. Aandelen, macro, geopolitiek risico — en de verbanden ertussen.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Wereldwijde aandelenanalyse met visualisatie van cijfers, analistenkoersen en waarderingsmetrics. Volg wat markten beweegt.",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API-NIVEAU",
-    "title": "Programmatische intelligence",
+    "title": "Hoe gebruiken API's en agents World Monitor?",
     "subtitle": "Voor ontwikkelaars, analisten en teams die bouwen op World Monitor-data. Apart van Pro — gebruik beide of één.",
     "restApi": "REST API over servicedomein — officïele SDK's voor JavaScript, Python, Ruby, Go",
     "authenticated": "Per sleutel geauthenticeerd, rate-limited per niveau",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE-NIVEAU",
-    "title": "Intelligence-infrastructuur",
+    "title": "Wat is inbegrepen in World Monitor Enterprise?",
     "subtitle": "Voor overheden, instellingen, trading desks en organisaties die het volledige platform nodig hebben met maximale beveiliging, AI-agents, TV-apps en datadiepte.",
     "security": "Beveiliging op overheidsniveau",
     "securityDesc": "Air-gapped deployment, on-premises Docker, dedicated cloud-tenant, SOC 2 Type II-traject, SSO/MFA en volledig audit trail.",
@@ -227,7 +227,7 @@
     "contactFailed": "Verzenden mislukt. Mail naar enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Niveaus vergelijken",
+    "title": "Hoe vergelijken de World Monitor-plannen zich?",
     "feature": "Functie",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -271,10 +271,25 @@
     "fKeyAuth": "Sleutel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik.",
-    "f50plus": "Beschikbaar"
+    "f50plus": "Beschikbaar",
+    "sourcesRow": "Bronnen",
+    "followedRow": "Gevolgde landen",
+    "tabsRow": "Dashboard-tabbladen",
+    "fUnlimited": "Onbeperkt",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alle lagen",
+    "fLayersNoResilience": "Alle behalve Resilience",
+    "fStandardCadence": "Standaard",
+    "fQuotes30s": "Marktkoersen: 30s",
+    "panelsRow": "Panelen ingeschakeld",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alles"
   },
   "faq": {
-    "title": "Veelgestelde vragen",
+    "title": "Veelgestelde vragen over World Monitor Pro",
     "q1": "Is World Monitor nog steeds gratis?",
     "a1": "Ja. Het kernplatform blijft gratis. Pro voegt aandelenonderzoek, macro-analyse en AI-briefs toe. Pro Business voegt de commerciële licentie en gegevensexport toe. Enterprise voegt teamdeployments en TV-apps toe.",
     "q2": "Waarom betalen voor Pro?",
@@ -298,12 +313,12 @@
     "q11": "Hoe gepersonaliseerd is de digest?",
     "a11": "Kies je ritme — dagelijks, tweemaal per dag of wekelijks. We scoren elk gemonitord verhaal opnieuw tegen je waarschuwingsregels en watchlist, dededupliceren over bronnen, en verzenden tot 30 gerangschikte items met een AI-beoordeling en signalen om op te letten naar je context. Real-time waarschuwingen zijn ook beschikbaar voor kritieke events.",
     "q12": "Wat is de refresh-snelheid?",
-    "a12": "Bijna realtime voor Pro. 5–15 minuten op Free.",
+    "a12": "Pro vernieuwt marktkoersen elke 30 seconden. Overige datasets volgen de cadans van hun bron. Free blijft op de standaard broncadans.",
     "q13": "Waar gaat mijn data naartoe?",
     "a13": "Notificatiekanalen zijn AES-256 versleuteld in rust. Digests verlaten onze pipeline nooit ongeredigeerd."
   },
   "finalCta": {
-    "title": "Start met Pro. Schaal naar Enterprise.",
+    "title": "Hoe begin ik met Pro of spreek ik met sales?",
     "subtitle": "Gebruik World Monitor gratis, of upgrade voor equity research, macro-analytics en AI-briefings. Als je organisatie teamtoegang, TV-apps of API-support nodig heeft, praat met ons.",
     "talkToSales": "Praat met sales"
   },
@@ -326,7 +341,7 @@
     "suffixPerYear": "/jr",
     "amountCustom": "Aangepast",
     "opening": "Openen…",
-    "headerTitle": "Kies Uw Plan",
+    "headerTitle": "Hoeveel kost World Monitor?",
     "headerSubtitle": "Van real-time monitoring tot volledige intelligence-infrastructuur. Kies de laag die bij uw missie past.",
     "billingMonthly": "Maandelijks",
     "billingAnnual": "Jaarlijks",
@@ -468,7 +483,7 @@
     },
     "live": {
       "eyebrow": "Nu live",
-      "title": "Deze pagina is aangesloten op dezelfde API's als het dashboard.",
+      "title": "Welke live gegevens toont deze pagina nu?",
       "subtitle": "Vier van de meer dan honderd signalen die World Monitor rond de klok in de gaten houdt.",
       "liveBadge": "Live",
       "sampleBadge": "Voorbeeld",
@@ -487,7 +502,7 @@
     },
     "moments": {
       "eyebrow": "Correlatie-engine",
-      "title": "De voorkant ziet signalen samen bewegen.",
+      "title": "Hoe correleert World Monitor signalen?",
       "sub": "Je kunt feeds op honderd plekken vinden. De voorkant is één oppervlak waar geopolitiek, scheepvaart, grondstoffen, macro, markten, weer, infrastructuur, cyber, nieuws en landrisico elkaar kunnen verklaren.",
       "signalStack": "Gefuseerde signalen",
       "correlation": "Correlatie",
@@ -551,7 +566,7 @@
     },
     "firstFive": {
       "eyebrow": "Van nul tot georiënteerd",
-      "title": "Uw eerste vijf minuten op de live-kaart.",
+      "title": "Wat gebeurt er in je eerste vijf minuten op de kaart?",
       "sub": "Geen rondleiding, geen lege staten, geen inschrijvingsmuur. Dit is wat echt gebeurt.",
       "f1Title": "De kaart beweegt al",
       "f1Desc": "Conflicten, vaartuigen, vluchten, branden en storingen worden weergegeven terwijl de pagina wordt geladen. Niets om eerst in te stellen.",
@@ -567,7 +582,7 @@
     },
     "depth": {
       "eyebrow": "Onder de motorkap",
-      "title": "De diepte is het product.",
+      "title": "Hoe diep is het World Monitor-gegevensmodel?",
       "sub": "Elk getal hieronder is vandaag live in het dashboard — niet een routekaart.",
       "s1v": "Gedeeld",
       "s1l": "Kaartlagen",
@@ -617,7 +632,7 @@
     },
     "agents": {
       "eyebrow": "Voor makers & AI-agents",
-      "title": "Bouw op live wereldinformatie — van elke stack.",
+      "title": "Hoe bouw ik voort op World Monitor vanuit mijn eigen stack?",
       "sub": "Alles op de kaart is ook een API. Verbind het met Claude via MCP, roep de REST-endpoints overal aan, of installeer een native client voor Python, Ruby, Go of JavaScript — je code onderzoekt met live data in plaats van training-datamemories.",
       "b1": "MCP-tools — risicocores, bottlenecks, conflicten, markten, briefs",
       "b2": "Gedocumenteerde REST API — één OpenAPI 3.1-spec, één sleutel",
@@ -660,7 +675,7 @@
     },
     "faq": {
       "eyebrow": "Geen addertje onder het gras",
-      "title": "Eerlijke vragen.",
+      "title": "Wat zijn veelgestelde vragen over World Monitor?",
       "q1": "Is World Monitor echt gratis?",
       "a1": "Ja. De live kaart — elke laag behalve Resilience, samengestelde feeds, country briefs, breaking alerts en monitoring-oppervlakken — is gratis zonder inschrijving en geen trial-klok. Pro betaalt voor de feeds: het voegt WM Analyst, de scenario-engine, Route Explorer, geplande digests, MCP-toegang voor AI-clients en de Resilience-kaartlaag toe. Geen advertenties, en geen account betekent dat er geen gebruikersgegevens te verkopen zijn.",
       "q2": "Wat is een global intelligence dashboard?",
@@ -685,7 +700,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "De wereldkaart wacht niet op je.",
+      "title": "Hoe begin ik met het wereldwijde kaartvolgen?",
       "subtitle": "Terwijl je deze pagina las, bleef het bewegen — zeestraten, hotspots, markten, gecureerde feeds. Een ervan is morgen's voorpagina. Vind het als eerste — gratis, geen account nodig.",
       "button": "Vind het eerst",
       "note": "Gratis · Geen registratie · Laadt in seconden",

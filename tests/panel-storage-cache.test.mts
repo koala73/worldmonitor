@@ -7,6 +7,7 @@ import {
   invalidatePanelStorageCacheForKeys,
   loadPanelColSpans,
   loadPanelSpans,
+  savePanelCollapsed,
   PANEL_COL_SPANS_KEY,
   PANEL_COLLAPSED_KEY,
   PANEL_SPANS_KEY,
@@ -301,6 +302,44 @@ describe('Panel storage cache', () => {
 
       invalidatePanelStorageCacheForKeys([PANEL_SPANS_KEY]);
       assert.equal(loadPanelSpans().imported, 3);
+    });
+  });
+
+  it('returns persisted: false when collapsed storage writes throw', async () => {
+    await withHarness((harness) => {
+      invalidateAllPanelStorageCaches();
+      const originalSetItem = harness.localStorage.setItem.bind(harness.localStorage);
+      harness.localStorage.setItem = ((key: string, value: string) => {
+        if (key === PANEL_COLLAPSED_KEY) {
+          throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        }
+        originalSetItem(key, value);
+      }) as Storage['setItem'];
+
+      assert.equal(savePanelCollapsed('live-news', true), false);
+      assert.equal(harness.localStorage.getItem(PANEL_COLLAPSED_KEY), null);
+    });
+  });
+
+  it('leaves collapse UI unchanged when persistence fails', async () => {
+    await withHarness((harness) => {
+      invalidateAllPanelStorageCaches();
+      const originalSetItem = harness.localStorage.setItem.bind(harness.localStorage);
+      harness.localStorage.setItem = ((key: string, value: string) => {
+        if (key === PANEL_COLLAPSED_KEY) {
+          throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        }
+        originalSetItem(key, value);
+      }) as Storage['setItem'];
+
+      const panel = harness.createPanel({ id: 'quota-collapse', collapsible: true });
+      const root = panel.getElement();
+      assert.equal(root.classList.contains('panel-collapsed'), false);
+
+      const result = panel.setCollapsed(true);
+      assert.deepEqual(result, { ok: false, persisted: false });
+      assert.equal(panel.isCollapsed(), false);
+      assert.equal(root.classList.contains('panel-collapsed'), false);
     });
   });
 });

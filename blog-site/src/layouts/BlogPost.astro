@@ -215,7 +215,20 @@ const faqLd = extractFaqLd(rawBody);
       <div class="meta">
         <time datetime={isoDate}>{formattedDate}</time>
         {showUpdated && <span> &middot; Updated <time datetime={isoModifiedDate}>{formattedModifiedDate}</time></span>}
-        {audience && <span> &middot; {audience}</span>}
+        {readingMinutes && <span> &middot; {readingMinutes} min read</span>}
+      </div>
+      {/* Byline sits above the H1 — audience stays front-matter / JSON-LD only (#7377). */}
+      <div class="author-bio author-bio--header">
+        <img src={avatarSrc} alt={authorName} width="48" height="48" class="author-avatar" loading="lazy" onerror="this.src='/favico/apple-touch-icon.png'" />
+        <div class="author-info">
+          <div class="author-name">
+            {resolvedAuthorUrl
+              ? <a href={resolvedAuthorUrl} rel="author">{authorName}</a>
+              : <span>{authorName}</span>
+            }
+          </div>
+          {resolvedAuthorBio && <div class="author-desc" set:html={resolvedAuthorBio} />}
+        </div>
       </div>
     </div>
     {heroImage && (
@@ -285,18 +298,6 @@ const faqLd = extractFaqLd(rawBody);
         >
           MCP Quickstart
         </TrackedProductLink>
-      </div>
-    </div>
-    <div class="author-bio">
-      <img src={avatarSrc} alt={authorName} width="48" height="48" class="author-avatar" loading="lazy" onerror="this.src='/favico/apple-touch-icon.png'" />
-      <div class="author-info">
-        <div class="author-name">
-          {resolvedAuthorUrl
-            ? <a href={resolvedAuthorUrl} rel="author">{authorName}</a>
-            : <span>{authorName}</span>
-          }
-        </div>
-        {resolvedAuthorBio && <div class="author-desc" set:html={resolvedAuthorBio} />}
       </div>
     </div>
   </article>

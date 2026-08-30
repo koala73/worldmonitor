@@ -166,6 +166,56 @@ function createBindings(overrides = {}) {
             activeTabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
           }
     ),
+
+    getPanelLayout: async () => ({
+      regions: {
+        sidebar: { available: true, panelCount: 1 },
+        bottom: { available: false, panelCount: 0 },
+      },
+      panels: [{
+        id: 'giving',
+        region: 'sidebar',
+        index: 0,
+        collapsed: false,
+        fullscreen: false,
+        collapsible: false,
+        fullscreenCapable: false,
+        fixed: false,
+      }],
+      panelCount: 1,
+    }),
+    setPanelCollapsed: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_collapsed',
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: true,
+      changed: true,
+      message: 'Panel collapsed.',
+      persisted: true,
+    }),
+    movePanel: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'move',
+      panelId: 'giving',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      message: 'Moved panel.',
+      persisted: true,
+    }),
+    setPanelFullscreen: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: 'live-news',
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+      changed: true,
+      message: 'Panel entered fullscreen.',
+    }),
     getAccessContext: async () => ({
       accountState: 'signed_out',
       clerk: 'unavailable',
@@ -397,6 +447,50 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
+  it('preserves regional panel index 0 in get_panel_layout', async () => {
+    // Bottom-region index 0 is a valid ordinal. Coercing with `||` would replace
+    // it with the flatten fallback (1 when a sidebar panel precedes it).
+    const provider = new FakeWebMcpModelContext();
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      getPanelLayout: async () => ({
+        regions: {
+          sidebar: { available: true, panelCount: 1 },
+          bottom: { available: true, panelCount: 1 },
+        },
+        panels: [
+          {
+            id: 'giving',
+            region: 'sidebar',
+            index: 0,
+            collapsed: false,
+            fullscreen: false,
+            collapsible: false,
+            fullscreenCapable: false,
+            fixed: false,
+          },
+          {
+            id: 'live-news',
+            region: 'bottom',
+            index: 0,
+            collapsed: false,
+            fullscreen: false,
+            collapsible: true,
+            fullscreenCapable: true,
+            fixed: false,
+          },
+        ],
+        panelCount: 2,
+      }),
+    }), harness.runtime);
+    await settlePromises();
+
+    const layout = await executeRegistered(provider, 'get_panel_layout');
+    assert.equal(layout.regions.bottom.panelCount, 1);
+    assert.equal(layout.panels[1].id, 'live-news');
+    assert.equal(layout.panels[1].index, 0, 'bottom panel must keep regional index 0');
+  });
+
   it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
     // Layer, panel, map-mode, tab, and monitor changes can persist or leave
     // the current origin. An uncancellable invocation can outlive the session,
@@ -408,11 +502,13 @@ describe('WebMCP registry behavioral contract', () => {
       [
         'create_dashboard_tab',
         'delete_dashboard_tab',
+        'move_panel',
         'openCountryBrief',
         'rename_dashboard_tab',
         'select_dashboard_tab',
         'set_map_layers',
         'set_map_mode',
+        'set_panel_collapsed',
         'set_panel_enabled',
         'switch_monitor',
       ],
@@ -485,6 +581,22 @@ describe('WebMCP registry behavioral contract', () => {
         provider,
         'set_panel_enabled',
         JSON.stringify({ panelId: 'giving', enabled: true }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'set_panel_collapsed',
+        JSON.stringify({ panelId: 'live-news', collapsed: true }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'move_panel',
+        JSON.stringify({ panelId: 'giving', region: 'sidebar', index: 0 }),
       ),
       denial,
     );

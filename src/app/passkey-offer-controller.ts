@@ -10,20 +10,22 @@ import {
 import { subscribeAuthState } from '@/services/auth-state';
 import { getClerk } from '@/services/clerk';
 import {
-  type AccountOfferWriter,
+  type AccountOfferReader,
+  accountOfferCapReached,
   createOfferMemory,
   derivePasskeyAccountKey,
-  hasAccountOfferRecord,
   hasBeenOffered,
   type OfferMemory,
   type OfferStorage,
-  recordAccountOffer,
   recordOffered,
   safeLocalStorage,
   shouldOfferPasskey,
 } from '@/services/passkey-offer-state';
 import {
-  countPasskeys,
+  type AccountOfferReservation,
+  reserveAccountOffer,
+} from '@/services/passkey-offer-reservation';
+import {
   createPasskey,
   hasPlatformAuthenticator,
   isPasskeyEnvironmentEligible,
@@ -82,8 +84,10 @@ export interface PasskeyEvaluationDeps {
   armed: () => boolean;
   readEnvironment: () => { isDesktopApp: boolean; inIframe: boolean; hasPublicKeyCredential: boolean };
   readIdentity: () => PasskeyIdentity;
-  passkeyCount: () => number;
+  /** Offered on THIS device before. */
   alreadyOffered: (accountKey: string | null) => boolean;
+  /** Lifetime account cap spent. */
+  capReached: () => boolean;
   /** Async, and deliberately last among the capability checks. */
   platformAuthenticator: () => Promise<boolean>;
   blockedByOverlay: () => boolean;
@@ -91,7 +95,11 @@ export interface PasskeyEvaluationDeps {
   deferFrame: () => Promise<void>;
   /** Claim this evaluation. Returns false when another already won. */
   claim: () => boolean;
-  mount: (identity: PasskeyIdentity) => void;
+  /** Atomically reserve one of the account's lifetime offer slots. */
+  reserveAccountOffer: () => Promise<AccountOfferReservation>;
+  /** Whether the controller that started this work is still alive. */
+  stillActive: () => boolean;
+  mount: (identity: PasskeyIdentity, hiddenByOverlay: boolean) => void;
 }
 
 /** Why an evaluation did not mount. `mounted` is the only success. */
@@ -100,8 +108,9 @@ export type PasskeyEvaluationResult =
   | 'not-armed'
   | 'not-ready'
   | 'ineligible-environment'
-  | 'already-has-passkey'
   | 'already-offered'
+  | 'offer-cap-reached'
+  | 'offer-reservation-unavailable'
   | 'no-platform-authenticator'
   | 'blocked-by-overlay'
   | 'superseded';
@@ -127,14 +136,14 @@ export async function evaluatePasskeyOffer(deps: PasskeyEvaluationDeps): Promise
   const env = deps.readEnvironment();
   if (!isPasskeyEnvironmentEligible(env)) return 'ineligible-environment';
 
-  const passkeyCount = deps.passkeyCount();
+  const offeredHere = deps.alreadyOffered(identity.accountKey);
   if (!shouldOfferPasskey({
     environmentEligible: true,
     sessionReady: true,
-    existingPasskeyCount: passkeyCount,
-    alreadyOffered: deps.alreadyOffered(identity.accountKey),
+    alreadyOffered: offeredHere,
+    capReached: deps.capReached(),
   })) {
-    return passkeyCount > 0 ? 'already-has-passkey' : 'already-offered';
+    return offeredHere ? 'already-offered' : 'offer-cap-reached';
   }
 
   // Overlay check BEFORE the frame defer, and again after — an overlay can open
@@ -148,16 +157,27 @@ export async function evaluatePasskeyOffer(deps: PasskeyEvaluationDeps): Promise
   if (!identityMatches(deps.readIdentity(), identity)) return 'superseded';
   if (deps.blockedByOverlay()) return 'blocked-by-overlay';
 
-  // Re-read both ledger tiers: a sibling tab may have written between the probe
-  // and here, and its broadcast may have landed during the deferred frame.
+  // Re-read both suppression tiers. A sibling tab can write the device ledger,
+  // and a sibling device can update Clerk's terminal cap mirror during either
+  // async boundary above.
   if (deps.alreadyOffered(identity.accountKey)) return 'already-offered';
+  if (deps.capReached()) return 'offer-cap-reached';
 
   // Single-flight. Clerk can emit twice for one session during a deferred
   // probe; without this, two emissions produce two mounts, two ledger writes,
   // and two `shown` events.
   if (!deps.claim()) return 'superseded';
 
-  deps.mount(identity);
+  const reservation = await deps.reserveAccountOffer();
+  if (reservation === 'cap-reached') return 'offer-cap-reached';
+  if (reservation === 'unavailable') return 'offer-reservation-unavailable';
+  if (!deps.stillActive()) return 'superseded';
+
+  // The reservation belongs to the authenticated account at request time. Do
+  // not mount if this page moved to another identity while the request ran.
+  if (!identityMatches(deps.readIdentity(), identity)) return 'superseded';
+
+  deps.mount(identity, deps.blockedByOverlay());
   return 'mounted';
 }
 
@@ -214,6 +234,7 @@ export class PasskeyOfferController implements AppModule {
   private acceptedThisMount = false;
   private evaluationEpoch = 0;
   private claimedEpoch = -1;
+  private destroyed = false;
   private successTimer: ReturnType<typeof setTimeout> | null = null;
   /** Set when an outcome resolves while the card is hidden behind an overlay. */
   private pendingOutcome: PasskeyOutcome | null = null;
@@ -239,6 +260,7 @@ export class PasskeyOfferController implements AppModule {
   }
 
   init(): void {
+    this.destroyed = false;
     this.unsubscribeAuth = subscribeAuthState(() => { void this.onAuthChange(); });
     this.observeOverlays();
     this.syncBannerHeight();
@@ -246,6 +268,8 @@ export class PasskeyOfferController implements AppModule {
   }
 
   destroy(): void {
+    this.destroyed = true;
+    this.evaluationEpoch += 1;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
     this.observer?.disconnect();
@@ -264,6 +288,7 @@ export class PasskeyOfferController implements AppModule {
   // -- auth -----------------------------------------------------------------
 
   private async onAuthChange(): Promise<void> {
+    if (this.destroyed) return;
     const identity = this.readIdentity();
 
     // Arm only on a signed-out state the SDK itself vouches for.
@@ -287,26 +312,27 @@ export class PasskeyOfferController implements AppModule {
       armed: () => this.armed,
       readEnvironment: () => readPasskeyEnvironmentFacts(this.ctx.isDesktopApp),
       readIdentity: () => this.readIdentity(),
-      passkeyCount: () => countPasskeys(getClerk()?.user as { passkeys?: unknown } | null),
-      // All three tiers. The durable one is checked here as well as in the boot
-      // shim because the controller can be constructed directly, and because a
-      // sibling device may have written it after this page loaded.
       // NOT gated on a non-null handle: when localStorage throws on access
       // `storage` is null, and gating here would discard the in-memory tier
       // that is the entire fallback (KTD3d).
-      alreadyOffered: (key) =>
-        hasAccountOfferRecord(getClerk()?.user as AccountOfferWriter | null)
-        || hasBeenOffered(this.storage, this.memory, key),
+      alreadyOffered: (key) => hasBeenOffered(this.storage, this.memory, key),
+      // Re-read at evaluation time rather than at construction: a sibling
+      // device may have spent the cap after this page loaded.
+      capReached: () => accountOfferCapReached(getClerk()?.user as AccountOfferReader | null),
       platformAuthenticator: () => hasPlatformAuthenticator(),
       blockedByOverlay: () => this.blockedByOverlay(),
       deferFrame: () => new Promise<void>((resolve) => this.scheduleFrame(() => resolve())),
       claim: () => {
-        if (epoch !== this.evaluationEpoch || this.claimedEpoch === epoch) return false;
+        if (epoch !== this.evaluationEpoch || this.claimedEpoch !== -1) return false;
         this.claimedEpoch = epoch;
         return true;
       },
-      mount: (id) => this.mountPrompt(id),
+      reserveAccountOffer: () => reserveAccountOffer(),
+      stillActive: () => !this.destroyed,
+      mount: (id, hiddenByOverlay) => this.mountPrompt(id, hiddenByOverlay),
     });
+    const ownedClaim = this.claimedEpoch === epoch;
+    if (ownedClaim) this.claimedEpoch = -1;
     // Every result is a member of the closed trace vocabulary, so the gate that
     // stopped the offer is recoverable in one console read instead of inferred
     // from a later snapshot.
@@ -314,6 +340,15 @@ export class PasskeyOfferController implements AppModule {
     // Come back when the overlay goes away. Every other non-mount result is
     // genuinely terminal for this emission.
     this.evaluationDeferredByOverlay = result === 'blocked-by-overlay';
+    if (
+      ownedClaim
+      && epoch !== this.evaluationEpoch
+      && !this.destroyed
+      && !this.prompt
+      && !identityMatches(this.readIdentity(), identity)
+    ) {
+      void this.onAuthChange();
+    }
   }
 
   private readIdentity(): PasskeyIdentity {
@@ -328,7 +363,7 @@ export class PasskeyOfferController implements AppModule {
 
   // -- prompt lifecycle -----------------------------------------------------
 
-  private mountPrompt(identity: PasskeyIdentity): void {
+  private mountPrompt(identity: PasskeyIdentity, hiddenByOverlay: boolean): void {
     const prompt = new PasskeyOfferPrompt({
       onAccept: () => { void this.onAccept(); },
       onDismiss: () => this.onDismiss(),
@@ -337,16 +372,12 @@ export class PasskeyOfferController implements AppModule {
     this.mountedIdentity = identity;
     this.acceptedThisMount = false;
     document.body.appendChild(prompt.getElement());
+    if (hiddenByOverlay) prompt.hide();
     prompt.announceOnMount();
 
-    // The offer is spent at MOUNT, not at answer — otherwise closing the tab
-    // with the card open earns a second offer.
+    // The account slot was reserved before mount. Record the device at MOUNT,
+    // not at answer, so closing the tab with the card open does not re-offer.
     recordOffered(this.storage, this.memory, identity.accountKey);
-    // Not awaited: the local tiers above already suppress the repeat on this
-    // browser, so the card must not wait on a network write to appear. The
-    // durable tier is what carries the suppression to the user's other devices
-    // and to a browser that cannot keep localStorage at all.
-    void recordAccountOffer(getClerk()?.user as AccountOfferWriter | null);
     this.broadcastMounted(identity.accountKey);
     trackPasskeyOfferShown();
   }

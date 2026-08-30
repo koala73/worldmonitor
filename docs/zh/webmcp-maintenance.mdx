@@ -33,7 +33,7 @@ description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免
 | `src/config/panel-enablement.ts` 和 `src/app/panel-enablement.ts` | 面板启用策略，以及 `set_panel_enabled` 使用的设置持久化与应用路径。 |
 | `src/app/webmcp-access.ts`、`src/services/webmcp-access-snapshot.ts` 和 `src/services/clerk.ts` | 实时访问上下文、无个人身份信息的快照，以及现有 Clerk 登录对话框。 |
 | `src/app/webmcp-search-controller.ts`、`src/app/webmcp-search-effects.ts` 和 `src/app/search-selection-dispatcher.ts` | 不透明搜索能力、绑定效果类别、失效、实时状态复核和可见结果选择。 |
-| `src/app/panel-layout.ts`、`src/components/PanelTabBar.ts`、`src/services/tab-store.ts` 和 `src/services/dashboard-tab-actions.ts` | 仪表板标签页 UI、持久化、名称与 ID 限制，以及列出、选择、创建、重命名和删除操作。 |
+| `src/services/panel-layout-actions.ts`、`src/app/panel-layout.ts`、`src/components/PanelTabBar.ts`、`src/services/tab-store.ts` 和 `src/services/dashboard-tab-actions.ts` | 面板布局快照/折叠/移动/全屏策略，以及仪表板标签页 UI、持久化、名称与 ID 限制，和列出、选择、创建、重命名、删除操作。 |
 | `src/components/GlobalProcurementPanel.ts` | 条件式声明工具 `search_procurement` 的表单、可见等待状态、重置、取消和受限结果。 |
 | `pro-test/welcome.html` | `launchWorldMonitor` 和 `getWorldMonitorMcpEndpoint` 的零导入首页注册。 |
 | `vercel.json`、`docker/nginx-security-headers.conf`、`docker/nginx-embed-security-headers.conf`、`vite.config.ts` 和 `pro-test/vite.config.ts` | Trial 注册、源隔离、同源许可、本地测试一致性和明确的 embed 拒绝。 |
@@ -55,6 +55,7 @@ npm run docs:check
   tests/webmcp-search-effects.test.mts \
   tests/webmcp-dashboard.test.mts \
   tests/dashboard-tab-actions.test.mts \
+  tests/panel-layout-actions.test.mts \
   tests/webmcp-panel-catalog.test.mts \
   tests/agent-bus-actions.test.mts \
   tests/agent-bus-applier.test.mts \
@@ -99,7 +100,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-有头生产套件会测试真实 Origin Trial。它验证线上 SHA、安全响应头、二十四工具清单与 schema、冷启动调用、受限访问与登录结果、只读目录、取消行为、全部六个仪表板源、专用源根路由重定向和跨源 embed 拒绝。会修改生产状态的测试只在本地运行。
+有头生产套件会测试真实 Origin Trial。它验证线上 SHA、安全响应头、二十八工具清单与 schema、冷启动调用、受限访问与登录结果、只读目录、取消行为、全部六个仪表板源、专用源根路由重定向和跨源 embed 拒绝。会修改生产状态的测试只在本地运行。
 
 请把 `test-results/` 下的 `webmcp-smoke.json`、`webmcp-cancellation.json` 与 `webmcp-production-matrix.json` 保存为发布证据。还要确认 `/embed` 和 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档与 embed 页面没有获得顶层清单。
 

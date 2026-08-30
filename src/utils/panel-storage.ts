@@ -123,7 +123,7 @@ export function loadPanelCollapsed(): Readonly<Record<string, boolean>> {
   return panelCollapsedCache;
 }
 
-export function savePanelCollapsed(panelId: string, collapsed: boolean): void {
+export function savePanelCollapsed(panelId: string, collapsed: boolean): boolean {
   ensurePanelStorageCacheInvalidationListener();
   const next = { ...loadPanelCollapsed() };
   if (collapsed) {
@@ -131,12 +131,17 @@ export function savePanelCollapsed(panelId: string, collapsed: boolean): void {
   } else {
     delete next[panelId];
   }
-  if (Object.keys(next).length === 0) {
-    removeStorageMap(PANEL_COLLAPSED_KEY);
-  } else {
-    writeStorageMap(PANEL_COLLAPSED_KEY, next);
+  try {
+    if (Object.keys(next).length === 0) {
+      removeStorageMap(PANEL_COLLAPSED_KEY);
+    } else {
+      writeStorageMap(PANEL_COLLAPSED_KEY, next);
+    }
+  } catch {
+    return false;
   }
   panelCollapsedCache = freezeStorageMap(next);
+  return true;
 }
 
 export function clearPanelSpanEntry(panelId: string): void {
