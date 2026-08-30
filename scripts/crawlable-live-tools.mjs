@@ -663,27 +663,41 @@ function formatDateTime(timestamp) {
   }).format(new Date(timestamp));
 }
 
-function setTime(root, selector, timestamp, prefix) {
-  const element = root.querySelector(selector);
-  if (!element) return;
-  if (timestamp === null) {
-    element.textContent = `${prefix} time unavailable`;
-    element.removeAttribute('datetime');
-    return;
-  }
-  element.textContent = `${prefix} ${formatDateTime(timestamp)}`;
-  element.setAttribute('datetime', new Date(timestamp).toISOString());
-}
-
 function setToolState(tool, state, status) {
   tool.dataset.state = state;
   setText(tool, '[data-live-status]', status);
   for (const busy of tool.querySelectorAll('[data-live-grid]')) {
+    busy.hidden = false;
     busy.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+  }
+  for (const fallback of tool.querySelectorAll('[data-live-fallback]')) {
+    fallback.hidden = true;
+  }
+  for (const description of tool.querySelectorAll('[data-chokepoint-description]')) {
+    description.hidden = false;
   }
   for (const control of tool.querySelectorAll('[data-live-refresh]')) {
     control.disabled = state === 'loading';
   }
+}
+
+function setTime(root, selector, timestamp, prefix) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  let target = element;
+  if (element.tagName !== 'TIME') {
+    const replacement = (root.ownerDocument || document).createElement('time');
+    replacement.setAttribute('data-live-updated', '');
+    element.replaceWith(replacement);
+    target = replacement;
+  }
+  if (timestamp === null) {
+    target.textContent = `${prefix} time unavailable`;
+    target.removeAttribute('datetime');
+    return;
+  }
+  target.textContent = `${prefix} ${formatDateTime(timestamp)}`;
+  target.setAttribute('datetime', new Date(timestamp).toISOString());
 }
 
 function renderList(root, selector, rows, formatter, emptyMessage = 'No current matches in this bounded result.') {
@@ -773,17 +787,25 @@ function renderCountryRiskViewModel(tool, view) {
   const updated = tool.querySelector('[data-live-updated]');
   if (updated) {
     if (view.partial) {
-      updated.textContent = view.computedAt === null
-        ? 'Advisory and sanctions signals retrieved live; no combined instability score for this country.'
-        : `Retrieved ${formatDateTime(view.computedAt)} · no combined instability score for this country`;
-      if (view.computedAt === null) updated.removeAttribute('datetime');
-      else updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+      if (view.computedAt === null) {
+        updated.textContent = 'Advisory and sanctions signals retrieved live; no combined instability score for this country.';
+        updated.removeAttribute('datetime');
+      } else {
+        setTime(tool, '[data-live-updated]', view.computedAt, 'Retrieved');
+        const stamped = tool.querySelector('[data-live-updated]');
+        if (stamped) {
+          stamped.textContent = `Retrieved ${formatDateTime(view.computedAt)} · no combined instability score for this country`;
+        }
+      }
     } else {
       const methodology = view.methodologyVersion
         ? ` · methodology ${view.methodologyVersion}`
         : '';
-      updated.textContent = `Computed ${formatDateTime(view.computedAt)}${methodology}`;
-      updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+      setTime(tool, '[data-live-updated]', view.computedAt, 'Computed');
+      const stamped = tool.querySelector('[data-live-updated]');
+      if (stamped) {
+        stamped.textContent = `Computed ${formatDateTime(view.computedAt)}${methodology}`;
+      }
     }
   }
   if (view.partial) setToolState(tool, 'partial', 'Partial API result');

@@ -14167,6 +14167,9 @@
           "path": "scripts/discover-content-corpus-pages.mjs"
         },
         {
+          "path": "scripts/freeze-crawlable-live-pulse.mjs"
+        },
+        {
           "path": "scripts/freeze-resilience-ranking.mjs"
         },
         {
