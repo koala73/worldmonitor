@@ -221,18 +221,23 @@ describe('webmcp mission preset apply outcomes', () => {
     assert.equal(result.panels, undefined);
   });
 
-  it('denies and surfaces apply_failed when the apply callback throws', () => {
+  it('denies apply_failed with the stable rollback message and hides private exception text', () => {
     const ctx = makeApplyContext();
+    const privateDetail = 'localStorage.getItem("mission-preset") failed at querySelector(#mission-root) callback';
     const result = applyWebMcpMissionPreset(ctx, 'full', 'supply-chain-risk', {
       hasPremium: true,
       apply: () => {
-        throw new Error('commit blew up');
+        throw new Error(privateDetail);
       },
     });
     assert.equal(result.ok, false);
     assert.equal(result.status, 'denied');
     assert.equal(result.reason, 'apply_failed');
-    assert.match(result.message, /commit blew up/);
+    assert.equal(result.message, 'Mission preset application failed and was rolled back.');
+    const serialized = JSON.stringify(result);
+    assert.equal(serialized.includes(privateDetail), false);
+    assert.equal(serialized.includes('localStorage'), false);
+    assert.equal(serialized.includes('querySelector'), false);
   });
 });
 
