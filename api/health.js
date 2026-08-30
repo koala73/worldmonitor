@@ -2440,7 +2440,9 @@ function classifyKey(name, redisKey, opts, ctx) {
   else if (
     seedCfg?.requireVulnerabilityCoverage
     && (!coverage || Object.entries(seedCfg.requireVulnerabilityCoverage)
-      .some(([field, floor]) => coverage[field] < floor))
+      .some(([field, floor]) => (
+        !Number.isFinite(coverage[field]) || coverage[field] < floor
+      )))
   ) status = 'COVERAGE_PARTIAL';
   // Per-pool coverage is independent of aggregate volume. Missing/malformed
   // diagnostics fail closed: without all configured counts health cannot prove

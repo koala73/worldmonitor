@@ -2079,6 +2079,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     validateFn,
     ttlSeconds,
     lockTtlMs = 120_000,
+    lockAcquireRetries = 2,
     extraKeys,
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
@@ -2234,6 +2235,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // Acquire lock
   const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, lockTtlMs, {
     label: `${domain}:${resource}`,
+    maxRetries: lockAcquireRetries,
   });
   if (lockResult.skipped) {
     process.exit(0);

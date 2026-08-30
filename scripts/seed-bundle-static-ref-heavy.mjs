@@ -54,10 +54,11 @@ const DAILY_SECTIONS = [
     canonicalKey: 'supply-chain:vulnerability:v1',
     completionMetaKey: 'seed-completion:supply-chain:vulnerability',
     intervalMs: DAY,
-    // The seeder enforces a 125s whole-lifecycle wall. Another 20s lets its
-    // SIGTERM cleanup release the lock before the bundle's own kill path, and
-    // the 145s reservation still leaves 415s for Military-Bases plus grace.
-    timeoutMs: 145_000,
+    // The seeder enforces a 145s whole-lifecycle wall from lock acquisition
+    // through completion proof. Another 15s lets its SIGTERM cleanup release
+    // the lock before the bundle's own kill path; the 160s reservation still
+    // fits beside the 400s Military-Bases reservation and both kill graces.
+    timeoutMs: 160_000,
   },
 ];
 

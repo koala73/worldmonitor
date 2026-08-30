@@ -82,9 +82,42 @@ describe('HormuzPanel progressive vulnerability loading', () => {
     await vi.waitFor(() => {
       expect(panel.getElement().textContent).toContain('Crude oil transit');
     });
+    expect(panel.getElement().querySelector('.hz-dependencies')?.getAttribute('data-state')).toBe('loading');
     resolveDependencies(dependencyResponse);
     await vi.waitFor(() => {
       expect(panel.getElement().textContent).toContain('United Arab Emirates');
     });
+  });
+
+  it('ignores an older dependency response after a newer fetch generation renders', async () => {
+    let resolveFirst!: (value: typeof dependencyResponse) => void;
+    const firstDependencies = new Promise<typeof dependencyResponse>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const newerResponse = {
+      ...dependencyResponse,
+      dependencies: [{
+        ...dependencyResponse.dependencies[0],
+        countryIso2: 'JP',
+        countryName: 'Japan',
+      }],
+    };
+    serviceMocks.fetchTracker.mockResolvedValue(tracker);
+    serviceMocks.fetchDependencies
+      .mockReturnValueOnce(firstDependencies)
+      .mockResolvedValueOnce(newerResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+    await panel.fetchData();
+    await vi.waitFor(() => {
+      expect(panel.getElement().textContent).toContain('Japan');
+    });
+
+    resolveFirst(dependencyResponse);
+    await Promise.resolve();
+    expect(panel.getElement().textContent).toContain('Japan');
+    expect(panel.getElement().textContent).not.toContain('United Arab Emirates');
   });
 });
