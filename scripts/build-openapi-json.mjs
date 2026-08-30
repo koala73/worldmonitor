@@ -156,7 +156,6 @@ export function buildBundle({ spec: provided } = {}) {
     schemaSubtreeStats,
     chinaDateStats,
     int64Stats,
-    headerStats,
     paramStats,
     inlineTypedStats,
     unreachableStats,
