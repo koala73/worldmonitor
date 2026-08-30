@@ -363,6 +363,9 @@
         "defense_industrialBalance": "रक्षा औद्योगिक संतुलन",
         "defense_supplierDiversity": "हथियार आपूर्तिकर्ता विविधता"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "हथियार आपूर्तिकर्ता निर्भरता और सैन्य क्षमता के लिए PRO में अपग्रेड करें"
     }
   },
   "header": {
@@ -1080,7 +1083,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "खान और रिफाइनरी देश शेयर के लिए PRO में अपग्रेड करें, चरण के अनुसार सांद्रता (HHI) के साथ।"
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",
@@ -2433,7 +2437,8 @@
       "dependentCommodities": "निर्भर वस्तुएँ",
       "stateOk": "वर्तमान",
       "stateStale": "पुराना इनपुट",
-      "stateInsufficient": "अपर्याप्त डेटा"
+      "stateInsufficient": "अपर्याप्त डेटा",
+      "proLocked": "वस्तु कमजोरी स्कोरिंग के लिए PRO में अपग्रेड करें"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>हर्मुज व्यापार ट्रैकर</strong> हर्मुज स्ट्रेट के माध्यम से लाइव AIS जहाज ट्रैकिंग, विश्व का सबसे महत्वपूर्ण तेल चोकपॉइंट। टैंकर गिनती, व्यवधान घटनाएं, और साप्ताहिक प्रवाह परिवर्तन मॉनिटर करता है। लगभग 20% वैश्विक तेल दैनिक यहां से गुजरता है।",

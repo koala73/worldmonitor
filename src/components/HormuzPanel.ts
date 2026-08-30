@@ -5,6 +5,8 @@ import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
 import { fetchChokepointDependencies } from '@/services/supply-chain';
 import type { GetChokepointDependenciesResponse } from '@/services/supply-chain';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { getAuthState } from '@/services/auth-state';
 
 const CHART_COLORS = ['#e67e22', '#1abc9c', '#9b59b6', '#27ae60'];
 const ZERO_COLOR = 'rgba(231,76,60,0.5)';
@@ -63,7 +65,7 @@ function renderChart(chart: HormuzChart, idx: number): string {
 export class HormuzPanel extends Panel {
   private data: HormuzTrackerData | null = null;
   private dependencies: GetChokepointDependenciesResponse | null = null;
-  private dependencyState: 'loading' | 'loaded' | 'unavailable' = 'loading';
+  private dependencyState: 'loading' | 'loaded' | 'unavailable' | 'pro-locked' = 'loading';
   private tooltipBound = false;
   private fetchGeneration = 0;
 
@@ -74,9 +76,14 @@ export class HormuzPanel extends Panel {
   public async fetchData(): Promise<boolean> {
     const generation = ++this.fetchGeneration;
     this.showLoading();
-    this.dependencyState = 'loading';
-    const dependenciesPromise = fetchChokepointDependencies('hormuz_strait', 25, { signal: this.signal })
-      .catch(() => null);
+    // The Hormuz tape itself stays free; only the commodity-dependency fan-out
+    // over it is Pro (#6449). Gate just that leg so a free viewer keeps the
+    // tracker and sees an upgrade line where the dependencies would be.
+    const isPro = hasPremiumAccess(getAuthState());
+    this.dependencyState = isPro ? 'loading' : 'pro-locked';
+    const dependenciesPromise = isPro
+      ? fetchChokepointDependencies('hormuz_strait', 25, { signal: this.signal }).catch(() => null)
+      : null;
     try {
       const data = await fetchHormuzTracker();
       if (generation !== this.fetchGeneration) return false;
@@ -88,7 +95,7 @@ export class HormuzPanel extends Panel {
       this.dependencies = null;
       this.renderPanel();
       this.bindTooltip();
-      void dependenciesPromise.then((dependencies) => {
+      void dependenciesPromise?.then((dependencies) => {
         if (this.signal.aborted || generation !== this.fetchGeneration) return;
         this.dependencies = dependencies;
         this.dependencyState = dependencies?.upstreamUnavailable === false
@@ -164,10 +171,12 @@ export class HormuzPanel extends Panel {
     if (this.dependencyState === 'loading') {
       return `<div class="hz-dependencies" data-state="loading" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.loading'))}</div></div>`;
     }
-    if (!response || response.upstreamUnavailable || response.dependencies.length === 0) {
-      const emptyMessage = !response || response.upstreamUnavailable
-        ? t('components.supplyVulnerability.unavailable')
-        : t('components.supplyVulnerability.noCoverage');
+    if (this.dependencyState === 'pro-locked' || !response || response.upstreamUnavailable || response.dependencies.length === 0) {
+      const emptyMessage = this.dependencyState === 'pro-locked'
+        ? t('components.supplyVulnerability.proLocked')
+        : !response || response.upstreamUnavailable
+          ? t('components.supplyVulnerability.unavailable')
+          : t('components.supplyVulnerability.noCoverage');
       return `<div class="hz-dependencies" data-state="${this.dependencyState}" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMessage)}</div></div>`;
     }
 

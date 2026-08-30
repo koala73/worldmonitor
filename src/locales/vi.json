@@ -292,6 +292,9 @@
         "defense_industrialBalance": "Cân bằng công nghiệp quốc phòng",
         "defense_supplierDiversity": "Đa dạng nhà cung cấp vũ khí"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Nâng cấp lên PRO để xem phụ thuộc nhà cung cấp vũ khí và năng lực quân sự"
     }
   },
   "header": {
@@ -976,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Nâng cấp lên PRO để xem thị phần quốc gia của mỏ và nhà máy lọc dầu với độ tập trung (HHI) theo giai đoạn"
     },
     "tradePolicy": {
       "tariffs": "Thuế quan",
@@ -2217,7 +2221,8 @@
       "dependentCommodities": "Hàng hóa phụ thuộc",
       "stateOk": "Hiện tại",
       "stateStale": "Đầu vào cũ",
-      "stateInsufficient": "Không đủ dữ liệu"
+      "stateInsufficient": "Không đủ dữ liệu",
+      "proLocked": "Nâng cấp lên PRO để xem điểm số lỗ hổng hàng hóa"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",

@@ -95,7 +95,10 @@ describe('get_defense_industrial_base MCP tool', () => {
     const requestUrl = new URL(requests[0].url);
     assert.equal(requestUrl.pathname, '/api/military/v1/get-defense-industrial-base');
     assert.equal(requestUrl.searchParams.get('country_code'), 'UA');
-    assert.equal(requestUrl.searchParams.get('public'), '1');
+    // #6438: the tool must NOT ask for the anonymous `public=1` CDN shape. That
+    // shape bypassed the gateway's tier check, so leaving it here would give
+    // the tool a route to Pro data that the gate no longer inspects.
+    assert.equal(requestUrl.searchParams.get('public'), null);
     assert.equal(requests[0].init.headers['X-WM-MCP-Internal'], undefined);
     assert.deepEqual(JSON.parse(body.result.content[0].text), canonicalResponse);
   });

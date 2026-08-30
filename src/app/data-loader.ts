@@ -2605,7 +2605,12 @@ export class DataLoaderManager implements AppModule {
         if (!energyLoaded) energyPanel?.updateTape([]);
       }
 
-      if (commoditiesPanel) {
+      // Physical premiums + divergence index are Pro (#6436/#6448). Skipping
+      // the fetch leaves _physicalPremiums empty, which is exactly what
+      // _buildTabBar reads to decide whether the Physical tab exists — so a
+      // free viewer sees the commodity tape unchanged rather than a tab that
+      // opens onto a 401.
+      if (commoditiesPanel && hasPremiumAccess()) {
         try {
           const physicalGeneration = this.physicalComparisonLoadGuard.begin();
           await loadPhysicalPremiumComparisonIfNeeded(
@@ -2681,6 +2686,10 @@ export class DataLoaderManager implements AppModule {
 
   async loadPhysicalPremiumComparison(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
+    // Pro (#6436/#6448) — mirrors the guard on the bulk market pass above.
+    // This is the tab-activation entry point, so without it clicking Physical
+    // would re-fire the two gated RPCs for a free user on every open.
+    if (!hasPremiumAccess()) return;
     const panel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
     if (!panel) return;
     const generation = this.physicalComparisonLoadGuard.begin();
@@ -4280,11 +4289,18 @@ export class DataLoaderManager implements AppModule {
       const {
         fetchShippingRates, fetchChokepointStatus, fetchCriticalMinerals, fetchMineralProduction, fetchShippingStress,
       } = await import('@/services/supply-chain');
+      // Mine/refinery country shares and HHI are Pro (#6439). The sibling
+      // fetchCriticalMinerals (deposit locations) stays free, so only this one
+      // leg is conditional — resolving to null keeps the destructure and the
+      // totalItems arithmetic below untouched.
+      const mineralProductionLeg = hasPremiumAccess()
+        ? fetchMineralProduction()
+        : Promise.resolve(null);
       const [shipping, chokepoints, minerals, mineralProduction, stress] = await Promise.allSettled([
         fetchShippingRates(),
         fetchChokepointStatus(),
         fetchCriticalMinerals(),
-        fetchMineralProduction(),
+        mineralProductionLeg,
         fetchShippingStress(),
       ]);
 

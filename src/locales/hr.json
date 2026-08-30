@@ -366,6 +366,9 @@
         "defense_industrialBalance": "Ravnoteža obrambene industrije",
         "defense_supplierDiversity": "Diverzifikacija dobavljača oružja"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Nadogradi na PRO za ovisnost dobavljača oružja i vojnu kapacitetu"
     }
   },
   "header": {
@@ -1087,7 +1090,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Nadogradi na PRO za udjele rudarskih i rafinerijskih zemalja s koncentracijom (HHI) po fazi"
     },
     "tradePolicy": {
       "overview": "Pregled",
@@ -2450,7 +2454,8 @@
       "dependentCommodities": "Ovisna roba",
       "stateOk": "Trenutačno",
       "stateStale": "Zastarjeli ulaz",
-      "stateInsufficient": "Nedovoljno podataka"
+      "stateInsufficient": "Nedovoljno podataka",
+      "proLocked": "Nadogradi na PRO za bodovanje ranjivosti roba"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Praćenje živih AIS plovila kroz Hormuzanski tjesnac, svjetski najkritičnije prometno usko grlo za naftu. Prati broj tankera, događaje prekida i tjedne promjene protoka. Približno 20% svjetske opskrbe naftom prolazi ovdje dnevno.",

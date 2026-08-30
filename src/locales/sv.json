@@ -1611,7 +1611,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Uppgradera till PRO för gruv- och raffinaderiländer med koncentration (HHI) per etapp."
     },
     "positiveNewsFeed": {
       "noStories": "Inga berättelser i denna kategori ännu"
@@ -1849,7 +1850,8 @@
       "dependentCommodities": "Beroende råvaror",
       "stateOk": "Aktuellt",
       "stateStale": "Inaktuell indata",
-      "stateInsufficient": "Otillräckliga data"
+      "stateInsufficient": "Otillräckliga data",
+      "proLocked": "Uppgradera till PRO för råvarusårbarhetsbedömning"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz handelsspårare</strong> Live AIS-fartygsspårning genom Hormuzsundet, världens mest kritiska oljeflaskhals. Övervakar tankerantal, störningshändelser och veckovisa flödesförändringar. Cirka 20% av den globala oljeförsörjningen passerar här dagligen.",
@@ -3442,6 +3444,9 @@
         "defense_industrialBalance": "Försvarsindustriell balans",
         "defense_supplierDiversity": "Diversifiering av vapenleverantörer"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Uppgradera till PRO för vapenleverantörsberoende och militär kapacitet"
     }
   },
   "preferences": {

@@ -18969,8 +18969,12 @@ paths:
             summary: GetPhysicalPremiums
             description: |-
                 GetPhysicalPremiums compares SGE gold/silver benchmark prints with the
-                 existing COMEX futures snapshot and returns every conversion input.
+                 existing COMEX futures snapshot and returns every conversion input. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetPhysicalPremiums
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: metals
                   in: query
@@ -19036,7 +19040,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -19111,8 +19115,12 @@ paths:
             summary: GetPhysicalDivergenceIndex
             description: |-
                 GetPhysicalDivergenceIndex classifies current physical premiums against
-                 their bounded trailing histories and returns an all-metal stress composite.
+                 their bounded trailing histories and returns an all-metal stress composite. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetPhysicalDivergenceIndex
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: metals
                   in: query
@@ -19177,7 +19185,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -23180,8 +23188,12 @@ paths:
             tags:
                 - MilitaryService
             summary: GetDefenseIndustrialBase
-            description: GetDefenseIndustrialBase returns annual military capacity and five-year arms-supplier dependency aggregates for one country.
+            description: GetDefenseIndustrialBase returns annual military capacity and five-year arms-supplier dependency aggregates for one country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetDefenseIndustrialBase
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: country_code
                   in: query
@@ -23242,7 +23254,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -28087,8 +28099,12 @@ paths:
             summary: GetMineralProduction
             description: |-
                 GetMineralProduction returns per-commodity mine and refinery country shares
-                 and HHI from the annual USGS MCS / BGS seed.
+                 and HHI from the annual USGS MCS / BGS seed. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetMineralProduction
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: commodity
                   in: query
@@ -28182,7 +28198,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -30595,8 +30611,12 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetCountryVulnerabilities
-            description: GetCountryVulnerabilities returns the full per-commodity score evidence for one country.
+            description: GetCountryVulnerabilities returns the full per-commodity score evidence for one country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryVulnerabilities
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: iso2
                   in: query
@@ -30632,7 +30652,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -30705,8 +30725,12 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetChokepointDependencies
-            description: GetChokepointDependencies returns the inverse country/commodity dependency index.
+            description: GetChokepointDependencies returns the inverse country/commodity dependency index. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetChokepointDependencies
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: chokepointId
                   in: query
@@ -30755,7 +30779,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -30828,8 +30852,12 @@ paths:
             tags:
                 - SupplyChainService
             summary: ListVulnerabilityRankings
-            description: ListVulnerabilityRankings returns a bounded global ranking with optional filters.
+            description: ListVulnerabilityRankings returns a bounded global ranking with optional filters. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListVulnerabilityRankings
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: commodityId
                   in: query
@@ -30923,7 +30951,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).

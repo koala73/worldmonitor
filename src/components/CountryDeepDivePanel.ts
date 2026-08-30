@@ -540,7 +540,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderDefenseIndustrialBase(): void {
-    if (!this.militaryBody || !this.currentDefenseIndustrial?.available) return;
+    if (!this.militaryBody) return;
+    // Pro (#6438). The gate lives here rather than only at the fetch site
+    // because renderMilitaryActivity() also re-runs on updateMilitaryActivity,
+    // whose free-tier flight/base data stays free — without this the section
+    // would simply vanish for a free viewer instead of naming the paywall.
+    if (!hasPremiumAccess(getAuthState())) {
+      this.militaryBody.append(this.makeProLocked(t('countryBrief.defenseIndustrialBase.proLocked')));
+      return;
+    }
+    if (!this.currentDefenseIndustrial?.available) return;
     this.militaryBody.append(renderDefenseIndustrialSection(
       this.currentDefenseIndustrial,
       (label, value, chipClass) => this.metric(label, value, chipClass),
@@ -2808,7 +2817,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       t('components.supplyVulnerability.help'),
     );
     this.commodityVulnerabilityBody = commodityVulnerabilityCardBody;
-    commodityVulnerabilityCardBody.append(this.makeLoading(t('components.supplyVulnerability.loading')));
+    commodityVulnerabilityCardBody.append(isPro
+      ? this.makeLoading(t('components.supplyVulnerability.loading'))
+      : this.makeProLocked(t('components.supplyVulnerability.proLocked')));
 
     const [debtCard, debtBody] = this.sectionCard('National Debt', 'Government debt-to-GDP ratio, total debt, and year-over-year growth.');
     this.debtBody = debtBody;

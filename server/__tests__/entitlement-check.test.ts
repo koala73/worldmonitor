@@ -142,6 +142,23 @@ describe("gateway entitlement check", () => {
     expect(getRequiredTier(path)).toBe(1);
   });
 
+  // The seven routes closed by the #6436-#6449 gating pass. Each shipped
+  // ungated because its originating issue scoped ingestion + exposure and never
+  // named an access tier; an anonymous wms_ session read full payloads from all
+  // seven in production. Pinned by path so a revert has to delete a named test,
+  // not just drop a line from a 37-entry object literal.
+  test.each([
+    "/api/market/v1/get-physical-premiums",
+    "/api/market/v1/get-physical-divergence-index",
+    "/api/supply-chain/v1/get-mineral-production",
+    "/api/military/v1/get-defense-industrial-base",
+    "/api/supply-chain/v1/get-country-vulnerabilities",
+    "/api/supply-chain/v1/get-chokepoint-dependencies",
+    "/api/supply-chain/v1/list-vulnerability-rankings",
+  ])("getRequiredTier returns 1 for newly gated %s (#6436-#6449)", (path) => {
+    expect(getRequiredTier(path)).toBe(1);
+  });
+
   test("getRequiredTier returns null for ungated endpoint", () => {
     expect(getRequiredTier("/api/seismology/v1/list-earthquakes")).toBeNull();
   });

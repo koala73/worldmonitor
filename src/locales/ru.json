@@ -298,6 +298,9 @@
         "defense_industrialBalance": "Баланс оборонной промышленности",
         "defense_supplierDiversity": "Разнообразие поставщиков вооружений"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Обновитесь на PRO для анализа зависимости от поставщиков вооружений и военного потенциала"
     }
   },
   "header": {
@@ -985,7 +988,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Обновитесь на PRO для просмотра доли стран в добыче и переработке с показателем концентрации (HHI) по этапам"
     },
     "tradePolicy": {
       "tariffs": "Тарифы",
@@ -2244,7 +2248,8 @@
       "dependentCommodities": "Зависимые товары",
       "stateOk": "Актуально",
       "stateStale": "Устаревшие входные данные",
-      "stateInsufficient": "Недостаточно данных"
+      "stateInsufficient": "Недостаточно данных",
+      "proLocked": "Обновитесь на PRO для оценки уязвимости сырьевых ресурсов"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Трекер торговли в Ормузе</strong> Отслеживание судов AIS в реальном времени через Ормузский пролив — самую критическую точку нефтяного узкого места в мире. Отслеживает количество танкеров, события нарушений и еженедельные изменения потоков. Примерно 20% мировых поставок нефти проходит здесь ежедневно.",

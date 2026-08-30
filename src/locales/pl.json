@@ -298,6 +298,9 @@
         "defense_industrialBalance": "Bilans przemysłu obronnego",
         "defense_supplierDiversity": "Dywersyfikacja dostawców broni"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Uaktualnij do PRO, aby zobaczyć zależność od dostawców broni i potencjał militarny"
     }
   },
   "header": {
@@ -1996,7 +1999,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Uaktualnij do PRO, aby zobaczyć udziały krajów w wydobyciu i rafinacji z koncentracją (HHI) według etapu"
     },
     "positiveNewsFeed": {
       "noStories": "Brak artykułów w tej kategorii"
@@ -2244,7 +2248,8 @@
       "dependentCommodities": "Surowce zależne",
       "stateOk": "Aktualne",
       "stateStale": "Nieaktualne dane wejściowe",
-      "stateInsufficient": "Niewystarczające dane"
+      "stateInsufficient": "Niewystarczające dane",
+      "proLocked": "Uaktualnij do PRO, aby zobaczyć ocenę podatności surowców"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Tracker handlu w Hormuzie</strong> Śledzenie statków AIS w czasie rzeczywistym przez Cieśninę Ormuz, najważniejszy punkt zagrożenia naftowego na świecie. Monitoruje liczbę tankowców, zdarzenia zakłóceń i tygodniowe zmiany przepływów. Około 20% światowych dostaw ropy przechodzi tędy codziennie.",

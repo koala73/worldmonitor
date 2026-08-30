@@ -363,6 +363,9 @@
         "defense_industrialBalance": "Mizani ya viwanda vya ulinzi",
         "defense_supplierDiversity": "Utengeneaji wa watoa huduma za silaha"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Boreshaji hadi PRO kwa utegemezi wa wauzaji wa silaha na uwezo wa kijeshi"
     }
   },
   "header": {
@@ -1080,7 +1083,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Boreshaji hadi PRO kwa sehemu za nchi za mgodi na rafinery na mkusanyiko (HHI) kwa awamu."
     },
     "tradePolicy": {
       "overview": "Muhtasari",
@@ -2436,7 +2440,8 @@
       "dependentCommodities": "Bidhaa tegemezi",
       "stateOk": "Ya sasa",
       "stateStale": "Ingizo la zamani",
-      "stateInsufficient": "Data haitoshi"
+      "stateInsufficient": "Data haitoshi",
+      "proLocked": "Boreshaji hadi PRO kwa alama ya kufa kwa kilicho haraka cha bidhaa"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Inafuatilia moja kwa moja meli ya AIS kupitia Mlango-Bahari wa Hormuz, sehemu muhimu zaidi ya kusambaza mafuta duniani. Hufuatilia hesabu za meli, matukio ya usumbufu na mabadiliko ya mtiririko wa kila wiki. Takriban 20% ya usambazaji wa mafuta duniani kote husafirishwa hapa kila siku.",

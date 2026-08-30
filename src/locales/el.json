@@ -294,6 +294,9 @@
         "defense_industrialBalance": "Ισορροπία βιομηχανίας άμυνας",
         "defense_supplierDiversity": "Ποικιλία προμηθευτών όπλων"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Αναβαθμίστε σε PRO για εξάρτηση προμηθευτών όπλων και στρατιωτική ικανότητα"
     }
   },
   "header": {
@@ -979,7 +982,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Αναβαθμίστε σε PRO για μετοχές χώρας ορυχείου και διυλιστηρίου με συγκέντρωση (HHI) ανά στάδιο."
     },
     "tradePolicy": {
       "tariffs": "Δασμοί",
@@ -2226,7 +2230,8 @@
       "dependentCommodities": "Εξαρτώμενα εμπορεύματα",
       "stateOk": "Τρέχον",
       "stateStale": "Παρωχημένη είσοδος",
-      "stateInsufficient": "Ανεπαρκή δεδομένα"
+      "stateInsufficient": "Ανεπαρκή δεδομένα",
+      "proLocked": "Αναβαθμίστε σε PRO για βαθμολόγηση ευπάθειας εμπορευμάτων"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Ιχνηλάτης Εμπορίου Χορμούζ</strong> Ζωντανή παρακολούθηση πλοίων AIS μέσω του Στενού του Χορμούζ, του πιο κρίσιμου σημείου συμφόρησης πετρελαίου στον κόσμο. Παρακολουθεί αριθμούς δεξαμενόπλοιων, γεγονότα διαταραχής και εβδομαδιαίες αλλαγές ροών. Περίπου 20% της παγκόσμιας προσφοράς πετρελαίου διέρχεται καθημερινά.",

@@ -296,6 +296,9 @@
         "defense_industrialBalance": "Echilibru industrial apărare",
         "defense_supplierDiversity": "Diversitate furnizori armament"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Actualizare la PRO pentru dependența furnizorilor de arme și capacitatea militară"
     }
   },
   "header": {
@@ -982,7 +985,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Actualizare la PRO pentru cotele țărilor minelor și rafinăriilor cu concentrație (HHI) pe etapă"
     },
     "tradePolicy": {
       "tariffs": "Tarife vamale",
@@ -2235,7 +2239,8 @@
       "dependentCommodities": "Materii prime dependente",
       "stateOk": "Actual",
       "stateStale": "Date de intrare învechite",
-      "stateInsufficient": "Date insuficiente"
+      "stateInsufficient": "Date insuficiente",
+      "proLocked": "Actualizare la PRO pentru scoruri de vulnerabilitate a mărfurilor"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici.",

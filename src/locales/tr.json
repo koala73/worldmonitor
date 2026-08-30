@@ -294,6 +294,9 @@
         "defense_industrialBalance": "Savunma sanayi dengesi",
         "defense_supplierDiversity": "Silah tedarikçi çeşitliliği"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Silah tedarikçisi bağımlılığı ve askeri kapasite için PRO'ya yükseltin"
     }
   },
   "header": {
@@ -979,7 +982,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Maden ve rafineri ülke payları ile aşama başına konsantrasyon (HHI) için PRO'ya yükseltin"
     },
     "tradePolicy": {
       "tariffs": "Gümrük Tarifeleri",
@@ -2226,7 +2230,8 @@
       "dependentCommodities": "Bağımlı emtialar",
       "stateOk": "Güncel",
       "stateStale": "Eski girdi",
-      "stateInsufficient": "Yetersiz veri"
+      "stateInsufficient": "Yetersiz veri",
+      "proLocked": "Emtia kırılganlık puanlandırması için PRO'ya yükseltin"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hürmüz Ticaret Takipçisi</strong> Dünyanın en kritik petrol darboğazı olan Hürmüz Boğazı'ndan geçen AIS gemi takibi. Tanker sayılarını, aksama olaylarını ve haftalık akış değişikliklerini izler. Küresel petrol arzının yaklaşık %20'si buradan günlük geçmektedir.",

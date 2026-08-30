@@ -294,6 +294,9 @@
         "defense_industrialBalance": "Баланс на отбранителната индустрия",
         "defense_supplierDiversity": "Разнообразие на доставчиците на оръжия"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Надградете на PRO за зависимост на доставчиците на оръжия и военен капацитет"
     }
   },
   "header": {
@@ -979,7 +982,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Надградете на PRO за дялове на страната в мини и рафинерии с концентрация (HHI) по етап"
     },
     "tradePolicy": {
       "tariffs": "Митнически такси",
@@ -2226,7 +2230,8 @@
       "dependentCommodities": "Зависими суровини",
       "stateOk": "Актуално",
       "stateStale": "Остарели входни данни",
-      "stateInsufficient": "Недостатъчни данни"
+      "stateInsufficient": "Недостатъчни данни",
+      "proLocked": "Надградете на PRO за оценяване на уязвимостта на стоките"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Тракер на търговията в Хормуз</strong> Проследяване на AIS плавателни съдове в реално време през Ормузкия проток, най-критичната петролна точка на задръстване в света. Следи броя на танкери, събития на прекъсване и седмични промени в потоците. Приблизително 20% от световните доставки на петрол преминават тук ежедневно.",

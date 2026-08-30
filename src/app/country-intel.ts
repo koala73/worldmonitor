@@ -3,7 +3,6 @@ import { getSignalAggregator } from '@/app/lazy-services';
 import type { CountrySignalCluster } from '@/services/signal-aggregator';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getCountryDefenseIndustrialBase } from '@/services/defense-industrial';
-import { publicRpcFetch } from '@/services/public-rpc-fetch';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import type { TimelineEvent } from '@/components/CountryTimeline';
@@ -567,20 +566,29 @@ export class CountryIntelManager implements AppModule {
       const intelClient = new IntelligenceServiceClient(getRpcBaseUrl(), {
         fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
       });
-      const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
-        fetch: publicRpcFetch,
-      });
-      void getCountryDefenseIndustrialBase(code, militaryClient)
-        .then((industrial) => {
-          if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
-            this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(industrial.available ? industrial : null);
-          }
-        })
-        .catch(() => {
-          if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
-            this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(null);
-          }
+      // Defense industrial base is Pro (#6438). Skip the call outright for a
+      // free viewer rather than spending a guaranteed 401 — the panel renders
+      // its own upgrade card from the same predicate, and the section used to
+      // fetch through publicRpcFetch's anonymous `public=1` shape, which the
+      // gate removed.
+      if (hasPremiumAccess(getAuthState())) {
+        const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
+          fetch: premiumFetch,
         });
+        void getCountryDefenseIndustrialBase(code, militaryClient)
+          .then((industrial) => {
+            if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
+              this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(industrial.available ? industrial : null);
+            }
+          })
+          .catch(() => {
+            if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
+              this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(null);
+            }
+          });
+      } else {
+        this.ctx.countryBriefPage?.updateDefenseIndustrialBase?.(null);
+      }
       intelClient.getCountryFacts({ countryCode: code.toUpperCase() })
         .then((facts) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
@@ -953,6 +961,11 @@ export class CountryIntelManager implements AppModule {
   private fetchCommodityVulnerability(code: string): void {
     const page = this.ctx.countryBriefPage;
     const signal = page?.signal;
+    // Pro (#6449). fetchCountryVulnerabilities swallows its own errors into an
+    // upstreamUnavailable envelope, so an ungated free call would paint the
+    // card's generic "unavailable" state over what is really a paywall. Return
+    // without touching the body: the panel already mounted the upgrade card.
+    if (!hasPremiumAccess(getAuthState())) return;
     fetchCountryVulnerabilities(code, { signal }).then(resp => {
       if (signal?.aborted || this.ctx.countryBriefPage !== page || page?.getCode() !== code) return;
       page.updateCommodityVulnerabilities?.(resp);

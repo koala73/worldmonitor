@@ -292,6 +292,9 @@
         "defense_industrialBalance": "防衛産業バランス",
         "defense_supplierDiversity": "兵器サプライヤーの多様性"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "PRO にアップグレードして武器供給業者の依存関係と軍事能力を表示"
     }
   },
   "header": {
@@ -976,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "PRO にアップグレードして鉱山・精製所の国別シェアと段階別集中度(HHI)を表示"
     },
     "tradePolicy": {
       "tariffs": "関税",
@@ -2217,7 +2221,8 @@
       "dependentCommodities": "依存商品",
       "stateOk": "最新",
       "stateStale": "古い入力",
-      "stateInsufficient": "データ不足"
+      "stateInsufficient": "データ不足",
+      "proLocked": "PRO にアップグレードして商品脆弱性スコアを表示"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> 世界最重要の石油チョークポイントであるホルムズ海峡を通過するAIS船舶のライブ追跡。タンカー数、混乱イベント、週次フロー変化を監視。世界の石油供給量の約20%が毎日ここを通過。",

@@ -367,6 +367,9 @@
         "defense_industrialBalance": "Баланс оборонної промисловості",
         "defense_supplierDiversity": "Різноманітність постачальників озброєнь"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Перейдіть на PRO для залежності від постачальників озброєння та військової потужності"
     }
   },
   "header": {
@@ -1086,7 +1089,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Перейдіть на PRO для доступу до часток країн у видобутку та переробці з концентрацією (HHI) за етапом"
     },
     "tradePolicy": {
       "overview": "Overview",
@@ -2456,7 +2460,8 @@
       "dependentCommodities": "Залежні товари",
       "stateOk": "Актуально",
       "stateStale": "Застарілі вхідні дані",
-      "stateInsufficient": "Недостатньо даних"
+      "stateInsufficient": "Недостатньо даних",
+      "proLocked": "Перейдіть на PRO для оцінки вразливості сировини"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",

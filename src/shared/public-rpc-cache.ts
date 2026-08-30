@@ -1,8 +1,18 @@
+// Membership here is an ANONYMOUS-ACCESS decision, not a caching one: the
+// gateway consults isPublicSharedRpcRequest() before the tier gate, so a path
+// listed here is reachable with no credential whatever ENDPOINT_ENTITLEMENTS
+// says. Never add a path that is (or may become) tier-gated —
+// tests/public-shared-rpc-not-tier-gated.test.mts fails the build if the two
+// sets ever intersect.
+//
+// `/api/military/v1/get-defense-industrial-base` was removed when the arms-
+// supplier data became Pro (#6438): its `public=1` shape was a standing
+// bypass of the new gate. The CDN shield it bought is gone with it, which is
+// the accepted cost of the paywall.
 const PUBLIC_SHARED_RPC_PATHS = new Set([
   '/api/news/v1/list-feed-digest',
   '/api/displacement/v1/get-displacement-summary',
   '/api/forecast/v1/get-forecasts',
-  '/api/military/v1/get-defense-industrial-base',
 ]);
 
 const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
@@ -26,7 +36,6 @@ const DISPLACEMENT_PUBLIC_SEARCH = 'flow_limit=50&public=1';
 // 30-minute tick fell through to this RPC, which had no CDN shield — ~17.5k uncached
 // origin reads/day of a 188 KB payload (#5300).
 const FORECASTS_PUBLIC_SEARCH = 'public=1';
-const DEFENSE_INDUSTRIAL_QUERY_KEYS = new Set(['country_code', 'public']);
 
 function hasSingleValue(params: URLSearchParams, key: string): boolean {
   return params.getAll(key).length === 1;
@@ -76,12 +85,6 @@ function isNewsDigestShape(params: URLSearchParams): boolean {
     && NEWS_LANGUAGES.has(params.get('lang') ?? '');
 }
 
-function isDefenseIndustrialShape(params: URLSearchParams): boolean {
-  return hasOnlyKeys(params, DEFENSE_INDUSTRIAL_QUERY_KEYS)
-    && hasSingleValue(params, 'country_code')
-    && /^[A-Z]{2}$/.test(params.get('country_code') ?? '');
-}
-
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
   const normalizedMethod = method.toUpperCase();
   if (normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD') return false;
@@ -105,7 +108,6 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
 
   if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(params);
   if (pathname === '/api/forecast/v1/get-forecasts') return search === FORECASTS_PUBLIC_SEARCH;
-  if (pathname === '/api/military/v1/get-defense-industrial-base') return isDefenseIndustrialShape(params);
   return search === DISPLACEMENT_PUBLIC_SEARCH;
 }
 

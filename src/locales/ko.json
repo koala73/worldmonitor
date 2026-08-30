@@ -292,6 +292,9 @@
         "defense_industrialBalance": "방위 산업 균형",
         "defense_supplierDiversity": "무기 공급처 다양성"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "PRO로 업그레이드하여 무기 공급업체 의존성 및 군사 역량 확인"
     }
   },
   "header": {
@@ -976,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "PRO로 업그레이드하여 채광 및 제련소 국가별 점유율을 단계별 집중도(HHI)로 확인"
     },
     "tradePolicy": {
       "tariffs": "관세",
@@ -2217,7 +2221,8 @@
       "dependentCommodities": "의존 원자재",
       "stateOk": "현재",
       "stateStale": "오래된 입력",
-      "stateInsufficient": "데이터 부족"
+      "stateInsufficient": "데이터 부족",
+      "proLocked": "PRO로 업그레이드하여 원자재 취약성 점수 확인"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과.",

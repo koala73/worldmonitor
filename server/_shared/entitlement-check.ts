@@ -175,6 +175,20 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/scorecard/v1/get-five-factor-scorecard': 1,
   '/api/scorecard/v1/list-five-factor-scorecards': 1,
   '/api/scorecard/v1/get-bloc-scorecard': 1,
+  // Physical-vs-paper metals (#6436 series, #6448 index), mineral production
+  // concentration (#6439), arms-supplier dependency (#6438) and commodity
+  // supply vulnerability (#6449). Each shipped ungated because the issues
+  // scoped ingestion + exposure and never named an access tier; the audit that
+  // produced this block found all seven serving full payloads to an anonymous
+  // wms_ session. They belong beside their siblings above: the same seeded
+  // derived-analytics product the resilience and scorecard routes sell.
+  '/api/market/v1/get-physical-premiums': 1,
+  '/api/market/v1/get-physical-divergence-index': 1,
+  '/api/supply-chain/v1/get-mineral-production': 1,
+  '/api/military/v1/get-defense-industrial-base': 1,
+  '/api/supply-chain/v1/get-country-vulnerabilities': 1,
+  '/api/supply-chain/v1/get-chokepoint-dependencies': 1,
+  '/api/supply-chain/v1/list-vulnerability-rankings': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';

@@ -296,6 +296,9 @@
         "defense_industrialBalance": "Balance industrielle de défense",
         "defense_supplierDiversity": "Diversité des fournisseurs d'armes"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Passez à PRO pour les dépendances fournisseurs d'armements et la capacité militaire"
     }
   },
   "header": {
@@ -2001,7 +2004,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Passez à PRO pour les parts de pays de mines et de raffineries avec concentration (HHI) par étape"
     },
     "positiveNewsFeed": {
       "noStories": "Aucune histoire dans cette catégorie pour le moment"
@@ -2235,7 +2239,8 @@
       "dependentCommodities": "Matières premières dépendantes",
       "stateOk": "À jour",
       "stateStale": "Donnée d’entrée obsolète",
-      "stateInsufficient": "Données insuffisantes"
+      "stateInsufficient": "Données insuffisantes",
+      "proLocked": "Passez à PRO pour l'évaluation de vulnérabilité des matières premières"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Suivi commercial d'Ormuz</strong> Suivi AIS des navires en temps réel à travers le détroit d'Ormuz, le goulet d'étranglement pétrolier le plus critique au monde. Surveille le nombre de pétroliers, les événements de perturbation et les variations hebdomadaires des flux. Environ 20 % de l'approvisionnement mondial en pétrole y transite quotidiennement.",

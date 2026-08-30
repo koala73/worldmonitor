@@ -302,6 +302,9 @@
         "defense_industrialBalance": "توازن الصناعة الدفاعية",
         "defense_supplierDiversity": "تنوع موردي الأسلحة"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "قم بالترقية إلى PRO لعرض تبعية الموردين العسكريين والقدرات العسكرية"
     }
   },
   "header": {
@@ -2004,7 +2007,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "قم بالترقية إلى PRO لعرض حصص الدول من المناجم والمصافي مع مؤشر التركيز (HHI) حسب المرحلة"
     },
     "positiveNewsFeed": {
       "noStories": "لا توجد قصص في هذه الفئة بعد"
@@ -2262,7 +2266,8 @@
       "dependentCommodities": "السلع المعتمدة",
       "stateOk": "حالي",
       "stateStale": "مدخلات قديمة",
-      "stateInsufficient": "بيانات غير كافية"
+      "stateInsufficient": "بيانات غير كافية",
+      "proLocked": "قم بالترقية إلى PRO لعرض درجات الضعف في السلع الأساسية"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>متتبع تجارة هرمز</strong> تتبع مباشر لسفن AIS عبر مضيق هرمز، أهم نقطة اختناق نفطية في العالم. يراقب أعداد الناقلات وأحداث التعطيل والتغيرات الأسبوعية في التدفقات. حوالي 20% من إمدادات النفط العالمية تعبر هنا يومياً.",

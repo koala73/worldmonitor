@@ -38,6 +38,77 @@ const ROOT = new URL('..', import.meta.url).pathname;
 const PREMIUM_PATHS_SRC = join(ROOT, 'src/shared/premium-paths.ts');
 const GEN_CLIENT_DIR = join(ROOT, 'src/generated/client');
 const SRC_DIR = join(ROOT, 'src');
+const PREMIUM_FETCH_SRC = join(ROOT, 'src/services/premium-fetch.ts');
+
+/**
+ * Adapters that satisfy the rule WITHOUT being `premiumFetch` itself, because
+ * they delegate premium-path traffic to it.
+ *
+ * `proFreshRpcFetch` is the only one: MarketServiceClient needs an adapter that
+ * ALSO force-attaches a Bearer on the Pro-fresh cache allowlist (paths that
+ * stay free but refresh faster for Pro), so it cannot simply be premiumFetch.
+ * Once the physical-metals routes became premium (#6436/#6448) that same client
+ * gained genuinely gated methods, and this lint failed on a call that is in
+ * fact authenticated.
+ *
+ * Naming an adapter here is not enough — assertDelegatingAdapters() below reads
+ * premium-fetch.ts and fails if the function stops routing premium targets to
+ * premiumFetch. Without that check this constant would be a hole in the lint:
+ * anyone could silence a real violation by renaming their adapter.
+ */
+const DELEGATING_ADAPTERS = new Set(['proFreshRpcFetch']);
+
+/**
+ * Prove each DELEGATING_ADAPTERS entry is a real function in premium-fetch.ts
+ * whose body calls `premiumFetch(...)` under an `isPremiumRpcTarget(...)`
+ * guard. Structural, not a substring scan, so a body that merely mentions the
+ * names in a comment does not pass.
+ */
+function assertDelegatingAdapters() {
+  const src = readFileSync(PREMIUM_FETCH_SRC, 'utf8');
+  const ast = ts.createSourceFile(PREMIUM_FETCH_SRC, src, ts.ScriptTarget.Latest, true);
+  const seen = new Set();
+
+  function visit(node) {
+    if (ts.isFunctionDeclaration(node) && node.name && DELEGATING_ADAPTERS.has(node.name.text) && node.body) {
+      const bodyText = node.body.getText(ast);
+      let guarded = false;
+      function findGuard(n) {
+        if (
+          ts.isIfStatement(n)
+          && n.expression.getText(ast).includes('isPremiumRpcTarget')
+          && n.thenStatement.getText(ast).includes('premiumFetch(')
+        ) {
+          guarded = true;
+        }
+        ts.forEachChild(n, findGuard);
+      }
+      findGuard(node.body);
+      if (!guarded) {
+        throw new Error(
+          `${relative(ROOT, PREMIUM_FETCH_SRC)}: ${node.name.text} is listed in `
+          + `DELEGATING_ADAPTERS but no longer routes isPremiumRpcTarget() traffic to `
+          + `premiumFetch(). Every ServiceClient built with it is now unauthenticated on `
+          + `its premium methods. Restore the delegation or drop the adapter from the set.\n\n`
+          + `Body seen:\n${bodyText.slice(0, 400)}`,
+        );
+      }
+      seen.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+
+  for (const name of DELEGATING_ADAPTERS) {
+    if (!seen.has(name)) {
+      throw new Error(
+        `DELEGATING_ADAPTERS names "${name}" but ${relative(ROOT, PREMIUM_FETCH_SRC)} exports no such `
+        + `function declaration. Remove the stale entry — a name that resolves to nothing silences `
+        + `every violation that happens to use it.`,
+      );
+    }
+  }
+}
 
 function walk(dir, fn) {
   for (const name of readdirSync(dir)) {
@@ -261,6 +332,7 @@ function checkFile(filePath, clientClassMap, premiumPaths) {
 
     const fetchText = getFetchOptionText(inst.optionsArg);
     if (fetchText === 'premiumFetch') continue;
+    if (DELEGATING_ADAPTERS.has(fetchText)) continue;
 
     violations.push({
       file: filePath,
@@ -277,6 +349,8 @@ function checkFile(filePath, clientClassMap, premiumPaths) {
 }
 
 async function main() {
+  // Before trusting any adapter exemption, prove the exemption is real.
+  assertDelegatingAdapters();
   const premiumPaths = await loadPremiumPaths();
   const clientClassMap = loadClientClassMap();
   const files = collectSourceFiles();

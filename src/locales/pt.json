@@ -1613,7 +1613,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Upgrade para PRO para participação de países em minas e refinarias com concentração (HHI) por etapa."
     },
     "positiveNewsFeed": {
       "noStories": "Ainda não há histórias nesta categoria"
@@ -1856,7 +1857,8 @@
       "dependentCommodities": "Matérias-primas dependentes",
       "stateOk": "Atual",
       "stateStale": "Entrada desatualizada",
-      "stateInsufficient": "Dados insuficientes"
+      "stateInsufficient": "Dados insuficientes",
+      "proLocked": "Upgrade para PRO para pontuação de vulnerabilidade de commodities"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Rastreamento AIS de navios em tempo real através do Estreito de Ormuz, o ponto de estrangulamento petrolífero mais crítico do mundo. Monitoriza contagens de petroleiros, eventos de perturbação e alterações semanais de fluxo. Aproximadamente 20% do fornecimento global de petróleo transita aqui diariamente.",
@@ -3461,6 +3463,9 @@
         "defense_industrialBalance": "Equilíbrio industrial de defesa",
         "defense_supplierDiversity": "Diversidade de fornecedores de armamentos"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Upgrade para PRO para dependência de fornecedores de armas e capacidade militar"
     }
   },
   "preferences": {

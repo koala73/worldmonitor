@@ -296,6 +296,9 @@
         "defense_industrialBalance": "Balanza industrial de defensa",
         "defense_supplierDiversity": "Diversidad de proveedores de armamento"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Actualiza a PRO para ver dependencias de proveedores de armamento y capacidad militar"
     }
   },
   "header": {
@@ -970,7 +973,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Actualiza a PRO para ver participación de países en minas y refinerías con concentración (HHI) por etapa."
     },
     "tradePolicy": {
       "tariffs": "Aranceles",
@@ -2235,7 +2239,8 @@
       "dependentCommodities": "Materias primas dependientes",
       "stateOk": "Actual",
       "stateStale": "Entrada obsoleta",
-      "stateInsufficient": "Datos insuficientes"
+      "stateInsufficient": "Datos insuficientes",
+      "proLocked": "Actualiza a PRO para ver puntuaciones de vulnerabilidad de materias primas"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Seguimiento AIS de buques en tiempo real a través del estrecho de Ormuz, el punto de estrangulamiento petrolero más crítico del mundo. Monitorea recuentos de petroleros, eventos de interrupción y cambios semanales de flujo. Aproximadamente el 20% del suministro mundial de petróleo transita aquí diariamente.",

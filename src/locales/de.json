@@ -294,6 +294,9 @@
         "defense_industrialBalance": "Verteidigungsindustrielle Bilanz",
         "defense_supplierDiversity": "Waffenlieferanten-Diversität"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Upgraden Sie auf PRO für Waffenlieferanten-Abhängigkeiten und militärische Kapazität"
     }
   },
   "header": {
@@ -967,7 +970,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Upgraden Sie auf PRO für Anteile von Bergbau- und Raffinerieländern mit Konzentration (HHI) nach Stufe"
     },
     "tradePolicy": {
       "tariffs": "Zölle",
@@ -2226,7 +2230,8 @@
       "dependentCommodities": "Abhängige Rohstoffe",
       "stateOk": "Aktuell",
       "stateStale": "Veraltete Eingabe",
-      "stateInsufficient": "Unzureichende Daten"
+      "stateInsufficient": "Unzureichende Daten",
+      "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz-Handelstracker</strong> AIS-Schiffsverfolgung in Echtzeit durch die Straße von Hormuz, den kritischsten Öl-Engpass der Welt. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Flussänderungen. Etwa 20 % der globalen Ölversorgung passiert hier täglich.",

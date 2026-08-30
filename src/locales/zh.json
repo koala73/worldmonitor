@@ -292,6 +292,9 @@
         "defense_industrialBalance": "国防工业平衡",
         "defense_supplierDiversity": "武器供应商多样性"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "升级至PRO以查看武器供应商依赖关系和军事能力"
     }
   },
   "header": {
@@ -976,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "升级至PRO以查看矿山和炼油厂按阶段分布的国家份额和浓度(HHI)"
     },
     "tradePolicy": {
       "tariffs": "关税",
@@ -2217,7 +2221,8 @@
       "dependentCommodities": "依赖商品",
       "stateOk": "当前",
       "stateStale": "输入已过期",
-      "stateInsufficient": "数据不足"
+      "stateInsufficient": "数据不足",
+      "proLocked": "升级至PRO以查看商品脆弱性评分"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。",

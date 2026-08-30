@@ -292,6 +292,9 @@
         "defense_industrialBalance": "สมดุลอุตสาหกรรมป้องกันประเทศ",
         "defense_supplierDiversity": "ความหลากหลายของผู้จัดหาอาวุธ"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "อัปเกรดเป็น PRO เพื่อดูการพึ่งพาผู้จัดจำหน่ายอาวุธและความสามารถทางการทหาร"
     }
   },
   "header": {
@@ -976,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "อัปเกรดเป็น PRO เพื่อดูส่วนแบ่งประเทศของเหมืองและโรงกลั่น พร้อมความเข้มข้น (HHI) ตามขั้นตอน"
     },
     "tradePolicy": {
       "tariffs": "ภาษีศุลกากร",
@@ -2217,7 +2221,8 @@
       "dependentCommodities": "สินค้าโภคภัณฑ์ที่พึ่งพา",
       "stateOk": "ปัจจุบัน",
       "stateStale": "ข้อมูลนำเข้าล้าสมัย",
-      "stateInsufficient": "ข้อมูลไม่เพียงพอ"
+      "stateInsufficient": "ข้อมูลไม่เพียงพอ",
+      "proLocked": "อัปเกรดเป็น PRO เพื่อดูคะแนนความเสี่ยงสินค้าโภคนัย"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>ตัวติดตามการค้าฮอร์มุซ</strong> การติดตามเรือ AIS แบบสดผ่านช่องแคบฮอร์มุซ จุดคอขวดน้ำมันที่สำคัญที่สุดของโลก ตรวจสอบจำนวนเรือบรรทุกน้ำมัน เหตุการณ์หยุดชะงัก และการเปลี่ยนแปลงการไหลรายสัปดาห์ อุปทานน้ำมันโลกประมาณ 20% ผ่านที่นี่ทุกวัน",

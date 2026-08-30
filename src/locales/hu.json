@@ -363,6 +363,9 @@
         "defense_industrialBalance": "Védelmi ipari egyensúly",
         "defense_supplierDiversity": "Fegyverbeszállítók sokszínűsége"
       }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Frissítsen PRO verzióra a fegyverszállító függőségek és katonai kapacitások megtekintéséhez"
     }
   },
   "header": {
@@ -1080,7 +1083,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Frissítsen PRO verzióra a bányák és finomítók országonkénti részesedésének és koncentrációjának (HHI) megtekintéséhez szakaszonként"
     },
     "tradePolicy": {
       "overview": "Áttekintés",
@@ -2433,7 +2437,8 @@
       "dependentCommodities": "Függő áruk",
       "stateOk": "Aktuális",
       "stateStale": "Elavult bemenet",
-      "stateInsufficient": "Elégtelen adat"
+      "stateInsufficient": "Elégtelen adat",
+      "proLocked": "Frissítsen PRO verzióra az árucikk-sebezhetőségi pontszám megtekintéséhez"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Élő AIS hajófigyelés a Hormuzi-szoroson keresztül, a világ legkritikusabb olajszűk keresztén. Figyelemmel kíséri a tartályhajó számát, szétszóródási eseményeket és heti áramlásváltozásokat. A globális olajkínálat hozzávetőleg 20%-a napi szinten érkezik itt.",

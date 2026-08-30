@@ -44,6 +44,12 @@ const PUBLIC_INSIDER_TRANSACTIONS_TARGET =
   'https://api.worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL';
 const PRO_FRESH_MARKET_TARGET =
   'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL';
+// A MarketService method that is genuinely PREMIUM (tier-gated), not merely
+// Pro-fresh. MarketServiceClient wraps proFreshRpcFetch rather than
+// premiumFetch, so this path exercises the branch that keeps browser Pro users
+// authenticated on the physical-metals routes (#6436/#6448).
+const PREMIUM_MARKET_TARGET =
+  'https://api.worldmonitor.app/api/market/v1/get-physical-premiums';
 
 // ---------------------------------------------------------------------------
 // Suite
@@ -232,6 +238,20 @@ describe('premiumFetch', () => {
       null,
       'other methods on the MarketService client must retain anonymous-session auth',
     );
+  });
+
+  it('Pro-fresh market adapter attaches Clerk JWT on tier-gated market paths (#6436/#6448)', async () => {
+    // Regression guard for the shape of the #3797 chat-analyst bug arriving
+    // through a different door. MarketServiceClient is constructed with
+    // proFreshRpcFetch; before the physical-metals gate that adapter only
+    // recognised PRO_FRESH_CACHE_RPC_PATHS, so adding a market route to
+    // PREMIUM_RPC_PATHS alone would have left every browser Pro user without a
+    // tester key sending these two RPCs unauthenticated — a guaranteed 401 on
+    // a subscription they pay for.
+    setup({ testerKey: '', clerkToken: 'premium-market-token' });
+
+    await proFreshRpcFetch(PREMIUM_MARKET_TARGET);
+    assert.equal(sentHeaders(0).get('Authorization'), 'Bearer premium-market-token');
   });
 
   it('public insider transactions path: Clerk JWT NOT attached', async () => {

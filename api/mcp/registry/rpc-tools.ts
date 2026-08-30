@@ -1086,10 +1086,12 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
       const countryCode = argStr(params.country_code).trim().toUpperCase();
-      // The MCP gate has already authenticated and metered this call. Fetch the
-      // caller-invariant country snapshot through its bounded public CDN shape
-      // so MCP traffic does not parse both global Redis snapshots per request.
-      const url = `${base}/api/military/v1/get-defense-industrial-base?country_code=${encodeURIComponent(countryCode)}&public=1`;
+      // The MCP gate has already authenticated and metered this call, and the
+      // internal-MCP HMAC headers carry that verdict downstream. The `public=1`
+      // CDN shape this used to request is gone (#6438): it was an anonymous
+      // bypass of the route's new tier gate, so keeping it here would have let
+      // the tool reach the data by a path the gateway no longer checks.
+      const url = `${base}/api/military/v1/get-defense-industrial-base?country_code=${encodeURIComponent(countryCode)}`;
       const response = await fetch(url, {
         headers: buildMcpDownstreamHeaders(base, execution, {
           'User-Agent': 'worldmonitor-mcp-edge/1.0',
