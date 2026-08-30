@@ -254,7 +254,94 @@ export function classify(rule) {
   return hit ? hit[1] : null;
 }
 
-export { MAP, SITE_MAP };
+export { MAP, SITE_MAP, SITE_BASELINE };
+
+/**
+ * Compare observed (file::predicate) gate counts against the pinned baseline.
+ *
+ * Pure so the negative test can drive it directly. This is the guard that
+ * catches a SECOND gate of the SAME kind in the SAME file — the case (file,
+ * predicate) identity alone cannot see, demonstrated in review by adding an
+ * unrelated hasPremiumAccess() call to a file already mapped for it.
+ */
+export function diffSiteCounts(actual, baseline = SITE_BASELINE) {
+  const drift = [];
+  for (const k of new Set([...Object.keys(baseline), ...Object.keys(actual)])) {
+    const was = baseline[k] ?? 0, now = actual[k] ?? 0;
+    if (was !== now) drift.push({ key: k, was, now });
+  }
+  return drift;
+}
+
+// Site COUNT baseline. (file, predicate) identity still cannot tell a second
+// gate of the same kind in the same file from the first — review demonstrated
+// that by adding an unrelated hasPremiumAccess() call to panel-layout.ts and
+// watching the sweep stay green. Pinning the expected count closes it: any
+// added or removed gate changes a count and must be re-baselined deliberately.
+const SITE_BASELINE = {
+  "api/mcp-proxy.ts::isCallerPremium": 1,
+  "api/mcp/skill-extension/generated.ts::tier": 1,
+  "api/me/entitlement.ts::isCallerPremium": 1,
+  "api/notification-channels.ts::tier": 1,
+  "api/v2/shipping/webhooks/[subscriberId].ts::isCallerPremium": 1,
+  "api/v2/shipping/webhooks/[subscriberId]/[action].ts::isCallerPremium": 1,
+  "api/widget-agent.ts::tier": 1,
+  "convex/alertRules.ts::tier": 1,
+  "convex/apiKeys.ts::apiAccess": 1,
+  "convex/apiPlanLimitUsage.ts::apiAccess": 1,
+  "convex/apiPlanLimitUsage.ts::mcpAccess": 1,
+  "convex/apiPlanLimitUsage.ts::tier": 1,
+  "convex/companyMonitoring/_shared.ts::tier": 1,
+  "convex/companyMonitoring/accounts.ts::tier": 1,
+  "convex/followedCountries.ts::tier": 2,
+  "convex/http.ts::apiAccess": 1,
+  "convex/http.ts::mcpAccess": 1,
+  "convex/http.ts::tier": 3,
+  "convex/mcpProTokens.ts::tier": 1,
+  "convex/notificationChannels.ts::tier": 1,
+  "convex/payments/billing.ts::tier": 1,
+  "server/_shared/direct-llm-quota.ts::tier": 1,
+  "server/_shared/embed-entitlement.ts::apiAccess": 1,
+  "server/_shared/entitlement-check.ts::tier": 1,
+  "server/_shared/premium-check.ts::apiAccess": 1,
+  "server/_shared/premium-check.ts::isCallerPremium": 1,
+  "server/_shared/premium-check.ts::tier": 2,
+  "server/_shared/pro-entitlement.ts::tier": 1,
+  "server/_shared/pro-mcp-gate.ts::mcpAccess": 2,
+  "server/_shared/pro-mcp-gate.ts::tier": 1,
+  "server/gateway.ts::apiAccess": 3,
+  "server/gateway.ts::tier": 5,
+  "server/worldmonitor/economic/v1/get-national-debt.ts::isCallerPremium": 1,
+  "server/worldmonitor/intelligence/v1/deduct-situation.ts::isCallerPremium": 1,
+  "server/worldmonitor/intelligence/v1/get-country-intel-brief.ts::isCallerPremium": 1,
+  "server/worldmonitor/military/v1/list-military-bases.ts::tier": 1,
+  "server/worldmonitor/news/v1/summarize-article.ts::requiresPremium": 2,
+  "server/worldmonitor/sanctions/v1/list-sanctions-pressure.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-bypass-options.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-country-chokepoint-index.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-country-products.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-multi-sector-cost-shock.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-route-explorer-lane.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-route-impact.ts::isCallerPremium": 1,
+  "server/worldmonitor/supply-chain/v1/get-sector-dependency.ts::isCallerPremium": 1,
+  "server/worldmonitor/trade/v1/get-tariff-trends.ts::isCallerPremium": 1,
+  "server/worldmonitor/trade/v1/list-comtrade-flows.ts::isCallerPremium": 1,
+  "src/app/data-loader.ts::hasPremiumAccess": 10,
+  "src/app/event-handlers.ts::isProUser": 2,
+  "src/app/panel-layout.ts::hasPremiumAccess": 1,
+  "src/components/RegionalIntelligenceBoard.ts::hasPremiumAccess": 1,
+  "src/components/UnifiedSettings.ts::isProUser": 1,
+  "src/services/analysis-framework-store.ts::hasPremiumAccess": 1,
+  "src/services/correlation-engine/engine.ts::hasPremiumAccess": 1,
+  "src/services/economic/index.ts::hasPremiumAccess": 1,
+  "src/services/entitlements.ts::tier": 1,
+  "src/services/gates/export-resolver.ts::dataExport": 4,
+  "src/services/gates/export.ts::dataExport": 1,
+  "src/services/sanctions-pressure.ts::hasPremiumAccess": 1,
+  "src/services/supply-chain/index.ts::hasPremiumAccess": 8,
+  "src/settings-window.ts::isProUser": 1
+};
 
 const all = [...rules, ...sites];
 const caps = new Map(); const exclusions = []; const unmapped = [];
@@ -266,10 +353,15 @@ for (const r of all) {
   caps.get(v.cap).rules.push({ rule: r.rule, detail: r.detail, note: v.note });
 }
 
+const actualCounts = {};
+for (const st of sites) { const k = `${st.file}::${st.pred}`; actualCounts[k] = (actualCounts[k] || 0) + 1; }
+const countDrift = diffSiteCounts(actualCounts);
+
 const payload = {
   _generated: 'scripts/generate-entitlement-crosswalk.mjs — build artifact; do not edit',
   commit: (() => { try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return null; } })(),
   missingSources,
+  countDrift,
   totals: { rawRules: all.length, capabilities: caps.size, exclusions: exclusions.length, unmappedGates: unmapped.length },
   capabilities: [...caps.values()].sort((a, b) => a.id.localeCompare(b.id)),
   exclusions,
@@ -281,7 +373,12 @@ const isCli = argv[1] && fileURLToPath(import.meta.url) === argv[1];
 if (!isCli) { /* imported as a library */ }
 else if (process.argv.includes('--check')) {
   const { rawRules, capabilities, exclusions: ex, unmappedGates } = payload.totals;
-  console.log(`raw rules ${rawRules} · capabilities ${capabilities} · exclusions ${ex} · unmappedGates ${unmappedGates}`);
+  console.log(`raw rules ${rawRules} · capabilities ${capabilities} · exclusions ${ex} · unmappedGates ${unmappedGates} · countDrift ${countDrift.length}`);
+  if (countDrift.length) {
+    console.error('\nGATE COUNT DRIFT — a gate was added or removed. Classify it, then re-baseline with --rebaseline:');
+    for (const d of countDrift) console.error(`  ${d.key}: expected ${d.was}, found ${d.now}`);
+    process.exit(1);
+  }
   if (missingSources.length) {
     console.error(`\nMISSING SOURCES (${missingSources.length}) — this tree does not match the generator's expectations:`);
     for (const m of missingSources) console.error(`  ${m}`);
@@ -296,6 +393,15 @@ else if (process.argv.includes('--check')) {
   process.exit(0);
 }
 
+else if (process.argv.includes('--rebaseline')) {
+  const counts = {};
+  for (const st of sites) { const k = `${st.file}::${st.pred}`; counts[k] = (counts[k] || 0) + 1; }
+  const self = fileURLToPath(import.meta.url);
+  const body = readFileSync(self, 'utf8');
+  const literal = JSON.stringify(counts, Object.keys(counts).sort(), 2);
+  writeFileSync(self, body.replace(/const SITE_BASELINE = [\s\S]*?;\n/, `const SITE_BASELINE = ${literal};\n`));
+  console.log(`re-baselined ${Object.keys(counts).length} (file, predicate) groups`);
+}
 else {
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(payload, null, 2) + '\n');
