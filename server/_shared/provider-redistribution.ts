@@ -23,3 +23,14 @@ export function requiresRedistributableProviders(request: Request | undefined): 
     ?? '';
   return apiKey.length > 0 && !apiKey.startsWith('wms_');
 }
+
+/**
+ * Direct RPC responses are programmatic surfaces even when the caller presents
+ * a browser-session token. Anonymous clients can mint and replay `wms_` tokens,
+ * so that prefix cannot grant access to display-only provider values.
+ */
+export function requiresRedistributableProvidersForDirectRpc(
+  request: Request | undefined,
+): boolean {
+  return request !== undefined;
+}

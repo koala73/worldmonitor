@@ -397,7 +397,7 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
  *   dependsOn?: string[],    // labels that MUST run earlier in the array
  *   requiredEnv?: string[],  // deployment config required before any section runs
  * }>} sections
- * @param {{ maxBundleMs?: number, prefetchFreshness?: boolean }} [opts]
+ * @param {{ maxBundleMs?: number, prefetchFreshness?: boolean, onTerminalComplete?: () => Promise<void> | void }} [opts]
  */
 /**
  * Env var carrying the per-member kill switch for a bundle, e.g.
@@ -416,6 +416,9 @@ export function disabledMembersFromEnv(label, env = process.env) {
 }
 
 export async function runBundle(label, sections, opts = {}) {
+  if (opts.onTerminalComplete != null && typeof opts.onTerminalComplete !== 'function') {
+    throw new Error(`[Bundle:${label}] onTerminalComplete must be a function`);
+  }
   for (const section of sections) {
     if (
       section.canonicalKey
@@ -753,5 +756,22 @@ export async function runBundle(label, sections, opts = {}) {
     // silence is that the per-section line and summary now say so.
     console.log(`[Bundle:${label}] ${publishBlocked} publish-blocked section(s) preserved last-good and wrote no seed keys — exiting 0; the freshness monitor owns the alarm`);
   }
-  process.exit(exitsNonZero ? 1 : 0);
+  let terminalHookFailed = false;
+  // Reaching this point means the tick completed and emitted its terminal
+  // summary, even when a child failed or due work was deferred. Scheduler
+  // cursors must advance for those completed invocations so a persistently
+  // failing lead member cannot monopolize the next tick. Early throws and
+  // interrupted processes never reach this hook, so their leased turn remains
+  // available for safe replay after expiry.
+  if (opts.onTerminalComplete) {
+    try {
+      await opts.onTerminalComplete();
+    } catch (error) {
+      terminalHookFailed = true;
+      console.error(
+        `[Bundle:${label}] terminal completion hook failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  process.exit(exitsNonZero || terminalHookFailed ? 1 : 0);
 }

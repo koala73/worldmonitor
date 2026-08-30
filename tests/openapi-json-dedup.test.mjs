@@ -11,7 +11,10 @@ import {
   dedupeSharedResponseHeaders,
   ensureInlineTypedInput,
 } from '../scripts/openapi-dedup-responses.mjs';
-import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
+import {
+  dedupeSharedChinaProvenanceSchemas,
+  dedupeSharedSchemaSubtrees,
+} from '../scripts/openapi-dedup-schemas.mjs';
 import { buildBundle } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
@@ -136,6 +139,46 @@ function resolveSharedChinaProvenanceRefs(spec) {
   };
   visit(spec);
   return spec;
+}
+
+function resolvePointer(spec, ref) {
+  assert.match(ref, /^#\//, `expected a document-local ref, got ${ref}`);
+  return ref
+    .slice(2)
+    .split('/')
+    .reduce(
+      (value, segment) => value[segment.replaceAll('~1', '/').replaceAll('~0', '~')],
+      spec,
+    );
+}
+
+function restoreGeneratedSchemaRefs(before, after, transformedRoot) {
+  if (
+    before
+    && typeof before === 'object'
+    && !Array.isArray(before)
+    && after
+    && typeof after === 'object'
+    && !Array.isArray(after)
+    && typeof after.$ref === 'string'
+    && before.$ref !== after.$ref
+  ) {
+    return restoreGeneratedSchemaRefs(before, resolvePointer(transformedRoot, after.$ref), transformedRoot);
+  }
+  if (Array.isArray(before)) {
+    assert.ok(Array.isArray(after));
+    return before.map((value, index) => restoreGeneratedSchemaRefs(value, after[index], transformedRoot));
+  }
+  if (before && typeof before === 'object') {
+    assert.ok(after && typeof after === 'object' && !Array.isArray(after));
+    assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort());
+    return Object.fromEntries(Object.entries(before).map(([key, value]) => [
+      key,
+      restoreGeneratedSchemaRefs(value, after[key], transformedRoot),
+    ]));
+  }
+  assert.equal(after, before);
+  return after;
 }
 
 describe('dedupeErrorResponses (fixture)', () => {
@@ -338,6 +381,53 @@ describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
   });
 });
 
+describe('dedupeSharedSchemaSubtrees', () => {
+  it('reuses only byte-identical Schema Objects and expands back to the original document', () => {
+    const repeated = {
+      type: 'string',
+      format: 'date-time',
+      description: 'An exact timestamp used across multiple response fields.'.repeat(3),
+    };
+    const original = {
+      openapi: '3.1.0',
+      components: {
+        schemas: {
+          A: { type: 'object', properties: { at: structuredClone(repeated) } },
+          B: { type: 'object', properties: { at: structuredClone(repeated) } },
+          D: { type: 'object', properties: { at: structuredClone(repeated) } },
+          C: { type: 'object', properties: { at: { ...structuredClone(repeated), nullable: true } } },
+        },
+      },
+    };
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSchemaSubtrees(transformed);
+
+    assert.equal(stats.groups, 1);
+    assert.equal(stats.replacedRefs, 2);
+    assert.ok(stats.bytesFreed >= 256);
+    assert.deepEqual(
+      restoreGeneratedSchemaRefs(original, transformed, transformed),
+      original,
+    );
+    assert.equal(transformed.components.schemas.C.properties.at.nullable, true);
+  });
+
+  it('is lossless on the real post-China-dedup schema graph', () => {
+    const original = loadUnifiedOpenApiSpec();
+    dedupeSharedChinaProvenanceSchemas(original);
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSchemaSubtrees(transformed);
+
+    assert.ok(stats.groups >= 3, `expected several repeated-schema groups, got ${stats.groups}`);
+    assert.ok(stats.replacedRefs >= 10, `expected repeated schema refs, got ${stats.replacedRefs}`);
+    assert.ok(stats.bytesFreed >= 10_000, `expected at least 10 KB headroom, got ${stats.bytesFreed}`);
+    assert.deepEqual(
+      restoreGeneratedSchemaRefs(original, transformed, transformed),
+      original,
+    );
+  });
+});
+
 describe('ensureInlineTypedInput (fixture)', () => {
   it('inlines one $ref parameter only when the operation has no other typed input', () => {
     const spec = {
@@ -515,6 +605,7 @@ describe('build-openapi-json wiring', () => {
     assert.match(src, /dedupeErrorResponses\(spec\)/);
     assert.match(src, /dedupeSharedResponseHeaders\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
+    assert.match(src, /dedupeSharedSchemaSubtrees\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
     assert.match(src, /ensureInlineTypedInput\(spec\)/);
     assert.match(src, /injectDeprecationPolicyMetadata\(spec\)/);

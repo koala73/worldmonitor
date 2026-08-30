@@ -133,6 +133,8 @@ function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
           // Must clear EVERY seed's minRecordCount floor (sec-cik-map: 5000)
           // so only the China entry under test can degrade `overall`.
           recordCount: 1_000_000,
+          rankableRecordCount: 1_000_000,
+          redistributionPolicyVersion: 1,
           sourceVersion: key === 'seed-meta:resilience:intervals'
             ? RESILIENCE_INTERVAL_SOURCE_VERSION
             : 'test',

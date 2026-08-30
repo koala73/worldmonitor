@@ -267,8 +267,10 @@ describe('BGS fill', () => {
     const commodities = aggregateMineralProduction(merged);
     assert.ok(commodities.uranium?.stages.mine, 'uranium mine stage should come from BGS');
     assert.equal(commodities.uranium.stages.mine.countries[0].iso2, 'KZ');
+    assert.deepEqual(commodities.uranium.stages.mine.sources, ['bgs']);
     assert.deepEqual(commodities.uranium.sources, ['bgs']);
     assert.ok(commodities.germanium?.stages.mine || commodities.germanium?.stages.refinery);
+    assert.deepEqual(commodities.cobalt.stages.mine.sources, ['usgs-mcs']);
     assert.ok(commodities.cobalt.sources.includes('usgs-mcs'));
     assert.ok(!commodities.cobalt.sources.includes('bgs'));
   });

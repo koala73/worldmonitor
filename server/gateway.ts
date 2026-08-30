@@ -389,9 +389,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-bypass-options': 'slow-browser',
   '/api/supply-chain/v1/get-country-cost-shock': 'slow-browser',
   '/api/supply-chain/v1/get-country-products': 'slow-browser',
-  '/api/supply-chain/v1/get-country-vulnerabilities': 'daily',
-  '/api/supply-chain/v1/get-chokepoint-dependencies': 'daily',
-  '/api/supply-chain/v1/list-vulnerability-rankings': 'daily',
+  // These responses differ by caller redistribution rights. The gateway cache
+  // key does not vary on session/API-key audience, so they must never be stored.
+  '/api/supply-chain/v1/get-country-vulnerabilities': 'no-store',
+  '/api/supply-chain/v1/get-chokepoint-dependencies': 'no-store',
+  '/api/supply-chain/v1/list-vulnerability-rankings': 'no-store',
   '/api/supply-chain/v1/get-multi-sector-cost-shock': 'slow-browser',
   '/api/supply-chain/v1/get-sector-dependency': 'slow-browser',
   '/api/supply-chain/v1/get-route-explorer-lane': 'slow-browser',

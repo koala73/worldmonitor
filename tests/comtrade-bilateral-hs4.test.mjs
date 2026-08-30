@@ -339,7 +339,7 @@ describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain
 describe('Comtrade reporter-code source-of-truth guard', () => {
   function isRuntimeAuditFixture(name) {
     return name === '_bundle-runner-test-run.mjs'
-      || /^_bundle-runner-test-run-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.mjs$/u.test(name)
+      || /^_bundle-runner-test-(?:run|hook)-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.mjs$/u.test(name)
       || name.startsWith('_bundle-fixture-');
   }
 
@@ -395,6 +395,10 @@ describe('Comtrade reporter-code source-of-truth guard', () => {
   it('ignores randomized bundle-runner fixtures created by concurrent tests', () => {
     assert.equal(
       isRuntimeAuditFixture('_bundle-runner-test-run-9cd5c29e-95ba-4eb9-839b-662729b61564.mjs'),
+      true,
+    );
+    assert.equal(
+      isRuntimeAuditFixture('_bundle-runner-test-hook-20976ec7-7efa-42a6-acb4-e87318deca32.mjs'),
       true,
     );
     assert.equal(isRuntimeAuditFixture('_bundle-runner-test-run-not-a-uuid.mjs'), false);

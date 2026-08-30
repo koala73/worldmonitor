@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { runBundle, DAY } from './_bundle-runner.mjs';
 import {
+  acknowledgeStaticRefHeavyTurn,
   claimStaticRefHeavyTurn,
   orderStaticRefHeavySections,
 } from './_static-ref-heavy-order.mjs';
@@ -73,14 +74,14 @@ const DAILY_SECTIONS = [
 // safe substitute: if Railway misses a day, two executions can have the same
 // parity and repeat the same lead class. A missing claim is a scheduler-control
 // failure, so stop loudly rather than biasing one cadence class indefinitely.
-const claimedTurn = await claimStaticRefHeavyTurn();
-if (claimedTurn == null) {
+const turnClaim = await claimStaticRefHeavyTurn();
+if (turnClaim == null) {
   throw new Error('[Bundle:static-ref-heavy] could not claim the durable scheduler turn');
 }
-const sections = orderStaticRefHeavySections(SECTIONS, DAILY_SECTIONS, claimedTurn);
+const sections = orderStaticRefHeavySections(SECTIONS, DAILY_SECTIONS, turnClaim.turn);
 
 console.log(
-  `[Bundle:static-ref-heavy] turn ${claimedTurn} — order: ${sections.map((s) => s.label).join(' -> ')}`,
+  `[Bundle:static-ref-heavy] turn ${turnClaim.turn} — order: ${sections.map((s) => s.label).join(' -> ')}`,
 );
 
 await runBundle('static-ref-heavy', sections, {
@@ -88,4 +89,13 @@ await runBundle('static-ref-heavy', sections, {
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs.
   maxBundleMs: 570_000,
+  // Advance after every fully completed tick, including a non-zero tick, so a
+  // failing lead member cannot take the same slot forever. A killed or
+  // early-aborted process never reaches this hook and safely repeats the turn
+  // after the lease expires.
+  onTerminalComplete: async () => {
+    if (!await acknowledgeStaticRefHeavyTurn(turnClaim)) {
+      throw new Error(`could not acknowledge scheduler turn ${turnClaim.turn}`);
+    }
+  },
 });

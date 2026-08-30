@@ -120,4 +120,32 @@ describe('HormuzPanel progressive vulnerability loading', () => {
     expect(panel.getElement().textContent).toContain('Japan');
     expect(panel.getElement().textContent).not.toContain('United Arab Emirates');
   });
+
+  it('aborts dependency loading and ignores settlement after destroy', async () => {
+    let resolveDependencies!: (value: typeof dependencyResponse) => void;
+    const pendingDependencies = new Promise<typeof dependencyResponse>((resolve) => {
+      resolveDependencies = resolve;
+    });
+    serviceMocks.fetchTracker.mockResolvedValue(tracker);
+    serviceMocks.fetchDependencies.mockReturnValue(pendingDependencies);
+
+    const panel = new HormuzPanel();
+    const renderPanel = vi.spyOn(panel as unknown as { renderPanel: () => void }, 'renderPanel');
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    const requestOptions = serviceMocks.fetchDependencies.mock.calls[0]?.[2] as
+      | { signal?: AbortSignal }
+      | undefined;
+    expect(requestOptions?.signal?.aborted).toBe(false);
+    expect(renderPanel).toHaveBeenCalledTimes(1);
+
+    panel.destroy();
+    expect(requestOptions?.signal?.aborted).toBe(true);
+    resolveDependencies(dependencyResponse);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(renderPanel).toHaveBeenCalledTimes(1);
+  });
 });

@@ -221,6 +221,40 @@ test('bundle member discovery resolves imported manifests', () => {
   }]);
 });
 
+test('bundle member discovery follows imported ordering helpers with a stable member set', () => {
+  const readSource = virtualFiles({
+    '/virtual/bundle.mjs': `
+      import { orderMembers } from './order.mjs';
+      const HEAVY = [{ label: 'Heavy', script: 'seed-heavy.mjs', canonicalKey: 'test:heavy:v1' }];
+      const DAILY = [{ label: 'Daily', script: 'seed-daily.mjs', canonicalKey: 'test:daily:v1' }];
+      const members = orderMembers(HEAVY, DAILY, runtimeTurn);
+      runBundle('test', members);
+    `,
+    '/virtual/order.mjs': `
+      export function orderMembers(heavy, daily, turn) {
+        return turn % 2 === 0 ? [...daily, ...heavy] : [...heavy, ...daily];
+      }
+    `,
+  });
+
+  assert.deepEqual(extractAttestationBundleSections('/virtual/bundle.mjs', readSource), [
+    {
+      label: 'Daily',
+      script: 'seed-daily.mjs',
+      hasCanonicalKey: true,
+      hasFreshnessMetaKey: false,
+      completionMetaKey: null,
+    },
+    {
+      label: 'Heavy',
+      script: 'seed-heavy.mjs',
+      hasCanonicalKey: true,
+      hasFreshnessMetaKey: false,
+      completionMetaKey: null,
+    },
+  ]);
+});
+
 test('bundle member discovery follows runtime truthiness for freshness defaults', () => {
   const readSource = virtualFiles({
     '/virtual/bundle.mjs': `

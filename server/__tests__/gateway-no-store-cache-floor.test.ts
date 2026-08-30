@@ -137,4 +137,51 @@ describe('gateway no-store floor + credentialed privacy (#6771)', () => {
       delete process.env.CACHE_TIER_OVERRIDE_GET_COMPANY_COVERAGE;
     }
   });
+
+  test('audience-dependent vulnerability reads cannot populate a credential-agnostic browser cache', async () => {
+    const paths = [
+      '/api/supply-chain/v1/get-country-vulnerabilities',
+      '/api/supply-chain/v1/get-chokepoint-dependencies',
+      '/api/supply-chain/v1/list-vulnerability-rankings',
+    ];
+    for (const path of paths) {
+      let calls = 0;
+      const handler = createDomainGateway([{
+        method: 'GET',
+        path,
+        handler: async (request) => {
+          calls += 1;
+          return new Response(JSON.stringify({ audience: request.headers.get('X-Test-Audience') }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        },
+      }]);
+      const cache = new Map<string, Response>();
+      const fetchThroughBrowserCache = async (audience: 'dashboard' | 'api-key') => {
+        const url = `https://worldmonitor.app${path}?_debug=1`;
+        const cached = cache.get(url);
+        if (cached) return cached.clone();
+        const response = await handler(new Request(url, {
+          headers: {
+            'X-WorldMonitor-Key': KEY,
+            'X-Test-Audience': audience,
+            'cf-connecting-ip': '203.0.113.7',
+          },
+        }), ctx);
+        if (!/\bno-store\b/i.test(response.headers.get('Cache-Control') ?? '')) {
+          cache.set(url, response.clone());
+        }
+        return response;
+      };
+
+      const dashboard = await fetchThroughBrowserCache('dashboard');
+      const apiKey = await fetchThroughBrowserCache('api-key');
+      expect(dashboard.headers.get('Cache-Control')).toBe('no-store');
+      expect(apiKey.headers.get('Cache-Control')).toBe('no-store');
+      expect(await dashboard.json()).toEqual({ audience: 'dashboard' });
+      expect(await apiKey.json()).toEqual({ audience: 'api-key' });
+      expect(calls).toBe(2);
+    }
+  });
 });

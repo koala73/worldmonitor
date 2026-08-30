@@ -1013,6 +1013,7 @@ const SEED_META = {
     maxStaleMin: 2880,
     minRecordCount: 110,
     minRankableRecordCount: 110,
+    requiredRedistributionPolicyVersion: 1,
     requireVulnerabilityCoverage: {
       bilateralCountryCount: 110,
       completeCountryCount: 110,
@@ -1034,6 +1035,7 @@ const SEED_META = {
     key: 'seed-meta:supply-chain:chokepoint-dependencies',
     maxStaleMin: 2880,
     minRecordCount: 7,
+    requiredRedistributionPolicyVersion: 1,
     activationKey: 'seed-activated:supply-chain:vulnerability',
     cutover: {
       mode: 'activation-marker',
@@ -1969,6 +1971,9 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     }
   }
   const metaRankableCount = parseRankableRecordCount(meta);
+  const redistributionPolicyVersion = Number.isInteger(meta?.redistributionPolicyVersion)
+    ? meta.redistributionPolicyVersion
+    : null;
   const poolCounts = parsePoolCounts(meta?.poolCounts, seedCfg.minPoolCounts);
   const errorCode = typeof meta?.errorCode === 'string'
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
@@ -1989,6 +1994,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       metaReadFailed: false,
       metaCount,
       metaRankableCount,
+      redistributionPolicyVersion,
       poolCounts,
       contentAge: null,
       contentFreshness: null,
@@ -2166,6 +2172,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     metaReadFailed: false,
     metaCount,
     metaRankableCount,
+    redistributionPolicyVersion,
     poolCounts,
     contentAge,
     contentFreshness,
@@ -2269,6 +2276,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     sourceBlocked,
     metaCount,
     metaRankableCount,
+    redistributionPolicyVersion,
     poolCounts,
     contentAge,
     contentFreshness,
@@ -2429,6 +2437,10 @@ function classifyKey(name, redisKey, opts, ctx) {
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY_DATA';
   } else if (seedStale === true) status = 'STALE_SEED';
+  else if (
+    seedCfg?.requiredRedistributionPolicyVersion != null
+    && redistributionPolicyVersion !== seedCfg.requiredRedistributionPolicyVersion
+  ) status = 'POLICY_INCOMPATIBLE';
   // Coverage threshold: producers that know their canonical shape size can
   // declare minRecordCount. When the writer reports a count below threshold
   // (e.g., 10/13 chokepoints because portwatch dropped some), this degrades
@@ -2538,6 +2550,10 @@ function classifyKey(name, redisKey, opts, ctx) {
     entry.minRankableRecordCount = seedCfg.minRankableRecordCount;
   }
   if (seedCfg?.minPoolCounts) entry.minPoolCounts = seedCfg.minPoolCounts;
+  if (seedCfg?.requiredRedistributionPolicyVersion != null) {
+    entry.redistributionPolicyVersion = redistributionPolicyVersion;
+    entry.requiredRedistributionPolicyVersion = seedCfg.requiredRedistributionPolicyVersion;
+  }
   if (seedCfg?.requireVulnerabilityCoverage) {
     entry.requiredVulnerabilityCoverage = seedCfg.requireVulnerabilityCoverage;
   }
@@ -2622,6 +2638,9 @@ const STATUS_COUNTS = {
   REDIS_PARTIAL: 'warn',
   COVERAGE_PARTIAL: 'warn',
   COVERAGE_DEGRADED: 'warn',
+  // The stored cohort is present but every current reader rejects it. Treat
+  // this like an unavailable schema, not reduced-but-serving coverage.
+  POLICY_INCOMPATIBLE: 'crit',
   // Content-age signal — seeder is healthy but upstream stopped publishing.
   // Operator can't fix upstream cadence, so de-rank vs. STALE_SEED in alerting
   // (both bucket to 'warn' — overall status is `degraded`, not `critical`).

@@ -8220,9 +8220,6 @@
         },
         {
           "path": "scripts/seed-portwatch.mjs"
-        },
-        {
-          "path": "scripts/seed-supply-vulnerability.mjs"
         }
       ]
     },
@@ -10653,6 +10650,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.bgs.ac.uk",
+      "provider": "British Geological Survey World Mineral Statistics",
+      "kind": "structured",
+      "observed": true,
+      "license": "BGS mineral statistics terms; attribution required; redistribution restricted",
+      "attribution": "British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-supply-vulnerability.mjs"
         }
       ]
     },

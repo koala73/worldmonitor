@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1694659
+    "raw": 1698698
   },
   "chunks": {
     "analytics": {
-      "raw": 119701,
+      "raw": 120219,
       "files": 1
     },
     "cached-risk-scores": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "gdelt-intel": {
-      "raw": 132730,
+      "raw": 134004,
       "files": 1
     },
     "i18n": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 943280,
+      "raw": 944751,
       "files": 1
     },
     "panel-gating": {
@@ -84,6 +84,10 @@
     },
     "theme-manager": {
       "raw": 1474,
+      "files": 1
+    },
+    "timeout-signal": {
+      "raw": 776,
       "files": 1
     },
     "user-location": {

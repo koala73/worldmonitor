@@ -393,6 +393,10 @@ function transformEngagement(bundle) {
       ...bundle.schemaStats,
       engaged: engaged(bundle.schemaStats?.replacedRefs),
     },
+    sharedSchemaSubtrees: {
+      ...bundle.schemaSubtreeStats,
+      engaged: engaged(bundle.schemaSubtreeStats?.replacedRefs),
+    },
     sharedParameters: { ...bundle.paramStats, engaged: engaged(bundle.paramStats?.replacedRefs) },
     unreachableSchemas: {
       ...bundle.unreachableStats,
@@ -405,6 +409,7 @@ function transformEngagement(bundle) {
  * Turn a built bundle into the capacity report.
  *
  * @param {{ spec: object, bytes: number, stats: object, schemaStats: object,
+ *   schemaSubtreeStats: object,
  *   paramStats: object, unreachableStats: object }} bundle
  */
 export function buildCapacityReport(bundle, {

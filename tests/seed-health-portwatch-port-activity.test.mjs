@@ -132,7 +132,12 @@ function installSeedHealthPipelineMock(
         // generic fresh-and-healthy default does not clear.
         return { result: JSON.stringify({ fetchedAt: now, recordCount: 125_380 }) };
       }
-      return { result: JSON.stringify({ fetchedAt: now, recordCount: 10_000 }) };
+      return { result: JSON.stringify({
+        fetchedAt: now,
+        recordCount: 10_000,
+        rankableRecordCount: 10_000,
+        redistributionPolicyVersion: 1,
+      }) };
     });
     return new Response(JSON.stringify(results), {
       status: 200,

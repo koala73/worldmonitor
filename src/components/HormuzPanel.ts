@@ -75,7 +75,7 @@ export class HormuzPanel extends Panel {
     const generation = ++this.fetchGeneration;
     this.showLoading();
     this.dependencyState = 'loading';
-    const dependenciesPromise = fetchChokepointDependencies('hormuz_strait', 25)
+    const dependenciesPromise = fetchChokepointDependencies('hormuz_strait', 25, { signal: this.signal })
       .catch(() => null);
     try {
       const data = await fetchHormuzTracker();
@@ -89,7 +89,7 @@ export class HormuzPanel extends Panel {
       this.renderPanel();
       this.bindTooltip();
       void dependenciesPromise.then((dependencies) => {
-        if (generation !== this.fetchGeneration) return;
+        if (this.signal.aborted || generation !== this.fetchGeneration) return;
         this.dependencies = dependencies;
         this.dependencyState = dependencies?.upstreamUnavailable === false
           ? 'loaded'

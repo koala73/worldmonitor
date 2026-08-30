@@ -92,6 +92,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  bgs: Object.freeze({
+    provider: 'British Geological Survey World Mineral Statistics',
+    memberHosts: Object.freeze(['ogcapi.bgs.ac.uk', 'www.bgs.ac.uk']),
+    reason: 'The BGS OGC API supplies the observations and the BGS statistics page supplies the required public attribution link.',
+    reviewReference: 'Issue #6449 commodity-vulnerability provenance review',
+  }),
   bbc: Object.freeze({
     provider: 'BBC',
     memberHosts: Object.freeze(['feeds.bbci.co.uk', 'www.bbc.com']),
@@ -395,6 +401,14 @@ const PROVIDER_OVERRIDES = {
   },
   'ogcapi.bgs.ac.uk': {
     provider: 'British Geological Survey World Mineral Statistics',
+    identityGroup: 'bgs',
+    license: 'BGS mineral statistics terms; attribution required; redistribution restricted',
+    attribution: 'British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.',
+    status: 'reviewed',
+  },
+  'www.bgs.ac.uk': {
+    provider: 'British Geological Survey World Mineral Statistics',
+    identityGroup: 'bgs',
     license: 'BGS mineral statistics terms; attribution required; redistribution restricted',
     attribution: 'British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.',
     status: 'reviewed',
@@ -853,13 +867,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'dd94e752a93d4c6b07ccd896dbcd3eb1a0cb37283862c7f58e43f44b70d473b8',
-  reason: 'Register Wikidata as the reviewed CC0 identity source for canonical country names and entity identifiers while preserving the existing provider groups.',
+  sha256: '77fe5d378bb92d98998a2ec5ce74cea31e4bdaf58f50dfe3228bba39f83059f8',
+  reason: 'Group the BGS observation API and required attribution page under one reviewed, redistribution-restricted provider identity for issue #6449.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

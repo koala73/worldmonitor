@@ -6,9 +6,12 @@ import type {
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { requiresRedistributableProvidersForDirectRpc } from '../../../_shared/provider-redistribution';
 import {
   VULNERABILITY_COHORT_KEY,
   countryVulnerabilityShardKey,
+  enforceCommodityRedistributionPolicy,
+  hasCurrentRedistributionPolicy,
   isMatchingShard,
   mapCommodityVulnerability,
   type RawVulnerabilityCohort,
@@ -18,7 +21,7 @@ import {
 } from './_vulnerability-projection';
 
 export async function getCountryVulnerabilities(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: GetCountryVulnerabilitiesRequest,
 ): Promise<GetCountryVulnerabilitiesResponse> {
   const iso2 = (req.iso2 || '').trim().toUpperCase();
@@ -26,7 +29,9 @@ export async function getCountryVulnerabilities(
     throw new ValidationError([{ field: 'iso2', description: 'iso2 must be a 2-letter uppercase ISO country code' }]);
   }
 
-  const payload = await getCachedJson(VULNERABILITY_COHORT_KEY, true).catch(() => null) as RawVulnerabilityCohort | null;
+  const persistedPayload = await getCachedJson(VULNERABILITY_COHORT_KEY, true)
+    .catch(() => null) as RawVulnerabilityCohort | null;
+  const payload = hasCurrentRedistributionPolicy(persistedPayload) ? persistedPayload : null;
   let country = payload?.countries?.[iso2];
   let shardUnavailable = false;
   if (payload && !payload.countries) {
@@ -39,15 +44,21 @@ export async function getCountryVulnerabilities(
     } else if (countryIds.includes(iso2)) {
       const shard = await getCachedJson(countryVulnerabilityShardKey(slot, iso2), true)
         .catch(() => null) as RawCountryShard | null;
-      if (isMatchingShard(payload, shard)) country = shard?.country;
+      if (isMatchingShard(payload, shard) && shard?.country?.iso2 === iso2) country = shard.country;
       else shardUnavailable = true;
     }
   }
+  const requireRedistributable = requiresRedistributableProvidersForDirectRpc(ctx.request);
   return {
     iso2,
     country: stringValue(country?.name),
     vulnerabilities: Array.isArray(country?.vulnerabilities)
-      ? country.vulnerabilities.map(mapCommodityVulnerability)
+      ? country.vulnerabilities
+        .map((record) => enforceCommodityRedistributionPolicy(
+          record,
+          requireRedistributable,
+        ))
+        .map(mapCommodityVulnerability)
       : [],
     generatedAt: stringValue(payload?.generatedAt),
     methodologyVersion: stringValue(payload?.methodologyVersion),

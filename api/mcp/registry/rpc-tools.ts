@@ -2916,7 +2916,11 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_supply_vulnerabilities',
-    _outputBudgetBytes: 131072,
+    // A full reviewed portfolio currently carries 23 commodities and the
+    // complete 13-route provenance set per commodity. Production-shape
+    // dispatch tests measure ~321 KiB, so 512 KiB preserves the evidence with
+    // useful growth headroom instead of charging quota for a budget envelope.
+    _outputBudgetBytes: 524288,
     description: 'Return one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance. Missing evidence stays absent and state/reasons explain why; never interpret an absent score as zero.',
     inputSchema: {
       type: 'object',

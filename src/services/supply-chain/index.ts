@@ -6,7 +6,7 @@ import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { createHydrationHandoff } from '@/services/hydration-handoff';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { createTimeoutSignal } from '@/services/timeout-signal';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import {
   type ChinaCorridorControlTowerResponse,
@@ -70,17 +70,7 @@ const VULNERABILITY_REQUEST_TIMEOUT_MS = 10_000;
 
 function vulnerabilityRequestSignal(callerSignal?: AbortSignal): AbortSignal {
   const timeoutSignal = createTimeoutSignal(VULNERABILITY_REQUEST_TIMEOUT_MS);
-  if (!callerSignal) return timeoutSignal;
-  if (typeof AbortSignal.any === 'function') {
-    return AbortSignal.any([callerSignal, timeoutSignal]);
-  }
-
-  const controller = new AbortController();
-  const forwardAbort = (source: AbortSignal): void => controller.abort(source.reason);
-  if (callerSignal.aborted) forwardAbort(callerSignal);
-  else callerSignal.addEventListener('abort', () => forwardAbort(callerSignal), { once: true });
-  timeoutSignal.addEventListener('abort', () => forwardAbort(timeoutSignal), { once: true });
-  return controller.signal;
+  return callerSignal ? combineAbortSignals([callerSignal, timeoutSignal]) : timeoutSignal;
 }
 
 // premiumFetch for the whole client: 8 of 13 methods target paths in

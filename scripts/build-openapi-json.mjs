@@ -19,7 +19,7 @@
  * the human-readable YAML. Wired into `build:openapi` (and therefore every
  * web-variant build + the default prebuild hook). Idempotent.
  *
- * Five emit-time transforms keep the served JSON below its guarded scanner
+ * Six emit-time transforms keep the served JSON below its guarded scanner
  * budget with identical semantics. The 2026-07-05 rate-limit/idempotency/example
  * doc injections grew the minified JSON from ~752 KB to ~1.04 MB, crossing the
  * ~1 MB cap and flipping orank's function-calling check to "couldn't validate":
@@ -30,7 +30,8 @@
  *     (then one inline typed param restored on ops that would otherwise
  *     have only $refs — JSON-only scanners often skip parameter $refs)
  *   - shared China provenance value schemas -> reused $refs
- *     (all three in openapi-dedup-*.mjs; tests prove they are lossless)
+ *   - byte-identical nested Schema Objects  -> reused local $refs
+ *     (both in openapi-dedup-schemas.mjs; tests prove they are lossless)
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
  *
@@ -47,7 +48,10 @@ import {
   dedupeSharedResponseHeaders,
   ensureInlineTypedInput,
 } from './openapi-dedup-responses.mjs';
-import { dedupeSharedChinaProvenanceSchemas } from './openapi-dedup-schemas.mjs';
+import {
+  dedupeSharedChinaProvenanceSchemas,
+  dedupeSharedSchemaSubtrees,
+} from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -116,6 +120,7 @@ export function buildBundle({ spec: provided } = {}) {
   const stats = dedupeErrorResponses(spec);
   const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
+  const schemaSubtreeStats = dedupeSharedSchemaSubtrees(spec);
   const paramStats = dedupeSharedParameters(spec);
   const inlineTypedStats = ensureInlineTypedInput(spec);
   injectDeprecationPolicyMetadata(spec);
@@ -137,6 +142,7 @@ export function buildBundle({ spec: provided } = {}) {
     stats,
     headerStats,
     schemaStats,
+    schemaSubtreeStats,
     paramStats,
     inlineTypedStats,
     unreachableStats,
@@ -144,7 +150,7 @@ export function buildBundle({ spec: provided } = {}) {
 }
 
 function main() {
-  const { spec, json, bytes, stats, headerStats, schemaStats, paramStats, inlineTypedStats, unreachableStats } = buildBundle();
+  const { spec, json, bytes, stats, headerStats, schemaStats, schemaSubtreeStats, paramStats, inlineTypedStats, unreachableStats } = buildBundle();
   writeFileSync(jsonPath, json);
 
   const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
@@ -155,6 +161,7 @@ function main() {
       `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
       `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
+      `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
       `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );
 }

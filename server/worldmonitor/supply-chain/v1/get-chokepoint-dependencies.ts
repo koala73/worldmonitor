@@ -7,9 +7,12 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/s
 
 import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
+import { requiresRedistributableProvidersForDirectRpc } from '../../../_shared/provider-redistribution';
 import {
   VULNERABILITY_COHORT_KEY,
   chokepointDependencyShardKey,
+  enforceDependencyRedistributionPolicy,
+  hasCurrentRedistributionPolicy,
   isMatchingShard,
   mapChokepointDependency,
   type RawVulnerabilityCohort,
@@ -19,7 +22,7 @@ import {
 } from './_vulnerability-projection';
 
 export async function getChokepointDependencies(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: GetChokepointDependenciesRequest,
 ): Promise<GetChokepointDependenciesResponse> {
   const chokepointId = (req.chokepointId || '').trim().toLowerCase();
@@ -27,7 +30,9 @@ export async function getChokepointDependencies(
     throw new ValidationError([{ field: 'chokepointId', description: 'chokepointId must be a canonical chokepoint id' }]);
   }
 
-  const payload = await getCachedJson(VULNERABILITY_COHORT_KEY, true).catch(() => null) as RawVulnerabilityCohort | null;
+  const persistedPayload = await getCachedJson(VULNERABILITY_COHORT_KEY, true)
+    .catch(() => null) as RawVulnerabilityCohort | null;
+  const payload = hasCurrentRedistributionPolicy(persistedPayload) ? persistedPayload : null;
   let chokepoint = payload?.chokepoints?.[chokepointId];
   let shardUnavailable = false;
   if (payload && !payload.chokepoints) {
@@ -40,17 +45,32 @@ export async function getChokepointDependencies(
     } else if (chokepointIds.includes(chokepointId)) {
       const shard = await getCachedJson(chokepointDependencyShardKey(slot, chokepointId), true)
         .catch(() => null) as RawChokepointShard | null;
-      if (isMatchingShard(payload, shard)) chokepoint = shard?.chokepoint;
+      if (isMatchingShard(payload, shard) && shard?.chokepoint?.id === chokepointId) chokepoint = shard.chokepoint;
       else shardUnavailable = true;
     }
   }
   const pageSize = clampInt(req.pageSize, 25, 1, 100);
+  const requireRedistributable = requiresRedistributableProvidersForDirectRpc(ctx.request);
+  const dependencies = Array.isArray(chokepoint?.dependencies)
+    ? chokepoint.dependencies
+      .map((record) => enforceDependencyRedistributionPolicy(
+        record,
+        requireRedistributable,
+      ))
+      .sort((left, right) => (
+        (typeof right.score === 'number' ? right.score : Number.NEGATIVE_INFINITY)
+        - (typeof left.score === 'number' ? left.score : Number.NEGATIVE_INFINITY)
+        || (typeof right.weightedTransitShare === 'number' ? right.weightedTransitShare : 0)
+        - (typeof left.weightedTransitShare === 'number' ? left.weightedTransitShare : 0)
+        || stringValue(left.countryIso2).localeCompare(stringValue(right.countryIso2))
+        || stringValue(left.commodityId).localeCompare(stringValue(right.commodityId))
+      ))
+      .slice(0, pageSize)
+    : [];
   return {
     chokepointId,
     chokepoint: stringValue(chokepoint?.name),
-    dependencies: Array.isArray(chokepoint?.dependencies)
-      ? chokepoint.dependencies.slice(0, pageSize).map(mapChokepointDependency)
-      : [],
+    dependencies: dependencies.map(mapChokepointDependency),
     generatedAt: stringValue(payload?.generatedAt),
     methodologyVersion: stringValue(payload?.methodologyVersion),
     upstreamUnavailable: payload == null || shardUnavailable,
