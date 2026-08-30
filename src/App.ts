@@ -169,12 +169,15 @@ import {
   type WebMcpExecutionOptions,
 } from '@/services/webmcp';
 import {
+  applyWebMcpMissionPreset,
   applyWebMcpOpenAlerts,
+  applyWebMcpOpenMissionPicker,
   applyWebMcpOpenSettings,
   applyWebMcpSwitchMonitor,
   getWebMcpDashboardContext,
   getWebMcpMapLayerCatalogSnapshot,
   listWebMcpDashboardPanels,
+  listWebMcpMissionPresets,
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '@/app/webmcp-dashboard';
@@ -2082,6 +2085,48 @@ export class App {
           }
         }
         return result;
+      },
+      listMissionPresets: async (query, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return listWebMcpMissionPresets(this.state, SITE_VARIANT, query, {
+          hasPremium: hasPremiumAccess(getAuthState()),
+          isPanelEntitled: (panelId) => {
+            const config = this.state.panelSettings[panelId]
+              ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
+            if (!config) return true;
+            return isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()));
+          },
+        });
+      },
+      applyMissionPreset: async (presetId, execution) => {
+        await this.waitForDashboardReady(true, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return applyWebMcpMissionPreset(this.state, SITE_VARIANT, presetId, {
+          hasPremium: hasPremiumAccess(getAuthState()),
+          isPanelEntitled: (panelId) => {
+            const config = this.state.panelSettings[panelId]
+              ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
+            if (!config) return true;
+            return isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()));
+          },
+          apply: (id) => this.eventHandlers.applyMissionPresetForWebMcp(id),
+        });
+      },
+      openMissionPicker: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpOpenMissionPicker(
+          this.state,
+          SITE_VARIANT,
+          () => this.eventHandlers.openMissionPresetPickerForWebMcp(),
+        );
       },
       getPanelLayout: async (execution) => {
         await this.waitForDashboardReady(false, execution?.signal);

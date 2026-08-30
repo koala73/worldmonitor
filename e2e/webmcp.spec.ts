@@ -8,6 +8,7 @@ const productionSmoke = process.env.WM_WEBMCP_PRODUCTION === '1';
 const deployedSha = process.env.WM_WEBMCP_DEPLOYED_SHA?.trim() || null;
 
 const DASHBOARD_TOOL_NAMES = [
+  'apply_mission_preset',
   'create_dashboard_tab',
   'delete_dashboard_tab',
   'focus_country',
@@ -17,11 +18,13 @@ const DASHBOARD_TOOL_NAMES = [
   'list_dashboard_panels',
   'list_dashboard_tabs',
   'list_map_layers',
+  'list_mission_presets',
   'move_panel',
   'openCountryBrief',
   'openSearch',
   'open_alerts',
   'open_dashboard_panel',
+  'open_mission_picker',
   'open_search_result',
   'open_settings',
   'open_sign_in',
@@ -759,6 +762,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           'list_dashboard_tabs',
           'list_map_layers',
           'list_dashboard_panels',
+          'list_mission_presets',
           'search_dashboard',
         ].includes(tool.name),
       );
@@ -1422,6 +1426,121 @@ test.describe('top-level WebMCP dashboard contract', () => {
     const enabledPanels = (afterReload.context as { panels?: { enabled?: string[] } })
       .panels?.enabled ?? [];
     expect(enabledPanels).toContain('giving');
+  });
+
+  test('applies supply-chain-risk mission preset and persists across reload', async ({ page }) => {
+    test.skip(productionSmoke, 'Must not mutate production mission presets.');
+    const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    expect(response).not.toBeNull();
+    await expect.poll(async () => page.evaluate(async () => (
+      (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+    )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+
+    const first = await page.evaluate(async () => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(
+          tool: WebMCP.RegisteredTool,
+          input: string,
+          options?: { signal?: AbortSignal },
+        ): Promise<unknown>;
+      };
+      const provider = document.modelContext as ExecutableModelContext | undefined;
+      if (!provider || typeof provider.executeTool !== 'function') {
+        throw new Error('Chrome WebMCP execution API is unavailable.');
+      }
+      const parseOutput = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
+      };
+      const listTool = (await provider.getTools())
+        .find((candidate) => candidate.name === 'list_mission_presets');
+      if (!listTool) throw new Error('list_mission_presets was not discovered.');
+      const listOutput = parseOutput(await provider.executeTool(listTool, '{}'));
+      const applyTool = (await provider.getTools())
+        .find((candidate) => candidate.name === 'apply_mission_preset');
+      if (!applyTool) throw new Error('apply_mission_preset was not discovered.');
+      const controller = new AbortController();
+      const applyOutput = parseOutput(await provider.executeTool(
+        applyTool,
+        JSON.stringify({ presetId: 'supply-chain-risk' }),
+        { signal: controller.signal },
+      ));
+      return {
+        listOutput,
+        applyOutput,
+        storedPreset: window.localStorage.getItem('worldmonitor-mission-preset-v1'),
+        missionLabel: document.querySelector('.mission-preset-button__label')?.textContent ?? null,
+      };
+    });
+
+    const applyOutput = first.applyOutput as {
+      ok?: boolean;
+      reason?: string;
+      presetId?: string;
+      map?: { view?: string; timeRange?: string };
+      panels?: { enabled?: string[] };
+    };
+    if (applyOutput?.reason === 'target_cancellation_unsupported') {
+      test.skip(true, 'Host omitted the target-side AbortSignal; persist proof requires cancellation.');
+    }
+
+    expect(first.listOutput).toMatchObject({
+      ok: true,
+      count: 7,
+    });
+    expect(applyOutput).toMatchObject({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      map: {
+        view: 'global',
+        timeRange: '7d',
+      },
+    });
+    expect(applyOutput.panels?.enabled ?? []).toEqual(
+      expect.arrayContaining(['map', 'supply-chain']),
+    );
+    expect(first.storedPreset).toBe('supply-chain-risk');
+    expect(first.missionLabel).toBe('Supply');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect.poll(async () => page.evaluate(async () => (
+      (await document.modelContext?.getTools())?.some((tool) => tool.name === 'list_mission_presets') ?? false
+    )), { timeout: 60_000 }).toBe(true);
+
+    const afterReload = await page.evaluate(async () => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      };
+      const provider = document.modelContext as ExecutableModelContext;
+      const listTool = (await provider.getTools())
+        .find((tool) => tool.name === 'list_mission_presets');
+      if (!listTool) throw new Error('list_mission_presets was not discovered.');
+      const raw = await provider.executeTool(listTool, '{}');
+      let listed = raw;
+      if (typeof raw === 'string') {
+        try {
+          listed = JSON.parse(raw);
+        } catch {
+          // Preserve non-JSON provider output.
+        }
+      }
+      return {
+        listed,
+        storedPreset: window.localStorage.getItem('worldmonitor-mission-preset-v1'),
+        missionLabel: document.querySelector('.mission-preset-button__label')?.textContent ?? null,
+      };
+    });
+    expect(afterReload.storedPreset).toBe('supply-chain-risk');
+    expect(afterReload.missionLabel).toBe('Supply');
+    expect(afterReload.listed).toMatchObject({
+      ok: true,
+      activePresetId: 'supply-chain-risk',
+    });
   });
 
   test('applies panel layout mutations and proves visible order and state', async ({ page }, testInfo) => {

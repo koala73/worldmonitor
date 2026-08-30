@@ -26,7 +26,7 @@ description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免
 |---|---|
 | `src/config/webmcp.ts` | 规范的首页、仪表板、声明式和逐变体清单，以及共享 schema 与输出预算。 |
 | `src/services/webmcp.ts` | 命令式描述符、schema、注册生命周期、受限结果与错误、遥测和取消策略。 |
-| `src/services/webmcp-map-layer-catalog.ts` 和 `src/services/webmcp-panel-catalog.ts` | 分页图层与面板目录、筛选、权益叠加和稳定可用性原因。 |
+| `src/services/webmcp-map-layer-catalog.ts`、`src/services/webmcp-panel-catalog.ts` 和 `src/services/webmcp-mission-preset-catalog.ts` | 分页图层与面板目录、捆绑任务预设目录、筛选、权益叠加和稳定可用性原因。 |
 | `src/App.ts`、`src/app/webmcp-dashboard.ts` 和 `src/app/dashboard-action-binding.ts` | 启动顺序、UI 就绪、销毁、仪表板上下文、目录快照和人工操作路径绑定。 |
 | `shared/agent-bus-actions.ts`、`shared/agent-bus-contract.ts` 和 `src/app/agent-bus-applier.ts` | 类型化仪表板动作协议，以及通过现有 UI 状态应用动作。 |
 | `src/app/country-map-focus.ts` 和 `src/app/map-dimension-control.ts` | 国家边界框聚焦，以及共享 2D 或 3D 控件路径。 |
@@ -57,6 +57,7 @@ npm run docs:check
   tests/dashboard-tab-actions.test.mts \
   tests/panel-layout-actions.test.mts \
   tests/webmcp-panel-catalog.test.mts \
+  tests/webmcp-mission-presets.test.mts \
   tests/agent-bus-actions.test.mts \
   tests/agent-bus-applier.test.mts \
   tests/country-map-focus.test.mts \
@@ -100,7 +101,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-有头生产套件会测试真实 Origin Trial。它验证线上 SHA、安全响应头、二十八工具清单与 schema、冷启动调用、受限访问与登录结果、只读目录、取消行为、全部六个仪表板源、专用源根路由重定向和跨源 embed 拒绝。会修改生产状态的测试只在本地运行。
+有头生产套件会测试真实 Origin Trial。它验证线上 SHA、安全响应头、三十一个工具的清单与 schema、冷启动调用、受限访问与登录结果、只读目录、取消行为、全部六个仪表板源、专用源根路由重定向和跨源 embed 拒绝。会修改生产状态的测试只在本地运行。
 
 请把 `test-results/` 下的 `webmcp-smoke.json`、`webmcp-cancellation.json` 与 `webmcp-production-matrix.json` 保存为发布证据。还要确认 `/embed` 和 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档与 embed 页面没有获得顶层清单。
 
