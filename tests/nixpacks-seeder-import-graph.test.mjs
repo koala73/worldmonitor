@@ -49,6 +49,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { extractBundleMembers, readStrippedSource, walkContainerGraph } from './_lib/import-graph-walk.mjs';
+import { sourceBootstrapsTsx } from './helpers/tsx-bootstrap.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -78,42 +79,6 @@ const baseContract = {
   installedPackages,
 };
 
-function sourceBootstrapsTsx(src) {
-  const sourceFile = ts.createSourceFile('seeder.mjs', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  let registerName = null;
-  for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement)
-      || !ts.isStringLiteral(statement.moduleSpecifier)
-      || statement.moduleSpecifier.text !== 'tsx/esm/api') continue;
-    const bindings = statement.importClause?.namedBindings;
-    if (!bindings || !ts.isNamedImports(bindings)) continue;
-    const importedRegister = bindings.elements.find((element) => (element.propertyName ?? element.name).text === 'register');
-    if (importedRegister) registerName = importedRegister.name.text;
-  }
-  if (!registerName) return false;
-
-  const registerCall = sourceFile.statements.find((statement) =>
-    ts.isExpressionStatement(statement)
-      && ts.isCallExpression(statement.expression)
-      && ts.isIdentifier(statement.expression.expression)
-      && statement.expression.expression.text === registerName
-      && statement.expression.arguments.length === 0);
-  if (!registerCall) return false;
-
-  let firstTypeScriptImport = Number.POSITIVE_INFINITY;
-  function visit(node) {
-    if (ts.isCallExpression(node)
-      && node.expression.kind === ts.SyntaxKind.ImportKeyword
-      && node.arguments.length === 1
-      && ts.isStringLiteral(node.arguments[0])
-      && /\.(?:ts|mts|cts)$/.test(node.arguments[0].text)) {
-      firstTypeScriptImport = Math.min(firstTypeScriptImport, node.getStart(sourceFile));
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(sourceFile);
-  return registerCall.getStart(sourceFile) < firstTypeScriptImport;
-}
 
 function walkRoots(roots) {
   const combined = { violations: [], unresolved: [], visited: new Set() };

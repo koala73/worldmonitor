@@ -89,7 +89,12 @@ after(() => {
 });
 
 describe('five-factor scorecard CRI isolation', () => {
-  it('keeps frozen CRI country scores and ranking bytes identical when source-safe scorecard fields are added', async () => {
+  // This is an ISOLATION control, not a non-regression baseline: both sides run
+  // the same live scorer, so a defect in the shared CRI code moves them together
+  // and passes. It proves the scorecard's additions to shared seed keys do not
+  // perturb CRI -- nothing more. Claims of "byte-identical CRI scores" must not
+  // lean on it; that would need a checked-in golden fixture.
+  it('keeps CRI country scores and ranking bytes identical when source-safe scorecard fields are added', async () => {
     const beforeBytes = await frozenCriBytes(createReader(false));
     const afterBytes = await frozenCriBytes(createReader(true));
     assert.equal(afterBytes.countryScores, beforeBytes.countryScores);

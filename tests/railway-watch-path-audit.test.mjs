@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { sourceBootstrapsTsx } from './helpers/tsx-bootstrap.mjs';
 
 import {
   auditRailwayServiceConfig,
@@ -356,13 +357,28 @@ function resolveRuntimeSurface(entry, repoRootDir) {
       .map((member) => resolve(repoRootDir, 'scripts', member)),
   ]);
 
+  // A scripts-root seeder can self-register the tsx loader and then dynamically
+  // import `.mts`. Hardcoding hasTsx:false made the walker blind to those edges,
+  // so the closure came out too NARROW: a transitive `.mts` nobody remembered to
+  // declare with @railway-runtime-dependency was invisible to BOTH checks -- the
+  // declared-set comparison never saw it, and the walk never reached it -- and
+  // Railway would skip the deploy behind a green badge.
+  //
+  // The registration lives in the bundle MEMBER, not the bundle entry, so this
+  // asks every root, not just entryPath. Erring toward following the edges is
+  // the safe direction here, for the same reason containment stays permissive
+  // below: a closure that is too wide costs a build, one that is too narrow
+  // strands the service.
+  const rootsBootstrapTsx = (candidates) => [...candidates]
+    .some((root) => existsSync(root) && statSync(root).isFile() && sourceBootstrapsTsx(readFileSync(root, 'utf8')));
+
   // Containment stays permissive at the repository root on purpose: including
   // a file the image does not ship costs a build, excluding one the image DOES
   // ship strands the service. Only the dynamic-follow roots and the loader
   // model come from the image, because those decide which edges exist at all.
   const container = entry.dockerfile
     ? dockerfileContainerContract(entry.dockerfile, repoRootDir)
-    : { dynamicRoots: [scriptsDir], hasTsx: false };
+    : { dynamicRoots: [scriptsDir], hasTsx: rootsBootstrapTsx(roots) };
 
   let visited = new Set();
   let unresolved = [];

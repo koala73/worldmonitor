@@ -4,7 +4,22 @@ import { premiumFetch } from '@/services/premium-fetch';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 
-export const SCORECARD_REQUEST_TIMEOUT_MS = 8_000;
+/**
+ * Client abort budget, derived from the server's SERIAL worst case rather than
+ * picked independently:
+ *
+ *   3s  entitlement check (Convex fallback abort, spent by createDomainGateway
+ *       BEFORE the handler starts its own deadline)
+ * + 7s  SCORECARD_READ_DEADLINE_MS (Redis I/O only)
+ * + ~2s response serialization, cold start and round trip
+ *
+ * At the previous 8s the client aborted before the server could finish, so
+ * during exactly the Redis degradation the last-good fallback exists for a Pro
+ * user got a cancelled request and a Sentry issue instead of the designed
+ * `unavailable: true` card. tests/five-factor-scorecard-service-timeout.test.mts
+ * pins this against the two server constants so they cannot drift back.
+ */
+export const SCORECARD_REQUEST_TIMEOUT_MS = 12_000;
 
 let client: InstanceType<typeof ScorecardServiceClient> | null = null;
 

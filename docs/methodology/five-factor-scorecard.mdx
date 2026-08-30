@@ -34,7 +34,11 @@ goalposts below. Values outside a goalpost are clamped. The scorer then:
 4. Applies the pillar coverage floor and required-group rules.
 5. Maps the unrounded continuous sub-score to an integer band.
 6. Rounds the published sub-score and coverage to two and four decimal places,
-   respectively. Rounding never changes a band.
+   respectively. Rounding never changes the band, because the band is always
+   derived in step 5 from the unrounded sub-score. Near a boundary the two can
+   therefore disagree by design: a continuous sub-score of `19.996` publishes as
+   `subScore: 20.00` with `band: 1`, not `band: 2`. Read the published `band`;
+   do not re-derive it from the published `subScore`.
 
 Unavailable inputs do not receive a neutral score and do not enter the weighted
 mean. Internally, a pillar below its floor has `hasScore=false`, `score=null`,

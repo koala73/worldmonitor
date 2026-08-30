@@ -163,7 +163,7 @@ describe('five-factor scorecard country UI registration (#6441)', () => {
 
   it('turns a scorecard deadline into an unavailable state and observable failure', async () => {
     const service = read('src/services/scorecard.ts');
-    assert.match(service, /SCORECARD_REQUEST_TIMEOUT_MS = 8_000/);
+    assert.match(service, /SCORECARD_REQUEST_TIMEOUT_MS = 12_000/);
     assert.match(service, /createTimeoutSignal\(timeoutMs\)/);
     assert.match(service, /combineAbortSignals\(\[signal, timeoutSignal\]\)/);
     assert.match(service, /return withScorecardDeadline\(/);

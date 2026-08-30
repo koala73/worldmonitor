@@ -19,7 +19,14 @@ const CANONICAL_FALLBACK_CACHE_MS = 5 * 60_000;
  * surfaces within a few hours.
  */
 const CANONICAL_STALE_SERVE_CEILING_MS = 6 * 60 * 60_000;
-const SCORECARD_READ_DEADLINE_MS = 7_000;
+export const SCORECARD_READ_DEADLINE_MS = 7_000;
+/**
+ * Entitlement allowance the gateway can spend BEFORE this deadline starts.
+ * createDomainGateway awaits checkEntitlementDetailed first, and its Convex
+ * fallback aborts at 3s on a cache miss. Exported so the client budget can be
+ * pinned against the composed worst case instead of guessed independently.
+ */
+export const SCORECARD_ENTITLEMENT_ALLOWANCE_MS = 3_000;
 let canonicalLastGood: { cachedAt: number; snapshot: FiveFactorSnapshotV1 } | null = null;
 
 /**
