@@ -21,6 +21,7 @@
     { "source": "/zh/:match*", "destination": "https://www.worldmonitor.app/docs/zh/:match*", "permanent": true },
     { "source": "/api-reference/:match*", "destination": "https://www.worldmonitor.app/docs/api-reference/:match*", "permanent": true },
     { "source": "/api", "destination": "/docs/api-reference", "permanent": false },
+    { "source": "/api/", "destination": "/docs/api-reference", "permanent": false },
     { "source": "/docs", "destination": "/docs/documentation", "permanent": false },
     { "source": "/security.txt", "destination": "/.well-known/security.txt", "permanent": true },
     { "source": "/index.html", "destination": "/", "permanent": true },

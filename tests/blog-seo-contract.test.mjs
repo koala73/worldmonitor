@@ -131,11 +131,19 @@ describe('blog SEO and GEO corpus contract', () => {
     );
   });
 
-  it('stamps glossary and author sitemap URLs with lastmod (#7382)', () => {
-    const astroConfig = readFileSync(resolve(root, 'blog-site/astro.config.mjs'), 'utf8');
-    assert.match(astroConfig, /gitFileLastmod/);
-    assert.match(astroConfig, /\/blog\/glossary\//);
-    assert.match(astroConfig, /\/blog\/authors\//);
-    assert.match(astroConfig, /glossarySlugsFromSource/);
+  it('stamps glossary and author sitemap URLs with lastmod (#7382)', async () => {
+    const { buildPostDateMap } = await import('../blog-site/astro.config.mjs');
+    const dates = buildPostDateMap();
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    for (const key of [
+      '/blog/glossary/',
+      'https://www.worldmonitor.app/blog/glossary/',
+      '/blog/glossary/strait-of-hormuz/',
+      'https://www.worldmonitor.app/blog/glossary/strait-of-hormuz/',
+      '/blog/authors/elie-habib/',
+      'https://www.worldmonitor.app/blog/authors/elie-habib/',
+    ]) {
+      assert.match(dates.get(key) ?? '', iso, `${key} must receive a YYYY-MM-DD lastmod`);
+    }
   });
 });

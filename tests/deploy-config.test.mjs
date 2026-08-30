@@ -1148,10 +1148,12 @@ describe('welcome landing page routing', () => {
   });
 
   it('redirects bare /api to the docs API reference hub (#7382)', () => {
-    const apiRedirect = vercelConfig.redirects.find((r) => r.source === '/api');
-    assert.ok(apiRedirect, 'expected a redirect for /api');
-    assert.equal(apiRedirect.destination, '/docs/api-reference');
-    assert.equal(apiRedirect.permanent, false);
+    for (const source of ['/api', '/api/']) {
+      const apiRedirect = vercelConfig.redirects.find((r) => r.source === source);
+      assert.ok(apiRedirect, `expected a redirect for ${source}`);
+      assert.equal(apiRedirect.destination, '/docs/api-reference');
+      assert.equal(apiRedirect.permanent, false);
+    }
   });
 
   it('starts installed PWAs on /dashboard, not the public welcome page', () => {

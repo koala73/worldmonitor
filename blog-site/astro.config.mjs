@@ -62,7 +62,7 @@ function glossarySlugsFromSource(source) {
   return slugs;
 }
 
-function buildPostDateMap() {
+export function buildPostDateMap() {
   const postDates = new Map();
   let blogLastmod = '2026-06-10';
 
@@ -105,7 +105,7 @@ function buildPostDateMap() {
   return postDates;
 }
 
-const POST_DATES = buildPostDateMap();
+export const POST_DATES = buildPostDateMap();
 
 export default defineConfig({
   site: 'https://www.worldmonitor.app',

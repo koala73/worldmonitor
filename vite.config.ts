@@ -1123,7 +1123,8 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       // Hidden maps support field INP attribution (DebugBear/Sentry/DevTools)
-      // without exposing .map URLs to anonymous clients (#7382 / #4487).
+      // without linking them from JS (no SourceMap header / //# sourceMappingURL).
+      // Build still emits `.map` files for CI upload; do not serve them publicly.
       sourcemap: 'hidden',
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
