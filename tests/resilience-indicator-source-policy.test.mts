@@ -6,6 +6,7 @@ import {
   decideIndicatorRawRedistribution,
   INDICATOR_SOURCE_POLICIES,
 } from '../server/worldmonitor/resilience/v1/_indicator-source-policy.ts';
+import { wgiObservationSource } from '../shared/wgi-source-provenance.js';
 
 const worldBank = (indicatorId: string) => ({
   providerName: 'World Bank Open Data',
@@ -102,6 +103,28 @@ describe('resilience indicator raw-source policy', () => {
       assert.equal(decision.expose, true, `${indicatorId}: ${decision.reason}`);
       assert.equal(decision.reason, 'audited-observed-source', indicatorId);
     }
+  });
+
+  it('denies WGI producer-provenance drift independently of the audit policy', () => {
+    const produced = wgiObservationSource('VA.EST');
+    const accepted = decideIndicatorRawRedistribution({
+      indicatorId: 'wgiVoiceAccountability',
+      observationState: 'observed',
+      sources: [produced],
+    });
+    assert.equal(accepted.expose, true);
+
+    const drifted = {
+      ...produced,
+      sourceUrl: produced.sourceUrl.replace('/GOV_WGI_', '/GOV_WGI_V2_'),
+    };
+    const denied = decideIndicatorRawRedistribution({
+      indicatorId: 'wgiVoiceAccountability',
+      observationState: 'observed',
+      sources: [drifted],
+    });
+    assert.equal(denied.expose, false);
+    assert.equal(denied.reason, 'provider-not-audited-for-redistribution');
   });
 
   it('rejects a provider host or documentation URL that is outside the reviewed source path', () => {

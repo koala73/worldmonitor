@@ -1,6 +1,7 @@
 import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
+import { wgiObservationSource } from '../../../../shared/wgi-source-provenance.js';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedEnvelopeJson, getCachedJson, readCachedEnvelopeJson, readCachedJson } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
@@ -26,19 +27,11 @@ import type {
   ResilienceScoreOptions,
 } from './_indicator-trace';
 import type { ResilienceIndicatorId } from './_indicator-registry';
-import { getIndicatorSourcePolicy } from './_indicator-source-policy';
 
 function worldBankSources(...indicatorIds: readonly string[]): readonly IndicatorObservedSource[] {
   return indicatorIds.map((indicatorId) => ({
     providerName: 'World Bank Open Data',
     sourceUrl: `https://api.worldbank.org/v2/country/all/indicator/${indicatorId}`,
-  }));
-}
-
-function auditedSourcesForIndicator(indicatorId: ResilienceIndicatorId): readonly IndicatorObservedSource[] {
-  return (getIndicatorSourcePolicy(indicatorId)?.allowedRawSources ?? []).map(({ providerName, sourceUrl }) => ({
-    providerName,
-    sourceUrl,
   }));
 }
 
@@ -1370,7 +1363,7 @@ function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): TracedW
       rawUnit: 'wgi_estimate',
       sourceYear: indicators[key]?.year ?? null,
       retrievedAt: staticDatasetRetrievedAt(record, 'wgi'),
-      observedSources: auditedSourcesForIndicator(indicatorId),
+      observedSources: [wgiObservationSource(key)],
       provenanceHint: key,
     });
   });
@@ -3841,7 +3834,7 @@ export async function scoreStateContinuity(
   const contributingWgiKeySet = new Set(contributingWgiKeys);
   const wgiObservedSources = WGI_TRACE_ROWS
     .filter(([key]) => contributingWgiKeySet.has(key))
-    .flatMap(([, indicatorId]) => auditedSourcesForIndicator(indicatorId));
+    .map(([key]) => wgiObservationSource(key));
 
   const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
   const ucdpObservationAvailable = Array.isArray((ucdpRaw as { events?: unknown[] } | null)?.events);

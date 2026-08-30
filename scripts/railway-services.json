@@ -903,7 +903,8 @@
       "scripts/shared/sovereign-status.json",
       "scripts/shared/wgi-indicator-keys.json",
       "shared/country-names.json",
-      "shared/iso3-to-iso2.json"
+      "shared/iso3-to-iso2.json",
+      "shared/wgi-source-provenance.js"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-4-seed-bundle-resilience"
   },
@@ -1007,7 +1008,6 @@
       "server/worldmonitor/resilience/v1/_dimension-freshness.ts",
       "server/worldmonitor/resilience/v1/_dimension-scorers.ts",
       "server/worldmonitor/resilience/v1/_indicator-registry.ts",
-      "server/worldmonitor/resilience/v1/_indicator-source-policy.ts",
       "server/worldmonitor/resilience/v1/_language-coverage.ts",
       "server/worldmonitor/resilience/v1/_macro-fiscal-weights.ts",
       "server/worldmonitor/resilience/v1/_pillar-membership.ts",
@@ -1018,6 +1018,7 @@
       "shared/country-names.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json",
+      "shared/wgi-source-provenance.js",
       "shared/wgi-indicator-keys.json",
       "tsconfig.api.json",
       "tsconfig.json"

@@ -20,8 +20,10 @@ import {
 } from './_country-resolver.mjs';
 import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 import wgiIndicatorKeys from './shared/wgi-indicator-keys.json' with { type: 'json' };
+import { wgiUpstreamIndicatorId } from '../shared/wgi-source-provenance.js';
 
 export { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
+export { wgiUpstreamIndicatorId } from '../shared/wgi-source-provenance.js';
 
 loadEnvFile(import.meta.url);
 
@@ -246,10 +248,6 @@ function upsertDatasetRecord(target, iso2, datasetField, value) {
  * seeder is annual with a 400-day TTL, so renaming the stored key would leave
  * the governance dimension reading nothing until the next re-seed.
  */
-export function wgiUpstreamIndicatorId(storedKey) {
-  return `GOV_WGI_${storedKey}`;
-}
-
 export async function fetchWgiDataset() {
   const merged = new Map();
   const results = await Promise.allSettled(
