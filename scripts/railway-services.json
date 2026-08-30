@@ -1018,6 +1018,7 @@
       "server/worldmonitor/resilience/v1/_dimension-freshness.ts",
       "server/worldmonitor/resilience/v1/_dimension-scorers.ts",
       "server/worldmonitor/resilience/v1/_indicator-registry.ts",
+      "server/worldmonitor/resilience/v1/_indicator-trace.ts",
       "server/worldmonitor/resilience/v1/_language-coverage.ts",
       "server/worldmonitor/resilience/v1/_macro-fiscal-weights.ts",
       "server/worldmonitor/resilience/v1/_pillar-membership.ts",
