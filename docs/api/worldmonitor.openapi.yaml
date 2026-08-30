@@ -54282,7 +54282,7 @@ components:
                     description: Transit share after the current disruption multiplier, from 0 to 1.
                 status:
                     type: string
-                    description: 'Current route state: baseline or disrupted.'
+                    description: 'Current route state: baseline, disrupted, or unknown when the flow row is absent.'
                 inputs:
                     type: array
                     items:

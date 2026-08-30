@@ -54,7 +54,9 @@ const DAILY_SECTIONS = [
     canonicalKey: 'supply-chain:vulnerability:v1',
     completionMetaKey: 'seed-completion:supply-chain:vulnerability',
     intervalMs: DAY,
-    timeoutMs: 45_000,
+    // 135s covers the seeder's 126s bounded Redis network budget and still
+    // leaves enough admission room for the 400s Military-Bases rotation.
+    timeoutMs: 135_000,
   },
 ];
 

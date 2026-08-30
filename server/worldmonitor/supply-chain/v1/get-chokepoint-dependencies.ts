@@ -8,11 +8,11 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/s
 import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 import {
-  CHOKEPOINT_DEPENDENCIES_KEY,
+  VULNERABILITY_COHORT_KEY,
   chokepointDependencyShardKey,
   isMatchingShard,
   mapChokepointDependency,
-  type RawChokepointIndex,
+  type RawVulnerabilityCohort,
   type RawChokepointShard,
   stringValue,
   vulnerabilityShardSlot,
@@ -27,7 +27,7 @@ export async function getChokepointDependencies(
     throw new ValidationError([{ field: 'chokepointId', description: 'chokepointId must be a canonical chokepoint id' }]);
   }
 
-  const payload = await getCachedJson(CHOKEPOINT_DEPENDENCIES_KEY, true).catch(() => null) as RawChokepointIndex | null;
+  const payload = await getCachedJson(VULNERABILITY_COHORT_KEY, true).catch(() => null) as RawVulnerabilityCohort | null;
   let chokepoint = payload?.chokepoints?.[chokepointId];
   let shardUnavailable = false;
   if (payload && !payload.chokepoints) {

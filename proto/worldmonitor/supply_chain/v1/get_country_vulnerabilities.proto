@@ -52,7 +52,7 @@ message VulnerabilityTransitRoute {
   optional double transit_share = 3;
   // Transit share after the current disruption multiplier, from 0 to 1.
   optional double weighted_transit_share = 4;
-  // Current route state: baseline or disrupted.
+  // Current route state: baseline, disrupted, or unknown when the flow row is absent.
   string status = 5;
   // Provenance observations used for the route exposure.
   repeated VulnerabilityInput inputs = 6;

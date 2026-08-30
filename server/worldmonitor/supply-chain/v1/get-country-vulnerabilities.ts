@@ -7,11 +7,11 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/s
 
 import { getCachedJson } from '../../../_shared/redis';
 import {
-  COUNTRY_VULNERABILITY_KEY,
+  VULNERABILITY_COHORT_KEY,
   countryVulnerabilityShardKey,
   isMatchingShard,
   mapCommodityVulnerability,
-  type RawCountryIndex,
+  type RawVulnerabilityCohort,
   type RawCountryShard,
   stringValue,
   vulnerabilityShardSlot,
@@ -26,7 +26,7 @@ export async function getCountryVulnerabilities(
     throw new ValidationError([{ field: 'iso2', description: 'iso2 must be a 2-letter uppercase ISO country code' }]);
   }
 
-  const payload = await getCachedJson(COUNTRY_VULNERABILITY_KEY, true).catch(() => null) as RawCountryIndex | null;
+  const payload = await getCachedJson(VULNERABILITY_COHORT_KEY, true).catch(() => null) as RawVulnerabilityCohort | null;
   let country = payload?.countries?.[iso2];
   let shardUnavailable = false;
   if (payload && !payload.countries) {

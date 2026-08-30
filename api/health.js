@@ -1008,7 +1008,13 @@ const SEED_META = {
   supplyVulnerability: {
     key: 'seed-meta:supply-chain:vulnerability',
     maxStaleMin: 2880,
-    minRecordCount: 1,
+    minRecordCount: 110,
+    requireVulnerabilityCoverage: {
+      bilateralCountryCount: 110,
+      reviewedCommodityCount: 23,
+      reviewedHs4Count: 22,
+      reviewedHs2Count: 9,
+    },
     activationKey: 'seed-activated:supply-chain:vulnerability',
     cutover: {
       mode: 'activation-marker',
@@ -1020,7 +1026,7 @@ const SEED_META = {
   supplyChokepointDependencies: {
     key: 'seed-meta:supply-chain:chokepoint-dependencies',
     maxStaleMin: 2880,
-    minRecordCount: 1,
+    minRecordCount: 7,
     activationKey: 'seed-activated:supply-chain:vulnerability',
     cutover: {
       mode: 'activation-marker',
@@ -2075,6 +2081,10 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         failedPages: Number(meta.coverage.failedPages) || 0,
         completionRatio: meta.coverage.completionRatio == null ? null : Number(meta.coverage.completionRatio) || 0,
         rejectedCount: Number(meta.coverage.rejectedCount) || 0,
+        ...(meta.coverage.bilateralCountryCount == null ? {} : { bilateralCountryCount: Number(meta.coverage.bilateralCountryCount) || 0 }),
+        ...(meta.coverage.reviewedCommodityCount == null ? {} : { reviewedCommodityCount: Number(meta.coverage.reviewedCommodityCount) || 0 }),
+        ...(meta.coverage.reviewedHs4Count == null ? {} : { reviewedHs4Count: Number(meta.coverage.reviewedHs4Count) || 0 }),
+        ...(meta.coverage.reviewedHs2Count == null ? {} : { reviewedHs2Count: Number(meta.coverage.reviewedHs2Count) || 0 }),
         failureReasons: sanitizeCoverageFailureReasons(meta.coverage.failureReasons),
         retailers: coverageRetailers,
       }
@@ -2422,6 +2432,11 @@ function classifyKey(name, redisKey, opts, ctx) {
     seedCfg?.minRankableRecordCount != null &&
     (rankableRecordCount == null || rankableRecordCount < seedCfg.minRankableRecordCount)
   ) status = 'COVERAGE_PARTIAL';
+  else if (
+    seedCfg?.requireVulnerabilityCoverage
+    && (!coverage || Object.entries(seedCfg.requireVulnerabilityCoverage)
+      .some(([field, floor]) => coverage[field] < floor))
+  ) status = 'COVERAGE_PARTIAL';
   // Per-pool coverage is independent of aggregate volume. Missing/malformed
   // diagnostics fail closed: without all configured counts health cannot prove
   // that every category consumer has data.
@@ -2511,6 +2526,9 @@ function classifyKey(name, redisKey, opts, ctx) {
     entry.minRankableRecordCount = seedCfg.minRankableRecordCount;
   }
   if (seedCfg?.minPoolCounts) entry.minPoolCounts = seedCfg.minPoolCounts;
+  if (seedCfg?.requireVulnerabilityCoverage) {
+    entry.requiredVulnerabilityCoverage = seedCfg.requireVulnerabilityCoverage;
+  }
   if (poolCounts) entry.poolCounts = poolCounts;
   if (coverage || seedCfg?.requireCoverage) entry.coverage = coverage;
   // Emitted whenever the producer recorded a cause, not only when the fault

@@ -353,6 +353,7 @@
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",

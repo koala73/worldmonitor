@@ -1746,7 +1746,7 @@ Returns the reviewed commodity-vulnerability portfolio for one country. Every ro
 | `country_code` | string | Required ISO 3166-1 alpha-2 country code, such as `AE`, `JP`, or `DE`. Input is case-insensitive. |
 
 - **API endpoint:** `GET /api/supply-chain/v1/get-country-vulnerabilities`
-- **Access:** `free-account`
+- **Access:** `subscription` — this RPC-backed tool requires a Pro subscription.
 - **Kind:** Redis projection read from `supply-chain:vulnerability:v1`.
 - **Freshness:** the daily snapshot has a 72-hour TTL. Read each row's `state`, `reasons`, and evidence `stale` fields because upstream datasets have different freshness budgets.
 - **Methodology:** [Commodity Vulnerability Methodology](/methodology/supply-vulnerability).
@@ -1767,7 +1767,7 @@ Returns the highest-scoring country and commodity dependencies for one maritime 
 | `page_size` | integer | Optional result limit from 1 to 100. Default 25. |
 
 - **API endpoint:** `GET /api/supply-chain/v1/get-chokepoint-dependencies`
-- **Access:** `free-account`
+- **Access:** `subscription` — this RPC-backed tool requires a Pro subscription.
 - **Kind:** Redis projection read from `supply-chain:chokepoint-dependencies:v1`.
 - **Freshness:** the daily snapshot has a 72-hour TTL. An unscored dependency remains in the response with its explicit state and reasons.
 - **Methodology:** [Commodity Vulnerability Methodology](/methodology/supply-vulnerability).

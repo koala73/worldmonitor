@@ -951,12 +951,14 @@ export class CountryIntelManager implements AppModule {
   }
 
   private fetchCommodityVulnerability(code: string): void {
-    fetchCountryVulnerabilities(code, { signal: this.ctx.countryBriefPage?.signal }).then(resp => {
-      if (this.ctx.countryBriefPage?.getCode() !== code) return;
-      this.ctx.countryBriefPage.updateCommodityVulnerabilities?.(resp);
+    const page = this.ctx.countryBriefPage;
+    const signal = page?.signal;
+    fetchCountryVulnerabilities(code, { signal }).then(resp => {
+      if (signal?.aborted || this.ctx.countryBriefPage !== page || page?.getCode() !== code) return;
+      page.updateCommodityVulnerabilities?.(resp);
     }).catch(() => {
-      if (this.ctx.countryBriefPage?.getCode() === code) {
-        this.ctx.countryBriefPage.updateCommodityVulnerabilities?.(null);
+      if (!signal?.aborted && this.ctx.countryBriefPage === page && page?.getCode() === code) {
+        page.updateCommodityVulnerabilities?.(null);
       }
     });
   }

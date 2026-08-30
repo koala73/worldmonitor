@@ -1001,6 +1001,38 @@ const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
     unavailableReason: { type: 'string' as const, enum: ['', 'scorecard-snapshot-unavailable'] },
   },
 };
+const VULNERABILITY_INPUT_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    sourceKey: { type: 'string' as const }, sourceName: { type: 'string' as const }, sourceUrl: { type: 'string' as const },
+    value: { type: ['number', 'null'] }, year: { type: ['integer', 'null'] }, fetchedAt: { type: 'string' as const },
+    stale: { type: 'boolean' as const }, detail: { type: 'string' as const },
+  },
+};
+
+const VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    sourceConcentration: { type: 'object' as const, properties: {
+      value: { type: ['number', 'null'] }, importHhi: { type: ['number', 'null'] },
+      mineHhi: { type: ['number', 'null'] }, refineryHhi: { type: ['number', 'null'] },
+      productionHhi: { type: ['number', 'null'] }, productionCoverage: { type: 'string' as const },
+      coverage: { type: 'string' as const }, inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
+    } },
+    transitExposure: { type: 'object' as const, properties: {
+      value: { type: ['number', 'null'] },
+      chokepoints: { type: 'array' as const, items: { type: 'object' as const, properties: {
+        id: { type: 'string' as const }, name: { type: 'string' as const },
+        transitShare: { type: ['number', 'null'] }, weightedTransitShare: { type: ['number', 'null'] },
+        status: { type: 'string' as const }, inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
+      } } },
+    } },
+    buffer: { type: 'object' as const, properties: {
+      state: { type: 'string' as const }, vulnerability: { type: ['number', 'null'] }, kind: { type: 'string' as const },
+      inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
+    } },
+  },
+};
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_defense_industrial_base',
@@ -2903,7 +2935,7 @@ export const RPC_TOOLS: ToolDef[] = [
           commodityId: { type: 'string' }, commodity: { type: 'string' },
           score: { type: ['number', 'null'] }, band: { type: 'string' }, state: { type: 'string' },
           reasons: { type: 'array', items: { type: 'string' } }, coverage: { type: 'array', items: { type: 'string' } },
-          components: { type: 'object' }, methodologyVersion: { type: 'string' },
+          components: VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA, methodologyVersion: { type: 'string' },
         } } },
         generatedAt: { type: 'string' },
         methodologyVersion: { type: 'string' },

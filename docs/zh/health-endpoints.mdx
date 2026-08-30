@@ -344,6 +344,8 @@ curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?
 
 当种子的年龄超过**配置间隔的 2 倍**时，即被视为过期。这考虑了 cron/中继计时的正常抖动。低于总量 `minRecordCount` 的种子会报告 `coverage_partial` 和 `stale: true`。低于预测市场 `minPoolCounts` 等子组下限的种子也会报告 `coverage_partial`，但只要生产者心跳仍然新鲜，就保持 `stale: false`，从而区分新鲜度与覆盖率。
 
+商品脆弱性批次不采用“非空即健康”。国家投影必须达到配置的国家下限，并保留完整的已审核商品、HS4 和运输 HS2 注册表覆盖；反向投影必须达到配置的咽喉要道下限。任何不足都会报告 `COVERAGE_PARTIAL`。首个原子批次激活前，两个检查保持 rollout pending。
+
 **消费者：** 以 `status` 和 `overall` 作为覆盖率的权威信号。不要只依赖 `stale`——池覆盖不足按设计保持 `stale: false`。当任一覆盖率下限失败时，条目还会设置 `coveragePartial: true`，以便只检查布尔字段的客户端仍能看到不足。
 
 | 领域 | 间隔（分钟） | 过期阈值（分钟） |
