@@ -23,7 +23,11 @@ const METAL_METHODOLOGY = Object.freeze({
 });
 
 const REGIME_RANK = Object.freeze({ normal: 0, elevated: 1, stressed: 2, extreme: 3 });
-const REGIME_INDEX_FLOOR = Object.freeze({ normal: 0, elevated: 50, stressed: 75, extreme: 100 });
+// Index floors stay ordered with absoluteStressIndex band tops. Absolute extreme alone
+// publishes 100; a relative-only extreme floors at 90 so it cannot saturate the scale
+// (#7423). Absolute stressed maps into [70, 90), so no stressed reading can outscore any
+// extreme reading.
+const REGIME_INDEX_FLOOR = Object.freeze({ normal: 0, elevated: 45, stressed: 70, extreme: 90 });
 const PROVENANCE_SYMBOLS = Object.freeze({
   gold: Object.freeze({ physical: 'SHAU', paper: 'GC=F' }),
   silver: Object.freeze({ physical: 'SHAG', paper: 'SI=F' }),
@@ -109,13 +113,16 @@ export function classifyPhysicalPremiumRegime(metal, premiumPct, percentile) {
 
 function absoluteStressIndex(metal, premiumPct) {
   const floors = METAL_METHODOLOGY[metal].absoluteFloors;
+  // Band tops are 45 / 70 / 90 so they nest under REGIME_INDEX_FLOOR and leave 100 reserved
+  // for clearing the absolute extreme premium floor. Relative escalation uses the floor
+  // table; absolute magnitude never publishes past 90 until that absolute extreme clears.
   if (premiumPct <= 0) return 0;
-  if (premiumPct < floors.elevated) return (premiumPct / floors.elevated) * 50;
+  if (premiumPct < floors.elevated) return (premiumPct / floors.elevated) * 45;
   if (premiumPct < floors.stressed) {
-    return 50 + ((premiumPct - floors.elevated) / (floors.stressed - floors.elevated)) * 25;
+    return 45 + ((premiumPct - floors.elevated) / (floors.stressed - floors.elevated)) * 25;
   }
   if (premiumPct < floors.extreme) {
-    return 75 + ((premiumPct - floors.stressed) / (floors.extreme - floors.stressed)) * 25;
+    return 70 + ((premiumPct - floors.stressed) / (floors.extreme - floors.stressed)) * 20;
   }
   return 100;
 }

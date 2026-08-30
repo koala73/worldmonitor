@@ -51,7 +51,20 @@ The classifier assigns one absolute regime and one relative regime. The higher r
 
 For example, a gold premium of 3% is at least `stressed` even when the trailing window also contains higher observations.
 
-The per-metal stress index is on a 0 to 100 scale. It interpolates from normal to the absolute elevated threshold, then through the stressed and extreme thresholds. The relative regime also sets a floor of 0, 50, 75, or 100. Values are bounded to the published range.
+The per-metal stress index is on a 0 to 100 scale. Absolute magnitude interpolates across compressed band tops of 45 (elevated), 70 (stressed), and 90 (just under extreme). Clearing the absolute extreme premium floor (gold 5%, silver 20%) publishes `100`.
+
+When the relative ladder outruns absolute magnitude, `index` still means **stress magnitude with a regime-ordered floor**, not a second copy of the percentile:
+
+| Regime | Index floor |
+| --- | ---: |
+| Normal | 0 |
+| Elevated | 45 |
+| Stressed | 70 |
+| Extreme | 90 |
+
+`index = max(absoluteStressIndex, regimeFloor)`. A relative-only extreme therefore floors at 90 rather than saturating at 100. That reserves the top of the scale for absolute extreme premiums and keeps the index monotonic in regime rank: no `stressed` reading can report a higher index than any `extreme` reading. `regime` still carries the hybrid classification (absolute or relative, whichever is higher). Percentile remains a separate published field.
+
+This follows the ECB CISS lesson that a single-indicator percentile must not pin the published index at its maximum. Option chosen over dropping the floors entirely (which would let `regime: extreme` ship with a low magnitude index) and over widening the proto with a second index field.
 
 The composite is `70% gold + 30% silver`. It is published only when both metals are in the `ok` state. The gold weight reflects its larger and more liquid benchmark role. The response always includes both weights so consumers can reproduce the result.
 
@@ -95,3 +108,4 @@ The response carries the physical benchmark source, symbol, physical print date,
 | Version | Date | Change |
 | --- | --- | --- |
 | `physical-divergence-v1` | 2026-08-30 | Initial bounded-history, hybrid-regime, explicit-state, composite, trend, and transition contract. |
+| `physical-divergence-v1` | 2026-08-30 | Index floors compressed to 0 / 45 / 70 / 90; absolute band tops nest under those floors; `100` reserved for absolute extreme so a relative-only extreme cannot saturate the scale (#7423). |

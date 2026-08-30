@@ -100,6 +100,109 @@ describe('physical divergence methodology v1', () => {
     assert.equal(classifyPhysicalPremiumRegime('silver', 2.5, 100), 'extreme');
   });
 
+  it('keeps index monotonic in regime rank and reserves 100 for absolute extreme (#7423)', () => {
+    // Relative-only extreme: gold at half the elevated floor topping a calm window.
+    // Absolute stress for 0.5% is well below the extreme premium floor; the published index
+    // must still clear every stressed reading without saturating the 0–100 scale at 100.
+    const relativeExtreme = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 0.5, premiumUsdPerOz: 15 }),
+      history: [
+        point(0, 0.5),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 0.1)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(relativeExtreme.state, 'ok');
+    assert.equal(relativeExtreme.regime, 'extreme');
+    assert.equal(relativeExtreme.percentile, 100);
+    assert.equal(relativeExtreme.index, 90);
+    assert.ok(relativeExtreme.index < 100);
+
+    // Absolute stressed just under the extreme premium floor. Trailing values sit higher so
+    // the relative ladder cannot escalate past absolute magnitude.
+    const absoluteStressed = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 4.999, premiumUsdPerOz: 149.97 }),
+      history: [
+        point(0, 4.999),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 12)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(absoluteStressed.state, 'ok');
+    assert.equal(absoluteStressed.regime, 'stressed');
+    assert.ok(absoluteStressed.index < relativeExtreme.index);
+    assert.ok(absoluteStressed.index >= 70);
+    assert.ok(absoluteStressed.index <= 90);
+
+    // Absolute extreme clears the metal floor and alone may publish 100.
+    const absoluteExtreme = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 5, premiumUsdPerOz: 150 }),
+      history: [
+        point(0, 5),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 12)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(absoluteExtreme.state, 'ok');
+    assert.equal(absoluteExtreme.regime, 'extreme');
+    assert.equal(absoluteExtreme.index, 100);
+
+    // Relative stressed at the half-elevated gate with percentile exactly 95
+    // (57 of 60 window values at or below the current premium).
+    const relativeStressed = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 0.5, premiumUsdPerOz: 15 }),
+      history: [
+        point(0, 0.5),
+        ...Array.from({ length: 56 }, (_, index) => point(index + 1, 0.1)),
+        ...Array.from({ length: 3 }, (_, index) => point(index + 57, 0.6)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(relativeStressed.regime, 'stressed');
+    assert.equal(relativeStressed.percentile, 95);
+    assert.equal(relativeStressed.index, 70);
+
+    // Absolute normal / elevated with higher trailing values so relative stays quiet.
+    const absoluteNormal = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 0.4, premiumUsdPerOz: 12 }),
+      history: [
+        point(0, 0.4),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 2)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    const absoluteElevated = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 2.9999, premiumUsdPerOz: 90 }),
+      history: [
+        point(0, 2.9999),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 10)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(absoluteNormal.regime, 'normal');
+    assert.equal(absoluteElevated.regime, 'elevated');
+
+    const maxOf = (...readings) => Math.max(...readings.map((reading) => reading.index));
+    const minOf = (...readings) => Math.min(...readings.map((reading) => reading.index));
+    // Adjacent bands share a floor after two-decimal rounding, so equality at the boundary
+    // is allowed; a lower regime must never strictly outscore a higher one.
+    assert.ok(maxOf(absoluteNormal) <= minOf(absoluteElevated));
+    assert.ok(maxOf(absoluteElevated) <= minOf(absoluteStressed, relativeStressed));
+    assert.ok(maxOf(absoluteStressed, relativeStressed) <= minOf(relativeExtreme, absoluteExtreme));
+  });
+
   it('uses median and MAD instead of mean and standard deviation under an outlier', () => {
     const z = robustZScore(3, [1, 1, 2, 2, 3, 100]);
     assert.ok(z != null);
