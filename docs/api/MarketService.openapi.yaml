@@ -592,7 +592,7 @@ paths:
                                 "composite":
                                     "index": 1.5
                                     "methodologyVersion": "example"
-                                    "reason": "?:"
+                                    "reason": ""
                                     "state": "PHYSICAL_DIVERGENCE_STATE_OK"
                                     "weights":
                                         - "metal": "example"

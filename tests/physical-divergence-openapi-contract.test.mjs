@@ -50,4 +50,15 @@ describe('physical divergence OpenAPI contract', () => {
       );
     }
   });
+
+  it('publishes an ok response example with an empty composite reason', () => {
+    for (const [label, spec] of specs) {
+      const operation = spec.paths['/api/market/v1/get-physical-divergence-index'].get;
+      const example = operation.responses['200'].content['application/json'].example;
+      const reasonPattern = schema(spec, 'PhysicalStressComposite').properties.reason.pattern;
+      assert.equal(example.composite.state, 'PHYSICAL_DIVERGENCE_STATE_OK', label);
+      assert.equal(example.composite.reason, '', label);
+      assert.match(example.composite.reason, new RegExp(reasonPattern), label);
+    }
+  });
 });
