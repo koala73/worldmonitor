@@ -48,7 +48,7 @@ function current(metal = 'gold', overrides = {}) {
   };
 }
 
-describe('physical divergence methodology v1', () => {
+describe('physical divergence methodology v2', () => {
   it('keeps the shared stale boundary inclusive through day 12', () => {
     const nowMs = Date.parse('2026-10-13T12:00:00.000Z');
     assert.equal(isPhysicalDivergencePrintStale('2026-10-01', nowMs), false);

@@ -13,7 +13,7 @@ description: "WorldMonitor 如何用稳健历史、明确数据状态和仅限�
 
 Seeder 按实物公布日期把黄金和白银分别写入 `market:physical-premium-history:v1:gold` 与 `market:physical-premium-history:v1:silver`。同一日期会替换旧点。写入、去重和截断在一个 Redis 操作中完成。每个列表最多保留 750 点，分类器使用最新 250 点，至少需要 60 个有效点。
 
-每个点和响应都声明 `methodologyVersion: physical-divergence-v1`。
+每个点和响应都声明 `methodologyVersion: physical-divergence-v2`。
 
 ```text
 稳健 z = 0.67448975 * (当前值 - 中位数) / MAD
@@ -72,4 +72,4 @@ MAD = median(abs(历史值 - 中位数))
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
 | `physical-divergence-v1` | 2026-08-30 | 首次发布有界历史、混合状态、明确数据状态、综合指数、趋势和转换信号。 |
-| `physical-divergence-v1` | 2026-08-30 | 指数下限压缩为 0 / 45 / 70 / 90；绝对分段顶点嵌在这些下限之下；`100` 留给绝对 extreme，避免仅相对 extreme 顶满刻度（#7423）。 |
+| `physical-divergence-v2` | 2026-08-30 | 指数下限压缩为 0 / 45 / 70 / 90；绝对分段顶点嵌在这些下限之下；`100` 留给绝对 extreme，避免仅相对 extreme 顶满刻度（#7423）。固定 `methodologyVersion` 的客户端应重新建立基线。 |

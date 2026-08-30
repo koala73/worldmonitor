@@ -18,7 +18,7 @@ The daily seeder stores one list for each metal:
 
 Each point is keyed by the physical print date. A repeated print date replaces the earlier point. The write, deduplication, and trim run as one Redis operation. Each list keeps at most 750 points, or about three trading years. The classifier uses the newest 250 points and needs at least 60 valid points.
 
-Every history point and response declares `methodologyVersion: physical-divergence-v1`.
+Every history point and response declares `methodologyVersion: physical-divergence-v2`.
 
 ## Robust normalization
 
@@ -108,4 +108,4 @@ The response carries the physical benchmark source, symbol, physical print date,
 | Version | Date | Change |
 | --- | --- | --- |
 | `physical-divergence-v1` | 2026-08-30 | Initial bounded-history, hybrid-regime, explicit-state, composite, trend, and transition contract. |
-| `physical-divergence-v1` | 2026-08-30 | Index floors compressed to 0 / 45 / 70 / 90; absolute band tops nest under those floors; `100` reserved for absolute extreme so a relative-only extreme cannot saturate the scale (#7423). |
+| `physical-divergence-v2` | 2026-08-30 | Index floors compressed to 0 / 45 / 70 / 90; absolute band tops nest under those floors; `100` reserved for absolute extreme so a relative-only extreme cannot saturate the scale (#7423). Clients pinned on `methodologyVersion` should re-baseline. |

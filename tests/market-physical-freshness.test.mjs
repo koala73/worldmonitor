@@ -82,7 +82,7 @@ describe('physical market service freshness', () => {
           readings: [{ metal: 'gold' }, { metal: 'silver' }],
           composite: { state: divergenceCalls === 1 ? 'PHYSICAL_DIVERGENCE_STATE_OK' : 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT' },
           evaluatedAt: `divergence-${divergenceCalls}`,
-          methodologyVersion: 'physical-divergence-v1',
+          methodologyVersion: 'physical-divergence-v2',
         });
       }
       throw new Error(`Unexpected market request: ${path}`);

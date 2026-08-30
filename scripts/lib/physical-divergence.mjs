@@ -4,7 +4,7 @@ import {
   physicalDivergenceStaleReason,
 } from '../shared/physical-divergence-staleness.js';
 
-export const METHODOLOGY_VERSION = 'physical-divergence-v1';
+export const METHODOLOGY_VERSION = 'physical-divergence-v2';
 export const HISTORY_LIMIT = 750;
 export const TRAILING_WINDOW_POINTS = 250;
 export const MIN_HISTORY_POINTS = 60;

@@ -169,7 +169,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
           fromRegime: 'normal',
           toRegime: 'elevated',
           detectedAt: now,
-          methodologyVersion: 'physical-divergence-v1',
+          methodologyVersion: 'physical-divergence-v2',
         }],
       },
     });

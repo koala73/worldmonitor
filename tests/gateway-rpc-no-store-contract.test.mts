@@ -81,7 +81,7 @@ describe('gateway RPC no-store contract', () => {
         readings: [],
         composite: { state: 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT' },
         evaluatedAt: '2026-08-30T00:00:00.000Z',
-        methodologyVersion: 'physical-divergence-v1',
+        methodologyVersion: 'physical-divergence-v2',
       }),
     ]);
 

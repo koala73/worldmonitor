@@ -531,7 +531,7 @@ const FIXTURES = [
     key: 'market:physical-divergence:v1',
     enveloped: false,
     payload: {
-      methodologyVersion: 'physical-divergence-v1',
+      methodologyVersion: 'physical-divergence-v2',
       readings: freshPhysicalReadings(),
       transitions: [{
         id: `physical-premium:gold:normal-elevated:${now - HOUR}`,
@@ -539,7 +539,7 @@ const FIXTURES = [
         fromRegime: 'normal',
         toRegime: 'elevated',
         detectedAt: now - HOUR,
-        methodologyVersion: 'physical-divergence-v1',
+        methodologyVersion: 'physical-divergence-v2',
       }],
     },
   },
@@ -628,7 +628,7 @@ it('rejects non-canonical physical premium transitions', () => {
     fromRegime: 'normal',
     toRegime: 'elevated',
     detectedAt: now,
-    methodologyVersion: 'physical-divergence-v1',
+    methodologyVersion: 'physical-divergence-v2',
   };
   for (const transition of [
     { ...base, fromRegime: '<script>' },
@@ -661,7 +661,7 @@ it('rejects a recent transition when any required input clock is stale', () => {
         fromRegime: 'normal',
         toRegime: 'elevated',
         detectedAt: now - HOUR,
-        methodologyVersion: 'physical-divergence-v1',
+        methodologyVersion: 'physical-divergence-v2',
       }],
     },
   }), []);
@@ -674,7 +674,7 @@ it('does not emit transitions from missing or malformed input clocks', () => {
     fromRegime: 'normal',
     toRegime: 'elevated',
     detectedAt: now - HOUR,
-    methodologyVersion: 'physical-divergence-v1',
+    methodologyVersion: 'physical-divergence-v2',
   };
   for (const mutate of [
     (reading) => { reading.physicalAsOf = ''; },
@@ -747,7 +747,7 @@ it('pins every physical premium transition severity tier', () => {
           fromRegime,
           toRegime,
           detectedAt,
-          methodologyVersion: 'physical-divergence-v1',
+          methodologyVersion: 'physical-divergence-v2',
         }],
       },
     });

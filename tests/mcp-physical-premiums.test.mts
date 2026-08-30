@@ -21,7 +21,7 @@ const provenance = (metal: 'gold' | 'silver') => ({
   fxAsOf: '2026-08-18T12:28:48.000Z',
   historyKey: `market:physical-premium-history:v1:${metal}`,
   historyWindowPoints: 250,
-  methodologyVersion: 'physical-divergence-v1',
+  methodologyVersion: 'physical-divergence-v2',
 });
 
 const dataset = {
@@ -41,7 +41,7 @@ const dataset = {
     fx: { pair: 'CNY/USD', rate: 0.1486, asOf: '2026-08-18T12:28:48.000Z' },
   },
   'physical-divergence': {
-    methodologyVersion: 'physical-divergence-v1',
+    methodologyVersion: 'physical-divergence-v2',
     evaluatedAt: '2026-08-18T12:30:00.000Z',
     readings: [
       {
@@ -50,7 +50,7 @@ const dataset = {
         delta5d: 0.5, delta20d: 1.4, trend5d: 'widening', trend20d: 'widening',
         historyPoints: 60, historyWindowStart: '2026-06-20', historyWindowEnd: '2026-08-18',
         physicalAsOf: '2026-08-18', paperAsOf: '2026-08-18T12:22:24.000Z',
-        methodologyVersion: 'physical-divergence-v1', provenance: provenance('gold'),
+        methodologyVersion: 'physical-divergence-v2', provenance: provenance('gold'),
       },
       {
         metal: 'silver', state: 'insufficient_history', reason: 'history_points_below_60',
@@ -58,16 +58,16 @@ const dataset = {
         percentile: null, robustZ: null, delta5d: null, delta20d: null, trend5d: null, trend20d: null,
         historyPoints: 59, historyWindowStart: '', historyWindowEnd: '',
         physicalAsOf: '2026-08-18', paperAsOf: '2026-08-18T12:22:24.000Z',
-        methodologyVersion: 'physical-divergence-v1', provenance: provenance('silver'),
+        methodologyVersion: 'physical-divergence-v2', provenance: provenance('silver'),
       },
     ],
     composite: {
       state: 'insufficient_history', reason: 'member_not_ok:silver:insufficient_history', index: null,
       weights: [
-        { metal: 'gold', weight: 0.7, methodologyVersion: 'physical-divergence-v1' },
-        { metal: 'silver', weight: 0.3, methodologyVersion: 'physical-divergence-v1' },
+        { metal: 'gold', weight: 0.7, methodologyVersion: 'physical-divergence-v2' },
+        { metal: 'silver', weight: 0.3, methodologyVersion: 'physical-divergence-v2' },
       ],
-      methodologyVersion: 'physical-divergence-v1',
+      methodologyVersion: 'physical-divergence-v2',
     },
     transitions: [{
       id: `physical-premium:gold:normal-elevated:${Date.parse('2026-08-18T12:29:00.000Z')}`,
@@ -75,7 +75,7 @@ const dataset = {
       fromRegime: 'normal',
       toRegime: 'elevated',
       detectedAt: Date.parse('2026-08-18T12:29:00.000Z'),
-      methodologyVersion: 'physical-divergence-v1',
+      methodologyVersion: 'physical-divergence-v2',
     }],
   },
   crypto: { quotes: [{ symbol: 'BTC' }] },
@@ -242,7 +242,7 @@ describe('get_market_data physical premium coverage', () => {
   it('returns divergence states through the real cache-tool execution path', async () => {
     const result = await executeWithStoredData({ symbols: ['XAU'], limit: 0 });
     const divergence = result.data['physical-divergence'] as typeof dataset['physical-divergence'];
-    assert.equal(divergence.methodologyVersion, 'physical-divergence-v1');
+    assert.equal(divergence.methodologyVersion, 'physical-divergence-v2');
     assert.deepEqual(divergence.readings.map((reading) => reading.metal), ['gold']);
     assert.equal(divergence.readings[0]?.state, 'ok');
     assert.deepEqual(divergence.readings[0]?.provenance, provenance('gold'));

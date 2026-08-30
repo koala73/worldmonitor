@@ -4,7 +4,7 @@ import {
   physicalDivergenceStaleReason,
 } from '../../shared/physical-divergence-staleness.js';
 
-export const PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION = 'physical-divergence-v1';
+export const PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION = 'physical-divergence-v2';
 export const PHYSICAL_DIVERGENCE_METALS = ['gold', 'silver'] as const;
 
 export type PhysicalDivergenceMetal = typeof PHYSICAL_DIVERGENCE_METALS[number];
