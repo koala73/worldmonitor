@@ -332,6 +332,18 @@ export const MCP_LOG_LEVELS: ReadonlySet<string> = new Set([
 export const JMESPATH_MAX_EXPR_BYTES = 1024;
 export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 
+// Shared JSON-RPC POST body cap for `/api/mcp` (and sibling MCP entry
+// points that opt in). Untrusted clients — including confused LLM hosts
+// pasting large blobs into tool arguments — reach every method's string
+// args through one parse site. Without a gate here, any handler that does
+// super-linear work on a string argument is reachable at whatever size a
+// caller sends (#7406; see also the per-designator gate in
+// shared/country-code-resolve.ts). Sized to match JMESPATH_MAX_OUTPUT_BYTES
+// / api/docs-mcp.ts: large enough for real tools/call envelopes, small
+// enough to bound Edge CPU before method dispatch. Exported so tests can
+// assert the cap without hard-coding the number in two places.
+export const MAX_JSON_RPC_BODY_BYTES = 256 * 1024;
+
 // tools/list tool-description compression cap (v1.5.0). Defined here
 // rather than near `compressDescription` so SERVER_INSTRUCTIONS can
 // quote it without a temporal-dead-zone error. The compressDescription

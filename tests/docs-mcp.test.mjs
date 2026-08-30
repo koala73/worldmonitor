@@ -173,10 +173,21 @@ describe('docs-mcp normalizeToolCallResponseBody', () => {
 });
 
 describe('docs-mcp handler', () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
   it('rejects a UTF-8 request body whose encoded size exceeds 256 KiB', async () => {
-    let upstreamCalled = false;
-    globalThis.fetch = async () => {
-      upstreamCalled = true;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const upstreamCalls = [];
+    globalThis.fetch = async (url) => {
+      upstreamCalls.push(String(url));
       return new Response('{}');
     };
     // Each e-acute is one JavaScript UTF-16 code unit but two UTF-8 bytes.
@@ -189,15 +200,21 @@ describe('docs-mcp handler', () => {
     const res = await handler(post(body));
 
     assert.equal(res.status, 413);
-    assert.equal(upstreamCalled, false, 'oversized bodies must not reach the upstream');
+    assert.equal(
+      upstreamCalls.filter((url) => url.includes('mintlify')).length,
+      0,
+      'oversized bodies must not reach the upstream',
+    );
     const payload = await res.json();
     assert.equal(payload.error.code, -32600);
   });
 
   it('counts a leading UTF-8 BOM against the raw 256 KiB request limit', async () => {
-    let upstreamCalled = false;
-    globalThis.fetch = async () => {
-      upstreamCalled = true;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const upstreamCalls = [];
+    globalThis.fetch = async (url) => {
+      upstreamCalls.push(String(url));
       return new Response('{}');
     };
     const rpc = '{"jsonrpc":"2.0","id":1,"method":"ping"}';
@@ -212,7 +229,11 @@ describe('docs-mcp handler', () => {
     const res = await handler(post(wireBody));
 
     assert.equal(res.status, 413);
-    assert.equal(upstreamCalled, false, 'BOM-prefixed oversized bodies must not reach the upstream');
+    assert.equal(
+      upstreamCalls.filter((url) => url.includes('mintlify')).length,
+      0,
+      'BOM-prefixed oversized bodies must not reach the upstream',
+    );
     const payload = await res.json();
     assert.equal(payload.error.code, -32600);
   });

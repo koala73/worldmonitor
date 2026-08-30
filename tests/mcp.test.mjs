@@ -355,6 +355,76 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32600);
   });
 
+  it('rejects an oversized JSON-RPC body before parsing (#7406)', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const rpc = '{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}';
+    const oversized = `${rpc.slice(0, -1)}${' '.repeat(MAX_JSON_RPC_BODY_BYTES - rpc.length + 1)}}`;
+    assert.ok(
+      new TextEncoder().encode(oversized).byteLength > MAX_JSON_RPC_BODY_BYTES,
+      'fixture must exceed the shared body cap',
+    );
+
+    const res = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+      body: oversized,
+    }));
+
+    assert.equal(res.status, 413, 'oversized bodies must be HTTP 413');
+    assertNoStore(res, 'oversized body rejection');
+    const body = await res.json();
+    assert.equal(body.id, null, 'oversized body must not reflect a parsed id');
+    assert.equal(body.error?.code, -32600);
+    assert.match(body.error?.message ?? '', new RegExp(String(MAX_JSON_RPC_BODY_BYTES)));
+  });
+
+  it('rejects an oversized Content-Length without reading the body (#7406)', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import(`../api/mcp.ts?t=${Date.now()}`);
+    let pullCount = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        pullCount += 1;
+        controller.enqueue(new TextEncoder().encode('{"jsonrpc":"2.0","id":1,"method":"ping"}'));
+        controller.close();
+      },
+    });
+
+    const res = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(MAX_JSON_RPC_BODY_BYTES + 1),
+        'X-WorldMonitor-Key': VALID_KEY,
+      },
+      // @ts-expect-error — undici duplex is required for streaming request bodies
+      duplex: 'half',
+      body,
+    }));
+
+    assert.equal(res.status, 413);
+    assert.equal(pullCount, 0, 'Content-Length over the cap must not pull the stream');
+    const payload = await res.json();
+    assert.equal(payload.error?.code, -32600);
+  });
+
+  it('accepts a JSON-RPC body at the exact byte cap', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const rpc = '{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}';
+    const atCap = `${rpc.slice(0, -1)}${' '.repeat(MAX_JSON_RPC_BODY_BYTES - rpc.length)}}`;
+    assert.equal(new TextEncoder().encode(atCap).byteLength, MAX_JSON_RPC_BODY_BYTES);
+
+    const res = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+      body: atCap,
+    }));
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined);
+    assert.deepEqual(body.result, {});
+  });
+
   it('accepts ordinary scalar JSON-RPC IDs and echoes them unchanged', async () => {
     for (const id of [42, 'correlation-id']) {
       const res = await handler(makeReq('POST', { jsonrpc: '2.0', id, method: 'ping', params: {} }));

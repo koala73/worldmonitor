@@ -622,6 +622,43 @@ describe('api/mcp-proxy', () => {
       assert.match(data.error, /toolName/i);
     });
 
+    it('rejects an oversized POST body before forwarding (#7406)', async () => {
+      const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/constants.ts');
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      const upstreamHosts = [];
+      globalThis.fetch = async (url) => {
+        upstreamHosts.push(String(url));
+        return new Response('{}');
+      };
+      const base = JSON.stringify({
+        serverUrl: 'https://mcp.example.com/mcp',
+        toolName: 'search',
+        toolArgs: { q: 'x' },
+      });
+      const oversized = `${base.slice(0, -1)}${' '.repeat(MAX_JSON_RPC_BODY_BYTES - base.length + 1)}}`;
+      assert.ok(new TextEncoder().encode(oversized).byteLength > MAX_JSON_RPC_BODY_BYTES);
+
+      const res = await handler(new Request('https://worldmonitor.app/api/mcp-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WorldMonitor-Key': ENTERPRISE_KEY,
+          origin: 'https://worldmonitor.app',
+        },
+        body: oversized,
+      }));
+
+      assert.equal(res.status, 413);
+      assert.equal(
+        upstreamHosts.filter((url) => url.includes('mcp.example.com')).length,
+        0,
+        'oversized bodies must not reach upstream MCP servers',
+      );
+      const data = await res.json();
+      assert.match(data.error, new RegExp(String(MAX_JSON_RPC_BODY_BYTES)));
+    });
+
     it('returns 400 for blocked host in POST body', async () => {
       const res = await handler(makePostRequest({
         serverUrl: 'https://localhost/mcp',
