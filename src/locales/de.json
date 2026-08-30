@@ -2193,6 +2193,25 @@
       },
       "cissStale": "EZB hat keinen neueren Wert veröffentlicht – dieser Messwert könnte veraltet sein."
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz-Handelstracker</strong> AIS-Schiffsverfolgung in Echtzeit durch die Straße von Hormuz, den kritischsten Öl-Engpass der Welt. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Flussänderungen. Etwa 20 % der globalen Ölversorgung passiert hier täglich.",
       "title": "Hormuz-Handels-Tracker",

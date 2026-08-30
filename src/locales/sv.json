@@ -1816,6 +1816,25 @@
       },
       "cissStale": "ECB har inte publicerat ett nyare värde — denna avläsning kan vara föråldrad."
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz handelsspårare</strong> Live AIS-fartygsspårning genom Hormuzsundet, världens mest kritiska oljeflaskhals. Övervakar tankerantal, störningshändelser och veckovisa flödesförändringar. Cirka 20% av den globala oljeförsörjningen passerar här dagligen.",
       "title": "Hormuz Trade Tracker",

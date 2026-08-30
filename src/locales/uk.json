@@ -2423,6 +2423,25 @@
         "failedToLoad": "Failed to load"
       }
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
       "title": "Hormuz Trade Tracker",

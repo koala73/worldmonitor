@@ -187,7 +187,9 @@
       "corporateDisclosures": "기업 공시",
       "corridorConditions": "회랑 상황",
       "activityNowcast": "활동 나우캐스트",
-      "decisionSignalsUnavailable": "중국 의사결정 신호 스냅샷을 현재 사용할 수 없습니다."
+      "decisionSignalsUnavailable": "중국 의사결정 신호 스냅샷을 현재 사용할 수 없습니다.",
+      "activeDisruptions_one": "{{count}} active disruption",
+      "activeSignals_one": "{{count}} active signal"
     },
     "foodStocks": "Food stocks",
     "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
@@ -627,7 +629,8 @@
       "flightMilitaryOnGround": "군용기 · {{type}} · 지상",
       "flightSearchHint": "Enter를 누르거나 클릭하여 실시간 위치 조회",
       "flightNotFound": "{{callsign}}의 실시간 위치를 찾을 수 없음",
-      "addPanel": "Add"
+      "addPanel": "Add",
+      "resultAnnouncement_one": "{{count}} result for {{query}}"
     },
     "signal": {
       "title": "정보 발견",
@@ -1482,7 +1485,8 @@
       "provenanceTitle": "커버리지 출처: 이 브리프가 선택된 수집 스토리 및 고유 소스의 개수",
       "compiledFrom": "{{stories}}개의 스토리와 {{sources}}개의 소스에서 컴파일됨",
       "briefFreshness": "{{minutes}}분 전 생성됨 · 최신 소스 {{hours}}시간 전",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Story details ({{count}})",
+      "sources_one": "{{count}} source"
     },
     "settings": {
       "exportSettings": "설정 내보내기",
@@ -2107,12 +2111,17 @@
       "time": {
         "justNow": "방금",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_other": "{{count}}일 전"
+        "daysAgo_other": "{{count}}일 전",
+        "hoursAgo_one": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago"
       },
       "filters": {
         "alert_other": "{{count}} 알림",
         "warning_other": "{{count}} 경고",
-        "watch_other": "{{count}} 감시"
+        "watch_other": "{{count}} 감시",
+        "alert_one": "{{count}} Alert",
+        "warning_one": "{{count}} Warning",
+        "watch_one": "{{count}} Watch"
       },
       "errors": {
         "noData": "발생 데이터 없음",
@@ -2183,6 +2192,25 @@
         "failedToLoad": "로드 실패"
       },
       "cissStale": "ECB가 더 최신 값을 발표하지 않았습니다 — 이 수치가 최신이 아닐 수 있습니다."
+    },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과.",
@@ -2276,7 +2304,8 @@
       "appliesToNext": "다음 AI 재생성에 적용",
       "signals_other": "{{count}}개 신호",
       "disclaimer": "AI 생성 거래 신호는 정보 제공 목적입니다. 투자 조언이 아닙니다. 항상 자신의 조사를 수행하세요.",
-      "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요."
+      "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요.",
+      "signals_one": "{{count}} signal"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 예측</strong> 지정학적 및 경제 이벤트에 대한 AI 생성 확률 추정:<ul><li>교차 도메인 범위: 분쟁, 시장, 공급망, 사이버, 정치</li><li>각 예측은 예상 확률, 신뢰도 및 시간 범위를 표시</li><li>사용 가능한 경우 예측 시장 기준선을 기준으로 보정됨</li></ul>새로운 인텔리전스 신호가 들어올 때 예측이 업데이트됩니다. 위의 탭을 사용하여 도메인별로 필터링합니다."
@@ -2509,7 +2538,8 @@
         "unattributed": "미귀속",
         "program": "프로그램",
         "undated": "날짜 미지정"
-      }
+      },
+      "designations_one": "{{count}} designation"
     },
     "radiationWatch": {
       "title": "방사선 감시",
@@ -2542,7 +2572,9 @@
       },
       "observed": {
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_other": "{{count}}일 전"
+        "daysAgo_other": "{{count}}일 전",
+        "hoursAgo_one": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago"
       },
       "confidence": {
         "high": "높은 신뢰도",
@@ -2573,7 +2605,8 @@
       "empty": "검출된 활성 수렴이 없습니다.",
       "signals_other": "{{count}}개 신호",
       "analyzing": "분석 중입니다...",
-      "viewOnMap": "지도에서 보기"
+      "viewOnMap": "지도에서 보기",
+      "signals_one": "{{count}} signal"
     },
     "thermalEscalation": {
       "title": "열 급증",
@@ -2602,8 +2635,13 @@
       "age": {
         "minutesAgo_other": "{{count}}분 전",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_other": "{{count}}일 전"
-      }
+        "daysAgo_other": "{{count}}일 전",
+        "minutesAgo_one": "{{count}}m ago",
+        "hoursAgo_one": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago"
+      },
+      "observations_one": "{{count}} obs",
+      "sources_one": "{{count}} src"
     },
     "chokepointStrip": {
       "title": "초크포인트 상태",

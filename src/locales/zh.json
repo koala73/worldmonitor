@@ -187,7 +187,9 @@
       "corporateDisclosures": "企业披露",
       "corridorConditions": "通道状况",
       "activityNowcast": "活动即时预测",
-      "decisionSignalsUnavailable": "中国决策信号快照当前不可用。"
+      "decisionSignalsUnavailable": "中国决策信号快照当前不可用。",
+      "activeDisruptions_one": "{{count}} active disruption",
+      "activeSignals_one": "{{count}} active signal"
     },
     "foodStocks": "Food stocks",
     "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
@@ -627,7 +629,8 @@
       "flightMilitaryOnGround": "军用 · {{type}} · 地面停靠",
       "flightSearchHint": "按 Enter 或点击查看实时位置",
       "flightNotFound": "未找到 {{callsign}} 的实时位置",
-      "addPanel": "Add"
+      "addPanel": "Add",
+      "resultAnnouncement_one": "{{count}} result for {{query}}"
     },
     "signal": {
       "title": "情报发现",
@@ -1482,7 +1485,8 @@
       "compiledFrom": "编译自 {{stories}} 条故事和 {{sources}} 个来源",
       "provenanceTitle": "覆盖来源：此摘要选自多少条摄取的故事和不同的来源",
       "briefFreshness": "生成于 {{minutes}}m 前 · 最新来源 {{hours}}h 前",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Story details ({{count}})",
+      "sources_one": "{{count}} source"
     },
     "settings": {
       "exportSettings": "导出设置",
@@ -2107,12 +2111,17 @@
       "time": {
         "justNow": "刚才",
         "hoursAgo_other": "{{count}}小时前",
-        "daysAgo_other": "{{count}}天前"
+        "daysAgo_other": "{{count}}天前",
+        "hoursAgo_one": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago"
       },
       "filters": {
         "alert_other": "{{count}} 条警报",
         "warning_other": "{{count}} 条警告",
-        "watch_other": "{{count}} 条监测"
+        "watch_other": "{{count}} 条监测",
+        "alert_one": "{{count}} Alert",
+        "warning_one": "{{count}} Warning",
+        "watch_one": "{{count}} Watch"
       },
       "errors": {
         "noData": "无可用的爆发数据",
@@ -2183,6 +2192,25 @@
         "failedToLoad": "加载失败"
       },
       "cissStale": "欧洲中央银行尚未发布新数值 — 此读数可能已过期。"
+    },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。",
@@ -2276,7 +2304,8 @@
       "appliesToNext": "适用于下一次AI重新生成",
       "signals_other": "{{count}}个信号",
       "disclaimer": "AI生成的交易信号仅供参考。非投资建议。请自行研究。",
-      "unavailable": "AI市场影响在每次预测运行后生成。请稍后查看。"
+      "unavailable": "AI市场影响在每次预测运行后生成。请稍后查看。",
+      "signals_one": "{{count}} signal"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 预测</strong> AI 生成的地缘政治和经济事件概率估计：<ul><li>跨域覆盖：冲突、市场、供应链、网络安全、政治</li><li>每个预测显示估计概率、置信度和时间范围</li><li>根据预测市场基线进行校准（如可用）</li></ul>预测在新情报信号到达时更新。使用上方标签按域筛选。"
@@ -2509,7 +2538,8 @@
         "unattributed": "未归属",
         "program": "计划",
         "undated": "无日期"
-      }
+      },
+      "designations_one": "{{count}} designation"
     },
     "radiationWatch": {
       "title": "辐射监测",
@@ -2542,7 +2572,9 @@
       },
       "observed": {
         "hoursAgo_other": "{{count}}h 前",
-        "daysAgo_other": "{{count}}d 前"
+        "daysAgo_other": "{{count}}d 前",
+        "hoursAgo_one": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago"
       },
       "confidence": {
         "high": "高可信度",
@@ -2573,7 +2605,8 @@
       "empty": "未检测到活跃收敛",
       "signals_other": "{{count}} 个信号",
       "analyzing": "分析中...",
-      "viewOnMap": "在地图上查看"
+      "viewOnMap": "在地图上查看",
+      "signals_one": "{{count}} signal"
     },
     "thermalEscalation": {
       "title": "热异常升级",
@@ -2602,8 +2635,13 @@
       "age": {
         "minutesAgo_other": "{{count}} 分钟前",
         "hoursAgo_other": "{{count}} 小时前",
-        "daysAgo_other": "{{count}} 天前"
-      }
+        "daysAgo_other": "{{count}} 天前",
+        "minutesAgo_one": "{{count}}m ago",
+        "hoursAgo_one": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago"
+      },
+      "observations_one": "{{count}} obs",
+      "sources_one": "{{count}} src"
     },
     "chokepointStrip": {
       "title": "瓶颈地点状态",

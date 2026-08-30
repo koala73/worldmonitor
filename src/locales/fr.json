@@ -2202,6 +2202,25 @@
       },
       "cissStale": "La BCE n'a pas publié de valeur plus récente — cette lecture peut être obsolète."
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Suivi commercial d'Ormuz</strong> Suivi AIS des navires en temps réel à travers le détroit d'Ormuz, le goulet d'étranglement pétrolier le plus critique au monde. Surveille le nombre de pétroliers, les événements de perturbation et les variations hebdomadaires des flux. Environ 20 % de l'approvisionnement mondial en pétrole y transite quotidiennement.",
       "title": "Suivi du commerce du Détroit d'Ormuz",

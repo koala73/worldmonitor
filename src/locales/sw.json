@@ -2403,6 +2403,25 @@
         "failedToLoad": "Imeshindwa kupakia"
       }
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Inafuatilia moja kwa moja meli ya AIS kupitia Mlango-Bahari wa Hormuz, sehemu muhimu zaidi ya kusambaza mafuta duniani. Hufuatilia hesabu za meli, matukio ya usumbufu na mabadiliko ya mtiririko wa kila wiki. Takriban 20% ya usambazaji wa mafuta duniani kote husafirishwa hapa kila siku.",
       "title": "Hormuz Trade Tracker",

@@ -2417,6 +2417,25 @@
       }
     },
     "energyCrisis": {},
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Praćenje živih AIS plovila kroz Hormuzanski tjesnac, svjetski najkritičnije prometno usko grlo za naftu. Prati broj tankera, događaje prekida i tjedne promjene protoka. Približno 20% svjetske opskrbe naftom prolazi ovdje dnevno.",
       "title": "Hormuz Trade Tracker",

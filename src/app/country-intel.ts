@@ -60,7 +60,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
+import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock, fetchCountryVulnerabilities } from '@/services/supply-chain';
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
 import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
@@ -768,6 +768,7 @@ export class CountryIntelManager implements AppModule {
       if (hasPremiumAccess(getAuthState())) {
         this.fetchProSections(code);
       }
+      this.fetchCommodityVulnerability(code);
 
       this.mountCountryTimeline(code, country);
 
@@ -947,6 +948,17 @@ export class CountryIntelManager implements AppModule {
     if (!page?.isVisible()) return false;
     const activeCode = page.getCode();
     return !!activeCode && activeCode !== '__loading__' && activeCode !== '__error__';
+  }
+
+  private fetchCommodityVulnerability(code: string): void {
+    fetchCountryVulnerabilities(code, { signal: this.ctx.countryBriefPage?.signal }).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateCommodityVulnerabilities?.(resp);
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) {
+        this.ctx.countryBriefPage.updateCommodityVulnerabilities?.(null);
+      }
+    });
   }
 
   private fetchProSections(code: string): void {

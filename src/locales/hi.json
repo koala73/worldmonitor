@@ -2400,6 +2400,25 @@
         "failedToLoad": "लोड करने में विफल"
       }
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>हर्मुज व्यापार ट्रैकर</strong> हर्मुज स्ट्रेट के माध्यम से लाइव AIS जहाज ट्रैकिंग, विश्व का सबसे महत्वपूर्ण तेल चोकपॉइंट। टैंकर गिनती, व्यवधान घटनाएं, और साप्ताहिक प्रवाह परिवर्तन मॉनिटर करता है। लगभग 20% वैश्विक तेल दैनिक यहां से गुजरता है।",
       "title": "हर्मुज व्यापार ट्रैकर",

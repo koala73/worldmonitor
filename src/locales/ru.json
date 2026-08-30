@@ -2211,6 +2211,25 @@
       },
       "cissStale": "ЕЦБ не опубликовал новое значение — это показание может быть устаревшим."
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Трекер торговли в Ормузе</strong> Отслеживание судов AIS в реальном времени через Ормузский пролив — самую критическую точку нефтяного узкого места в мире. Отслеживает количество танкеров, события нарушений и еженедельные изменения потоков. Примерно 20% мировых поставок нефти проходит здесь ежедневно.",
       "title": "Трекер торговли через Ормуз",

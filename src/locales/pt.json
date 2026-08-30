@@ -1823,6 +1823,25 @@
       },
       "cissStale": "O BCE não publicou um valor mais recente — esta leitura pode estar desatualizada."
     },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Rastreamento AIS de navios em tempo real através do Estreito de Ormuz, o ponto de estrangulamento petrolífero mais crítico do mundo. Monitoriza contagens de petroleiros, eventos de perturbação e alterações semanais de fluxo. Aproximadamente 20% do fornecimento global de petróleo transita aqui diariamente.",
       "title": "Rastreador de Comércio do Hormuz",
