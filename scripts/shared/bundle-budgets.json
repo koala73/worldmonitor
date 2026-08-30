@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1694659
+    "raw": 1706405
   },
   "chunks": {
     "analytics": {
-      "raw": 119701,
+      "raw": 122421,
       "files": 1
     },
     "cached-risk-scores": {
@@ -31,7 +31,7 @@
       "files": 1
     },
     "data-freshness": {
-      "raw": 85761,
+      "raw": 85698,
       "files": 1
     },
     "dom-utils": {
@@ -59,11 +59,11 @@
       "files": 1
     },
     "main": {
-      "raw": 943280,
+      "raw": 952359,
       "files": 1
     },
     "panel-gating": {
-      "raw": 3132,
+      "raw": 3142,
       "files": 1
     },
     "panels": {
