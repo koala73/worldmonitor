@@ -9,6 +9,8 @@ The broad `license` label in the indicator registry is source inventory metadata
 
 REST and MCP discovery do not advertise JMESPath projection for this response. Both runtimes reject a non-empty projection request because it could detach a permitted raw value from the attribution and retrieval fields that authorize its redistribution.
 
+Each source entry includes the dataset URL, license label, canonical `licenseUrl`, and a separate `attributionUrl` when the required attribution target differs from the dataset URL.
+
 ## Decisions by source
 
 | Decision | Source | Indicators | Raw-value rule and attribution |
@@ -23,6 +25,7 @@ REST and MCP discovery do not advertise JMESPath projection for this response. B
 | Conditional | World Bank, with a possible Eurostat constituent | `importedFossilDependence` | The fossil-electricity input is World Bank WDI `EG.ELC.FOSL.ZS`. Allow only when net-import provenance is also World Bank. Suppress raw output if an Eurostat override contributed. |
 | Conditional | World Bank, optionally adjusted with UN Comtrade | `recoveryLiquidReserveMonths` | Allow an unadjusted World Bank observation. Suppress the raw value when a UN Comtrade re-export adjustment contributed. |
 | Audit incomplete | [International Monetary Fund](https://www.imf.org/en/Data) and national-debt sources | `govRevenuePct`, `debtGrowthRate`, `currentAccountPct`, `unemploymentPct`, `inflationStability`, `recoveryGovRevenue`, `recoveryFiscalBalance`, `recoveryDebtToGdp`, `debtSustainabilityGap` | Suppress raw values until the exact IMF or national-debt provider terms and attribution are recorded as reviewed. |
+| Audit incomplete | [Statistics Canada Web Data Service](https://www.statcan.gc.ca/en/developers/wds/user-guide) | Canadian `unemploymentPct` and `inflationStability` observations | The Canada overlay records the exact Statistics Canada observation date, release time, Web Data Service endpoint, and [Open Licence](https://www.statcan.gc.ca/en/terms-conditions/open-licence). Raw output remains fail-closed under the indicator policy until the exact vector-level redistribution decision is reviewed. |
 | Audit incomplete | [World Trade Organization](https://data.wto.org/) and [FATF](https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html) | `tradeRestrictions`, `tradeBarriers`, `fatfListingStatus` | Suppress raw values. Credit and link to the exact publication when displaying normalized results. |
 | Audit incomplete | Cyber, outage, GPS, shipping, transit, social, and news feeds | `cyberThreats`, `internetOutages`, `gpsJamming`, `shippingStress`, `transitDisruption`, `infraOutages`, `socialVelocity`, `newsThreatScore` | The feeds combine Cloudflare Radar, GPSJam/ADS-B Exchange, Yahoo Finance, PortWatch/AIS, Reddit/ScrapeCreators, publishers, and multiple threat-intelligence providers. Suppress raw values until every provider used by the exact observation is reviewed. |
 | Audit incomplete | Energy providers | `lowCarbonGenerationShare`, `euGasStorageStress`, `energyPriceStress` | The low-carbon OWID chart uses Ember and Energy Institute data whose exact dataset terms are not yet recorded. GIE AGSI and the exact FRED/upstream energy-price series also require completed reviews. Suppress raw values. |
@@ -57,4 +60,4 @@ A normalized score is WorldMonitor's derived output after direction, goalposts, 
 6. Re-review provider terms when the source, mirror, extraction path, or dataset-specific terms change.
 7. Add the indicator to the exhaustive policy table and its tests before serving a new registry entry.
 
-The production response is cached per country, formula, schema, and active construct versions for five minutes. A confirmed source-key miss can produce a documented missing or imputed state. A Redis read error fails the diagnostic build and is not cached as a valid response.
+The production response reads the immutable trace generation referenced by the six-hour public score cache. The large trace is stored in a separate seven-hour sidecar, so score and ranking reads stay small. A missing or malformed sidecar rebuilds and republishes the complete score generation; the handler never rescans current seeds beside an older cached score. A confirmed source-key miss can produce a documented missing or imputed state. A Redis read error fails the generation build and is not cached as a valid response.

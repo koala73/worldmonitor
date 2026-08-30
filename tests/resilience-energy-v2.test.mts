@@ -236,6 +236,23 @@ describe('scoreEnergy — RESILIENCE_ENERGY_V2_ENABLED=true', () => {
     );
   });
 
+  it('records only the active v2 indicator set before a preflight source failure', async () => {
+    const reader = makeReaderWithMissingV2Seeds(new Set([
+      'resilience:fossil-electricity-share:v1',
+      'resilience:low-carbon-generation:v1',
+      'resilience:power-losses:v1',
+    ]));
+    const trace = createIndicatorTraceCollector();
+    await assert.rejects(scoreEnergy(TEST_ISO2, reader, { trace }), ResilienceConfigurationError);
+    assert.deepEqual(trace.readDimension('energy')?.selectedIndicatorIds, [
+      'importedFossilDependence',
+      'lowCarbonGenerationShare',
+      'powerLossesPct',
+      'euGasStorageStress',
+      'energyPriceStress',
+    ]);
+  });
+
   it('flag on + partial missing (only fossil-share absent) → throws naming ONLY the missing key', async () => {
     // Operator-clarity: the error must tell the operator WHICH seed is
     // broken so they can fix that specific seeder rather than chase

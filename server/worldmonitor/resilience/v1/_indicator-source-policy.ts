@@ -60,6 +60,7 @@ export interface IndicatorSourcePolicy {
   licenseLabel: string;
   licenseUrl: string | null;
   attribution: string;
+  attributionUrl: string | null;
   allowedRawSources: readonly AuditedRawSource[];
   requiredRawSources: readonly AuditedRawSource[];
   note: string;
@@ -93,6 +94,8 @@ export interface IndicatorSourceDisplayMetadata {
   providerName: string;
   attribution: string;
   licenseLabel: string;
+  licenseUrl: string | null;
+  attributionUrl: string | null;
   sourceUrl: string | null;
 }
 
@@ -133,6 +136,7 @@ function worldBankPolicy(
     licenseLabel: WORLD_BANK_SOURCE.licenseLabel,
     licenseUrl: WORLD_BANK_SOURCE.licenseUrl,
     attribution: WORLD_BANK_SOURCE.attribution,
+    attributionUrl: WORLD_BANK_SOURCE.attributionUrl ?? null,
     allowedRawSources: sources,
     requiredRawSources: sources,
     note,
@@ -170,6 +174,19 @@ const UNESCO_VIA_WDI_SOURCE: AuditedRawSource = {
   sourcePathSuffixes: ['/indicator/SE.SEC.CUAT.UP.FE.ZS'],
 };
 
+const STATCAN_WDS_SOURCE: AuditedRawSource = {
+  providerName: 'Statistics Canada',
+  sourceUrl: 'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods',
+  licenseLabel: 'Statistics Canada Open Licence',
+  licenseUrl: 'https://www.statcan.gc.ca/en/terms-conditions/open-licence',
+  attribution: 'Statistics Canada, Web Data Service.',
+  attributionUrl: 'https://www.statcan.gc.ca/en/developers/wds/user-guide',
+  providerAliases: ['statistics canada', 'statcan'],
+  sourceUrlPrefixes: ['https://www150.statcan.gc.ca/t1/wds/rest/'],
+};
+
+const DISPLAY_ONLY_SOURCES = [STATCAN_WDS_SOURCE] as const;
+
 function allowPolicy(
   source: AuditedRawSource,
   note = 'Raw redistribution was reviewed for this provider.',
@@ -181,6 +198,7 @@ function allowPolicy(
     licenseLabel: source.licenseLabel,
     licenseUrl: source.licenseUrl,
     attribution: source.attribution,
+    attributionUrl: source.attributionUrl ?? null,
     allowedRawSources: [source],
     requiredRawSources: [source],
     note,
@@ -202,6 +220,7 @@ function restrictedPolicy(
     licenseLabel,
     licenseUrl,
     attribution,
+    attributionUrl: null,
     allowedRawSources: [],
     requiredRawSources: [],
     note,
@@ -221,6 +240,7 @@ function incompletePolicy(
     licenseLabel: 'Redistribution audit incomplete',
     licenseUrl: null,
     attribution,
+    attributionUrl: null,
     allowedRawSources: [],
     requiredRawSources: [],
     note,
@@ -431,6 +451,8 @@ function metadataFromPolicy(policy: IndicatorSourcePolicy): IndicatorSourceDispl
     providerName: policy.providerName,
     attribution: policy.attribution,
     licenseLabel: policy.licenseLabel,
+    licenseUrl: policy.licenseUrl,
+    attributionUrl: policy.attributionUrl,
     sourceUrl: policy.sourceUrl,
   };
 }
@@ -440,12 +462,15 @@ export function getObservedSourceDisplayMetadata(
   policy: IndicatorSourcePolicy | null,
   hint: IndicatorObservedSourceHint,
 ): IndicatorSourceDisplayMetadata {
-  const audited = policy?.allowedRawSources.find((source) => matchesAuditedSource(hint, source));
+  const audited = policy?.allowedRawSources.find((source) => matchesAuditedSource(hint, source))
+    ?? DISPLAY_ONLY_SOURCES.find((source) => matchesAuditedSource(hint, source));
   if (audited) {
     return {
       providerName: audited.providerName,
       attribution: audited.attribution,
       licenseLabel: audited.licenseLabel,
+      licenseUrl: audited.licenseUrl,
+      attributionUrl: audited.attributionUrl ?? null,
       sourceUrl: audited.sourceUrl,
     };
   }
@@ -464,6 +489,8 @@ export function getObservedSourceDisplayMetadata(
       ? `${hint.providerName.trim()}; link to the exact source observation.`
       : 'Observed provider metadata unavailable.',
     licenseLabel: 'Redistribution audit incomplete',
+    licenseUrl: null,
+    attributionUrl: null,
     sourceUrl: hint.sourceUrl ?? null,
   };
 }

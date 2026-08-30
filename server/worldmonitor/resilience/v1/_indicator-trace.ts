@@ -19,6 +19,7 @@ export type IndicatorTraceState =
   | 'retired';
 
 export interface IndicatorObservedSource {
+  sourceKey?: string;
   providerName: string;
   sourceUrl?: string;
 }
@@ -65,6 +66,7 @@ export interface RecordedDimensionTrace {
   dimensionId: ResilienceDimensionId;
   prePolicyScore: number;
   contributions: IndicatorTraceContribution[];
+  selectedIndicatorIds: ResilienceIndicatorId[];
   policyCapName: string;
   policyCapFactor: number;
   inactiveReason: string;
@@ -88,6 +90,7 @@ export interface DimensionIndicatorTrace {
   active: boolean;
   reason: string;
   score: number;
+  coverage: number;
   prePolicyScore: number;
   policyCapName: string;
   policyCapFactor: number;
@@ -105,6 +108,7 @@ export interface IndicatorTraceCollector {
   recordInactiveDimension(dimensionId: ResilienceDimensionId, reason: string): void;
   recordRetiredDimension(dimensionId: ResilienceDimensionId, reason: string): void;
   recordPolicyCap(dimensionId: ResilienceDimensionId, name: string, preCapScore: number, finalScore: number): void;
+  recordSelectedIndicators(dimensionId: ResilienceDimensionId, indicatorIds: readonly ResilienceIndicatorId[]): void;
   recordSourceFailure(dimensionId: ResilienceDimensionId): void;
   readDimension(dimensionId: ResilienceDimensionId): RecordedDimensionTrace | undefined;
 }
@@ -168,6 +172,7 @@ export function createIndicatorTraceCollector(): IndicatorTraceCollector {
       dimensionId,
       prePolicyScore: score,
       contributions: contributionsFor(metrics),
+      selectedIndicatorIds: metrics.map((metric) => metric.indicatorId),
       policyCapName: '',
       policyCapFactor: 1,
       inactiveReason: '',
@@ -183,6 +188,7 @@ export function createIndicatorTraceCollector(): IndicatorTraceCollector {
         dimensionId,
         prePolicyScore: 0,
         contributions: [],
+        selectedIndicatorIds: [],
         policyCapName: '',
         policyCapFactor: 1,
         inactiveReason: reason,
@@ -194,6 +200,7 @@ export function createIndicatorTraceCollector(): IndicatorTraceCollector {
         dimensionId,
         prePolicyScore: 0,
         contributions: [],
+        selectedIndicatorIds: [],
         policyCapName: '',
         policyCapFactor: 1,
         inactiveReason: `retired:${reason}`,
@@ -207,6 +214,22 @@ export function createIndicatorTraceCollector(): IndicatorTraceCollector {
       current.policyCapName = name;
       current.policyCapFactor = preCapScore === 0 ? 1 : finalScore / preCapScore;
     },
+    recordSelectedIndicators(dimensionId, indicatorIds) {
+      const current = dimensions.get(dimensionId);
+      if (current) current.selectedIndicatorIds = [...indicatorIds];
+      else {
+        dimensions.set(dimensionId, {
+          dimensionId,
+          prePolicyScore: 0,
+          contributions: [],
+          selectedIndicatorIds: [...indicatorIds],
+          policyCapName: '',
+          policyCapFactor: 1,
+          inactiveReason: '',
+          sourceFailure: false,
+        });
+      }
+    },
     recordSourceFailure(dimensionId) {
       const current = dimensions.get(dimensionId);
       if (current) current.sourceFailure = true;
@@ -215,6 +238,7 @@ export function createIndicatorTraceCollector(): IndicatorTraceCollector {
           dimensionId,
           prePolicyScore: 0,
           contributions: [],
+          selectedIndicatorIds: [],
           policyCapName: '',
           policyCapFactor: 1,
           inactiveReason: '',
@@ -316,15 +340,17 @@ export function materializeIndicatorTrace(
     // A source failure changes the disclosed state, but it does not remove the
     // fallback values that the scorer used for the published dimension score.
     const included = recordedRow != null && recordedRow.scoringWeightShare > 0;
-    const state: IndicatorTraceState = sourceFailure
+    const selectedForFailure = sourceFailure
+      && (recordedRow != null || recorded?.selectedIndicatorIds.includes(indicatorId) === true);
+    const state: IndicatorTraceState = selectedForFailure
       ? 'source-failure'
       : retired
         ? 'retired'
         : recordedRow?.state ?? 'inactive';
-    const reason = included
-      ? ''
-      : sourceFailure
-        ? 'dimension-source-failure'
+    const reason = selectedForFailure
+      ? 'dimension-source-failure'
+      : included
+        ? ''
         : recorded?.inactiveReason
           || (recordedRow?.state === 'not-applicable'
             ? 'not-applicable-to-country'
@@ -335,6 +361,7 @@ export function materializeIndicatorTrace(
     const row: IndicatorTraceRow = {
       ...base,
       state,
+      imputationClass: selectedForFailure ? 'source-failure' : base.imputationClass,
       dimension: spec.dimension,
       runtimeWeightsAvailable: recordedRow != null,
       includedInDimensionScore: included,
@@ -351,6 +378,7 @@ export function materializeIndicatorTrace(
       active: recorded != null && recorded.inactiveReason.length === 0,
       reason: recorded?.inactiveReason ?? 'not-traced',
       score: finalScore,
+      coverage: scores[spec.dimension]?.coverage ?? 0,
       prePolicyScore: recorded?.prePolicyScore ?? finalScore,
       policyCapName: recorded?.policyCapName ?? '',
       policyCapFactor: recorded?.policyCapFactor ?? 1,

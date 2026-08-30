@@ -699,6 +699,8 @@ const RESILIENCE_INDICATOR_SOURCE_OUTPUT_SCHEMA = {
     attribution: { type: 'string' as const },
     license: { type: 'string' as const },
     url: { type: 'string' as const },
+    licenseUrl: { type: 'string' as const },
+    attributionUrl: { type: 'string' as const },
     observationProvenance: { type: 'boolean' as const, description: 'True only for a source recorded for the selected-country observation.' },
   },
 };
@@ -1792,6 +1794,7 @@ export const RPC_TOOLS: ToolDef[] = [
           properties: {
             energy: { type: 'string', description: 'Active energy construct version.' },
             education: { type: 'string', description: 'Active education construct version.' },
+            financialSystemExposure: { type: 'string', description: 'Active financial-system construct version.' },
           },
         },
         dimensions: { type: 'array', items: RESILIENCE_INDICATOR_DIMENSION_OUTPUT_SCHEMA },

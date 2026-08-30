@@ -33,11 +33,14 @@ describe('get_resilience_indicators MCP tool', () => {
     assert.ok(tool.outputSchema.properties.indicators.items.properties.effectiveContribution);
     assert.ok(tool.outputSchema.properties.indicators.items.properties.rawValue);
     assert.ok(tool.outputSchema.properties.indicators.items.properties.sources.items.properties.observationProvenance);
+    assert.ok(tool.outputSchema.properties.indicators.items.properties.sources.items.properties.licenseUrl);
+    assert.ok(tool.outputSchema.properties.indicators.items.properties.sources.items.properties.attributionUrl);
     assert.match(
       tool.outputSchema.properties.indicators.items.properties.rawValue.properties.status.description,
       /audit-incomplete/,
     );
     assert.ok(tool.outputSchema.properties.constructVersions);
+    assert.ok(tool.outputSchema.properties.constructVersions.properties.financialSystemExposure);
     for (const key of [
       'resilience:low-carbon-generation:v1',
       'resilience:power-losses:v1',
@@ -77,11 +80,11 @@ describe('get_resilience_indicators MCP tool', () => {
       assert.equal(init?.signal?.aborted, false);
       return Response.json({
         countryCode: 'DE',
-        methodology: 'request-local-scorer-trace-v1',
+        methodology: 'score-generation-trace-v1',
         formula: 'pc',
         dataVersion: '2026-08-30',
         schemaVersion: '2.0',
-        constructVersions: { energy: 'v2', education: 'active' },
+        constructVersions: { energy: 'v2', education: 'active', financialSystemExposure: 'active' },
         dimensions: [{ id: 'macroFiscal', score: 62, effectiveContributionTotal: 62 }],
         indicators: [{ id: 'govRevenuePct', dimension: 'macroFiscal', state: 'observed', effectiveContribution: 20 }],
       });

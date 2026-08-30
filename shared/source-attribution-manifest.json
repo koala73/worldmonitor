@@ -13301,6 +13301,20 @@
       ]
     },
     {
+      "host": "www.statcan.gc.ca",
+      "provider": "www.statcan.gc.ca",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.statcan.gc.ca and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        }
+      ]
+    },
+    {
       "host": "www.stats.gov.cn",
       "provider": "www.stats.gov.cn",
       "kind": "structured",
@@ -14320,6 +14334,12 @@
       "references": [
         {
           "path": "scripts/lib/statcan-wds.mjs"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_canada-national-overlay.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },

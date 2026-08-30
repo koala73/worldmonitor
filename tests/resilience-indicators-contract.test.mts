@@ -47,6 +47,7 @@ describe('resilience indicator RPC contract', () => {
       'observation_age_available', 'observation_age_value', 'observation_age_unit',
       'observation_age_basis', 'retrieved_at_available', 'observed_at_available',
       'repeated ResilienceIndicatorSource sources', 'ResilienceIndicatorRawValue raw_value',
+      'license_url', 'attribution_url',
       'pre_policy_score', 'policy_cap_name', 'policy_cap_factor',
       'reconciliation_available',
       'formula', 'data_version', 'schema_version', 'construct_versions',
@@ -137,11 +138,11 @@ describe('resilience indicator RPC contract', () => {
           ? handlerModule.resilienceHandler.getResilienceIndicators(ctx, request)
           : {
               countryCode: request.countryCode,
-              methodology: 'request-local-scorer-trace-v1',
+              methodology: 'score-generation-trace-v1',
               formula: 'pc',
               dataVersion: '2026-08-30',
               schemaVersion: '2.0',
-              constructVersions: { energy: 'legacy', education: 'active' },
+              constructVersions: { energy: 'legacy', education: 'active', financialSystemExposure: 'rollback' },
               dimensions: [],
               indicators: [],
             },

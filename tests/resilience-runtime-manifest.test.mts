@@ -82,13 +82,13 @@ describe('resilience runtime manifest', () => {
     const request = new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest');
     const response = await modules.getResilienceRuntimeManifest({ request } as never);
 
-    assert.equal(response.manifestVersion, 5);
+    assert.equal(response.manifestVersion, 6);
     assert.match(response.generatedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(response.deployedCommitSha, '');
     assert.equal(response.vercelEnv, '');
     assert.equal(response.formulaTag, 'pc');
     assert.equal(response.dataVersion, '2026-05-28');
-    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'active' });
+    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'active', financialSystemExposure: 'active' });
     assert.deepEqual(response.flags, []);
     assert.deepEqual(response.cache, {
       scorePrefix: '',
@@ -121,7 +121,7 @@ describe('resilience runtime manifest', () => {
       request: new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest'),
     } as never);
 
-    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'rollback' });
+    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'rollback', financialSystemExposure: 'rollback' });
     assert.deepEqual(response.flags, []);
   });
 
@@ -140,7 +140,7 @@ describe('resilience runtime manifest', () => {
     assert.equal(response.vercelEnv, '');
     assert.equal(response.formulaTag, 'd6');
     assert.equal(response.dataVersion, '');
-    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'active' });
+    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'active', financialSystemExposure: 'rollback' });
     assert.deepEqual(response.rankingCache, { fetchedAt: '', count: 0, scored: 0, total: 0 });
     assert.deepEqual(response.intervals, {
       available: false,
@@ -223,7 +223,7 @@ describe('resilience runtime manifest', () => {
     } as never);
     const serialized = JSON.stringify(response);
 
-    assert.deepEqual(response.constructVersions, { energy: 'v2', education: 'active' });
+    assert.deepEqual(response.constructVersions, { energy: 'v2', education: 'active', financialSystemExposure: 'active' });
     assert.deepEqual(response.intervals, {
       available: false,
       methodology: 'weight-perturbation-sensitivity-v3',
@@ -292,7 +292,7 @@ describe('resilience runtime manifest gateway auth', () => {
       constructVersions?: { energy?: string; education?: string };
       intervals?: { available?: boolean; methodology?: string; sampleCountry?: string; lastObservedAt?: string };
     };
-    assert.equal(body.manifestVersion, 5);
+    assert.equal(body.manifestVersion, 6);
     assert.equal(body.formulaTag, 'pc');
     assert.equal(body.constructVersions?.energy, 'legacy');
     assert.equal(body.constructVersions?.education, 'active');

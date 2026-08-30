@@ -77,6 +77,7 @@ export interface GetResilienceIndicatorsResponse {
 export interface ResilienceRuntimeConstructVersions {
   energy: string;
   education: string;
+  financialSystemExposure: string;
 }
 
 export interface ResilienceIndicatorDimension {
@@ -132,6 +133,8 @@ export interface ResilienceIndicatorSource {
   license: string;
   url: string;
   observationProvenance: boolean;
+  licenseUrl: string;
+  attributionUrl: string;
 }
 
 export interface ResilienceIndicatorRawValue {

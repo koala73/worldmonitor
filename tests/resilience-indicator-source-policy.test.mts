@@ -4,6 +4,8 @@ import { describe, it } from 'node:test';
 import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import {
   decideIndicatorRawRedistribution,
+  getIndicatorSourcePolicy,
+  getObservedSourceDisplayMetadata,
   INDICATOR_SOURCE_POLICIES,
 } from '../server/worldmonitor/resilience/v1/_indicator-source-policy.ts';
 import { wgiObservationSource } from '../shared/wgi-source-provenance.js';
@@ -240,6 +242,13 @@ describe('resilience indicator raw-source policy', () => {
     });
     assert.equal(uis.expose, true);
     assert.match(uis.attribution, /UNESCO Institute for Statistics/);
+
+    const metadata = getObservedSourceDisplayMetadata(
+      getIndicatorSourcePolicy('femaleUpperSecondaryAttainment'),
+      UNESCO_VIA_WDI,
+    );
+    assert.equal(metadata.licenseUrl, 'https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets');
+    assert.equal(metadata.attributionUrl, 'https://uis.unesco.org/');
   });
 
   it('defaults to deny for unknown indicators and absent provider provenance', () => {

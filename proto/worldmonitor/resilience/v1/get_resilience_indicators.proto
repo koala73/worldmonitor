@@ -21,6 +21,10 @@ message ResilienceIndicatorSource {
   // True only when this source was recorded for the selected country observation.
   // False means the entry is registry attribution, not observation provenance.
   bool observation_provenance = 6;
+  // Canonical URL for the audited source license or redistribution terms.
+  string license_url = 7;
+  // Canonical attribution URL when it differs from the source dataset URL.
+  string attribution_url = 8;
 }
 
 // Selectively exposed raw observation. Availability fields keep a withheld or

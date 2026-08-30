@@ -74,6 +74,8 @@ describe('GetResilienceIndicators materialization', () => {
     assert.equal(row.retrievedAtAvailable, true);
     assert.equal(row.retrievedAt, '2026-08-29T12:00:00.000Z');
     assert.equal(row.sources[0]?.observationProvenance, true);
+    assert.equal(row.sources[0]?.licenseUrl, 'https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets');
+    assert.equal(row.sources[0]?.attributionUrl, '');
   });
 
   test('withholds restricted raw values while preserving derived score and contribution', () => {
@@ -149,6 +151,7 @@ describe('GetResilienceIndicators materialization', () => {
 
   test('serializes runtime weights as unavailable when a source fails before branch selection', () => {
     const trace = createIndicatorTraceCollector();
+    trace.recordSelectedIndicators('currencyExternal', ['inflationStability', 'fxReservesAdequacy']);
     trace.recordSourceFailure('currencyExternal');
     const scores = scoreMap({ currencyExternal: emptyScore() });
     const response = toGetResilienceIndicatorsResponse(
@@ -156,7 +159,11 @@ describe('GetResilienceIndicators materialization', () => {
       { now: new Date('2026-08-30T00:00:00.000Z'), dataVersion: '' },
     );
     const rows = response.indicators.filter((indicator) => indicator.dimension === 'currencyExternal');
-    assert.ok(rows.every((row) => row.state === 'source-failure'));
+    const selected = rows.filter((row) => ['inflationStability', 'fxReservesAdequacy'].includes(row.id));
+    const dormant = rows.filter((row) => !selected.includes(row));
+    assert.ok(selected.every((row) => row.state === 'source-failure'));
+    assert.ok(selected.every((row) => row.reason === 'dimension-source-failure'));
+    assert.ok(dormant.every((row) => row.state === 'inactive'));
     assert.ok(rows.every((row) => row.runtimeWeightAvailable === false));
     assert.ok(rows.every((row) => row.scoringWeightShareAvailable === false));
   });
@@ -412,6 +419,39 @@ describe('GetResilienceIndicators handler', () => {
     const second = await handler(ctx, { countryCode: 'de' });
     assert.equal(cacheBuilds, 1);
     assert.deepEqual(second, first);
+  });
+
+  test('separates injected response-cache entries across financial-system construct flips', async () => {
+    const original = process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED;
+    const keys: string[] = [];
+    const cache = new Map<string, Awaited<ReturnType<ReturnType<typeof createGetResilienceIndicators>>>>();
+    const handler = createGetResilienceIndicators({
+      reader: async () => null,
+      readStaticMeta: async () => null,
+      responseCache: async (key, fetcher) => {
+        keys.push(key);
+        const existing = cache.get(key);
+        if (existing) return existing;
+        const built = await fetcher();
+        cache.set(key, built);
+        return built;
+      },
+    });
+    const ctx = { request: new Request('https://example.test/api/resilience/v1/get-resilience-indicators?countryCode=DE') } as never;
+    try {
+      process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED = 'false';
+      const rollback = await handler(ctx, { countryCode: 'DE' });
+      process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED = 'true';
+      const active = await handler(ctx, { countryCode: 'DE' });
+      assert.equal(cache.size, 2);
+      assert.ok(keys.some((key) => key.includes('financial-system-rollback')));
+      assert.ok(keys.some((key) => key.includes('financial-system-active')));
+      assert.equal(rollback.constructVersions?.financialSystemExposure, 'rollback');
+      assert.equal(active.constructVersions?.financialSystemExposure, 'active');
+    } finally {
+      if (original == null) delete process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED;
+      else process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED = original;
+    }
   });
 
   test('does not cache a diagnostic seed-read failure as a valid response', async () => {

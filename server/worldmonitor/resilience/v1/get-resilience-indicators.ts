@@ -13,8 +13,11 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import {
   RESILIENCE_SCHEMA_V2_ENABLED,
   RESILIENCE_STATIC_META_KEY,
+  ensureResilienceScoreGenerationCached,
   getCurrentCacheFormula,
   toResilienceDataVersion,
+  type CacheFormulaTag,
+  type ResilienceConstructVersions,
 } from './_shared';
 import { getConstructVersions } from './get-resilience-runtime-manifest';
 import {
@@ -36,7 +39,7 @@ import {
   getObservedSourceDisplayMetadata,
 } from './_indicator-source-policy';
 
-export const RESILIENCE_INDICATOR_METHODOLOGY = 'request-local-scorer-trace-v1';
+export const RESILIENCE_INDICATOR_METHODOLOGY = 'score-generation-trace-v1';
 const RESILIENCE_INDICATOR_CACHE_TTL_SECONDS = 300;
 const RESILIENCE_INDICATOR_NEGATIVE_TTL_SECONDS = 120;
 
@@ -69,6 +72,9 @@ export function cacheResilienceIndicatorResponse(
 interface ResponseBuildOptions {
   now: Date;
   dataVersion: string;
+  formula?: CacheFormulaTag;
+  schemaVersion?: '1.0' | '2.0';
+  constructVersions?: ResilienceConstructVersions;
 }
 
 function normalizedCountryCode(value: unknown): string | null {
@@ -132,7 +138,7 @@ function indicatorSources(row: IndicatorTraceRow): ResilienceIndicatorSource[] {
   const seen = new Set<string>();
   for (let index = 0; index < count; index += 1) {
     const hint = sourceHints[index];
-    const key = row.sourceKeys[index] ?? row.sourceKeys[0] ?? '';
+    const key = hint?.sourceKey ?? row.sourceKeys[index] ?? row.sourceKeys[0] ?? '';
     const metadata = hint
       ? getObservedSourceDisplayMetadata(policy, hint)
       : null;
@@ -148,6 +154,8 @@ function indicatorSources(row: IndicatorTraceRow): ResilienceIndicatorSource[] {
       license: metadata?.licenseLabel ?? policy?.licenseLabel ?? row.license,
       url,
       observationProvenance: hint != null,
+      licenseUrl: metadata?.licenseUrl ?? policy?.licenseUrl ?? '',
+      attributionUrl: metadata?.attributionUrl ?? policy?.attributionUrl ?? '',
     });
   }
   return sources;
@@ -215,17 +223,17 @@ function toIndicator(row: IndicatorTraceRow, now: Date): ResilienceIndicator {
 
 export function toGetResilienceIndicatorsResponse(
   countryCode: string,
-  scores: Readonly<Record<ResilienceDimensionId, ResilienceDimensionScore>>,
+  scores: Readonly<Record<ResilienceDimensionId, ResilienceDimensionScore>> | null,
   snapshot: ResilienceIndicatorTraceSnapshot,
   options: ResponseBuildOptions,
 ): GetResilienceIndicatorsResponse {
   return {
     countryCode,
     methodology: RESILIENCE_INDICATOR_METHODOLOGY,
-    formula: getCurrentCacheFormula(),
+    formula: options.formula ?? getCurrentCacheFormula(),
     dataVersion: options.dataVersion,
-    schemaVersion: RESILIENCE_SCHEMA_V2_ENABLED ? '2.0' : '1.0',
-    constructVersions: getConstructVersions(),
+    schemaVersion: options.schemaVersion ?? (RESILIENCE_SCHEMA_V2_ENABLED ? '2.0' : '1.0'),
+    constructVersions: options.constructVersions ?? getConstructVersions(),
     dimensions: snapshot.dimensions.map((dimension) => {
       const literalContributionTotal = roundFour(dimension.indicators.reduce(
         (sum, row) => sum + roundFour(row.literalContribution),
@@ -238,7 +246,7 @@ export function toGetResilienceIndicatorsResponse(
       return {
         id: dimension.id,
         score: dimension.score,
-        coverage: scores[dimension.id]?.coverage ?? 0,
+        coverage: scores?.[dimension.id]?.coverage ?? dimension.coverage,
         prePolicyScore: dimension.prePolicyScore,
         policyCapName: dimension.policyCapName,
         policyCapFactor: dimension.policyCapFactor,
@@ -280,6 +288,22 @@ export function createGetResilienceIndicators(
       }]);
     }
 
+    if (!hasInjectedBuildDependency && dependencies.responseCache === undefined) {
+      const generation = await ensureResilienceScoreGenerationCached(countryCode);
+      return toGetResilienceIndicatorsResponse(
+        countryCode,
+        null,
+        generation.trace.snapshot,
+        {
+          now: now(),
+          dataVersion: generation.trace.dataVersion,
+          formula: generation.trace.formula,
+          schemaVersion: generation.trace.schemaVersion,
+          constructVersions: generation.trace.constructVersions,
+        },
+      );
+    }
+
     const buildResponse = async (): Promise<GetResilienceIndicatorsResponse> => {
       const trace = createIndicatorTraceCollector();
       const [scores, staticMeta] = await Promise.all([
@@ -306,6 +330,7 @@ export function createGetResilienceIndicators(
       RESILIENCE_SCHEMA_V2_ENABLED ? 'schema-v2' : 'schema-v1',
       `energy-${constructs.energy}`,
       `education-${constructs.education}`,
+      `financial-system-${constructs.financialSystemExposure}`,
     ].join(':');
     const cached = await responseCache(cacheKey, buildResponse);
     if (cached == null) throw new Error('Resilience indicator response cache returned no data');

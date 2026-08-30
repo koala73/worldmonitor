@@ -3,7 +3,7 @@
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **756 active source hosts** representing **747 active providers** (**327 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **757 active source hosts** representing **748 active providers** (**328 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -534,7 +534,7 @@ This generated inventory covers **756 active source hosts** representing **747 a
 | slidstvo.info (slidstvo.info) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | spglobal.com (spglobal.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | state.gov (state.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| Statistics Canada (www150.statcan.gc.ca) | structured — scripts/lib/statcan-wds.mjs |
+| Statistics Canada (www150.statcan.gc.ca) | structured — scripts/lib/statcan-wds.mjs, server/worldmonitor/resilience/v1/_canada-national-overlay.ts, server/worldmonitor/resilience/v1/_indicator-source-policy.ts |
 | stats.bis.org (stats.bis.org) | structured — scripts/seed-bis-data.mjs, scripts/seed-bis-extended.mjs, scripts/seed-bis-lbs.mjs, server/worldmonitor/economic/v1/_bis-shared.ts |
 | status.circleci.com (status.circleci.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | status.claude.com (status.claude.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
@@ -836,6 +836,7 @@ This generated inventory covers **756 active source hosts** representing **747 a
 | www.smartraveller.gov.au (www.smartraveller.gov.au) | structured — scripts/seed-security-advisories.mjs |
 | www.spdrgoldshares.com (www.spdrgoldshares.com) | structured — scripts/seed-gold-etf-flows.mjs |
 | www.spiegel.de (www.spiegel.de) | feed — src/config/feeds.ts |
+| www.statcan.gc.ca (www.statcan.gc.ca) | structured — server/worldmonitor/resilience/v1/_indicator-source-policy.ts |
 | www.stats.gov.cn (www.stats.gov.cn) | structured — scripts/china-macro/calendar.mjs, scripts/china-macro/source-contracts.mjs |
 | www.stimson.org (www.stimson.org) | feed — src/config/feeds.ts |
 | www.sunnyskyz.com (www.sunnyskyz.com) | feed — src/config/feeds.ts |

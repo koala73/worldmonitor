@@ -19,6 +19,8 @@ import {
   applyCanadaNationalOverlay,
   RESILIENCE_BOC_VALET_KEY,
   RESILIENCE_STATCAN_WDS_KEY,
+  STATCAN_SCORE_PROVIDER,
+  STATCAN_WDS_SOURCE_URL,
   statcanOverlayUsed,
 } from './_canada-national-overlay';
 import type {
@@ -76,6 +78,28 @@ function energyDependencyObservedSources(source: unknown): readonly IndicatorObs
 function oldestSourceYear(...years: readonly (number | null | undefined)[]): number | null {
   const observed = years.filter((year): year is number => Number.isFinite(year));
   return observed.length > 0 ? Math.min(...observed) : null;
+}
+
+function statcanSourceYear(observedAt: string | null | undefined): number | null {
+  if (typeof observedAt !== 'string') return null;
+  const match = /^(\d{4})/.exec(observedAt);
+  return match ? Number(match[1]) : null;
+}
+
+function statcanObservedAtMs(observedAt: string | null | undefined): number | null {
+  if (typeof observedAt !== 'string') return null;
+  const parsed = Date.parse(observedAt);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function statcanObservedSources(used: boolean): readonly IndicatorObservedSource[] {
+  return used
+    ? [{
+        sourceKey: RESILIENCE_STATCAN_WDS_KEY,
+        providerName: STATCAN_SCORE_PROVIDER,
+        sourceUrl: STATCAN_WDS_SOURCE_URL,
+      }]
+    : [];
 }
 
 export type ResilienceDimensionId =
@@ -1786,7 +1810,16 @@ export async function scoreMacroFiscal(
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct,
           rawValue: laborEntry?.unemploymentPct ?? null,
           rawUnit: 'percent_labor_force',
-          sourceYear: laborEntry?.year ?? null,
+          sourceYear: overlay.usedStatcanUnemployment
+            ? statcanSourceYear(overlay.unemploymentFreshness?.observedAt)
+            : laborEntry?.year ?? null,
+          retrievedAt: overlay.usedStatcanUnemployment
+            ? overlay.unemploymentFreshness?.retrievedAt ?? undefined
+            : undefined,
+          observedAtMs: overlay.usedStatcanUnemployment
+            ? statcanObservedAtMs(overlay.unemploymentFreshness?.observedAt)
+            : null,
+          observedSources: statcanObservedSources(overlay.usedStatcanUnemployment),
           provenanceHint: overlay.usedStatcanUnemployment ? 'statcan-wds' : 'imf-weo',
         }),
     tracedMetric('householdDebtService', bisDsrRaw == null || dsrEntry == null
@@ -1860,7 +1893,16 @@ export async function scoreCurrencyExternal(
       weight: 0.6,
       rawValue: inflationPct,
       rawUnit: 'percent_year_over_year',
-      sourceYear: imfEntry?.year ?? null,
+      sourceYear: overlay.usedStatcanInflation
+        ? statcanSourceYear(overlay.inflationFreshness?.observedAt)
+        : imfEntry?.year ?? null,
+      retrievedAt: overlay.usedStatcanInflation
+        ? overlay.inflationFreshness?.retrievedAt ?? undefined
+        : undefined,
+      observedAtMs: overlay.usedStatcanInflation
+        ? statcanObservedAtMs(overlay.inflationFreshness?.observedAt)
+        : null,
+      observedSources: statcanObservedSources(overlay.usedStatcanInflation),
       provenanceHint: overlay.usedStatcanInflation ? 'statcan-wds' : 'imf-weo',
     }),
     tracedMetric('fxReservesAdequacy', {
@@ -3120,6 +3162,14 @@ async function scoreEnergyV2(
   ], options);
 }
 
+const ENERGY_V2_TRACE_INDICATOR_IDS = [
+  'importedFossilDependence',
+  'lowCarbonGenerationShare',
+  'powerLossesPct',
+  'euGasStorageStress',
+  'energyPriceStress',
+] as const satisfies readonly ResilienceIndicatorId[];
+
 export async function scoreEnergy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
@@ -3128,6 +3178,8 @@ export async function scoreEnergy(
   if (!isEnergyV2EnabledLocal()) {
     return scoreEnergyLegacy(countryCode, reader, options);
   }
+
+  options?.trace?.recordSelectedIndicators('energy', ENERGY_V2_TRACE_INDICATOR_IDS);
 
   // Flag is ON — preflight the required seeds before routing to v2.
   // A null from any of these would let scoreEnergyV2 score every country

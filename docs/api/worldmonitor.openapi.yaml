@@ -24883,6 +24883,7 @@ paths:
                                 "constructVersions":
                                     "education": "example"
                                     "energy": "example"
+                                    "financialSystemExposure": "example"
                                 "countryCode": "US"
                                 "dataVersion": "example"
                                 "dimensions":
@@ -25434,6 +25435,7 @@ paths:
                                 "constructVersions":
                                     "education": "example"
                                     "energy": "example"
+                                    "financialSystemExposure": "example"
                                 "dataVersion": "example"
                                 "deployedCommitSha": "example"
                                 "flags":
@@ -49668,6 +49670,9 @@ components:
                 education:
                     type: string
                     description: 'Safe derived education construct version. Valid values: "active" or "rollback".'
+                financialSystemExposure:
+                    type: string
+                    description: 'Safe derived financial-system construct version. Valid values: "active" or "rollback".'
         worldmonitor_resilience_v1_ResilienceIndicatorDimension:
             type: object
             properties:
@@ -49837,6 +49842,12 @@ components:
                     description: |-
                         True only when this source was recorded for the selected country observation.
                          False means the entry is registry attribution, not observation provenance.
+                licenseUrl:
+                    type: string
+                    description: Canonical URL for the audited source license or redistribution terms.
+                attributionUrl:
+                    type: string
+                    description: Canonical attribution URL when it differs from the source dataset URL.
             description: |-
                 Source-level attribution and provenance for one indicator. Composite
                  indicators repeat this message once for every upstream source they use.

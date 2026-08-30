@@ -187,16 +187,23 @@ describe('resilience indicator trace', () => {
     const included = rows.filter((row) => row.includedInDimensionScore);
     assert.equal(included.length, 2);
     assert.ok(included.every((row) => row.state === 'source-failure'));
+    assert.ok(included.every((row) => row.reason === 'dimension-source-failure'));
+    assert.ok(included.every((row) => row.imputationClass === 'source-failure'));
     assert.ok(included.every((row) => row.runtimeWeightsAvailable));
     assert.equal(included.reduce((sum, row) => sum + row.effectiveContribution, 0), 50);
   });
 
   it('does not invent runtime weights when a source fails before the scorer records a branch', () => {
     const trace = createIndicatorTraceCollector();
+    trace.recordSelectedIndicators('currencyExternal', ['inflationStability', 'fxReservesAdequacy']);
     trace.recordSourceFailure('currencyExternal');
 
     const rows = rowsFor(trace, 'currencyExternal', 0);
-    assert.ok(rows.every((row) => row.state === 'source-failure'));
+    const selected = rows.filter((row) => ['inflationStability', 'fxReservesAdequacy'].includes(row.indicatorId));
+    const dormant = rows.filter((row) => !selected.includes(row));
+    assert.ok(selected.every((row) => row.state === 'source-failure'));
+    assert.ok(selected.every((row) => row.reason === 'dimension-source-failure'));
+    assert.ok(dormant.every((row) => row.state === 'inactive'));
     assert.ok(rows.every((row) => row.runtimeWeightsAvailable === false));
   });
 });
