@@ -99,8 +99,9 @@ const Harness = extractOpenSearch()(
 function makeInstance({ failLoad = false } = {}) {
   const inst = new Harness();
   const modal = {
-    _open: false, opens: 0, closes: 0, openArgs: [],
+    _open: false, opens: 0, closes: 0, openArgs: [], queryArgs: [],
     open(replaceOverlayId) { this._open = true; this.opens++; this.openArgs.push(replaceOverlayId); },
+    applyQuery(term) { this.queryArgs.push(term); },
     close() { this._open = false; this.closes++; },
     isOpen() { return this._open; },
   };
@@ -137,6 +138,25 @@ function makeInstance({ failLoad = false } = {}) {
 }
 
 describe('App.openSearch lazy-load state machine (#4403)', () => {
+  it('startup consumes SearchAction ?q= through the lazy openSearch path', () => {
+    assert.match(appSrc, /readDashboardSearchQuery\(window\.location\.search\)/);
+    assert.match(
+      appSrc,
+      /pendingDeepLinkSearchQuery/,
+      'the term must be captured before URL sync rewrites the address bar',
+    );
+    assert.match(
+      appSrc,
+      /openSearch\(\{\s*initialQuery:\s*searchQuery\s*\}\)/,
+      'captured ?q= must enter the existing lazy search path',
+    );
+    assert.match(
+      appSrc,
+      /if \(options\.initialQuery\) modal\.applyQuery\(options\.initialQuery\)/,
+      'openSearch must hand the term to the modal after lazy init',
+    );
+  });
+
   beforeEach(() => {
     toastMessages.length = 0;
     historyDouble.reset();
@@ -272,6 +292,15 @@ describe('App.openSearch lazy-load state machine (#4403)', () => {
     await p;
     assert.equal(h.modal.opens, 0);
     assert.equal(h.inst.searchToggleDesiredOpen, false);
+  });
+
+  it('passes a SearchAction query through the lazy path to the modal', async () => {
+    const h = makeInstance();
+    const p = h.inst.openSearch({ initialQuery: 'hormuz strait' });
+    await h.resolveLoad();
+    await p;
+    assert.equal(h.modal.opens, 1, 'lazy load must still open the modal');
+    assert.deepEqual(h.modal.queryArgs, ['hormuz strait'], 'modal must receive the deep-link term');
   });
 
   it('does not toast when a Back-cancelled Search chunk later fails', async () => {
