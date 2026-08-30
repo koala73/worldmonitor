@@ -670,6 +670,26 @@ The named reason a single judge attempt failed, recorded per attempt alongside t
 
 The vocabulary is closed so attempts aggregate into counts that name a dominant failure rather than an undifferentiated backlog; an instrumented failure is still a failure and never counts as progress. The classes separate distinctions that look alike but demand opposite responses: an archive that could not be read versus one that was read but does not cover the required window, a judge that returned nothing versus one whose answer could not be parsed, and a citation naming an item the judge was never shown versus a real item quoted with invented text. Recorded attempt detail is drawn from a fixed vocabulary rather than from provider error text, which can carry credentials and prompt echoes into durable receipts. See also: Judged Resolution.
 
+## Physical Divergence
+
+### Physical Premium
+
+The gap between what a metal costs as deliverable metal in one market and what the same metal costs as a paper futures contract in another, expressed per troy ounce and as a percentage. The two legs come from different venues on different clocks — a once-daily physical print with a content date, a futures snapshot with an instant, and a currency rate with its own instant — so the premium is only as fresh as its stalest leg, and the three must be carried and aged separately rather than collapsed into one timestamp. A negative premium is an ordinary state, not an error: the physical market trades at a discount for long stretches.
+
+### Physical Premium Regime
+
+The interpretation layer over a Physical Premium: an ordered classification from normal through progressively more stressed bands. It is deliberately **hybrid**, and both halves are load-bearing. An absolute floor per metal decides the band on size alone, so the label survives a period where the entire reference window is stressed. A rolling historical percentile can then refine the verdict *within* the floors, so an unusual-but-small premium is not dismissed.
+
+Percentile alone must never decide the band. The current observation belongs to its own reference window and the percentile is inclusive, so any new window high scores the maximum regardless of size — a relative rule without a magnitude condition therefore promotes trivia to the top band whenever the window is calm, and demotes a real crisis to normal whenever the window is itself a stress period. The two failures look opposite and share one cause. See also: Regime Transition, Insufficient History.
+
+### Regime Transition
+
+A change in a Physical Premium Regime between one published reading and the next, and the only thing that enters the cross-source signal stream — a *level* never emits, only a *change*. Suppression of repeated transitions is keyed on the regime last **emitted**, not on elapsed time alone, because the published reading advances even on a run whose transition was suppressed: a purely time-based gate would compare against a baseline that has already moved on, turning suppression of a genuine escalation into permanent deletion rather than a deferral. A move to a band more severe than the last one announced is therefore never withheld. See also: Physical Premium Regime.
+
+### Insufficient History
+
+The explicit state a derived reading reports when its reference window has not yet accumulated enough points to say anything — distinct from missing input and from stale input, and distinct again from a confident verdict of normal. It is the correct and expected state for the whole warm-up period after a derived series is first published, which is why it cannot on its own be treated as unhealthy. The trap is the mirror case: a series that reaches a working state and later falls back to insufficient history because its accumulated window was lost looks identical to one that never warmed up, unless something records the depth actually reached. See also: Activation Marker, Physical Premium Regime.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
