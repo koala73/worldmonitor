@@ -109,7 +109,7 @@ function makeFixture({
   // node_modules/ is gitignored above so this stays invisible to `dirty`.
   writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}\n');
   copyFileSync(HOOK, join(root, '.husky', 'pre-push'));
-  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh']) {
+  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh', 'prepush-identity-gate.sh']) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(root, 'scripts', script));
   }
   copyFileSync(
@@ -166,7 +166,7 @@ function makeFixture({
   }
 
   git(['init', '--quiet', '--initial-branch=main', '.']);
-  git(['config', 'user.email', 'prepush-hook@example.invalid']);
+  git(['config', 'user.email', 'prepush-hook@wm-fixture.localhost']);
   git(['config', 'user.name', 'Prepush Hook Fixture']);
   git(['add', '-A']);
   git(['commit', '--quiet', '-m', 'base']);
@@ -245,7 +245,7 @@ function pushWithPoisonedSharedHooksPath() {
   mkdirSync(main, { recursive: true });
   execFileSync('git', ['init', '--quiet', '--bare', remote], { env });
   git(main, ['init', '--quiet', '--initial-branch=main', '.']);
-  git(main, ['config', 'user.email', 'prepush-hook@example.invalid']);
+  git(main, ['config', 'user.email', 'prepush-hook@wm-fixture.localhost']);
   git(main, ['config', 'user.name', 'Prepush Hook Fixture']);
   git(main, ['remote', 'add', 'origin', remote]);
 
@@ -259,6 +259,7 @@ function pushWithPoisonedSharedHooksPath() {
     'prepush-admission.mjs',
     'prepush-attest.sh',
     'prepush-changed-tests.sh',
+    'prepush-identity-gate.sh',
   ]) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(main, 'scripts', script));
   }

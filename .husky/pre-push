@@ -40,6 +40,22 @@ if [ -z "${WM_ALLOW_FOREIGN_HOOKS:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
   fi
 fi
 
+# --- Git-env hygiene + identity gate (the "Fixture author" incident class) ---
+# During a push git exports GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE to this hook,
+# and those OVERRIDE cwd for every child process. A test fixture run below that
+# shells out to `git config user.name` without stripping them writes its fake
+# identity into the SHARED .git/config — poisoning every worktree's future
+# commits (2026-08-30 "Fixture <fixture@example.invalid>" incident; also
+# "test@example.com", "WorldMonitor Test", "e@e.co" before it). The hook needs
+# none of these vars: cwd-based discovery works in every worktree. Capture the
+# push stdin first (the gate consumes it), then strip the list git publishes.
+WM_PUSH_STDIN=$(cat || true)
+printf '%s\n' "$WM_PUSH_STDIN" | bash scripts/prepush-identity-gate.sh || exit 1
+for _git_env in $(git rev-parse --local-env-vars 2>/dev/null); do
+  unset "$_git_env" 2>/dev/null || true
+done
+unset _git_env
+
 echo "Checking for local environment dumps..."
 node scripts/check-local-secret-dumps.mjs --pre-push "${1:-}" || exit 1
 
