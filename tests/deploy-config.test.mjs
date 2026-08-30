@@ -795,9 +795,13 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
   });
 
-  it('emits hidden production sourcemaps for dashboard INP attribution (#7382)', () => {
-    assert.match(viteConfigSource, /sourcemap:\s*'hidden'/);
+  it('keeps production sourcemaps opt-in so deploy/desktop dist stay map-free (#7382)', () => {
+    assert.match(
+      viteConfigSource,
+      /sourcemap:\s*process\.env\.WM_EMIT_SOURCEMAPS\s*===\s*'1'\s*\?\s*'hidden'\s*:\s*false/,
+    );
   });
+
 
   it('keeps off-page public assets out of the PWA precache', () => {
     const assertGlobIgnore = (pattern) => {

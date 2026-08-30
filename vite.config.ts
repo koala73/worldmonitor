@@ -1122,10 +1122,9 @@ export default defineConfig(({ mode }) => {
       format: 'es',
     },
     build: {
-      // Hidden maps support field INP attribution (DebugBear/Sentry/DevTools)
-      // without linking them from JS (no SourceMap header / //# sourceMappingURL).
-      // Build still emits `.map` files for CI upload; do not serve them publicly.
-      sourcemap: 'hidden',
+      // Opt-in hidden maps for jobs that upload then delete them (DebugBear/Sentry).
+      // Default off so Vercel dist and desktop frontendDist do not ship `.map` files.
+      sourcemap: process.env.WM_EMIT_SOURCEMAPS === '1' ? 'hidden' : false,
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.

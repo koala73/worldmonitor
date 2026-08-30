@@ -25,8 +25,11 @@ describe('welcome a11y invariants (#7382)', () => {
     assert.match(logo, /aria-hidden="true"/);
   });
 
-  it('does not duplicate Launch Dashboard accessible name via aria-label', () => {
-    assert.doesNotMatch(nav, /aria-label=\{t\('welcome\.nav\.launch'\)\}/);
+  it('keeps Launch CTA aria-label matching visible copy (critical CSS + a11y)', () => {
+    // Matching aria-label is intentional: prerender critical CSS keys off
+    // nav[data-wm-nav] a[aria-label*="Launch"], and the label equals visible text.
+    assert.match(nav, /aria-label=\{t\('welcome\.nav\.launch'\)\}/);
     assert.match(nav, /\{t\('welcome\.nav\.launch'\)\}/);
   });
 });
+

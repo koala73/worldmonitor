@@ -441,9 +441,10 @@ function json(data, status = 200, extraHeaders = {}) {
 function canCompress(headers, body) {
   if (!(body.length > 1024) || headers['content-encoding']) return false;
   const contentType = String(headers['content-type'] || '').toLowerCase();
-  // Already-compressed media gains nothing from gzip/br and wastes CPU (#7382).
+  // Already-compressed rasters/media gain nothing from gzip/br and waste CPU (#7382).
+  // SVG (image/svg+xml) is text and still compresses — keep it eligible.
   if (
-    contentType.startsWith('image/')
+    /^image\/(jpeg|jpg|png|gif|webp|avif|heic|heif|bmp|tiff)(?:;|$)/.test(contentType)
     || contentType.startsWith('audio/')
     || contentType.startsWith('video/')
     || contentType.includes('zip')
