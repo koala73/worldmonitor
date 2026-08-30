@@ -151,9 +151,10 @@ describe('resolveCountryCode — the ladder', () => {
     // and `China (Taiwan)` as CN. Ambiguous input must fail, not guess.
     assert.equal(resolveCountryCode('Congo (DRC)'), null);
     assert.equal(resolveCountryCode('China (Taiwan)'), null);
-    // The name map holds composite keys that are territorial CLAIMS, not names
-    // (`morocco western sahara` -> MA), so recombination alone would answer
-    // Morocco here. The disagreement gate must run first.
+    // The name map previously held a composite territorial-CLAIM key
+    // (`morocco western sahara` -> MA). Recombination alone would answer
+    // Morocco here. The disagreement gate must run first; the claim key was
+    // also dropped from the map (issue #7405), and a data invariant pins that.
     assert.equal(resolveCountryCode('Western Sahara (Morocco)'), null);
   });
 
@@ -265,6 +266,34 @@ describe('data invariants the ladder order depends on', () => {
       .filter((row) => row.viaIso3 && row.viaIso3 !== row.iso2);
     assert.deepEqual(conflicts, [],
       'the name map wins over the alpha-3 map, so a disagreement would silently change which country resolves');
+  });
+
+  it('composite name keys that split into two different countries match the known allowlist', () => {
+    // A key that splits into two DISTINCT name-map countries is a territorial
+    // CLAIM, not a country name (`morocco western sahara` -> MA while both
+    // halves resolve on their own). Recombination's premise is that an exact
+    // hit names a single country; these keys break that. The disagreement gate
+    // compensates behaviourally, but nothing pins the data property — a regen
+    // that introduces another claim key would reopen a silent wrong-country
+    // path with every behavioural test still green. Allowlist the known set so
+    // a new claim fails loudly and gets a human decision.
+    const names = COUNTRY_NAMES as Record<string, string>;
+    const claimKeys = new Set<string>();
+    for (const key of Object.keys(names)) {
+      const tokens = key.split(' ');
+      for (let i = 1; i < tokens.length; i++) {
+        const left = tokens.slice(0, i).join(' ');
+        const right = tokens.slice(i).join(' ');
+        if (names[left] && names[right] && names[left] !== names[right]) {
+          claimKeys.add(key);
+          break;
+        }
+      }
+    }
+    // Empty allowlist: the only prior claim key (`morocco western sahara` -> MA)
+    // earned nothing for resolution and was dropped with the generator alias.
+    assert.deepEqual([...claimKeys].sort(), [],
+      'a new composite claim key must be reviewed — do not silently reintroduce one');
   });
 });
 

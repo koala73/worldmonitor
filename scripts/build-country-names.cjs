@@ -59,7 +59,9 @@ const COUNTRY_ALIAS_MAP = {
   'lao pdr': 'LA',
   'macao sar china': 'MO',
   'micronesia fed sts': 'FM',
-  'morocco western sahara': 'MA',
+  // Deliberately omitted: `morocco western sahara` is a territorial claim, not
+  // a country name — both halves already resolve on their own, and the key
+  // breaks recombination's "exact hit names one country" premise (issue #7405).
   'north macedonia': 'MK',
   'occupied palestinian territory': 'PS',
   'palestinian territories': 'PS',

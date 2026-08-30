@@ -57,7 +57,7 @@ describe('resolver parity', () => {
     'hong kong sar china': 'HK', 'iran islamic rep': 'IR',
     'korea dem peoples rep': 'KP', 'korea rep': 'KR', 'lao pdr': 'LA',
     'macao sar china': 'MO', 'micronesia fed sts': 'FM',
-    'morocco western sahara': 'MA', 'north macedonia': 'MK',
+    'north macedonia': 'MK',
     'occupied palestinian territory': 'PS', 'palestinian territories': 'PS',
     'palestine state of': 'PS', 'russian federation': 'RU',
     'slovak republic': 'SK', 'st kitts and nevis': 'KN', 'st lucia': 'LC',
