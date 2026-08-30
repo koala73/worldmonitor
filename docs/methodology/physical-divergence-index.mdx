@@ -35,7 +35,9 @@ The percentile rank is the share of window values less than or equal to the curr
 
 ## Hybrid regimes
 
-The classifier assigns one absolute regime and one relative regime. The higher regime wins. Relative thresholds apply only to positive premiums, so a deep discount cannot look stressed because it is unusual.
+The classifier assigns one absolute regime and one relative regime. The higher regime wins.
+
+Relative thresholds apply only once the premium clears a magnitude floor of half the metal's `elevated` floor — 0.5% for gold, 2.5% for silver. A sign test is not enough: the current print is part of its own trailing window and the percentile is inclusive, so any new window high scores 100 regardless of size. Without the magnitude floor a trivially small positive premium reads as `extreme` purely for topping a calm window. The floor is set at half the `elevated` threshold rather than at the threshold itself so that the 80th-percentile tier stays reachable; gating at the full `elevated` floor would make every relative escalation redundant with the absolute one.
 
 | Metal | Elevated | Stressed | Extreme |
 | --- | ---: | ---: | ---: |
