@@ -1005,8 +1005,30 @@ const SEED_META = {
   customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
   comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
-  supplyVulnerability: { key: 'seed-meta:supply-chain:vulnerability', maxStaleMin: 2880, minRecordCount: 1 },
-  supplyChokepointDependencies: { key: 'seed-meta:supply-chain:chokepoint-dependencies', maxStaleMin: 2880, minRecordCount: 1 },
+  supplyVulnerability: {
+    key: 'seed-meta:supply-chain:vulnerability',
+    maxStaleMin: 2880,
+    minRecordCount: 1,
+    activationKey: 'seed-activated:supply-chain:vulnerability',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 6449,
+      activationKey: 'seed-activated:supply-chain:vulnerability',
+    },
+  },
+  supplyChokepointDependencies: {
+    key: 'seed-meta:supply-chain:chokepoint-dependencies',
+    maxStaleMin: 2880,
+    minRecordCount: 1,
+    activationKey: 'seed-activated:supply-chain:vulnerability',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 6449,
+      activationKey: 'seed-activated:supply-chain:vulnerability',
+    },
+  },
   blsSeries:           { key: 'seed-meta:economic:bls-series',                maxStaleMin: 2880 }, // daily seed; 2880min = 48h = 2x interval
   sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 }, // 6h cron; 12h = 2× interval, before the 18h data TTL
   crossSourceSignals:  { key: 'seed-meta:intelligence:cross-source-signals',  maxStaleMin: 30 }, // 15min cron; 30min = 2x interval
@@ -1439,6 +1461,11 @@ const ON_DEMAND_KEYS = new Set([
   // writes a permanent marker in the same EVAL as that first successful
   // cohort; absence is pending until then and strict afterward.
   'scorecardFiveFactor',
+  // Daily commodity-vulnerability producer. One durable cohort marker bridges
+  // the Edge reader deploy to the first Railway publish; both projections are
+  // strict forever after the marker exists.
+  'supplyVulnerability',
+  'supplyChokepointDependencies',
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
   'bisPolicy', 'bisExchange', 'bisCredit',
@@ -1521,6 +1548,8 @@ const ACTIVATION_MARKERS = {
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
+  supplyVulnerability: SEED_META.supplyVulnerability.activationKey,
+  supplyChokepointDependencies: SEED_META.supplyChokepointDependencies.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
   // Written by scripts/_seed-history.mjs on every ingest-health report,
