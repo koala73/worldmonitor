@@ -13,19 +13,27 @@ export type PanelLayoutRegion = (typeof PANEL_LAYOUT_REGIONS)[number];
 export const PANEL_LAYOUT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9@_-]*$/;
 export const PANEL_LAYOUT_ID_MAX_CHARS = 96;
 
-export type PanelLayoutDenialReason =
-  | 'malformed_arguments'
-  | 'panel_not_found'
-  | 'panel_not_mounted'
-  | 'region_unavailable'
-  | 'invalid_region'
-  | 'invalid_index'
-  | 'collapse_unsupported'
-  | 'fullscreen_unsupported'
-  | 'panel_fixed'
-  | 'persist_failed'
-  | 'layout_unavailable'
-  | 'app_destroyed';
+/**
+ * Every stable denial reason a panel-layout tool can report. The type derives
+ * from this list so the runtime set, the union, and the documented reason
+ * catalog in `docs/webmcp.mdx` cannot drift apart.
+ */
+export const PANEL_LAYOUT_DENIAL_REASONS = [
+  'malformed_arguments',
+  'panel_not_found',
+  'panel_not_mounted',
+  'region_unavailable',
+  'invalid_region',
+  'invalid_index',
+  'collapse_unsupported',
+  'fullscreen_unsupported',
+  'panel_fixed',
+  'persist_failed',
+  'layout_unavailable',
+  'app_destroyed',
+] as const;
+
+export type PanelLayoutDenialReason = (typeof PANEL_LAYOUT_DENIAL_REASONS)[number];
 
 export interface PanelLayoutEntry {
   id: string;
