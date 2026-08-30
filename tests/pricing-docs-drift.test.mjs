@@ -245,21 +245,75 @@ guardProBuiltOutput();
 
 // AI crawlers often skip JS. Visible USD figures must live in the static
 // noscript body (and not only in JSON-LD Offers) so "how much does it cost?"
-// answers remain extractable (#7381).
-test('/pro noscript body exposes catalog USD prices as visible text (#7381)', () => {
+// answers remain extractable (#7381). PLAN_KEYS omits api_business_annual, so
+// a body-wide contains() check can stay green while the API Pro annual cell
+// drifts ($2,699.99 → $2,600.00). Parse named rows and compare every monthly
+// and annual cell to productCatalog.ts.
+const NOSCRIPT_TABLE_EXPECT = [
+  ['Free', { monthly: 'free', annual: 'free' }],
+  ['Pro', { monthly: 'pro_monthly', annual: 'pro_annual' }],
+  ['Pro Business', { monthly: 'pro_business_monthly', annual: 'pro_business_annual' }],
+  ['API Starter', { monthly: 'api_starter', annual: 'api_starter_annual' }],
+  ['API Pro', { monthly: 'api_business', annual: 'api_business_annual' }],
+];
+
+const parseUsdCell = (text, context) => {
+  const normalized = String(text).replace(/[$,]/g, '').trim();
+  assert.match(normalized, /^\d+(?:\.\d{1,2})?$/, `unparseable USD cell for ${context}: ${text}`);
+  return Number(normalized);
+};
+
+const parseNoscriptPricingRows = (noscript) => {
+  const table = noscript.match(/<table\b[\s\S]*?<\/table>/i)?.[0];
+  assert.ok(table, 'noscript must include a pricing table');
+  const rows = [...table.matchAll(/<tr>\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<\/tr>/gi)].map(
+    (match) => ({
+      name: match[1].trim(),
+      monthly: match[2].trim(),
+      annual: match[3].trim(),
+    })
+  );
+  assert.ok(rows.length > 0, 'noscript pricing table must include named monthly/annual rows');
+  return Object.fromEntries(rows.map((row) => [row.name, row]));
+};
+
+const assertNoscriptPricesMatchCatalog = (noscript) => {
+  assert.match(noscript, /How much does World Monitor Pro cost\?/);
+  const rows = parseNoscriptPricingRows(noscript);
+  assert.deepEqual(
+    Object.keys(rows).sort(),
+    NOSCRIPT_TABLE_EXPECT.map(([name]) => name).sort(),
+    'noscript pricing table rows must match the catalog-backed named plans'
+  );
+  for (const [rowName, fields] of NOSCRIPT_TABLE_EXPECT) {
+    const row = rows[rowName];
+    for (const [period, planKey] of Object.entries(fields)) {
+      assert.equal(
+        parseUsdCell(row[period], `${rowName} ${period}`),
+        priceCentsFor(planKey) / 100,
+        `noscript ${rowName} ${period} is stale vs productCatalog.ts ${planKey}`
+      );
+    }
+  }
+};
+
+const proNoscriptBody = () => {
   const html = read('pro-test/index.html');
   const noscript = html.match(/<noscript>([\s\S]*?)<\/noscript>/i)?.[1];
   assert.ok(noscript, 'pro-test/index.html must include a noscript fallback');
-  assert.match(noscript, /How much does World Monitor Pro cost\?/);
-  for (const planKey of PLAN_KEYS) {
-    const cents = priceCentsFor(planKey);
-    const dollars = (cents / 100).toFixed(2);
-    assert.match(
-      noscript,
-      new RegExp(`\\$${dollars.replace('.', '\\.')}`),
-      `noscript must show $${dollars} for ${planKey}`
-    );
-  }
+  return noscript;
+};
+
+test('/pro noscript body exposes catalog USD prices as visible text (#7381)', () => {
+  assertNoscriptPricesMatchCatalog(proNoscriptBody());
+});
+
+test('/pro noscript pricing guard rejects a drifted API Pro annual cell', () => {
+  const drifted = proNoscriptBody().replace('$2,699.99', '$2,600.00');
+  assert.throws(
+    () => assertNoscriptPricesMatchCatalog(drifted),
+    /api_business_annual/
+  );
 });
 
 test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', { skip: shouldSkipProBuiltOutput() }, () => {
