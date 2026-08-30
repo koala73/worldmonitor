@@ -85,6 +85,21 @@ describe('physical divergence methodology v1', () => {
     assert.equal(classifyPhysicalPremiumRegime('gold', -0.5, 99), 'normal');
   });
 
+  it('refuses to escalate a trivially small premium that merely tops its own window', () => {
+    // The regression this guards: the relative ladder gated on `premiumPct > 0`, a sign test
+    // rather than a magnitude test. The current point sits inside its own reference window
+    // and percentileRank is inclusive, so ANY new high scores 100 — and a 0.05% gold premium
+    // (20x under the 1% elevated floor) classified `extreme`, pinning the index at 100/100
+    // on a calm, discounted window. #6448: "percentile-only classification is forbidden".
+    assert.equal(classifyPhysicalPremiumRegime('gold', 0.05, 100), 'normal');
+    // The gate sits at half the elevated floor — gold 0.5, silver 2.5 — so the documented
+    // 80/95/99 ladder above stays reachable rather than collapsing into the absolute floors.
+    assert.equal(classifyPhysicalPremiumRegime('gold', 0.4999, 100), 'normal');
+    assert.equal(classifyPhysicalPremiumRegime('gold', 0.5, 100), 'extreme');
+    assert.equal(classifyPhysicalPremiumRegime('silver', 2.4999, 100), 'normal');
+    assert.equal(classifyPhysicalPremiumRegime('silver', 2.5, 100), 'extreme');
+  });
+
   it('uses median and MAD instead of mean and standard deviation under an outlier', () => {
     const z = robustZScore(3, [1, 1, 2, 2, 3, 100]);
     assert.ok(z != null);
