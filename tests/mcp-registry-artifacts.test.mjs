@@ -101,12 +101,17 @@ describe('mcp registry publication artifacts', () => {
     assert.equal(Object.hasOwn(triggers, 'pull_request'), false);
     assert.deepEqual(workflow.permissions, { contents: 'read' });
     assert.equal(workflow.jobs.publish.environment, 'mcp-registry-publish');
+    assert.equal(workflow.jobs.publish['timeout-minutes'], 10);
     assert.match(workflow.jobs.publish.if, /github\.event_name == 'release'/);
     assert.match(workflow.jobs.publish.if, /github\.ref == 'refs\/heads\/main'/);
     const install = stepNamed('Install mcp-publisher');
     assert.match(install.env.MCP_PUBLISHER_VERSION, /^v\d+\.\d+\.\d+$/);
     assert.match(install.env.MCP_PUBLISHER_SHA256, /^[a-f0-9]{64}$/);
     assert.match(install.run, /releases\/download\/\$\{MCP_PUBLISHER_VERSION\}\//);
+    assert.match(install.run, /--connect-timeout 15/);
+    assert.match(install.run, /--max-time 90/);
+    assert.match(install.run, /--retry 3/);
+    assert.match(install.run, /--retry-delay 2/);
     assert.match(install.run, /sha256sum --check/);
     assert.match(stepNamed('Authenticate to MCP Registry').run, /login http/);
     assert.match(stepNamed('Authenticate to MCP Registry').run, /--domain worldmonitor\.app/);

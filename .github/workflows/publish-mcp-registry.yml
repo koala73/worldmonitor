@@ -17,6 +17,7 @@ jobs:
     if: ${{ github.event_name == 'release' || github.ref == 'refs/heads/main' }}
     environment: mcp-registry-publish
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -27,6 +28,10 @@ jobs:
           MCP_PUBLISHER_VERSION: v1.7.9
         run: |
           curl --fail --location --silent --show-error \
+            --connect-timeout 15 \
+            --max-time 90 \
+            --retry 3 \
+            --retry-delay 2 \
             --output mcp-publisher.tar.gz \
             "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
           echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check
