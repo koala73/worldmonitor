@@ -1,6 +1,7 @@
 import { isKnownPublicPagePath, originNotFoundResponse } from './src/config/agent-not-found';
 import {
   DOCS_UPSTREAM_ORIGIN,
+  DOCS_UPSTREAM_TIMEOUT_MS,
   isDocsFullDocumentRequest,
   isDocsHtmlDocumentPath,
   rewriteDocsLocaleHtml,
@@ -424,30 +425,33 @@ async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response
   }
 
   let upstream: Response;
+  let html: string;
   try {
     upstream = await fetch(upstreamUrl, {
       method: request.method,
       headers: forwardHeaders,
       redirect: 'manual',
+      signal: AbortSignal.timeout(DOCS_UPSTREAM_TIMEOUT_MS),
     });
+
+    // Pass through redirects / not-modified without rewriting.
+    if (upstream.status >= 300 && upstream.status < 400) {
+      return upstream;
+    }
+    if (upstream.status === 304 || request.method === 'HEAD') {
+      return upstream;
+    }
+
+    const contentType = upstream.headers.get('content-type');
+    if (!shouldTransformDocsUpstreamHtml(url.pathname, contentType)) {
+      return upstream;
+    }
+
+    html = await upstream.text();
   } catch {
     return new Response('Docs upstream unavailable', { status: 502 });
   }
 
-  // Pass through redirects / not-modified without rewriting.
-  if (upstream.status >= 300 && upstream.status < 400) {
-    return upstream;
-  }
-  if (upstream.status === 304 || request.method === 'HEAD') {
-    return upstream;
-  }
-
-  const contentType = upstream.headers.get('content-type');
-  if (!shouldTransformDocsUpstreamHtml(url.pathname, contentType)) {
-    return upstream;
-  }
-
-  const html = await upstream.text();
   const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
   const headers = new Headers(upstream.headers);
   // Fetch already decoded the body; hop-by-hop / recomputed framing must not

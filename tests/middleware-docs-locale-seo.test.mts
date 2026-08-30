@@ -2,6 +2,19 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 import middleware from '../middleware';
+import {
+  DOCS_UPSTREAM_TIMEOUT_MS,
+  ROUTING_MIDDLEWARE_RESPONSE_DEADLINE_MS,
+} from '../src/config/docs-locale-seo.ts';
+
+function docsHtmlRequest(): Request {
+  return new Request('https://www.worldmonitor.app/docs/zh/about', {
+    headers: {
+      accept: 'text/html',
+      'user-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)',
+    },
+  });
+}
 
 describe('middleware docs locale SEO proxy', () => {
   it('rewrites Chinese docs HTML lang and injects reciprocal hreflang', async () => {
@@ -20,13 +33,7 @@ describe('middleware docs locale SEO proxy', () => {
     );
 
     try {
-      const req = new Request('https://www.worldmonitor.app/docs/zh/about', {
-        headers: {
-          accept: 'text/html',
-          'user-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)',
-        },
-      });
-      const res = await middleware(req);
+      const res = await middleware(docsHtmlRequest());
       assert.ok(res instanceof Response, 'docs HTML requests must be handled by middleware');
       assert.equal(res.status, 200);
       assert.equal(res.headers.get('x-wm-docs-locale-seo'), '1');
@@ -97,5 +104,65 @@ describe('middleware docs locale SEO proxy', () => {
     });
     const res = middleware(req);
     assert.equal(res, undefined, 'RSC requests must fall through to vercel.json Mintlify rewrite');
+  });
+
+  it('supplies AbortSignal.timeout below the routing-middleware deadline', async () => {
+    const originalTimeout = AbortSignal.timeout;
+    const originalFetch = globalThis.fetch;
+    const seenMs: number[] = [];
+    let timeoutSignal: AbortSignal | undefined;
+    let fetchSignal: AbortSignal | undefined;
+
+    AbortSignal.timeout = (ms) => {
+      seenMs.push(ms);
+      timeoutSignal = originalTimeout.call(AbortSignal, ms);
+      return timeoutSignal;
+    };
+    mock.method(globalThis, 'fetch', async (_url: string, init?: RequestInit) => {
+      fetchSignal = init?.signal ?? undefined;
+      return new Response('<!DOCTYPE html><html lang="en"><head></head><body>ok</body></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      });
+    });
+
+    try {
+      const res = await middleware(docsHtmlRequest());
+      assert.ok(res instanceof Response);
+      assert.deepEqual(seenMs, [DOCS_UPSTREAM_TIMEOUT_MS]);
+      assert.ok(
+        DOCS_UPSTREAM_TIMEOUT_MS < ROUTING_MIDDLEWARE_RESPONSE_DEADLINE_MS,
+        'docs upstream timeout must stay below the routing-middleware response deadline',
+      );
+      assert.equal(fetchSignal, timeoutSignal, 'fetch must receive the timeout signal');
+      assert.equal(fetchSignal?.aborted, false);
+    } finally {
+      AbortSignal.timeout = originalTimeout;
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('maps a rejected transformed-body read to 502', async () => {
+    const originalFetch = globalThis.fetch;
+    mock.method(globalThis, 'fetch', async () => {
+      const body = new ReadableStream({
+        start(controller) {
+          controller.error(new Error('upstream body reset'));
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      });
+    });
+
+    try {
+      const res = await middleware(docsHtmlRequest());
+      assert.ok(res instanceof Response);
+      assert.equal(res.status, 502);
+      assert.equal(await res.text(), 'Docs upstream unavailable');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

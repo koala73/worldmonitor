@@ -17,6 +17,14 @@ export const DOCS_ZH_HREFLANG = 'zh-Hans';
 export const DOCS_EN_HREFLANG = 'en';
 export const DOCS_UPSTREAM_ORIGIN = 'https://worldmonitor.mintlify.dev';
 
+/**
+ * Vercel Routing Middleware's default maxDuration is 25s. Bound the Mintlify
+ * fetch (headers + transformed-body read) below that so a hung origin returns
+ * 502 instead of waiting for a platform cancel.
+ */
+export const DOCS_UPSTREAM_TIMEOUT_MS = 8_000;
+export const ROUTING_MIDDLEWARE_RESPONSE_DEADLINE_MS = 25_000;
+
 const DOCS_PREFIX = '/docs/';
 const DOCS_ZH_PREFIX = '/docs/zh/';
 

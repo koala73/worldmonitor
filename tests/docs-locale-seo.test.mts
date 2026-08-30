@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   DOCS_PUBLIC_ORIGIN,
+  DOCS_UPSTREAM_TIMEOUT_MS,
   DOCS_ZH_HREFLANG,
+  ROUTING_MIDDLEWARE_RESPONSE_DEADLINE_MS,
   buildDocsHreflangLinkTags,
   isDocsFullDocumentRequest,
   isDocsHtmlDocumentPath,
@@ -129,6 +131,11 @@ describe('rewriteDocsLocaleHtml', () => {
     const html = rewriteDocsLocaleHtml(seeded, '/docs/about');
     const matches = html.match(/rel="alternate" hreflang=/g) ?? [];
     assert.equal(matches.length, 3);
+  });
+
+  it('keeps the Mintlify fetch timeout below the routing-middleware deadline', () => {
+    assert.ok(DOCS_UPSTREAM_TIMEOUT_MS > 0);
+    assert.ok(DOCS_UPSTREAM_TIMEOUT_MS < ROUTING_MIDDLEWARE_RESPONSE_DEADLINE_MS);
   });
 
   it('only transforms HTML content types for document paths', () => {
