@@ -484,6 +484,7 @@
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/brief-embedding.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/physical-divergence.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
