@@ -976,16 +976,6 @@ function extractPhysicalPremiumRegimeTransition(d) {
   const evaluatedAt = Date.parse(payload?.evaluatedAt ?? '');
   if (Number.isFinite(evaluatedAt) && nowMs - evaluatedAt > maxAgeMs) return [];
   const readingsByMetal = new Map(readings.map((reading) => [reading?.metal, reading]));
-  const inputsFresh = ['gold', 'silver'].every((metal) => {
-    const reading = readingsByMetal.get(metal);
-    return reading?.state === 'ok'
-      && physicalDivergenceStaleReason({
-        physicalAsOf: reading.physicalAsOf,
-        paperAsOf: reading.paperAsOf,
-        fxAsOf: reading.provenance?.fxAsOf,
-      }, nowMs) == null;
-  });
-  if (!inputsFresh) return [];
   const transitions = Array.isArray(payload?.transitions) ? payload.transitions : [];
   const targetMultiplier = { normal: 0.75, elevated: 1, stressed: 1.5, extreme: 2 };
   const cutoff = nowMs - 48 * 3600 * 1000;
@@ -1001,6 +991,18 @@ function extractPhysicalPremiumRegimeTransition(d) {
       || typeof transition?.id !== 'string'
       || transition.id !== `physical-premium:${transition.metal}:${transition.fromRegime}-${transition.toRegime}:${transition.detectedAt}`
       || transition.methodologyVersion !== 'physical-divergence-v1'
+    ) return [];
+    // Freshness is per transitioning metal — the other metal may still be
+    // ramping (insufficient_history) or independently stale without suppressing
+    // a valid transition. The composite's all-or-nothing rule is separate.
+    const reading = readingsByMetal.get(transition.metal);
+    if (
+      reading?.state !== 'ok'
+      || physicalDivergenceStaleReason({
+        physicalAsOf: reading.physicalAsOf,
+        paperAsOf: reading.paperAsOf,
+        fxAsOf: reading.provenance?.fxAsOf,
+      }, nowMs) != null
     ) return [];
     const score = BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION
       * targetMultiplier[transition.toRegime];

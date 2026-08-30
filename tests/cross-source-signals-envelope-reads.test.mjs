@@ -649,7 +649,7 @@ it('rejects non-canonical physical premium transitions', () => {
   }
 });
 
-it('rejects a recent transition when any required input clock is stale', () => {
+it('rejects a recent transition when the transitioning metal input clock is stale', () => {
   const readings = freshPhysicalReadings(now);
   readings[0].paperAsOf = new Date(now - 37 * HOUR).toISOString();
   assert.deepEqual(extractPhysicalPremiumRegimeTransition({
@@ -665,6 +665,33 @@ it('rejects a recent transition when any required input clock is stale', () => {
       }],
     },
   }), []);
+});
+
+// #7425: transitions are per-metal. Silver still ramping (or failing independently)
+// must not suppress a valid gold regime transition — the composite's all-or-nothing
+// rule is a separate contract and must stay untouched.
+it('still emits a gold transition when silver is insufficient_history', () => {
+  const detectedAt = now - HOUR;
+  const readings = freshPhysicalReadings(now);
+  readings[1].state = 'insufficient_history';
+  delete readings[1].physicalAsOf;
+  delete readings[1].paperAsOf;
+  delete readings[1].provenance;
+  const [signal] = extractPhysicalPremiumRegimeTransition({
+    'market:physical-divergence:v1': {
+      readings,
+      transitions: [{
+        id: `physical-premium:gold:normal-elevated:${detectedAt}`,
+        metal: 'gold',
+        fromRegime: 'normal',
+        toRegime: 'elevated',
+        detectedAt,
+        methodologyVersion: 'physical-divergence-v1',
+      }],
+    },
+  });
+  assert.equal(signal?.id, `physical-premium:gold:normal-elevated:${detectedAt}`);
+  assert.equal(signal?.type, 'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION');
 });
 
 it('does not emit transitions from missing or malformed input clocks', () => {
