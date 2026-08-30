@@ -12,6 +12,7 @@ import {
   buildCorpus,
   chokepointMetaDescription,
   countryMetaDescription,
+  datasetTemporalCoverage,
   GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
@@ -463,10 +464,13 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false, re
         )),
         `${route} Dataset ${index + 1} must expose a DataDownload distribution`,
       );
-      assert.ok(
-        dataset.temporalCoverage || dataset.datePublished,
-        `${route} Dataset ${index + 1} must declare temporalCoverage or datePublished`,
-      );
+      if (dataset.temporalCoverage) {
+        assert.equal(
+          dataset.temporalCoverage,
+          datasetTemporalCoverage(dataset.temporalCoverage),
+          `${route} Dataset ${index + 1} temporalCoverage must be an observation date or closed interval`,
+        );
+      }
       assert.ok(
         dataset.spatialCoverage,
         `${route} Dataset ${index + 1} must declare spatialCoverage`,
@@ -502,6 +506,38 @@ function pageMetaDescription(html, route) {
   return decodeHtmlAttribute(raw);
 }
 
+function pageLastmod(html) {
+  return html.match(/<meta name="lastmod" content="([^"]+)">/)?.[1] ?? null;
+}
+
+function assertSourceDerivedTemporalCoverage(dataset, {
+  route,
+  observationInterval,
+  lastmod,
+  index = 1,
+} = {}) {
+  const expected = datasetTemporalCoverage(observationInterval);
+  assert.equal(
+    dataset.temporalCoverage,
+    expected,
+    `${route} Dataset ${index} temporalCoverage must come from the artifact observation interval`,
+  );
+  if (expected && lastmod && expected !== lastmod) {
+    assert.notEqual(
+      dataset.temporalCoverage,
+      lastmod,
+      `${route} Dataset ${index} temporalCoverage must not reuse page lastmod`,
+    );
+  }
+  if (dataset.datePublished) {
+    assert.equal(
+      dataset.datePublished,
+      expected,
+      `${route} Dataset ${index} datePublished must match the same observation interval`,
+    );
+  }
+}
+
 function productionScriptNonce() {
   const config = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
   const csp = config.headers
@@ -513,6 +549,15 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  it('emits temporalCoverage only from a committed observation interval', () => {
+    assert.equal(datasetTemporalCoverage('2026-05-28'), '2026-05-28');
+    assert.equal(datasetTemporalCoverage('2026-01-01/2026-01-31'), '2026-01-01/2026-01-31');
+    assert.equal(datasetTemporalCoverage(undefined), undefined);
+    assert.equal(datasetTemporalCoverage(''), undefined);
+    assert.equal(datasetTemporalCoverage('2026-08-29T00:00:00Z'), undefined);
+    assert.equal(datasetTemporalCoverage('schema-edit'), undefined);
+  });
+
   it('advances the sources lastmod when the shared page template changes', () => {
     const baseline = sourcePageLastmod({
       manifestLastmod: '2026-08-10',
@@ -782,6 +827,11 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.crises.routes,
         ...manifest.sections.research.routes,
       ]);
+      const countryObservationRoutes = new Set(manifest.sections.countries.routes);
+      const liveObservationRoutes = new Set([
+        ...manifest.sections.chokepoints.routes,
+        ...manifest.sections.crises.routes,
+      ]);
       for (const route of generatedRoutes) {
         const html = read(outDir, `${route.slice(1)}index.html`);
         assertDatasetGoogleProperties(
@@ -794,6 +844,17 @@ describe('crawlable corpus generator', () => {
         );
         if (catalogLinkedRoutes.has(route)) {
           assertDataCatalogPresent(html, route);
+        }
+        if (countryObservationRoutes.has(route) || liveObservationRoutes.has(route)) {
+          const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+          for (const [index, dataset] of datasets.entries()) {
+            assertSourceDerivedTemporalCoverage(dataset, {
+              route,
+              observationInterval: countryObservationRoutes.has(route) ? '2026-05-28' : undefined,
+              lastmod: pageLastmod(html),
+              index: index + 1,
+            });
+          }
         }
       }
       assertDataCatalogPresent(read(outDir, 'countries/index.html'), '/countries/');
@@ -864,6 +925,11 @@ describe('crawlable corpus generator', () => {
       assert.ok(norwayLd.some((entry) => entry['@type'] === 'BreadcrumbList'));
       const norwayDataset = collectDatasets(norwayWebPage)[0];
       assert.ok(norwayDataset, 'country page must expose a Dataset mainEntity');
+      assertSourceDerivedTemporalCoverage(norwayDataset, {
+        route: '/countries/norway/',
+        observationInterval: '2026-05-28',
+        lastmod: pageLastmod(norway),
+      });
       assert.equal(norwayDataset.isAccessibleForFree, true);
       assert.ok(norwayDataset.includedInDataCatalog?.['@id']?.includes('#data-catalog'));
       assert.match(
@@ -1158,6 +1224,10 @@ describe('crawlable corpus generator', () => {
       );
       const hormuzDataset = collectDatasets(hormuzPage)[0];
       assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
+      assertSourceDerivedTemporalCoverage(hormuzDataset, {
+        route: '/chokepoints/strait-of-hormuz/',
+        lastmod: pageLastmod(hormuz),
+      });
       const hormuzShapes = [
         ...hormuzGeos,
         hormuzDataset?.spatialCoverage?.geo,
@@ -1201,6 +1271,10 @@ describe('crawlable corpus generator', () => {
       const redSeaPage = redSeaLd.find((entry) => entry['@type'] === 'WebPage');
       const redSeaDataset = collectDatasets(redSeaPage)[0];
       assert.ok(redSeaDataset, 'crisis page must expose a Dataset mainEntity');
+      assertSourceDerivedTemporalCoverage(redSeaDataset, {
+        route: '/crises/red-sea-security/',
+        lastmod: pageLastmod(redSea),
+      });
       assert.equal(redSeaDataset.isAccessibleForFree, true);
       assert.match(
         JSON.stringify(redSeaDataset.distribution),

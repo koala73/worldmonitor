@@ -323,6 +323,16 @@ function dataDownload(contentUrl, encodingFormat = 'application/json') {
   };
 }
 
+const OBSERVATION_COVERAGE_RE = /^\d{4}-\d{2}-\d{2}(?:\/\d{4}-\d{2}-\d{2})?$/;
+
+/** Dataset temporalCoverage from a committed observation date or closed interval.
+ *  Omit when the artifact has no build-time window. Never pass page lastmod. */
+export function datasetTemporalCoverage(observationInterval) {
+  if (typeof observationInterval !== 'string') return undefined;
+  const trimmed = observationInterval.trim();
+  return OBSERVATION_COVERAGE_RE.test(trimmed) ? trimmed : undefined;
+}
+
 function geoShapeBox(south, west, north, east) {
   const round = (value) => Math.round(Number(value) * 1000) / 1000;
   return {
@@ -1312,7 +1322,7 @@ function renderCountryPage({
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
           datePublished: capturedAt,
-          temporalCoverage: capturedAt,
+          temporalCoverage: datasetTemporalCoverage(capturedAt),
           measurementTechnique: methodologyFormula,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
@@ -1512,7 +1522,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
           license: DATASET_LICENSE,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
-          temporalCoverage: lastmod || undefined,
+          temporalCoverage: datasetTemporalCoverage(),
           variableMeasured: [
             'Disruption score',
             'Congestion',
@@ -1666,7 +1676,7 @@ ${crisis.coverage.map((country) => `          <li data-crisis-country data-count
           license: DATASET_LICENSE,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
-          temporalCoverage: lastmod || undefined,
+          temporalCoverage: datasetTemporalCoverage(),
           variableMeasured: [
             'Recorded conflict events',
             'Recorded fatalities',
