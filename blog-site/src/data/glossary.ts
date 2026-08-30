@@ -220,9 +220,9 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Strait of Hormuz',
     category: 'Maritime & Chokepoints',
     short:
-      'The Strait of Hormuz is the chokepoint between the Persian Gulf and Gulf of Oman through which much seaborne oil and LNG transit.',
+      'The Strait of Hormuz is the chokepoint between the Persian Gulf and Gulf of Oman through which about 20% of seaborne crude oil and a large share of LNG transit.',
     body: [
-      'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth because a very large share of seaborne crude oil and liquefied natural gas has no alternative route out of the Gulf.',
+      'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth because about 20% of the world’s seaborne crude oil — and a large share of liquefied natural gas — has no alternative route out of the Gulf.',
       'In WorldMonitor, Hormuz is one of the chokepoints with live flow estimates: vessel activity, congestion, and disruption signals are correlated against energy markets so an operator can see whether a Gulf tension event has a plausible transmission path into oil and gas prices.',
     ],
     related: ['maritime-chokepoint', 'ais', 'chokepoint-congestion'],

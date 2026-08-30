@@ -439,7 +439,20 @@ function json(data, status = 200, extraHeaders = {}) {
 }
 
 function canCompress(headers, body) {
-  return body.length > 1024 && !headers['content-encoding'];
+  if (!(body.length > 1024) || headers['content-encoding']) return false;
+  const contentType = String(headers['content-type'] || '').toLowerCase();
+  // Already-compressed media gains nothing from gzip/br and wastes CPU (#7382).
+  if (
+    contentType.startsWith('image/')
+    || contentType.startsWith('audio/')
+    || contentType.startsWith('video/')
+    || contentType.includes('zip')
+    || contentType.includes('gzip')
+    || contentType.includes('octet-stream')
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function appendVary(existing, token) {
@@ -1807,6 +1820,7 @@ async function dispatch(requestUrl, req, routes, context) {
 // Production code never calls this.
 export const __testing__ = {
   isCloudPreferred,
+  canCompress,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

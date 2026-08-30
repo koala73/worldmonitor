@@ -130,4 +130,12 @@ describe('blog SEO and GEO corpus contract', () => {
       'blog JSON-LD must assign Elie’s stable Person ID only to the default author',
     );
   });
+
+  it('stamps glossary and author sitemap URLs with lastmod (#7382)', () => {
+    const astroConfig = readFileSync(resolve(root, 'blog-site/astro.config.mjs'), 'utf8');
+    assert.match(astroConfig, /gitFileLastmod/);
+    assert.match(astroConfig, /\/blog\/glossary\//);
+    assert.match(astroConfig, /\/blog\/authors\//);
+    assert.match(astroConfig, /glossarySlugsFromSource/);
+  });
 });

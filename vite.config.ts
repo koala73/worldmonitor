@@ -1122,6 +1122,9 @@ export default defineConfig(({ mode }) => {
       format: 'es',
     },
     build: {
+      // Hidden maps support field INP attribution (DebugBear/Sentry/DevTools)
+      // without exposing .map URLs to anonymous clients (#7382 / #4487).
+      sourcemap: 'hidden',
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.

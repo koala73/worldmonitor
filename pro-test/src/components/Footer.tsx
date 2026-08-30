@@ -12,7 +12,7 @@ export const Footer = () => (
           <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
           <a
             href={SOMEONE_CEO_URL}
-            className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5 hover:opacity-100 hover:text-wm-text transition-colors"
+            className="text-[10px] uppercase tracking-[2px] text-wm-muted mt-0.5 hover:text-wm-text transition-colors"
             rel="noopener noreferrer"
           >
             by Someone.ceo
@@ -34,7 +34,7 @@ export const Footer = () => (
         <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
         <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
       </div>
-      <span className="text-[10px] opacity-40 mt-4 md:mt-0" suppressHydrationWarning>&copy; {new Date().getFullYear()} WorldMonitor</span>
+      <span className="text-[10px] text-wm-muted mt-4 md:mt-0" suppressHydrationWarning>&copy; {new Date().getFullYear()} WorldMonitor</span>
     </div>
     <PressFooterNav />
     <LegalFooterNav />

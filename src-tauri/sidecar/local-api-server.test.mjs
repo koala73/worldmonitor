@@ -2118,6 +2118,22 @@ test('uses gzip compression when Brotli is unavailable but gzip is accepted', as
   }
 });
 
+test('skips gzip/br for already-compressed image payloads (#7382)', () => {
+  const jpegBody = Buffer.alloc(2048, 0xff);
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/jpeg' }, jpegBody),
+    false,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/png' }, jpegBody),
+    false,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'application/json' }, Buffer.from('x'.repeat(2048))),
+    true,
+  );
+});
+
 // ── Security hardening tests ────────────────────────────────────────────
 
 test('rejects unauthenticated requests to /api/local-status when token is set', async () => {
