@@ -696,6 +696,30 @@ describe('crawlable content corpus deployment contracts', () => {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('rejects noindex changelog pagination whose canonical path does not match the file', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-content-corpus-'));
+    const publicDir = join(tempRoot, 'public');
+    try {
+      writeFixturePage(
+        publicDir,
+        'reference/changelog/index.html',
+        '<meta name="robots" content="index, follow" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
+      );
+      writeFixturePage(
+        publicDir,
+        'reference/changelog/page/2/index.html',
+        '<meta name="robots" content="noindex, follow" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/3/" /><link rel="prev" href="https://www.worldmonitor.app/reference/changelog/" />'
+      );
+
+      assert.throws(
+        () => discoverContentCorpusPages({ publicDir }),
+        /canonical \/reference\/changelog\/page\/3\/ does not match raw static path \/reference\/changelog\/page\/2\//
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('deploy/cache configuration guardrails', () => {

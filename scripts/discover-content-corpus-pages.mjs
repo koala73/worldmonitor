@@ -174,13 +174,17 @@ export function discoverContentCorpusPages({ publicDir = join(REPO_ROOT, 'public
       // Changelog page/2+ are intentionally noindex and omitted from the
       // sitemap (#7380). Still validate their prev/next graph when present.
       if (noindex && isChangelogPagination) {
+        const normalizedRelative = relativePath.split(sep).join('/');
+        const prefix = normalizedRelative.split('/')[0];
         const canonicalHref = getLinkHref(html, 'canonical');
         if (!canonicalHref) {
-          throw new Error(relativePath.split(sep).join('/') + ' is missing a canonical link');
+          throw new Error(normalizedRelative + ' is missing a canonical link');
         }
+        const canonical = normalizeHref(canonicalHref);
+        assertCanonicalMatchesFile({ canonical, relativePath: normalizedRelative, prefix });
         changelogPagesForValidation.push({
-          loc: normalizeHref(canonicalHref),
-          file: relativePath.split(sep).join('/'),
+          loc: canonical,
+          file: normalizedRelative,
           prevHref: (() => {
             const href = getLinkHref(html, 'prev');
             return href ? normalizeHref(href) : null;
