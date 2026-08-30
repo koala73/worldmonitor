@@ -780,6 +780,7 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.countries.routes,
         ...manifest.sections.chokepoints.routes,
         ...manifest.sections.crises.routes,
+        ...manifest.sections.research.routes,
       ]);
       for (const route of generatedRoutes) {
         const html = read(outDir, `${route.slice(1)}index.html`);
@@ -798,6 +799,7 @@ describe('crawlable corpus generator', () => {
       assertDataCatalogPresent(read(outDir, 'countries/index.html'), '/countries/');
       assertDataCatalogPresent(read(outDir, 'chokepoints/index.html'), '/chokepoints/');
       assertDataCatalogPresent(read(outDir, 'crises/index.html'), '/crises/');
+      assertDataCatalogPresent(read(outDir, 'research/index.html'), '/research/');
 
       for (const path of [
         'countries/index.html',

@@ -2099,6 +2099,8 @@ export async function buildCorpus({
     outDir,
     baseUrl,
     tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+    dataCatalog: dataCatalogLd(baseUrl),
+    includedInDataCatalog: includedInDataCatalog(baseUrl),
   });
 
   writeUseCasesSection({
