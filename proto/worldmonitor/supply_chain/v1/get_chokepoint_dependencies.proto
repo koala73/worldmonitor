@@ -16,7 +16,7 @@ message ChokepointDependency {
   string commodity = 4;
   // Share of the country's mapped commodity exposure using this chokepoint, from 0 to 1.
   optional double transit_share = 5;
-  // Transit share weighted by the commodity score, from 0 to 1.
+  // Disruption-adjusted transit share, from 0 to 1.
   optional double weighted_transit_share = 6;
   // Commodity vulnerability score from 0 to 100; absent when evidence is insufficient.
   optional double score = 7;
@@ -31,7 +31,7 @@ message ChokepointDependency {
 }
 
 message GetChokepointDependenciesRequest {
-  // Stable chokepoint identifier, such as hormuz or suez.
+  // Stable chokepoint identifier, such as hormuz_strait or suez.
   string chokepoint_id = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
@@ -51,7 +51,7 @@ message GetChokepointDependenciesResponse {
   string chokepoint_id = 1;
   // Human-readable chokepoint name.
   string chokepoint = 2;
-  // Country and commodity dependencies ranked by weighted transit exposure.
+  // Country and commodity dependencies ranked by commodity vulnerability score, then disruption-adjusted transit share.
   repeated ChokepointDependency dependencies = 3;
   // ISO 8601 timestamp when the inverse index was generated.
   string generated_at = 4;

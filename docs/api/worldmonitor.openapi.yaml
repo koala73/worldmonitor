@@ -30579,7 +30579,7 @@ paths:
             parameters:
                 - name: chokepointId
                   in: query
-                  description: Stable chokepoint identifier, such as hormuz or suez.
+                  description: Stable chokepoint identifier, such as hormuz_strait or suez.
                   required: true
                   example: "suez"
                   schema:
@@ -54312,7 +54312,7 @@ components:
                     maxLength: 80
                     minLength: 1
                     pattern: ^[a-z0-9_\-]+$
-                    description: Stable chokepoint identifier, such as hormuz or suez.
+                    description: Stable chokepoint identifier, such as hormuz_strait or suez.
                 pageSize:
                     type: integer
                     maximum: 100
@@ -54365,7 +54365,7 @@ components:
                 weightedTransitShare:
                     type: number
                     format: double
-                    description: Transit share weighted by the commodity score, from 0 to 1.
+                    description: Disruption-adjusted transit share, from 0 to 1.
                 score:
                     type: number
                     format: double
