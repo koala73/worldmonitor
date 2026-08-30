@@ -152,4 +152,40 @@ describe('telegram-watchlist', () => {
     assert.equal(getTelegramWatchlistEntries().length, 20);
     assert.equal(addTelegramWatchlistEntry({ username: 'channel_99' }).length, 20);
   });
+
+  it('rejects an add at the cap instead of silently truncating it away', () => {
+    const entries = Array.from({ length: 20 }, (_, index) => ({
+      username: `channel_${String(index).padStart(2, '0')}`,
+    }));
+    setTelegramWatchlistEntries(entries);
+
+    const after = addTelegramWatchlistEntry({ username: 'channel_99' });
+
+    // A length check alone cannot tell "rejected" from "appended then
+    // truncated" — both give 20. The appended entry was the one normalizeEntries
+    // dropped, so the add reported success while doing nothing.
+    assert.equal(after.length, 20);
+    assert.ok(
+      !after.some(entry => entry.username === 'channel_99'),
+      'the over-cap entry must not be persisted',
+    );
+    assert.ok(
+      !getTelegramWatchlistEntries().some(entry => entry.username === 'channel_99'),
+    );
+    // The existing roster must survive the rejected add untouched.
+    assert.equal(after[0]?.username, 'channel_00');
+    assert.equal(after[19]?.username, 'channel_19');
+  });
+
+  it('still updates the title when re-adding a channel already at the cap', () => {
+    const entries = Array.from({ length: 20 }, (_, index) => ({
+      username: `channel_${String(index).padStart(2, '0')}`,
+    }));
+    setTelegramWatchlistEntries(entries);
+
+    const after = addTelegramWatchlistEntry({ username: 'channel_05', title: 'Renamed' });
+
+    assert.equal(after.length, 20);
+    assert.equal(after.find(entry => entry.username === 'channel_05')?.title, 'Renamed');
+  });
 });

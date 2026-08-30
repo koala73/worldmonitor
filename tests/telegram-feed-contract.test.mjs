@@ -162,7 +162,10 @@ describe('api/telegram-feed contract normalization', () => {
     const res = await handler(await makeRequest());
     assert.equal(res.status, 200);
     const cacheControl = res.headers.get('cache-control') || '';
-    assert.equal(cacheControl, 'private, max-age=30');
+    // no-store, not max-age=30: reaching this branch means the handler already
+    // reported the body to Sentry as un-normalizable, so caching it would keep
+    // serving a payload we just flagged as invalid.
+    assert.equal(cacheControl, 'no-store');
     assert.doesNotMatch(cacheControl, /public|s-maxage/);
     // Assert the FULL Vary value, not just one member: a substring check on
     // X-WorldMonitor-Key alone stays green if Origin is dropped, which would make

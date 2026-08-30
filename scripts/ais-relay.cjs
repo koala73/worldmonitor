@@ -1002,10 +1002,33 @@ const TELEGRAM_LOOKUP_CACHE_MAX_ENTRIES = 512;
 const TELEGRAM_NEGATIVE_CACHE_TTL_MS = readTelegramNumberEnv('TELEGRAM_NEGATIVE_CACHE_TTL_MS', 300_000, 1_000);
 const TELEGRAM_RPC_MAX_CONCURRENCY = Math.floor(readTelegramNumberEnv('TELEGRAM_RPC_MAX_CONCURRENCY', 2, 1, 4));
 const TELEGRAM_RPC_MAX_QUEUE = Math.floor(readTelegramNumberEnv('TELEGRAM_RPC_MAX_QUEUE', 32, 1, 128));
-const TELEGRAM_RPC_QUEUE_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_RPC_QUEUE_TIMEOUT_MS', 10_000, 10);
+const TELEGRAM_RPC_QUEUE_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_RPC_QUEUE_TIMEOUT_MS', 5_000, 10);
+// The 300ms floor is load-bearing and predates the RPC queue: it used to live in
+// the poll loop as Math.max(300, TELEGRAM_RATE_LIMIT_MS). Reusing that env var
+// without the floor silently re-pointed an existing production value at a burst
+// posture the old code forbade, so keep the floor here. Tests need sub-floor
+// spacing to stay fast, and RELAY_TEST_MODE is already this file's test seam.
+const TELEGRAM_RPC_MIN_INTERVAL_FLOOR_MS = RELAY_TEST_MODE ? 0 : 300;
 const TELEGRAM_RPC_MIN_INTERVAL_MS = readTelegramNumberEnv(
   'TELEGRAM_RPC_MIN_INTERVAL_MS',
-  readTelegramNumberEnv('TELEGRAM_RATE_LIMIT_MS', 800),
+  readTelegramNumberEnv('TELEGRAM_RATE_LIMIT_MS', 800, TELEGRAM_RPC_MIN_INTERVAL_FLOOR_MS),
+  TELEGRAM_RPC_MIN_INTERVAL_FLOOR_MS,
+);
+// Backstop for a hostile or absurd upstream FLOOD_WAIT value. The cooldown is
+// process-wide and only ever raised, so an uncapped value is an outage.
+const TELEGRAM_MAX_FLOOD_WAIT_MS = readTelegramNumberEnv('TELEGRAM_MAX_FLOOD_WAIT_MS', 15 * 60 * 1000, 1_000);
+// gramjs disconnect() can hang; the shutdown path already races it against a
+// timer. The reconnect path must too, because initTelegramClientIfNeeded awaits
+// this promise before anything else.
+const TELEGRAM_DISCONNECT_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_DISCONNECT_TIMEOUT_MS', 10_000, 10);
+// Whole-lookup budget. Individual RPC timeouts compose (queue wait + exec, x3
+// for a channel read), so only an outer deadline keeps the relay's worst case
+// under the Edge runtime's 25s begin-response ceiling.
+const TELEGRAM_LOOKUP_DEADLINE_MS = readTelegramNumberEnv('TELEGRAM_LOOKUP_DEADLINE_MS', 18_000, 100);
+// One slow channel is not a dead socket. Only a run of timeouts justifies
+// resetting the client that every other caller (and the curated poll) shares.
+const TELEGRAM_MAX_CONSECUTIVE_RPC_TIMEOUTS = Math.floor(
+  readTelegramNumberEnv('TELEGRAM_MAX_CONSECUTIVE_RPC_TIMEOUTS', 3, 1, 20),
 );
 const TELEGRAM_USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
 const telegramResolveCache = new Map();
@@ -1018,6 +1041,7 @@ let telegramRpcNextStartAt = 0;
 let telegramRpcDrainTimer = null;
 let telegramFloodWaitUntil = 0;
 let telegramDisconnectPromise = null;
+let telegramConsecutiveRpcTimeouts = 0;
 let telegramTestConnectAttempts = 0;
 
 const orefState = {
@@ -1057,7 +1081,17 @@ function loadTelegramChannels() {
         enabled: c.enabled !== false,
         maxMessages: c.maxMessages != null ? Number(c.maxMessages) : undefined,
       }))
-      .filter(c => c.enabled);
+      .filter(c => c.enabled)
+      // normalizeTelegramMessage runs every handle through
+      // sanitizeTelegramUsername, which THROWS on anything outside the strict
+      // username grammar. That throw lands after getEntity and getMessages have
+      // already been spent, so an unusable handle would burn 2 RPCs per cycle
+      // forever and never advance its cursor. Reject it loudly, once, at load.
+      .filter(c => {
+        if (TELEGRAM_USERNAME_RE.test(c.handle)) return true;
+        console.warn(`[Relay] Ignoring Telegram channel with invalid handle: ${JSON.stringify(c.handle)}`);
+        return false;
+      });
 
     if (!telegramState.channels.length) {
       console.warn(`[Relay] Telegram channel set "${set}" is empty — no channels to poll`);
@@ -1131,13 +1165,38 @@ function setCachedTelegramValue(cache, key, value, ttlMs) {
 
 function getTelegramErrorStatus(error) {
   if (Number.isInteger(error?.statusCode)) return error.statusCode;
+  // Structured first: a genuine flood carries `seconds` / `errorMessage`. The
+  // message text is attacker-influenced (it embeds the requested username), so
+  // it must never be what promotes an error to 429 — see parseTelegramFloodWaitMs.
+  if (parseTelegramFloodWaitMs(error) > 0) return 429;
   const message = String(error?.message || error || '');
+  if (/^TIMEOUT after \d+ms:/.test(message)) return 504;
   if (/invalid telegram username/i.test(message)) return 400;
-  if (/only public telegram channels/i.test(message)) return 400;
-  if (/FLOOD_WAIT/i.test(message)) return 429;
   if (/USERNAME_NOT_OCCUPIED|No user has|No channel has|Cannot find any entity/i.test(message)) return 404;
   if (/not active|not installed|invalidated/i.test(message)) return 503;
   return 502;
+}
+
+// Public-facing copy. The relay's own error strings describe internal state
+// ('session invalidated (AUTH_KEY_DUPLICATED)', 'Telegram RPC queue is full',
+// raw MTProto/transport text) and used to be returned verbatim to any browser
+// holding a free session token. Map to status-shaped copy instead.
+//
+// 400-for-not-a-public-channel is deliberately folded into 404: distinguishing
+// "no such username" from "exists, but is a user account" turned the endpoint
+// into a Telegram username-existence oracle, with each probe also spending the
+// shared account's tightly-limited resolve budget.
+const TELEGRAM_PUBLIC_ERROR_MESSAGES = {
+  400: 'Invalid Telegram username',
+  404: 'Public Telegram channel not found',
+  429: 'Telegram lookup is rate limited',
+  502: 'Telegram lookup failed',
+  503: 'Telegram lookup is temporarily unavailable',
+  504: 'Telegram lookup timed out',
+};
+
+function getTelegramPublicErrorMessage(statusCode) {
+  return TELEGRAM_PUBLIC_ERROR_MESSAGES[statusCode] || 'Telegram lookup failed';
 }
 
 function createTelegramStatusError(message, statusCode, retryAfterMs = 0) {
@@ -1166,7 +1225,10 @@ function getCachedTelegramNegative(key) {
 
 function setCachedTelegramNegative(key, error) {
   const statusCode = getTelegramErrorStatus(error);
-  if (![400, 404, 429].includes(statusCode)) return;
+  // 504 is included so a chronically slow channel backs itself off instead of
+  // being retried on every 60s panel refresh. 503 stays out: it means "client
+  // reset / starting up", which is transient relay state, not a bad username.
+  if (![400, 404, 429, 504].includes(statusCode)) return;
   const retryAfterMs = Number(error?.retryAfterMs) || 0;
   const ttlMs = statusCode === 429 && retryAfterMs > 0
     ? retryAfterMs
@@ -1178,10 +1240,35 @@ function setCachedTelegramNegative(key, error) {
   }, ttlMs);
 }
 
+// Derive the flood wait ONLY from structured error fields.
+//
+// Never parse error.message: GramJS builds its lookup errors by interpolating
+// the caller-supplied username verbatim — `No user has "${username}" as
+// username` (telegram/client/users.js) — and the username grammar allows
+// underscores and digits. A watchlist entry of `flood_wait_99999999` therefore
+// used to be read back as a flood duration, and because telegramFloodWaitUntil
+// is process-wide and only ever raised, one request could park the whole
+// Telegram subsystem (curated poll included) effectively forever.
+//
+// `seconds` is set by GramJS on FloodWaitError; `errorMessage` is the MTProto
+// error CODE (e.g. 'FLOOD_WAIT_42'), never free text, so an anchored match on
+// it cannot be spoofed. The cap is the backstop: no single upstream value may
+// wedge the process for longer than an operator would tolerate unattended.
 function parseTelegramFloodWaitMs(error) {
-  if (Number(error?.seconds) > 0) return Number(error.seconds) * 1000;
-  const match = String(error?.message || error || '').match(/FLOOD_WAIT(?:_|\s+)(\d+)/i);
-  return match ? Math.max(1, Number(match[1])) * 1000 : 0;
+  const seconds = Number(error?.seconds);
+  let waitMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+
+  if (waitMs <= 0) {
+    const code = typeof error?.errorMessage === 'string' ? error.errorMessage : '';
+    const match = code.match(/^FLOOD_WAIT_(\d+)$/);
+    if (match) {
+      const parsed = Number(match[1]);
+      if (Number.isFinite(parsed) && parsed > 0) waitMs = parsed * 1000;
+    }
+  }
+
+  if (!Number.isFinite(waitMs) || waitMs <= 0) return 0;
+  return Math.min(waitMs, TELEGRAM_MAX_FLOOD_WAIT_MS);
 }
 
 function getTelegramFloodWaitRemainingMs(now = Date.now()) {
@@ -1253,35 +1340,63 @@ function drainTelegramRpcQueue() {
       release();
     };
     entry.cancel = error => settle(entry.reject, error);
+    const entryTimeoutMs = entry.timeoutMs || TELEGRAM_CHANNEL_TIMEOUT_MS;
     timeout = setTimeout(() => {
-      destroyTelegramClient(
-        new Error(`TIMEOUT after ${TELEGRAM_CHANNEL_TIMEOUT_MS}ms: ${entry.label}`),
-        entry,
+      // One slow channel is not a dead socket. Tearing the client down here
+      // meant an arbitrary user-supplied channel could clear both lookup
+      // caches, reject every queued RPC and abort the curated poll mid-cycle,
+      // every 60s. Fail just this entry; only a RUN of timeouts (which implies
+      // the transport, not the channel) justifies resetting shared state.
+      const timeoutError = createTelegramStatusError(
+        `TIMEOUT after ${entryTimeoutMs}ms: ${entry.label}`,
+        504,
       );
-    }, TELEGRAM_CHANNEL_TIMEOUT_MS);
+      telegramConsecutiveRpcTimeouts++;
+      if (telegramConsecutiveRpcTimeouts >= TELEGRAM_MAX_CONSECUTIVE_RPC_TIMEOUTS) {
+        console.warn(`[Relay] Telegram RPC timed out ${telegramConsecutiveRpcTimeouts}x consecutively — resetting client`);
+        destroyTelegramClient(timeoutError, entry);
+        return;
+      }
+      settle(entry.reject, timeoutError);
+    }, entryTimeoutMs);
     timeout.unref?.();
     operation.then(
-      value => settle(entry.resolve, value),
+      value => {
+        telegramConsecutiveRpcTimeouts = 0;
+        settle(entry.resolve, value);
+      },
       error => settle(entry.reject, normalizeTelegramRpcError(error)),
     );
   }
 }
 
-function runTelegramRpc(label, operation) {
+// `priority` reserves the curated poll's place ahead of on-demand user lookups.
+// Both share one MTProto session and one global start interval, so without a
+// lane the product-managed feed competes on equal FIFO terms with arbitrary
+// user traffic and gets pushed past its own queue-wait timeout.
+function runTelegramRpc(label, operation, { priority = false, timeoutMs = 0 } = {}) {
   assertTelegramRpcAllowed();
-  if (telegramRpcQueue.length >= TELEGRAM_RPC_MAX_QUEUE) {
+  if (!priority && telegramRpcQueue.length >= TELEGRAM_RPC_MAX_QUEUE) {
     throw createTelegramStatusError('Telegram RPC queue is full', 429, TELEGRAM_RPC_MIN_INTERVAL_MS);
   }
   return new Promise((resolve, reject) => {
-    const entry = { label, operation, resolve, reject, waitTimer: null };
-    entry.waitTimer = setTimeout(() => {
-      const index = telegramRpcQueue.indexOf(entry);
-      if (index < 0) return;
-      telegramRpcQueue.splice(index, 1);
-      reject(createTelegramStatusError('Telegram RPC queue wait timed out', 429, TELEGRAM_RPC_MIN_INTERVAL_MS));
-    }, TELEGRAM_RPC_QUEUE_TIMEOUT_MS);
-    entry.waitTimer.unref?.();
-    telegramRpcQueue.push(entry);
+    const entry = { label, operation, resolve, reject, waitTimer: null, priority, timeoutMs };
+    if (priority) {
+      // No wait timer: the poll must not be evicted from its own queue by
+      // user-driven congestion. Its work is bounded by the cycle timeout.
+      const firstNonPriority = telegramRpcQueue.findIndex(queued => !queued.priority);
+      if (firstNonPriority < 0) telegramRpcQueue.push(entry);
+      else telegramRpcQueue.splice(firstNonPriority, 0, entry);
+    } else {
+      entry.waitTimer = setTimeout(() => {
+        const index = telegramRpcQueue.indexOf(entry);
+        if (index < 0) return;
+        telegramRpcQueue.splice(index, 1);
+        reject(createTelegramStatusError('Telegram RPC queue wait timed out', 429, TELEGRAM_RPC_MIN_INTERVAL_MS));
+      }, TELEGRAM_RPC_QUEUE_TIMEOUT_MS);
+      entry.waitTimer.unref?.();
+      telegramRpcQueue.push(entry);
+    }
     drainTelegramRpcQueue();
   });
 }
@@ -1341,7 +1456,10 @@ async function resolveTelegramChannelWithConnection(normalized, connection) {
 
     const TelegramChannel = connection.Api?.Channel;
     if (!TelegramChannel || !(entity instanceof TelegramChannel) || !entity.username) {
-      throw createTelegramStatusError('Only public Telegram channels are supported', 400);
+      // 404, not 400: a distinct status here told the caller that a username
+      // exists but belongs to a user/basic group, which is a username-existence
+      // oracle over Telegram paid for out of our own resolve budget.
+      throw createTelegramStatusError('Only public Telegram channels are supported', 404);
     }
 
     let memberCount = null;
@@ -1437,6 +1555,7 @@ function destroyTelegramClient(
   if (telegramRpcDrainTimer) clearTimeout(telegramRpcDrainTimer);
   telegramRpcDrainTimer = null;
   telegramRpcNextStartAt = 0;
+  telegramConsecutiveRpcTimeouts = 0;
   const resetError = createTelegramStatusError('Telegram client reset after RPC timeout', 503);
   rejectTelegramRpcQueue(resetError);
   for (const entry of [...telegramRpcActiveEntries]) {
@@ -1444,7 +1563,18 @@ function destroyTelegramClient(
   }
   if (!client) return telegramDisconnectPromise;
   try {
-    telegramDisconnectPromise = Promise.resolve(client.disconnect());
+    // Must be bounded: initTelegramClientIfNeeded awaits this promise before
+    // any other work, so a gramjs disconnect() that never settles would wedge
+    // every future lookup AND the poll loop permanently (and leak one pending
+    // poll per cycle once guardedTelegramPoll force-clears its in-flight flag).
+    // The shutdown path at the bottom of this file already races disconnect
+    // against a timer for the same reason; the socket is force-destroyed just
+    // below regardless, so abandoning a hung disconnect is safe.
+    telegramDisconnectPromise = withTimeout(
+      Promise.resolve(client.disconnect()),
+      TELEGRAM_DISCONNECT_TIMEOUT_MS,
+      'disconnectTelegramClient',
+    );
   } catch (error) {
     telegramDisconnectPromise = Promise.reject(error);
   }
@@ -1481,8 +1611,11 @@ async function initTelegramClientIfNeeded() {
     } catch (error) {
       telegramState.lastError = `telegram disconnect failed: ${error?.message || error}`;
       console.warn('[Relay] Telegram disconnect failed after forced socket teardown:', telegramState.lastError);
+    } finally {
+      // Clear in `finally` so a rejected/abandoned disconnect can never latch
+      // the variable and block every subsequent reconnect.
+      if (telegramDisconnectPromise === pendingDisconnect) telegramDisconnectPromise = null;
     }
-    if (telegramDisconnectPromise === pendingDisconnect) telegramDisconnectPromise = null;
   }
 
   const retryAfterMs = (telegramState.startedAt + TELEGRAM_STARTUP_DELAY_MS) - Date.now();
@@ -1539,13 +1672,23 @@ async function connectTelegramClient() {
         const floodUsername = String(process.env.RELAY_TEST_TELEGRAM_FLOOD_USERNAME || '').toLowerCase();
         if (floodUsername && username === floodUsername) {
           const seconds = Math.max(1, Number(process.env.RELAY_TEST_TELEGRAM_FLOOD_SECONDS || 3));
-          throw new Error(`FLOOD_WAIT_${seconds}`);
+          // Shaped like a real gramjs FloodWaitError: the duration lives in the
+          // structured `seconds` / `errorMessage` fields, NOT in free-text
+          // message. A fake that only set `message` meant every flood test
+          // exercised a parse branch production never takes.
+          const error = new Error(`A wait of ${seconds} seconds is required (caused by ResolveUsername)`);
+          error.seconds = seconds;
+          error.errorMessage = `FLOOD_WAIT_${seconds}`;
+          throw error;
         }
         const invalid = String(process.env.RELAY_TEST_TELEGRAM_INVALID_USERNAMES || '')
           .split(',')
           .map(value => value.trim().toLowerCase())
           .filter(Boolean);
-        if (invalid.includes(username)) throw new Error('USERNAME_NOT_OCCUPIED');
+        // Real gramjs interpolates the requested username into this message.
+        // Reproducing that verbatim is what lets a test prove a username like
+        // `flood_wait_99999999` cannot be read back as a flood duration.
+        if (invalid.includes(username)) throw new Error(`No user has "${username}" as username`);
       };
       Api = {
         Channel: TestTelegramChannel,
@@ -1571,6 +1714,11 @@ async function connectTelegramClient() {
         disconnect: async () => {
           for (const reject of pendingLookupRejects) reject(new Error('TEST_TELEGRAM_DISCONNECTED'));
           pendingLookupRejects.clear();
+          // Models a gramjs disconnect that never settles, which used to wedge
+          // every later reconnect on an unbounded await.
+          if (process.env.RELAY_TEST_TELEGRAM_DISCONNECT_NEVER === 'true') {
+            await new Promise(() => {});
+          }
           const delayMs = readTelegramNumberEnv('RELAY_TEST_TELEGRAM_DISCONNECT_DELAY_MS', 0);
           if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
           if (process.env.RELAY_TEST_TELEGRAM_DISCONNECT_REJECT === 'true') {
@@ -1588,6 +1736,22 @@ async function connectTelegramClient() {
             return new Promise((_, reject) => pendingLookupRejects.add(reject));
           }
           await rpcDelay();
+          const csvEnv = name => String(process.env[name] || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          // Without these two hooks the fake could only ever produce a public
+          // channel, so the `instanceof Api.Channel` / `!entity.username` gate
+          // — the only thing rejecting user accounts and private channels —
+          // was unreachable from the suite and could be deleted while green.
+          if (csvEnv('RELAY_TEST_TELEGRAM_USER_USERNAMES').includes(username)) {
+            return { className: 'User', username, firstName: `Test ${username}` };
+          }
+          if (csvEnv('RELAY_TEST_TELEGRAM_PRIVATE_USERNAMES').includes(username)) {
+            const channel = new TestTelegramChannel(username);
+            channel.username = undefined;
+            return channel;
+          }
           return new TestTelegramChannel(username);
         },
         invoke: async request => {
@@ -1619,6 +1783,14 @@ async function connectTelegramClient() {
       Api = telegram.Api;
       client = new telegram.TelegramClient(new sessions.StringSession(sessionStr), apiId, apiHash, {
         connectionRetries: 3,
+        // gramjs defaults this to 60 and SWALLOWS any flood shorter than the
+        // threshold by sleeping inside _call (telegram/client/users.js) before
+        // retrying. That sleep outlives TELEGRAM_CHANNEL_TIMEOUT_MS, so a
+        // routine sub-60s flood surfaced to us as an RPC timeout — bypassing
+        // the cooldown machinery below entirely and resetting the client
+        // instead. 0 makes every flood propagate immediately, which is what
+        // normalizeTelegramRpcError and telegramFloodWaitUntil expect.
+        floodSleepThreshold: 0,
       });
     }
 
@@ -1698,14 +1870,23 @@ async function pollTelegramOnce() {
     const minId = telegramState.cursorByHandle[handle] || 0;
 
     try {
-      const entity = await runTelegramRpc(`getEntity(${handle})`, () => client.getEntity(handle));
-      assertTelegramConnectionCurrent(connection);
+      // One queue entry per CHANNEL, not per RPC. The global start interval is
+      // applied per dequeue, so enqueueing getEntity and getMessages separately
+      // doubled the pacing cost of a cycle (56 channels x 2 x 800ms = ~90s,
+      // against a 60s poll interval and a 180s cycle timeout) versus the single
+      // per-channel sleep this replaced. Priority keeps user lookups from
+      // interleaving into the middle of the poll's own pacing budget.
       const msgs = await runTelegramRpc(
-        `getMessages(${handle})`,
-        () => client.getMessages(entity, {
-          limit: Math.max(1, Math.min(50, channel.maxMessages || 25)),
-          minId,
-        }),
+        `poll(${handle})`,
+        async () => {
+          const entity = await client.getEntity(handle);
+          assertTelegramConnectionCurrent(connection);
+          return client.getMessages(entity, {
+            limit: Math.max(1, Math.min(50, channel.maxMessages || 25)),
+            minId,
+          });
+        },
+        { priority: true, timeoutMs: TELEGRAM_CHANNEL_TIMEOUT_MS * 2 },
       );
       assertTelegramConnectionCurrent(connection);
 
@@ -11541,22 +11722,31 @@ const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const username = url.searchParams.get('username') || '';
-      const { preview } = await resolveTelegramChannel(username);
+      const { preview } = await withTimeout(
+        resolveTelegramChannel(username),
+        TELEGRAM_LOOKUP_DEADLINE_MS,
+        `resolveTelegramChannel(${username})`,
+      );
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
         'CDN-Cache-Control': 'no-store',
       }, JSON.stringify(preview));
     } catch (e) {
-      res.writeHead(getTelegramErrorStatus(e), getTelegramErrorHeaders(e));
-      res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
+      const status = getTelegramErrorStatus(e);
+      res.writeHead(status, getTelegramErrorHeaders(e));
+      res.end(JSON.stringify({ error: getTelegramPublicErrorMessage(status) }));
     }
   } else if (pathname === '/telegram/channel') {
     try {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const username = url.searchParams.get('username') || '';
       const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit') || 20)));
-      const payload = await fetchTelegramChannelFeed(username, limit);
+      const payload = await withTimeout(
+        fetchTelegramChannelFeed(username, limit),
+        TELEGRAM_LOOKUP_DEADLINE_MS,
+        `fetchTelegramChannelFeed(${username})`,
+      );
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         // Post bodies are R4. The relay's bounded in-memory cache absorbs
@@ -11565,8 +11755,9 @@ const server = http.createServer(async (req, res) => {
         'CDN-Cache-Control': 'no-store',
       }, JSON.stringify(payload));
     } catch (e) {
-      res.writeHead(getTelegramErrorStatus(e), getTelegramErrorHeaders(e));
-      res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
+      const status = getTelegramErrorStatus(e);
+      res.writeHead(status, getTelegramErrorHeaders(e));
+      res.end(JSON.stringify({ error: getTelegramPublicErrorMessage(status) }));
     }
   } else if (pathname === '/telegram' || pathname === '/telegram/feed') {
     try {

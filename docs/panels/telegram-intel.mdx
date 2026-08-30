@@ -32,7 +32,7 @@ Panel id is `telegram-intel`; canonical component is `src/components/TelegramInt
 |---|---|---|
 | Panel relay path | `GET /api/telegram-feed` | First-party browser path. Requires the dashboard session credential (`wms_`); message text is R4. |
 | Resolve custom channel | `GET /api/telegram-feed?mode=resolve&username=...` | Resolves public `@username` values through the existing GramJS session. |
-| Read custom channel | `GET /api/telegram-feed?mode=channel&username=...` | Returns recent public-channel posts through the same credential gate and 30-second client cache as the curated feed. |
+| Read custom channel | `GET /api/telegram-feed?mode=channel&username=...` | Returns recent public-channel posts through the same credential gate as the curated feed, behind a 90-second client cache (deliberately longer than the panel's 60s refresh, so a routine tick does not re-fetch every watchlist entry). |
 | Generated service RPC | `GET /api/intelligence/v1/list-telegram-feed` | Direct IntelligenceService RPC with `topic`, `channel`, and `limit` query parameters; fetches the same Railway relay. |
 
 ## Refresh cadence

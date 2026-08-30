@@ -108,6 +108,12 @@ export function addTelegramWatchlistEntry(entry: TelegramWatchlistEntry): Telegr
     return setTelegramWatchlistEntries(current);
   }
 
+  // normalizeEntries truncates at the cap, and the appended entry is exactly
+  // the one it drops — so without this guard the add silently no-ops while
+  // returning normally and dispatching a change event. The panel guards the cap
+  // before calling, but the store must not depend on one caller doing that.
+  if (current.length >= TELEGRAM_WATCHLIST_MAX_ENTRIES) return current;
+
   return setTelegramWatchlistEntries([...current, normalized]);
 }
 

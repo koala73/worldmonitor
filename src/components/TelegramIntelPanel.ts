@@ -26,6 +26,22 @@ import {
 } from '@/services/telegram-watchlist';
 
 const LIVE_THRESHOLD_MS = 600_000;
+
+// Collapsing every backend failure into one string told a user to fix their
+// input when the real answer was "the relay is still starting, try shortly" —
+// notably for the whole 120s window after a relay deploy. These reuse the
+// panel's existing translated copy rather than introducing a string that would
+// ship untranslated across 28 locales.
+function describeTelegramLookupError(error: unknown): string {
+  const status = (error as { status?: number } | null)?.status;
+  if (status === 400) return t('components.telegramIntel.invalidUsername');
+  // 429 (rate limited / flood cooldown), 503 (startup delay, client reset) and
+  // 504 (lookup deadline) are all "come back shortly", not "bad input".
+  if (status === 429 || status === 503 || status === 504) {
+    return t('components.telegramIntel.disabled');
+  }
+  return t('components.telegramIntel.resolveFailed');
+}
 const WATCHLIST_PREVIEW_DEBOUNCE_MS = 800;
 const WATCHLIST_BATCH_SIZE = 3;
 const WATCHLIST_ITEM_LIMIT = 20;
@@ -37,6 +53,13 @@ type PreviewState = {
   username: string;
 };
 
+// Dedup on a CASE-NORMALIZED handle, not on the raw id. The curated feed and a
+// watchlist read can present the same post with differently-cased handles, and
+// the id embeds the handle — so keying on the raw id shows the post twice.
+// (tests/dom/telegram-intel-badges.test.mts pins exactly that case.) When the
+// same post arrives from both sources, prefer the curated copy: it is the one
+// carrying registry provenance, so the merged row keeps its trust badge and
+// loses the "Custom" tag.
 function mergeTelegramItems(...groups: TelegramItem[][]): TelegramItem[] {
   const itemsById = new Map<string, TelegramItem>();
 
@@ -219,11 +242,11 @@ export class TelegramIntelPanel extends Panel {
         const channel = await fetchTelegramChannelPreview(normalized);
         if (requestId !== this.previewRequestId || !this.relayEnabled) return;
         this.previewState = { channel, error: null, loading: false, username: normalized };
-      } catch {
+      } catch (error) {
         if (requestId !== this.previewRequestId || !this.relayEnabled) return;
         this.previewState = {
           channel: null,
-          error: t('components.telegramIntel.resolveFailed'),
+          error: describeTelegramLookupError(error),
           loading: false,
           username: normalized,
         };
@@ -399,11 +422,14 @@ export class TelegramIntelPanel extends Panel {
           console.warn('[TelegramIntel] Watchlist channel fetch failed:', result.reason);
         }
       }
-    }
 
-    if (requestId !== this.watchlistRequestId) return;
-    this.watchlistItems = mergeTelegramItems(items);
-    this.renderItems();
+      // Publish after every batch. Holding everything until the final batch
+      // meant a run superseded by the next 60s refresh threw away work it had
+      // already completed, so under a slow relay the panel could keep
+      // restarting and never show watchlist posts at all.
+      this.watchlistItems = mergeTelegramItems(items);
+      this.renderItems();
+    }
   }
 
   private renderItems(): void {
@@ -440,10 +466,22 @@ export class TelegramIntelPanel extends Panel {
       .replace(/"/g, '&quot;');
     const textHtml = escaped.replace(/\n/g, '<br>');
 
+    // Handle-only lookup, deliberately: resolving through the channel TITLE
+    // would let a user-added channel called "BBC News" inherit a curated
+    // outlet's trust badge. An unregistered handle gets the explicit unreviewed
+    // marker instead of no badge at all, so an unvetted channel stays visibly
+    // unvetted rather than merely unlabelled.
     const sourceName = resolveRegisteredTelegramSourceName(item.channel);
     const provenance = sourceName
       ? getPrimarySourceProvenanceBadges(sourceName)
-      : { risk: null, tier: null };
+      : {
+        risk: {
+          className: 'propaganda-badge unknown',
+          title: 'Provenance not yet reviewed',
+          label: '? Unreviewed',
+        },
+        tier: null,
+      };
     const riskBadge = provenance.risk
       ? h('span', { className: provenance.risk.className, title: provenance.risk.title }, provenance.risk.label)
       : null;

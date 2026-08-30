@@ -110,8 +110,17 @@ describe('TelegramIntelPanel trust badges (#6600)', () => {
     });
 
     const item = panel.getElement().querySelector('.telegram-intel-item');
-    expect(item?.querySelector('.propaganda-badge')).toBeNull();
+    // The spoofing guard: a channel TITLED "IDF Official" must not inherit that
+    // outlet's tier badge, because provenance is resolved from the immutable
+    // handle only.
     expect(item?.querySelector('.tier-badge')).toBeNull();
+    expect(item?.querySelector('.propaganda-badge.high')).toBeNull();
+    // But it must still be marked unreviewed rather than merely unlabelled —
+    // an unvetted channel showing no badge at all reads as "nothing to flag".
+    const risk = item?.querySelector('.propaganda-badge');
+    expect(risk).not.toBeNull();
+    expect(risk?.className).toContain('unknown');
+    expect(risk?.textContent).toContain('Unreviewed');
     expect(item?.querySelector('.telegram-intel-custom-tag')).not.toBeNull();
   });
 

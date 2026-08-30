@@ -53,10 +53,17 @@ const CACHE_TTL = 30_000;
 const STALE_FALLBACK_TTL = 600_000;
 const MISSING_TIMESTAMP_ISO = new Date(0).toISOString();
 const RESOLVE_CACHE_TTL = 60 * 60 * 1000;
-const CHANNEL_CACHE_TTL = CACHE_TTL;
+// Deliberately LONGER than the panel's 60s refresh. At 30s every refresh tick
+// missed the cache and re-fetched every watchlist entry, so a full watchlist
+// spent its entire per-minute request budget on steady-state polling. At 90s a
+// tick is usually a no-op and a channel still refreshes every other cycle.
+const CHANNEL_CACHE_TTL = 90_000;
 const LOOKUP_CACHE_MAX_ENTRIES = 64;
-const PREVIEW_REQUEST_TIMEOUT_MS = 40_000;
-const CHANNEL_REQUEST_TIMEOUT_MS = 55_000;
+// Both sit just above the edge's own per-mode relay timeouts (20s / 22s) so the
+// handler's 504 envelope wins the race and the user gets a real message rather
+// than an opaque abort.
+const PREVIEW_REQUEST_TIMEOUT_MS = 23_000;
+const CHANNEL_REQUEST_TIMEOUT_MS = 25_000;
 
 const previewCache = new Map<string, { data: TelegramChannelPreview; expiresAt: number }>();
 const previewInflight = new Map<string, Promise<TelegramChannelPreview>>();
@@ -96,6 +103,26 @@ function telegramChannelUrl(username: string, limit: number): string {
   return isDesktopRuntime() ? toRuntimeUrl(path) : toApiUrl(path);
 }
 
+/** Carries the HTTP status so callers can distinguish "try again shortly" from "bad input". */
+export class TelegramLookupError extends Error {
+  readonly status: number;
+  readonly retryAfterMs: number;
+
+  constructor(message: string, status: number, retryAfterMs = 0) {
+    super(message);
+    this.name = 'TelegramLookupError';
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function parseRetryAfterMs(response: Response): number {
+  const header = response.headers.get('retry-after');
+  if (!header) return 0;
+  const seconds = Number(header);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+}
+
 async function readJson(response: Response): Promise<unknown> {
   if (response.ok) {
     return response.json() as Promise<unknown>;
@@ -103,12 +130,12 @@ async function readJson(response: Response): Promise<unknown> {
 
   let errorMessage = `${response.status}`;
   try {
-    const errorJson = await response.json() as { error?: string; details?: string };
-    errorMessage = errorJson.details || errorJson.error || errorMessage;
+    const errorJson = await response.json() as { error?: string };
+    errorMessage = errorJson.error || errorMessage;
   } catch {
     errorMessage = `${response.status}`;
   }
-  throw new Error(errorMessage);
+  throw new TelegramLookupError(errorMessage, response.status, parseRetryAfterMs(response));
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -131,15 +158,15 @@ function parseTelegramChannelPreview(value: unknown): TelegramChannelPreview {
   };
 }
 
-function parseTelegramItem(value: unknown): TelegramItem {
+function parseTelegramItem(value: unknown): TelegramItem | null {
   const parsed = asRecord(value);
-  if (!parsed) throw new Error('Invalid Telegram channel item');
+  if (!parsed) return null;
   const required = ['id', 'channel', 'channelTitle', 'url', 'ts', 'text', 'topic'] as const;
   for (const key of required) {
-    if (typeof parsed[key] !== 'string') throw new Error('Invalid Telegram channel item');
+    if (typeof parsed[key] !== 'string') return null;
   }
   if (!Array.isArray(parsed.tags) || !parsed.tags.every((tag): tag is string => typeof tag === 'string')) {
-    throw new Error('Invalid Telegram channel item');
+    return null;
   }
   return {
     id: parsed.id as string,
@@ -160,11 +187,20 @@ function parseTelegramItem(value: unknown): TelegramItem {
 function parseTelegramFeedResponse(value: unknown): TelegramFeedResponse {
   const parsed = asRecord(value);
   if (!parsed || !Array.isArray(parsed.items)) throw new Error('Invalid Telegram feed response');
-  const items = parsed.items.map(parseTelegramItem);
+  // Drop unparseable items rather than rejecting the whole payload. Throwing
+  // here turned one malformed post into a blanked panel: the caller falls back
+  // to a <=10min stale copy and then to the disabled empty state, discarding
+  // intel that was on screen a moment earlier.
+  const items = parsed.items
+    .map(parseTelegramItem)
+    .filter((item): item is TelegramItem => item !== null);
   return {
     source: typeof parsed.source === 'string' ? parsed.source : 'telegram',
     earlySignal: parsed.earlySignal !== false,
-    enabled: parsed.enabled === true,
+    // `!== false`, not `=== true`: an omitted `enabled` is shape drift, and
+    // reading it as "relay disabled" renders a permanent not-active state over
+    // a feed that is actually fine.
+    enabled: parsed.enabled !== false,
     count: items.length,
     updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
     items,
@@ -230,7 +266,11 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
 }
 
 export async function fetchTelegramChannelPreview(username: string): Promise<TelegramChannelPreview> {
-  const cacheKey = username.toLowerCase();
+  // Normalize here rather than trusting callers: an un-normalized value became
+  // both the cache key and the wire value, so `@foo` and `t.me/foo` would hold
+  // separate entries and issue requests the edge then rejects.
+  const cacheKey = normalizeTelegramUsername(username);
+  if (!cacheKey) throw new TelegramLookupError('Invalid Telegram username', 400);
   const cached = previewCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
@@ -255,7 +295,9 @@ export async function fetchTelegramChannelPreview(username: string): Promise<Tel
 
 export async function fetchTelegramChannelFeed(username: string, limit = 20): Promise<TelegramFeedResponse> {
   const safeLimit = Math.max(1, Math.min(50, limit));
-  const cacheKey = `${username.toLowerCase()}:${safeLimit}`;
+  const normalizedUsername = normalizeTelegramUsername(username);
+  if (!normalizedUsername) throw new TelegramLookupError('Invalid Telegram username', 400);
+  const cacheKey = `${normalizedUsername}:${safeLimit}`;
   const cached = channelCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
   const stale = cached && cached.expiresAt + STALE_FALLBACK_TTL > Date.now()
@@ -267,7 +309,7 @@ export async function fetchTelegramChannelFeed(username: string, limit = 20): Pr
 
   const request = (async () => {
     try {
-      const response = parseTelegramFeedResponse(await readJson(await fetch(telegramChannelUrl(username, safeLimit), {
+      const response = parseTelegramFeedResponse(await readJson(await fetch(telegramChannelUrl(normalizedUsername, safeLimit), {
         signal: createTimeoutSignal(CHANNEL_REQUEST_TIMEOUT_MS),
       })));
       const normalized: TelegramFeedResponse = {

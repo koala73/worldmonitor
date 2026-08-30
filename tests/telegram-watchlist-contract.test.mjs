@@ -15,11 +15,26 @@ describe('Telegram custom-channel architecture (#1994)', () => {
     assert.match(edge, /relayPath = mode === 'resolve' \? '\/telegram\/resolve' : '\/telegram\/channel'/);
     assert.match(edge, /validateApiKey\(req\)/);
     assert.match(edge, /feed: \{ scope: 'telegram-feed:feed', limit: 60/);
-    assert.match(edge, /resolve: \{ scope: 'telegram-feed:resolve', limit: 20/);
-    assert.match(edge, /channel: \{ scope: 'telegram-feed:channel', limit: 20/);
-    assert.match(edge, /feed: 15_000/);
-    assert.match(edge, /resolve: 35_000/);
-    assert.match(edge, /channel: 50_000/);
+    // Assert each mode has its OWN rate-limit scope, not a literal budget: the
+    // numbers are tuning parameters (the channel budget has to clear
+    // TELEGRAM_WATCHLIST_MAX_ENTRIES with headroom), and pinning them here made
+    // a capacity fix look like an architecture violation.
+    assert.match(edge, /resolve: \{ scope: 'telegram-feed:resolve', limit: \d+/);
+    assert.match(edge, /channel: \{ scope: 'telegram-feed:channel', limit: \d+/);
+    // This handler is `runtime: 'edge'` and never streams, so the platform
+    // kills the invocation if it has not begun responding within 25s. Assert
+    // the INVARIANT rather than three literals: pinning the exact values meant
+    // the suite could stay green with a timeout that the platform would cut off
+    // before the handler's own 504 envelope could ever be returned.
+    const timeoutBlock = edge.match(/TELEGRAM_RELAY_TIMEOUT_MS = \{([\s\S]*?)\}/)?.[1];
+    assert.ok(timeoutBlock, 'TELEGRAM_RELAY_TIMEOUT_MS must be a literal object');
+    const timeouts = [...timeoutBlock.matchAll(/(\w+):\s*([\d_]+)/g)]
+      .map(([, mode, value]) => [mode, Number(value.replace(/_/g, ''))]);
+    assert.deepEqual(timeouts.map(([mode]) => mode).sort(), ['channel', 'feed', 'resolve']);
+    for (const [mode, ms] of timeouts) {
+      assert.ok(ms > 0, `${mode} timeout must be positive`);
+      assert.ok(ms < 25_000, `${mode} relay timeout ${ms}ms must stay under the Edge 25s begin-response ceiling`);
+    }
   });
 
   it('keeps product-managed channels separate and accepts only public Telegram channels', () => {

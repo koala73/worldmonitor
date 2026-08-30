@@ -73,15 +73,24 @@ function toText(value) {
 }
 
 const TELEGRAM_USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
+// Every value here must stay under the Edge runtime's 25s begin-response
+// ceiling: this handler never streams (it awaits the whole relay body, then
+// returns one Response), so past 25s the platform kills the invocation and the
+// caller sees a platform error instead of our own 504 envelope. The relay
+// enforces a matching TELEGRAM_LOOKUP_DEADLINE_MS on its side.
 const TELEGRAM_RELAY_TIMEOUT_MS = {
   feed: 15_000,
-  resolve: 35_000,
-  channel: 50_000,
+  resolve: 20_000,
+  channel: 22_000,
 };
+// `channel` is the fan-out mode: one request per watchlist entry, so the limit
+// has to clear TELEGRAM_WATCHLIST_MAX_ENTRIES (20) with room for a second tab
+// and an in-window add. Setting it equal to the cap left exactly zero headroom
+// and silently dropped channels from the panel on any overlap.
 const TELEGRAM_RATE_LIMIT_POLICY = {
   feed: { scope: 'telegram-feed:feed', limit: 60, window: '60 s' },
-  resolve: { scope: 'telegram-feed:resolve', limit: 20, window: '60 s' },
-  channel: { scope: 'telegram-feed:channel', limit: 20, window: '60 s' },
+  resolve: { scope: 'telegram-feed:resolve', limit: 30, window: '60 s' },
+  channel: { scope: 'telegram-feed:channel', limit: 60, window: '60 s' },
 };
 
 /**
@@ -251,6 +260,16 @@ export default async function handler(req) {
   // api/rss-proxy.js's direct checkRateLimit call). Separate scopes keep the
   // capped channel fanout from starving the base feed or interactive resolves.
   // Fails open when Upstash is unconfigured, matching rss-proxy.
+  // Deliberately fail-open (the repo default), including for resolve/channel.
+  // The tempting argument is that these modes spend a shared Telegram account's
+  // flood budget, so the limit "is" the abuse defence and should fail closed.
+  // It isn't: the hard ceiling on Telegram RPC volume is the relay's in-process
+  // queue (TELEGRAM_RPC_MAX_CONCURRENCY + a global TELEGRAM_RPC_MIN_INTERVAL_MS
+  // start interval, ~75 RPC/min), which cannot fail open because it is not
+  // backed by Redis. This limit only allocates that fixed budget fairly BETWEEN
+  // callers. Failing closed would therefore trade the whole watchlist feature
+  // for fairness during an Upstash blip, without changing the account's
+  // exposure at all.
   const rateLimitResponse = await checkRateLimit(req, corsHeaders, TELEGRAM_RATE_LIMIT_POLICY[mode]);
   if (rateLimitResponse) return rateLimitResponse;
 
@@ -344,17 +363,25 @@ export default async function handler(req) {
       }
     }
 
+    // Reached only when JSON.parse or normalization threw, i.e. the handler has
+    // already reported this body to Sentry as un-normalizable. Hand it back for
+    // the client's own tolerant parse, but never let a shape we just flagged as
+    // invalid sit in a cache for 30s.
     return buildRelayResponse(response, body, {
-      'Cache-Control': cacheControl,
+      'Cache-Control': 'no-store',
       ...relayHeaders,
       ...corsHeaders,
       'Vary': VARY_CREDENTIAL,
     });
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';
+    // No `details`: the underlying message can carry relay transport detail
+    // (undici cause chains, MTProto text) and the browser has no use for it.
+    // It is captured server-side instead.
+    console.warn('[telegram-feed] relay request failed:', error?.message || String(error));
+    void captureSilentError(error, { tags: { route: 'api/telegram-feed', step: 'relay-fetch' } });
     return jsonResponse({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',
-      details: error?.message || String(error),
     }, isTimeout ? 504 : 502, { 'Cache-Control': 'no-store', ...corsHeaders });
   }
 }
