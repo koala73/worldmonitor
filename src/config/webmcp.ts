@@ -24,6 +24,10 @@ export const WEBMCP_SPA_TOOL = Object.freeze({
   openAlerts: 'open_alerts',
   openDashboardPanel: 'open_dashboard_panel',
   setPanelEnabled: 'set_panel_enabled',
+  getPanelLayout: 'get_panel_layout',
+  setPanelCollapsed: 'set_panel_collapsed',
+  movePanel: 'move_panel',
+  setPanelFullscreen: 'set_panel_fullscreen',
   setMapView: 'set_map_view',
   setMapLayers: 'set_map_layers',
   setTimeRange: 'set_time_range',
@@ -36,6 +40,9 @@ export const WEBMCP_SPA_TOOL = Object.freeze({
   createDashboardTab: 'create_dashboard_tab',
   renameDashboardTab: 'rename_dashboard_tab',
   deleteDashboardTab: 'delete_dashboard_tab',
+  listMissionPresets: 'list_mission_presets',
+  applyMissionPreset: 'apply_mission_preset',
+  openMissionPicker: 'open_mission_picker',
   getAccessContext: 'get_access_context',
   openSignIn: 'open_sign_in',
 } as const);
@@ -51,6 +58,10 @@ export const WEBMCP_SPA_TOOL_NAMES = [
   WEBMCP_SPA_TOOL.openAlerts,
   WEBMCP_SPA_TOOL.openDashboardPanel,
   WEBMCP_SPA_TOOL.setPanelEnabled,
+  WEBMCP_SPA_TOOL.getPanelLayout,
+  WEBMCP_SPA_TOOL.setPanelCollapsed,
+  WEBMCP_SPA_TOOL.movePanel,
+  WEBMCP_SPA_TOOL.setPanelFullscreen,
   WEBMCP_SPA_TOOL.setMapView,
   WEBMCP_SPA_TOOL.setMapLayers,
   WEBMCP_SPA_TOOL.setTimeRange,
@@ -63,9 +74,37 @@ export const WEBMCP_SPA_TOOL_NAMES = [
   WEBMCP_SPA_TOOL.createDashboardTab,
   WEBMCP_SPA_TOOL.renameDashboardTab,
   WEBMCP_SPA_TOOL.deleteDashboardTab,
+  WEBMCP_SPA_TOOL.listMissionPresets,
+  WEBMCP_SPA_TOOL.applyMissionPreset,
+  WEBMCP_SPA_TOOL.openMissionPicker,
   WEBMCP_SPA_TOOL.getAccessContext,
   WEBMCP_SPA_TOOL.openSignIn,
 ] as const;
+
+/**
+ * Every stable reason `open_mission_picker` reports as a bounded navigation
+ * result. Unlike the other mission tools, its App binding does not prethrow on
+ * a destroyed dashboard, so `app_destroyed` reaches callers as a result here
+ * rather than as a rejection.
+ *
+ * `unavailable` is picker-specific and is emitted from the mission-picker path.
+ * `malformedArguments` and `appDestroyed` arrive from the shared argument and
+ * navigation paths, which keep their own literals because every navigation tool
+ * shares them.
+ */
+export const WEBMCP_MISSION_PICKER_REASON = Object.freeze({
+  malformedArguments: 'malformed_arguments',
+  unavailable: 'unavailable',
+  appDestroyed: 'app_destroyed',
+} as const);
+
+export const WEBMCP_MISSION_PICKER_REASONS = [
+  WEBMCP_MISSION_PICKER_REASON.malformedArguments,
+  WEBMCP_MISSION_PICKER_REASON.unavailable,
+  WEBMCP_MISSION_PICKER_REASON.appDestroyed,
+] as const;
+
+export type WebMcpMissionPickerReason = (typeof WEBMCP_MISSION_PICKER_REASONS)[number];
 
 export const WEBMCP_DECLARATIVE_TOOL_NAMES = [
   'search_procurement',

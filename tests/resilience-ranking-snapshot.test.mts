@@ -129,7 +129,12 @@ interface SnapshotLive {
   };
   totals: { rankedCountries: number; greyedOutCount: number };
   items: LiveItem[];
-  greyedOut: Array<{ countryCode: string; overallCoverage: number; headlineEligible?: boolean }>;
+  greyedOut: Array<{
+    countryCode: string;
+    overallCoverage?: number;
+    dimensionCoverage?: number;
+    headlineEligible?: boolean;
+  }>;
 }
 
 interface ProjectedRow {
@@ -233,8 +238,14 @@ describe('resilience-ranking snapshots', () => {
       const verification = snapshot.formulaVerification;
       assert.ok(verification, `${filename} must carry formula verification for the declared pc methodology`);
       assert.equal(verification.declaredFormula, 'pillar-combined-penalized-v1');
-      assert.match(verification.scoreEndpoint, /\/api\/resilience\/v1\/get-resilience-score$/);
-      assert.match(verification.rankingEndpoint, /\/api\/resilience\/v1\/get-resilience-ranking\?refresh=1$/);
+      assert.match(
+        verification.scoreEndpoint,
+        /(?:\/api\/resilience\/v1\/get-resilience-score$|^Production Upstash Redis score cache$)/,
+      );
+      assert.match(
+        verification.rankingEndpoint,
+        /(?:\/api\/resilience\/v1\/get-resilience-ranking\?refresh=1$|^Production Upstash Redis ranking cache$)/,
+      );
       assert.ok(
         Array.isArray(verification.checks) && verification.checks.length >= 2,
         `${filename} must verify the declared formula against multiple score endpoint anchors`,
@@ -455,9 +466,12 @@ describe('resilience-ranking snapshots', () => {
 
         it('live greyedOut items are either headline-ineligible or below the coverage threshold', () => {
           for (const entry of snapshot.greyedOut) {
+            const coverage = entry.dimensionCoverage ?? entry.overallCoverage;
+            assert.equal(typeof coverage, 'number', `${entry.countryCode} in greyedOut must include coverage`);
+            assert.ok(Number.isFinite(coverage), `${entry.countryCode} in greyedOut coverage must be finite`);
             assert.ok(
-              entry.headlineEligible === false || entry.overallCoverage < snapshot.methodology.greyOutThreshold,
-              `${entry.countryCode} in greyedOut must either be headlineEligible=false or have coverage below ${snapshot.methodology.greyOutThreshold}; got headlineEligible=${entry.headlineEligible} coverage=${entry.overallCoverage}`,
+              entry.headlineEligible === false || coverage < snapshot.methodology.greyOutThreshold,
+              `${entry.countryCode} in greyedOut must either be headlineEligible=false or have coverage below ${snapshot.methodology.greyOutThreshold}; got headlineEligible=${entry.headlineEligible} coverage=${coverage}`,
             );
           }
         });

@@ -117,6 +117,11 @@ export async function readCachedJson(key: string, raw = false): Promise<CacheRea
   return readCachedJsonInternal(key, raw, true);
 }
 
+/** Status-aware read that preserves the runSeed contract envelope. */
+export async function readCachedEnvelopeJson(key: string, raw = false): Promise<CacheReadResult> {
+  return readCachedJsonInternal(key, raw, false);
+}
+
 function logCacheReadError(key: string, err: unknown): void {
   // Structured timeout log goes to Sentry via Vercel integration. Large-
   // payload timeouts used to silently return null and let downstream callers
@@ -158,6 +163,36 @@ export async function getRawJson(key: string): Promise<unknown | null> {
   if (!data.result) return null;
   // Envelope-aware: contract-mode canonical keys are stored as {_seed, data}.
   // unwrapEnvelope is a no-op on legacy (non-envelope) shapes.
+  return unwrapEnvelope(JSON.parse(data.result)).data;
+}
+
+/**
+ * Read a large seed-owned JSON value through Upstash's body command endpoint.
+ * The normal 1.5-second GET deadline is intentionally too small for multi-MB
+ * last-good fallbacks; this path uses the bounded pipeline deadline instead.
+ */
+export async function getLargeRawJson(key: string, timeoutMs?: number): Promise<unknown | null> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheGet } = await import('./sidecar-cache');
+    return sidecarCacheGet(key);
+  }
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  const resp = await fetch(`${url}/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'worldmonitor-server/1.0 (redis)',
+    },
+    body: JSON.stringify(['GET', key]),
+    signal: AbortSignal.timeout(resolvePipelineTimeoutMs(timeoutMs)),
+  });
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = (await resp.json()) as { result?: string | null; error?: string };
+  if (data.error) throw new Error(`Redis command error: ${data.error}`);
+  if (!data.result) return null;
   return unwrapEnvelope(JSON.parse(data.result)).data;
 }
 
@@ -583,6 +618,7 @@ export async function getCachedJsonBatch(keys: string[], raw = false): Promise<M
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
       },
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
@@ -1135,6 +1171,7 @@ export async function geoSearchByBox(key: string, lon: number, lat: number, widt
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
       },
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
@@ -1148,7 +1185,12 @@ export async function geoSearchByBox(key: string, lon: number, lat: number, widt
   }
 }
 
-export async function getHashFieldsBatch(key: string, fields: string[], raw = false): Promise<Map<string, string>> {
+export async function getHashFieldsBatch(
+  key: string,
+  fields: string[],
+  raw = false,
+  timeoutMs?: number,
+): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   if (fields.length === 0) return result;
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -1162,9 +1204,10 @@ export async function getHashFieldsBatch(key: string, fields: string[], raw = fa
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
       },
       body: JSON.stringify(pipeline),
-      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(resolvePipelineTimeoutMs(timeoutMs)),
     });
     if (!resp.ok) return result;
     const data = (await resp.json()) as Array<{ result?: (string | null)[] }>;

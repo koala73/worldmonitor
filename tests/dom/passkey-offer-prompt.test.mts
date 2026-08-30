@@ -223,6 +223,19 @@ describe('PasskeyOfferPrompt — overlay arbitration', () => {
     expect(el.hidden).toBe(true);
   });
 
+  it('defers the arrival announcement until an initially hidden card is restored', () => {
+    const { prompt, el } = mount();
+    const scheduledFrame: { run: (() => void) | null } = { run: null };
+    prompt.hide();
+    prompt.announceOnMount((cb) => { scheduledFrame.run = cb; return 1; });
+
+    scheduledFrame.run?.();
+    expect(announce(el)?.textContent).toBe('');
+
+    prompt.restore(immediate);
+    expect(announce(el)?.textContent).not.toBe('');
+  });
+
   it('restoring does not re-announce a status the user already heard', () => {
     const { prompt, el } = mount();
     prompt.setState('retryable');

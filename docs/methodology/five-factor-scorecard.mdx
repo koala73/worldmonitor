@@ -1,0 +1,264 @@
+---
+title: "Five-factor country scorecard"
+description: "Absolute 1-5 food, energy, demographics, technology, and defense capability scores with source provenance and bloc aggregation."
+---
+
+The five-factor scorecard answers five structural questions for a country or
+bloc: can it feed itself, supply its energy, sustain its people, develop and use
+technology, and defend itself? It is an annual-cadence judgment layer over
+source observations. It is not the Country Instability Index (CII), the Country
+Resilience Index (CRI), or a replacement for either one.
+
+## Version contract
+
+- **Methodology:** `1.0.0`
+- **Input registry:** `1.0.0`
+- **Stored schema:** `1`
+- **Canonical snapshot:** `scorecard:five-factor:v1`
+- **Atomic read model:** `scorecard:five-factor:v1:read-model`
+- **Seed health:** `seed-meta:scorecard:five-factor`
+
+Every result carries its methodology version and computation time. A change to
+a weight, goalpost, band, coverage floor, required group, aggregation rule, or
+input mapping requires a methodology version and changelog entry. A storage
+shape change also requires a schema version change.
+
+## Common scoring rules
+
+Each input is normalized to an absolute 0-100 component score with the frozen
+goalposts below. Values outside a goalpost are clamped. The scorer then:
+
+1. Adds the declared weights of available components.
+2. Reports that sum as `inputCoverage` from 0 to 1.
+3. Divides the available weighted component total by available weight.
+4. Applies the pillar coverage floor and required-group rules.
+5. Maps the unrounded continuous sub-score to an integer band.
+6. Rounds the published sub-score and coverage to two and four decimal places,
+   respectively. Rounding never changes the band, because the band is always
+   derived in step 5 from the unrounded sub-score. Near a boundary the two can
+   therefore disagree by design: a continuous sub-score of `19.996` publishes as
+   `subScore: 20.00` with `band: 1`, not `band: 2`. Read the published `band`;
+   do not re-derive it from the published `subScore`.
+
+Unavailable inputs do not receive a neutral score and do not enter the weighted
+mean. Internally, a pillar below its floor has `hasScore=false`, `score=null`,
+`subScore=null`, and one or more explicit reasons. Protobuf JSON keeps numeric
+fields present as zero; API and MCP clients must read `hasScore` first because
+those zeros are insufficient-data placeholders, not measured zero resilience.
+
+### Absolute bands
+
+The lower boundary is inclusive. For example, exactly 40.0 is band 3.
+
+| Unrounded sub-score | Band | General meaning |
+|---:|---:|---|
+| `0 <= x < 20` | 1 | Severe structural deficit |
+| `20 <= x < 40` | 2 | Material deficit and external dependence |
+| `40 <= x < 60` | 3 | Mixed capability with important gaps |
+| `60 <= x < 80` | 4 | Strong capability with manageable gaps |
+| `80 <= x <= 100` | 5 | High structural self-sufficiency or capability |
+
+### Unavailable reasons
+
+The closed reason set is:
+
+- `source-unavailable`: the upstream snapshot could not be read.
+- `country-unavailable`: the source is healthy but has no country observation.
+- `invalid-value`: the observation is non-finite or outside its valid domain.
+- `stale`: the observation is older than the input freshness contract.
+- `coverage-below-floor`: available weight is below the pillar floor.
+- `required-group-missing`: no available input satisfies a required group.
+- `missing-population`: a population-weighted calculation has no population.
+- `redistribution-blocked`: source policy forbids the partner-facing evidence.
+
+Each evidence item is a tagged available/unavailable record. Available evidence
+includes input ID, value, year, unit, source, and source key. A retained
+last-good upstream observation stays available and carries `quality=retained`.
+
+### Freshness and publication floors
+
+V1 applies observation-age limits before scoring. Population, food-balance,
+food-stock, and age-structure inputs allow at most 3 years; physical energy
+balance allows 4; low-carbon generation, trade diversity, workforce, and
+defense allow 5; all other annual inputs allow 7. The boundary year is
+inclusive. An expired source content-age envelope also makes its declared
+inputs `stale` even when the stored values remain readable.
+
+A daily cohort replaces last-good only when at least 180 countries have one
+scoreable pillar, at least 150 have usable population evidence, and the
+scoreable-country counts meet these frozen floors: food 80, energy 120,
+demographics 150, technology 120, and defense 30. The
+floors were set from the 196-country production-source audit with headroom for
+normal source coverage. Health publishes population and the five pillar counts separately. A
+partial source outage cannot refresh health or replace a richer cohort.
+
+## Food
+
+Food measures the ability to meet caloric use from production and stocks. It
+uses commodity production, consumption, ending stocks, and use from
+`resilience:food-stocks:v1`. Source quantities in thousand metric tonnes are
+converted to trillion kcal as `thousand metric tonnes * kcal/kg / 1,000,000`
+with the frozen commodity conversion
+table before aggregation.
+
+| Component | Weight | Direction and goalposts | Input source |
+|---|---:|---|---|
+| Calorie production / consumption | 0.55 | higher; `0.50 -> 0`, `1.25 -> 100` | USDA PSD / FAOSTAT food stocks |
+| Calorie ending stocks / total use | 0.25 | higher; `0.05 -> 0`, `0.25 -> 100` | USDA PSD / FAOSTAT food stocks |
+| Water security | 0.15 | lower stress; `100 -> 0`, `10 -> 100` | World Bank AQUASTAT static evidence |
+| Import partner diversity proxy | 0.05 | lower HHI; `0.65 -> 0`, `0.15 -> 100` | UN Comtrade import HHI |
+
+Coverage floor: **0.70**. Calorie production / consumption is required.
+
+- Band 1: production is near or below half of use and buffers are weak.
+- Band 3: domestic output covers much, but not all, use or buffers are mixed.
+- Band 5: output materially exceeds use and stock buffers are strong.
+
+For blocs, production and consumption are summed before their ratio is scored;
+ending stocks and total use are also summed before scoring. Water and import
+diversity component scores are population-weighted across members with evidence.
+
+## Energy
+
+Energy measures physical primary-energy balance and supporting power-system
+quality. Consumption comes from OWID `primary_energy_consumption`. Production
+is derived from World Bank net energy imports (`EG.IMP.CONS.ZS`):
+
+```text
+production TWh = consumption TWh * (1 - net imports percent / 100)
+```
+
+| Component | Weight | Direction and goalposts | Input source |
+|---|---:|---|---|
+| Primary production / consumption | 0.60 | higher; `0.25 -> 0`, `1.25 -> 100` | OWID plus World Bank |
+| Low-carbon generation share | 0.25 | higher; `0% -> 0`, `80% -> 100` | resilience low-carbon generation |
+| Grid delivery efficiency | 0.15 | lower losses; `25% -> 0`, `3% -> 100` | resilience power losses |
+
+Coverage floor: **0.60**. Primary production / consumption is required.
+
+- Band 1: production covers little of use.
+- Band 3: balance is mixed and imports remain material.
+- Band 5: the country is energy self-sufficient or a net producer with strong
+  supporting power-system evidence.
+
+For blocs, primary production and consumption TWh are summed before scoring.
+Low-carbon generation and grid efficiency component scores are
+population-weighted across members with evidence.
+
+## Demographics
+
+Demographics combines age structure, the projected working-age population,
+education, research capacity, and trained industrial labor. Inputs come from
+`demographics:capability:v1`.
+
+| Component | Weight | Direction and goalposts |
+|---|---:|---|
+| Total dependency ratio | 0.15 | lower; `100 -> 0`, `35 -> 100` |
+| Old-age dependency ratio | 0.10 | lower; `50 -> 0`, `10 -> 100` |
+| Working-age population, 10-year ratio | 0.20 | higher; `0.80 -> 0`, `1.10 -> 100` |
+| Tertiary enrollment | 0.15 | higher; `20% -> 0`, `90% -> 100` |
+| Researchers per million | 0.10 | higher; `100 -> 0`, `5,000 -> 100` |
+| STEM graduate share | 0.10 | higher; `10% -> 0`, `40% -> 100` |
+| Trained industrial occupation share | 0.15 | higher; `2% -> 0`, `25% -> 100` |
+| Manufacturing employment share | 0.05 | higher; `5% -> 0`, `25% -> 100` |
+
+Coverage floor: **0.60**. At least one age-structure input and one education,
+research, or workforce input are required.
+
+- Band 1: severe dependency or contraction with little capability evidence.
+- Band 3: mixed age structure and human-capability depth.
+- Band 5: favorable labor supply and deep education, research, and industrial
+  workforce capacity.
+
+Bloc demographics is the population-weighted mean of member unrounded
+continuous demographic sub-scores. It never averages integer bands.
+
+## Technology
+
+Technology uses source-preserving World Bank observations. The existing
+technology readiness score, rank, and components remain unchanged; v1 adds the
+raw observations needed to show and reproduce this scorecard.
+
+| Component | Weight | Direction and goalposts | Input source |
+|---|---:|---|---|
+| Internet use | 0.20 | higher; `20% -> 0`, `95% -> 100` | `IT.NET.USER.ZS` |
+| Mobile subscriptions | 0.10 | higher; `50 -> 0`, `150 -> 100` per 100 people | `IT.CEL.SETS.P2` |
+| Fixed broadband | 0.15 | higher; `0 -> 0`, `45 -> 100` per 100 people | `IT.NET.BBND.P2` |
+| Research and development spend | 0.25 | higher; `0.2% -> 0`, `4% -> 100` | `GB.XPD.RSDV.GD.ZS` |
+| Researchers per million | 0.15 | higher; `100 -> 0`, `5,000 -> 100` | demographics capability |
+| STEM graduate share | 0.10 | higher; `10% -> 0`, `40% -> 100` | demographics capability |
+| Electricity access | 0.05 | higher; `50% -> 0`, `100% -> 100` | resilience static evidence |
+
+Coverage floor: **0.65**. At least one connectivity input and one innovation
+input are required.
+
+- Band 1: limited digital access and little measured innovation capacity.
+- Band 3: broad use or research capacity, but material gaps remain.
+- Band 5: high connectivity plus deep and sustained innovation capability.
+
+Bloc technology is the population-weighted mean of member unrounded continuous
+technology sub-scores.
+
+## Defense
+
+Defense measures sustained national defense capacity. World Bank defense
+observations come from `military:industrial-base:v1`. SIPRI raw transfer rows
+are not stored or returned. Until the source policy permits public use of the
+already derived supplier HHI, that component is explicitly unavailable with
+`redistribution-blocked`.
+
+| Component | Weight | Direction and goalposts |
+|---|---:|---|
+| Military expenditure, USD | 0.20 | higher, log scale; `$100m -> 0`, `$100bn -> 100` |
+| Military expenditure, % GDP | 0.15 | higher; `0.5% -> 0`, `5% -> 100` |
+| Armed forces personnel | 0.15 | higher, log scale; `10,000 -> 0`, `1,000,000 -> 100` |
+| Arms export share of transfers | 0.30 | higher; `0 -> 0`, `1 -> 100`; same-year exports / (exports + imports) |
+| Supplier diversity | 0.20 | lower HHI; `0.65 -> 0`, `0.15 -> 100` |
+
+Coverage floor: **0.50**. At least one posture input (spending or personnel)
+and the arms-transfer industrial-balance input are required.
+
+- Band 1: small posture with high external equipment dependence.
+- Band 3: material posture or industrial capability, with important gaps.
+- Band 5: large sustained posture and strong domestic/export industrial depth.
+
+Bloc defense is the population-weighted mean of member unrounded continuous
+defense sub-scores. Supplier diversity remains unavailable while the policy
+block applies.
+
+The industrial balance is available only when both exports and imports are
+explicit finite observations from the same year. A missing side is never
+coerced to zero; an explicit measured zero remains valid.
+
+## Bloc rules
+
+V1 presets are versioned as part of the methodology: `USMCA`, `EU27`, `BRICS`,
+`GCC`, `ASEAN`, and `NATO`. Custom blocs accept 2-30 unique uppercase ISO-2
+country codes from the public rankable universe. A request must select exactly
+one preset or one custom member list. Presets may contain more than 30 members.
+
+Membership was checked on 2026-08-29 against the official
+[EU country list](https://european-union.europa.eu/principles-countries-history/eu-countries_en),
+[BRICS member list](https://brics.br/en/about-the-brics),
+[ASEAN member list](https://asean.org/member-states/), and
+[NATO member-country history](https://www.nato.int/cps/en/natohq/nato_countries.htm).
+The ASEAN preset includes Timor-Leste, and the BRICS preset uses the official
+11-member list. Preset membership changes require a methodology changelog entry.
+
+Each bloc pillar reports its aggregation method, included and excluded members,
+population coverage where applicable, and the evidence used. Food and energy
+use physical aggregate-then-score rules. Demographics, technology, and defense
+population-weight continuous scores. No bloc formula averages country bands.
+
+## Changelog
+
+### 1.0.0 - 2026-08-29
+
+- Initial five-pillar methodology.
+- Frozen absolute bands, goalposts, weights, coverage floors, required groups,
+  aggregation rules, unavailable reasons, and rounding rules.
+- Added source-safe evidence provenance and an explicit SIPRI redistribution
+  block.
+- Defined current preset and custom bloc validation contracts.
+- Froze per-input evidence ages and per-pillar publication floors; stale or
+  coverage-collapsed cohorts preserve the prior last-good snapshot.

@@ -233,6 +233,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_company_intelligence` | 经 SEC 身份验证的逐公司情报：丰富化、带时间戳的信号、申报搜索与全市场重大 8-K 事件。 |
 | `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、铀、煤）。 |
 | `get_mineral_production` | 各国矿产开采/冶炼份额与 HHI（USGS MCS，BGS 补缺）。 |
+| `get_five_factor_scorecard` | 冻结版 v1 五因素韧性评分卡：食品、能源、人口结构、科技与国防。可查询一个国家、官方集团或已验证的自定义集团，并保留输入可用性与来源信息。 |
+| `list_five_factor_scorecards` | 紧凑列出各国五因素支柱评分、档位、覆盖率和数据不足原因。读取数值前必须检查 `hasScore`；若为 false，零值只是数据不足占位符。完整证据账本请使用单项评分卡工具。 |
 
 ### 能源
 
@@ -349,6 +351,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
 | `get_chokepoint_status` | `GET /api/intelligence/v1/get-country-port-activity`<br/>`GET /api/supply-chain/v1/get-chokepoint-status` |
+| `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
+| `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |

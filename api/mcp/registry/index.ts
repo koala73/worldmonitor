@@ -96,7 +96,9 @@ export function buildPublicTool(
   if (isCacheTool) {
     clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
   }
-  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  if (tool._jmespathDisabled !== true) {
+    clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  }
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
@@ -109,6 +111,7 @@ export function buildPublicTool(
       type: tool.inputSchema.type,
       properties: clonedProperties,
       required: [...tool.inputSchema.required],
+      ...(tool.inputSchema.oneOf ? { oneOf: structuredClone(tool.inputSchema.oneOf) } : {}),
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.

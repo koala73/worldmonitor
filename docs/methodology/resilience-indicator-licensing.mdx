@@ -1,0 +1,63 @@
+---
+title: "Country Resilience Indicator Licensing"
+description: "Raw-value redistribution decisions and attribution requirements for the 72 Country Resilience Index indicators."
+---
+
+The Pro indicator drill-down returns all 72 registered indicator rows and a normalized score whenever the scorer has one. It returns a raw source value only when the exact observation is measured, every contributing provider has a completed redistribution review, the response includes the required attribution, and the exact contributing seed has a retrieval timestamp. An imputed, fallback, missing, inactive, retired, not-applicable, source-failure, provider-ambiguous, or retrieval-time-ambiguous row never includes a raw value.
+
+The broad `license` label in the indicator registry is source inventory metadata. It is not permission to redistribute a value. The executable policy in `server/worldmonitor/resilience/v1/_indicator-source-policy.ts` is stricter and uses the exact provider provenance of each observation.
+
+REST and MCP discovery do not advertise JMESPath projection for this response. Both runtimes reject a non-empty projection request because it could detach a permitted raw value from the attribution and retrieval fields that authorize its redistribution.
+
+Each source entry includes the dataset URL, license label, canonical `licenseUrl`, and a separate `attributionUrl` when the required attribution target differs from the dataset URL.
+
+## Decisions by source
+
+| Decision | Source | Indicators | Raw-value rule and attribution |
+| --- | --- | --- | --- |
+| Allow | [World Bank API](https://api.worldbank.org/v2/) | `fxReservesAdequacy`, `appliedTariffRate`, `shortTermExternalDebtPctGni`, `roadsPavedLogistics`, `electricityAccess`, `roadsPavedInfra`, `broadband`, `electricityConsumption`, `powerLossesPct`, the six `wgi*` indicators, `aquastatScore`, `recoveryReserveMonths`, `recoveryDebtToReserves`, `recoveryWgiContinuity` | World Development Indicators are reviewed as [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit World Bank Open Data and include the indicator source URL and extraction date. Raw release requires the exact `/country/.../indicator/<code>` path for every input. The API root, an unrelated indicator, documentation, and terms URLs fail closed. `aquastatScore` is a legacy runtime name; its selected observation is World Bank `ER.H2O.FWST.ZS`. |
+| Allow | [UNESCO Institute for Statistics via World Bank WDI](https://uis.unesco.org/) | `femaleUpperSecondaryAttainment` | Apply the World Bank CC BY 4.0 terms. Also credit UNESCO UIS, include the UIS source URL, and include the extraction date. |
+| Allow | [Our World in Data](https://ourworldindata.org/) | `gasShare`, `coalShare`, `renewShare` | Use the [OWID reuse terms](https://ourworldindata.org/how-to-use-our-world-in-data). Credit Our World in Data and link to the exact dataset page. Dataset-specific terms still take precedence. |
+| Restricted | [Bank for International Settlements](https://data.bis.org/) | `householdDebtService`, `fxVolatility`, `fxDeviation`, `bisLbsXborderPctGdp`, `financialCenterRedundancy` | Raw redistribution is denied under the repository's non-commercial/restricted decision. A normalized score can be served with BIS attribution and a link to the relevant statistics page. |
+| Restricted | [Institute for Economics & Peace / Global Peace Index](https://www.visionofhumanity.org/maps/) | `gpiScore` | Raw redistribution is denied under the repository's non-commercial decision. Credit the Institute for Economics & Peace and Vision of Humanity when serving the normalized score. |
+| Restricted pending exact-dataset review | [Uppsala Conflict Data Program](https://ucdp.uu.se/downloads/) | `ucdpConflict`, `recoveryConflictPressure` | The current downloads page advertises CC BY 4.0. Runtime raw output remains denied until the repository decision is updated for the exact dataset and its attribution requirements. The scoring allowlist is not a redistribution grant. |
+| Conditional | World Bank or Eurostat | `energyImportDependency` | Allow only when the exact selected observation is World Bank data. Eurostat observations remain audit-incomplete. |
+| Conditional | World Bank, with a possible Eurostat constituent | `importedFossilDependence` | The fossil-electricity input is World Bank WDI `EG.ELC.FOSL.ZS`. Allow only when net-import provenance is also World Bank. Suppress raw output if an Eurostat override contributed. |
+| Conditional | World Bank, optionally adjusted with UN Comtrade | `recoveryLiquidReserveMonths` | Allow an unadjusted World Bank observation. Suppress the raw value when a UN Comtrade re-export adjustment contributed. |
+| Audit incomplete | [International Monetary Fund](https://www.imf.org/en/Data) and national-debt sources | `govRevenuePct`, `debtGrowthRate`, `currentAccountPct`, `unemploymentPct`, `inflationStability`, `recoveryGovRevenue`, `recoveryFiscalBalance`, `recoveryDebtToGdp`, `debtSustainabilityGap` | Suppress raw values until the exact IMF or national-debt provider terms and attribution are recorded as reviewed. |
+| Audit incomplete | [Statistics Canada Web Data Service](https://www.statcan.gc.ca/en/developers/wds/user-guide) | Canadian `unemploymentPct` and `inflationStability` observations | The Canada overlay records the exact Statistics Canada observation date, release time, Web Data Service endpoint, and [Open Licence](https://www.statcan.gc.ca/en/terms-conditions/open-licence). Raw output remains fail-closed under the indicator policy until the exact vector-level redistribution decision is reviewed. |
+| Audit incomplete | [World Trade Organization](https://data.wto.org/) and [FATF](https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html) | `tradeRestrictions`, `tradeBarriers`, `fatfListingStatus` | Suppress raw values. Credit and link to the exact publication when displaying normalized results. |
+| Audit incomplete | Cyber, outage, GPS, shipping, transit, social, and news feeds | `cyberThreats`, `internetOutages`, `gpsJamming`, `shippingStress`, `transitDisruption`, `infraOutages`, `socialVelocity`, `newsThreatScore` | The feeds combine Cloudflare Radar, GPSJam/ADS-B Exchange, Yahoo Finance, PortWatch/AIS, Reddit/ScrapeCreators, publishers, and multiple threat-intelligence providers. Suppress raw values until every provider used by the exact observation is reviewed. |
+| Audit incomplete | Energy providers | `lowCarbonGenerationShare`, `euGasStorageStress`, `energyPriceStress` | The low-carbon OWID chart uses Ember and Energy Institute data whose exact dataset terms are not yet recorded. GIE AGSI and the exact FRED/upstream energy-price series also require completed reviews. Suppress raw values. |
+| Audit incomplete | UNHCR, ACLED/GDELT, and Reporters Without Borders | `displacementTotal`, `unrestEvents`, `displacementHosted`, `rsfPressFreedom`, `recoveryDisplacementVelocity` | Suppress raw values until the exact provider terms are reviewed. Keep provider credit and source links with normalized results. |
+| Audit incomplete | [WHO Global Health Observatory](https://www.who.int/data/gho) | `uhcIndex`, `measlesCoverage`, `hospitalBeds`, `physiciansPer1k`, `healthExpPerCapitaUsd` | The registry's historical public-domain label does not replace a current redistribution review. Suppress raw values. |
+| Audit incomplete | [IPC via HDX](https://data.humdata.org/) | `ipcPeopleInCrisis`, `ipcPhase` | Suppress raw values until the dataset-specific IPC/HDX terms are reviewed. |
+| Audit incomplete | Wikipedia and sovereign-wealth source pages | `recoverySovereignWealthEffectiveMonths` | Suppress raw values until every constituent source and applicable CC BY-SA obligation is recorded. |
+| Audit incomplete | [UN Comtrade](https://comtradeplus.un.org/) | `recoveryImportHhi` | The registry's historical public-domain label does not replace a current redistribution review. Suppress raw values. |
+| Audit incomplete | IEA/EIA fuel-stock series | `recoveryFuelStockDays` | Suppress raw values. This indicator is also inactive in the current score, which independently prevents raw output. |
+
+This table reflects the repository source-attribution manifest and the issue-specific source review. Provider terms can change. A new source, mirror, fallback, or constituent makes the observation ineligible until the policy and its tests are updated.
+
+## Time and provenance fields
+
+`sourceYear` or the source observation timestamp describes when the provider measured the phenomenon. `retrievedAt` describes when WorldMonitor fetched or seeded it. They are not interchangeable. World Bank observations from the static resilience batch use the selected country payload's `seededAt`. A dataset recovered from an older batch uses its own `_recovered.seededAt`, not the new batch metadata time. Other source paths remain unavailable until their exact contributing seed retrieval timestamp is carried into the trace. The API withholds an otherwise licensable raw value when that timestamp is unavailable; it does not reuse the response data version or another seed's time. Observation age is calculated from the source observation date, never retrieval time. If the source does not publish an observation date, the API leaves source year and observation age absent.
+
+When a composite uses observations from different years, `sourceYear` is the oldest contributing year. This conservative rule prevents a recent constituent from hiding the age of an older input.
+
+Composite indicators must list every provider that contributed to the selected value. This is required for the conditional World Bank/Eurostat and World Bank/UN Comtrade decisions above.
+
+## Normalized scores when raw values are suppressed
+
+A normalized score is WorldMonitor's derived output after direction, goalposts, runtime weighting, and any documented policy adjustment. The API can therefore expose the normalized score and effective contribution even when upstream terms prevent raw-value redistribution. Suppression is represented by the raw-policy status and reason; it is not represented by a numeric zero.
+
+## Fail-closed review rules
+
+1. Default to no raw value for an unknown indicator or missing provider provenance.
+2. Require `observed` state. Never expose raw data for imputed, fallback, missing, or inactive rows.
+3. Check every provider in a composite observation. One unreviewed constituent suppresses the complete raw value.
+4. Do not infer permission from the registry license category, source key, a provider's public accessibility, or an attribution statement alone.
+5. Keep provider attribution, source links, license labels, and license URLs with each allow decision. The `observationProvenance` field distinguishes an exact selected source from registry-only attribution.
+6. Re-review provider terms when the source, mirror, extraction path, or dataset-specific terms change.
+7. Add the indicator to the exhaustive policy table and its tests before serving a new registry entry.
+
+The production response reads the immutable trace generation referenced by the six-hour public score cache. The large trace is stored in a separate seven-hour sidecar, so score and ranking reads stay small. A missing or malformed sidecar rebuilds and republishes the complete score generation; the handler never rescans current seeds beside an older cached score. A confirmed source-key miss can produce a documented missing or imputed state. A Redis read error fails the generation build and is not cached as a valid response.

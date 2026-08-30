@@ -1113,14 +1113,32 @@ export class EventHandlerManager implements AppModule {
     return layers;
   }
 
-  private persistMissionPanelOrder(panelOrder: string[]): void {
+  private persistMissionPanelOrder(panelOrder: string[], bottomPanelIds: string[] = []): void {
     saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
-    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', []);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomPanelIds);
     try {
       localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
     } catch {
       // Storage can be unavailable; the current session still applies the in-memory order.
     }
+  }
+
+  private readStoredPanelIds(key: string): string[] | null {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return null;
+      return parsed.filter((value): value is string => typeof value === 'string');
+    } catch {
+      return null;
+    }
+  }
+
+  private snapshotEffectiveBottomPanelIds(): string[] {
+    const bottomSet = this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
+    if (bottomSet) return bottomSet;
+    return this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY + '-bottom') ?? [];
   }
 
   private scheduleMissionDataRefresh(): void {
@@ -1209,6 +1227,110 @@ export class EventHandlerManager implements AppModule {
     showToast(`Mission preset applied: ${applied.preset.label}`);
     this.renderMissionPresetControl();
     this.closeMissionPresetPopover();
+  }
+
+  /**
+   * WebMCP entry: open the mission picker without applying a preset.
+   * Anchors to the visible trigger for the current viewport.
+   */
+  openMissionPresetPickerForWebMcp(): boolean {
+    if (this.ctx.isDestroyed) return false;
+    const mobile = this.ctx.isMobile;
+    const anchor = document.getElementById(mobile ? 'mobileMenuMission' : 'missionPresetBtn');
+    this.openMissionPresetPopover(anchor, mobile);
+    return this.missionPresetPopover !== null;
+  }
+
+  /**
+   * WebMCP entry: apply a bundled mission preset through the same path as the
+   * visible mission control. Snapshots prior dashboard state and restores it
+   * if the commit throws before completion.
+   */
+  applyMissionPresetForWebMcp(presetId: MissionPresetId): {
+    changed: boolean;
+    priorPresetId: string | null;
+  } {
+    if (this.ctx.isDestroyed) {
+      throw new Error('Dashboard is no longer available.');
+    }
+
+    const snapshot = this.snapshotMissionDashboardState();
+    try {
+      this.applyMissionPreset(presetId);
+      const nextPresetId = loadStoredMissionPreset()?.id ?? null;
+      const mapState = this.ctx.map?.getState();
+      const changed = snapshot.presetId !== nextPresetId
+        || JSON.stringify(snapshot.panelSettings) !== JSON.stringify(this.ctx.panelSettings)
+        || JSON.stringify(snapshot.mapLayers) !== JSON.stringify(this.ctx.mapLayers)
+        || snapshot.mapView !== (mapState?.view ?? snapshot.mapView)
+        || snapshot.mapZoom !== (mapState?.zoom ?? snapshot.mapZoom)
+        || snapshot.timeRange !== (mapState?.timeRange ?? snapshot.timeRange);
+      return { changed, priorPresetId: snapshot.presetId };
+    } catch (error) {
+      this.restoreMissionDashboardState(snapshot);
+      throw error;
+    }
+  }
+
+  private snapshotMissionDashboardState(): {
+    panelSettings: Record<string, PanelConfig>;
+    mapLayers: MapLayers;
+    panelOrder: string[];
+    bottomPanelIds: string[];
+    presetId: string | null;
+    mapView: MapView;
+    mapZoom: number;
+    timeRange: string;
+  } {
+    const mapState = this.ctx.map?.getState();
+    return {
+      panelSettings: structuredClone(this.ctx.panelSettings),
+      mapLayers: { ...this.ctx.mapLayers },
+      panelOrder: this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY) ?? [],
+      bottomPanelIds: this.snapshotEffectiveBottomPanelIds(),
+      presetId: loadStoredMissionPreset()?.id ?? null,
+      mapView: (mapState?.view ?? 'global') as MapView,
+      mapZoom: mapState?.zoom ?? 2,
+      timeRange: mapState?.timeRange ?? '7d',
+    };
+  }
+
+  private restoreMissionDashboardState(snapshot: {
+    panelSettings: Record<string, PanelConfig>;
+    mapLayers: MapLayers;
+    panelOrder: string[];
+    bottomPanelIds: string[];
+    presetId: string | null;
+    mapView: MapView;
+    mapZoom: number;
+    timeRange: string;
+  }): void {
+    if (this.missionDataRefreshTimer) {
+      window.clearTimeout(this.missionDataRefreshTimer);
+      this.missionDataRefreshTimer = null;
+    }
+    const previousMapLayers = { ...this.ctx.mapLayers };
+    this.ctx.panelSettings = structuredClone(snapshot.panelSettings);
+    this.ctx.mapLayers = { ...snapshot.mapLayers };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+    this.persistMissionPanelOrder(snapshot.panelOrder, snapshot.bottomPanelIds);
+    if (snapshot.presetId) {
+      saveMissionPreset(snapshot.presetId as MissionPresetId);
+    } else {
+      clearMissionPreset();
+    }
+    this.applyPanelSettings();
+    this.callbacks.applySavedPanelOrder?.();
+    this.ctx.unifiedSettings?.refreshPanelToggles();
+    this.ctx.map?.setLayers(this.ctx.mapLayers);
+    this.applyMissionMapLayerTransitions(previousMapLayers, this.ctx.mapLayers);
+    this.ctx.map?.setView(snapshot.mapView, snapshot.mapZoom);
+    this.ctx.map?.setTimeRange(snapshot.timeRange as '1h' | '6h' | '24h' | '48h' | '7d' | 'all');
+    this.callbacks.mountLiveNewsIfReady?.();
+    this.callbacks.syncDataFreshnessWithLayers();
+    this.syncUrlState();
+    this.renderMissionPresetControl();
   }
 
   private resetMissionPreset(): void {
@@ -1949,7 +2071,7 @@ export class EventHandlerManager implements AppModule {
           const allSources = this.getAllSourceNames();
           const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
           if (currentlyEnabled + 1 > FREE_MAX_SOURCES) {
-            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }), 3000);
             return;
           }
         }
@@ -1968,7 +2090,7 @@ export class EventHandlerManager implements AppModule {
           const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
           const wouldEnable = names.filter(n => this.ctx.disabledSources.has(n) && allSources.includes(n)).length;
           if (currentlyEnabled + wouldEnable > FREE_MAX_SOURCES) {
-            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }), 3000);
             return;
           }
         }
@@ -2206,16 +2328,6 @@ export class EventHandlerManager implements AppModule {
         }
       }
     }
-  }
-
-  showToast(msg: string): void {
-    document.querySelector('.toast-notification')?.remove();
-    const el = document.createElement('div');
-    el.className = 'toast-notification';
-    el.textContent = msg;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('visible'));
-    setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
   }
 
   shouldShowIntelligenceNotifications(): boolean {

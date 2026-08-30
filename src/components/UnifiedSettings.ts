@@ -71,17 +71,7 @@ import {
   fontScaleLabel,
   parseFontScale,
 } from '@/services/font-scale-settings';
-
-
-function showToast(msg: string): void {
-  document.querySelector('.toast-notification')?.remove();
-  const el = document.createElement('div');
-  el.className = 'toast-notification';
-  el.textContent = msg;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => el.classList.add('visible'));
-  setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 4000);
-}
+import { showToast } from '@/utils/toast';
 
 export interface UnifiedSettingsConfig {
   getPanelSettings: () => Record<string, PanelConfig>;
@@ -773,6 +763,7 @@ export class UnifiedSettings {
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
+      onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
       isSignedIn,
     });
     const showNotificationsTab = !this.config.isDesktopApp;

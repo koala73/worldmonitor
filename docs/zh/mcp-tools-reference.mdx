@@ -540,6 +540,112 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_five_factor_scorecard`
+
+返回冻结版 v1 五因素评分卡。一次调用必须且只能选择一个国家、一个官方集团，或一个自定义成员列表。响应读取同一个原子快照，因此国家与集团使用相同的证据批次和方法版本。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `country_code` | string | 三选一 | ISO 3166-1 alpha-2 国家代码，不区分大小写。 |
+| `preset` | string | 三选一 | `USMCA`、`EU27`、`BRICS`、`GCC`、`ASEAN` 或 `NATO`。 |
+| `members` | string[] | 三选一 | 2–30 个唯一的大写 ISO-2 代码组成的自定义集团。 |
+
+- **API 端点：** `GET /api/scorecard/v1/get-five-factor-scorecard`、`GET /api/scorecard/v1/get-bloc-scorecard`
+- **访问：** `subscription`，需要 Pro 订阅。
+- **类型：** 规范 RPC 代理，读取 `scorecard:five-factor:v1`；请求时不获取上游来源。
+- **新鲜度：** 每日播种，新鲜度预算为 36 小时。
+
+读取每个支柱的 `score` 与 `subScore` 前，必须先检查 `hasScore`。当标志为 false 时，proto3 的零只是占位值，不是评分。读取输入数值前，必须先检查 `available` 与 `hasValue`。`insufficientReasons` 与 `unavailableReason` 会说明缺失原因，包括来源政策限制 `redistribution-blocked`。
+
+集团的食品和能源支柱先汇总实际生产与消费，再计算评分。人口结构、科技与国防的连续子分数按人口加权。因此，集团评分不是成员档位的简单平均。参见[五因素评分卡方法](/zh/methodology/five-factor-scorecard)。
+
+<CodeGroup>
+
+```bash 国家
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"country_code":"DE"}}
+  }'
+```
+
+```bash 官方集团
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"preset":"ASEAN"}}
+  }'
+```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+紧凑列出冻结评分卡批次中的所有国家。每条记录保留支柱评分、档位、输入覆盖率和数据不足原因，但省略原始输入和来源观测，确保完整国家集合不超过 MCP 输出预算。
+
+- **参数：** 无
+- **API 端点：** `GET /api/scorecard/v1/list-five-factor-scorecards`
+- **访问：** `subscription`，需要 Pro 订阅。
+- **类型：** 同一个原子 `scorecard:five-factor:v1` 快照的紧凑投影。
+
+如需输入来源、原始观测或集团汇总，请使用 `get_five_factor_scorecard`。
+读取 `score` 或 `subScore` 前必须检查 `hasScore`。若 `hasScore` 为 false，两个数值零只是 protobuf 的数据不足占位符，并不表示韧性实测为零。
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+  }'
+```
+
+### `get_resilience_indicators`
+
+在完整的 72 行指标注册表上解释单个国家的国家韧性指数分数。每一行都带有归一化分量分数、活动评分器使用的运行时权重、策略生效后的有效贡献、已观测或插补状态、观测年龄与来源溯源。各项贡献会与每个已发布的维度分数对账，因此无需重新实现条件公式即可审计一个分数。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 说明 |
+|------|------|-----:|------|
+| `country_code` | string | 是 | ISO 3166-1 alpha-2 国家代码，例如 `DE`。不区分大小写。 |
+
+- **API 端点：** `GET /api/resilience/v1/get-resilience-indicators`
+- **访问权限：** `subscription` — REST 与 MCP 两条路径都需要 Pro 订阅。
+- **类型：** 对实际运行的评分器分支所做的请求内追踪，并非第二套评分实现。
+- **新鲜度：** 读取由六小时公共分数缓存引用的不可变追踪代次。该追踪存放在独立的七小时边车中，使分数与排名读取保持轻量。
+
+该工具不接受 `jmespath`。两个运行时都会以 JSON-RPC `-32602` 或 HTTP 400 拒绝非空投影，因为投影可能使被允许的原始值脱离授权其再分发的署名与抓取字段。
+
+各行区分 `observed`、`imputed`、`missing`、`fallback`、`source-failure`、`inactive`、`retired` 与 `not-applicable` 状态。请先读状态再读值：已退役或未启用的行是显式的，不会声称虚假的对账结果。
+
+原始来源值是选择性提供的，并且失败关闭。只有在观测值为实测、每个参与贡献的提供方都已完成再分发审查、所需署名齐备，且贡献种子具有抓取时间戳时，该行才会包含原始值。受限行仍会返回 WorldMonitor 的归一化分数、贡献、来源署名以及已知时的来源年份——抑制通过原始值策略状态与原因报告，绝不用数值零表示。`observationProvenance` 用于区分确切的选定来源与仅来自注册表的署名。逐来源的决策表参见[指标许可决策](/zh/methodology/resilience-indicator-licensing)。
+
+`sourceYear` 是提供方测量该现象的时间，`retrievedAt` 是 WorldMonitor 抓取它的时间。两者不可互换，观测年龄始终依据观测日期推导。对于复合指标，`sourceYear` 取贡献年份中最早的一个。
+
+公共的 `get_resilience_score` 响应不受该工具影响，并保持模式兼容。
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_resilience_indicators","arguments":{"country_code":"DE"}}
+  }'
+```
+
 ### `get_mineral_production`
 
 各国矿产开采与冶炼份额及 HHI，来自 USGS Mineral Commodity Summaries 年度种子（BGS 补 USGS 缺表的品种，尤其是铀）。用于“谁精炼 X / 某国生产什么”。矿床位置仍用 `get_commodity_geo`。

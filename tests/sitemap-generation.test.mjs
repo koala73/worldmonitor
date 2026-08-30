@@ -28,7 +28,7 @@ function isolatedGitEnv(overrides = {}) {
   return env;
 }
 
-function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots = 'index, follow' }) {
+function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots = 'index, follow, max-image-preview:large, max-snippet:-1' }) {
   const target = join(publicDir, relativePath);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(
@@ -78,9 +78,13 @@ describe('root sitemap generator', () => {
       });
 
       const resolveMaterialLastmod = () => '2026-07-21';
+      const existingSitemapSource = `<?xml version="1.0"?><urlset><url>`
+        + `<loc>${SITE_ORIGIN}/countries/norway/</loc>`
+        + '<lastmod>2026-07-20</lastmod></url></urlset>';
       const firstEntries = buildSitemapEntries({
         repoRoot,
         publicDir,
+        existingSitemapSource,
         resolveMaterialLastmod,
         requireCompleteCorpus: false,
         today: '2026-07-27',
@@ -88,6 +92,7 @@ describe('root sitemap generator', () => {
       const secondEntries = buildSitemapEntries({
         repoRoot,
         publicDir,
+        existingSitemapSource,
         resolveMaterialLastmod,
         requireCompleteCorpus: false,
         today: '2026-07-27',

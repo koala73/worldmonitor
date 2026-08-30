@@ -38,15 +38,15 @@
  * adding a decision without a vocabulary entry fails typecheck at that call
  * rather than silently recording nothing.
  *
- * `already-has-passkey` and `already-offered` are shared by both halves on
- * purpose. The shim now checks them too, cheaply, so it can skip its dynamic
- * import entirely rather than paying for a chunk that only bails out.
+ * `already-offered` (this device) and `offer-cap-reached` (this account) are
+ * shared by both halves on purpose. The shim checks them too, cheaply, so it
+ * can skip its dynamic import entirely rather than paying for a chunk that only
+ * bails out.
  */
 export const PASSKEY_OFFER_REASONS = [
   // Boot shim
   'clerk-absent',
   'signed-out-observed',
-  'already-offered-account',
   'load-sign-in',
   'load-returning-session',
   'import-started',
@@ -55,12 +55,14 @@ export const PASSKEY_OFFER_REASONS = [
   'not-armed',
   'not-ready',
   'ineligible-environment',
-  'already-has-passkey',
-  'already-offered',
   'no-platform-authenticator',
+  'offer-reservation-unavailable',
   'blocked-by-overlay',
   'superseded',
   'mounted',
+  // Shared by both halves
+  'already-offered',
+  'offer-cap-reached',
 ] as const;
 
 export type PasskeyOfferReason = (typeof PASSKEY_OFFER_REASONS)[number];

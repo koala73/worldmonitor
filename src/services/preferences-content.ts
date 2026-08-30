@@ -44,6 +44,7 @@ const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 export interface PreferencesHost {
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  onSettingSaved?: () => void;
   isSignedIn?: boolean;
 }
 
@@ -117,6 +118,85 @@ function updateAiStatus(container: HTMLElement): void {
   } else {
     dot.classList.add('disabled');
     text.textContent = t('components.insights.aiFlowStatusDisabled');
+  }
+}
+
+function handlePreferenceChange(
+  target: HTMLInputElement,
+  container: HTMLElement,
+  host: PreferencesHost,
+): boolean | Promise<boolean> {
+  switch (target.id) {
+    case 'us-stream-quality':
+      setStreamQuality(target.value as StreamQuality);
+      return true;
+    case 'us-globe-visual-preset':
+      setGlobeVisualPreset(target.value as GlobeVisualPreset);
+      return true;
+    case 'us-theme':
+      setThemePreference(target.value as ThemePreference);
+      return true;
+    case 'us-font-family':
+      setFontFamily(target.value as FontFamily);
+      return true;
+    case 'us-font-scale': {
+      const scale = parseFontScale(target.value);
+      if (scale === undefined) return false;
+      setFontScale(scale);
+      return true;
+    }
+    case 'us-map-provider': {
+      const provider = target.value as MapProvider;
+      setMapProvider(provider);
+      renderMapThemeDropdown(container, provider);
+      host.onMapProviderChange?.(provider);
+      window.dispatchEvent(new CustomEvent('map-theme-changed'));
+      return true;
+    }
+    case 'us-map-theme':
+      setMapTheme(getMapProvider(), target.value);
+      window.dispatchEvent(new CustomEvent('map-theme-changed'));
+      return true;
+    case 'us-live-streams-always-on':
+      setLiveStreamsAlwaysOn(target.checked);
+      return true;
+    case 'us-language':
+      trackLanguageChange(target.value);
+      return changeLanguage(target.value);
+    case 'us-cloud':
+      setAiFlowSetting('cloudLlm', target.checked);
+      updateAiStatus(container);
+      return true;
+    case 'us-browser': {
+      setAiFlowSetting('browserModel', target.checked);
+      const warn = container.querySelector<HTMLElement>('.ai-flow-toggle-warn');
+      if (warn) warn.style.display = target.checked ? 'block' : 'none';
+      // Headline Memory is a child of Browser Local Model — keep its
+      // toggle's enabled/disabled state in sync without re-rendering
+      // the whole panel. The runtime gate (`isHeadlineMemoryEnabled`)
+      // already AND-gates both flags; this just mirrors that visually.
+      const hmInput = container.querySelector<HTMLInputElement>('#us-headline-memory');
+      const hmRow = hmInput?.closest('.ai-flow-toggle-row');
+      const hmSwitch = hmInput?.closest('.ai-flow-switch');
+      if (hmInput && !host.isDesktopApp) {
+        hmInput.disabled = !target.checked;
+        hmRow?.classList.toggle('is-disabled', !target.checked);
+        hmSwitch?.classList.toggle('is-disabled', !target.checked);
+      }
+      updateAiStatus(container);
+      return true;
+    }
+    case 'us-map-flash':
+      setAiFlowSetting('mapNewsFlash', target.checked);
+      return true;
+    case 'us-headline-memory':
+      setAiFlowSetting('headlineMemory', target.checked);
+      return true;
+    case 'us-badge-anim':
+      setAiFlowSetting('badgeAnimation', target.checked);
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -457,77 +537,14 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           return;
         }
 
-        if (target.id === 'us-stream-quality') {
-          setStreamQuality(target.value as StreamQuality);
+        const saveResult = handlePreferenceChange(target, container, host);
+        if (typeof saveResult === 'boolean') {
+          if (saveResult) host.onSettingSaved?.();
           return;
         }
-        if (target.id === 'us-globe-visual-preset') {
-          setGlobeVisualPreset(target.value as GlobeVisualPreset);
-          return;
-        }
-        if (target.id === 'us-theme') {
-          setThemePreference(target.value as ThemePreference);
-          return;
-        }
-        if (target.id === 'us-font-family') {
-          setFontFamily(target.value as FontFamily);
-          return;
-        }
-        if (target.id === 'us-font-scale') {
-          const scale = parseFontScale(target.value);
-          if (scale !== undefined) setFontScale(scale);
-          return;
-        }
-        if (target.id === 'us-map-provider') {
-          const provider = target.value as MapProvider;
-          setMapProvider(provider);
-          renderMapThemeDropdown(container, provider);
-          host.onMapProviderChange?.(provider);
-          window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-map-theme') {
-          const provider = getMapProvider();
-          setMapTheme(provider, target.value);
-          window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-live-streams-always-on') {
-          setLiveStreamsAlwaysOn(target.checked);
-          return;
-        }
-        if (target.id === 'us-language') {
-          trackLanguageChange(target.value);
-          void changeLanguage(target.value);
-          return;
-        }
-        if (target.id === 'us-cloud') {
-          setAiFlowSetting('cloudLlm', target.checked);
-          updateAiStatus(container);
-        } else if (target.id === 'us-browser') {
-          setAiFlowSetting('browserModel', target.checked);
-          const warn = container.querySelector('.ai-flow-toggle-warn') as HTMLElement;
-          if (warn) warn.style.display = target.checked ? 'block' : 'none';
-          // Headline Memory is a child of Browser Local Model — keep its
-          // toggle's enabled/disabled state in sync without re-rendering
-          // the whole panel. The runtime gate (`isHeadlineMemoryEnabled`)
-          // already AND-gates both flags; this just mirrors that visually.
-          const hmInput = container.querySelector<HTMLInputElement>('#us-headline-memory');
-          const hmRow = hmInput?.closest('.ai-flow-toggle-row');
-          const hmSwitch = hmInput?.closest('.ai-flow-switch');
-          if (hmInput && !host.isDesktopApp) {
-            hmInput.disabled = !target.checked;
-            hmRow?.classList.toggle('is-disabled', !target.checked);
-            hmSwitch?.classList.toggle('is-disabled', !target.checked);
-          }
-          updateAiStatus(container);
-        } else if (target.id === 'us-map-flash') {
-          setAiFlowSetting('mapNewsFlash', target.checked);
-        } else if (target.id === 'us-headline-memory') {
-          setAiFlowSetting('headlineMemory', target.checked);
-        } else if (target.id === 'us-badge-anim') {
-          setAiFlowSetting('badgeAnimation', target.checked);
-        }
+        void saveResult.then((saved) => {
+          if (saved) host.onSettingSaved?.();
+        }).catch(() => undefined);
       }, { signal });
 
       container.addEventListener('click', (e) => {

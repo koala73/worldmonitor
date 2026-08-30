@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.scorecard.v1;
+
+import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
+import "worldmonitor/scorecard/v1/scorecard.proto";
+
+message GetBlocScorecardRequest {
+  // Official bloc preset: USMCA, EU27, BRICS, GCC, ASEAN, or NATO. Values are case-sensitive. Omit when members is provided.
+  string preset = 1 [
+    (buf.validate.field).string.pattern = "^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$",
+    (sebuf.http.query) = { name: "preset" }
+  ];
+  // Custom list of 2-30 unique uppercase ISO 3166-1 alpha-2 members. Provide either preset or members; do not provide both.
+  repeated string members = 2 [
+    (buf.validate.field).repeated.max_items = 30,
+    (buf.validate.field).repeated.unique = true,
+    (buf.validate.field).repeated.items.string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = { name: "members" }
+  ];
+}
+
+message GetBlocScorecardResponse {
+  FiveFactorBlocScorecard scorecard = 1;
+  bool unavailable = 2;
+  string unavailable_reason = 3 [(buf.validate.field).string.pattern = "^(?:|bloc-members-unavailable|scorecard-snapshot-unavailable)$"];
+}

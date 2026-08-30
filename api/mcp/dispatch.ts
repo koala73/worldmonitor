@@ -266,6 +266,23 @@ export async function dispatchToolsCall(
     return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
   }
 
+  // Raw resilience values are redistribution-safe only when they remain
+  // attached to their source, licence, retrieval time, and provenance fields.
+  // Reject projection before quota reservation and execution so a caller
+  // cannot use the universal JMESPath facility to separate those fields.
+  if (
+    tool.name === 'get_resilience_indicators'
+    && typeof p.arguments?.jmespath === 'string'
+    && p.arguments.jmespath.length > 0
+  ) {
+    return rpcError(
+      id,
+      -32602,
+      'JMESPath projection is not available for this attribution-bound response',
+      corsHeaders,
+    );
+  }
+
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in
   // exactly one place — the handler's free-tier branch, after matching this
   // same `_freeTier` flag — but a free context reaching any other tool would be

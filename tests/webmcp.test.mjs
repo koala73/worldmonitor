@@ -146,6 +146,86 @@ function createBindings(overrides = {}) {
       changed: true,
       message: 'Panel enabled.',
     }),
+    listMissionPresets: async () => ({
+      ok: true,
+      variant: 'full',
+      activePresetId: null,
+      presets: [],
+      count: 0,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: true,
+      monitor: 'full',
+      map: {
+        view: 'global',
+        zoom: 2.3,
+        timeRange: '7d',
+        enabledLayers: ['tradeRoutes'],
+      },
+      panels: { enabled: ['map', 'supply-chain'] },
+      message: 'Mission preset applied: Supply-Chain Risk.',
+    }),
+    openMissionPicker: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'mission_picker',
+      overlay: 'open',
+      message: 'Opened mission presets.',
+      context,
+    }),
+    getPanelLayout: async () => ({
+      regions: {
+        sidebar: { available: true, panelCount: 1 },
+        bottom: { available: false, panelCount: 0 },
+      },
+      panels: [{
+        id: 'giving',
+        region: 'sidebar',
+        index: 0,
+        collapsed: false,
+        fullscreen: false,
+        collapsible: false,
+        fullscreenCapable: false,
+        fixed: false,
+      }],
+      panelCount: 1,
+    }),
+    setPanelCollapsed: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_collapsed',
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: true,
+      changed: true,
+      message: 'Panel collapsed.',
+      persisted: true,
+    }),
+    movePanel: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'move',
+      panelId: 'giving',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      message: 'Moved panel.',
+      persisted: true,
+    }),
+    setPanelFullscreen: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: 'live-news',
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+      changed: true,
+      message: 'Panel entered fullscreen.',
+    }),
     getAccessContext: async () => ({
       accountState: 'signed_out',
       clerk: 'unavailable',
@@ -287,9 +367,11 @@ describe('webmcp.ts: current API contract', () => {
         [
           'get_access_context',
           'get_dashboard_context',
+          'get_panel_layout',
           'list_map_layers',
           'list_dashboard_panels',
           'list_dashboard_tabs',
+          'list_mission_presets',
           'search_dashboard',
         ]
           .includes(tool.name),
@@ -1296,6 +1378,59 @@ describe('webmcp.ts: current API contract', () => {
           message: 'Panel enabled.',
         };
       },
+      applyMissionPreset: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          presetId: 'supply-chain-risk',
+          label: 'Supply-Chain Risk',
+          changed: true,
+          monitor: 'full',
+          map: {
+            view: 'global',
+            zoom: 2.3,
+            timeRange: '7d',
+            enabledLayers: ['tradeRoutes'],
+          },
+          panels: { enabled: ['map', 'supply-chain'] },
+          message: 'Mission preset applied: Supply-Chain Risk.',
+        };
+      },
+      openMissionPicker: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          destination: 'mission_picker',
+          overlay: 'open',
+          message: 'Opened mission presets.',
+          context: {
+            variant: 'full',
+            map: {
+              view: 'global',
+              center: { lat: 0, lon: 0 },
+              zoom: 2,
+              timeRange: '7d',
+              enabledLayers: ['weather'],
+            },
+            panels: { mounted: ['map'], enabled: ['map'] },
+          },
+        };
+      },
+      setPanelFullscreen: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: 'set_fullscreen',
+          panelId: 'live-news',
+          requestedFullscreen: true,
+          effectiveFullscreen: true,
+          changed: true,
+          message: 'Panel entered fullscreen.',
+        };
+      },
       openSignIn: async () => {
         mutationCalls += 1;
         return { ok: true, status: 'opened' };
@@ -1330,6 +1465,9 @@ describe('webmcp.ts: current API contract', () => {
       open_alerts: {},
       open_dashboard_panel: { panelId: 'markets' },
       set_panel_enabled: { panelId: 'giving', enabled: true },
+      set_panel_collapsed: { panelId: 'live-news', collapsed: true },
+      move_panel: { panelId: 'giving', region: 'sidebar', index: 0 },
+      set_panel_fullscreen: { panelId: 'live-news', fullscreen: true },
       set_map_view: { view: 'eu' },
       set_map_layers: { layers: { conflicts: true } },
       set_time_range: { timeRange: '24h' },
@@ -1378,6 +1516,8 @@ describe('webmcp.ts: current API contract', () => {
       'set_map_layers',
       'set_map_mode',
       'set_panel_enabled',
+      'set_panel_collapsed',
+      'move_panel',
       'select_dashboard_tab',
       'create_dashboard_tab',
       'rename_dashboard_tab',
@@ -1462,6 +1602,18 @@ describe('webmcp.ts: current API contract', () => {
       },
       open_dashboard_panel: appliedAction('open_panel'),
       set_panel_enabled: denial,
+      set_panel_collapsed: denial,
+      move_panel: denial,
+      set_panel_fullscreen: {
+        ok: true,
+        status: 'applied',
+        actionType: 'set_fullscreen',
+        panelId: 'live-news',
+        requestedFullscreen: true,
+        effectiveFullscreen: true,
+        changed: true,
+        message: 'Panel entered fullscreen.',
+      },
       set_map_view: appliedAction('set_view'),
       set_map_layers: denial,
       set_time_range: appliedAction('set_time_range'),

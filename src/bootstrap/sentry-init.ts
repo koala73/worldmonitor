@@ -936,6 +936,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
           // every engine's token/identifier/keyword/EOF wording is covered.
           || /appendChild.*Unexpected /.test(msg)
+          // Platform-authenticator failure raised by the browser's WebAuthn /
+          // Credential Management layer — `NotReadableError: An unknown error
+          // occurred while talking to the credential manager.` The phrasing is
+          // Chromium's own CredMan bridge wording, emitted when the OS-side
+          // credential service is unavailable or wedged (observed on Android 10
+          // / Chrome Mobile). It reaches us as an unhandled rejection out of
+          // Clerk's sign-in passkey autofill (`navigator.credentials.get`),
+          // which runs entirely inside the Clerk bundle — the event carries zero
+          // captured frames. Our own passkey path never leaks: `createPasskey()`
+          // in src/services/passkeys.ts wraps `user.createPasskey()` in
+          // try/catch and returns a classified outcome, and `navigator.
+          // credentials` appears nowhere else in src/ or api/. So a
+          // no-first-party occurrence is third-party SDK / OS noise, while a
+          // future first-party WebAuthn call site would keep a source-mapped
+          // .ts frame and still surface (WORLDMONITOR-11B).
+          || /An unknown error occurred while talking to the credential manager/.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (
