@@ -500,16 +500,14 @@ export function applyWebMcpMissionPreset(
         ? `Mission preset applied: ${preset.label}.`
         : `Mission preset already active: ${preset.label}.`,
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
       status: 'denied',
       presetId: preset.id,
       label: preset.label,
       reason: 'apply_failed',
-      message: error instanceof Error && error.message
-        ? error.message.slice(0, 160)
-        : 'Mission preset application failed and was rolled back.',
+      message: 'Mission preset application failed and was rolled back.',
     };
   }
 }
