@@ -3,8 +3,7 @@
  * Sync missing i18n keys from en.json into every other locale file.
  *
  * Existing translations are preserved. Missing keys are copied from English
- * according to each locale's CLDR plural categories (i18next still falls back
- * to en until the copied value is translated).
+ * so all locales share the same key structure (i18next still falls back to en).
  *
  * Generated catalogues are the exception. `zh-TW.json` is converted from
  * `zh.json` by scripts/convert-zh-tw.py, not translated from en.json, so an
@@ -22,17 +21,16 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { flattenKeys } from './_locale-keys.mjs';
+import { flattenKeys, localePathTokens } from './_locale-keys.mjs';
 // Imported rather than restated: this file would otherwise be a third place
 // that has to be told zh-TW is generated, after translate-locales.mjs and the
 // catalogue test.
 import {
+  GENERATED_LOCALES,
   expectedKeysForLocale,
   findPluralBases,
   flatten,
-  GENERATED_LOCALES,
   getPluralCategories,
-  setNested,
 } from './translate-locales.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,19 +41,89 @@ const GENERATED_HINT = 'Run: npm run locales:zh-tw';
 // Shell bundles (*.shell.json) are intentionally partial first-paint resources, not full locales.
 
 /**
- * Append missing locale-specific expected leaves without changing existing
- * translations or importing English plural categories the locale never uses.
+ * Merge en (template) into a locale, preserving the locale's EXISTING key order
+ * and values. Missing keys are appended from en (English placeholder until
+ * translated). Iterating the locale first keeps the diff to just the new keys
+ * instead of rewriting every file into en's order.
  *
- * @param {Record<string, unknown>} locale
- * @param {Record<string, string>} expected
+ * Brand-new pluralized keys use the locale's CLDR projection. Categories that
+ * English does not carry (for example Arabic `_zero`, `_two`, `_few`, and
+ * `_many`) start with the projected English fallback until translated.
+ *
+ * Leaf values (strings and arrays) prefer the locale's translation and fall
+ * back to en; nested objects are merged key-by-key.
+ *
+ * @param {unknown} template
+ * @param {unknown} locale
  */
-export function syncMissingExpectedKeys(locale, expected) {
-  const synced = structuredClone(locale);
-  const localeKeys = new Set(Object.keys(flatten(locale)));
-  for (const [key, value] of Object.entries(expected)) {
-    if (!localeKeys.has(key)) setNested(synced, key, value);
+export function syncFromTemplate(template, locale, expectedKeys, prefix = '') {
+  if (typeof template === 'string') {
+    return typeof locale === 'string' ? locale : template;
   }
-  return synced;
+
+  // Arrays are leaf values: keep the locale's translated array, fall back to en.
+  if (Array.isArray(template)) {
+    return Array.isArray(locale) ? locale : template;
+  }
+
+  if (template && typeof template === 'object') {
+    /** @type {Record<string, unknown>} */
+    const out = {};
+    /** @type {Record<string, unknown>} */
+    const templateObj = /** @type {Record<string, unknown>} */ (template);
+    const localeObj =
+      locale && typeof locale === 'object' && !Array.isArray(locale)
+        ? /** @type {Record<string, unknown>} */ (locale)
+        : {};
+    const expectedKeyList = Object.keys(expectedKeys);
+
+    // Keep the locale's own key order (and recurse to preserve nested order).
+    // Locale-only keys (legacy / in-flight translations) are carried through.
+    for (const [key, value] of Object.entries(localeObj)) {
+      const keyPath = prefix ? `${prefix}.${key}` : key;
+      out[key] = key in templateObj
+        ? syncFromTemplate(templateObj[key], value, expectedKeys, keyPath)
+        : value;
+    }
+
+    // Append keys present in en but missing from the locale, in en's order.
+    for (const [key, value] of Object.entries(templateObj)) {
+      if (!(key in out)) {
+        const keyPath = prefix ? `${prefix}.${key}` : key;
+        const isExpected = Object.hasOwn(expectedKeys, keyPath)
+          || expectedKeyList.some((candidate) => candidate.startsWith(`${keyPath}.`));
+        if (isExpected) {
+          out[key] = syncFromTemplate(value, localeObj[key], expectedKeys, keyPath);
+        }
+      }
+    }
+
+    if (prefix === '') {
+      for (const [keyPath, value] of Object.entries(expectedKeys)) {
+        setMissingDottedPath(out, keyPath, value);
+      }
+    }
+
+    return out;
+  }
+
+  return template;
+}
+
+function setMissingDottedPath(target, keyPath, value) {
+  const segments = localePathTokens(keyPath).map((token) => token.value);
+  let cursor = target;
+  for (let index = 0; index < segments.length - 1; index++) {
+    const segment = segments[index];
+    const wantsArray = typeof segments[index + 1] === 'number';
+    const existing = cursor[segment];
+    if (!existing || typeof existing !== 'object' || Array.isArray(existing) !== wantsArray) {
+      cursor[segment] = wantsArray ? [] : {};
+    }
+    cursor = cursor[segment];
+  }
+  const leaf = segments.at(-1);
+  if (leaf !== undefined && !(leaf in cursor)) cursor[leaf] = value;
 }
 
 /**
@@ -89,12 +157,12 @@ function main() {
     const localeCode = file.replace(/\.json$/, '');
     const locale = readJson(path, file);
     const localeKeys = new Set(flattenKeys(locale));
-    const expected = expectedKeysForLocale(
+    const expectedKeys = expectedKeysForLocale(
       enFlat,
       pluralBases,
       getPluralCategories(localeCode),
     );
-    const missing = Object.keys(expected).filter((key) => !localeKeys.has(key));
+    const missing = Object.keys(expectedKeys).filter((key) => !localeKeys.has(key));
 
     if (missing.length === 0) {
       console.log(`${file}: up to date (${localeKeys.size} keys)`);
@@ -117,7 +185,7 @@ function main() {
     console.log(`${file}: missing ${missing.length} key(s)`);
 
     if (!CHECK_ONLY) {
-      const synced = syncMissingExpectedKeys(locale, expected);
+      const synced = syncFromTemplate(en, locale, expectedKeys);
       writeFileSync(path, `${JSON.stringify(synced, null, 2)}\n`, 'utf8');
     }
   }
@@ -130,12 +198,12 @@ function main() {
       }
       process.exit(1);
     }
-    console.log(`All ${localeFiles.length} locale files satisfy their CLDR-aware en.json contract.`);
+    console.log(`All ${localeFiles.length} locale files match their CLDR projection of en.json.`);
     return;
   }
 
   if (totalMissing === 0) {
-    console.log('All locale files already satisfy their CLDR-aware en.json contract.');
+    console.log('All locale files already match their CLDR projection of en.json.');
     return;
   }
 

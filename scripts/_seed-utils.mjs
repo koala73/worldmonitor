@@ -22,6 +22,13 @@ async function exitAfterTelemetryFlush(code) {
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
+export const SEED_REDIS_COMMAND_TIMEOUT_MS = 15_000;
+export const SEED_REDIS_RETRY_ATTEMPTS = 3;
+export const SEED_REDIS_RETRY_BASE_MS = 1_000;
+export const SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS = 10_000;
+export const SEED_VERIFY_COMMAND_TIMEOUT_MS = 5_000;
+export const SEED_VERIFY_ATTEMPTS = 2;
+export const SEED_VERIFY_RETRY_DELAY_MS = 500;
 
 const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -396,7 +403,7 @@ export async function redisCommand(url, token, command, options = {}) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(command),
-    signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? SEED_REDIS_COMMAND_TIMEOUT_MS),
   });
   return parseRedisCommandResponse(resp, label);
 }
@@ -413,7 +420,7 @@ async function redisGet(url, token, key) {
     data = await withRetry(async () => {
       const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
         headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(SEED_VERIFY_COMMAND_TIMEOUT_MS),
       });
       if (!resp.ok) {
         const err = new Error(`Redis GET ${key} failed: HTTP ${resp.status}`);
@@ -427,7 +434,7 @@ async function redisGet(url, token, key) {
         throw err;
       }
       return resp.json();
-    }, 2, 1000);
+    }, SEED_REDIS_RETRY_ATTEMPTS - 1, SEED_REDIS_RETRY_BASE_MS);
   } catch (err) {
     if (err.httpStatus == null) throw err;
     console.warn(`  Redis GET ${key}: degraded to null (${err.message})`);
@@ -474,7 +481,11 @@ export async function acquireLock(domain, runId, ttlMs) {
 export async function acquireLockSafely(domain, runId, ttlMs, opts = {}) {
   const label = opts.label || domain;
   try {
-    const locked = await withRetry(() => acquireLock(domain, runId, ttlMs), opts.maxRetries ?? 2, opts.delayMs ?? 1000);
+    const locked = await withRetry(
+      () => acquireLock(domain, runId, ttlMs),
+      opts.maxRetries ?? SEED_REDIS_RETRY_ATTEMPTS - 1,
+      opts.delayMs ?? SEED_REDIS_RETRY_BASE_MS,
+    );
     return { locked, skipped: false, reason: null };
   } catch (err) {
     if (isTransientRedisError(err)) {
@@ -571,8 +582,8 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
     },
-    2,    // 2 retries (3 attempts total) — sufficient for transient blips
-    1000, // 1s base delay; exponential backoff → 1s + 2s = ~3s worst-case
+    SEED_REDIS_RETRY_ATTEMPTS - 1,
+    SEED_REDIS_RETRY_BASE_MS,
           // cumulative wait between attempts. Plus per-attempt fetch time
           // (15s timeout each) means total worst-case before propagating ≈ 48s.
   );
@@ -671,7 +682,11 @@ export async function writeFreshnessMetadata(
   // seeder's top-level catch as `FATAL: The operation was aborted due to
   // timeout` → exit 1 (seed-gdelt-intel, issue #5437). redisCommand tags
   // permanent 4xx nonRetryable and 429 with Retry-After; withRetry honors both.
-  await withRetry(() => redisSet(url, token, metaKey, meta, metaTtl), 2, 1000);
+  await withRetry(
+    () => redisSet(url, token, metaKey, meta, metaTtl),
+    SEED_REDIS_RETRY_ATTEMPTS - 1,
+    SEED_REDIS_RETRY_BASE_MS,
+  );
   return meta;
 }
 
@@ -1024,9 +1039,9 @@ export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   await withRetry(async () => {
     await redisCommand(url, token, ['SET', key, payload, 'EX', ttl], {
       label: `Extra key ${key}`,
-      timeoutMs: 10_000,
+      timeoutMs: SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS,
     });
-  }, 2, 1000);
+  }, SEED_REDIS_RETRY_ATTEMPTS - 1, SEED_REDIS_RETRY_BASE_MS);
   console.log(`  Extra key ${key}: written`);
 }
 
@@ -2777,13 +2792,17 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
     // Verify (best-effort: write already succeeded, don't fail the job on transient read issues)
     let verified = false;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < SEED_VERIFY_ATTEMPTS; attempt++) {
       try {
         verified = !!(await verifySeedKey(canonicalKey));
         if (verified) break;
-        if (attempt === 0) await new Promise(r => setTimeout(r, 500));
+        if (attempt < SEED_VERIFY_ATTEMPTS - 1) {
+          await new Promise(r => setTimeout(r, SEED_VERIFY_RETRY_DELAY_MS));
+        }
       } catch {
-        if (attempt === 0) await new Promise(r => setTimeout(r, 500));
+        if (attempt < SEED_VERIFY_ATTEMPTS - 1) {
+          await new Promise(r => setTimeout(r, SEED_VERIFY_RETRY_DELAY_MS));
+        }
       }
     }
     if (verified) {

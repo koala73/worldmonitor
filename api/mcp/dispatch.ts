@@ -31,6 +31,9 @@ import type {
   McpToolExecutionContext,
 } from './types';
 import { utf8ByteLength } from './utils';
+// Currently the only stored-contract violation a post-filter can raise; add to this seam
+// rather than widening the catch below if another dataset grows one.
+import { isPhysicalDivergenceContractError as isMcpStoredContractError } from '../../server/_shared/physical-divergence-snapshot';
 
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
@@ -166,6 +169,11 @@ export async function executeTool(
     try {
       result = tool._postFilter(structuredClone(data), params);
     } catch (err) {
+      // A stored-contract violation must NOT fall through to `data`: that path serves the
+      // raw, unvalidated blob the filter just refused, which is the opposite of failing
+      // closed (#6448 — an unknown state "must surface as an error, never silently map to
+      // normal"). Let it out so the tool call errors instead.
+      if (isMcpStoredContractError(err)) throw err;
       // Same minified-frame over-grouping guard as the tool-execution catch
       // below — key on step + tool + error type so a post-filter bug in one
       // tool doesn't merge into the shared api/mcp catch-all (WORLDMONITOR-T8).

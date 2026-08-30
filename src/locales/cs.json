@@ -2044,6 +2044,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Index fyzického tlaku: {{value}} / 100",
+        "fiveDayTrend": "Trend prémie za pět obchodních dní",
+        "regimes": {
+          "normal": "Normální",
+          "elevated": "Zvýšený",
+          "stressed": "Napjatý",
+          "extreme": "Extrémní"
+        },
+        "states": {
+          "insufficientHistory": "Zahřívání: {{count}} / {{required}} obchodních bodů",
+          "staleInput": "Fyzická reference je zastaralá",
+          "missingInput": "Signál divergence není k dispozici"
+        },
+        "twentyDayTrend": "Trend prémie za dvacet obchodních dní"
       }
     },
     "crypto": {

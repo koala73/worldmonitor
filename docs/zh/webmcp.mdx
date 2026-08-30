@@ -122,13 +122,13 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 |---|---|---|
 | `openCountryBrief` | 必填字符串 `iso2`，模式 `^[A-Z]{2}$`；不允许其他属性。 | 打开现有国家深度分析路径。 |
 | `openSearch` | 空对象；不允许其他属性。 | 打开全局搜索面板。 |
-| `get_dashboard_context` | 空对象；不允许其他属性。 | 只读、受限地返回可见变体、地图视图、中心点、缩放、时间范围、启用图层及已挂载/启用面板 ID。 |
+| `get_dashboard_context` | 空对象；不允许其他属性。 | 只读、受限地返回可见变体、地图视图、中心点、缩放、时间范围、启用图层、已挂载/启用面板 ID，以及已挂载面板公开的当前子标签。 |
 | `list_map_layers` | 可选 `monitor`：`world`、`tech`、`finance`、`commodity`、`energy`、`happy`。可选 `renderer`：`2d` 或 `3d`。可选 `state`：`enabled` 或 `available`。可选 `cursor`，匹配 `^[a-z][A-Za-z0-9_-]*$`，长度 1–30。可选整数 `limit`：1–8（默认 6）。不允许其他属性。 | 分页返回已注册地图图层的规范目录，包括已禁用图层。每一行含稳定 ID、标签、启用状态、监视器可用性、渲染器兼容性、权益和机器可读的不可用原因。顶层 `variant` 与 `renderer` 描述当前页面。不会加载地图数据集。 |
 | `list_dashboard_panels` | 可选 `variant` 枚举 `full`、`tech`、`finance`、`happy`、`commodity`、`energy`。可选 `category`，取自设置目录（含 `other`）。可选布尔值 `enabled` 与 `available`。可选 `cursor`，须匹配上一页的 `nextCursor`。可选整数 `limit` 为 1–8，默认 6。不允许其他属性。 | 只读分页返回规范面板 ID 目录，包括已禁用和未挂载的面板。每项含标签、类别、变体可用性、enabled/mounted/entitled/available 标志；无法打开时带稳定的 `unavailableReason`。跟随 `nextCursor` 直到 `hasMore` 为 false。不返回面板数据，也不会启用面板。 |
 | `switch_monitor` | 必填字符串 `monitor`；枚举 `full`、`tech`、`finance`、`happy`、`commodity`、`energy`（World、Tech、Finance、Good News、Commodity、Energy）。不允许其他属性。 | 通过页头变体切换器切换可见仪表板，并返回所选目标及有效仪表板状态。 |
 | `open_settings` | 空对象；不允许其他属性。 | 打开设置浮层并停留在 Settings 标签，不修改设置内容。 |
 | `open_alerts` | 空对象；不允许其他属性。 | 打开提醒浮层并停留在 notifications 标签，不修改提醒内容。桌面应用中不可用。 |
-| `open_dashboard_panel` | 必填字符串 `panelId`，长度 1–96，模式 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`；不允许其他属性。 | 经权益感知 UI 路径打开并滚动到当前已启用的可用面板。已禁用面板返回 `panel_disabled`；使用 `set_panel_enabled` 更改目录面板是否启用。此工具不会自行启用面板。 |
+| `open_dashboard_panel` | 必填字符串 `panelId`，长度 1–96，模式 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`。当 `panelId=commodities` 时可选 `tab`：`commodities`、`physical`、`fx` 或 `xau`。不允许其他属性。 | 经权益感知 UI 路径打开并滚动到当前已启用的可用面板。对 Commodities，`tab` 会选择与用户相同的可见子标签，并返回实际标签。已禁用面板返回 `panel_disabled`；使用 `set_panel_enabled` 更改目录面板是否启用。此工具不会自行启用面板。 |
 | `set_panel_enabled` | 必填字符串 `panelId`，长度 1–96，模式 `^[a-z0-9][a-z0-9@_-]*$`；必填布尔值 `enabled`；不允许其他属性。 | 经用户使用的同一设置持久化/应用路径启用或禁用目录面板。返回请求状态、实际状态及是否变更。启用未知、不兼容、无权益或达到免费档上限的面板会被拒绝。需要目标侧取消。 |
 | `get_panel_layout` | 可选字符串 `cursor`（上一页 `nextCursor` 面板 ID）；不允许其他属性。 | 只读返回有效布局：稳定面板 ID、命名区域（`sidebar` / `bottom`）、顺序索引、折叠与全屏状态，以及区域可用性。`panelsTruncated` 为 true 时用 `nextCursor` 继续。 |
 | `set_panel_collapsed` | 必填字符串 `panelId`，长度 1–96，模式 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`；必填布尔值 `collapsed`；不允许其他属性。 | 经可见折叠控件与持久化路径折叠或展开已挂载面板。状态已匹配时幂等成功。不支持的面板返回 `collapse_unsupported`。需要目标侧取消。 |

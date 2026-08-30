@@ -2036,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Индекс на физическото напрежение: {{value}} / 100",
+        "fiveDayTrend": "Тренд на премия за пет търговски дни",
+        "regimes": {
+          "normal": "Нормално",
+          "elevated": "Повишено",
+          "stressed": "Натоварено",
+          "extreme": "Екстремно"
+        },
+        "states": {
+          "insufficientHistory": "Загряване: {{count}} / {{required}} търговски точки",
+          "staleInput": "Физическият еталон е остарял",
+          "missingInput": "Сигналът за дивергенция е недостъпен"
+        },
+        "twentyDayTrend": "Тенденция на премията за двадесет търговски дни"
       }
     },
     "crypto": {

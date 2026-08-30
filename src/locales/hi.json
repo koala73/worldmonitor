@@ -2113,6 +2113,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "भौतिक तनाव सूचकांक: {{value}} / 100",
+        "fiveDayTrend": "पाँच-कारोबारी-दिन प्रीमियम प्रवृत्ति",
+        "regimes": {
+          "normal": "सामान्य",
+          "elevated": "उन्नत",
+          "stressed": "दबाव में",
+          "extreme": "अत्यंत"
+        },
+        "states": {
+          "insufficientHistory": "तैयारी में: {{count}} / {{required}} कारोबारी बिंदु",
+          "staleInput": "भौतिक बेंचमार्क पुराना है",
+          "missingInput": "विचलन संकेत उपलब्ध नहीं"
+        },
+        "twentyDayTrend": "बीस कारोबारी दिन का प्रीमियम प्रवृत्ति"
       }
     },
     "crypto": {

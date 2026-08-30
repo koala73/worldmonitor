@@ -92,7 +92,7 @@ export function dedupeErrorResponses(spec) {
       for (const [statusCode, response] of Object.entries(op.responses)) {
         if (/^2/.test(statusCode)) continue; // 2xx must stay inline (scanner-credited)
         if (!response || typeof response !== 'object' || response.$ref) continue;
-        const key = `${statusCode}\0${canonical(response)}`;
+        const key = `${statusCode}${canonical(response)}`;
         const group = groups.get(key);
         if (group) group.count += 1;
         else groups.set(key, { statusCode, count: 1, body: response });
@@ -134,81 +134,6 @@ export function dedupeErrorResponses(spec) {
     const name = nameFor.get(site.key);
     if (!name) continue;
     site.responses[site.statusCode] = { $ref: `#/components/responses/${name}` };
-    stats.replacedRefs += 1;
-  }
-  return stats;
-}
-
-/**
- * Hoist byte-identical response Header Objects into components.headers.
- *
- * Error-response dedupe moves repeated non-2xx responses into
- * components.responses, while scanner-credited 2xx responses remain inline.
- * Walking both locations lets this pass collapse repeated header documentation
- * without moving success responses or changing any response semantics.
- *
- * Mutates `spec` in place; returns { hoisted, replacedRefs } stats.
- */
-export function dedupeSharedResponseHeaders(spec) {
-  const stats = { hoisted: 0, replacedRefs: 0 };
-  if (!spec || typeof spec !== 'object') return stats;
-
-  const responses = [];
-  for (const pathItem of Object.values(spec.paths ?? {})) {
-    if (!pathItem || typeof pathItem !== 'object') continue;
-    for (const [method, op] of Object.entries(pathItem)) {
-      if (!HTTP_METHODS.has(method.toLowerCase()) || !op?.responses) continue;
-      for (const response of Object.values(op.responses)) {
-        if (response && typeof response === 'object' && !response.$ref) responses.push(response);
-      }
-    }
-  }
-  for (const response of Object.values(spec.components?.responses ?? {})) {
-    if (response && typeof response === 'object' && !response.$ref) responses.push(response);
-  }
-
-  const groups = new Map(); // header name + canonical body -> { count, body, headerName }
-  const sites = []; // { headers, headerName, key }
-  for (const response of responses) {
-    if (!response.headers || typeof response.headers !== 'object') continue;
-    for (const [headerName, header] of Object.entries(response.headers)) {
-      if (!header || typeof header !== 'object' || header.$ref) continue;
-      const key = `${headerName}\0${canonical(header)}`;
-      const group = groups.get(key);
-      if (group) group.count += 1;
-      else groups.set(key, { count: 1, body: header, headerName });
-      sites.push({ headers: response.headers, headerName, key });
-    }
-  }
-
-  const existing = spec.components?.headers ?? {};
-  const nameFor = new Map();
-  const perNameOrdinal = new Map();
-  for (const [key, group] of groups) {
-    if (group.count < 2) continue;
-    const cleaned = String(group.headerName).replace(/[^A-Za-z0-9]/g, '') || 'Header';
-    const base = `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
-    let ordinal = perNameOrdinal.get(base) ?? 0;
-    let name;
-    do {
-      ordinal += 1;
-      name = ordinal === 1 ? base : `${base}${ordinal}`;
-    } while (Object.hasOwn(existing, name) || [...nameFor.values()].includes(name));
-    perNameOrdinal.set(base, ordinal);
-    nameFor.set(key, name);
-  }
-  if (nameFor.size === 0) return stats;
-
-  spec.components ??= {};
-  spec.components.headers ??= {};
-  for (const [key, name] of nameFor) {
-    spec.components.headers[name] = groups.get(key).body;
-    stats.hoisted += 1;
-  }
-  for (const site of sites) {
-    const name = nameFor.get(site.key);
-    if (!name) continue;
-    site.headers[site.headerName] = { $ref: `#/components/headers/${name}` };
     stats.replacedRefs += 1;
   }
   return stats;

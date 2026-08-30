@@ -523,6 +523,7 @@
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/physical-divergence-staleness.js",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
     ],
@@ -663,6 +664,7 @@
       "scripts/lib/boc-valet.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
+      "scripts/lib/physical-divergence.mjs",
       "scripts/lib/statcan-wds.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
@@ -692,6 +694,7 @@
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/physical-divergence-staleness.js",
       "scripts/shared/sovereign-status.json",
       "shared/iso2-to-iso3.json"
     ],

@@ -8,11 +8,13 @@ import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 import {
   dedupeErrorResponses,
   dedupeSharedParameters,
-  dedupeSharedResponseHeaders,
   ensureInlineTypedInput,
 } from '../scripts/openapi-dedup-responses.mjs';
 import {
+  dedupeRepeatedInt64Schemas,
+  dedupeRepeatedChinaDateSchemas,
   dedupeSharedChinaProvenanceSchemas,
+  dedupeSharedResponseHeaders,
   dedupeSharedSchemaSubtrees,
 } from '../scripts/openapi-dedup-schemas.mjs';
 import { buildBundle } from '../scripts/build-openapi-json.mjs';
@@ -181,6 +183,29 @@ function restoreGeneratedSchemaRefs(before, after, transformedRoot) {
   return after;
 }
 
+function resolveAddedComponentRefs(spec, { headerNames = [], schemaNames = [] }) {
+  const targets = new Map([
+    ...headerNames.map((name) => [`#/components/headers/${name}`, spec.components.headers[name]]),
+    ...schemaNames.map((name) => [`#/components/schemas/${name}`, spec.components.schemas[name]]),
+  ]);
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value)) {
+      const target = child?.$ref ? targets.get(child.$ref) : null;
+      if (target) value[key] = structuredClone(target);
+      else visit(child);
+    }
+  };
+  for (const [name, schema] of Object.entries(spec.components.schemas ?? {})) {
+    if (!schemaNames.includes(name)) visit(schema);
+  }
+  for (const pathItem of Object.values(spec.paths ?? {})) visit(pathItem);
+  for (const name of headerNames) delete spec.components.headers[name];
+  for (const name of schemaNames) delete spec.components.schemas[name];
+  if (Object.keys(spec.components.headers ?? {}).length === 0) delete spec.components.headers;
+  return spec;
+}
+
 describe('dedupeErrorResponses (fixture)', () => {
   const fixture = () => ({
     openapi: '3.1.0',
@@ -247,59 +272,6 @@ describe('dedupeErrorResponses (fixture)', () => {
       spec.paths['/a'].get.responses[429].$ref,
       '#/components/responses/E429_2',
     );
-  });
-});
-
-describe('dedupeSharedResponseHeaders (fixture)', () => {
-  const sharedHeader = {
-    description: 'True when the idempotent result was replayed.',
-    schema: { type: 'boolean' },
-  };
-
-  it('hoists repeated inline and component-response headers without changing unique headers', () => {
-    const spec = {
-      openapi: '3.1.0',
-      paths: {
-        '/a': {
-          post: {
-            responses: {
-              200: {
-                description: 'ok',
-                headers: {
-                  'Idempotent-Replayed': structuredClone(sharedHeader),
-                  'X-Unique': { schema: { type: 'string' } },
-                },
-              },
-              409: { $ref: '#/components/responses/E409' },
-            },
-          },
-        },
-      },
-      components: {
-        headers: { IdempotentReplayed: { description: 'pre-existing' } },
-        responses: {
-          E409: {
-            description: 'conflict',
-            headers: { 'Idempotent-Replayed': structuredClone(sharedHeader) },
-          },
-        },
-      },
-    };
-
-    const stats = dedupeSharedResponseHeaders(spec);
-
-    assert.deepEqual(stats, { hoisted: 1, replacedRefs: 2 });
-    assert.deepEqual(spec.components.headers.IdempotentReplayed, { description: 'pre-existing' });
-    assert.deepEqual(spec.components.headers.IdempotentReplayed2, sharedHeader);
-    assert.deepEqual(spec.paths['/a'].post.responses[200].headers['Idempotent-Replayed'], {
-      $ref: '#/components/headers/IdempotentReplayed2',
-    });
-    assert.deepEqual(spec.components.responses.E409.headers['Idempotent-Replayed'], {
-      $ref: '#/components/headers/IdempotentReplayed2',
-    });
-    assert.deepEqual(spec.paths['/a'].post.responses[200].headers['X-Unique'], {
-      schema: { type: 'string' },
-    });
   });
 });
 
@@ -428,6 +400,89 @@ describe('dedupeSharedSchemaSubtrees', () => {
   });
 });
 
+describe('additional lossless schema dedupe (fixtures)', () => {
+  it('hoists structurally identical response headers and leaves unique headers inline', () => {
+    const shared = { schema: { type: 'boolean' }, description: 'replayed response' };
+    const spec = {
+      paths: {
+        '/a': { post: { responses: { 200: { headers: { 'Idempotent-Replayed': structuredClone(shared) } } } } },
+        '/b': { post: { responses: { 200: { headers: { 'Idempotent-Replayed': structuredClone(shared) } } } } },
+        '/c': { post: { responses: { 200: { headers: { 'X-Unique': { schema: { type: 'string' } } } } } } },
+      },
+    };
+
+    const stats = dedupeSharedResponseHeaders(spec);
+    assert.deepEqual(stats, { hoisted: 1, replacedRefs: 2 });
+    assert.deepEqual(spec.components.headers.IdempotentReplayedHeader, shared);
+    assert.deepEqual(spec.paths['/a'].post.responses[200].headers['Idempotent-Replayed'], {
+      $ref: '#/components/headers/IdempotentReplayedHeader',
+    });
+    assert.deepEqual(spec.paths['/b'].post.responses[200].headers['Idempotent-Replayed'], {
+      $ref: '#/components/headers/IdempotentReplayedHeader',
+    });
+    assert.deepEqual(spec.paths['/c'].post.responses[200].headers['X-Unique'], {
+      schema: { type: 'string' },
+    });
+  });
+
+  it('reuses only the exact generated int64 precision-warning schema', () => {
+    const repeated = {
+      type: 'integer',
+      format: 'int64',
+      description: 'Warning: Values > 2^53 may lose precision in JavaScript',
+    };
+    const spec = {
+      components: {
+        schemas: {
+          A: { properties: { measuredAt: structuredClone(repeated) } },
+          B: { properties: { fetchedAt: structuredClone(repeated) } },
+          C: { properties: { id: { type: 'integer', format: 'int64' } } },
+        },
+      },
+    };
+
+    const stats = dedupeRepeatedInt64Schemas(spec);
+    assert.deepEqual(stats, { replacedRefs: 2 });
+    assert.deepEqual(spec.components.schemas.WorldMonitorInt64, repeated);
+    assert.deepEqual(spec.components.schemas.A.properties.measuredAt, {
+      $ref: '#/components/schemas/WorldMonitorInt64',
+    });
+    assert.deepEqual(spec.components.schemas.B.properties.fetchedAt, {
+      $ref: '#/components/schemas/WorldMonitorInt64',
+    });
+    assert.deepEqual(spec.components.schemas.C.properties.id, { type: 'integer', format: 'int64' });
+  });
+
+  it('reuses identical China decision-signal date-precision unions', () => {
+    const repeated = { oneOf: [{ type: 'string', format: 'date-time' }, { type: 'string', format: 'date' }] };
+    const spec = {
+      components: {
+        schemas: {
+          worldmonitor_intelligence_v1_ChinaDecisionSignalItem: {
+            properties: {
+              effectiveAt: { oneOf: [structuredClone(repeated), { type: 'null' }] },
+              observedAt: { oneOf: [structuredClone(repeated), { type: 'null' }] },
+              unrelated: { oneOf: [{ type: 'number' }, { type: 'null' }] },
+            },
+          },
+        },
+      },
+    };
+
+    const stats = dedupeRepeatedChinaDateSchemas(spec);
+    assert.deepEqual(stats, { replacedRefs: 2 });
+    assert.deepEqual(spec.components.schemas.WorldMonitorChinaDatePrecision, repeated);
+    assert.deepEqual(
+      spec.components.schemas.worldmonitor_intelligence_v1_ChinaDecisionSignalItem.properties.effectiveAt.oneOf[0],
+      { $ref: '#/components/schemas/WorldMonitorChinaDatePrecision' },
+    );
+    assert.deepEqual(
+      spec.components.schemas.worldmonitor_intelligence_v1_ChinaDecisionSignalItem.properties.unrelated,
+      { oneOf: [{ type: 'number' }, { type: 'null' }] },
+    );
+  });
+});
+
 describe('ensureInlineTypedInput (fixture)', () => {
   it('inlines one $ref parameter only when the operation has no other typed input', () => {
     const spec = {
@@ -478,13 +533,19 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   const stats = dedupeErrorResponses(deduped);
   const headerStats = dedupeSharedResponseHeaders(deduped);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(deduped);
+  const chinaDateStats = dedupeRepeatedChinaDateSchemas(deduped);
+  const int64Stats = dedupeRepeatedInt64Schemas(deduped);
   const paramStats = dedupeSharedParameters(deduped);
 
   it('is lossless: resolving the $refs reproduces the original spec exactly', () => {
     assert.deepEqual(
-      resolveResponseHeaderRefs(
-        resolveResponseRefs(resolveSharedChinaProvenanceRefs(resolveParameterRefs(structuredClone(deduped)))),
-      ),
+      resolveResponseRefs(resolveSharedChinaProvenanceRefs(resolveParameterRefs(resolveAddedComponentRefs(
+        structuredClone(deduped),
+        {
+          headerNames: ['IdempotentReplayedHeader', 'IdempotencyKeyHeader'],
+          schemaNames: ['WorldMonitorChinaDatePrecision', 'WorldMonitorInt64'],
+        },
+      )))),
       original,
     );
   });
@@ -515,6 +576,12 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   it('reuses the shared China provenance value schemas only after exact comparison', () => {
     assert.equal(schemaStats.compared, 17);
     assert.equal(schemaStats.replacedRefs, 17);
+  });
+
+  it('engages the exact repeated headers and generated scalar/date schemas', () => {
+    assert.deepEqual(headerStats, { hoisted: 2, replacedRefs: 34 });
+    assert.equal(int64Stats.replacedRefs, 38);
+    assert.equal(chinaDateStats.replacedRefs, 9);
   });
 
   it('actually engages on the fleet-wide injected parameters (jmespath et al.)', () => {
@@ -606,6 +673,8 @@ describe('build-openapi-json wiring', () => {
     assert.match(src, /dedupeSharedResponseHeaders\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
     assert.match(src, /dedupeSharedSchemaSubtrees\(spec\)/);
+    assert.match(src, /dedupeRepeatedChinaDateSchemas\(spec\)/);
+    assert.match(src, /dedupeRepeatedInt64Schemas\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
     assert.match(src, /ensureInlineTypedInput\(spec\)/);
     assert.match(src, /injectDeprecationPolicyMetadata\(spec\)/);
@@ -615,17 +684,33 @@ describe('build-openapi-json wiring', () => {
     // The source match above proves the calls are written down; this proves
     // they did something. A transform that silently stops finding work is the
     // regression the byte budget notices last and from the wrong direction.
-    const { stats, headerStats, schemaStats, paramStats, inlineTypedStats, unreachableStats } = buildBundle({
+    const {
+      stats,
+      schemaStats,
+      schemaSubtreeStats,
+      chinaDateStats,
+      int64Stats,
+      headerStats,
+      paramStats,
+      inlineTypedStats,
+      unreachableStats,
+    } = buildBundle({
       spec: loadUnifiedOpenApiSpec(),
     });
     assert.ok(stats.replacedRefs >= 500, `error-response dedup: ${stats.replacedRefs} refs`);
-    assert.ok(headerStats.replacedRefs >= 20, `response-header dedup: ${headerStats.replacedRefs} refs`);
     assert.ok(paramStats.replacedRefs >= 200, `parameter dedup: ${paramStats.replacedRefs} refs`);
     assert.ok(inlineTypedStats.inlined >= 50, `inline typed-input restore: ${inlineTypedStats.inlined}`);
     // `replacedRefs === compared` alone passes at 0 === 0, which is exactly the
     // silent-disengagement case this test exists for.
     assert.ok(schemaStats.compared > 0, 'China provenance dedup compared nothing');
     assert.equal(schemaStats.replacedRefs, schemaStats.compared);
+    assert.ok(chinaDateStats.replacedRefs >= 5, `China date dedup: ${chinaDateStats.replacedRefs} refs`);
+    assert.ok(int64Stats.replacedRefs >= 30, `int64 dedup: ${int64Stats.replacedRefs} refs`);
+    assert.ok(headerStats.replacedRefs >= 30, `response-header dedup: ${headerStats.replacedRefs} refs`);
+    assert.ok(
+      schemaSubtreeStats.replacedRefs > 0,
+      `shared schema-subtree dedup: ${schemaSubtreeStats.replacedRefs} refs`,
+    );
     assert.ok(unreachableStats.dropped >= 150, `unreachable drop: ${unreachableStats.dropped} schemas`);
   });
 });

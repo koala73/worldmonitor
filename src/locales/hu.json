@@ -2113,6 +2113,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fizikai stresszindex: {{value}} / 100",
+        "fiveDayTrend": "Öt kereskedési napos prémium trend",
+        "regimes": {
+          "normal": "Normál",
+          "elevated": "Emelt",
+          "stressed": "Stresszos",
+          "extreme": "Szélsőséges"
+        },
+        "states": {
+          "insufficientHistory": "Melegítés: {{count}} / {{required}} kereskedési pont",
+          "staleInput": "Fizikai benchmark elavult",
+          "missingInput": "Divergencia jel nem elérhető"
+        },
+        "twentyDayTrend": "Húsz kereskedési napos prémium trend"
       }
     },
     "crypto": {

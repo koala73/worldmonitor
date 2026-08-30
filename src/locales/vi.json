@@ -2032,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Chỉ số áp lực vật lý: {{value}} / 100",
+        "fiveDayTrend": "Xu hướng phí năm ngày giao dịch",
+        "regimes": {
+          "normal": "Bình thường",
+          "elevated": "Nâng cao",
+          "stressed": "Căng thẳng",
+          "extreme": "Cực đoan"
+        },
+        "states": {
+          "insufficientHistory": "Khởi động: {{count}} / {{required}} điểm giao dịch",
+          "staleInput": "Điểm chuẩn vật lý đã cũ",
+          "missingInput": "Tín hiệu phân kỳ không có sẵn"
+        },
+        "twentyDayTrend": "Xu hướng phí bảo hiểm trong 20 ngày giao dịch"
       }
     },
     "crypto": {

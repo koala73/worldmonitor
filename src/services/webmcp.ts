@@ -160,6 +160,11 @@ export interface WebMcpAppBindings {
     action: unknown,
     options?: WebMcpExecutionOptions,
   ): DashboardActionResult | Promise<DashboardActionResult>;
+  selectPanelTab(
+    panelId: string,
+    tab: string,
+    options?: WebMcpExecutionOptions,
+  ): PanelTabSelectionResult | Promise<PanelTabSelectionResult>;
   searchDashboard(
     query: string,
     scope: DashboardSearchScope,
@@ -287,7 +292,18 @@ export interface DashboardContextSnapshot {
   panels: {
     mounted: string[];
     enabled: string[];
+    activeTabs?: Record<string, string>;
   };
+}
+
+export interface PanelTabSelectionResult {
+  ok: boolean;
+  status: 'applied' | 'skipped' | 'denied' | 'invalid';
+  panelId: string;
+  requestedTab: string;
+  effectiveTab?: string;
+  reason?: 'panel_not_live' | 'panel_unsupported' | 'unknown_tab' | 'tab_unavailable';
+  message: string;
 }
 
 export const WEBMCP_MONITOR_KEYS = SITE_VARIANTS;
@@ -881,6 +897,10 @@ function boundDashboardContext(
   const enabledLayers = normalizeIdentifiers(snapshot.map?.enabledLayers, 80);
   const mounted = normalizeIdentifiers(snapshot.panels?.mounted, 96);
   const enabled = normalizeIdentifiers(snapshot.panels?.enabled, 96);
+  const activeTabs = Object.fromEntries(Object.entries(snapshot.panels?.activeTabs ?? {})
+    .filter(([panelId, tab]) => typeof panelId === 'string' && typeof tab === 'string')
+    .slice(0, 8)
+    .map(([panelId, tab]) => [panelId.slice(0, 96), tab.slice(0, 48)]));
   const result = {
     variant: boundedText(snapshot.variant, 32),
     map: {
@@ -907,6 +927,7 @@ function boundDashboardContext(
       enabledCount: enabled.length,
       mountedTruncated: false,
       enabledTruncated: false,
+      ...(Object.keys(activeTabs).length > 0 ? { activeTabs } : {}),
     },
   };
 
@@ -1638,6 +1659,18 @@ async function applyDashboardAction(
   return boundDashboardActionResult(await app.applyDashboardAction(action, options));
 }
 
+function boundPanelTabResult(result: PanelTabSelectionResult): Record<string, unknown> {
+  return {
+    ok: result.ok === true,
+    status: result.status,
+    panelId: boundedText(result.panelId, 96),
+    requestedTab: boundedText(result.requestedTab, 48),
+    ...(result.effectiveTab ? { effectiveTab: boundedText(result.effectiveTab, 48) } : {}),
+    ...(result.reason ? { reason: boundedText(result.reason, 64) } : {}),
+    message: boundedText(result.message, 240),
+  };
+}
+
 export function buildWebMcpTools(
   app: WebMcpAppBindings,
   trackEvent: WebMcpAnalytics = trackPrivacyRestricted,
@@ -1930,7 +1963,7 @@ export function buildWebMcpTools(
       name: WEBMCP_SPA_TOOL.openDashboardPanel,
       title: 'Open Dashboard Panel',
       description:
-        'Open and scroll to an already-live, currently enabled dashboard panel through the same entitlement-aware control path used by World Monitor. Disabled panels return panel_disabled. Use set_panel_enabled to change whether a catalog panel is enabled; this tool does not enable panels itself.',
+        'Open and scroll to an already-live, currently enabled dashboard panel through the same entitlement-aware control path used by World Monitor. For the commodities panel, tab can also select commodities, physical, fx, or xau through the same tab path used by a person. Disabled panels return panel_disabled. Use set_panel_enabled to change whether a catalog panel is enabled; this tool does not enable panels itself.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1941,17 +1974,51 @@ export function buildWebMcpTools(
             maxLength: 96,
             pattern: DASHBOARD_PANEL_ID_PATTERN,
           },
+          tab: {
+            type: 'string',
+            enum: ['commodities', 'physical', 'fx', 'xau'],
+            description: 'Optional commodities-panel subtab. Other panels reject this field.',
+          },
         },
         required: ['panelId'],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openDashboardPanel, async (args, extra) => (
-        applyDashboardAction({
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openDashboardPanel, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['panelId', 'tab'])) {
+          return applyDashboardAction({ type: 'invalid_open_panel_arguments' }, app, extra);
+        }
+        if (args.tab != null && args.panelId !== 'commodities') {
+          return boundDashboardActionResult({
+            ok: false,
+            status: 'invalid',
+            reason: 'panel_unsupported',
+            message: 'Panel tabs are supported only for the commodities panel.',
+            targets: [],
+          });
+        }
+        const opened = await applyDashboardAction({
           type: 'open_panel',
           panelId: args.panelId,
-        }, app, extra)
-      ), trackEvent),
+        }, app, extra);
+        if (opened.ok !== true || args.tab == null) return opened;
+        const selected = await app.selectPanelTab(
+          typeof args.panelId === 'string' ? args.panelId : '',
+          typeof args.tab === 'string' ? args.tab : '',
+          extra,
+        );
+        const panelTab = boundPanelTabResult(selected);
+        return selected.ok
+          ? { ...opened, panelTab }
+          : {
+              ...opened,
+              ok: false,
+              status: selected.status,
+              ...(selected.reason ? { reason: selected.reason } : {}),
+              message: selected.message,
+              panelTab,
+            };
+      }, trackEvent),
     },
     {
       name: WEBMCP_SPA_TOOL.setPanelEnabled,

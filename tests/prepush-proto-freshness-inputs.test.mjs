@@ -17,10 +17,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { parse as parseYaml } from 'yaml';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MAKEFILE = readFileSync(join(ROOT, 'Makefile'), 'utf8').replace(/\r\n/g, '\n');
 const HOOK = readFileSync(join(ROOT, '.husky', 'pre-push'), 'utf8').replace(/\r\n/g, '\n');
+const PROTO_WORKFLOW = parseYaml(
+  readFileSync(join(ROOT, '.github', 'workflows', 'proto-check.yml'), 'utf8'),
+);
 
 function extractGenerateRecipe() {
   const match = MAKEFILE.match(/^generate:.*?\n((?:\t[^\n]*\n|#[^\n]*\n|\s*\n)+)/m);
@@ -162,6 +166,22 @@ describe('proto-freshness inputs cover every make generate script and generation
       missing,
       [],
       `PROTO_INPUTS omits generate inputs (false skip / stale docs/api):\n${missing.map((path) => `  ${path}`).join('\n')}`,
+    );
+  });
+
+  test('the CI path registry covers every pre-push proto input', () => {
+    const inputRegex = new RegExp(PROTO_WORKFLOW.env?.CODEGEN_INPUT_REGEX ?? '(?!)');
+    const generatedPaths = (PROTO_WORKFLOW.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean);
+    const isGenerated = (path) => generatedPaths.some((generated) =>
+      generated.endsWith('/')
+        ? path === generated.slice(0, -1) || path.startsWith(generated)
+        : path === generated,
+    );
+    const missing = protoInputs.filter((path) => !inputRegex.test(path) && !isGenerated(path));
+    assert.deepEqual(
+      missing,
+      [],
+      `proto-check.yml omits PROTO_INPUTS paths:\n${missing.map((path) => `  ${path}`).join('\n')}`,
     );
   });
 

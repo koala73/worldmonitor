@@ -2052,6 +2052,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "مؤشر الإجهاد المادي: {{value}} / 100",
+        "fiveDayTrend": "اتجاه العلاوة لخمسة أيام تداول",
+        "regimes": {
+          "normal": "طبيعي",
+          "elevated": "مرتفع",
+          "stressed": "مضغوط",
+          "extreme": "قصوى"
+        },
+        "states": {
+          "insufficientHistory": "الإحماء: {{count}} / {{required}} نقطة تداول",
+          "staleInput": "معيار الأداء المادي قديم",
+          "missingInput": "إشارة التباعد غير متوفرة"
+        },
+        "twentyDayTrend": "اتجاه العلاوة لمدة عشرين يوم تداول"
       }
     },
     "crypto": {

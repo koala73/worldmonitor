@@ -1659,6 +1659,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fysisk stressindex: {{value}} / 100",
+        "fiveDayTrend": "Femhandelsdag premiumtrend",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Förhöjd",
+          "stressed": "Under stress",
+          "extreme": "Extrem"
+        },
+        "states": {
+          "insufficientHistory": "Värms upp: {{count}} / {{required}} handelspunkter",
+          "staleInput": "Fysisk benchmark är föråldrad",
+          "missingInput": "Divergenssignal ej tillgänglig"
+        },
+        "twentyDayTrend": "Premietrendad över tjugo handelsdagar"
       }
     },
     "crypto": {

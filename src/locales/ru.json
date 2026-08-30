@@ -2044,6 +2044,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Индекс физического стресса: {{value}} / 100",
+        "fiveDayTrend": "Тренд премии за пять торговых дней",
+        "regimes": {
+          "normal": "Нормальный",
+          "elevated": "Повышенный",
+          "stressed": "Напряженный",
+          "extreme": "Экстремальный"
+        },
+        "states": {
+          "insufficientHistory": "Прогрев: {{count}} / {{required}} торговых точек",
+          "staleInput": "Физический бенчмарк устарел",
+          "missingInput": "Сигнал дивергенции недоступен"
+        },
+        "twentyDayTrend": "Тренд премии за двадцать торговых дней"
       }
     },
     "crypto": {

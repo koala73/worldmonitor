@@ -1659,6 +1659,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fysieke stressindex: {{value}} / 100",
+        "fiveDayTrend": "Trend premie vijf handelsdagen",
+        "regimes": {
+          "normal": "Normaal",
+          "elevated": "Verhoogd",
+          "stressed": "Onder spanning",
+          "extreme": "Extreem"
+        },
+        "states": {
+          "insufficientHistory": "Opwarmfase: {{count}} / {{required}} handelspunten",
+          "staleInput": "Fysieke benchmark is verouderd",
+          "missingInput": "Divergentiesignaal niet beschikbaar"
+        },
+        "twentyDayTrend": "Premiumtrend over twintig handelsdagen"
       }
     },
     "crypto": {

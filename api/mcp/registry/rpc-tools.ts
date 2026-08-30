@@ -3226,7 +3226,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // long-form text in `description`. Uses the SAME buildPublicTool helper
     // as tools/list so the two surfaces can never drift.
     name: 'describe_tool',
-    _outputBudgetBytes: 8192,
+    _outputBudgetBytes: 16384,
     description: 'Return the full uncompressed definition of one tool by name. Use when the compressed tools/list entry is ambiguous about behaviour or argument semantics.',
     inputSchema: {
       type: 'object',

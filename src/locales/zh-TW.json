@@ -2032,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "物理壓力指數：{{value}} / 100",
+        "fiveDayTrend": "五個交易日溢價趨勢",
+        "regimes": {
+          "normal": "正常",
+          "elevated": "升高",
+          "stressed": "受壓",
+          "extreme": "極端"
+        },
+        "states": {
+          "insufficientHistory": "預熱中：{{count}} / {{required}} 個交易點",
+          "staleInput": "物理基準資料已過期",
+          "missingInput": "分歧訊號不可用"
+        },
+        "twentyDayTrend": "二十個交易日溢價趨勢"
       }
     },
     "crypto": {

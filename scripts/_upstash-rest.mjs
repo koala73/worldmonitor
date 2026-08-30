@@ -18,9 +18,12 @@ export function getOptionalUpstashCreds() {
  * @param {{ restUrl: string; token: string }} creds
  * @param {Array<string>} command Redis command array, e.g. ['GET', 'key']
  */
+export const UPSTASH_COMMAND_TIMEOUT_MS = 15_000;
+export const UPSTASH_RETRY_AFTER_MAX_MS = 2_000;
+
 export async function upstashCommand(creds, command, {
   fetchImpl = globalThis.fetch,
-  timeoutMs = 15_000,
+  timeoutMs = UPSTASH_COMMAND_TIMEOUT_MS,
 } = {}) {
   const resp = await fetchImpl(creds.restUrl, {
     method: 'POST',
@@ -39,9 +42,16 @@ export async function upstashCommand(creds, command, {
       && resp.status !== 429
       && !(resp.status >= 500 && resp.status <= 599);
     const retryAfter = resp.headers?.get?.('retry-after');
-    const retryAfterSeconds = Number(retryAfter);
-    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
-      error.retryAfterMs = Math.min(retryAfterSeconds * 1_000, 60_000);
+    if (retryAfter) {
+      // Accept both delta-seconds and the HTTP-date form.
+      const seconds = Number(retryAfter);
+      const retryAt = Date.parse(retryAfter);
+      const parsedRetryAfterMs = Number.isFinite(seconds)
+        ? Math.max(0, seconds * 1000)
+        : Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : undefined;
+      error.retryAfterMs = Number.isFinite(parsedRetryAfterMs)
+        ? Math.min(parsedRetryAfterMs, UPSTASH_RETRY_AFTER_MAX_MS)
+        : undefined;
     }
     throw error;
   }
