@@ -35,6 +35,7 @@ interface FieldRule {
   readonly numberLte?: number;
   readonly repeatedMinItems?: number;
   readonly repeatedMaxItems?: number;
+  readonly repeatedUnique?: boolean;
 }
 
 interface MessageRule {
@@ -311,6 +312,9 @@ function validateField(
     }
     if (rule.repeatedMaxItems != null && repeatedValue.length > rule.repeatedMaxItems) {
       addViolation(violations, path, `array must contain at most ${rule.repeatedMaxItems} item(s)`);
+    }
+    if (rule.repeatedUnique && new Set(repeatedValue.map((item) => JSON.stringify(item))).size !== repeatedValue.length) {
+      addViolation(violations, path, 'array items must be unique');
     }
     repeatedValue.forEach((item, index) => {
       validateSingleValue(rule, item, `${path}[${index}]`, violations, ancestors);

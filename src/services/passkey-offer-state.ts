@@ -14,21 +14,30 @@
  *   - Two tabs can both read an empty ledger and mount. A read-then-write is
  *     not an atomic claim.
  *
- * Those limits are why a THIRD tier exists below. `hasAccountOfferRecord` and
- * `recordAccountOffer` keep the flag on the Clerk user itself, which is
- * account-scoped and server-backed and therefore immune to all three.
- * Production forced this. The offer only ever fired on a sign-in transition, so
- * the whole already-signed-in population was never asked, and relaxing that
- * guard is only safe once "already offered" survives a browser with storage
- * disabled.
+ * Suppression is PER DEVICE, and that is a deliberate reversal.
  *
- * The local tiers are not redundant with it. They answer synchronously, before
- * any network read, which is what lets the eager boot shim skip its dynamic
- * import outright on the common repeat visit.
+ * The first cut suppressed per account, for life. It read as the safer choice
+ * and was not: a platform passkey lives in one authenticator, so someone who
+ * saved a passkey on their Mac was never offered one on Windows, where they
+ * have no usable credential at all.
+ *
+ * So the local tiers above are the PRIMARY suppression, and the durable tier
+ * below is a lifetime CAP (`ACCOUNT_OFFER_CAP`) rather than a boolean. A new
+ * device gets asked; a browser with storage disabled, which has no memory of
+ * its own, still cannot be nagged more than the cap allows.
+ *
+ * The local tiers also answer synchronously, before any network read, which is
+ * what lets the eager boot shim skip its dynamic import on a repeat visit.
  *
  * Every decision here is pure and every storage handle is injected, so the
  * tests need no jsdom and no globals.
  */
+
+import {
+  ACCOUNT_OFFER_CAP,
+  type PasskeyOfferMetadataReader,
+  readAccountOfferCount,
+} from '../../shared/passkey-offer-contract.ts';
 
 // ---------------------------------------------------------------------------
 // Account scoping
@@ -161,53 +170,27 @@ function parseOfferRecord(raw: string): { at: number } | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Where the durable record lives inside `user.unsafeMetadata`.
+ * The shared account-cap contract used by the eager browser read and the
+ * server reservation writer.
  *
  * `unsafeMetadata` is user-writable by design, which is right for a cosmetic
- * "we already asked" flag and wrong for anything security bearing. Forging it
- * can only suppress an offer for the forger.
+ * mirror and wrong for anything security bearing. Redis slots are the
+ * authoritative writer. The Clerk count lets the eager shim skip the dynamic
+ * import after the cap is spent.
  */
-export const ACCOUNT_OFFER_METADATA_KEY = 'wmPasskeyOfferedAt';
+export {
+  ACCOUNT_OFFER_CAP,
+  ACCOUNT_OFFER_COUNT_KEY,
+  LEGACY_ACCOUNT_OFFER_KEY,
+  readAccountOfferCount,
+} from '../../shared/passkey-offer-contract.ts';
 
 /** The read side of the Clerk user this module touches. */
-export interface AccountOfferReader {
-  unsafeMetadata?: Record<string, unknown> | null;
-}
+export type AccountOfferReader = PasskeyOfferMetadataReader;
 
-/** The write side. Clerk's `User.update` resolves once the patch is persisted. */
-export interface AccountOfferWriter extends AccountOfferReader {
-  update?: (params: { unsafeMetadata: Record<string, unknown> }) => Promise<unknown>;
-}
-
-/** Whether this account has been offered on ANY device or origin. */
-export function hasAccountOfferRecord(user: AccountOfferReader | null | undefined): boolean {
-  const at = user?.unsafeMetadata?.[ACCOUNT_OFFER_METADATA_KEY];
-  return typeof at === 'number' && Number.isFinite(at) && at > 0;
-}
-
-/**
- * Persist the durable record. Resolves to whether it actually landed.
- *
- * The spread is load bearing. Clerk REPLACES `unsafeMetadata` wholesale rather
- * than merging, so writing a bare `{ [KEY]: ... }` would silently delete every
- * other key the app or a future feature keeps there.
- *
- * Never throws and never rejects. This runs at mount, and a failed metadata
- * write must not break a prompt already on screen. The local tiers still
- * suppress the repeat on this browser, which is the pre-existing behaviour
- * rather than a regression.
- */
-export async function recordAccountOffer(user: AccountOfferWriter | null | undefined): Promise<boolean> {
-  if (!user || typeof user.update !== 'function') return false;
-  if (hasAccountOfferRecord(user)) return true;
-  try {
-    await user.update({
-      unsafeMetadata: { ...(user.unsafeMetadata ?? {}), [ACCOUNT_OFFER_METADATA_KEY]: Date.now() },
-    });
-    return true;
-  } catch {
-    return false;
-  }
+/** Whether the lifetime cap is spent. */
+export function accountOfferCapReached(user: AccountOfferReader | null | undefined): boolean {
+  return readAccountOfferCount(user) >= ACCOUNT_OFFER_CAP;
 }
 
 /**
@@ -233,22 +216,36 @@ export function safeLocalStorage(): OfferStorage | null {
 export interface PasskeyOfferDecisionInput {
   environmentEligible: boolean;
   sessionReady: boolean;
-  existingPasskeyCount: number;
+  /** Offered on THIS device before. The primary suppression. */
   alreadyOffered: boolean;
+  /** Lifetime account cap spent. The backstop for storage-less browsers. */
+  capReached: boolean;
 }
 
 /**
  * Whether to mount the offer.
  *
- * Pure and total: every gate is an injected boolean or count, so this is the
- * single function the acceptance examples assert against. The caller owns the
- * ordering that makes it cheap — the synchronous gates run before the async
+ * There is deliberately NO "the account already has a passkey" gate, and its
+ * absence is the entire point of this shape.
+ *
+ * A platform passkey lives in ONE authenticator. Touch ID on a Mac syncs
+ * through iCloud Keychain to that person's Apple devices and nowhere else, so
+ * an account-wide passkey count says nothing about whether a credential is
+ * usable on the browser in front of you. Gating on it meant someone who saved a
+ * passkey on their Mac was never offered one on Windows — the exact friction
+ * the feature exists to remove. WebAuthn deliberately exposes no way to ask
+ * "is there a credential usable here", so the per-device record is the best
+ * available proxy and the cap bounds the cost of being wrong.
+ *
+ * Pure and total: every gate is an injected boolean, so this is the single
+ * function the acceptance examples assert against. The caller owns the ordering
+ * that makes it cheap — the synchronous gates run before the async
  * platform-authenticator probe, so the common ineligible paths never touch it.
  */
 export function shouldOfferPasskey(input: PasskeyOfferDecisionInput): boolean {
   if (!input.environmentEligible) return false;
   if (!input.sessionReady) return false;
-  if (input.existingPasskeyCount > 0) return false;
   if (input.alreadyOffered) return false;
+  if (input.capReached) return false;
   return true;
 }

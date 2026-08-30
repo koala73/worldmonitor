@@ -109,6 +109,7 @@ export function buildPublicTool(
       type: tool.inputSchema.type,
       properties: clonedProperties,
       required: [...tool.inputSchema.required],
+      ...(tool.inputSchema.oneOf ? { oneOf: structuredClone(tool.inputSchema.oneOf) } : {}),
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.

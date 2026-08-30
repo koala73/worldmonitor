@@ -39,10 +39,18 @@ canonical. Raw apex, dashboard, and Pro HTML is English, so those documents
 advertise only `x-default` and `en`, both pointing at the self-canonical URL.
 Query-string locale URLs do not belong in hreflang, robots, or sitemap output.
 
-Publishing any non-English hreflang entry requires a separately reviewed
-locale-prefixed static or server-rendered architecture, such as `/fr/` and
-`/fr/dashboard`. Every advertised page must meet the complete localized-page
-contract:
+**hreflang policy by surface:**
+
+| Surface | Indexable languages | Declaration |
+| --- | --- | --- |
+| Apex `/`, `/dashboard`, `/pro`, and English crawlable corpus pages (`/countries/`, `/chokepoints/`, …) | English only | Self-pointing `en` + `x-default` |
+| Mintlify docs (`/docs/…` and `/docs/zh/…`) | English + Simplified Chinese | Reciprocal `en` / `zh-Hans` / `x-default` (English is `x-default`) |
+| Application UI via `?lang=` | Not indexable alternates | Never advertised in hreflang |
+
+Publishing any *additional* non-English hreflang entry (for example `/fr/` app
+routes) requires a separately reviewed locale-prefixed static or
+server-rendered architecture. Every advertised page must meet the complete
+localized-page contract:
 
 - translated visible main content and metadata;
 - a correct `<html lang>` declaration;
@@ -52,8 +60,8 @@ contract:
 - sitemap inclusion for the localized canonical URL.
 
 Genuinely localized pages must not canonicalize back to English. Until that
-architecture exists, adding a client translation or a supported locale code
-does not authorize publishing a new indexable alternate.
+architecture exists for a locale, adding a client translation or a supported
+locale code does not authorize publishing a new indexable alternate.
 
 ### Intelligence Analysis Tradecraft
 

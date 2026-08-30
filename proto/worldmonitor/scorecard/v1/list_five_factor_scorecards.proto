@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.scorecard.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/scorecard/v1/scorecard.proto";
+
+message ListFiveFactorScorecardsRequest {}
+
+message ListFiveFactorScorecardsResponse {
+  // Compact summaries only. Use GetFiveFactorScorecard for the evidence ledger.
+  repeated FiveFactorCountryScorecardSummary scorecards = 1;
+  bool unavailable = 2;
+  string unavailable_reason = 3 [(buf.validate.field).string.pattern = "^(?:|scorecard-snapshot-unavailable)$"];
+  string methodology_version = 4 [(buf.validate.field).string.pattern = "^(?:|1\\.0\\.0)$"];
+  string computed_at = 5;
+}
