@@ -63,7 +63,7 @@ const fixture = `<!doctype html>
   </head>
   <body>
     <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
-    <section class="app-seo-summary" aria-label="About this dashboard">
+    <section class="app-seo-summary" aria-hidden="true">
       <p>Full dashboard SEO summary placeholder for transform tests.</p>
     </section>
     <noscript>
@@ -151,7 +151,7 @@ describe('renderVariantDashboardHtml (#4996)', () => {
 
   it('injects variant-specific SEO summary and noscript differentiation copy', () => {
     const html = renderVariantDashboardHtml(fixture, 'tech');
-    assert.match(html, /class="app-seo-summary"/);
+    assert.match(html, /<section class="app-seo-summary" aria-hidden="true">/);
     assert.match(html, /Tech Monitor is the World Monitor variant/);
     assert.match(html, /<main id="dashboard-noscript"/);
     assert.match(html, /Tech Monitor requires JavaScript for the live map/);

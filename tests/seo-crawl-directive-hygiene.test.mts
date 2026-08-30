@@ -49,10 +49,16 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
 
   it('embeds the full-dashboard SEO summary outside #app so hydration cannot wipe it', () => {
     const html = read('index.html');
-    const summaryIdx = html.indexOf('aria-label="About this dashboard"');
+    const summaryIdx = html.indexOf('<section class="app-seo-summary" aria-hidden="true">');
     const appIdx = html.indexOf('<div id="app">');
     assert.ok(summaryIdx > 0, 'missing app-seo-summary');
     assert.ok(appIdx > summaryIdx, 'SEO summary must precede #app');
+    const summaryOpenTag = html.slice(summaryIdx, html.indexOf('>', summaryIdx) + 1);
+    assert.doesNotMatch(
+      summaryOpenTag,
+      /aria-label=/,
+      'crawler-only summary must stay out of the accessibility tree',
+    );
     assert.match(html, /full-spectrum real-time global intelligence dashboard/i);
   });
 
