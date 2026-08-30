@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import {
+  applyExclusiveFullscreenEnter,
   describePanelLayout,
+  otherFullscreenPanelIds,
   resolveMovePanel,
   resolveSetPanelCollapsed,
   resolveSetPanelFullscreen,
@@ -112,6 +117,68 @@ describe('resolveSetPanelFullscreen', () => {
     assert.equal(exit.ok, true);
     if (exit.ok) assert.equal(exit.unchanged, false);
     assert.equal(resolveSetPanelFullscreen(panels, 'markets', true).reason, 'fullscreen_unsupported');
+  });
+});
+
+describe('exclusive panel fullscreen', () => {
+  function createSharedClassPanel(body: { classActive: boolean }) {
+    let fullscreen = false;
+    return {
+      isFullscreenActive: () => fullscreen,
+      setFullscreen(next: boolean) {
+        if (fullscreen === next) return true;
+        fullscreen = next;
+        body.classActive = next;
+        return true;
+      },
+    };
+  }
+
+  it('exits the previous fullscreen panel before a second panel enters', () => {
+    const body = { classActive: false };
+    const liveNews = createSharedClassPanel(body);
+    const liveWebcams = createSharedClassPanel(body);
+    const registry: Record<string, ReturnType<typeof createSharedClassPanel>> = {
+      'live-news': liveNews,
+      'live-webcams': liveWebcams,
+    };
+
+    liveNews.setFullscreen(true);
+    assert.equal(liveNews.isFullscreenActive(), true);
+    assert.equal(body.classActive, true);
+
+    const panels = [
+      entry('live-news', 'sidebar', 0, { fullscreen: true, fullscreenCapable: true }),
+      entry('live-webcams', 'sidebar', 1, { fullscreenCapable: true }),
+    ];
+    assert.deepEqual(otherFullscreenPanelIds(panels, 'live-webcams'), ['live-news']);
+
+    const result = applyExclusiveFullscreenEnter(
+      panels,
+      (id) => registry[id],
+      'live-webcams',
+    );
+    assert.deepEqual(result, { exitedIds: ['live-news'], entered: true });
+    assert.equal(liveNews.isFullscreenActive(), false);
+    assert.equal(liveWebcams.isFullscreenActive(), true);
+    assert.equal(body.classActive, true);
+
+    liveWebcams.setFullscreen(false);
+    assert.equal(liveNews.isFullscreenActive(), false);
+    assert.equal(liveWebcams.isFullscreenActive(), false);
+    assert.equal(body.classActive, false);
+  });
+
+  it('wires exclusive enter through PanelLayoutManager.set_fullscreen', () => {
+    const managerSrc = readFileSync(resolve(process.cwd(), 'src/app/panel-layout.ts'), 'utf8');
+    const applyStart = managerSrc.indexOf('public applyWebMcpSetPanelFullscreen(');
+    const applyEnd = managerSrc.indexOf('public applyWebMcpMovePanel(', applyStart);
+    const applyBody = managerSrc.slice(applyStart, applyEnd);
+    assert.ok(applyBody.includes('applyExclusiveFullscreenEnter('));
+    assert.match(
+      applyBody,
+      /if \(resolved\.requestedFullscreen\) \{[\s\S]*applyExclusiveFullscreenEnter\(/,
+    );
   });
 });
 

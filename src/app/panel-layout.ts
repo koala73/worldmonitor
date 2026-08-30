@@ -93,6 +93,7 @@ import {
   describePanelLayout,
   mutationApplied as layoutMutationApplied,
   mutationDenied as layoutMutationDenied,
+  applyExclusiveFullscreenEnter,
   resolveMovePanel,
   resolveSetPanelCollapsed,
   resolveSetPanelFullscreen,
@@ -1490,7 +1491,7 @@ export class PanelLayoutManager implements AppModule {
       });
     }
     const panel = this.ctx.panels[resolved.panelId];
-    if (!panel?.supportsFullscreen() || !panel.setFullscreen(resolved.requestedFullscreen)) {
+    if (!panel?.supportsFullscreen()) {
       return layoutMutationDenied(
         'set_fullscreen',
         'fullscreen_unsupported',
@@ -1499,6 +1500,38 @@ export class PanelLayoutManager implements AppModule {
           panelId: resolved.panelId,
           requestedFullscreen: resolved.requestedFullscreen,
           effectiveFullscreen: panel?.isFullscreenActive() === true,
+          changed: false,
+        },
+      );
+    }
+    if (resolved.requestedFullscreen) {
+      const { entered } = applyExclusiveFullscreenEnter(
+        entries.panels,
+        (id) => this.ctx.panels[id],
+        resolved.panelId,
+      );
+      if (!entered) {
+        return layoutMutationDenied(
+          'set_fullscreen',
+          'fullscreen_unsupported',
+          'That panel does not expose a fullscreen control.',
+          {
+            panelId: resolved.panelId,
+            requestedFullscreen: true,
+            effectiveFullscreen: panel.isFullscreenActive(),
+            changed: false,
+          },
+        );
+      }
+    } else if (!panel.setFullscreen(false)) {
+      return layoutMutationDenied(
+        'set_fullscreen',
+        'fullscreen_unsupported',
+        'That panel does not expose a fullscreen control.',
+        {
+          panelId: resolved.panelId,
+          requestedFullscreen: false,
+          effectiveFullscreen: panel.isFullscreenActive(),
           changed: false,
         },
       );

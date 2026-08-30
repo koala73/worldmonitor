@@ -181,6 +181,45 @@ export function resolveSetPanelCollapsed(
   };
 }
 
+/** Panel IDs that must exit fullscreen before `enteringPanelId` can enter. */
+export function otherFullscreenPanelIds(
+  panels: PanelLayoutEntry[],
+  enteringPanelId: string,
+): string[] {
+  if (!Array.isArray(panels) || typeof enteringPanelId !== 'string' || enteringPanelId.length === 0) {
+    return [];
+  }
+  return panels
+    .filter((panel) => panel.fullscreen && panel.id !== enteringPanelId)
+    .map((panel) => panel.id);
+}
+
+export interface FullscreenToggleable {
+  setFullscreen(fullscreen: boolean): boolean;
+}
+
+/**
+ * Exit every other fullscreen panel first, then enter `enteringPanelId`.
+ * Order matters: Live News and Live Webcams share `live-news-fullscreen-active`.
+ */
+export function applyExclusiveFullscreenEnter(
+  panels: PanelLayoutEntry[],
+  getPanel: (id: string) => FullscreenToggleable | undefined,
+  enteringPanelId: string,
+): { exitedIds: string[]; entered: boolean } {
+  if (typeof getPanel !== 'function' || typeof enteringPanelId !== 'string' || enteringPanelId.length === 0) {
+    return { exitedIds: [], entered: false };
+  }
+  const exitedIds = otherFullscreenPanelIds(panels, enteringPanelId);
+  for (const id of exitedIds) {
+    getPanel(id)?.setFullscreen(false);
+  }
+  return {
+    exitedIds,
+    entered: getPanel(enteringPanelId)?.setFullscreen(true) === true,
+  };
+}
+
 export function resolveSetPanelFullscreen(
   panels: PanelLayoutEntry[],
   panelId: unknown,
