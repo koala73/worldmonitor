@@ -33,6 +33,7 @@ const {
 
 export const SCORECARD_TTL_SECONDS = 3 * 24 * 3600;
 export const SCORECARD_MAX_STALE_MIN = 36 * 60;
+export const SCORECARD_ACTIVATION_KEY = 'seed-activated:scorecard:five-factor';
 
 const FIXED_SOURCE_ENTRIES = Object.entries(SCORECARD_SOURCE_KEYS)
   .filter(([field]) => field !== 'staticByCountry');
@@ -131,11 +132,12 @@ export async function publishScorecardCohortAtomically(stagingKey, {
   await pipeline([
     [
       'EVAL',
-      "if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]); redis.call('RENAME', KEYS[2], KEYS[3]); redis.call('EXPIRE', KEYS[3], ARGV[2]); return 1 end; if redis.call('GET', KEYS[1]) == ARGV[1] and redis.call('EXISTS', KEYS[3]) == 1 then return 1 end; return redis.error_reply('scorecard staging cohort missing')",
-      '3',
+      "if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]); redis.call('RENAME', KEYS[2], KEYS[3]); redis.call('EXPIRE', KEYS[3], ARGV[2]); redis.call('SET', KEYS[4], '1'); return 1 end; if redis.call('GET', KEYS[1]) == ARGV[1] and redis.call('EXISTS', KEYS[3]) == 1 then redis.call('SET', KEYS[4], '1'); return 1 end; return redis.error_reply('scorecard staging cohort missing')",
+      '4',
       canonicalKey,
       stagingKey,
       FIVE_FACTOR_SCORECARD_READ_MODEL_KEY,
+      SCORECARD_ACTIVATION_KEY,
       payload,
       String(ttlSeconds),
     ],

@@ -12,7 +12,13 @@ describe('five-factor operational wiring', () => {
       maxStaleMin: 2160,
       minRecordCount: 180,
       minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 120, defense: 30 },
-      cutover: { mode: 'expiring-ack', fromKey: null, issue: 6441, status: 'EMPTY' },
+      activationKey: 'seed-activated:scorecard:five-factor',
+      cutover: {
+        mode: 'activation-marker',
+        fromKey: null,
+        issue: 6441,
+        activationKey: 'seed-activated:scorecard:five-factor',
+      },
     });
     const base = { status: 'OK', key: 'scorecard:five-factor:v1' };
     assert.deepEqual(healthTesting.composeScorecardReadModelStatus(base, 1), {
@@ -28,29 +34,42 @@ describe('five-factor operational wiring', () => {
     assert.equal(healthTesting.composeScorecardReadModelStatus(base, null, true).status, 'REDIS_PARTIAL');
   });
 
-  it('bounds the new health probe acknowledgement to the first Railway tick', () => {
+  it('softens scorecard absence only before the first successful cohort', () => {
     const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8')) as {
-      acknowledged: Array<{
-        name: string;
-        status: string;
-        issue: number;
-        expiresAt: string;
-        cutover?: { probeKey?: string; activatedAt?: string; firstScheduledRunAt?: string };
-      }>;
+      acknowledged: Array<{ name: string }>;
     };
-    const acknowledgement = baseline.acknowledged.find((entry) => entry.name === 'scorecardFiveFactor');
-    assert.deepEqual(acknowledgement, {
-      name: 'scorecardFiveFactor',
-      status: 'EMPTY',
-      issue: 6441,
-      reason: 'The new scorecard health probe can be empty only until the first six-hour Railway bundle tick after activation.',
-      expiresAt: '2026-08-30T06:00:00.000Z',
-      cutover: {
-        probeKey: 'seed-meta:scorecard:five-factor',
-        activatedAt: '2026-08-30T00:00:00.000Z',
-        firstScheduledRunAt: '2026-08-30T06:00:00.000Z',
-      },
-    });
+    assert.equal(
+      baseline.acknowledged.some((entry) => entry.name === 'scorecardFiveFactor'),
+      false,
+      'scorecardFiveFactor uses a durable activation marker, not a wall-clock acknowledgement',
+    );
+    assert.equal(healthTesting.ON_DEMAND_KEYS.has('scorecardFiveFactor'), true);
+    assert.equal(
+      healthTesting.ACTIVATION_MARKERS.scorecardFiveFactor,
+      'seed-activated:scorecard:five-factor',
+    );
+
+    const dataKey = healthTesting.STANDALONE_KEYS.scorecardFiveFactor;
+    const metaKey = healthTesting.SEED_META.scorecardFiveFactor.key;
+    const base = {
+      keyStrens: new Map([[dataKey, 0]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, null]]),
+      keyMetaErrors: new Map(),
+      now: 1_800_000_000_000,
+    };
+    assert.equal(healthTesting.classifyKey(
+      'scorecardFiveFactor',
+      dataKey,
+      { allowOnDemand: true },
+      { ...base, activationStates: new Map([['scorecardFiveFactor', false]]) },
+    ).status, 'EMPTY_ON_DEMAND');
+    assert.equal(healthTesting.classifyKey(
+      'scorecardFiveFactor',
+      dataKey,
+      { allowOnDemand: true },
+      { ...base, activationStates: new Map([['scorecardFiveFactor', true]]) },
+    ).status, 'EMPTY');
   });
 
   it('places the measured cheap section last with safe admission arithmetic', () => {

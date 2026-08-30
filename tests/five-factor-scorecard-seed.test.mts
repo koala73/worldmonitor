@@ -24,6 +24,7 @@ import {
   publishScorecardCohortAtomically,
   readScorecardSources,
   redisPipeline,
+  SCORECARD_ACTIVATION_KEY,
   stageScorecardReadModel,
 } from '../scripts/seed-five-factor-scorecard.mjs';
 
@@ -265,12 +266,15 @@ describe('five-factor atomic snapshot', () => {
     assert.ok(commands.some((command) => command[0] === 'EXPIRE' && command[1] === stagingKey));
     const atomicCommand = commands.at(-1)!;
     assert.equal(atomicCommand[0], 'EVAL');
-    assert.match(String(atomicCommand[1]), /SET.*RENAME.*EXPIRE/);
+    assert.match(String(atomicCommand[1]), /SET.*RENAME.*EXPIRE.*SET.*KEYS\[4\]/);
+    assert.match(String(atomicCommand[1]), /redis\.call\('SET', KEYS\[4\], '1'\)/);
+    assert.doesNotMatch(String(atomicCommand[1]), /KEYS\[4\].*'EX'/);
     assert.deepEqual(atomicCommand.slice(2), [
-      '3',
+      '4',
       'scorecard:five-factor:v1',
       stagingKey,
       'scorecard:five-factor:v1:read-model',
+      SCORECARD_ACTIVATION_KEY,
       '{"cohort":1}',
       '123',
     ]);
@@ -298,12 +302,15 @@ describe('five-factor atomic snapshot', () => {
       assert.equal(commands.length, 1);
       const command = commands[0]!;
       assert.equal(command[0], 'EVAL');
-      const [, script, keyCount, commandCanonicalKey, commandStagingKey, commandLiveKey, payload, ttl] = command.map(String);
-      assert.equal(keyCount, '3');
+      const [, script, keyCount, commandCanonicalKey, commandStagingKey, commandLiveKey, commandActivationKey, payload, ttl] = command.map(String);
+      assert.equal(keyCount, '4');
+      assert.equal(commandActivationKey, SCORECARD_ACTIVATION_KEY);
       assert.match(script, /scorecard staging cohort missing/);
+      assert.match(script, /redis\.call\('SET', KEYS\[4\], '1'\)/);
       if (values.has(commandStagingKey)) {
         values.set(commandCanonicalKey, payload);
         values.set(commandLiveKey, values.get(commandStagingKey)!);
+        values.set(commandActivationKey, '1');
         values.delete(commandStagingKey);
         ttls.set(commandCanonicalKey, Number(ttl));
         ttls.set(commandLiveKey, Number(ttl));
@@ -313,7 +320,10 @@ describe('five-factor atomic snapshot', () => {
         }
         return [{ result: 1 }];
       }
-      if (values.get(commandCanonicalKey) === payload && values.has(commandLiveKey)) return [{ result: 1 }];
+      if (values.get(commandCanonicalKey) === payload && values.has(commandLiveKey)) {
+        values.set(commandActivationKey, '1');
+        return [{ result: 1 }];
+      }
       throw new Error('scorecard staging cohort missing');
     };
 
@@ -322,9 +332,10 @@ describe('five-factor atomic snapshot', () => {
       /response lost/,
     );
     assert.deepEqual(
-      [values.get(canonicalKey), values.get(liveReadModelKey), ttls.get(canonicalKey), ttls.get(liveReadModelKey)],
-      ['new-canonical', 'new-read-model', 321, 321],
+      [values.get(canonicalKey), values.get(liveReadModelKey), values.get(SCORECARD_ACTIVATION_KEY), ttls.get(canonicalKey), ttls.get(liveReadModelKey)],
+      ['new-canonical', 'new-read-model', '1', 321, 321],
     );
+    assert.equal(ttls.has(SCORECARD_ACTIVATION_KEY), false);
     await publishScorecardCohortAtomically(stagingKey, { canonicalKey, payload: 'new-canonical', ttlSeconds: 321, pipeline });
     await assert.rejects(
       publishScorecardCohortAtomically('scorecard:missing:staging', { canonicalKey, payload: 'other-canonical', ttlSeconds: 321, pipeline }),
@@ -559,6 +570,8 @@ describe('five-factor atomic snapshot', () => {
     const source = readFileSync(new URL('../scripts/seed-five-factor-scorecard.mjs', import.meta.url), 'utf8');
     assert.match(source, /runSeed\('scorecard', 'five-factor', FIVE_FACTOR_SCORECARD_KEY/);
     assert.doesNotMatch(source, /\['SET',\s*FIVE_FACTOR_SCORECARD_KEY/);
+    assert.match(source, /SCORECARD_ACTIVATION_KEY = 'seed-activated:scorecard:five-factor'/);
+    assert.match(source, /SCORECARD_ACTIVATION_KEY,/);
     assert.match(source, /emptyDataIsFailure:\s*true/);
     assert.match(source, /validateFn:\s*validateFiveFactorSnapshot/);
   });

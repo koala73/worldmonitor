@@ -1167,11 +1167,12 @@ const SEED_META = {
     maxStaleMin: 2160, // Daily section; 36h allows one delayed Railway tick before the 3d data TTL.
     minRecordCount: 180,
     minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 120, defense: 30 },
+    activationKey: 'seed-activated:scorecard:five-factor',
     cutover: {
-      mode: 'expiring-ack',
+      mode: 'activation-marker',
       fromKey: null,
       issue: 6441,
-      status: 'EMPTY',
+      activationKey: 'seed-activated:scorecard:five-factor',
     },
   },
   resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 840, requireResilienceCacheState: true }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron); 14h budget tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys that preempt a scheduled tick; alerts at 2 missed ticks (18h gap). Bumped from 720 — see comment below.
@@ -1429,6 +1430,11 @@ const ON_DEMAND_KEYS = new Set([
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
   'physicalPremiums',
+  // Five-factor scorecard (#6441). Vercel can ship this probe before the
+  // Railway resilience bundle publishes the first daily cohort. The seeder
+  // writes a permanent marker in the same EVAL as that first successful
+  // cohort; absence is pending until then and strict afterward.
+  'scorecardFiveFactor',
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
   'bisPolicy', 'bisExchange', 'bisCredit',
@@ -1509,6 +1515,7 @@ const ACTIVATION_MARKERS = {
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
+  scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
