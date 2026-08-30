@@ -60,6 +60,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 | SPA + Edge Functions | Vercel | Static files, API endpoints, middleware (bot filtering, social OG) |
 | CORS Preflight Worker | Cloudflare | Edge CORS for `api.worldmonitor.app` — short-circuits OPTIONS, stamps CORS headers on responses |
 | AIS Relay | Railway | WebSocket proxy (AIS stream), seed loops (market, aviation, GPSJAM, risk scores, UCDP, positive events), RSS proxy, OREF polling |
+| Macro Seed Bundle | Railway | Daily SGE physical-premium cohort, bounded histories, physical-divergence read model, health metadata, and transition cooldowns |
 | Resilience Seed Bundle | Railway | Resilience/static/food seeds plus the daily five-factor scorecard cohort and read-model publisher |
 | Consumer Prices | Railway | Containerized price scrapers (Playwright, per-country baskets) + Redis publisher for the consumer-prices dataset |
 | Redis | Upstash | Cache layer with stampede protection, seed-meta freshness tracking, rate limiting |
@@ -171,6 +172,8 @@ Edge functions are bundled per file: each deployed function may not pull in unre
 `server/worldmonitor/<domain>/v1/handler.ts` exports handler objects with per-RPC functions. Each RPC function uses `cachedFetchJson()` from `server/_shared/redis.ts` for cache-miss coalescing: concurrent requests for the same key share a single upstream fetch and Redis write.
 
 The `scorecard/v1` domain is an exception to request-time upstream fetching. Its generated `ScorecardService` country, list, and bloc RPCs read one frozen cohort from `scorecard:five-factor:v1:read-model`, then use `scorecard:five-factor:v1` only as a bounded last-good fallback. The canonical pure adapters and country scorer live under `scripts/scorecard/v1/` for the scripts-root Railway publisher; a checked generator emits Edge-safe copies under the server domain, which owns Redis reads, bloc scoring, and public response conversion. See [Five-factor scorecard v1 architecture](docs/architecture/five-factor-scorecard-v1.md).
+
+`MarketService.GetPhysicalDivergenceIndex` is also a read-model RPC. The daily macro seed bundle normalizes SGE SHAU/SHAG benchmarks against the independently timestamped COMEX and FX snapshots, appends bounded per-metal history, and atomically publishes `market:physical-divergence:v1`, its health metadata, activation marker, and transition cooldowns. The Edge handler revalidates the stored contract and re-ages every input clock before it serves the response; the route is `no-store` so independently aging cohorts are never joined through a stale shared cache. MCP reads the same normalized snapshot, and the commodities panel renders the same explicit `ok`, `insufficient_history`, `stale_input`, or `missing_input` states. See [Physical divergence index methodology](docs/methodology/physical-divergence-index.mdx).
 
 **Source files**: `api/`, `server/gateway.ts`, `server/router.ts`, `server/_shared/redis.ts`, `server/worldmonitor/`
 

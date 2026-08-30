@@ -19,6 +19,9 @@ import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import {
+  PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS,
+  PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS,
+  PHYSICAL_DIVERGENCE_STALE_AFTER_CALENDAR_DAYS,
   isPhysicalDivergencePrintFuture,
   physicalDivergenceStaleReason,
 } from './shared/physical-divergence-staleness.js';
@@ -81,20 +84,13 @@ export function physicalPremiumActivationWrite(env) {
     : null;
 }
 
-export function physicalDivergenceActivationWrite(env) {
-  return shouldWritePhysicalPremiumActivationMarker(env)
-    ? ['SET', PHYSICAL_DIVERGENCE_ACTIVATION_KEY, '1']
-    : null;
-}
-
 async function markPhysicalPremiumActivated({ env } = {}) {
-  const commands = [physicalPremiumActivationWrite(env), physicalDivergenceActivationWrite(env)]
-    .filter(Boolean);
-  if (commands.length === 0) return;
+  const command = physicalPremiumActivationWrite(env);
+  if (!command) return;
   try {
     const creds = getOptionalUpstashCreds();
     if (!creds) return;
-    for (const command of commands) await upstashCommand(creds, command);
+    await upstashCommand(creds, command);
   } catch (error) {
     console.warn(`  WARN: activation marker write failed: ${error?.message || error}`);
   }
@@ -116,7 +112,10 @@ return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)
 export const PUBLISH_DIVERGENCE_LUA = `
 redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
 redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])
-for index = 3, #KEYS do
+if ARGV[5] == '1' then
+  redis.call('SET', KEYS[3], '1')
+end
+for index = 4, #KEYS do
   redis.call('SET', KEYS[index], ARGV[index + 2], 'EX', ARGV[4])
 end
 return #KEYS
@@ -267,32 +266,69 @@ export async function retryDerivedRedisCommand(creds, command, commandFn, delayF
   throw new Error('Unreachable derived Redis retry state');
 }
 
+function physicalPrintFreshUntil(value) {
+  const inputDay = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(inputDay)) return null;
+  const shanghaiOffsetMs = 8 * 60 * 60 * 1000;
+  return inputDay - shanghaiOffsetMs
+    + (PHYSICAL_DIVERGENCE_STALE_AFTER_CALENDAR_DAYS + 1) * DAY_MIN * 60 * 1000;
+}
+
+function physicalDivergenceInputFreshUntil(snapshot) {
+  const deadlines = [];
+  for (const reading of snapshot?.readings ?? []) {
+    const physicalDeadline = physicalPrintFreshUntil(reading?.physicalAsOf);
+    const paperAsOf = Date.parse(reading?.paperAsOf ?? '');
+    const fxAsOf = Date.parse(reading?.provenance?.fxAsOf ?? '');
+    if (physicalDeadline == null || !Number.isFinite(paperAsOf) || !Number.isFinite(fxAsOf)) return null;
+    deadlines.push(
+      physicalDeadline,
+      paperAsOf + PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS,
+      fxAsOf + PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS,
+    );
+  }
+  return deadlines.length > 0 ? Math.min(...deadlines) : null;
+}
+
 export function physicalDivergenceMeta(snapshot, nowMs) {
   const stateCounts = { ok: 0, insufficient_history: 0, stale_input: 0, missing_input: 0 };
   for (const reading of snapshot?.readings ?? []) {
     if (Object.hasOwn(stateCounts, reading?.state)) stateCounts[reading.state] += 1;
   }
-  const compositeState = snapshot?.composite?.state;
+  const sourceState = stateCounts.missing_input > 0
+    ? 'error'
+    : stateCounts.stale_input > 0 ? 'stale' : 'ok';
   return {
     fetchedAt: nowMs,
     recordCount: Array.isArray(snapshot?.readings) ? snapshot.readings.length : 0,
     methodologyVersion: METHODOLOGY_VERSION,
-    sourceState: compositeState === 'stale_input'
-      ? 'stale'
-      : compositeState === 'missing_input' ? 'error' : 'ok',
+    sourceState,
     sourceReason: typeof snapshot?.composite?.reason === 'string'
       ? snapshot.composite.reason.slice(0, 160)
       : '',
     stateCounts,
+    inputFreshUntil: physicalDivergenceInputFreshUntil(snapshot),
   };
 }
 
-export function physicalDivergencePublishCommand({ divergenceKey, metaKey, snapshot, nowMs, prefix = '' }) {
+export function physicalDivergencePublishCommand({
+  divergenceKey,
+  metaKey,
+  snapshot,
+  nowMs,
+  prefix = '',
+  activate = prefix === '',
+}) {
   const cooldownWrites = snapshot.transitions.map((transition) => ({
     key: `${prefix}market:physical-divergence-transition-cooldown:v1:${transition.metal}`,
     payload: JSON.stringify({ emittedAt: nowMs, transitionId: transition.id }),
   }));
-  const keys = [divergenceKey, metaKey, ...cooldownWrites.map((entry) => entry.key)];
+  const keys = [
+    divergenceKey,
+    metaKey,
+    `${prefix}${PHYSICAL_DIVERGENCE_ACTIVATION_KEY}`,
+    ...cooldownWrites.map((entry) => entry.key),
+  ];
   return [
     'EVAL',
     PUBLISH_DIVERGENCE_LUA,
@@ -302,6 +338,7 @@ export function physicalDivergencePublishCommand({ divergenceKey, metaKey, snaps
     JSON.stringify(physicalDivergenceMeta(snapshot, nowMs)),
     String(DIVERGENCE_TTL_SECONDS),
     String(TRANSITION_COOLDOWN_SECONDS),
+    activate ? '1' : '0',
     ...cooldownWrites.map((entry) => entry.payload),
   ];
 }

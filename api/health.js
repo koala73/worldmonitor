@@ -675,6 +675,7 @@ const SEED_META = {
     key: 'seed-meta:market:physical-divergence',
     maxStaleMin: 4320,
     minRecordCount: 2,
+    enforceInputFreshUntil: true,
     activationKey: 'seed-activated:market:physical-divergence',
     cutover: {
       mode: 'activation-marker',
@@ -1996,10 +1997,13 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // Source-specific producers can preserve usable last-good records while a
   // current upstream attempt is degraded. Surface that state immediately as a
   // warning without discarding the retained record count from health output.
-  const sourceDegraded = typeof meta?.sourceState === 'string'
+  const inputFreshUntil = Number(meta?.inputFreshUntil);
+  const inputFreshnessExpired = seedCfg.enforceInputFreshUntil === true
+    && (!Number.isFinite(inputFreshUntil) || inputFreshUntil <= now);
+  const sourceDegraded = inputFreshnessExpired || (typeof meta?.sourceState === 'string'
     && meta.sourceState !== 'ok'
     && !sourceUnavailable
-    && !sourceBlocked;
+    && !sourceBlocked);
   // Content-age trio (2026-05-04 health-readiness plan). Presence of
   // maxContentAgeMin is the opt-in signal — legacy seeders without it
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.

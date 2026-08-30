@@ -84,6 +84,11 @@ const RAW_STATES = new Set<PhysicalDivergenceRawState>([
 ]);
 const RAW_REGIMES = new Set<PhysicalDivergenceRawRegime>(['normal', 'elevated', 'stressed', 'extreme']);
 const RAW_TRENDS = new Set<PhysicalDivergenceRawTrend>(['widening', 'stable', 'narrowing']);
+const NON_OK_STATE_PRIORITY: PhysicalDivergenceRawState[] = [
+  'missing_input',
+  'stale_input',
+  'insufficient_history',
+];
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -271,12 +276,17 @@ function reading(value: unknown): PhysicalDivergenceRawReading {
   if (readingState === 'ok') {
     if (
       readingIndex == null
+      || readingIndex < 0
+      || readingIndex > 100
       || premiumPct == null
       || premiumUsdPerOz == null
       || readingPercentile == null
+      || readingPercentile < 0
+      || readingPercentile > 100
       || readingDelta5d == null
       || readingDelta20d == null
       || raw.historyPoints < 60
+      || raw.historyPoints > 250
     ) throw new TypeError('Ok physical divergence reading is incomplete');
   } else if (
     readingIndex != null
@@ -356,9 +366,10 @@ function deriveComposite(
   weights: PhysicalDivergenceRawComposite['weights'],
 ): PhysicalDivergenceRawComposite {
   const byMetal = new Map(readings.map((entry) => [entry.metal, entry]));
-  const firstNonOk = PHYSICAL_DIVERGENCE_METALS
-    .map((entryMetal) => byMetal.get(entryMetal))
-    .find((entry) => entry?.state !== 'ok');
+  const firstNonOk = NON_OK_STATE_PRIORITY
+    .flatMap((entryState) => PHYSICAL_DIVERGENCE_METALS
+      .map((entryMetal) => byMetal.get(entryMetal))
+      .filter((entry) => entry?.state === entryState))[0];
   if (firstNonOk) {
     return {
       state: firstNonOk.state,

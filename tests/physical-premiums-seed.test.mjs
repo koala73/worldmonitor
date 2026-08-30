@@ -22,7 +22,6 @@ import {
   physicalDivergencePublishCommand,
   publishPhysicalDivergenceDerivedData,
   retryDerivedRedisCommand,
-  physicalDivergenceActivationWrite,
   physicalPremiumActivationWrite,
   shouldWritePhysicalPremiumActivationMarker,
   validatePhysicalPremiumPayload,
@@ -261,11 +260,6 @@ describe('physical premium seed', () => {
       physicalPremiumActivationWrite(parseSeedTargetArgs(['--env=development']).env),
       null,
     );
-    assert.deepEqual(
-      physicalDivergenceActivationWrite('production'),
-      ['SET', 'seed-activated:market:physical-divergence', '1'],
-    );
-    assert.equal(physicalDivergenceActivationWrite('preview'), null);
   });
 
   it('uses one atomic append, date dedupe, and trim command for each bounded history list', async () => {
@@ -343,14 +337,54 @@ describe('physical premium seed', () => {
 
     assert.equal(command[0], 'EVAL');
     assert.equal(command[1], PUBLISH_DIVERGENCE_LUA);
-    assert.equal(command[2], '3');
-    assert.deepEqual(command.slice(3, 6), [
+    assert.equal(command[2], '4');
+    assert.deepEqual(command.slice(3, 7), [
       'test:market:physical-divergence:v1',
       'test:seed-meta:market:physical-divergence',
+      'test:seed-activated:market:physical-divergence',
       'test:market:physical-divergence-transition-cooldown:v1:gold',
     ]);
-    assert.equal(JSON.parse(command[7]).sourceState, 'ok');
+    assert.equal(JSON.parse(command[8]).sourceState, 'ok');
+    assert.equal(command[11], '0');
     assert.equal(JSON.parse(command.at(-1)).transitionId, snapshot.transitions[0].id);
+
+    const productionCommand = physicalDivergencePublishCommand({
+      divergenceKey: 'market:physical-divergence:v1',
+      metaKey: 'seed-meta:market:physical-divergence',
+      snapshot: { ...snapshot, transitions: [] },
+      nowMs: 1_787_056_200_000,
+    });
+    assert.equal(productionCommand[5], 'seed-activated:market:physical-divergence');
+    assert.equal(productionCommand.at(-1), '1');
+  });
+
+  it('derives health from every member and publishes the earliest input deadline', () => {
+    const snapshot = {
+      readings: [
+        {
+          state: 'insufficient_history',
+          physicalAsOf: '2026-08-18',
+          paperAsOf: '2026-08-18T12:30:00.000Z',
+          provenance: { fxAsOf: '2026-08-18T12:30:00.000Z' },
+        },
+        {
+          state: 'stale_input',
+          physicalAsOf: '2026-08-18',
+          paperAsOf: '2026-08-18T12:30:00.000Z',
+          provenance: { fxAsOf: '2026-08-18T12:30:00.000Z' },
+        },
+      ],
+      composite: { state: 'stale_input', reason: 'member_not_ok:silver:stale_input' },
+    };
+    const meta = physicalDivergenceMeta(snapshot, Date.parse('2026-08-18T12:30:00.000Z'));
+    assert.equal(meta.sourceState, 'stale');
+    assert.equal(meta.inputFreshUntil, Date.parse('2026-08-20T00:30:00.000Z'));
+
+    snapshot.readings[1].state = 'missing_input';
+    assert.equal(
+      physicalDivergenceMeta(snapshot, Date.parse('2026-08-18T12:30:00.000Z')).sourceState,
+      'error',
+    );
   });
 
   it('publishes bounded histories, the derived snapshot, metadata, and transition cooldowns', async () => {
@@ -422,6 +456,7 @@ describe('physical premium seed', () => {
       assert.ok(publish);
       assert.equal(publish[3], 'test:market:physical-divergence:v1');
       assert.equal(publish[4], 'test:seed-meta:market:physical-divergence');
+      assert.equal(publish[5], 'test:seed-activated:market:physical-divergence');
       const publishedKeys = publish.slice(3, 3 + Number(publish[2]));
       const cooldownWrites = publishedKeys.filter((key) => (
         key.startsWith('test:market:physical-divergence-transition-cooldown:v1:')

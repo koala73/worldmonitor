@@ -235,12 +235,15 @@ const PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT = [
   "return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)",
 ].join('\n');
 // PINNED COPY of scripts/seed-physical-premiums.mjs PUBLISH_DIVERGENCE_LUA.
-// The derived snapshot, health metadata, and transition cooldowns must become
-// visible together so a retry cannot publish a signal without its cooldown.
+// The derived snapshot, health metadata, activation marker, and transition
+// cooldowns must become visible together.
 const PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT = [
   "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])",
   "redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])",
-  'for index = 3, #KEYS do',
+  "if ARGV[5] == '1' then",
+  "  redis.call('SET', KEYS[3], '1')",
+  'end',
+  'for index = 4, #KEYS do',
   "  redis.call('SET', KEYS[index], ARGV[index + 2], 'EX', ARGV[4])",
   'end',
   'return #KEYS',

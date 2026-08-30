@@ -65,6 +65,8 @@ describe('physical premium production registration', () => {
     assert.match(healthSrc, /physicalPremiums: SEED_META\.physicalPremiums\.activationKey/);
     assert.match(healthSrc, /'physicalPremiums',/);
     assert.match(healthSrc, /physicalDivergence:\s+\{[\s\S]*?key: 'seed-meta:market:physical-divergence'[\s\S]*?minRecordCount: 2/);
+    assert.match(healthSrc, /physicalDivergence:\s+\{[\s\S]*?enforceInputFreshUntil: true/);
+    assert.match(read('api/seed-health.js'), /'market:physical-divergence':\s+\{[\s\S]*?enforceInputFreshUntil: true/);
     assert.match(healthSrc, /physicalDivergence: SEED_META\.physicalDivergence\.activationKey/);
     assert.match(healthSrc, /'physicalDivergence',/);
 
@@ -149,5 +151,25 @@ describe('physical premium production registration', () => {
       assert.equal(entry.status, 'SEED_ERROR');
       assert.equal(entry.records, 2);
     }
+
+    const expired = health.classifyKey(
+      'physicalDivergence',
+      PHYSICAL_DIVERGENCE_KEY,
+      { allowOnDemand: true },
+      {
+        keyStrens: new Map([[PHYSICAL_DIVERGENCE_KEY, 2048]]),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[PHYSICAL_DIVERGENCE_META_KEY, JSON.stringify({
+          fetchedAt: now - 60_000,
+          recordCount: 2,
+          sourceState: 'ok',
+          inputFreshUntil: now,
+        })]]),
+        keyMetaErrors: new Map(),
+        activationStates: new Map([['physicalDivergence', true]]),
+        now,
+      },
+    );
+    assert.equal(expired.status, 'SEED_ERROR');
   });
 });

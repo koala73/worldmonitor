@@ -53,6 +53,14 @@ describe('physical divergence methodology v1', () => {
     assert.equal(isPhysicalDivergencePrintStale('2026-10-01', nowMs), false);
     assert.equal(isPhysicalDivergencePrintStale('2026-09-30', nowMs), true);
   });
+
+  it('uses the Shanghai date across the midnight stale boundary', () => {
+    const beforeShanghaiMidnight = Date.parse('2026-10-13T15:59:59.999Z');
+    const afterShanghaiMidnight = Date.parse('2026-10-13T16:00:00.000Z');
+    assert.equal(isPhysicalDivergencePrintStale('2026-10-01', beforeShanghaiMidnight), false);
+    assert.equal(isPhysicalDivergencePrintStale('2026-10-01', afterShanghaiMidnight), true);
+    assert.equal(isPhysicalDivergencePrintStale('2026-10-02', afterShanghaiMidnight), false);
+  });
   it('flips regimes exactly at the documented metal-specific absolute floors', () => {
     assert.equal(classifyPhysicalPremiumRegime('gold', 0.9999, 50), 'normal');
     assert.equal(classifyPhysicalPremiumRegime('gold', 1, 50), 'elevated');
@@ -257,6 +265,20 @@ describe('physical divergence methodology v1', () => {
     assert.equal(composite.index, null);
     assert.equal(composite.reason, 'member_not_ok:silver:missing_input');
     assert.equal(composite.methodologyVersion, METHODOLOGY_VERSION);
+  });
+
+  it('prioritizes missing and stale members over an insufficient-history sibling', () => {
+    const weightsOnly = (state, metal) => ({ metal, state, index: null });
+    for (const readings of [
+      [weightsOnly('insufficient_history', 'gold'), weightsOnly('stale_input', 'silver')],
+      [weightsOnly('stale_input', 'gold'), weightsOnly('insufficient_history', 'silver')],
+    ]) {
+      assert.equal(buildPhysicalStressComposite(readings).state, 'stale_input');
+    }
+    assert.equal(buildPhysicalStressComposite([
+      weightsOnly('stale_input', 'gold'),
+      weightsOnly('missing_input', 'silver'),
+    ]).state, 'missing_input');
   });
 
   it('weights the ok composite 70% gold and 30% silver', () => {

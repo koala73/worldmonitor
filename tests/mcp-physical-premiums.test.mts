@@ -123,6 +123,10 @@ beforeEach(() => mock.method(Date, 'now', () => Date.parse('2026-08-18T12:30:00.
 afterEach(() => mock.restoreAll());
 
 describe('get_market_data physical premium coverage', () => {
+  it('names physical divergence in the discoverable tool-list sentence', () => {
+    assert.match(tool.description.split('.')[0], /physical-divergence/);
+  });
+
   it('declares the cache, RPC, and output schema without staling the aggregate tool before activation', () => {
     assert.ok(tool._cacheKeys.includes('market:physical-premium:v1'));
     assert.ok(tool._apiPaths.includes('GET /api/market/v1/get-physical-premiums'));

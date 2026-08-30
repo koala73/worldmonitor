@@ -263,14 +263,22 @@ export function buildPhysicalStressComposite(readings) {
     if (!['ok', 'insufficient_history', 'stale_input', 'missing_input'].includes(reading.state)) {
       throw new TypeError(`Unknown physical divergence state: ${reading.state}`);
     }
-    if (reading.state !== 'ok' || !finite(reading.index)) {
-      return {
-        state: reading.state,
-        reason: `member_not_ok:${metal}:${reading.state}`,
-        index: null,
-        weights,
-        methodologyVersion: METHODOLOGY_VERSION,
-      };
+  }
+  for (const state of ['missing_input', 'stale_input', 'insufficient_history']) {
+    const metal = Object.keys(METAL_METHODOLOGY)
+      .find((candidate) => byMetal.get(candidate)?.state === state);
+    if (!metal) continue;
+    return {
+      state,
+      reason: `member_not_ok:${metal}:${state}`,
+      index: null,
+      weights,
+      methodologyVersion: METHODOLOGY_VERSION,
+    };
+  }
+  for (const metal of Object.keys(METAL_METHODOLOGY)) {
+    if (!finite(byMetal.get(metal)?.index)) {
+      throw new TypeError(`Ok physical divergence reading has an invalid index: ${metal}`);
     }
   }
   const index = Object.entries(METAL_METHODOLOGY).reduce(

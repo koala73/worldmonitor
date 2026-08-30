@@ -27,9 +27,8 @@ export function isPhysicalDivergencePrintFuture(value, nowMs) {
 
 export function isPhysicalDivergencePrintStale(value, nowMs) {
   const inputDay = Date.parse(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(inputDay)) return false;
-  const now = new Date(nowMs);
-  const currentDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (!Number.isFinite(inputDay) || !Number.isFinite(nowMs)) return false;
+  const currentDay = shanghaiDayMs(nowMs);
   const ageDays = Math.floor((currentDay - inputDay) / 86_400_000);
   return ageDays > PHYSICAL_DIVERGENCE_STALE_AFTER_CALENDAR_DAYS;
 }
