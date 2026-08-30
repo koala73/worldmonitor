@@ -3699,7 +3699,7 @@ components:
                 evaluatedAt:
                     type: integer
                     format: int64
-                    description: 'Evaluation time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Evaluation time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 methodologyVersion:
                     type: string
                     description: Methodology identifier for the complete response.
@@ -3791,7 +3791,7 @@ components:
                 paperAsOf:
                     type: integer
                     format: int64
-                    description: 'Paper snapshot time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 historyKey:
                     type: string
                     description: Redis history key used by the calculation.
@@ -3822,7 +3822,7 @@ components:
                 paperAsOf:
                     type: integer
                     format: int64
-                    description: 'Paper snapshot time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 fxSource:
                     type: string
                     description: Human-readable FX provider.
@@ -3832,7 +3832,7 @@ components:
                 fxAsOf:
                     type: integer
                     format: int64
-                    description: 'FX snapshot time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'FX snapshot time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 historyKey:
                     type: string
                     description: Redis history key used by the calculation.

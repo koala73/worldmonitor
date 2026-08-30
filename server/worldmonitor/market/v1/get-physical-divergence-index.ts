@@ -44,6 +44,11 @@ const TREND_MAP: Record<PhysicalDivergenceRawTrend, PhysicalPremiumTrend> = {
   narrowing: 'PHYSICAL_PREMIUM_TREND_NARROWING',
 };
 
+function instantMsOrUnavailable(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function mapReading(raw: PhysicalDivergenceRawReading): PhysicalDivergenceReading {
   return {
     metal: raw.metal,
@@ -69,13 +74,13 @@ function mapReading(raw: PhysicalDivergenceRawReading): PhysicalDivergenceReadin
     historyWindowStart: raw.historyWindowStart,
     historyWindowEnd: raw.historyWindowEnd,
     physicalAsOf: raw.physicalAsOf,
-    paperAsOf: Date.parse(raw.paperAsOf),
+    paperAsOf: instantMsOrUnavailable(raw.paperAsOf),
     historyKey: raw.provenance.historyKey,
     methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
     provenance: {
       ...raw.provenance,
-      paperAsOf: Date.parse(raw.provenance.paperAsOf),
-      fxAsOf: Date.parse(raw.provenance.fxAsOf),
+      paperAsOf: instantMsOrUnavailable(raw.provenance.paperAsOf),
+      fxAsOf: instantMsOrUnavailable(raw.provenance.fxAsOf),
     },
   };
 }
@@ -135,7 +140,7 @@ export const getPhysicalDivergenceIndex: MarketServiceHandler['getPhysicalDiverg
   return {
     readings: metals.length === 0 ? readings : readings.filter((reading) => selected.has(reading.metal)),
     composite: mapComposite(snapshot.composite),
-    evaluatedAt: Date.parse(snapshot.evaluatedAt),
+    evaluatedAt: instantMsOrUnavailable(snapshot.evaluatedAt),
     methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
   };
 };

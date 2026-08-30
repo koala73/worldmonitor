@@ -107,7 +107,6 @@ import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
 import type { NewsMarketCorrelationPanel } from '@/components/NewsMarketCorrelationPanel';
 import type { PositioningPanel } from '@/components/PositioningPanel';
 import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
-import type { CommoditiesPanel } from '@/components/MarketPanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
@@ -186,6 +185,7 @@ import {
 import type { MapLayerRuntimeAvailability } from '@/services/map-layer-runtime-availability';
 import { getWebMcpAccessContext, openWebMcpSignIn } from '@/app/webmcp-access';
 import { runDashboardActionBinding } from '@/app/dashboard-action-binding';
+import { selectWebMcpPanelTab } from '@/app/webmcp-panel-tab-binding';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import type { SearchManager } from '@/app/search-manager';
@@ -2004,40 +2004,10 @@ export class App {
         });
       },
       selectPanelTab: async (panelId, tab, execution) => {
-        await this.waitForDashboardReady(false, execution?.signal);
-        throwIfWebMcpAborted(execution?.signal);
-        if (panelId !== 'commodities') {
-          return {
-            ok: false,
-            status: 'invalid',
-            panelId,
-            requestedTab: tab,
-            reason: 'panel_unsupported',
-            message: 'That panel does not expose a selectable subtab.',
-          };
-        }
-        const panel = this.state.panels[panelId] as CommoditiesPanel | undefined;
-        if (!panel) {
-          return {
-            ok: false,
-            status: 'denied',
-            panelId,
-            requestedTab: tab,
-            reason: 'panel_not_live',
-            message: 'The commodities panel is not live.',
-          };
-        }
-        const selected = panel.selectTab(tab);
-        return {
-          ...selected,
-          panelId,
-          requestedTab: tab,
-          message: selected.ok
-            ? selected.status === 'skipped' ? 'Panel tab was already selected.' : 'Selected panel tab.'
-            : selected.reason === 'unknown_tab'
-              ? 'Unknown commodities panel tab.'
-              : 'That commodities panel tab is not currently available.',
-        };
+        return selectWebMcpPanelTab(this.state.panels, panelId, tab, {
+          waitForUiReady: () => this.waitForDashboardReady(false, execution?.signal),
+          signal: execution?.signal,
+        });
       },
       searchDashboard: async (query, scope, limit, execution) => {
         await this.waitForDashboardReady(false, execution?.signal);

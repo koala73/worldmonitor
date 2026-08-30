@@ -68,13 +68,13 @@ message PhysicalDivergenceProvenance {
   string paper_source = 4;
   // Paper benchmark contract symbol.
   string paper_symbol = 5;
-  // Paper snapshot time as Unix epoch milliseconds.
+  // Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.
   int64 paper_as_of = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Human-readable FX provider.
   string fx_source = 7;
   // FX conversion pair.
   string fx_pair = 8;
-  // FX snapshot time as Unix epoch milliseconds.
+  // FX snapshot time as Unix epoch milliseconds, or zero when unavailable.
   int64 fx_as_of = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Redis history key used by the calculation.
   string history_key = 10;
@@ -120,7 +120,7 @@ message PhysicalDivergenceReading {
   string history_window_end = 16;
   // Physical benchmark trading date in YYYY-MM-DD form.
   string physical_as_of = 17;
-  // Paper snapshot time as Unix epoch milliseconds.
+  // Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.
   int64 paper_as_of = 18 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Redis history key used by the calculation.
   string history_key = 19;
@@ -160,7 +160,7 @@ message GetPhysicalDivergenceIndexResponse {
   repeated PhysicalDivergenceReading readings = 1;
   // All-metal fail-closed stress composite.
   PhysicalStressComposite composite = 2;
-  // Evaluation time as Unix epoch milliseconds.
+  // Evaluation time as Unix epoch milliseconds, or zero when unavailable.
   int64 evaluated_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Methodology identifier for the complete response.
   string methodology_version = 4;

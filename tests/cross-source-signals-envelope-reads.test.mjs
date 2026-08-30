@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import {
   EXTRACTORS,
   SOURCE_KEYS,
+  aggregateCrossSourceSignals,
   detectCompositeEscalation,
   extractCommodityShock,
   extractCyberEscalation,
@@ -675,6 +676,21 @@ it('fails closed when a divergence reading has an unknown state', () => {
     }),
     /Unknown physical divergence state/,
   );
+});
+
+it('fails the production aggregate when a present divergence reading has no known state', async () => {
+  for (const state of ['future_state', undefined, null]) {
+    const readings = freshPhysicalReadings(now);
+    readings[0].state = state;
+    await assert.rejects(
+      aggregateCrossSourceSignals({
+        readSourceData: async () => ({
+          'market:physical-divergence:v1': { readings, transitions: [] },
+        }),
+      }),
+      /Unknown physical divergence state/,
+    );
+  }
 });
 
 it('pins every physical premium transition severity tier', () => {

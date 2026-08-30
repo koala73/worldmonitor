@@ -225,6 +225,9 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     assert.equal(response.status, 200);
     assert.equal(body.readings[0].state, 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT');
     assert.equal(body.readings[0].reason, 'current_premium_missing');
+    assert.equal(body.readings[0].paperAsOf, 0);
+    assert.equal(body.readings[0].provenance.paperAsOf, 0);
+    assert.equal(body.readings[0].provenance.fxAsOf, Date.parse(FX.asOf));
     assert.equal(body.composite.state, 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT');
     assert.equal(body.composite.reason, 'member_not_ok:gold:missing_input');
   });
