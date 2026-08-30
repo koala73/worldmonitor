@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1649293
+    "raw": 1694659
   },
   "chunks": {
     "analytics": {
-      "raw": 119361,
+      "raw": 119701,
       "files": 1
     },
     "cached-risk-scores": {
@@ -39,7 +39,7 @@
       "files": 1
     },
     "embed-url": {
-      "raw": 62670,
+      "raw": 62783,
       "files": 1
     },
     "font-settings": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "gdelt-intel": {
-      "raw": 132635,
+      "raw": 132730,
       "files": 1
     },
     "i18n": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 898577,
+      "raw": 943280,
       "files": 1
     },
     "panel-gating": {
@@ -67,7 +67,7 @@
       "files": 1
     },
     "panels": {
-      "raw": 146160,
+      "raw": 146255,
       "files": 1
     },
     "persistent-cache": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "widget-store": {
-      "raw": 26394,
+      "raw": 26414,
       "files": 1
     }
   }

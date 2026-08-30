@@ -54,7 +54,11 @@ vi.mock('@/app/passkey-offer-controller', () => ({
 
 import type { AppContext } from '@/app/app-context';
 import { PasskeyOfferBoot } from '@/app/passkey-offer-boot';
-import { derivePasskeyAccountKey, passkeyOfferStorageKey } from '@/services/passkey-offer-state';
+import {
+  derivePasskeyAccountKey,
+  passkeyOfferStorageKey,
+  readAccountOfferCount,
+} from '@/services/passkey-offer-state';
 import { getPasskeyOfferTrace, resetPasskeyOfferTrace } from '@/utils/passkey-offer-trace';
 
 const ctx = { isDesktopApp: false } as unknown as AppContext;
@@ -128,10 +132,50 @@ describe('PasskeyOfferBoot', () => {
     boot.destroy();
   });
 
-  it('does NOT hand off when the account already carries the durable record', async () => {
-    // Server-backed suppression is what makes reaching returning sessions safe:
-    // it survives a browser that cannot keep localStorage, where the local
-    // tiers would re-offer on every single load.
+  it('does NOT hand off once the lifetime account cap is spent', async () => {
+    // The backstop, checked in the shim rather than the controller so a capped
+    // user never fetches a ~12 KB chunk that would only bail out.
+    const boot = new PasskeyOfferBoot(ctx);
+    state.userId = 'user_abc';
+    state.unsafeMetadata = { wmPasskeyOfferCount: 3 };
+    boot.init();
+    authListener?.();
+    await flush();
+
+    expect(loaded.count).toBe(0);
+    expect(getPasskeyOfferTrace()).toContain('offer-cap-reached');
+    boot.destroy();
+  });
+
+  it('still hands off below the cap', async () => {
+    const boot = new PasskeyOfferBoot(ctx);
+    state.userId = 'user_abc';
+    state.unsafeMetadata = { wmPasskeyOfferCount: 2 };
+    boot.init();
+    authListener?.();
+    await flush();
+
+    expect(loaded.count).toBe(1);
+    boot.destroy();
+  });
+
+  it('DOES hand off on a new device even though the account has a passkey', async () => {
+    // The multi-device fix. An account-wide passkey count says nothing about
+    // whether a credential is usable on THIS browser, so it must not suppress.
+    const boot = new PasskeyOfferBoot(ctx);
+    state.userId = 'user_abc';
+    state.passkeys = [{ id: 'pk_1' }, { id: 'pk_2' }];
+    boot.init();
+    authListener?.();
+    await flush();
+
+    expect(loaded.count).toBe(1);
+    boot.destroy();
+  });
+
+  it('counts the legacy single-shot record as one offer, not zero', async () => {
+    // Anyone suppressed under the old "once per account, ever" policy must not
+    // restart from zero and collect a fresh run of prompts.
     const boot = new PasskeyOfferBoot(ctx);
     state.userId = 'user_abc';
     state.unsafeMetadata = { wmPasskeyOfferedAt: 1_700_000_000_000 };
@@ -139,23 +183,10 @@ describe('PasskeyOfferBoot', () => {
     authListener?.();
     await flush();
 
-    expect(loaded.count).toBe(0);
-    expect(getPasskeyOfferTrace()).toContain('already-offered-account');
-    boot.destroy();
-  });
-
-  it('does NOT pay for the import when the user already has a passkey', async () => {
-    // The check is in the shim rather than the controller so this user never
-    // fetches a ~12 KB chunk that would only bail out.
-    const boot = new PasskeyOfferBoot(ctx);
-    state.userId = 'user_abc';
-    state.passkeys = [{ id: 'pk_1' }];
-    boot.init();
-    authListener?.();
-    await flush();
-
-    expect(loaded.count).toBe(0);
-    expect(getPasskeyOfferTrace()).toContain('already-has-passkey');
+    // One of three spent, so this device is still offered — but the count is
+    // seeded, not reset.
+    expect(loaded.count).toBe(1);
+    expect(readAccountOfferCount({ unsafeMetadata: state.unsafeMetadata })).toBe(1);
     boot.destroy();
   });
 

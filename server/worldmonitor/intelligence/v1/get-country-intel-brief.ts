@@ -215,10 +215,16 @@ Rules:
 
       if (energyMixData) {
         const yr = energyYear || '';
+        // Net import dependency tracks its own OWID vintage (`importYear`) and
+        // is not necessarily from the generation-mix year, so it gets its own
+        // sentence rather than riding the mix's year label.
         userPromptParts.push(
           `Energy generation mix (${yr}): coal ${energyMixData.coalShare ?? '?'}%, ` +
           `gas ${energyMixData.gasShare ?? '?'}%, renewables ${energyMixData.renewShare ?? '?'}%, ` +
-          `nuclear ${energyMixData.nuclearShare ?? '?'}%, net import dependency ${energyMixData.importShare ?? '?'}%.`,
+          `nuclear ${energyMixData.nuclearShare ?? '?'}%.`,
+        );
+        userPromptParts.push(
+          `Net energy import dependency: ${energyMixData.importShare ?? '?'}%.`,
         );
       }
 

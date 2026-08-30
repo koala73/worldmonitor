@@ -571,6 +571,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/user/passkey-offer.ts"
+        },
+        {
           "path": "server/auth-session.ts"
         }
       ]
@@ -10034,6 +10037,9 @@
           "path": "scripts/seed-digest-notifications.mjs"
         },
         {
+          "path": "scripts/seed-five-factor-scorecard.mjs"
+        },
+        {
           "path": "scripts/seed-hyperliquid-flow.mjs"
         },
         {
@@ -10114,6 +10120,9 @@
       "references": [
         {
           "path": "api/docs-mcp.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
         }
       ]
     },
@@ -14095,6 +14104,9 @@
         },
         {
           "path": "src/components/RuntimeConfigPanel.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
         },
         {
           "path": "src/config/variant-meta.ts"

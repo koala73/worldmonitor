@@ -11,7 +11,9 @@
  */
 
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile } from './_seed-utils.mjs';
+import wbTechProjection from './_wb-tech-readiness-projection.cjs';
 
 
 const BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
@@ -27,11 +29,12 @@ const NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
 
 // WB indicators + date ranges matching the RPC handler
 const INDICATORS = [
-  { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
-  { key: 'mobile',    id: 'IT.CEL.SETS.P2', dateRange: '2019:2024' },
-  { key: 'broadband', id: 'IT.NET.BBND.P2', dateRange: '2019:2024' },
-  { key: 'rdSpend',   id: 'GB.XPD.RSDV.GD.ZS', dateRange: '2018:2024' },
+  { key: 'internet',  id: 'IT.NET.USER.ZS', unit: 'percent', dateRange: '2019:2024' },
+  { key: 'mobile',    id: 'IT.CEL.SETS.P2', unit: 'per 100 people', dateRange: '2019:2024' },
+  { key: 'broadband', id: 'IT.NET.BBND.P2', unit: 'per 100 people', dateRange: '2019:2024' },
+  { key: 'rdSpend',   id: 'GB.XPD.RSDV.GD.ZS', unit: 'percent of GDP', dateRange: '2018:2024' },
 ];
+const { buildWorldBankTechObservations } = wbTechProjection;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -188,7 +191,7 @@ function normalize(val, max) {
   return Math.min(100, (val / max) * 100);
 }
 
-function computeRankings(indicatorData) {
+export function computeRankings(indicatorData) {
   const allCountries = new Set();
   for (const data of Object.values(indicatorData)) {
     Object.keys(data).forEach(c => allCountries.add(c));
@@ -221,6 +224,7 @@ function computeRankings(indicatorData) {
 
     const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
     const countryName = iData?.name || mData?.name || bData?.name || rData?.name || countryCode;
+    const observations = buildWorldBankTechObservations({ internet: iData, mobile: mData, broadband: bData, rdSpend: rData });
 
     scores.push({
       country: countryCode,
@@ -228,6 +232,7 @@ function computeRankings(indicatorData) {
       score: Math.round(score * 10) / 10,
       rank: 0,
       components,
+      observations,
     });
   }
 
@@ -489,7 +494,9 @@ async function main() {
   console.log(`\n=== Done in ${total}s ===`);
 }
 
-main().catch(err => {
-  console.error('\nFATAL:', err.message || err);
-  process.exit(0); // graceful for cron
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(err => {
+    console.error('\nFATAL:', err.message || err);
+    process.exit(0); // graceful for cron
+  });
+}

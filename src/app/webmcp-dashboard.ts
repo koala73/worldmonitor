@@ -18,6 +18,18 @@ import {
   type DashboardPanelCatalogPage,
   type DashboardPanelCatalogQuery,
 } from '@/services/webmcp-panel-catalog';
+import {
+  evaluateMissionPresetApply,
+  listMissionPresetCatalog,
+  type MissionPresetCatalogQuery,
+  type MissionPresetCatalogResult,
+} from '@/services/webmcp-mission-preset-catalog';
+import {
+  getMissionPreset,
+  loadStoredMissionPreset,
+  type MissionPresetId,
+} from '@/services/mission-presets';
+import type { ApplyMissionPresetResult } from '@/services/webmcp';
 import type { PanelConfig } from '@/types';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
 import type { RendererKind } from '@/config/map-layer-definitions';
@@ -362,4 +374,168 @@ export async function applyWebMcpOpenAlerts(
     };
   }
   return openUnifiedSettingsOverlay(ctx, currentVariant, 'alerts', 'notifications');
+}
+
+export function listWebMcpMissionPresets(
+  ctx: AppContext,
+  variant: string,
+  query: MissionPresetCatalogQuery = {},
+  options: {
+    hasPremium: boolean;
+    targetCancellationSupported?: boolean;
+    isPanelEntitled?: (panelId: string) => boolean;
+  },
+): MissionPresetCatalogResult {
+  if (ctx.isDestroyed) {
+    throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+  }
+  return listMissionPresetCatalog({
+    variant,
+    hasPremium: options.hasPremium,
+    activePresetId: loadStoredMissionPreset()?.id ?? null,
+    targetCancellationSupported: options.targetCancellationSupported,
+    isPanelEntitled: options.isPanelEntitled,
+  }, query);
+}
+
+export function applyWebMcpMissionPreset(
+  ctx: AppContext,
+  variant: string,
+  presetId: unknown,
+  options: {
+    hasPremium: boolean;
+    isPanelEntitled?: (panelId: string) => boolean;
+    apply: (id: MissionPresetId) => { changed: boolean; priorPresetId: string | null };
+  },
+): ApplyMissionPresetResult {
+  if (ctx.isDestroyed) {
+    return {
+      ok: false,
+      status: 'denied',
+      reason: 'app_destroyed',
+      message: 'Dashboard is no longer available.',
+    };
+  }
+
+  const decision = evaluateMissionPresetApply(presetId, {
+    variant,
+    hasPremium: options.hasPremium,
+    activePresetId: loadStoredMissionPreset()?.id ?? null,
+    isPanelEntitled: options.isPanelEntitled,
+  });
+  if (!decision.ok || !decision.presetId) {
+    return {
+      ok: false,
+      status: decision.reason === 'malformed_arguments' || decision.reason === 'unknown_preset'
+        ? 'invalid'
+        : 'denied',
+      ...(decision.presetId ? { presetId: decision.presetId } : {}),
+      ...(decision.label ? { label: decision.label } : {}),
+      reason: decision.reason,
+      message: decision.message,
+    };
+  }
+
+  const preset = getMissionPreset(decision.presetId);
+  if (!preset) {
+    return {
+      ok: false,
+      status: 'invalid',
+      reason: 'unknown_preset',
+      message: 'Unknown mission preset.',
+    };
+  }
+
+  try {
+    const { changed } = options.apply(decision.presetId);
+    if (ctx.isDestroyed) {
+      // Apply already committed through the mission path. Prefer reporting the
+      // durable outcome over a post-commit deny that would mislead callers into
+      // retrying a state that already landed.
+      return {
+        ok: true,
+        status: changed ? 'applied' : 'unchanged',
+        presetId: preset.id,
+        label: preset.label,
+        changed,
+        monitor: variant,
+        message: changed
+          ? `Mission preset applied: ${preset.label}.`
+          : `Mission preset already active: ${preset.label}.`,
+      };
+    }
+    let context;
+    try {
+      context = getWebMcpDashboardContext(ctx, variant);
+    } catch {
+      return {
+        ok: true,
+        status: changed ? 'applied' : 'unchanged',
+        presetId: preset.id,
+        label: preset.label,
+        changed,
+        monitor: variant,
+        message: changed
+          ? `Mission preset applied: ${preset.label}.`
+          : `Mission preset already active: ${preset.label}.`,
+      };
+    }
+    return {
+      ok: true,
+      status: changed ? 'applied' : 'unchanged',
+      presetId: preset.id,
+      label: preset.label,
+      changed,
+      monitor: context.variant,
+      map: {
+        view: context.map.view,
+        zoom: context.map.zoom,
+        timeRange: context.map.timeRange,
+        enabledLayers: context.map.enabledLayers,
+      },
+      panels: {
+        enabled: context.panels.enabled,
+      },
+      message: changed
+        ? `Mission preset applied: ${preset.label}.`
+        : `Mission preset already active: ${preset.label}.`,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 'denied',
+      presetId: preset.id,
+      label: preset.label,
+      reason: 'apply_failed',
+      message: 'Mission preset application failed and was rolled back.',
+    };
+  }
+}
+
+export function applyWebMcpOpenMissionPicker(
+  ctx: AppContext,
+  currentVariant: string,
+  openPicker: () => boolean,
+): WebMcpNavigationResult {
+  const context = navigationContext(ctx, currentVariant);
+  if (ctx.isDestroyed) return APP_DESTROYED_NAV_RESULT(context);
+  const opened = openPicker();
+  if (!opened) {
+    return {
+      ok: false,
+      status: 'denied',
+      destination: 'mission_picker',
+      reason: 'unavailable',
+      message: 'Mission presets are not available on this dashboard.',
+      context,
+    };
+  }
+  return {
+    ok: true,
+    status: 'applied',
+    destination: 'mission_picker',
+    overlay: 'open',
+    message: 'Opened mission presets.',
+    context: navigationContext(ctx, currentVariant),
+  };
 }
