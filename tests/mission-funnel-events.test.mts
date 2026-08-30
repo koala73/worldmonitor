@@ -211,7 +211,12 @@ describe('closed-vocabulary bucketing', () => {
     // ...and the duplicated set must not keep ids the catalog dropped.
     const src = read('src/services/analytics.ts');
     const block = src.match(/KNOWN_MISSION_IDS = new Set\(\[([^\]]+)\]\)/)?.[1] ?? '';
+    assert.ok(block, 'KNOWN_MISSION_IDS declaration not found — a reformat made this guard vacuous');
     const analyticsIds = [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    assert.ok(
+      analyticsIds.length >= presets.MISSION_PRESETS.length,
+      'extracted fewer ids than the catalog holds — the extraction regex no longer matches the declaration',
+    );
     const catalogIds = new Set(presets.MISSION_PRESETS.map((preset) => preset.id));
     for (const id of analyticsIds) {
       assert.ok(catalogIds.has(id as never), `analytics keeps dropped mission id '${id}'`);
@@ -219,6 +224,23 @@ describe('closed-vocabulary bucketing', () => {
     // The duplicated storage key must match the mission-presets export.
     assert.ok(src.includes(`MISSION_PRESET_STORAGE_KEY = '${presets.MISSION_PRESET_STORAGE_KEY}'`),
       'analytics mission storage key drifted from mission-presets');
+  });
+
+  it('passes every real panel key in the catalog through the structural guard unchanged', async () => {
+    // The registry mixes kebab-case and camelCase ids (gccNews,
+    // regionalStartups); a guard that rejects a live key silently collapses
+    // that panel's whole funnel row to 'unknown'.
+    const analytics = await import('../src/services/analytics.ts');
+    const panels = await import('../src/config/panels.ts');
+    const keys = new Set<string>(Object.keys(panels.ALL_PANELS));
+    for (const variantKeys of Object.values(panels.VARIANT_DEFAULTS)) {
+      for (const key of variantKeys) keys.add(key);
+    }
+    assert.ok(keys.size > 50, `catalog sweep looks vacuous (${keys.size} keys)`);
+    for (const key of keys) {
+      assert.equal(analytics.bucketPanelKeyForAnalytics(key), key,
+        `real panel key '${key}' collapses to 'unknown' — widen PANEL_KEY_PATTERN`);
+    }
   });
 
   it('mission-selected buckets its mission id', async () => {

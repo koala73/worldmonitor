@@ -420,6 +420,15 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function setTrustedHtml(el, html) { el.innerHTML = String(html); }
     `],
     ['@/utils/sanitize', 'export function escapeHtml(value) { return String(value); } export function safeHtmlToString(value) { return String(value); }'],
+    ['@/services/agent-analytics-privacy', `
+      const push = (name, args) => {
+        globalThis.__missionAnalytics = globalThis.__missionAnalytics || [];
+        globalThis.__missionAnalytics.push({ name, args });
+      };
+      export function suppressNextAgentPanelView(...args) { push('suppressNextAgentPanelView', args); }
+      export function isAgentPanelViewSuppressed() { return false; }
+      export function isAgentAnalyticsSuppressed() { return false; }
+    `],
     ['@/services/analytics', `
       const push = (name, args) => {
         globalThis.__missionAnalytics = globalThis.__missionAnalytics || [];
@@ -1187,13 +1196,41 @@ describe('mission preset shell integration', () => {
     );
   });
 
+  it('tags agent-applied presets and suppresses the panel views they trigger', async () => {
+    const { manager } = createMissionHarness();
+    (globalThis as { __missionAnalytics?: unknown[] }).__missionAnalytics = [];
+
+    (manager as unknown as { applyMissionPreset(id: string, source?: 'user' | 'agent'): void })
+      .applyMissionPreset('crisis-desk', 'agent');
+    await waitForMissionTimers();
+
+    const emitted = ((globalThis as { __missionAnalytics?: Array<{ name: string; args: unknown[] }> }).__missionAnalytics ?? []);
+    const selected = emitted.filter((call) => call.name === 'trackMissionSelected');
+    assert.deepEqual(selected.map((call) => call.args), [['crisis-desk', 'agent']]);
+    const suppressed = emitted
+      .filter((call) => call.name === 'suppressNextAgentPanelView')
+      .map((call) => call.args[0]);
+    assert.ok(suppressed.length > 0, 'agent apply must suppress the panel views it triggers');
+    assert.ok(suppressed.includes('cii'),
+      "crisis-desk enables 'cii' — its agent-triggered mount must not count as a human panel view");
+  });
+
   it('applies a preset through the real manager path and resets state, storage, layers, map view, and URL to defaults', async () => {
     const { ctx, callbacks, manager } = createMissionHarness();
     const baselineWorkspace = defaultWorkspacePanelKeys('full');
     const baselineLayers = activeLayers(DEFAULT_MAP_LAYERS);
 
+    (globalThis as { __missionAnalytics?: unknown[] }).__missionAnalytics = [];
     manager.applyMissionPreset('supply-chain-risk');
     await waitForMissionTimers();
+
+    // The funnel emission is part of the apply contract: mission-selected
+    // fires through the real pipeline with the user source, and a user apply
+    // must NOT suppress panel views (that guard is agent-only).
+    const emitted = ((globalThis as { __missionAnalytics?: Array<{ name: string; args: unknown[] }> }).__missionAnalytics ?? []);
+    const selected = emitted.filter((call) => call.name === 'trackMissionSelected');
+    assert.deepEqual(selected.map((call) => call.args), [['supply-chain-risk', 'user']]);
+    assert.equal(emitted.some((call) => call.name === 'suppressNextAgentPanelView'), false);
 
     assert.equal(ctx.panelSettings['supply-chain']?.enabled, true);
     assert.equal(ctx.panelSettings.markets?.enabled, true);

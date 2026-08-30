@@ -943,9 +943,47 @@ function forgetPendingConversion(event: PendingConversion['event']): void {
  * redirect. Entries stay durable until the collector confirms them, so this is
  * a no-op on ordinary boots.
  */
+const CHECKOUT_SURFACES: ReadonlySet<string> = new Set([
+  'dashboard',
+  'dashboard-resume',
+  'mission-preview',
+]);
+
+/**
+ * Rebuild a stored pending-conversion payload from an allowlist before
+ * replaying it. Write-time bucketing does not protect this path — the entry
+ * sat in sessionStorage, which a crafted value can reach directly — so the
+ * replay re-derives every field: ids through their bucketers, surface
+ * restricted to the known union, authed coerced, unknown keys dropped.
+ * Mirrors the sanitize-on-read rule the /pro funnel replay already follows.
+ */
+function sanitizePendingConversionData(
+  event: PendingConversion['event'],
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  if (event === 'checkout-failed') {
+    const status = data.status;
+    return {
+      status: typeof status === 'string' && CHECKOUT_FAILED_STATUSES.has(status) ? status : 'other',
+    };
+  }
+  const out: Record<string, unknown> = {
+    productId: bucketProductIdForAnalytics(typeof data.productId === 'string' ? data.productId : ''),
+    surface: typeof data.surface === 'string' && CHECKOUT_SURFACES.has(data.surface)
+      ? data.surface
+      : 'dashboard',
+    authed: data.authed === true,
+  };
+  if (typeof data.missionId === 'string') out.missionId = bucketMissionIdForAnalytics(data.missionId);
+  if (typeof data.panelKey === 'string') out.panelKey = bucketPanelKeyForAnalytics(data.panelKey);
+  if (typeof data.variant === 'string' && data.variant.length <= 20) out.variant = data.variant;
+  if (data.deviceClass === 'mobile' || data.deviceClass === 'desktop') out.deviceClass = data.deviceClass;
+  return out;
+}
+
 export function replayPendingConversionEvents(): void {
   for (const item of readPendingConversions()) {
-    track(item.event, { ...item.data, replayed: true });
+    track(item.event, { ...sanitizePendingConversionData(item.event, item.data), replayed: true });
   }
 }
 
@@ -969,7 +1007,13 @@ export function trackCheckoutStart(
   surface: CheckoutSurface = 'dashboard',
   attribution?: CheckoutAttribution,
 ): void {
+  // Seeded with the shared funnel context (variant, deviceClass, ambient
+  // missionId) so the baseline read can segment checkout-starts. Semantics of
+  // missionId on this event: ambient mission context when the surface is a
+  // generic one ('dashboard'), preview-attributed when explicit attribution
+  // overrides it below (surface 'mission-preview').
   const data: Record<string, unknown> = {
+    ...missionFunnelFields(),
     productId: bucketProductIdForAnalytics(productId),
     surface,
     authed,
@@ -1276,9 +1320,12 @@ export function bucketMissionIdForAnalytics(missionId: string): string {
  * `data-panel` attributes our own mount code writes), so this is a structural
  * guard, not a catalog check: anything that does not look like a panel key
  * collapses to 'unknown'. The full catalog lives in config/panels, whose
- * import-time side effects must stay out of the analytics graph.
+ * import-time side effects must stay out of the analytics graph. The registry
+ * mixes kebab-case and camelCase ids (`gccNews`, `regionalStartups`), so the
+ * shape allows interior uppercase; the real-catalog sweep in
+ * tests/mission-funnel-events.test.mts pins that every live key passes.
  */
-const PANEL_KEY_PATTERN = /^[a-z][a-z0-9-]{0,39}$/;
+const PANEL_KEY_PATTERN = /^[a-z][a-zA-Z0-9-]{0,39}$/;
 
 export function bucketPanelKeyForAnalytics(panelKey: string): string {
   return PANEL_KEY_PATTERN.test(panelKey) ? panelKey : 'unknown';

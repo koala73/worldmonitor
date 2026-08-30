@@ -112,7 +112,7 @@ describe('mission-attributed checkout-start (U2)', () => {
     assert.equal(replayed.data!.surface, 'mission-preview');
   });
 
-  it('leaves non-mission checkouts unchanged (no attribution fields)', async () => {
+  it('non-mission checkouts carry context but no attribution fields', async () => {
     const analytics = await import('../src/services/analytics.ts');
     analytics.resetAnalyticsForTesting();
     const { calls, sessionStorage } = installWindow();
@@ -121,10 +121,61 @@ describe('mission-attributed checkout-start (U2)', () => {
 
     const live = calls.find((c) => c.name === 'checkout-start');
     assert.equal(live!.data!.surface, 'dashboard');
-    assert.equal('missionId' in live!.data!, false, 'missionId must be absent on non-mission checkouts');
+    assert.equal('missionId' in live!.data!, false, 'no stored mission -> no missionId');
     assert.equal('panelKey' in live!.data!, false, 'panelKey must be absent on non-mission checkouts');
+    // The baseline read segments checkout-starts by variant and device class.
+    assert.equal(typeof live!.data!.variant, 'string');
+    assert.equal(live!.data!.deviceClass, 'desktop');
     const pending = readPending(sessionStorage);
     assert.equal('missionId' in pending[0]!.data, false);
+  });
+
+  it('carries the ambient mission as context when no explicit attribution is given', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    const presets = await import('../src/services/mission-presets.ts');
+    analytics.resetAnalyticsForTesting();
+    const { calls } = installWindow();
+    presets.saveMissionPreset('crisis-desk');
+
+    analytics.trackCheckoutStart(KNOWN_PRODUCT, true);
+
+    const live = calls.find((c) => c.name === 'checkout-start');
+    assert.equal(live!.data!.missionId, 'crisis-desk', 'ambient mission context lost');
+    assert.equal(live!.data!.surface, 'dashboard', 'ambient context must not fake a preview surface');
+  });
+
+  it('sanitizes crafted pending entries on replay (storage is attacker-writable)', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.resetAnalyticsForTesting();
+    const { calls, sessionStorage } = installWindow();
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify([
+      {
+        event: 'checkout-start',
+        data: {
+          productId: 'pdt_crafted_junk',
+          surface: 'evil-surface',
+          authed: 'yes',
+          missionId: 'crafted-mission',
+          panelKey: 'crafted panel!',
+          injected: 'x'.repeat(500),
+        },
+      },
+      { event: 'checkout-failed', data: { status: 'crafted-status', extra: true } },
+    ]));
+
+    analytics.replayPendingConversionEvents();
+
+    const start = calls.find((c) => c.name === 'checkout-start')!;
+    assert.equal(start.data!.productId, 'unknown');
+    assert.equal(start.data!.surface, 'dashboard');
+    assert.equal(start.data!.authed, false);
+    assert.equal(start.data!.missionId, 'unknown');
+    assert.equal(start.data!.panelKey, 'unknown');
+    assert.equal('injected' in start.data!, false, 'unknown keys must be dropped on replay');
+    assert.equal(start.data!.replayed, true);
+    const failed = calls.find((c) => c.name === 'checkout-failed')!;
+    assert.equal(failed.data!.status, 'other');
+    assert.equal('extra' in failed.data!, false);
   });
 
   it('buckets crafted attribution ids to "unknown" before storage', async () => {
@@ -152,5 +203,9 @@ describe('checkout service threading', () => {
       'checkout behavior must accept analyticsAttribution');
     assert.ok(src.includes('behavior?.analyticsAttribution'),
       'startCheckout must thread analyticsAttribution into trackCheckoutStart');
+    assert.ok(src.includes('analyticsAttribution?: CheckoutAttribution'),
+      'PendingCheckoutIntent must keep attribution for the post-sign-in resume');
+    assert.ok(src.includes('analyticsAttribution: intent.analyticsAttribution'),
+      'resumePendingCheckout must re-thread the stored attribution');
   });
 });

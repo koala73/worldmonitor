@@ -28,11 +28,11 @@ module graph).
 |---|---|---|---|
 | `mission-picker-shown` | `openMissionPresetPopover` (single emission site) | `trigger`: `auto` \| `manual` \| `agent`; `surface`: `desktop` \| `mobile` | `auto` = deferred first-paint prompt; `agent` = WebMCP entry — exclude from human-funnel reads |
 | `mission-selected` | `applyMissionPreset`, after the preset persists | `missionId` (bucketed), `source`: `user` \| `agent` | `agent` = WebMCP apply |
-| `panel-viewed` | IntersectionObserver in `setupPanelViewTracking` (≥30% visible) | `panelKey` (bucketed) | Global denominator. Deduped **once per panel per tab session** (sessionStorage, KTD5); late-mounted panels join via a MutationObserver. Agent-driven views suppressed by `agent-analytics-privacy` |
+| `panel-viewed` | IntersectionObserver in `setupPanelViewTracking` (≥30% visible) | `panelKey` (bucketed) | Global denominator. Deduped **once per panel per tab session** (sessionStorage, KTD5); late-mounted panels join via a MutationObserver. Agent-driven views suppressed by `agent-analytics-privacy` (search flows and agent mission applies) |
 | `pro-preview-viewed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Preview rendered beside free content |
 | `pro-preview-cta` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Upgrade CTA clicked |
 | `pro-preview-dismissed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Dismissal persists; the guardrail metric |
-| `checkout-start` | `startCheckout` → `trackCheckoutStart` | `surface` now includes `mission-preview`; optional `missionId`, `panelKey` | Attribution rides the durable pending-conversion entry, so the replay after the Dodo/sign-in redirect carries it (`replayed: true`) |
+| `checkout-start` | `startCheckout` → `trackCheckoutStart` | `surface` now includes `mission-preview`; `variant`, `deviceClass`; `missionId` (ambient mission context on generic surfaces, preview-attributed on `mission-preview`), optional `panelKey` | Attribution rides the durable pending-conversion entry and the post-sign-in resume intent, so both the replay (`replayed: true`) and the `dashboard-resume` re-emit carry it; entries are re-sanitized on replay (storage is attacker-writable) |
 | `mission-returned-after-purchase` | `ProPreviewSection` return leg (Release 1) | `missionId`, `panelKey` | Completion-side attribution: fires when the buyer lands back on the originating mission/panel |
 
 The `pro-preview-*` and `mission-returned-after-purchase` names are pinned

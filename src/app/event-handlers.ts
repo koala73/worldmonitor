@@ -114,6 +114,7 @@ import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import {
   isAgentAnalyticsSuppressed,
   isAgentPanelViewSuppressed,
+  suppressNextAgentPanelView,
 } from '@/services/agent-analytics-privacy';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
@@ -908,7 +909,7 @@ export class EventHandlerManager implements AppModule {
       // the idle wait can outlast an early user choice.
       scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
-        if (loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
+        if (this.missionPresetPopover || loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
         this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false, 'auto');
       });
     }
@@ -1224,6 +1225,15 @@ export class EventHandlerManager implements AppModule {
     this.persistMissionPanelOrder(applied.panelOrder);
     saveMissionPreset(applied.preset.id);
     trackMissionSelected(applied.preset.id, source);
+    if (source === 'agent') {
+      // An agent-applied preset mounts panels the user never asked to see.
+      // Suppress the panel-view records those mounts trigger (same rule the
+      // WebMCP search flows apply via search-selection-dispatcher) so the
+      // funnel's denominator stays human.
+      for (const [key, cfg] of Object.entries(applied.panelSettings)) {
+        if (cfg?.enabled) suppressNextAgentPanelView(key);
+      }
+    }
 
     this.applyPanelSettings();
     this.callbacks.applySavedPanelOrder?.(applied.panelOrder);
