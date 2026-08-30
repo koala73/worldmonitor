@@ -1,6 +1,9 @@
 {
-  "$comment": "The MCP registry description carries the tool count and the registry rejects a changed payload for an already-published version. server-card.json::tools tracks the code registry, so adding a tool moves that count on its own — 68, 69, 71 and 72 tools all shipped under SERVER_VERSION 1.17.0 while the registry still advertised 1.13.0/39 (#7372). Each version pins the inventory it publishes: changing the tool set means bumping SERVER_VERSION (api/mcp/constants.ts), server-card.json::serverInfo.version and server.json, then adding a new entry here — never editing an existing one.",
+  "$comment": "The official MCP registry refuses to republish a version whose payload changed, and publish-mcp-registry.mjs compares the WHOLE canonicalized manifest. Nothing forces SERVER_VERSION to move with that payload: server-card.json::tools tracks the code registry, so 68, 69, 71 and 72 tools all shipped under 1.17.0 while the published description sat frozen at 39 (#7372), and a copy edit to server.json::description does the same with even less of a version-bump smell. Each version therefore pins the exact payload it publishes — `tools` for a legible error, `manifestSha256` over the derived manifest for every other field. Changing what is published means bumping SERVER_VERSION (api/mcp/constants.ts) plus `version` and `serverInfo.version` in server-card.json and server.json, then adding a NEW entry here. Editing a published entry in place does not un-publish it: the registry still holds the old payload, so the publish job fails closed on every run until the version is bumped.",
   "versions": {
-    "1.17.0": 72
+    "1.17.0": {
+      "tools": 72,
+      "manifestSha256": "28c51a2caeb612865d404056e4936e048955ae9d63673b4e9294469c459aac87"
+    }
   }
 }

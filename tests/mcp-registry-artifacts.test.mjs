@@ -7,8 +7,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 import {
+  assertPinnedManifestPayload,
   assertPinnedToolInventory,
   buildMcpRegistryManifest,
+  mcpRegistryManifestFingerprint,
 } from '../scripts/prepare-mcp-registry-manifest.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -87,11 +89,16 @@ describe('mcp registry publication artifacts', () => {
     const versions = Object.keys(publishedVersions ?? {});
     assert.ok(versions.length > 0, 'the published-version ledger must not be empty');
     assert.match(ledger.$comment ?? '', /SERVER_VERSION/, 'the ledger must document why it exists');
-    for (const [version, count] of Object.entries(publishedVersions)) {
+    for (const [version, pinned] of Object.entries(publishedVersions)) {
       assert.match(version, /^\d+\.\d+\.\d+$/, `${version} is not a semver version`);
       assert.ok(
-        Number.isInteger(count) && count > 0,
+        Number.isInteger(pinned.tools) && pinned.tools > 0,
         `${version} must pin a positive integer tool count`,
+      );
+      assert.match(
+        pinned.manifestSha256 ?? '',
+        /^[a-f0-9]{64}$/,
+        `${version} must pin a sha256 over the manifest it published`,
       );
     }
     assert.deepEqual(
@@ -105,7 +112,7 @@ describe('mcp registry publication artifacts', () => {
       'the newest ledger entry must be the version the server card declares',
     );
     assert.equal(
-      publishedVersions[serverCard.version],
+      publishedVersions[serverCard.version].tools,
       serverCard.tools.length,
       'adding or removing an MCP tool changes the published registry description; '
         + 'bump SERVER_VERSION and add a ledger entry instead of editing the pinned count',
@@ -137,6 +144,43 @@ describe('mcp registry publication artifacts', () => {
       () => buildMcpRegistryManifest(serverJson, serverCard, undefined),
       /versions/,
       'omitting the ledger must fail closed rather than build an unpinned manifest',
+    );
+  });
+
+  it('refuses a payload edit under a published version, not just a tool-count change', () => {
+    // The tool count is one field of a payload the registry stores whole and
+    // refuses to replace. A copy edit to the description under a frozen
+    // version reproduces the same permanently-red publish job, with none of
+    // the version-bump smell — and server.json is in the workflow's push paths.
+    const reworded = { ...serverJson, description: 'Live markets, conflicts, and country risk.' };
+    assert.throws(
+      () => buildMcpRegistryManifest(reworded, serverCard, ledger),
+      /published payload for version .* changed/,
+      'a reworded description under a published version must fail in the PR, not in the publish job',
+    );
+    assert.throws(
+      () => buildMcpRegistryManifest({ ...serverJson, title: 'World Monitor MCP' }, serverCard, ledger),
+      /published payload for version .* changed/,
+      'every published field is pinned, not only the derived tool count',
+    );
+    assert.throws(
+      () => buildMcpRegistryManifest({ ...serverJson, version: '1.16.0' }, serverCard, ledger),
+      /does not match server card version/,
+      'publishing a version other than the pinned one must fail closed',
+    );
+  });
+
+  it('pins the fingerprint of the manifest actually published', () => {
+    const manifest = buildMcpRegistryManifest(serverJson, serverCard, ledger);
+    assert.equal(
+      mcpRegistryManifestFingerprint(manifest),
+      publishedVersions[serverCard.version].manifestSha256,
+      'the pinned sha256 must be the fingerprint of the manifest the generator emits',
+    );
+    assert.doesNotThrow(() => assertPinnedManifestPayload(manifest, ledger));
+    assert.throws(
+      () => assertPinnedManifestPayload({ ...manifest, websiteUrl: 'https://example.test' }, ledger),
+      /published payload for version .* changed/,
     );
   });
 
@@ -196,9 +240,12 @@ describe('mcp registry publication artifacts', () => {
       Array.isArray(triggers.schedule) && triggers.schedule.length > 0,
       'a scheduled backstop must re-attempt publication when a merge-time run is lost',
     );
-    for (const entry of triggers.schedule) {
-      assert.match(entry.cron, /^[\d*,\-/ ]+$/, `unexpected cron expression: ${entry.cron}`);
-    }
+    assert.equal(triggers.schedule.length, 1, 'one daily backstop, not a cadence guess');
+    assert.match(
+      triggers.schedule[0].cron,
+      /^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) \* \* \*$/,
+      `the backstop must be a valid daily cron, got: ${triggers.schedule[0].cron}`,
+    );
     assert.equal(
       workflow.concurrency['cancel-in-progress'],
       false,

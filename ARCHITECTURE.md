@@ -409,7 +409,7 @@ Runs before every `git push`:
 | `publish-python.yml` | `py-v*` tag, manual | Tests and publishes the `worldmonitor-sdk` PyPI package (`sdk/python/`) via OIDC trusted publishing (no token) with attestations |
 | `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
-| `publish-mcp-registry.yml` | Published release, manual on main | Derives the public MCP Registry manifest from the server card, validates it with the pinned publisher, and publishes it through the protected `mcp-registry-publish` environment |
+| `publish-mcp-registry.yml` | Push to main (manifest inputs), daily cron, published release, manual | Derives the public MCP Registry manifest from the server card, validates it with the pinned publisher, and publishes it through the `mcp-registry-publish` environment; publication is idempotent and fails closed when a published version's payload changed |
 | `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
 
 The Railway `umami` runtime is built from `Dockerfile.umami`, which pins the
