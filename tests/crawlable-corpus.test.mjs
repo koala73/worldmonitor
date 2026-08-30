@@ -789,12 +789,25 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(
         taiwan,
-        /World Monitor does not publish a resilience score for Taiwan\. Input coverage is 41%, below the threshold for a ranked score\./,
+        /World Monitor does not publish a resilience score for Taiwan\. Taiwan does not meet the published ranking eligibility criteria\. Input coverage is 41%\./,
+      );
+      assert.doesNotMatch(
+        taiwan,
+        /below the threshold/,
+        'ineligible country copy must not blame ranking exclusion on coverage alone',
       );
       const taiwanWebPage = jsonLdObjects(taiwan)
         .find((entry) => entry['@type'] === 'WebPage');
       assert.equal(taiwanWebPage?.mainEntity?.value, undefined);
       assert.equal(taiwanWebPage?.mainEntity?.overallScore, undefined);
+      assert.match(
+        taiwanWebPage?.mainEntity?.description ?? '',
+        /does not meet the published ranking eligibility criteria/,
+      );
+      assert.doesNotMatch(
+        taiwanWebPage?.mainEntity?.description ?? '',
+        /below the ranking threshold|input coverage is below/i,
+      );
 
       const corpusData = await loadCorpusData({ rootDir: repoRoot });
       const headlineIneligible = corpusData.countries
@@ -807,7 +820,37 @@ describe('crawlable corpus generator', () => {
           /<span>Overall score<\/span><strong>\d/,
           `${country.name} must not render a numeric resilience score`,
         );
+        assert.doesNotMatch(
+          html,
+          /below the threshold/,
+          `${country.name} must not explain ranking exclusion as low coverage`,
+        );
       }
+      const coveredIneligible = headlineIneligible.find((country) => (
+        Number(country.dimensionCoverage) >= 0.65
+      ));
+      assert.ok(
+        coveredIneligible,
+        'snapshot must include an ineligible country with coverage at or above 65%',
+      );
+      const coveredHtml = read(outDir, `countries/${coveredIneligible.slug}/index.html`);
+      const coveredCoverage = `${Math.round(Number(coveredIneligible.dimensionCoverage) * 100)}%`;
+      assert.ok(
+        coveredHtml.includes(
+          `World Monitor does not publish a resilience score for ${coveredIneligible.name}. ${coveredIneligible.name} does not meet the published ranking eligibility criteria. Input coverage is ${coveredCoverage}.`,
+        ),
+        `${coveredIneligible.name} must use neutral eligibility wording and keep coverage as a separate fact`,
+      );
+      const coveredWebPage = jsonLdObjects(coveredHtml)
+        .find((entry) => entry['@type'] === 'WebPage');
+      assert.match(
+        coveredWebPage?.mainEntity?.description ?? '',
+        /does not meet the published ranking eligibility criteria/,
+      );
+      assert.doesNotMatch(
+        coveredWebPage?.mainEntity?.description ?? '',
+        /below the ranking threshold|input coverage is below/i,
+      );
 
       const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);

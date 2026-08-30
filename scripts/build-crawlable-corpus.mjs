@@ -1139,12 +1139,13 @@ function renderCountryPage({
     'seo-country',
   );
   const scorePublished = country.headlineEligible !== false;
+  const coverageFact = `Input coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))}.`;
   const scoreDisclosure = scorePublished
     ? ''
-    : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)}. Input coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))}, below the threshold for a ranked score.</p>`;
+    : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)}. ${escapeHtml(country.name)} does not meet the published ranking eligibility criteria. ${coverageFact}</p>`;
   const datasetDescription = scorePublished
     ? `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`
-    : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because input coverage is below the ranking threshold.`;
+    : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because the country does not meet the published ranking eligibility criteria.`;
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)} The structural snapshot is dated and source-labelled; the current instability tool below loads separately from the live World Monitor API.</p>
