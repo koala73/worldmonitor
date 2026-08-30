@@ -14,6 +14,7 @@ import {
 } from '../server/worldmonitor/scorecard/v1/_snapshot';
 import {
   __resetFiveFactorSnapshotCacheForTests,
+  asFiveFactorSnapshot,
   readFiveFactorListProjection,
   readFiveFactorSnapshot,
 } from '../server/worldmonitor/scorecard/v1/_read-snapshot';
@@ -35,7 +36,7 @@ const sources = {
   },
   demographics: null,
   defense: null,
-  energyMix: { AA: { year: 2024, primaryEnergyConsumptionTwh: 100, importShare: 0 } },
+  energyMix: { AA: { year: 2024, balanceYear: 2024, primaryEnergyConsumptionTwh: 100, balanceImportSharePercent: 0 } },
   staticByCountry: { AA: {} },
   lowCarbon: { countries: { AA: { value: 50, year: 2024 } } },
   powerLosses: { countries: { AA: { value: 5, year: 2024 } } },
@@ -510,6 +511,114 @@ describe('five-factor atomic snapshot', () => {
       else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
       __resetFiveFactorSnapshotCacheForTests();
     }
+  });
+
+  it('scopes one corrupt country hash to that country instead of discarding the cohort', async () => {
+    const snapshot = buildFiveFactorSnapshot(['AA', 'AB'], sources, '2026-08-29T00:00:00.000Z');
+    const readModel = buildFiveFactorReadModel(snapshot);
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const commands: unknown[][] = [];
+    try {
+      __resetFiveFactorSnapshotCacheForTests();
+      process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      globalThis.fetch = async (_input, init = {}) => {
+        const body = JSON.parse(String(init.body)) as unknown[] | unknown[][];
+        if (body[0] === 'GET') {
+          commands.push(body as unknown[]);
+          return new Response(JSON.stringify({ result: JSON.stringify(snapshot) }), { status: 200 });
+        }
+        commands.push(...body as unknown[][]);
+        const fields = (body as unknown[][])[0]!.slice(2).map(String);
+        return new Response(JSON.stringify([{
+          result: fields.map((field) => {
+            if (field === 'metadata') return JSON.stringify(readModel.metadata);
+            if (field === 'country:AA') return JSON.stringify(readModel.countries.AA);
+            return 'not-json';
+          }),
+        }]), { status: 200 });
+      };
+      const selected = await readFiveFactorSnapshot(['AA', 'AB']) as typeof snapshot;
+      assert.equal(selected.countries.AA?.result.countryCode, 'AA', 'the readable country still comes from the read model');
+      assert.equal(selected.countries.AB, undefined, 'the corrupt country is simply absent');
+      assert.equal(
+        commands.some((command) => command[0] === 'GET' && command[1] === 'scorecard:five-factor:v1'),
+        false,
+        'one bad field must not force the expensive full-snapshot fallback',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      if (originalToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+      __resetFiveFactorSnapshotCacheForTests();
+    }
+  });
+
+  it('serves the warm canonical cohort when its refresh fails', async () => {
+    const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const originalNow = Date.now;
+    let canonicalReads = 0;
+    let failCanonical = false;
+    try {
+      __resetFiveFactorSnapshotCacheForTests();
+      process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      globalThis.fetch = async (_input, init = {}) => {
+        const body = JSON.parse(String(init.body)) as unknown[] | unknown[][];
+        if (body[0] === 'GET') {
+          canonicalReads += 1;
+          if (failCanonical) return new Response('upstream down', { status: 503 });
+          return new Response(JSON.stringify({ result: JSON.stringify(snapshot) }), { status: 200 });
+        }
+        // No usable read model, so every call goes to the canonical fallback.
+        return new Response(JSON.stringify([{ result: [null, null] }]), { status: 200 });
+      };
+      const warmed = await readFiveFactorSnapshot(['AA']) as typeof snapshot;
+      assert.equal(warmed.countries.AA?.result.countryCode, 'AA');
+      assert.equal(canonicalReads, 1);
+
+      // Age past the 5-minute refresh window so the next read must refresh,
+      // and make that refresh fail the way an Upstash blip does.
+      const advanced = originalNow() + (6 * 60_000);
+      Date.now = () => advanced;
+      failCanonical = true;
+      const stale = await readFiveFactorSnapshot(['AA']) as typeof snapshot;
+      assert.equal(canonicalReads, 2, 'a stale cohort still attempts a refresh');
+      assert.equal(
+        stale?.countries.AA?.result.countryCode,
+        'AA',
+        'a failed refresh must not discard a cohort this isolate is still holding',
+      );
+    } finally {
+      Date.now = originalNow;
+      globalThis.fetch = originalFetch;
+      if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      if (originalToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+      __resetFiveFactorSnapshotCacheForTests();
+    }
+  });
+
+  it('stops re-scoring a cohort it has already validated', () => {
+    const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
+    assert.equal(asFiveFactorSnapshot(snapshot), snapshot, 'first call validates and memoizes');
+    // hasFiveFactorSnapshotShape re-runs scoreCountry for every country, so the
+    // handlers' second asFiveFactorSnapshot call on the reader's own object used
+    // to pay the full cost again. Tampering after the memo proves the re-scoring
+    // is genuinely skipped -- the object never escapes the module between the
+    // read and the handler, so trusting identity here is safe.
+    snapshot.countries.AA!.result.pillars.energy.subScore = 99;
+    assert.equal(asFiveFactorSnapshot(snapshot), snapshot, 'a memoized cohort is not re-scored');
+    // A different object with the same tampering is still rejected.
+    assert.equal(asFiveFactorSnapshot(structuredClone(snapshot)), null);
   });
 
   it('fails malformed read-model country metadata closed and uses the bounded canonical fallback', async () => {

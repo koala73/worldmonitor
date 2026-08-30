@@ -11,8 +11,36 @@ import type { CountryScorecardSummary, FiveFactorReadModelMetadata, FiveFactorSn
 
 export type ScorecardSnapshotReader = (countryCodes?: string[]) => Promise<unknown>;
 const CANONICAL_FALLBACK_CACHE_MS = 5 * 60_000;
+/**
+ * How far past its refresh window a cached cohort may still be served when the
+ * refresh itself fails. Comfortably inside the 3-day snapshot TTL and the daily
+ * publication cadence, so an Upstash outage degrades to slightly-stale data
+ * instead of `scorecard-snapshot-unavailable`, but a genuinely dead seeder still
+ * surfaces within a few hours.
+ */
+const CANONICAL_STALE_SERVE_CEILING_MS = 6 * 60 * 60_000;
 const SCORECARD_READ_DEADLINE_MS = 7_000;
 let canonicalLastGood: { cachedAt: number; snapshot: FiveFactorSnapshotV1 } | null = null;
+
+/**
+ * Snapshots this isolate has already shape-checked, keyed by object identity.
+ *
+ * `hasFiveFactorSnapshotShape` re-runs `scoreCountry` and two `JSON.stringify`
+ * calls for EVERY country in the cohort (~196 in production). Every handler
+ * calls `asFiveFactorSnapshot` on whatever the reader returns, so without this
+ * memo the canonical path pays that cost twice on a cold read and once more on
+ * every subsequent warm-cache hit -- the module cache saved the fetch and the
+ * parse but not the CPU, which is the expensive part.
+ */
+const validatedSnapshots = new WeakSet<object>();
+
+function validateSnapshot(value: unknown): FiveFactorSnapshotV1 | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (validatedSnapshots.has(value)) return value as FiveFactorSnapshotV1;
+  if (!hasFiveFactorSnapshotShape(value)) return null;
+  validatedSnapshots.add(value);
+  return value;
+}
 
 function parseJson<T>(value: string | undefined): T | null {
   if (value == null) return null;
@@ -51,14 +79,31 @@ export function createFiveFactorReadDeadline(): number {
   return Date.now() + SCORECARD_READ_DEADLINE_MS;
 }
 
+function serveStale(warm: typeof canonicalLastGood): FiveFactorSnapshotV1 | null {
+  if (!warm || Date.now() - warm.cachedAt > CANONICAL_STALE_SERVE_CEILING_MS) return null;
+  return warm.snapshot;
+}
+
 async function readCanonicalFallback(deadlineAtMs: number): Promise<unknown> {
-  if (canonicalLastGood && Date.now() - canonicalLastGood.cachedAt <= CANONICAL_FALLBACK_CACHE_MS) {
-    return canonicalLastGood.snapshot;
-  }
+  const warm = canonicalLastGood;
+  if (warm && Date.now() - warm.cachedAt <= CANONICAL_FALLBACK_CACHE_MS) return warm.snapshot;
   const timeoutMs = remainingReadBudget(deadlineAtMs);
-  if (timeoutMs === 0) return null;
-  const value = await getLargeRawJson(FIVE_FACTOR_SCORECARD_KEY, timeoutMs);
-  if (hasFiveFactorSnapshotShape(value)) canonicalLastGood = { cachedAt: Date.now(), snapshot: value };
+  if (timeoutMs === 0) return serveStale(warm);
+  let value: unknown;
+  try {
+    value = await getLargeRawJson(FIVE_FACTOR_SCORECARD_KEY, timeoutMs);
+  } catch (error) {
+    // A failed refresh must not discard a cohort this isolate is still holding.
+    // getLargeRawJson throws on a non-2xx, a command error, or the abort
+    // deadline, and every handler turns that into
+    // `scorecard-snapshot-unavailable` -- so without this an Upstash blip
+    // longer than the refresh window made a warm isolate serve nothing at all.
+    const stale = serveStale(warm);
+    if (stale) return stale;
+    throw error;
+  }
+  const validated = validateSnapshot(value);
+  if (validated) canonicalLastGood = { cachedAt: Date.now(), snapshot: validated };
   return value;
 }
 
@@ -78,12 +123,23 @@ export async function readFiveFactorSnapshot(
       const values = await getHashFieldsBatch(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY, fields, true, timeoutMs);
       const metadata = readModelMetadata(values.get(FIVE_FACTOR_SCORECARD_READ_MODEL_METADATA_FIELD));
       if (metadata) {
-        let invalidExpectedField = false;
+        // Scope a corrupt hash field to the country it belongs to. A single bad
+        // field used to discard the whole assembled cohort and force the request
+        // onto the full-snapshot fallback, which re-scores every country -- a
+        // 30-member bloc paid that penalty for one unreadable member. The
+        // response contract already carries per-member exclusion
+        // (excludedMembers / unavailableReason), so the caller can say which
+        // country is missing without abandoning the cheap read.
+        let expected = 0;
+        let corrupt = 0;
         const countries = Object.fromEntries(countryCodes.flatMap((countryCode) => {
-          const record = parseJson<FiveFactorSnapshotV1['countries'][string]>(values.get(`country:${countryCode}`));
+          // A country absent from the published cohort is not corruption; it is
+          // simply not scored, and the handler reports country-unavailable.
           if (!metadata.countryCodes.includes(countryCode)) return [];
+          expected += 1;
+          const record = parseJson<FiveFactorSnapshotV1['countries'][string]>(values.get(`country:${countryCode}`));
           if (!record || record.evidence?.countryCode !== countryCode || record.result?.countryCode !== countryCode) {
-            invalidExpectedField = true;
+            corrupt += 1;
             return [];
           }
           return [[countryCode, record]];
@@ -96,7 +152,11 @@ export async function readFiveFactorSnapshot(
           sourceStates: metadata.sourceStates,
           countries,
         };
-        if (!invalidExpectedField && hasFiveFactorSnapshotShape(snapshot)) return snapshot;
+        // Only abandon the targeted read when the read model yielded nothing
+        // usable for a cohort its own metadata says should exist -- that points
+        // at a half-written swap rather than one bad field.
+        const wholeCohortCorrupt = expected > 0 && corrupt === expected;
+        if (!wholeCohortCorrupt && validateSnapshot(snapshot)) return snapshot;
       }
     }
   } catch { /* fall through to the canonical last-good cohort */ }
@@ -130,5 +190,5 @@ export async function readFiveFactorListProjection(
 }
 
 export function asFiveFactorSnapshot(value: unknown): FiveFactorSnapshotV1 | null {
-  return hasFiveFactorSnapshotShape(value) ? value : null;
+  return validateSnapshot(value);
 }

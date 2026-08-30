@@ -22,7 +22,7 @@ const sources = {
   },
   demographics: null,
   defense: null,
-  energyMix: { US: { year: 2024, primaryEnergyConsumptionTwh: 100, importShare: 0 } },
+  energyMix: { US: { year: 2024, balanceYear: 2024, primaryEnergyConsumptionTwh: 100, balanceImportSharePercent: 0 } },
   staticByCountry: { US: {}, CA: {} },
   lowCarbon: { countries: { US: { value: 50, year: 2024 } } },
   powerLosses: { countries: { US: { value: 5, year: 2024 } } },
