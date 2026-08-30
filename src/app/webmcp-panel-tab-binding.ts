@@ -47,9 +47,17 @@ export async function selectWebMcpPanelTab(
       message: 'The commodities panel is not live.',
     };
   }
-  await options.prepareTab?.(panelId, tab, options.signal);
-  throwIfWebMcpAborted(options.signal);
-  const selected: CommoditiesTabSelectionResult = panel.selectTab(tab);
+  let selected: CommoditiesTabSelectionResult = panel.selectTab(tab);
+  if (
+    !selected.ok
+    && selected.reason === 'tab_unavailable'
+    && tab === 'physical'
+    && options.prepareTab
+  ) {
+    await options.prepareTab(panelId, tab, options.signal);
+    throwIfWebMcpAborted(options.signal);
+    selected = panel.selectTab(tab);
+  }
   return {
     ...selected,
     panelId,

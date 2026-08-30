@@ -93,6 +93,30 @@ describe('production WebMCP panel-tab binding', () => {
     expect(panel.getActiveTab()).toBe('physical');
   });
 
+  it('selects a warm physical tab without refreshing or erasing retained data', async () => {
+    const panel = new CommoditiesPanel();
+    panel.updatePhysicalPremiums({
+      premiums: [{
+        metal: 'gold',
+        premiumUsdPerOz: 1,
+        premiumPct: 1,
+        computedAt: '2026-08-18T12:30:00.000Z',
+      }],
+    });
+    const prepareTab = vi.fn(async () => panel.updatePhysicalPremiums({ premiums: [] }));
+
+    const selected = await selectWebMcpPanelTab(
+      { commodities: panel },
+      'commodities',
+      'physical',
+      { waitForUiReady: async () => {}, prepareTab },
+    );
+
+    expect(selected).toMatchObject({ ok: true, effectiveTab: 'physical' });
+    expect(prepareTab).not.toHaveBeenCalled();
+    expect(panel.getActiveTab()).toBe('physical');
+  });
+
   it('keeps a completed empty physical comparison unavailable', async () => {
     const panel = new CommoditiesPanel();
     const selected = await selectWebMcpPanelTab(

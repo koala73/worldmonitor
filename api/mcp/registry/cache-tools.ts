@@ -451,7 +451,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // docs/finance-data.mdx § Client parity.
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
+    description: 'Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -618,6 +618,22 @@ export const CACHE_TOOLS: ToolDef[] = [
             : undefined;
           return aliases?.some((alias) => matchesCode(alias, symbols)) ?? false;
         });
+        const divergence = data['physical-divergence'];
+        if (divergence && typeof divergence === 'object' && !Array.isArray(divergence)) {
+          const divergenceRecord = divergence as Record<string, unknown>;
+          const readings = Array.isArray(divergenceRecord.readings)
+            ? divergenceRecord.readings
+            : [];
+          const visibleMetals = new Set(readings.flatMap((reading) => (
+            reading && typeof reading === 'object' && !Array.isArray(reading)
+            && typeof (reading as Record<string, unknown>).metal === 'string'
+              ? [(reading as Record<string, unknown>).metal]
+              : []
+          )));
+          if (!(visibleMetals.has('gold') && visibleMetals.has('silver'))) {
+            delete divergenceRecord.composite;
+          }
+        }
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
         const sectorData = data.sectors;
         if (sectorData && typeof sectorData === 'object' && !Array.isArray(sectorData)) {

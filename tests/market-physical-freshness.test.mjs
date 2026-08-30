@@ -46,6 +46,14 @@ function response(body) {
   });
 }
 
+async function waitFor(predicate) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolvePromise) => setImmediate(resolvePromise));
+  }
+  throw new Error('Timed out waiting for market request');
+}
+
 describe('physical market service freshness', () => {
   it('refetches both cohort-bound responses instead of replaying a client cache', async () => {
     const restoreBrowserEnv = installBrowserEnv();
@@ -104,6 +112,95 @@ describe('physical market service freshness', () => {
     } finally {
       globalThis.fetch = originalFetch;
       clearAllCircuitBreakers();
+      restoreBrowserEnv();
+    }
+  });
+
+  it('combines caller cancellation with the mandatory request deadline', async () => {
+    const restoreBrowserEnv = installBrowserEnv();
+    const originalFetch = globalThis.fetch;
+    const originalTimeout = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const deadlineControllers = [];
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: () => {
+        const controller = new AbortController();
+        deadlineControllers.push(controller);
+        return controller.signal;
+      },
+    });
+    const requestSignals = [];
+    globalThis.fetch = async (_input, init) => new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      requestSignals.push(signal);
+      if (signal?.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+
+    try {
+      const { fetchPhysicalDivergence, fetchPhysicalPremiums } = await import(freshImportUrl(MARKET_SERVICE_URL));
+      const caller = new AbortController();
+      const divergence = fetchPhysicalDivergence(caller.signal);
+      await waitFor(() => requestSignals.length === 1);
+      assert.notEqual(requestSignals[0], caller.signal);
+      deadlineControllers[0].abort(new DOMException('Deadline exceeded', 'TimeoutError'));
+      await assert.rejects(divergence, { name: 'TimeoutError' });
+
+      const premiumCaller = new AbortController();
+      const premiums = fetchPhysicalPremiums(premiumCaller.signal);
+      await waitFor(() => requestSignals.length === 2);
+      assert.notEqual(requestSignals[1], premiumCaller.signal);
+      premiumCaller.abort(new DOMException('Caller cancelled', 'AbortError'));
+      await assert.rejects(premiums, { name: 'AbortError' });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalTimeout) Object.defineProperty(AbortSignal, 'timeout', originalTimeout);
+      restoreBrowserEnv();
+    }
+  });
+
+  it('does not open the premium breaker after caller-owned cancellations', async () => {
+    const restoreBrowserEnv = installBrowserEnv();
+    const originalFetch = globalThis.fetch;
+    let premiumCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      const path = new URL(typeof input === 'string' ? input : input.url).pathname;
+      if (!path.endsWith('/get-physical-premiums')) throw new Error(`Unexpected market request: ${path}`);
+      premiumCalls += 1;
+      if (premiumCalls <= 2) {
+        return new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(signal.reason);
+            return;
+          }
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+      }
+      return response({
+        premiums: [{ metal: 'gold', premiumPct: 1 }],
+        fx: { asOf: '2026-08-18T12:30:00.000Z' },
+      });
+    };
+
+    try {
+      const { fetchPhysicalPremiums } = await import(freshImportUrl(MARKET_SERVICE_URL));
+      for (let index = 0; index < 2; index += 1) {
+        const caller = new AbortController();
+        const request = fetchPhysicalPremiums(caller.signal);
+        await waitFor(() => premiumCalls === index + 1);
+        caller.abort(new DOMException('Caller cancelled', 'AbortError'));
+        await assert.rejects(request, { name: 'AbortError' });
+      }
+
+      const healthy = await fetchPhysicalPremiums();
+      assert.equal(premiumCalls, 3);
+      assert.equal(healthy.premiums[0]?.metal, 'gold');
+    } finally {
+      globalThis.fetch = originalFetch;
       restoreBrowserEnv();
     }
   });

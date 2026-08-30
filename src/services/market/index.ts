@@ -12,6 +12,7 @@ import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { MarketServiceClient } from '@/services/generated-rpc-clients';
 import { proFreshRpcFetch } from '@/services/premium-fetch';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 
 // ---- Client + Circuit Breakers ----
 
@@ -213,15 +214,20 @@ export async function fetchCommodityQuotes(
 }
 
 export async function fetchPhysicalPremiums(signal?: AbortSignal): Promise<GetPhysicalPremiumsResponse> {
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
   return physicalPremiumBreaker.execute(async () => {
-    return client.getPhysicalPremiums({ metals: [] }, { signal: signal ?? AbortSignal.timeout(15_000) });
+    return client.getPhysicalPremiums({ metals: [] }, { signal: requestSignal });
   }, emptyPhysicalPremiumFallback, {
     shouldCache: () => false,
+    ignoreError: () => signal?.aborted === true,
   });
 }
 
 export async function fetchPhysicalDivergence(signal?: AbortSignal): Promise<GetPhysicalDivergenceIndexResponse> {
-  return client.getPhysicalDivergenceIndex({ metals: [] }, { signal: signal ?? AbortSignal.timeout(15_000) });
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
+  return client.getPhysicalDivergenceIndex({ metals: [] }, { signal: requestSignal });
 }
 
 // ========================================================================

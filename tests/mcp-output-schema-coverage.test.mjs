@@ -217,8 +217,11 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
     ));
     assert.ok(crossSourceSignal.type.enum.includes('CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION'));
+    const divergenceSchema = dataProperties('get_market_data')['physical-divergence'].properties;
+    assert.equal(divergenceSchema.readings.items.properties.historyKey.type, 'string');
+    assert.deepEqual(divergenceSchema.composite.properties.weights.items.properties.metal.enum, ['gold', 'silver']);
     assert.equal(
-      dataProperties('get_market_data')['physical-divergence'].properties.readings.items.properties.historyKey.type,
+      divergenceSchema.composite.properties.weights.items.properties.methodologyVersion.type,
       'string',
     );
     for (const field of [

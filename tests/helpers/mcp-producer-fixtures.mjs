@@ -45,6 +45,7 @@ export function buildProducerBackedPhysicalComparisonFixture(state = 'ok') {
     divergence: {
       readings,
       composite: buildPhysicalStressComposite(readings),
+      transitions: [],
       evaluatedAt: new Date(nowMs).toISOString(),
       methodologyVersion: METHODOLOGY_VERSION,
     },

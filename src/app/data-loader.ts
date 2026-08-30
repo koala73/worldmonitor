@@ -474,6 +474,7 @@ export class DataLoaderManager implements AppModule {
   private dailyBriefGeneration = 0;
   private _stockAnalysisGeneration = 0;
   private readonly marketLoadGuard = new LatestRequestGuard();
+  private readonly physicalComparisonLoadGuard = new LatestRequestGuard();
   private globalTenderGeneration = 0;
   private globalTenderFilters: GlobalTenderFilters = {};
   private activeGlobalTenderScopedGeneration: number | null = null;
@@ -2606,9 +2607,13 @@ export class DataLoaderManager implements AppModule {
 
       if (commoditiesPanel) {
         try {
+          const physicalGeneration = this.physicalComparisonLoadGuard.begin();
           await loadPhysicalPremiumComparisonIfNeeded(
             commoditiesPanel,
-            isCurrent,
+            () => (
+              isCurrent()
+              && this.physicalComparisonLoadGuard.isCurrent(physicalGeneration)
+            ),
             fetchPhysicalPremiums,
             fetchPhysicalDivergence,
           );
@@ -2678,11 +2683,15 @@ export class DataLoaderManager implements AppModule {
     signal?.throwIfAborted();
     const panel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
     if (!panel) return;
+    const generation = this.physicalComparisonLoadGuard.begin();
     const { fetchPhysicalDivergence, fetchPhysicalPremiums } = await import('@/services/market');
     signal?.throwIfAborted();
     await loadPhysicalPremiumComparison(
       panel,
-      () => !signal?.aborted,
+      () => (
+        !signal?.aborted
+        && this.physicalComparisonLoadGuard.isCurrent(generation)
+      ),
       () => fetchPhysicalPremiums(signal),
       () => fetchPhysicalDivergence(signal),
     );

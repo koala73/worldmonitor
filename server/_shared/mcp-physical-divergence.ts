@@ -85,7 +85,17 @@ export const PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA = {
         state: { type: 'string', enum: ['ok', 'insufficient_history', 'stale_input', 'missing_input'] },
         reason: { type: 'string' },
         index: { type: ['number', 'null'] },
-        weights: { type: 'array', items: { type: 'object', properties: { metal: { type: 'string' }, weight: { type: 'number' } } } },
+        weights: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              metal: { type: 'string', enum: ['gold', 'silver'] },
+              weight: { type: 'number' },
+              methodologyVersion: { type: 'string' },
+            },
+          },
+        },
         methodologyVersion: { type: 'string' },
       },
     },
@@ -105,7 +115,14 @@ export function normalizePhysicalDivergenceDataset(data: Record<string, unknown>
     delete data['physical-divergence'];
     return;
   }
-  const { transitions: _, ...agentDataset } = normalized;
+  const { transitions: _, ...normalizedWithoutTransitions } = normalized;
+  const agentDataset = {
+    ...normalizedWithoutTransitions,
+    readings: normalizedWithoutTransitions.readings.map((reading) => ({
+      ...reading,
+      historyKey: reading.provenance.historyKey,
+    })),
+  };
   if (!matchesPhysicalPremiumCohort(data['physical-premium'], agentDataset.readings)) {
     delete data['physical-divergence'];
     return;
@@ -117,7 +134,14 @@ function matchesPhysicalPremiumCohort(
   value: unknown,
   readings: ReturnType<typeof normalizePhysicalDivergenceSnapshot>['readings'],
 ): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const unavailableWithoutCohort = readings.every((reading) => (
+    reading.state === 'missing_input'
+    && reading.physicalAsOf === ''
+    && reading.paperAsOf === ''
+  ));
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return unavailableWithoutCohort;
+  }
   const dataset = value as Record<string, unknown>;
   if (!Array.isArray(dataset.premiums) || !dataset.fx || typeof dataset.fx !== 'object' || Array.isArray(dataset.fx)) {
     return false;
@@ -134,6 +158,11 @@ function matchesPhysicalPremiumCohort(
   }
 
   return readings.every((reading) => {
+    if (
+      reading.state === 'missing_input'
+      && reading.physicalAsOf === ''
+      && reading.paperAsOf === ''
+    ) return true;
     const premium = premiums.get(reading.metal);
     if (!premium) return false;
     const physical = premium.physical;

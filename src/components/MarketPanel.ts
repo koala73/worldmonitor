@@ -618,7 +618,10 @@ export class CommoditiesPanel extends Panel {
   }
 
   public shouldRefreshPhysicalComparison(): boolean {
-    return !this._physicalComparisonAttempted || this._tab === 'physical' || this._physicalPremiums.length === 0;
+    return !this._physicalComparisonAttempted
+      || this._tab === 'physical'
+      || this._physicalPremiums.length === 0
+      || this._physicalDivergenceUnavailable;
   }
 
   public selectTab(tab: string): CommoditiesTabSelectionResult {

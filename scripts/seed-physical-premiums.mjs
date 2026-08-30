@@ -10,6 +10,13 @@
 
 import {
   CHROME_UA,
+  SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS,
+  SEED_REDIS_COMMAND_TIMEOUT_MS,
+  SEED_REDIS_RETRY_ATTEMPTS,
+  SEED_REDIS_RETRY_BASE_MS,
+  SEED_VERIFY_ATTEMPTS,
+  SEED_VERIFY_COMMAND_TIMEOUT_MS,
+  SEED_VERIFY_RETRY_DELAY_MS,
   httpRetryError,
   loadEnvFile,
   readSeedSnapshot,
@@ -63,7 +70,32 @@ const TRANSITION_COOLDOWN_SECONDS = TRANSITION_COOLDOWN_MS / 1000;
 export const DERIVED_REDIS_MAX_ATTEMPTS = 3;
 export const DERIVED_REDIS_RETRY_BASE_MS = 250;
 const DERIVED_REDIS_SEQUENTIAL_WAVES = 3;
-const SHARED_SEED_BOOKKEEPING_BUDGET_MS = 99_000;
+const retryWorstCaseMs = (timeoutMs, attempts, retryBaseMs) => (
+  attempts * timeoutMs
+  + Array.from({ length: attempts - 1 }, (_, index) => retryBaseMs * 2 ** index)
+    .reduce((sum, delay) => sum + delay, 0)
+);
+const SHARED_REDIS_RETRY_WORST_CASE_MS = retryWorstCaseMs(
+  SEED_REDIS_COMMAND_TIMEOUT_MS,
+  SEED_REDIS_RETRY_ATTEMPTS,
+  SEED_REDIS_RETRY_BASE_MS,
+);
+const SHARED_EXTRA_KEY_WORST_CASE_MS = retryWorstCaseMs(
+  SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS,
+  SEED_REDIS_RETRY_ATTEMPTS,
+  SEED_REDIS_RETRY_BASE_MS,
+);
+const SHARED_VERIFY_WORST_CASE_MS = SEED_VERIFY_ATTEMPTS * retryWorstCaseMs(
+  SEED_VERIFY_COMMAND_TIMEOUT_MS,
+  SEED_REDIS_RETRY_ATTEMPTS,
+  SEED_REDIS_RETRY_BASE_MS,
+) + (SEED_VERIFY_ATTEMPTS - 1) * SEED_VERIFY_RETRY_DELAY_MS;
+export const PHYSICAL_PREMIUM_SHARED_SEED_WORST_CASE_MS = (
+  3 * SHARED_REDIS_RETRY_WORST_CASE_MS // lock, canonical publish, freshness metadata
+  + SHARED_EXTRA_KEY_WORST_CASE_MS // bundle completion marker
+  + SHARED_VERIFY_WORST_CASE_MS
+  + SEED_REDIS_COMMAND_TIMEOUT_MS // best-effort lock release
+);
 export const PHYSICAL_PREMIUM_DERIVED_REDIS_WORST_CASE_MS = DERIVED_REDIS_SEQUENTIAL_WAVES * (
   DERIVED_REDIS_MAX_ATTEMPTS * UPSTASH_COMMAND_TIMEOUT_MS
   + (DERIVED_REDIS_MAX_ATTEMPTS - 1) * Math.max(
@@ -73,8 +105,8 @@ export const PHYSICAL_PREMIUM_DERIVED_REDIS_WORST_CASE_MS = DERIVED_REDIS_SEQUEN
 );
 export const PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS = PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS
   + PHYSICAL_PREMIUM_DERIVED_REDIS_WORST_CASE_MS
-  + SHARED_SEED_BOOKKEEPING_BUDGET_MS;
-export const PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS = 360_000;
+  + PHYSICAL_PREMIUM_SHARED_SEED_WORST_CASE_MS;
+export const PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS = 480_000;
 const SGE_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 const SGE_GOLD_URL = 'https://en.sge.com.cn/data_BenchmarkPrice_Daily';
 const SGE_SILVER_URL = 'https://en.sge.com.cn/data/data_silver_daily';
@@ -703,17 +735,55 @@ export async function fetchSgeHtml(url, contract, fetchFn = fetch) {
   if (Number.isFinite(contentLength) && contentLength > 256_000) {
     throw nonRetryableError(`${contract} response exceeds 256 KB`);
   }
-  const html = await response.text();
-  if (html.length > 256_000) throw nonRetryableError(`${contract} response exceeds 256 KB`);
-  return html;
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const html = await response.text();
+    if (Buffer.byteLength(html, 'utf8') > 256_000) {
+      throw nonRetryableError(`${contract} response exceeds 256 KB`);
+    }
+    return html;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) {
+        throw nonRetryableError(`Unexpected ${contract} response stream`);
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > 256_000) {
+        await reader.cancel().catch(() => {});
+        throw nonRetryableError(`${contract} response exceeds 256 KB`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
-async function fetchPhysicalPremiums({ runStartedAtMs }) {
+export async function fetchPhysicalPremiumPayload(
+  { runStartedAtMs },
+  {
+    fetchSgeHtmlFn = fetchSgeHtml,
+    readSeedSnapshotFn = readSeedSnapshot,
+  } = {},
+) {
   const [goldHtml, silverHtml, commoditySnapshot, fxSnapshot] = await Promise.all([
-    fetchSgeHtml(SGE_GOLD_URL, 'SHAU'),
-    fetchSgeHtml(SGE_SILVER_URL, 'SHAG'),
-    readSeedSnapshot(COMMODITY_QUOTES_KEY, { strict: true, includeEnvelopeMeta: true }),
-    readSeedSnapshot(FX_RATES_KEY, { strict: true, includeEnvelopeMeta: true }),
+    fetchSgeHtmlFn(SGE_GOLD_URL, 'SHAU'),
+    fetchSgeHtmlFn(SGE_SILVER_URL, 'SHAG'),
+    readSeedSnapshotFn(COMMODITY_QUOTES_KEY, { strict: true, includeEnvelopeMeta: true }),
+    readSeedSnapshotFn(FX_RATES_KEY, { strict: true, includeEnvelopeMeta: true }),
   ]);
   const commodityQuotes = commoditySnapshot?.data;
   const fxRates = fxSnapshot?.data;
@@ -745,7 +815,7 @@ export async function runPhysicalPremiumSeed(
   const { env, sha } = parseSeedTargetArgs(args);
   const prefix = env === 'production' ? '' : `${env}:${sha}:`;
   const resource = env === 'production' ? 'physical-premium' : `physical-premium:${env}:${sha}`;
-  return runSeedFn('market', resource, `${prefix}${PHYSICAL_PREMIUM_KEY}`, fetchPhysicalPremiums, {
+  const seedOptions = {
     lockTtlMs: PHYSICAL_PREMIUM_LOCK_TTL_MS,
     fetchPhaseTimeoutMs: PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS,
     validateFn: validatePhysicalPremiumPayload,
@@ -762,7 +832,11 @@ export async function runPhysicalPremiumSeed(
     afterPublish: async (payload) => {
       await publishDivergenceFn({ payload, prefix });
     },
-  });
+  };
+  if (runSeedFn === runSeed) {
+    return runSeed('market', resource, `${prefix}${PHYSICAL_PREMIUM_KEY}`, fetchPhysicalPremiumPayload, seedOptions);
+  }
+  return runSeedFn('market', resource, `${prefix}${PHYSICAL_PREMIUM_KEY}`, fetchPhysicalPremiumPayload, seedOptions);
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {

@@ -99,6 +99,9 @@ describe('CommoditiesPanel physical-premium tab', () => {
     expect(panel.shouldRefreshPhysicalComparison()).toBe(true);
 
     const unavailablePanel = new CommoditiesPanel();
+    unavailablePanel.updatePhysicalPremiums({
+      premiums: [{ metal: 'gold', premiumUsdPerOz: 1, premiumPct: 1, computedAt: '2026-08-18T12:30:00.000Z' }],
+    });
     unavailablePanel.showPhysicalDivergenceUnavailable();
     expect(unavailablePanel.shouldRefreshPhysicalComparison()).toBe(true);
   });

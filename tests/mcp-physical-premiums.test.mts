@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import { executeTool } from '../api/mcp/dispatch.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { normalizePhysicalDivergenceSnapshot } from '../server/_shared/physical-divergence-snapshot.ts';
+import { buildProducerBackedPhysicalComparisonFixture } from './helpers/mcp-producer-fixtures.mjs';
 
 const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_market_data');
 assert.ok(tool && tool._postFilter);
@@ -155,12 +157,20 @@ describe('get_market_data physical premium coverage', () => {
       (gold['physical-divergence'] as { readings: Array<{ metal: string }> }).readings.map((reading) => reading.metal),
       ['gold'],
     );
+    assert.equal((gold['physical-divergence'] as { composite?: unknown }).composite, undefined);
 
     const silver = tool._postFilter(structuredClone(dataset), { symbols: ['xag'], limit: 0 });
     assert.deepEqual(
       (silver['physical-premium'] as { premiums: Array<{ metal: string }> }).premiums.map((premium) => premium.metal),
       ['silver'],
     );
+    assert.equal((silver['physical-divergence'] as { composite?: unknown }).composite, undefined);
+
+    const both = tool._postFilter(structuredClone(dataset), { symbols: ['xau', 'xag'], limit: 0 });
+    assert.ok((both['physical-divergence'] as { composite?: unknown }).composite);
+
+    const unrelated = tool._postFilter(structuredClone(dataset), { symbols: ['AAPL'], limit: 0 });
+    assert.equal((unrelated['physical-divergence'] as { composite?: unknown }).composite, undefined);
   });
 
   it('fails closed on an unknown divergence state', () => {
@@ -208,8 +218,30 @@ describe('get_market_data physical premium coverage', () => {
     assert.deepEqual(divergence.readings.map((reading) => reading.metal), ['gold']);
     assert.equal(divergence.readings[0]?.state, 'ok');
     assert.deepEqual(divergence.readings[0]?.provenance, provenance('gold'));
-    assert.equal(divergence.composite.state, 'insufficient_history');
+    assert.equal(divergence.readings[0]?.historyKey, provenance('gold').historyKey);
+    assert.equal(divergence.composite, undefined);
     assert.equal('transitions' in divergence, false);
+  });
+
+  it('returns missing_input through the real cache-tool execution path without a premium cohort', async () => {
+    const missing = buildProducerBackedPhysicalComparisonFixture('missing_input');
+    assert.doesNotThrow(() => normalizePhysicalDivergenceSnapshot(
+      missing.divergence,
+      Date.parse('2026-08-18T13:00:00.000Z'),
+    ));
+    const directlyFiltered = tool._postFilter?.({
+      'physical-premium': null,
+      'physical-divergence': structuredClone(missing.divergence),
+    }, { limit: 0 });
+    assert.ok(directlyFiltered?.['physical-divergence']);
+    const result = await executeWithStoredData({ limit: 0 }, missing.divergence, null);
+    const divergence = result.data['physical-divergence'] as typeof missing.divergence;
+
+    assert.deepEqual(divergence.readings.map((reading) => reading.state), ['missing_input', 'missing_input']);
+    assert.ok(divergence.readings.every((reading) => reading.index === null));
+    assert.ok(divergence.readings.every((reading) => reading.historyKey === reading.provenance.historyKey));
+    assert.equal(divergence.composite.state, 'missing_input');
+    assert.equal(divergence.composite.index, null);
   });
 
   it('degrades aged stored ok readings through the real MCP execution path', async () => {

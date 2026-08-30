@@ -11,6 +11,7 @@ import {
   PHYSICAL_PREMIUM_LOCK_TTL_MS,
   PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS,
   PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS,
+  PHYSICAL_PREMIUM_SHARED_SEED_WORST_CASE_MS,
   APPEND_HISTORY_LUA,
   PUBLISH_PHYSICAL_PREMIUM_LUA,
   PUBLISH_DIVERGENCE_LUA,
@@ -19,6 +20,7 @@ import {
   buildPhysicalPremiumPayload,
   convertSgePriceToUsdPerOz,
   fetchSgeHtml,
+  fetchPhysicalPremiumPayload,
   parseSeedTargetArgs,
   parseSgeBenchmarkHtml,
   physicalPremiumHistoryKey,
@@ -32,6 +34,7 @@ import {
   shouldWritePhysicalPremiumActivationMarker,
   validatePhysicalPremiumPayload,
 } from '../scripts/seed-physical-premiums.mjs';
+import { ADMISSION_HEADROOM_MS, KILL_GRACE_MS } from '../scripts/_bundle-runner.mjs';
 import {
   HISTORY_LIMIT,
   METHODOLOGY_VERSION,
@@ -186,8 +189,11 @@ describe('physical premium seed', () => {
     assert.equal(PHYSICAL_PREMIUM_LOCK_TTL_MS, 600_000);
     assert.ok(PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS < PHYSICAL_PREMIUM_LOCK_TTL_MS);
     assert.ok(120_000 < PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS);
+    assert.equal(PHYSICAL_PREMIUM_SHARED_SEED_WORST_CASE_MS, 228_500);
+    assert.equal(PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS, 435_500);
     assert.ok(PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS < PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS);
     assert.ok(PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS < PHYSICAL_PREMIUM_LOCK_TTL_MS);
+    assert.ok(PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS + KILL_GRACE_MS + ADMISSION_HEADROOM_MS < 570_000);
   });
 
   it('parses the latest PM prints from real SGE response fixtures', () => {
@@ -241,6 +247,74 @@ describe('physical premium seed', () => {
       })),
       /Unexpected SHAU response origin/,
     );
+  });
+
+  it('cancels chunked and falsely declared SGE bodies at the byte limit', async () => {
+    for (const contentLength of [undefined, '1']) {
+      let pulls = 0;
+      let cancelled = false;
+      const body = new ReadableStream({
+        pull(controller) {
+          pulls += 1;
+          controller.enqueue(new Uint8Array(64_000));
+          if (pulls >= 10) controller.close();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      const headers = new Headers({ 'content-type': 'text/html' });
+      if (contentLength) headers.set('content-length', contentLength);
+
+      await assert.rejects(
+        fetchSgeHtml('https://en.sge.com.cn/data', 'SHAU', async () => new Response(body, {
+          status: 200,
+          headers,
+        })),
+        /exceeds 256 KB/,
+      );
+      assert.equal(cancelled, true);
+      assert.ok(pulls < 10, 'the reader must stop before consuming the full body');
+    }
+  });
+
+  it('executes the production four-input fetch seam with independent provenance clocks', async () => {
+    const sgeCalls = [];
+    const snapshotCalls = [];
+    const paperFetchedAt = Date.parse('2026-08-18T12:22:24.000Z');
+    const fxFetchedAt = Date.parse('2026-08-18T12:28:48.000Z');
+    const payload = await fetchPhysicalPremiumPayload(
+      { runStartedAtMs: Date.parse('2026-08-18T12:30:00.000Z') },
+      {
+        fetchSgeHtmlFn: async (url, contract) => {
+          sgeCalls.push([url, contract]);
+          return contract === 'SHAU' ? goldHtml : silverHtml;
+        },
+        readSeedSnapshotFn: async (key, options) => {
+          snapshotCalls.push([key, options]);
+          if (key === 'market:commodities-bootstrap:v1') {
+            return {
+              data: { quotes: [{ symbol: 'GC=F', price: 4455.6 }, { symbol: 'SI=F', price: 65.31 }] },
+              meta: { fetchedAt: paperFetchedAt },
+            };
+          }
+          return {
+            data: { CNY: 0.1486, fallbackCurrencies: [] },
+            meta: { fetchedAt: fxFetchedAt },
+          };
+        },
+      },
+    );
+
+    assert.deepEqual(sgeCalls.map(([, contract]) => contract), ['SHAU', 'SHAG']);
+    assert.deepEqual(snapshotCalls.map(([key]) => key), [
+      'market:commodities-bootstrap:v1',
+      'shared:fx-rates:v1',
+    ]);
+    assert.ok(snapshotCalls.every(([, options]) => options.strict && options.includeEnvelopeMeta));
+    assert.ok(payload.premiums.every((premium) => premium.physical.asOf === '2026-08-18'));
+    assert.ok(payload.premiums.every((premium) => premium.paper.asOf === '2026-08-18T12:22:24.000Z'));
+    assert.equal(payload.fx.asOf, '2026-08-18T12:28:48.000Z');
   });
 
   it('uses the official SHAU gram and SHAG kilogram units in the troy-ounce conversion', () => {
@@ -348,7 +422,7 @@ describe('physical premium seed', () => {
         publishDivergenceFn: async (context) => { calls.push(['divergence', context]); },
       },
     );
-    const [domain, resource, canonicalKey, , options] = invocation;
+    const [domain, resource, canonicalKey, fetchFn, options] = invocation;
     assert.deepEqual(
       { domain, resource, canonicalKey },
       {
@@ -359,6 +433,7 @@ describe('physical premium seed', () => {
     );
     assert.equal(options.lockTtlMs, PHYSICAL_PREMIUM_LOCK_TTL_MS);
     assert.equal(options.fetchPhaseTimeoutMs, PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS);
+    assert.equal(fetchFn, fetchPhysicalPremiumPayload);
     await options.publishAtomically({}, {
       canonicalKey,
       payload: '{"premium":1}',

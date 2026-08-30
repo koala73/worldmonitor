@@ -48,6 +48,9 @@ const fakeBundle = (spec, bytes) => ({
   bytes,
   stats: { hoisted: 0, replacedRefs: 0 },
   schemaStats: { compared: 0, replacedRefs: 0 },
+  chinaDateStats: { replacedRefs: 0 },
+  int64Stats: { replacedRefs: 0 },
+  headerStats: { hoisted: 0, replacedRefs: 0 },
   paramStats: { hoisted: 0, replacedRefs: 0 },
   unreachableStats: { dropped: 0, bytesFreed: 0, names: [] },
 });
