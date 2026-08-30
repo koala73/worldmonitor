@@ -26,11 +26,19 @@ import type {
   ResilienceScoreOptions,
 } from './_indicator-trace';
 import type { ResilienceIndicatorId } from './_indicator-registry';
+import { getIndicatorSourcePolicy } from './_indicator-source-policy';
 
 function worldBankSources(...indicatorIds: readonly string[]): readonly IndicatorObservedSource[] {
   return indicatorIds.map((indicatorId) => ({
     providerName: 'World Bank Open Data',
     sourceUrl: `https://api.worldbank.org/v2/country/all/indicator/${indicatorId}`,
+  }));
+}
+
+function auditedSourcesForIndicator(indicatorId: ResilienceIndicatorId): readonly IndicatorObservedSource[] {
+  return (getIndicatorSourcePolicy(indicatorId)?.allowedRawSources ?? []).map(({ providerName, sourceUrl }) => ({
+    providerName,
+    sourceUrl,
   }));
 }
 
@@ -1362,7 +1370,7 @@ function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): TracedW
       rawUnit: 'wgi_estimate',
       sourceYear: indicators[key]?.year ?? null,
       retrievedAt: staticDatasetRetrievedAt(record, 'wgi'),
-      observedSources: worldBankSources(`GOV_WGI_${key}`),
+      observedSources: auditedSourcesForIndicator(indicatorId),
       provenanceHint: key,
     });
   });
@@ -3830,9 +3838,10 @@ export async function scoreStateContinuity(
   const wgiSourceYear = oldestSourceYear(...contributingWgiKeys.map(
     (key) => optionalNum(wgiIndicators[key]?.year),
   ));
-  const wgiObservedSources = worldBankSources(...contributingWgiKeys.map(
-    (key) => `GOV_WGI_${key}`,
-  ));
+  const contributingWgiKeySet = new Set(contributingWgiKeys);
+  const wgiObservedSources = WGI_TRACE_ROWS
+    .filter(([key]) => contributingWgiKeySet.has(key))
+    .flatMap(([, indicatorId]) => auditedSourcesForIndicator(indicatorId));
 
   const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
   const ucdpObservationAvailable = Array.isArray((ucdpRaw as { events?: unknown[] } | null)?.events);
