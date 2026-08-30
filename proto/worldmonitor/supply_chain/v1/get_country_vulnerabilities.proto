@@ -6,69 +6,112 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 message VulnerabilityInput {
+  // Redis or source-contract key that supplied this observation.
   string source_key = 1;
+  // Human-readable source name.
   string source_name = 2;
+  // Public source or methodology URL.
   string source_url = 3;
+  // Numeric observation used by the scorer; absent when the source is unknown.
   optional double value = 4;
+  // Observation year when the source publishes annual data.
   optional int32 year = 5;
+  // ISO 8601 timestamp when the source snapshot was fetched.
   string fetched_at = 6;
+  // True when this observation is older than its source-specific freshness budget.
   bool stale = 7;
+  // Bounded explanation of the mapped input.
   string detail = 8;
 }
 
 message VulnerabilitySourceConcentration {
+  // Combined supplier or producer concentration from 0 to 1.
   optional double value = 1;
+  // Import supplier Herfindahl-Hirschman concentration from 0 to 1.
   optional double import_hhi = 2;
+  // Mine-stage production concentration from 0 to 1.
   optional double mine_hhi = 3;
+  // Refinery-stage production concentration from 0 to 1.
   optional double refinery_hhi = 4;
+  // Combined mine and refinery production concentration from 0 to 1.
   optional double production_hhi = 5;
+  // Producer-stage coverage used for the combined concentration.
   string production_coverage = 6;
+  // Overall concentration coverage state.
   string coverage = 7;
+  // Provenance observations used for concentration.
   repeated VulnerabilityInput inputs = 8;
 }
 
 message VulnerabilityTransitRoute {
+  // Stable chokepoint identifier.
   string id = 1;
+  // Human-readable chokepoint name.
   string name = 2;
+  // Country and commodity exposure share using this route, from 0 to 1.
   optional double transit_share = 3;
+  // Transit share after the current disruption multiplier, from 0 to 1.
   optional double weighted_transit_share = 4;
+  // Current route state: baseline or disrupted.
   string status = 5;
+  // Provenance observations used for the route exposure.
   repeated VulnerabilityInput inputs = 6;
 }
 
 message VulnerabilityTransitExposure {
+  // Combined chokepoint exposure from 0 to 1.
   optional double value = 1;
+  // Mapped chokepoints that contribute to the combined exposure.
   repeated VulnerabilityTransitRoute chokepoints = 2;
 }
 
 message VulnerabilityBuffer {
+  // Buffer evidence state: known or unknown.
   string state = 1;
+  // Residual vulnerability after the available buffer, from 0 to 1.
   optional double vulnerability = 2;
+  // Buffer source class, such as stocks_to_use or gas_storage_fill.
   string kind = 3;
+  // Provenance observations used for the buffer.
   repeated VulnerabilityInput inputs = 4;
 }
 
 message VulnerabilityComponents {
+  // Supplier and producer concentration component.
   VulnerabilitySourceConcentration source_concentration = 1;
+  // Maritime chokepoint transit component.
   VulnerabilityTransitExposure transit_exposure = 2;
+  // Strategic stock or storage buffer component.
   VulnerabilityBuffer buffer = 3;
 }
 
 message CommodityVulnerability {
+  // ISO 3166-1 alpha-2 code for the scored country.
   string country_iso2 = 1;
+  // English display name for the scored country.
   string country_name = 2;
+  // Stable reviewed commodity mapping identifier.
   string commodity_id = 3;
+  // Human-readable commodity name.
   string commodity = 4;
+  // Vulnerability score from 0 to 100; absent when evidence is insufficient.
   optional double score = 5;
+  // Score band: low, moderate, high, or critical; empty when the score is absent.
   string band = 6;
+  // Normalized concentration, transit, and buffer components.
   VulnerabilityComponents components = 7;
+  // Source coverage labels that contributed to this score.
   repeated string coverage = 8;
+  // Evidence state: ok, insufficient_data, or stale_input.
   string state = 9;
+  // Machine-readable explanations for an insufficient or stale state.
   repeated string reasons = 10;
+  // Version of the scoring methodology that produced this row.
   string methodology_version = 11;
 }
 
 message GetCountryVulnerabilitiesRequest {
+  // Uppercase ISO 3166-1 alpha-2 country code.
   string iso2 = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,
@@ -78,10 +121,16 @@ message GetCountryVulnerabilitiesRequest {
 }
 
 message GetCountryVulnerabilitiesResponse {
+  // Uppercase ISO 3166-1 alpha-2 code for the requested country.
   string iso2 = 1;
+  // Human-readable name of the requested country.
   string country = 2;
+  // Commodity scores and their complete evidence components.
   repeated CommodityVulnerability vulnerabilities = 3;
+  // ISO 8601 timestamp when the country index was generated.
   string generated_at = 4;
+  // Version of the scoring methodology used for every row.
   string methodology_version = 5;
+  // True when the published country index could not be read.
   bool upstream_unavailable = 6;
 }

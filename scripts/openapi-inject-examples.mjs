@@ -195,6 +195,11 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
+    if (key === 'commodityid') return 'crude_oil';
+    if (key === 'band') return 'high';
+    if (key === 'state') return 'ok';
+  }
   // RunScenario's async-job envelope (202 Accepted, see
   // openapi-inject-async-jobs.mjs): status is ALWAYS "pending" at enqueue
   // time, and statusUrl is the server-computed GetScenarioStatus poll URL —

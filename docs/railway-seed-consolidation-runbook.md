@@ -1055,12 +1055,14 @@ costs nothing. One service carries all three heavy members instead of three
 | **Start command** | `node scripts/seed-bundle-static-ref-heavy.mjs` |
 | **Cron schedule** | `0 4 * * *` (daily 04:00 UTC, staggered off leftover's 03:00) |
 | **Lifecycle** | active — service `6285c37b-1327-46f1-bfd0-7454612764fb`, provisioned 2026-08-19, first tick published `bundle:heartbeat:static-ref-heavy` at 2026-08-20T04:01:04Z |
-| **Members** | Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), Military-Bases (400s / 30d) |
+| **Members** | Supply-Vulnerability (45s / daily), then one or more of Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), Military-Bases (400s / 30d) as the remaining budget permits |
 | **Wall-time budget** | `maxBundleMs: 570_000` |
 | **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `CLOUDFLARE_R2_ACCOUNT_ID` and one of `CLOUDFLARE_R2_TOKEN` / `CLOUDFLARE_API_TOKEN`. `USPTO_API_KEY` stays on leftover. The R2 pair is NOT optional here: `scripts/data/military-bases-final.json` is gitignored and the service has no volume, so without it Military-Bases falls back to the published version and exits non-zero once that is past its 30-day interval (#6845). |
 | **Heartbeat** | `bundle:heartbeat:static-ref-heavy` |
 
-**The lead slot rotates by day and that is load-bearing.** A member that never
+Supply-Vulnerability is a Redis-only projection and always runs first. Its 55s
+reservation, including kill grace, leaves enough budget for the largest rotated
+member. The heavy lead slot rotates by day and that is load-bearing. A member that never
 publishes never stops being due, so a fixed order hands it the first slot every
 single tick. That is not hypothetical: Arms-Suppliers has never written
 `seed-meta:military:arms-suppliers-complete`, and on 2026-08-18 it took 371s of

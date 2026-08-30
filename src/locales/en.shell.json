@@ -805,6 +805,9 @@
     },
     "passkeyOffer": {
       "title": "Save a passkey?"
+    },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability"
     }
   },
   "modals": {

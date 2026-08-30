@@ -418,6 +418,20 @@
       }
     },
     {
+      "name": "get_supply_vulnerabilities",
+      "description": "Return one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance. Missing evidence stays absent and state/reasons explain why; never interpret an absent score as zero.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_chokepoint_dependencies",
+      "description": "Return the highest-scoring country and commodity dependencies for one maritime chokepoint from the same snapshot as country vulnerabilities. Scores may be absent when coverage is insufficient; read state and reasons before drawing conclusions.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
       "name": "get_signal_convergence",
       "description": "Geographic signal convergence: grid cells where protests, military activity, naval movements, and earthquakes co-occur. The same multi-domain convergence engine the dashboard map runs, executed server-side over the seeded feeds: unrest events, tracked military flights, USNI fleet positions (region centroids), and USGS earthquakes are bucketed into one-degree cells over a 24-hour window, and any cell where enough distinct domains overlap becomes an alert scored by breadth and volume. Each alert carries coordinates, the contributing domains, a reverse-geocoded location name from the curated hotspot/chokepoint/conflict-zone gazetteer, and the total event count. Pass lat/lon/radius_km together to narrow to one area, or min_domains to tighten the co-occurrence bar. An empty alert list with fresh inputs means nothing is converging — signal in itself.",
       "_meta": {

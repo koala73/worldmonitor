@@ -187,9 +187,7 @@
       "corporateDisclosures": "Công bố doanh nghiệp",
       "corridorConditions": "Điều kiện hành lang",
       "activityNowcast": "Dự báo hoạt động hiện tại",
-      "decisionSignalsUnavailable": "Ảnh chụp nhanh tín hiệu quyết định của Trung Quốc hiện không có sẵn.",
-      "activeDisruptions_one": "{{count}} active disruption",
-      "activeSignals_one": "{{count}} active signal"
+      "decisionSignalsUnavailable": "Ảnh chụp nhanh tín hiệu quyết định của Trung Quốc hiện không có sẵn."
     },
     "foodStocks": "Food stocks",
     "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
@@ -629,8 +627,7 @@
       "flightMilitaryOnGround": "Quân sự · {{type}} · đang đỗ tại sân bay",
       "flightSearchHint": "Nhấn Enter hoặc nhấp để tra cứu vị trí trực tiếp",
       "flightNotFound": "Không tìm thấy vị trí trực tiếp cho {{callsign}}",
-      "addPanel": "Thêm",
-      "resultAnnouncement_one": "{{count}} result for {{query}}"
+      "addPanel": "Thêm"
     },
     "signal": {
       "title": "PHÁT HIỆN TÌNH BÁO",
@@ -1485,8 +1482,7 @@
       "provenanceTitle": "Nguồn gốc bài viết: số lượng bài viết được nhập và các nguồn riêng biệt mà bài viết này được chọn từ đó",
       "compiledFrom": "Được biên soạn từ {{stories}} câu chuyện trên {{sources}} nguồn",
       "briefFreshness": "Được tạo {{minutes}}m trước · nguồn mới nhất {{hours}}h tuổi",
-      "briefStoryDetails": "Story details ({{count}})",
-      "sources_one": "{{count}} source"
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Xuất cài đặt",
@@ -2111,17 +2107,12 @@
       "time": {
         "justNow": "vừa xong",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_other": "{{count}}d trước",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d trước"
       },
       "filters": {
         "alert_other": "{{count}} Cảnh báo",
         "warning_other": "{{count}} Cảnh cáo",
-        "watch_other": "{{count}} Theo dõi",
-        "alert_one": "{{count}} Alert",
-        "warning_one": "{{count}} Warning",
-        "watch_one": "{{count}} Watch"
+        "watch_other": "{{count}} Theo dõi"
       },
       "errors": {
         "noData": "Không có dữ liệu bùng phát",
@@ -2194,23 +2185,23 @@
       "cissStale": "ECB chưa công bố giá trị mới — phép đo này có thể không còn hiện tại."
     },
     "supplyVulnerability": {
-      "title": "Commodity Vulnerability",
-      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
-      "loading": "Loading commodity vulnerability…",
-      "unavailable": "Commodity vulnerability data unavailable",
-      "noCoverage": "Insufficient evidence for this country",
-      "unknown": "Unknown",
-      "concentration": "Concentration",
-      "transit": "Transit",
-      "buffer": "Buffer",
-      "sources": "Sources",
-      "methodology": "Methodology",
-      "hormuzTitle": "Commodity dependencies",
-      "dependentCountries": "Dependent countries",
-      "dependentCommodities": "Dependent commodities",
-      "stateOk": "Current",
-      "stateStale": "Stale input",
-      "stateInsufficient": "Insufficient data"
+      "title": "Mức dễ tổn thương hàng hóa",
+      "help": "Mức phơi nhiễm của quốc gia theo từng hàng hóa dựa trên độ tập trung nhà cung cấp, vận tải biển và vùng đệm chiến lược hiện có.",
+      "loading": "Đang tải mức dễ tổn thương hàng hóa…",
+      "unavailable": "Không có dữ liệu về mức dễ tổn thương hàng hóa",
+      "noCoverage": "Không đủ bằng chứng cho quốc gia này",
+      "unknown": "Không xác định",
+      "concentration": "Mức tập trung",
+      "transit": "Vận chuyển",
+      "buffer": "Dự trữ",
+      "sources": "Nguồn",
+      "methodology": "Phương pháp",
+      "hormuzTitle": "Mức phụ thuộc hàng hóa",
+      "dependentCountries": "Quốc gia phụ thuộc",
+      "dependentCommodities": "Hàng hóa phụ thuộc",
+      "stateOk": "Hiện tại",
+      "stateStale": "Đầu vào cũ",
+      "stateInsufficient": "Không đủ dữ liệu"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",
@@ -2304,8 +2295,7 @@
       "appliesToNext": "Áp dụng cho lần tạo lại AI tiếp theo",
       "signals_other": "{{count}} tín hiệu",
       "disclaimer": "Tín hiệu giao dịch do AI tạo ra cho mục đích thông tin. Không phải lời khuyên đầu tư. Luôn tự nghiên cứu của riêng bạn.",
-      "unavailable": "Ý nghĩa thị trường AI được tạo sau mỗi lần chạy dự báo. Vui lòng kiểm tra lại sớm.",
-      "signals_one": "{{count}} signal"
+      "unavailable": "Ý nghĩa thị trường AI được tạo sau mỗi lần chạy dự báo. Vui lòng kiểm tra lại sớm."
     },
     "forecast": {
       "infoTooltip": "<strong>Dự báo AI</strong> Ước tính xác suất do AI tạo ra cho các sự kiện địa chính trị và kinh tế:<ul><li>Phạm vi đa lĩnh vực: xung đột, thị trường, chuỗi cung ứng, an ninh mạng, chính trị</li><li>Mỗi dự báo hiển thị xác suất ước tính, mức độ tin cậy và thời gian chờ</li><li>Hiệu chỉnh theo so sánh đường cơ sở của thị trường dự đoán nếu có</li></ul>Dự báo cập nhật khi có tín hiệu thông tin mới. Lọc theo lĩnh vực bằng các tab ở trên."
@@ -2538,8 +2528,7 @@
         "unattributed": "Không xác định",
         "program": "Chương trình",
         "undated": "không có ngày tháng"
-      },
-      "designations_one": "{{count}} designation"
+      }
     },
     "radiationWatch": {
       "title": "Theo dõi Bức xạ",
@@ -2572,9 +2561,7 @@
       },
       "observed": {
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_other": "{{count}}d trước",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d trước"
       },
       "confidence": {
         "high": "độ tin cậy cao",
@@ -2605,8 +2592,7 @@
       "empty": "Không phát hiện sự hội tụ hoạt động",
       "signals_other": "{{count}} tín hiệu",
       "analyzing": "Đang phân tích...",
-      "viewOnMap": "Xem trên bản đồ",
-      "signals_one": "{{count}} signal"
+      "viewOnMap": "Xem trên bản đồ"
     },
     "thermalEscalation": {
       "title": "Tăng cường nhiệt độ",
@@ -2635,13 +2621,8 @@
       "age": {
         "minutesAgo_other": "{{count}}m trước",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_other": "{{count}}d trước",
-        "minutesAgo_one": "{{count}}m ago",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
-      },
-      "observations_one": "{{count}} obs",
-      "sources_one": "{{count}} src"
+        "daysAgo_other": "{{count}}d trước"
+      }
     },
     "chokepointStrip": {
       "title": "Tình trạng điểm tắc nghẽn",

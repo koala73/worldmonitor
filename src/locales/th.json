@@ -187,9 +187,7 @@
       "corporateDisclosures": "การเปิดเผยข้อมูลองค์กร",
       "corridorConditions": "สภาวะทางเดิน",
       "activityNowcast": "การคาดการณ์กิจกรรมปัจจุบัน",
-      "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้",
-      "activeDisruptions_one": "{{count}} active disruption",
-      "activeSignals_one": "{{count}} active signal"
+      "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้"
     },
     "foodStocks": "Food stocks",
     "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
@@ -629,8 +627,7 @@
       "flightMilitaryOnGround": "ทหาร · {{type}} · บนพื้นดิน",
       "flightSearchHint": "กด Enter หรือคลิกเพื่อค้นหาตำแหน่งสด",
       "flightNotFound": "ไม่พบตำแหน่งสดสำหรับ {{callsign}}",
-      "addPanel": "Add",
-      "resultAnnouncement_one": "{{count}} result for {{query}}"
+      "addPanel": "Add"
     },
     "signal": {
       "title": "ผลการตรวจสอบข่าวกรอง",
@@ -1485,8 +1482,7 @@
       "provenanceTitle": "ความมาของการครอบคลุม: จำนวนเรื่องข่าวที่นำเข้าและแหล่งข่าวที่แตกต่างกันที่ใช้สำหรับสรุปนี้",
       "compiledFrom": "รวบรวมจาก {{stories}} เรื่องราวจาก {{sources}} แหล่งที่มา",
       "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า",
-      "briefStoryDetails": "Story details ({{count}})",
-      "sources_one": "{{count}} source"
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",
@@ -2111,17 +2107,12 @@
       "time": {
         "justNow": "เมื่อสักครู่",
         "hoursAgo_other": "{{count}}h ที่ผ่านมา",
-        "daysAgo_other": "{{count}}d ที่ผ่านมา",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d ที่ผ่านมา"
       },
       "filters": {
         "alert_other": "{{count}} การแจ้งเตือน",
         "warning_other": "{{count}} คำเตือน",
-        "watch_other": "{{count}} การติดตาม",
-        "alert_one": "{{count}} Alert",
-        "warning_one": "{{count}} Warning",
-        "watch_one": "{{count}} Watch"
+        "watch_other": "{{count}} การติดตาม"
       },
       "errors": {
         "noData": "ไม่มีข้อมูลการระบาดที่พร้อมใช้งาน",
@@ -2194,23 +2185,23 @@
       "cissStale": "ECB ยังไม่ได้เผยแพร่ค่าที่ใหม่กว่า — การอ่านค่านี้อาจล้าสมัยแล้ว"
     },
     "supplyVulnerability": {
-      "title": "Commodity Vulnerability",
-      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
-      "loading": "Loading commodity vulnerability…",
-      "unavailable": "Commodity vulnerability data unavailable",
-      "noCoverage": "Insufficient evidence for this country",
-      "unknown": "Unknown",
-      "concentration": "Concentration",
-      "transit": "Transit",
-      "buffer": "Buffer",
-      "sources": "Sources",
-      "methodology": "Methodology",
-      "hormuzTitle": "Commodity dependencies",
-      "dependentCountries": "Dependent countries",
-      "dependentCommodities": "Dependent commodities",
-      "stateOk": "Current",
-      "stateStale": "Stale input",
-      "stateInsufficient": "Insufficient data"
+      "title": "ความเปราะบางด้านสินค้าโภคภัณฑ์",
+      "help": "ความเสี่ยงของประเทศแยกตามสินค้า จากการกระจุกตัวของผู้จัดหา การขนส่งทางทะเล และเงินสำรองเชิงยุทธศาสตร์ที่มีอยู่",
+      "loading": "กำลังโหลดความเปราะบางด้านสินค้าโภคภัณฑ์…",
+      "unavailable": "ไม่มีข้อมูลความเปราะบางด้านสินค้าโภคภัณฑ์",
+      "noCoverage": "หลักฐานสำหรับประเทศนี้ไม่เพียงพอ",
+      "unknown": "ไม่ทราบ",
+      "concentration": "การกระจุกตัว",
+      "transit": "การขนส่ง",
+      "buffer": "เงินสำรอง",
+      "sources": "แหล่งข้อมูล",
+      "methodology": "ระเบียบวิธี",
+      "hormuzTitle": "การพึ่งพาสินค้าโภคภัณฑ์",
+      "dependentCountries": "ประเทศที่พึ่งพา",
+      "dependentCommodities": "สินค้าโภคภัณฑ์ที่พึ่งพา",
+      "stateOk": "ปัจจุบัน",
+      "stateStale": "ข้อมูลนำเข้าล้าสมัย",
+      "stateInsufficient": "ข้อมูลไม่เพียงพอ"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>ตัวติดตามการค้าฮอร์มุซ</strong> การติดตามเรือ AIS แบบสดผ่านช่องแคบฮอร์มุซ จุดคอขวดน้ำมันที่สำคัญที่สุดของโลก ตรวจสอบจำนวนเรือบรรทุกน้ำมัน เหตุการณ์หยุดชะงัก และการเปลี่ยนแปลงการไหลรายสัปดาห์ อุปทานน้ำมันโลกประมาณ 20% ผ่านที่นี่ทุกวัน",
@@ -2304,8 +2295,7 @@
       "appliesToNext": "ใช้กับการสร้างสัญญาณ AI ครั้งถัดไป",
       "signals_other": "{{count}} สัญญาณ",
       "disclaimer": "สัญญาณการซื้อขายที่สร้างโดย AI เพื่อวัตถุประสงค์ข้อมูลเท่านั้น ไม่ใช่คำแนะนำการลงทุน ทำการศึกษาวิจัยของคุณเองเสมอ",
-      "unavailable": "ผลกระทบต่อตลาด AI จะสร้างขึ้นหลังจากแต่ละครั้งที่รันการพยากรณ์ กรุณาตรวจสอบอีกครั้งในไม่ช่วงเวลา",
-      "signals_one": "{{count}} signal"
+      "unavailable": "ผลกระทบต่อตลาด AI จะสร้างขึ้นหลังจากแต่ละครั้งที่รันการพยากรณ์ กรุณาตรวจสอบอีกครั้งในไม่ช่วงเวลา"
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> การประมาณความน่าจะเป็นที่สร้างโดย AI สำหรับเหตุการณ์ทางภูมิศาสตร์การเมืองและเศรษฐกิจ:<ul><li>ครอบคลุมข้ามโดเมน: ความขัดแย้ง ตลาด ห่วงโซ่อุปทาน ไซเบอร์ และการเมือง</li><li>การพยากรณ์แต่ละรายการแสดงความน่าจะเป็นโดยประมาณ ระดับความเชื่อมั่น และขอบเขตเวลา</li><li>ปรับแต่งตามเส้นฐานของตลาดการทำนายเมื่อมี</li></ul>การพยากรณ์จะอัปเดตเมื่อสัญญาณข่าวกรองใหม่มาถึง ใช้ตัวกรองตามโดเมนโดยใช้แท็บด้านบน"
@@ -2538,8 +2528,7 @@
         "unattributed": "ไม่ได้ระบุแหล่งที่มา",
         "program": "โปรแกรม",
         "undated": "ไม่มีวันที่"
-      },
-      "designations_one": "{{count}} designation"
+      }
     },
     "radiationWatch": {
       "title": "ระบบเฝ้าระวังการแผ่รังสี",
@@ -2572,9 +2561,7 @@
       },
       "observed": {
         "hoursAgo_other": "{{count}}h ที่แล้ว",
-        "daysAgo_other": "{{count}}d ที่แล้ว",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d ที่แล้ว"
       },
       "confidence": {
         "high": "ความมั่นใจสูง",
@@ -2605,8 +2592,7 @@
       "empty": "ไม่พบการบรรจบกันที่ใช้งานอยู่",
       "signals_other": "{{count}} สัญญาณ",
       "analyzing": "กำลังวิเคราะห์...",
-      "viewOnMap": "ดูบนแผนที่",
-      "signals_one": "{{count}} signal"
+      "viewOnMap": "ดูบนแผนที่"
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -2635,13 +2621,8 @@
       "age": {
         "minutesAgo_other": "{{count}}m ที่แล้ว",
         "hoursAgo_other": "{{count}}h ที่แล้ว",
-        "daysAgo_other": "{{count}}d ที่แล้ว",
-        "minutesAgo_one": "{{count}}m ago",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
-      },
-      "observations_one": "{{count}} obs",
-      "sources_one": "{{count}} src"
+        "daysAgo_other": "{{count}}d ที่แล้ว"
+      }
     },
     "chokepointStrip": {
       "title": "สถานะจุดคอขวด",

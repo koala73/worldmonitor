@@ -252,7 +252,7 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
 
   assert.deepEqual(
     heavy.sections.map((s) => s.label).sort(),
-    ['Arms-Suppliers', 'Military-Bases', 'Mineral-Production'],
+    ['Arms-Suppliers', 'Military-Bases', 'Mineral-Production', 'Supply-Vulnerability'],
   );
 
   // THE property that makes the light half unstarvable: every member fits
@@ -298,6 +298,11 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
   // A fixed order would hand the permanently-due member the lead slot forever,
   // which is exactly the starvation this split undoes.
   const heavySrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
+  assert.match(
+    heavySrc,
+    /const sections = \[\.\.\.DAILY_SECTIONS, \.\.\.SECTIONS\.slice\(offset\)/,
+    'Supply-Vulnerability must run before the rotated heavy members on every daily tick',
+  );
   assert.match(
     heavySrc,
     /SECTIONS\.slice\(offset\)/,

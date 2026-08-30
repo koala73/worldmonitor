@@ -3025,6 +3025,7 @@ paths:
             parameters:
                 - name: iso2
                   in: query
+                  description: Uppercase ISO 3166-1 alpha-2 country code.
                   required: true
                   example: "US"
                   schema:
@@ -3144,6 +3145,7 @@ paths:
             parameters:
                 - name: chokepointId
                   in: query
+                  description: Stable chokepoint identifier, such as hormuz or suez.
                   required: true
                   example: "suez"
                   schema:
@@ -3151,6 +3153,7 @@ paths:
                     pattern: '^[a-z0-9_\-]+$'
                 - name: pageSize
                   in: query
+                  description: Maximum dependencies to return; zero uses the server default and the maximum is 100.
                   required: false
                   example: 25
                   schema:
@@ -3275,27 +3278,31 @@ paths:
             parameters:
                 - name: commodityId
                   in: query
+                  description: Optional stable commodity mapping identifier.
                   required: false
-                  example: "example-id"
+                  example: "crude_oil"
                   schema:
                     type: string
                     pattern: '^$|^[a-z0-9_\-]+$'
                 - name: band
                   in: query
+                  description: 'Optional score band: low, moderate, high, or critical.'
                   required: false
-                  example: "example"
+                  example: "high"
                   schema:
                     type: string
                     pattern: '^$|^(low|moderate|high|critical)$'
                 - name: state
                   in: query
+                  description: 'Optional evidence state: ok, insufficient_data, or stale_input.'
                   required: false
-                  example: "example"
+                  example: "ok"
                   schema:
                     type: string
                     pattern: '^$|^(ok|insufficient_data|stale_input)$'
                 - name: pageSize
                   in: query
+                  description: Maximum rows to return; zero uses the server default and the maximum is 100.
                   required: false
                   example: 25
                   schema:
@@ -3319,9 +3326,9 @@ paths:
                                 "methodologyVersion": "example"
                                 "upstreamUnavailable": false
                                 "vulnerabilities":
-                                    - "band": "example"
+                                    - "band": "high"
                                       "commodity": "example"
-                                      "commodityId": "example-id"
+                                      "commodityId": "crude_oil"
                                       "components":
                                           "buffer":
                                               "inputs":
@@ -3331,7 +3338,7 @@ paths:
                                                     "sourceName": "WorldMonitor Analyst"
                                                     "sourceUrl": "https://example.com/worldmonitor"
                                               "kind": "example"
-                                              "state": "example"
+                                              "state": "ok"
                                               "vulnerability": 1.5
                                           "sourceConcentration":
                                               "coverage": "example"
@@ -6687,6 +6694,7 @@ components:
                 iso2:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: Uppercase ISO 3166-1 alpha-2 country code.
             required:
                 - iso2
         GetCountryVulnerabilitiesResponse:
@@ -6694,48 +6702,63 @@ components:
             properties:
                 iso2:
                     type: string
+                    description: Uppercase ISO 3166-1 alpha-2 code for the requested country.
                 country:
                     type: string
+                    description: Human-readable name of the requested country.
                 vulnerabilities:
                     type: array
                     items:
                         $ref: '#/components/schemas/CommodityVulnerability'
                 generatedAt:
                     type: string
+                    description: ISO 8601 timestamp when the country index was generated.
                 methodologyVersion:
                     type: string
+                    description: Version of the scoring methodology used for every row.
                 upstreamUnavailable:
                     type: boolean
+                    description: True when the published country index could not be read.
         CommodityVulnerability:
             type: object
             properties:
                 countryIso2:
                     type: string
+                    description: ISO 3166-1 alpha-2 code for the scored country.
                 countryName:
                     type: string
+                    description: English display name for the scored country.
                 commodityId:
                     type: string
+                    description: Stable reviewed commodity mapping identifier.
                 commodity:
                     type: string
+                    description: Human-readable commodity name.
                 score:
                     type: number
                     format: double
+                    description: Vulnerability score from 0 to 100; absent when evidence is insufficient.
                 band:
                     type: string
+                    description: 'Score band: low, moderate, high, or critical; empty when the score is absent.'
                 components:
                     $ref: '#/components/schemas/VulnerabilityComponents'
                 coverage:
                     type: array
                     items:
                         type: string
+                        description: Source coverage labels that contributed to this score.
                 state:
                     type: string
+                    description: 'Evidence state: ok, insufficient_data, or stale_input.'
                 reasons:
                     type: array
                     items:
                         type: string
+                        description: Machine-readable explanations for an insufficient or stale state.
                 methodologyVersion:
                     type: string
+                    description: Version of the scoring methodology that produced this row.
         VulnerabilityComponents:
             type: object
             properties:
@@ -6751,22 +6774,29 @@ components:
                 value:
                     type: number
                     format: double
+                    description: Combined supplier or producer concentration from 0 to 1.
                 importHhi:
                     type: number
                     format: double
+                    description: Import supplier Herfindahl-Hirschman concentration from 0 to 1.
                 mineHhi:
                     type: number
                     format: double
+                    description: Mine-stage production concentration from 0 to 1.
                 refineryHhi:
                     type: number
                     format: double
+                    description: Refinery-stage production concentration from 0 to 1.
                 productionHhi:
                     type: number
                     format: double
+                    description: Combined mine and refinery production concentration from 0 to 1.
                 productionCoverage:
                     type: string
+                    description: Producer-stage coverage used for the combined concentration.
                 coverage:
                     type: string
+                    description: Overall concentration coverage state.
                 inputs:
                     type: array
                     items:
@@ -6776,28 +6806,37 @@ components:
             properties:
                 sourceKey:
                     type: string
+                    description: Redis or source-contract key that supplied this observation.
                 sourceName:
                     type: string
+                    description: Human-readable source name.
                 sourceUrl:
                     type: string
+                    description: Public source or methodology URL.
                 value:
                     type: number
                     format: double
+                    description: Numeric observation used by the scorer; absent when the source is unknown.
                 year:
                     type: integer
                     format: int32
+                    description: Observation year when the source publishes annual data.
                 fetchedAt:
                     type: string
+                    description: ISO 8601 timestamp when the source snapshot was fetched.
                 stale:
                     type: boolean
+                    description: True when this observation is older than its source-specific freshness budget.
                 detail:
                     type: string
+                    description: Bounded explanation of the mapped input.
         VulnerabilityTransitExposure:
             type: object
             properties:
                 value:
                     type: number
                     format: double
+                    description: Combined chokepoint exposure from 0 to 1.
                 chokepoints:
                     type: array
                     items:
@@ -6807,16 +6846,21 @@ components:
             properties:
                 id:
                     type: string
+                    description: Stable chokepoint identifier.
                 name:
                     type: string
+                    description: Human-readable chokepoint name.
                 transitShare:
                     type: number
                     format: double
+                    description: Country and commodity exposure share using this route, from 0 to 1.
                 weightedTransitShare:
                     type: number
                     format: double
+                    description: Transit share after the current disruption multiplier, from 0 to 1.
                 status:
                     type: string
+                    description: 'Current route state: baseline or disrupted.'
                 inputs:
                     type: array
                     items:
@@ -6826,11 +6870,14 @@ components:
             properties:
                 state:
                     type: string
+                    description: 'Buffer evidence state: known or unknown.'
                 vulnerability:
                     type: number
                     format: double
+                    description: Residual vulnerability after the available buffer, from 0 to 1.
                 kind:
                     type: string
+                    description: Buffer source class, such as stocks_to_use or gas_storage_fill.
                 inputs:
                     type: array
                     items:
@@ -6843,11 +6890,13 @@ components:
                     maxLength: 80
                     minLength: 1
                     pattern: ^[a-z0-9_\-]+$
+                    description: Stable chokepoint identifier, such as hormuz or suez.
                 pageSize:
                     type: integer
                     maximum: 100
                     minimum: 0
                     format: int32
+                    description: Maximum dependencies to return; zero uses the server default and the maximum is 100.
             required:
                 - chokepointId
         GetChokepointDependenciesResponse:
@@ -6855,48 +6904,64 @@ components:
             properties:
                 chokepointId:
                     type: string
+                    description: Stable identifier of the requested chokepoint.
                 chokepoint:
                     type: string
+                    description: Human-readable chokepoint name.
                 dependencies:
                     type: array
                     items:
                         $ref: '#/components/schemas/ChokepointDependency'
                 generatedAt:
                     type: string
+                    description: ISO 8601 timestamp when the inverse index was generated.
                 methodologyVersion:
                     type: string
+                    description: Version of the scoring methodology used for every dependency.
                 upstreamUnavailable:
                     type: boolean
+                    description: True when the published inverse index could not be read.
         ChokepointDependency:
             type: object
             properties:
                 countryIso2:
                     type: string
+                    description: ISO 3166-1 alpha-2 code for the exposed country.
                 countryName:
                     type: string
+                    description: English display name for the exposed country.
                 commodityId:
                     type: string
+                    description: Stable reviewed commodity mapping identifier.
                 commodity:
                     type: string
+                    description: Human-readable commodity name.
                 transitShare:
                     type: number
                     format: double
+                    description: Share of the country's mapped commodity exposure using this chokepoint, from 0 to 1.
                 weightedTransitShare:
                     type: number
                     format: double
+                    description: Transit share weighted by the commodity score, from 0 to 1.
                 score:
                     type: number
                     format: double
+                    description: Commodity vulnerability score from 0 to 100; absent when evidence is insufficient.
                 band:
                     type: string
+                    description: 'Score band: low, moderate, high, or critical; empty when the score is absent.'
                 state:
                     type: string
+                    description: 'Evidence state: ok, insufficient_data, or stale_input.'
                 reasons:
                     type: array
                     items:
                         type: string
+                        description: Machine-readable explanations for an insufficient or stale state.
                 methodologyVersion:
                     type: string
+                    description: Version of the scoring methodology that produced this dependency.
         ListVulnerabilityRankingsRequest:
             type: object
             properties:
@@ -6904,17 +6969,21 @@ components:
                     type: string
                     maxLength: 80
                     pattern: ^$|^[a-z0-9_\-]+$
+                    description: Optional stable commodity mapping identifier.
                 band:
                     type: string
                     pattern: ^$|^(low|moderate|high|critical)$
+                    description: 'Optional score band: low, moderate, high, or critical.'
                 state:
                     type: string
                     pattern: ^$|^(ok|insufficient_data|stale_input)$
+                    description: 'Optional evidence state: ok, insufficient_data, or stale_input.'
                 pageSize:
                     type: integer
                     maximum: 100
                     minimum: 0
                     format: int32
+                    description: Maximum rows to return; zero uses the server default and the maximum is 100.
         ListVulnerabilityRankingsResponse:
             type: object
             properties:
@@ -6924,7 +6993,10 @@ components:
                         $ref: '#/components/schemas/CommodityVulnerability'
                 generatedAt:
                     type: string
+                    description: ISO 8601 timestamp when the country index was generated.
                 methodologyVersion:
                     type: string
+                    description: Version of the scoring methodology used for every row.
                 upstreamUnavailable:
                     type: boolean
+                    description: True when the published country index could not be read.

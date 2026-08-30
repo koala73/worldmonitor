@@ -411,6 +411,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // has no OpenAPI operation to check against and cannot be listed here.
   const VERBATIM_PASSTHROUGH_TOOLS = [
     'analyze_situation',
+    'get_chokepoint_dependencies',
     'get_country_risk',
     'get_defense_industrial_base',
     'get_demographics_capability',
@@ -420,6 +421,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_resilience_indicators',
     'get_similar_events',
     'list_five_factor_scorecards',
+    'get_supply_vulnerabilities',
     'search_flight_prices_by_date',
     'search_flights',
     'search_intel_history',

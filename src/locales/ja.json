@@ -187,9 +187,7 @@
       "corporateDisclosures": "企業開示",
       "corridorConditions": "回廊状況",
       "activityNowcast": "活動ナウキャスト",
-      "decisionSignalsUnavailable": "中国の意思決定シグナルのスナップショットは現在利用できません。",
-      "activeDisruptions_one": "{{count}} active disruption",
-      "activeSignals_one": "{{count}} active signal"
+      "decisionSignalsUnavailable": "中国の意思決定シグナルのスナップショットは現在利用できません。"
     },
     "foodStocks": "Food stocks",
     "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
@@ -629,8 +627,7 @@
       "flightMilitaryOnGround": "軍用機 · {{type}} · 地上",
       "flightSearchHint": "Enterキーを押すか、クリックしてライブ位置を検索",
       "flightNotFound": "{{callsign}} のライブ位置が見つかりません",
-      "addPanel": "Add",
-      "resultAnnouncement_one": "{{count}} result for {{query}}"
+      "addPanel": "Add"
     },
     "signal": {
       "title": "インテリジェンス所見",
@@ -1485,8 +1482,7 @@
       "provenanceTitle": "カバレッジプロヴェナンス: このブリーフが選択された取り込まれたストーリーと個別ソースの数",
       "compiledFrom": "{{stories}}件のストーリーから{{sources}}個のソースをコンパイル",
       "briefFreshness": "{{minutes}}m前に生成 · 最新ソース{{hours}}h前",
-      "briefStoryDetails": "Story details ({{count}})",
-      "sources_one": "{{count}} source"
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "設定をエクスポート",
@@ -2111,17 +2107,12 @@
       "time": {
         "justNow": "たった今",
         "hoursAgo_other": "{{count}}時間前",
-        "daysAgo_other": "{{count}}日前",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
+        "daysAgo_other": "{{count}}日前"
       },
       "filters": {
         "alert_other": "{{count}} アラート",
         "warning_other": "{{count}} 警告",
-        "watch_other": "{{count}} 監視",
-        "alert_one": "{{count}} Alert",
-        "warning_one": "{{count}} Warning",
-        "watch_one": "{{count}} Watch"
+        "watch_other": "{{count}} 監視"
       },
       "errors": {
         "noData": "感染症データはありません",
@@ -2194,23 +2185,23 @@
       "cissStale": "ECB がより新しい値を公開していません — このデータは古い可能性があります。"
     },
     "supplyVulnerability": {
-      "title": "Commodity Vulnerability",
-      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
-      "loading": "Loading commodity vulnerability…",
-      "unavailable": "Commodity vulnerability data unavailable",
-      "noCoverage": "Insufficient evidence for this country",
-      "unknown": "Unknown",
-      "concentration": "Concentration",
-      "transit": "Transit",
-      "buffer": "Buffer",
-      "sources": "Sources",
-      "methodology": "Methodology",
-      "hormuzTitle": "Commodity dependencies",
-      "dependentCountries": "Dependent countries",
-      "dependentCommodities": "Dependent commodities",
-      "stateOk": "Current",
-      "stateStale": "Stale input",
-      "stateInsufficient": "Insufficient data"
+      "title": "商品脆弱性",
+      "help": "供給元の集中度、海上輸送、利用可能な戦略備蓄に基づく国別・商品別のエクスポージャー。",
+      "loading": "商品脆弱性を読み込み中…",
+      "unavailable": "商品脆弱性データを利用できません",
+      "noCoverage": "この国を評価する証拠が不足しています",
+      "unknown": "不明",
+      "concentration": "集中度",
+      "transit": "輸送",
+      "buffer": "備蓄",
+      "sources": "出典",
+      "methodology": "手法",
+      "hormuzTitle": "商品依存関係",
+      "dependentCountries": "依存国",
+      "dependentCommodities": "依存商品",
+      "stateOk": "最新",
+      "stateStale": "古い入力",
+      "stateInsufficient": "データ不足"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> 世界最重要の石油チョークポイントであるホルムズ海峡を通過するAIS船舶のライブ追跡。タンカー数、混乱イベント、週次フロー変化を監視。世界の石油供給量の約20%が毎日ここを通過。",
@@ -2304,8 +2295,7 @@
       "appliesToNext": "次のAI再生成に適用",
       "signals_other": "{{count}}シグナル",
       "disclaimer": "AI生成トレードシグナルは情報提供のみを目的としています。投資助言ではありません。常に独自の調査を行ってください。",
-      "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。",
-      "signals_one": "{{count}} signal"
+      "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 予測</strong> 地政学的および経済的イベントの AI 生成確率推定:<ul><li>クロスドメインカバレッジ: 紛争、市場、サプライチェーン、サイバー、政治</li><li>各予測は推定確率、信頼度、時間軸を表示</li><li>利用可能な場合は予測市場ベースラインに対して調整済み</li></ul>新しいインテリジェンスシグナルが到着すると予測が更新されます。上記のタブでドメイン別にフィルタリングしてください。"
@@ -2538,8 +2528,7 @@
         "unattributed": "未帰属",
         "program": "プログラム",
         "undated": "日付なし"
-      },
-      "designations_one": "{{count}} designation"
+      }
     },
     "radiationWatch": {
       "title": "放射能監視",
@@ -2572,9 +2561,7 @@
       },
       "observed": {
         "hoursAgo_other": "{{count}}時間前",
-        "daysAgo_other": "{{count}}日前",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
+        "daysAgo_other": "{{count}}日前"
       },
       "confidence": {
         "high": "高信頼度",
@@ -2605,8 +2592,7 @@
       "empty": "アクティブな収束は検出されていません",
       "signals_other": "{{count}} シグナル",
       "analyzing": "分析中...",
-      "viewOnMap": "地図で表示",
-      "signals_one": "{{count}} signal"
+      "viewOnMap": "地図で表示"
     },
     "thermalEscalation": {
       "title": "熱的エスカレーション",
@@ -2635,13 +2621,8 @@
       "age": {
         "minutesAgo_other": "{{count}}m前",
         "hoursAgo_other": "{{count}}h前",
-        "daysAgo_other": "{{count}}d前",
-        "minutesAgo_one": "{{count}}m ago",
-        "hoursAgo_one": "{{count}}h ago",
-        "daysAgo_one": "{{count}}d ago"
-      },
-      "observations_one": "{{count}} obs",
-      "sources_one": "{{count}} src"
+        "daysAgo_other": "{{count}}d前"
+      }
     },
     "chokepointStrip": {
       "title": "チョークポイント状態",

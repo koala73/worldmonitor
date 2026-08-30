@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { runBundle, DAY } from './_bundle-runner.mjs';
 
-// The heavy half of static-ref (#6806). These three members are low-cadence
-// but expensive, and leftover's 570s tick could not hold them alongside the
-// light members: Arms-Suppliers alone measured 371s on 2026-08-18, which left
-// 199s and deferred Mineral-Production by 13 seconds on a tick where its
-// acknowledgement had just expired.
+// The heavy half of static-ref (#6806). The three rotated members are
+// low-cadence but expensive, and leftover's 570s tick could not hold them
+// alongside the light members. Supply-Vulnerability is a bounded Redis-only
+// projection. It always runs first and still leaves enough room for any one
+// rotated heavy member.
 //
 // ONE service, not three. Railway kills a cron container at 10 minutes, so the
 // budget is 570s and no arrangement can run Arms-Suppliers (460s worst case)
@@ -46,12 +46,24 @@ const SECTIONS = [
   { label: 'Military-Bases', script: 'seed-military-bases.mjs', seedMetaKey: 'military:bases', intervalMs: 30 * DAY, timeoutMs: 400_000 },
 ];
 
+const DAILY_SECTIONS = [
+  {
+    label: 'Supply-Vulnerability',
+    script: 'seed-supply-vulnerability.mjs',
+    seedMetaKey: 'supply-chain:vulnerability',
+    canonicalKey: 'supply-chain:vulnerability:v1',
+    completionMetaKey: 'seed-completion:supply-chain:vulnerability',
+    intervalMs: DAY,
+    timeoutMs: 45_000,
+  },
+];
+
 // Days since epoch, not getUTCDay(): the rotation must advance by exactly one
 // per tick. A 7-day clock read modulo 3 would jump 7%3=1 per week but stutter
 // across the week boundary, giving one member two consecutive lead days.
 const dayIndex = Math.floor(Date.now() / 86_400_000);
 const offset = dayIndex % SECTIONS.length;
-const sections = [...SECTIONS.slice(offset), ...SECTIONS.slice(0, offset)];
+const sections = [...DAILY_SECTIONS, ...SECTIONS.slice(offset), ...SECTIONS.slice(0, offset)];
 
 console.log(
   `[Bundle:static-ref-heavy] rotation offset ${offset} — order: ${sections.map((s) => s.label).join(' -> ')}`,
