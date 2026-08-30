@@ -190,19 +190,19 @@ if ('_budget_exceeded' in parsed) {
 
 ### `get_market_data`
 
-来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格（包括黄金期货 GC=F）、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现及估值覆盖、ETF 资金流和海湾市场报价。
+来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格、SGE 实物金银相对 COMEX 的溢价与背离状态、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现及估值覆盖、ETF 资金流和海湾市场报价。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `symbols` | `array<string>` | 要保留的代码，例如 ["AAPL","GC=F","BTC"]。不区分大小写；匹配股票/大宗商品/加密货币/海湾报价、板块 ETF 和 ETF 资金流代码。省略则返回完整快照。 |
+| `symbols` | `array<string>` | 要保留的代码，例如 ["AAPL","GC=F","BTC"]。不区分大小写；匹配股票/大宗商品/加密货币/海湾报价、实物溢价与背离别名、板块 ETF 和 ETF 资金流代码。省略则返回完整快照。 |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | 将响应限制为一个或多个资产类别。省略则返回全部。 |
 | `limit` | number | 将每个类别的报价列表（股票/大宗商品/加密货币/海湾/板块/ETF 资金流）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** `stale` 仅追踪市场和板块快照（各 **30 分钟**）。每日 `physicalPremiums` 与 `physicalDivergence` 由 `/api/health` 监控。需要判断年龄时，请读取时间戳和背离状态。详见[实物贵金属背离指数方法](/zh/methodology/physical-divergence-index)。
 - 板块 `valuationCoverage` 将写入年龄（`stale`）与完整度（`sourceStatus`：`ok`、`partial` 或 `degraded`）分开。`stale` 描述的是种子写入本身，而非单条记录——刚写入的负载中仍可能包含较旧的估值。提供 `symbols` 筛选时，`valuationCount` 与 `expectedValuationCount` 会按筛选结果计算。`valuationCount` 同时统计实时获取与回放的记录；`currentValuationCount` 给出本轮真正实时获取的子集，当所有记录均为最新时会省略该字段。`staleValuationSymbols` 列出来自旧快照的代码——这些代码在 `valuations` 中**确实**有数值，其年龄由 `lastGood.fetchedAt` 给出（上限为 7 天快照 TTL）。`unavailableSymbols` 列出完全没有发布估值的代码，与 `staleValuationSymbols` 互不相交。`lastGood` 同时涵盖整条记录与借用的收益指标，并包含该快照时间戳。当没有任何记录是最新时 `sourceStatus` 为 `degraded`，当部分记录陈旧或缺失时为 `partial`。`valuationDiagnostics` 是按代码限制的路由元数据，覆盖 `v7Quote`、`v7QuoteBatch` 与 `quoteSummary` 路由，展示独立的 direct/proxy 结果、响应类别和缺失字段，绝不包含凭据。
 
 <CodeGroup>
@@ -607,6 +607,42 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"list_five_factor_scorecards","arguments":{}}
+  }'
+```
+
+### `get_resilience_indicators`
+
+在完整的 72 行指标注册表上解释单个国家的国家韧性指数分数。每一行都带有归一化分量分数、活动评分器使用的运行时权重、策略生效后的有效贡献、已观测或插补状态、观测年龄与来源溯源。各项贡献会与每个已发布的维度分数对账，因此无需重新实现条件公式即可审计一个分数。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 说明 |
+|------|------|-----:|------|
+| `country_code` | string | 是 | ISO 3166-1 alpha-2 国家代码，例如 `DE`。不区分大小写。 |
+
+- **API 端点：** `GET /api/resilience/v1/get-resilience-indicators`
+- **访问权限：** `subscription` — REST 与 MCP 两条路径都需要 Pro 订阅。
+- **类型：** 对实际运行的评分器分支所做的请求内追踪，并非第二套评分实现。
+- **新鲜度：** 读取由六小时公共分数缓存引用的不可变追踪代次。该追踪存放在独立的七小时边车中，使分数与排名读取保持轻量。
+
+该工具不接受 `jmespath`。两个运行时都会以 JSON-RPC `-32602` 或 HTTP 400 拒绝非空投影，因为投影可能使被允许的原始值脱离授权其再分发的署名与抓取字段。
+
+各行区分 `observed`、`imputed`、`missing`、`fallback`、`source-failure`、`inactive`、`retired` 与 `not-applicable` 状态。请先读状态再读值：已退役或未启用的行是显式的，不会声称虚假的对账结果。
+
+原始来源值是选择性提供的，并且失败关闭。只有在观测值为实测、每个参与贡献的提供方都已完成再分发审查、所需署名齐备，且贡献种子具有抓取时间戳时，该行才会包含原始值。受限行仍会返回 WorldMonitor 的归一化分数、贡献、来源署名以及已知时的来源年份——抑制通过原始值策略状态与原因报告，绝不用数值零表示。`observationProvenance` 用于区分确切的选定来源与仅来自注册表的署名。逐来源的决策表参见[指标许可决策](/zh/methodology/resilience-indicator-licensing)。
+
+`sourceYear` 是提供方测量该现象的时间，`retrievedAt` 是 WorldMonitor 抓取它的时间。两者不可互换，观测年龄始终依据观测日期推导。对于复合指标，`sourceYear` 取贡献年份中最早的一个。
+
+公共的 `get_resilience_score` 响应不受该工具影响，并保持模式兼容。
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_resilience_indicators","arguments":{"country_code":"DE"}}
   }'
 ```
 

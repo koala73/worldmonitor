@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
+
+// PhysicalDivergenceState is exhaustive for every divergence consumer.
+enum PhysicalDivergenceState {
+  // The producer did not supply a recognized state.
+  PHYSICAL_DIVERGENCE_STATE_UNSPECIFIED = 0;
+  // All required inputs and the trailing history are usable.
+  PHYSICAL_DIVERGENCE_STATE_OK = 1;
+  // Inputs are usable but fewer than 60 observations are available.
+  PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY = 2;
+  // One or more required inputs exceeded its freshness budget.
+  PHYSICAL_DIVERGENCE_STATE_STALE_INPUT = 3;
+  // One or more required inputs are absent, invalid, or future-dated.
+  PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT = 4;
+}
+
+// PhysicalPremiumRegime classifies the normalized premium distribution.
+enum PhysicalPremiumRegime {
+  // No regime is available for a non-OK reading.
+  PHYSICAL_PREMIUM_REGIME_UNSPECIFIED = 0;
+  // The premium is inside its ordinary range.
+  PHYSICAL_PREMIUM_REGIME_NORMAL = 1;
+  // The premium crossed the elevated absolute or relative threshold.
+  PHYSICAL_PREMIUM_REGIME_ELEVATED = 2;
+  // The premium crossed the stressed absolute or relative threshold.
+  PHYSICAL_PREMIUM_REGIME_STRESSED = 3;
+  // The premium crossed the extreme absolute or relative threshold.
+  PHYSICAL_PREMIUM_REGIME_EXTREME = 4;
+}
+
+// PhysicalPremiumTrend describes a trailing premium direction.
+enum PhysicalPremiumTrend {
+  // No trend is available for a non-OK reading.
+  PHYSICAL_PREMIUM_TREND_UNSPECIFIED = 0;
+  // The premium widened over the trailing interval.
+  PHYSICAL_PREMIUM_TREND_WIDENING = 1;
+  // The premium remained inside the stable threshold.
+  PHYSICAL_PREMIUM_TREND_STABLE = 2;
+  // The premium narrowed over the trailing interval.
+  PHYSICAL_PREMIUM_TREND_NARROWING = 3;
+}
+
+// GetPhysicalDivergenceIndexRequest selects zero or more supported metals.
+message GetPhysicalDivergenceIndexRequest {
+  // Accepted values are "gold" and "silver". Empty returns both metals.
+  repeated string metals = 1 [
+    (buf.validate.field).repeated.max_items = 2,
+    (buf.validate.field).repeated.unique = true,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:gold|silver)$",
+    (sebuf.http.query) = { name: "metals" }
+  ];
+}
+
+// PhysicalDivergenceProvenance preserves the exact inputs used for one reading.
+message PhysicalDivergenceProvenance {
+  // Human-readable physical benchmark provider.
+  string physical_source = 1;
+  // Physical benchmark contract symbol.
+  string physical_symbol = 2;
+  // Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
+  string physical_as_of = 3;
+  // Human-readable paper benchmark provider, or empty when unavailable.
+  string paper_source = 4;
+  // Paper benchmark contract symbol.
+  string paper_symbol = 5;
+  // Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.
+  int64 paper_as_of = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Human-readable FX provider, or empty when unavailable.
+  string fx_source = 7;
+  // FX conversion pair.
+  string fx_pair = 8;
+  // FX snapshot time as Unix epoch milliseconds, or zero when unavailable.
+  int64 fx_as_of = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Redis history key used by the calculation.
+  string history_key = 10;
+  // Maximum number of observations retained in history.
+  int32 history_window_points = 11;
+  // Methodology identifier used by this provenance record.
+  string methodology_version = 12;
+}
+
+// PhysicalDivergenceReading is one metal's normalized divergence result.
+message PhysicalDivergenceReading {
+  // Supported metal name: gold or silver.
+  string metal = 1;
+  // Explicit availability and freshness state.
+  PhysicalDivergenceState state = 2;
+  // Machine-readable explanation for the state.
+  string reason = 3;
+  // Distribution regime for an OK reading.
+  PhysicalPremiumRegime regime = 4;
+  // Normalized divergence index from 0 to 100.
+  optional double index = 5;
+  // Current physical premium as a percentage.
+  optional double premium_pct = 6;
+  // Current physical premium in USD per troy ounce.
+  optional double premium_usd_per_oz = 7;
+  // Current premium's empirical percentile from 0 to 100.
+  optional double percentile = 8;
+  // Median-absolute-deviation robust z-score.
+  optional double robust_z = 9;
+  // Premium change versus five observations earlier.
+  optional double delta_5d = 10;
+  // Premium change versus twenty observations earlier.
+  optional double delta_20d = 11;
+  // Five-observation trend direction.
+  PhysicalPremiumTrend trend_5d = 12;
+  // Twenty-observation trend direction.
+  PhysicalPremiumTrend trend_20d = 13;
+  // Number of valid observations available to the classifier.
+  int32 history_points = 14;
+  // Oldest observation date in the evaluated window, or empty when unavailable.
+  string history_window_start = 15;
+  // Newest observation date in the evaluated window, or empty when unavailable.
+  string history_window_end = 16;
+  // Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
+  string physical_as_of = 17;
+  // Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.
+  int64 paper_as_of = 18 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Redis history key used by the calculation.
+  string history_key = 19;
+  // Methodology identifier used by this reading.
+  string methodology_version = 20;
+  // Exact provider and clock inputs used by this reading.
+  PhysicalDivergenceProvenance provenance = 21;
+}
+
+// PhysicalStressWeight records one metal's composite contribution.
+message PhysicalStressWeight {
+  // Supported metal name: gold or silver.
+  string metal = 1;
+  // Composite weight from zero to one.
+  double weight = 2;
+  // Methodology identifier used by this weight.
+  string methodology_version = 3;
+}
+
+// PhysicalStressComposite combines the supported metals into one index.
+message PhysicalStressComposite {
+  // Fail-closed aggregate state.
+  PhysicalDivergenceState state = 1;
+  // Machine-readable explanation for the aggregate state.
+  string reason = 2;
+  // Weighted aggregate index from 0 to 100 when state is OK.
+  optional double index = 3;
+  // Fixed metal weights used by the aggregate.
+  repeated PhysicalStressWeight weights = 4;
+  // Methodology identifier used by the composite.
+  string methodology_version = 5;
+}
+
+// GetPhysicalDivergenceIndexResponse returns metal readings and the composite.
+message GetPhysicalDivergenceIndexResponse {
+  // Selected metal readings in canonical order.
+  repeated PhysicalDivergenceReading readings = 1;
+  // All-metal fail-closed stress composite.
+  PhysicalStressComposite composite = 2;
+  // Evaluation time as Unix epoch milliseconds, or zero when unavailable.
+  int64 evaluated_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Methodology identifier for the complete response.
+  string methodology_version = 4;
+}

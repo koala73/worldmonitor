@@ -1,0 +1,63 @@
+---
+title: "国家韧性指标许可"
+description: "国家韧性指数 72 项指标的原始值再分发决策与署名要求。"
+---
+
+Pro 指标下钻会返回全部 72 行已注册指标，并在评分器具备归一化分数时一并返回该分数。只有在以下条件全部成立时才会返回原始来源值：该观测值是实测得到的、每个参与贡献的提供方都已完成再分发审查、响应中包含所需署名，且确切的贡献种子具有抓取时间戳。插补、回退、缺失、未启用、已退役、不适用、来源失败、提供方不明确或抓取时间不明确的行，永远不会包含原始值。
+
+指标注册表中宽泛的 `license` 标签属于来源清单元数据，并不构成再分发许可。`server/worldmonitor/resilience/v1/_indicator-source-policy.ts` 中的可执行策略更为严格，并依据每个观测值的确切提供方溯源作出判断。
+
+REST 与 MCP 的发现接口不为该响应公布 JMESPath 投影能力。两个运行时都会拒绝非空投影请求，因为投影可能使被允许的原始值脱离授权其再分发的署名与抓取字段。
+
+每个来源条目都包含数据集 URL、许可标签、规范 `licenseUrl`，以及在所需署名目标与数据集 URL 不同时的独立 `attributionUrl`。
+
+## 按来源划分的决策
+
+| 决策 | 来源 | 指标 | 原始值规则与署名 |
+| --- | --- | --- | --- |
+| 允许 | [World Bank API](https://api.worldbank.org/v2/) | `fxReservesAdequacy`、`appliedTariffRate`、`shortTermExternalDebtPctGni`、`roadsPavedLogistics`、`electricityAccess`、`roadsPavedInfra`、`broadband`、`electricityConsumption`、`powerLossesPct`、六项 `wgi*` 指标、`aquastatScore`、`recoveryReserveMonths`、`recoveryDebtToReserves`、`recoveryWgiContinuity` | 世界发展指标已按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 审查。须标注 World Bank Open Data，并附指标来源 URL 与提取日期。发布原始值要求每个输入都具备确切的 `/country/.../indicator/<code>` 路径；API 根路径、无关指标、文档与条款 URL 均按失败关闭处理。`aquastatScore` 是运行时的历史名称，其选定观测值为 World Bank `ER.H2O.FWST.ZS`。 |
+| 允许 | [联合国教科文组织统计研究所（经 World Bank WDI）](https://uis.unesco.org/) | `femaleUpperSecondaryAttainment` | 适用 World Bank 的 CC BY 4.0 条款。同时须标注 UNESCO UIS，并附 UIS 来源 URL 与提取日期。 |
+| 允许 | [Our World in Data](https://ourworldindata.org/) | `gasShare`、`coalShare`、`renewShare` | 适用 [OWID 复用条款](https://ourworldindata.org/how-to-use-our-world-in-data)。须标注 Our World in Data 并链接到确切数据集页面。数据集专属条款仍然优先。 |
+| 受限 | [国际清算银行](https://data.bis.org/) | `householdDebtService`、`fxVolatility`、`fxDeviation`、`bisLbsXborderPctGdp`、`financialCenterRedundancy` | 依据本仓库的非商业/受限决策，拒绝原始值再分发。可在标注 BIS 并链接到相关统计页面的前提下提供归一化分数。 |
+| 受限 | [经济与和平研究所 / 全球和平指数](https://www.visionofhumanity.org/maps/) | `gpiScore` | 依据本仓库的非商业决策，拒绝原始值再分发。提供归一化分数时须标注 Institute for Economics & Peace 与 Vision of Humanity。 |
+| 受限，待确切数据集审查 | [乌普萨拉冲突数据项目](https://ucdp.uu.se/downloads/) | `ucdpConflict`、`recoveryConflictPressure` | 当前下载页面标示 CC BY 4.0。在本仓库针对该确切数据集及其署名要求更新决策之前，运行时原始输出仍被拒绝。评分允许清单不构成再分发授权。 |
+| 有条件 | World Bank 或 Eurostat | `energyImportDependency` | 仅当选定观测值确为 World Bank 数据时允许。Eurostat 观测值的审查尚不完整。 |
+| 有条件 | World Bank，可能含 Eurostat 组成部分 | `importedFossilDependence` | 化石电力输入为 World Bank WDI `EG.ELC.FOSL.ZS`。仅当净进口溯源同样来自 World Bank 时允许；若有 Eurostat 覆盖值参与贡献，则抑制原始输出。 |
+| 有条件 | World Bank，可选用 UN Comtrade 调整 | `recoveryLiquidReserveMonths` | 允许未经调整的 World Bank 观测值。若有 UN Comtrade 转口调整参与贡献，则抑制原始值。 |
+| 审查未完成 | [国际货币基金组织](https://www.imf.org/en/Data)与各国债务来源 | `govRevenuePct`、`debtGrowthRate`、`currentAccountPct`、`unemploymentPct`、`inflationStability`、`recoveryGovRevenue`、`recoveryFiscalBalance`、`recoveryDebtToGdp`、`debtSustainabilityGap` | 在确切的 IMF 或各国债务提供方条款与署名被记录为已审查之前，抑制原始值。 |
+| 审查未完成 | [加拿大统计局 Web Data Service](https://www.statcan.gc.ca/en/developers/wds/user-guide) | 加拿大的 `unemploymentPct` 与 `inflationStability` 观测值 | 加拿大覆盖层会记录确切的加拿大统计局观测日期、发布时间、Web Data Service 端点与[开放许可](https://www.statcan.gc.ca/en/terms-conditions/open-licence)。在确切的向量级再分发决策通过审查之前，原始输出在指标策略下仍失败关闭。 |
+| 审查未完成 | [世界贸易组织](https://data.wto.org/)与 [FATF](https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html) | `tradeRestrictions`、`tradeBarriers`、`fatfListingStatus` | 抑制原始值。展示归一化结果时须标注并链接到确切出版物。 |
+| 审查未完成 | 网络安全、断网、GPS、航运、运输、社交与新闻订阅源 | `cyberThreats`、`internetOutages`、`gpsJamming`、`shippingStress`、`transitDisruption`、`infraOutages`、`socialVelocity`、`newsThreatScore` | 这些订阅源综合了 Cloudflare Radar、GPSJam/ADS-B Exchange、Yahoo Finance、PortWatch/AIS、Reddit/ScrapeCreators、各出版方以及多家威胁情报提供方。在该确切观测值使用的每个提供方都通过审查之前，抑制原始值。 |
+| 审查未完成 | 能源类提供方 | `lowCarbonGenerationShare`、`euGasStorageStress`、`energyPriceStress` | 低碳 OWID 图表使用 Ember 与 Energy Institute 的数据，其确切数据集条款尚未记录。GIE AGSI 以及确切的 FRED/上游能源价格序列同样需要完成审查。抑制原始值。 |
+| 审查未完成 | UNHCR、ACLED/GDELT 与无国界记者组织 | `displacementTotal`、`unrestEvents`、`displacementHosted`、`rsfPressFreedom`、`recoveryDisplacementVelocity` | 在确切的提供方条款通过审查之前，抑制原始值。归一化结果仍须保留提供方标注与来源链接。 |
+| 审查未完成 | [世卫组织全球卫生观察站](https://www.who.int/data/gho) | `uhcIndex`、`measlesCoverage`、`hospitalBeds`、`physiciansPer1k`、`healthExpPerCapitaUsd` | 注册表中历史遗留的公有领域标签不能替代当前的再分发审查。抑制原始值。 |
+| 审查未完成 | [IPC（经 HDX）](https://data.humdata.org/) | `ipcPeopleInCrisis`、`ipcPhase` | 在数据集专属的 IPC/HDX 条款通过审查之前，抑制原始值。 |
+| 审查未完成 | 维基百科与主权财富来源页面 | `recoverySovereignWealthEffectiveMonths` | 在每个组成来源及适用的 CC BY-SA 义务被记录之前，抑制原始值。 |
+| 审查未完成 | [UN Comtrade](https://comtradeplus.un.org/) | `recoveryImportHhi` | 注册表中历史遗留的公有领域标签不能替代当前的再分发审查。抑制原始值。 |
+| 审查未完成 | IEA/EIA 燃料库存序列 | `recoveryFuelStockDays` | 抑制原始值。该指标在当前评分中亦未启用，这本身也会阻止原始输出。 |
+
+本表反映仓库的来源署名清单与针对该议题的来源审查。提供方条款可能变化。新增来源、镜像、回退或组成部分都会使该观测值在策略及其测试更新之前失去资格。
+
+## 时间与溯源字段
+
+`sourceYear` 或来源观测时间戳描述提供方**测量**该现象的时间；`retrievedAt` 描述 WorldMonitor **抓取或播种**它的时间。两者不可互换。来自静态韧性批次的 World Bank 观测值使用所选国家载荷的 `seededAt`。从较早批次恢复的数据集使用其自身的 `_recovered.seededAt`，而不是新批次的元数据时间。其他来源路径在其确切贡献种子的抓取时间戳被带入追踪之前仍不可用。当该时间戳不可用时，即使原始值本可授权，API 也会将其扣留；它不会复用响应数据版本或另一个种子的时间。观测年龄始终依据来源观测日期计算，而非抓取时间。如果来源未发布观测日期，API 会将来源年份与观测年龄留空。
+
+当一个复合指标使用了不同年份的观测值时，`sourceYear` 取贡献年份中最早的一个。这一保守规则可防止较新的组成部分掩盖较旧输入的年龄。
+
+复合指标必须列出对选定值有贡献的每一个提供方。上述 World Bank/Eurostat 与 World Bank/UN Comtrade 的有条件决策都依赖这一点。
+
+## 抑制原始值时的归一化分数
+
+归一化分数是 WorldMonitor 在方向、标杆值、运行时加权及任何有记录的策略调整之后得出的派生输出。因此，即便上游条款阻止原始值再分发，API 仍可公开归一化分数与有效贡献。抑制通过原始值策略状态与原因来表示，而不是用数值零表示。
+
+## 失败关闭的审查规则
+
+1. 对未知指标或缺失提供方溯源的情形，默认不提供原始值。
+2. 要求 `observed` 状态。绝不为插补、回退、缺失或未启用的行公开原始数据。
+3. 检查复合观测值中的每一个提供方。任何一个未经审查的组成部分都会抑制整个原始值。
+4. 不得仅凭注册表许可类别、来源键、提供方的公开可访问性或署名声明来推断许可。
+5. 每条允许决策都须保留提供方署名、来源链接、许可标签与许可 URL。`observationProvenance` 字段用于区分确切的选定来源与仅来自注册表的署名。
+6. 当来源、镜像、提取路径或数据集专属条款发生变化时，须重新审查提供方条款。
+7. 在为新的注册表条目提供服务之前，先把该指标加入穷举式策略表及其测试。
+
+生产环境的响应读取由六小时公共分数缓存引用的不可变追踪代次。该大体积追踪存放在独立的七小时边车中，因此分数与排名读取保持轻量。边车缺失或损坏会重建并重新发布完整的分数代次；处理程序绝不会在较旧的缓存分数旁重新扫描当前种子。确认的来源键未命中可产生有记录的缺失或插补状态。Redis 读取错误会使代次构建失败，且不会作为有效响应被缓存。

@@ -217,7 +217,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 | 工具 | 描述 |
 |------|-------------|
-| `get_market_data` | 股票报价、商品价格（含黄金 GC=F）、加密货币、外汇、板块表现及估值覆盖、ETF 资金流、海湾市场。板块覆盖将写入年龄与完整度分开，并提供有界的 unavailable/last-good/direct-proxy 诊断。 |
+| `get_market_data` | 股票报价、商品价格、实物金银溢价与背离状态、加密货币、外汇、板块表现及估值覆盖、ETF 资金流、海湾市场。板块覆盖将写入年龄与完整度分开，并提供有界的 unavailable/last-good/direct-proxy 诊断。 |
 | `get_economic_data` | Fed Funds、经济日历、燃料价格、ECB 外汇、欧盟收益率曲线、财报、COT、能源库存、BIS DSR + 房价。 |
 | `get_country_macro` | 每个国家一份的 IMF WEO 数据包：通胀、经常账户、人均 GDP、失业率、储蓄-投资缺口（约 210 个国家）。 |
 | `get_eu_housing_cycle` | Eurostat 年度房价指数（prc_hpi_a），每个欧盟成员国 + EA20/EU27 的 10 年迷你图。 |
@@ -343,7 +343,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 | MCP 工具 | 服务的 API 端点 |
 |----------|---------------------|
-| `get_market_data` | `GET /api/market/v1/get-fear-greed-index`<br/>`GET /api/market/v1/get-sector-summary`<br/>`GET /api/market/v1/list-commodity-quotes`<br/>`GET /api/market/v1/list-crypto-quotes`<br/>`GET /api/market/v1/list-etf-flows`<br/>`GET /api/market/v1/list-gulf-quotes`<br/>`GET /api/market/v1/list-market-quotes` |
+| `get_market_data` | `GET /api/market/v1/get-fear-greed-index`<br/>`GET /api/market/v1/get-physical-divergence-index`<br/>`GET /api/market/v1/get-physical-premiums`<br/>`GET /api/market/v1/get-sector-summary`<br/>`GET /api/market/v1/list-commodity-quotes`<br/>`GET /api/market/v1/list-crypto-quotes`<br/>`GET /api/market/v1/list-etf-flows`<br/>`GET /api/market/v1/list-gulf-quotes`<br/>`GET /api/market/v1/list-market-quotes` |
 | `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
 | `get_tariff_trends` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
 | `get_wto_trade_flows` | `GET /api/trade/v1/get-trade-flows` |

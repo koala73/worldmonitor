@@ -1,6 +1,33 @@
 name: Publish MCP Registry
 
+# Publishes server.json (description derived from the server card's live tool
+# inventory) to registry.modelcontextprotocol.io under app.worldmonitor.
+#
+# Triggers — the release-only wiring this replaces logged zero runs: the last
+# GitHub release predated it by ~6 months and tracks the desktop app, not
+# SERVER_VERSION, so the registry stayed at 1.13.0/39 tools against a live
+# 1.17.0/72 (#7372). Publication now follows the cadence that exists:
+#   - push to main touching a manifest input: republish the moment the payload
+#     the registry serves can change. Same shape as desktop-release-train.yml.
+#   - schedule (daily): self-healing backstop. GitHub keeps one pending run per
+#     concurrency group, so a merge burst can drop a queued publish; the next
+#     scheduled run re-attempts it from current main.
+#   - release published + workflow_dispatch: retained for manual and tagged runs.
+# Re-running is safe: scripts/publish-mcp-registry.mjs looks the version up
+# first, skips an identical published payload, and fails closed on a differing
+# one rather than silently diverging.
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-mcp-registry.yml'
+      - 'public/.well-known/mcp/server-card.json'
+      - 'scripts/mcp-registry-published-versions.json'
+      - 'scripts/prepare-mcp-registry-manifest.mjs'
+      - 'scripts/publish-mcp-registry.mjs'
+      - 'server.json'
+  schedule:
+    - cron: '41 5 * * *'
   release:
     types: [published]
   workflow_dispatch:

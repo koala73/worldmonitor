@@ -1,5 +1,5 @@
 /**
- * Shared helpers for i18n locale tooling (sync script + completeness test).
+ * Shared helpers for i18n locale tooling.
  */
 
 /**
@@ -29,4 +29,24 @@ export function flattenKeys(obj, prefix = '') {
   }
 
   return keys;
+}
+
+/**
+ * Tokenize a flattened locale path into object keys and array indices.
+ *
+ * @param {string} dotted
+ * @returns {Array<{type: 'key', value: string} | {type: 'index', value: number}>}
+ */
+export function localePathTokens(dotted) {
+  const tokens = [];
+  for (const part of dotted.split('.')) {
+    const match = part.match(/^([^[]*)((?:\[\d+\])*)$/);
+    if (match?.[1]) tokens.push({ type: 'key', value: match[1] });
+    if (match?.[2]) {
+      for (const index of match[2].matchAll(/\[(\d+)\]/g)) {
+        tokens.push({ type: 'index', value: Number(index[1]) });
+      }
+    }
+  }
+  return tokens;
 }

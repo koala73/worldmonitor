@@ -218,10 +218,54 @@ const MCP_QUOTA_RESERVE_SCRIPT = [
   'end',
   'return {0, n}',
 ].join('\n');
+
+// PINNED COPY of scripts/seed-physical-premiums.mjs APPEND_HISTORY_LUA.
+// The daily publisher uses this script to replace a print-date duplicate,
+// append one point, and trim the history as one atomic Redis operation.
+const PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT = [
+  "local existing = redis.call('LRANGE', KEYS[1], 0, -1)",
+  'for _, encoded in ipairs(existing) do',
+  '  local ok, item = pcall(cjson.decode, encoded)',
+  '  if ok and item.date == ARGV[1] then',
+  "    redis.call('LREM', KEYS[1], 0, encoded)",
+  '  end',
+  'end',
+  "redis.call('LPUSH', KEYS[1], ARGV[2])",
+  "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)",
+  "return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)",
+].join('\n');
+// PINNED COPY of scripts/seed-physical-premiums.mjs PUBLISH_PHYSICAL_PREMIUM_LUA.
+// The raw premium snapshot and its durable production activation marker must
+// become visible together so health cannot mistake a partial publish for a
+// producer that has never run.
+const PHYSICAL_PREMIUM_PUBLISH_SCRIPT = [
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
+  "if ARGV[3] == '1' then",
+  "  redis.call('SET', KEYS[2], '1')",
+  'end',
+  'return 1',
+].join('\n');
+// PINNED COPY of scripts/seed-physical-premiums.mjs PUBLISH_DIVERGENCE_LUA.
+// The derived snapshot, health metadata, activation marker, and transition
+// cooldowns must become visible together.
+const PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT = [
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])",
+  "redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])",
+  "if ARGV[5] == '1' then",
+  "  redis.call('SET', KEYS[3], '1')",
+  'end',
+  'for index = 4, #KEYS do',
+  "  redis.call('SET', KEYS[index], ARGV[index + 2], 'EX', ARGV[4])",
+  'end',
+  'return #KEYS',
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
+  PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
+  PHYSICAL_PREMIUM_PUBLISH_SCRIPT,
+  PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
 ]);
 
 // Exact-text pin, not a pattern: any change to the script — including

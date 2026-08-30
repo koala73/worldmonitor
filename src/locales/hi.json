@@ -1956,6 +1956,16 @@
       "loading": "टेलीग्राम रिले से जुड़ रहे हैं...",
       "empty": "कोई संदेश उपलब्ध नहीं",
       "disabled": "टेलीग्राम रिले सक्रिय नहीं है",
+      "watchlistPlaceholder": "@username से सार्वजनिक चैनल जोड़ें",
+      "resolving": "चैनल खोजा जा रहा है...",
+      "invalidUsername": "सार्वजनिक टेलीग्राम @username का उपयोग करें",
+      "resolveFailed": "चैनल नहीं मिला",
+      "watchlistLimit": "आप अधिकतम {{count}} कस्टम चैनल फ़ॉलो कर सकते हैं",
+      "previewMembers": "{{count}} सदस्य",
+      "addChannel": "चैनल जोड़ें",
+      "added": "जोड़ा गया",
+      "remove": "हटाएँ",
+      "custom": "कस्टम",
       "filterAll": "सभी",
       "filterBreaking": "ब्रेकिंग",
       "filterConflict": "संघर्ष",
@@ -2103,6 +2113,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "भौतिक तनाव सूचकांक: {{value}} / 100",
+        "fiveDayTrend": "पाँच-कारोबारी-दिन प्रीमियम प्रवृत्ति",
+        "regimes": {
+          "normal": "सामान्य",
+          "elevated": "उन्नत",
+          "stressed": "दबाव में",
+          "extreme": "अत्यंत"
+        },
+        "states": {
+          "insufficientHistory": "तैयारी में: {{count}} / {{required}} कारोबारी बिंदु",
+          "staleInput": "भौतिक बेंचमार्क पुराना है",
+          "missingInput": "विचलन संकेत उपलब्ध नहीं"
+        },
+        "twentyDayTrend": "बीस कारोबारी दिन का प्रीमियम प्रवृत्ति"
       }
     },
     "crypto": {

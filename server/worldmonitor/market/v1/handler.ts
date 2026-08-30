@@ -37,12 +37,14 @@ import { getMarketBreadthHistory } from './get-market-breadth-history';
 import { getGoldIntelligence } from './get-gold-intelligence';
 import { getHyperliquidFlow } from './get-hyperliquid-flow';
 import { getPhysicalPremiums } from './get-physical-premiums';
+import { getPhysicalDivergenceIndex } from './get-physical-divergence-index';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
   listCryptoQuotes,
   listCommodityQuotes,
   getPhysicalPremiums,
+  getPhysicalDivergenceIndex,
   getSectorSummary,
   listStablecoinMarkets,
   listEtfFlows,

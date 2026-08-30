@@ -60,6 +60,8 @@ const OPENAPI_REQUIRED_SCHEMA_FIELDS = new Map([
 
 const SCORECARD_REASON_PATTERN = '^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$';
 const ISO2_PATTERN = '^[A-Z]{2}$';
+const PHYSICAL_METAL_PATTERN = '^(?:gold|silver)$';
+const PHYSICAL_METALS_DESCRIPTION = 'Accepted values are "gold" and "silver". Empty returns both metals.';
 
 function scorecardResponseOneOf(unavailableReasons) {
   return [
@@ -150,6 +152,39 @@ function injectScorecardJsonContracts(spec) {
       uniqueItems: true,
     });
     set(operation, 'x-worldmonitor-selector-one-of', ['preset', 'members']);
+  }
+  return changed;
+}
+
+function injectPhysicalDivergenceJsonContracts(spec) {
+  const schemas = spec.components?.schemas;
+  const request = schemas?.GetPhysicalDivergenceIndexRequest;
+  if (!request?.properties?.metals) return false;
+  let changed = false;
+  const expected = {
+    type: 'array',
+    items: { type: 'string', pattern: PHYSICAL_METAL_PATTERN },
+    maxItems: 2,
+    uniqueItems: true,
+    description: PHYSICAL_METALS_DESCRIPTION,
+  };
+  if (!eq(request.properties.metals, expected)) {
+    request.properties.metals = expected;
+    changed = true;
+  }
+  const operation = spec.paths?.['/api/market/v1/get-physical-divergence-index']?.get;
+  const parameter = operation?.parameters?.find((candidate) => (
+    candidate?.in === 'query' && candidate.name === 'metals'
+  ));
+  const parameterSchema = {
+    type: 'array',
+    items: { type: 'string', pattern: PHYSICAL_METAL_PATTERN },
+    maxItems: 2,
+    uniqueItems: true,
+  };
+  if (parameter && !eq(parameter.schema, parameterSchema)) {
+    parameter.schema = parameterSchema;
+    changed = true;
   }
   return changed;
 }
@@ -298,6 +333,7 @@ function queryNamesForRequiredFields(schemaName, schema) {
 
 function injectJson(spec) {
   let changed = injectScorecardJsonContracts(spec);
+  if (injectPhysicalDivergenceJsonContracts(spec)) changed = true;
   const schemas = spec.components?.schemas ?? {};
 
   for (const [schemaName, schema] of Object.entries(schemas)) {
@@ -705,9 +741,64 @@ function injectYamlScorecardContracts(lines) {
   return changed;
 }
 
+function injectYamlPhysicalDivergenceContracts(lines) {
+  if (yamlSchemaBlocks(lines, 'GetPhysicalDivergenceIndexRequest').length === 0) return false;
+  let changed = replaceYamlSchemaProperty(
+    lines,
+    'GetPhysicalDivergenceIndexRequest',
+    'metals',
+    (pad) => [
+      `${pad}metals:`,
+      `${pad}    type: array`,
+      `${pad}    items:`,
+      `${pad}        type: string`,
+      `${pad}        pattern: ${PHYSICAL_METAL_PATTERN}`,
+      `${pad}    maxItems: 2`,
+      `${pad}    uniqueItems: true`,
+      `${pad}    description: ${PHYSICAL_METALS_DESCRIPTION}`,
+    ],
+  );
+  for (const block of [...yamlOperationBlocks(lines, 'GetPhysicalDivergenceIndex')].reverse()) {
+    for (let index = block.start + 1; index < block.end; index++) {
+      if (lines[index].trim() !== '- name: metals') continue;
+      const indent = leadingSpaces(lines[index]);
+      let end = index + 1;
+      while (end < block.end) {
+        if (lines[end].trim() && leadingSpaces(lines[end]) <= indent) break;
+        end++;
+      }
+      const pad = ' '.repeat(indent);
+      const expected = [
+        `${pad}- name: metals`,
+        `${pad}  in: query`,
+        `${pad}  description: ${PHYSICAL_METALS_DESCRIPTION}`,
+        `${pad}  required: false`,
+        `${pad}  style: form`,
+        `${pad}  explode: true`,
+        `${pad}  example:`,
+        `${pad}      - "gold"`,
+        `${pad}  schema:`,
+        `${pad}    type: array`,
+        `${pad}    items:`,
+        `${pad}        type: string`,
+        `${pad}        pattern: ${PHYSICAL_METAL_PATTERN}`,
+        `${pad}    maxItems: 2`,
+        `${pad}    uniqueItems: true`,
+      ];
+      if (!eq(lines.slice(index, end), expected)) {
+        lines.splice(index, end - index, ...expected);
+        changed = true;
+      }
+      break;
+    }
+  }
+  return changed;
+}
+
 function injectYaml(text, contracts) {
   const lines = text.split('\n');
   let changed = injectYamlScorecardContracts(lines);
+  if (injectYamlPhysicalDivergenceContracts(lines)) changed = true;
   for (const { operationId, paramName } of contracts.params) {
     if (operationId && setYamlOperationParamRequired(lines, operationId, paramName)) changed = true;
   }

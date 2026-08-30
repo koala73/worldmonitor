@@ -15,10 +15,11 @@ Treat each WebMCP change as a public UI contract change. Tool names, description
 4. Set accurate `readOnlyHint` and `untrustedContentHint` annotations. Keep names, descriptions, parameter descriptions, schemas, outputs, and errors within `WEBMCP_TOOL_BUDGETS`.
 5. Recheck authentication, entitlement, variant, renderer, mounted state, and capability state at invocation time. Discovery must not grant durable authority.
 6. For a declarative tool, expose attributes only while the real form is connected and usable. Remove them while the form is pending, hidden, resetting, destroyed, or ineligible.
-7. Update `docs/webmcp.mdx` and `docs/zh/webmcp.mdx` together. Update both maintenance guides when ownership, verification, or release steps change.
-8. Extend deterministic lifecycle and UI tests. Add direct, ambiguous, wrong-tool, alternate-order, and mid-chain-failure eval cases when tool selection or chaining changes.
-9. If an enrolled route or origin changes, update and test the Vercel, Docker, local Vite, origin-trial, same-origin, and embed-denial headers as one security boundary.
-10. Run the local same-SHA proof, then the production same-SHA smoke. Unit tests and deployment status do not prove production acceptance.
+7. Declare every stable denial reason in one exported runtime list and derive its TypeScript union from that list. Do not hand-maintain a second copy of the reason names.
+8. Update `docs/webmcp.mdx` and `docs/zh/webmcp.mdx` together, naming every new reason in both. The guide contract test fails when a declared reason is missing from either language. Update both maintenance guides when ownership, verification, or release steps change.
+9. Extend deterministic lifecycle and UI tests. Add direct, ambiguous, wrong-tool, alternate-order, and mid-chain-failure eval cases when tool selection or chaining changes.
+10. If an enrolled route or origin changes, update and test the Vercel, Docker, local Vite, origin-trial, same-origin, and embed-denial headers as one security boundary.
+11. Run the local same-SHA proof, then the production same-SHA smoke. Unit tests and deployment status do not prove production acceptance.
 
 ## Source map
 

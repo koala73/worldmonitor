@@ -1969,6 +1969,16 @@
       "loading": "Connecting to Telegram relay...",
       "empty": "No messages available",
       "disabled": "Telegram relay not active",
+      "watchlistPlaceholder": "Додати публічний канал за @username",
+      "resolving": "Пошук каналу...",
+      "invalidUsername": "Використовуйте публічне ім’я @username у Telegram",
+      "resolveFailed": "Не вдалося знайти канал",
+      "watchlistLimit": "Можна стежити щонайбільше за {{count}} власними каналами",
+      "previewMembers": "{{count}} учасників",
+      "addChannel": "Додати канал",
+      "added": "Додано",
+      "remove": "Видалити",
+      "custom": "Власний",
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
@@ -2116,6 +2126,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Індекс фізичного стресу: {{value}} / 100",
+        "fiveDayTrend": "Тренд премії за п'ять торгових днів",
+        "regimes": {
+          "normal": "Нормальний",
+          "elevated": "Підвищений",
+          "stressed": "Напружений",
+          "extreme": "Екстремальний"
+        },
+        "states": {
+          "insufficientHistory": "Прогрівання: {{count}} / {{required}} торгових точок",
+          "staleInput": "Фізичний орієнтир застарілий",
+          "missingInput": "Сигнал дивергенції недоступний"
+        },
+        "twentyDayTrend": "Тренд премії за двадцять торгових днів"
       }
     },
     "crypto": {

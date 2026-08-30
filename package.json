@@ -71,6 +71,7 @@
     "scorecard:edge-mirrors:check": "node scripts/generate-scorecard-edge-mirrors.mjs --check",
     "study:story-phase-fading": "node scripts/study-story-phase-fading.mjs",
     "study:story-phase-fading:check": "node scripts/study-story-phase-fading.mjs --check",
+    "freeze:crawlable-live-pulse": "node scripts/freeze-crawlable-live-pulse.mjs",
     "sources:generate": "node scripts/source-attribution.mjs --write",
     "sources:check": "node scripts/source-attribution.mjs --check",
     "dev": "vite",

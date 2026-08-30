@@ -624,12 +624,17 @@ const TELEGRAM_NORMALIZED_HANDLE_TO_PUBLIC_NAME: ReadonlyMap<string, string> = (
   return entries;
 })();
 
+/** Resolve a trust-registry key only when the immutable channel handle is registered. */
+export function resolveRegisteredTelegramSourceName(handle?: string): string | null {
+  const trimmedHandle = handle?.trim();
+  if (!trimmedHandle) return null;
+  return TELEGRAM_NORMALIZED_HANDLE_TO_PUBLIC_NAME.get(normalizeTelegramHandle(trimmedHandle)) ?? null;
+}
+
 /** Resolve the public trust-registry key for a Telegram feed item. */
 export function resolveTelegramSourceName(channelTitle?: string, handle?: string): string {
   const trimmedHandle = handle?.trim();
-  const mapped = trimmedHandle
-    ? TELEGRAM_NORMALIZED_HANDLE_TO_PUBLIC_NAME.get(normalizeTelegramHandle(trimmedHandle))
-    : undefined;
+  const mapped = resolveRegisteredTelegramSourceName(trimmedHandle);
   if (mapped) return mapped;
   const title = channelTitle?.trim();
   if (title) return title;

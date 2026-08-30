@@ -11,18 +11,31 @@ import {
 /** Same threshold as `applyMissionPresetToState` soft-fallback. */
 export const MISSION_PRESET_MIN_PANEL_MATCHES = 2;
 
+/**
+ * Stable reasons a catalog row can be unavailable, and stable reasons an apply
+ * can be denied. Both types derive from these lists so the runtime sets, the
+ * unions, and the documented reason catalog in `docs/webmcp.mdx` stay aligned.
+ */
+export const MISSION_PRESET_UNAVAILABLE_REASONS = [
+  'preset_incompatible',
+  'preset_not_entitled',
+  'target_cancellation_unsupported',
+] as const;
+
+export const MISSION_PRESET_APPLY_DENY_REASONS = [
+  'malformed_arguments',
+  'unknown_preset',
+  'preset_incompatible',
+  'preset_not_entitled',
+  'app_destroyed',
+  'apply_failed',
+] as const;
+
 export type MissionPresetUnavailableReason =
-  | 'preset_incompatible'
-  | 'preset_not_entitled'
-  | 'target_cancellation_unsupported';
+  (typeof MISSION_PRESET_UNAVAILABLE_REASONS)[number];
 
 export type MissionPresetApplyDenyReason =
-  | 'malformed_arguments'
-  | 'unknown_preset'
-  | 'preset_incompatible'
-  | 'preset_not_entitled'
-  | 'app_destroyed'
-  | 'apply_failed';
+  (typeof MISSION_PRESET_APPLY_DENY_REASONS)[number];
 
 export interface MissionPresetCatalogItem {
   id: MissionPresetId;
