@@ -887,7 +887,7 @@ function safeEnd(res, statusCode, headers, body) {
     res.end(body);
     return true;
   } catch {
-    return false;
+    return;
   }
 }
 
@@ -1986,24 +1986,25 @@ async function pollTelegramOnce() {
   }
 }
 
-let telegramPollInFlight = false;
-let telegramPollStartedAt = 0;
+let telegramPollRun = null;
 
 function guardedTelegramPoll() {
-  if (telegramPollInFlight) {
-    const stuck = Date.now() - telegramPollStartedAt;
-    if (stuck > TELEGRAM_POLL_STUCK_AFTER_MS) {
-      console.warn(`[Relay] Telegram poll stuck for ${Math.round(stuck / 1000)}s — force-clearing in-flight flag`);
-      telegramPollInFlight = false;
-    } else {
-      return;
+  if (telegramPollRun) {
+    const stuck = Date.now() - telegramPollRun.startedAt;
+    if (stuck > TELEGRAM_POLL_STUCK_AFTER_MS && !telegramPollRun.warned) {
+      console.warn(`[Relay] Telegram poll stuck for ${Math.round(stuck / 1000)}s, waiting for the current poll to settle`);
+      telegramPollRun.warned = true;
     }
+    return false;
   }
-  telegramPollInFlight = true;
-  telegramPollStartedAt = Date.now();
+
+  const run = { startedAt: Date.now(), warned: false };
+  telegramPollRun = run;
   pollTelegramOnce()
     .catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e))
-    .finally(() => { telegramPollInFlight = false; });
+    .finally(() => {
+      if (telegramPollRun === run) telegramPollRun = null;
+    });
 }
 
 function startTelegramPollLoop() {
@@ -11600,8 +11601,8 @@ const server = http.createServer(async (req, res) => {
         lastPollAt: telegramState.lastPollAt ? new Date(telegramState.lastPollAt).toISOString() : null,
         hasError: !!telegramState.lastError,
         lastError: telegramState.lastError || null,
-        pollInFlight: telegramPollInFlight,
-        pollInFlightSince: telegramPollInFlight && telegramPollStartedAt ? new Date(telegramPollStartedAt).toISOString() : null,
+        pollInFlight: telegramPollRun !== null,
+        pollInFlightSince: telegramPollRun ? new Date(telegramPollRun.startedAt).toISOString() : null,
       },
       xFeed: {
         enabled: X_ENABLED,
