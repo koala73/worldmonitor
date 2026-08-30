@@ -128,12 +128,27 @@ describe('agent readiness: Agent Plugins manifest', () => {
     assert.equal(existsSync(join(ROOT, 'public/mcp.json')), false);
     const mcpRoute = (vercelConfig.headers ?? []).find((rule) => rule.source === '/mcp.json');
     assert.equal(mcpRoute, undefined, 'vercel.json must not serve /mcp.json as a static Agent Plugin file');
-    assert.doesNotMatch(
-      publicLlms,
-      /\[Agent Plugin\][^\n]*`plugin\.json` \+ `mcp\.json` \+ `skills\/`/,
-      'the public /plugin.json link must not promise sibling HTTP files that only exist in the repository package',
-    );
+    // The backtick trio implies sibling HTTP files next to /plugin.json. Those files
+    // only exist in the GitHub package; every discovery surface must say so explicitly
+    // (or omit the trio) rather than listing them as if they were fetchable URLs.
+    const httpSiblingPromise = /`plugin\.json` \+ `mcp\.json` \+ `skills\//;
+    for (const relativePath of DISCOVERY_SURFACES) {
+      const body = readFileSync(join(ROOT, relativePath), 'utf-8');
+      assert.doesNotMatch(
+        body,
+        httpSiblingPromise,
+        `${relativePath} must not promise HTTP siblings that only exist in the repository package`,
+      );
+    }
     assert.match(publicLlms, /repository package/i);
+    for (const relativePath of ['public/agents.md', 'public/developers.md', 'public/developers/llms.txt']) {
+      const body = readFileSync(join(ROOT, relativePath), 'utf-8');
+      assert.match(
+        body,
+        /repository package/i,
+        `${relativePath} must describe the Agent Plugin as a repository package`,
+      );
+    }
   });
 
   it('every well-known agent skill has a plugin skills/ SKILL.md inside the plugin root', () => {
