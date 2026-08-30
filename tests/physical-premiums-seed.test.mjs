@@ -654,7 +654,7 @@ describe('physical premium seed', () => {
     assert.equal(first.sourceState, 'degraded');
     assert.equal(first.minHistoryPoints, 5);
     assert.equal(first.maxHistoryPointsSeen, 80);
-    assert.match(first.sourceReason, /history/i);
+    assert.equal(first.sourceReason, 'history_points_regressed:min=5:max=80');
 
     // Sustained at the low watermark must stay degraded — comparing only to the
     // immediate prior snapshot would falsely clear after the first bad publish.
@@ -810,17 +810,19 @@ describe('physical premium seed', () => {
         methodologyVersion: METHODOLOGY_VERSION,
       })),
     ]));
+    const commands = [];
     const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
     const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
     try {
-      await publishPhysicalDivergenceDerivedData({
+      const snapshot = await publishPhysicalDivergenceDerivedData({
         payload,
         prefix: 'test:',
         nowMs: Date.parse('2026-08-18T12:30:00.000Z'),
         retryDelayFn: async () => {},
         commandFn: async (_creds, command) => {
+          commands.push(command);
           if (command[0] === 'EVAL' && command[1] === APPEND_HISTORY_LUA) {
             const metal = command[3].endsWith(':gold') ? 'gold' : 'silver';
             return { result: shortHistories[metal].map((entry) => JSON.stringify(entry)) };
@@ -840,32 +842,19 @@ describe('physical premium seed', () => {
           if (command[0] === 'GET') return { result: null };
           return { result: 'OK' };
         },
-      }).then((snapshot) => {
-        assert.ok(snapshot.readings.every((reading) => reading.state === 'insufficient_history'));
       });
 
-      // Re-run through the publish command helper with the same prior meta to
-      // assert the EVAL payload health fields without depending on Redis order.
-      const snapshot = buildPhysicalDivergenceSnapshot({
-        premiums: payload.premiums,
-        fx: payload.fx,
-        histories: shortHistories,
-        previousSnapshot: null,
-        cooldowns: {},
-        nowMs: Date.parse('2026-08-18T12:30:00.000Z'),
-      });
-      const publish = physicalDivergencePublishCommand({
-        divergenceKey: 'test:market:physical-divergence:v1',
-        metaKey: 'test:seed-meta:market:physical-divergence',
-        snapshot,
-        nowMs: Date.parse('2026-08-18T12:30:00.000Z'),
-        prefix: 'test:',
-        previousMeta: { minHistoryPoints: 80, maxHistoryPointsSeen: 80, sourceState: 'ok' },
-      });
+      assert.ok(snapshot.readings.every((reading) => reading.state === 'insufficient_history'));
+      assert.ok(commands.some((command) => (
+        command[0] === 'GET' && command[1] === 'test:seed-meta:market:physical-divergence'
+      )));
+      const publish = commands.find((command) => command[1] === PUBLISH_DIVERGENCE_LUA);
+      assert.ok(publish);
       const publishedMeta = JSON.parse(publish[3 + Number(publish[2]) + 1]);
       assert.equal(publishedMeta.sourceState, 'degraded');
       assert.equal(publishedMeta.minHistoryPoints, 5);
       assert.equal(publishedMeta.maxHistoryPointsSeen, 80);
+      assert.equal(publishedMeta.sourceReason, 'history_points_regressed:min=5:max=80');
     } finally {
       if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
       else process.env.UPSTASH_REDIS_REST_URL = previousUrl;

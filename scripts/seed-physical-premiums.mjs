@@ -388,7 +388,10 @@ function physicalDivergencePriorHighWater(previousMeta) {
   const fromMax = Number(previousMeta.maxHistoryPointsSeen);
   if (Number.isFinite(fromMax) && fromMax >= 0) return fromMax;
   // Pre-#7424 meta published minHistoryPoints without a high-water field. Carry
-  // that floor forward so an already-regressed depth cannot re-baseline itself.
+  // that floor forward so a mid-ramp or peak deployment cannot re-baseline
+  // itself on the next tick. An already-trough publish (min already collapsed
+  // under old code) cannot recover the lost peak from meta alone — that needs
+  // a ramp-deadline gate or an operator-set high-water, which is out of scope.
   const fromMin = Number(previousMeta.minHistoryPoints);
   return Number.isFinite(fromMin) && fromMin >= 0 ? fromMin : 0;
 }
