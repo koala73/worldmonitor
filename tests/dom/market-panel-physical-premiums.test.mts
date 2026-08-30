@@ -215,6 +215,11 @@ describe('CommoditiesPanel physical-premium tab', () => {
       await flush();
       const text = panel.getElement().textContent ?? '';
       for (const value of expected) expect(text).toContain(value);
+      if (state === 'PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY') {
+        const composite = panel.getElement().querySelector('.physical-divergence-composite');
+        expect(composite?.textContent).toContain('Warming up: 59 / 60 trading points');
+        expect(composite?.textContent).not.toContain('0 / 60');
+      }
     }
 
     const okVariants = [
@@ -235,6 +240,47 @@ describe('CommoditiesPanel physical-premium tab', () => {
       expect(root.textContent).toContain(`${arrow} 5d`);
       expect(root.textContent).toContain(`${arrow} 20d`);
       expect(root.innerHTML).toContain(`border:1px solid ${color}`);
+    }
+  });
+
+  it('names the stale physical, paper, and FX input', async () => {
+    panel.updatePhysicalPremiums({
+      premiums: [{
+        metal: 'gold',
+        physical: {
+          price: 953.88, currency: 'CNY', unit: 'gram',
+          source: 'Shanghai Gold Exchange SHAU PM benchmark', asOf: '2026-08-18',
+        },
+        paper: {
+          price: 4455.6, currency: 'USD', unit: 'troy ounce',
+          source: 'COMEX GC=F futures snapshot', asOf: '2026-08-18T12:22:24.000Z',
+        },
+        premiumUsdPerOz: -46.7889,
+        premiumPct: -1.0501,
+        computedAt: '2026-08-18T12:30:00.000Z',
+      }],
+      fx: {
+        pair: 'CNY/USD', rate: 0.1486, source: 'shared:fx-rates:v1', asOf: '2026-08-18T12:28:48.000Z',
+      },
+    });
+    await flush();
+    panel.getElement().querySelector<HTMLElement>('[data-tab="physical"]')?.click();
+    await flush();
+
+    const cases = [
+      ['physical_print_older_than_12_calendar_days', 'Physical: Expired'],
+      ['paper_snapshot_older_than_36_hours', 'Paper: Expired'],
+      ['fx_snapshot_older_than_60_hours', 'FX: Expired'],
+    ] as const;
+    for (const [reason, expected] of cases) {
+      const response = divergenceResponse('PHYSICAL_DIVERGENCE_STATE_STALE_INPUT');
+      response.readings[0]!.reason = reason;
+      response.composite.reason = 'member_not_ok:gold:stale_input';
+      panel.updatePhysicalDivergence(response);
+      await flush();
+      const text = panel.getElement().textContent ?? '';
+      expect(text).toContain(expected);
+      expect(text).not.toContain('Physical benchmark is stale');
     }
   });
 

@@ -46,10 +46,9 @@ const GENERATED_HINT = 'Run: npm run locales:zh-tw';
  * translated). Iterating the locale first keeps the diff to just the new keys
  * instead of rewriting every file into en's order.
  *
- * Pluralization caveat: a brand-new pluralized key only carries en's CLDR
- * categories (`_one`/`_other`). Locales needing richer forms (e.g. Arabic's
- * `_zero`/`_two`/`_few`/`_many`) get them when a translator fills the key in;
- * existing locale-only plural variants are preserved by the append loop below.
+ * Brand-new pluralized keys use the locale's CLDR projection. Categories that
+ * English does not carry (for example Arabic `_zero`, `_two`, `_few`, and
+ * `_many`) start with the projected English fallback until translated.
  *
  * Leaf values (strings and arrays) prefer the locale's translation and fall
  * back to en; nested objects are merged key-by-key.
@@ -76,6 +75,7 @@ export function syncFromTemplate(template, locale, expectedKeys, prefix = '') {
       locale && typeof locale === 'object' && !Array.isArray(locale)
         ? /** @type {Record<string, unknown>} */ (locale)
         : {};
+    const expectedKeyList = Object.keys(expectedKeys);
 
     // Keep the locale's own key order (and recurse to preserve nested order).
     // Locale-only keys (legacy / in-flight translations) are carried through.
@@ -90,11 +90,17 @@ export function syncFromTemplate(template, locale, expectedKeys, prefix = '') {
     for (const [key, value] of Object.entries(templateObj)) {
       if (!(key in out)) {
         const keyPath = prefix ? `${prefix}.${key}` : key;
-        const isExpected = expectedKeys.has(keyPath)
-          || [...expectedKeys].some((candidate) => candidate.startsWith(`${keyPath}.`));
+        const isExpected = Object.hasOwn(expectedKeys, keyPath)
+          || expectedKeyList.some((candidate) => candidate.startsWith(`${keyPath}.`));
         if (isExpected) {
           out[key] = syncFromTemplate(value, localeObj[key], expectedKeys, keyPath);
         }
+      }
+    }
+
+    if (prefix === '') {
+      for (const [keyPath, value] of Object.entries(expectedKeys)) {
+        setMissingDottedPath(out, keyPath, value);
       }
     }
 
@@ -102,6 +108,18 @@ export function syncFromTemplate(template, locale, expectedKeys, prefix = '') {
   }
 
   return template;
+}
+
+function setMissingDottedPath(target, keyPath, value) {
+  const segments = keyPath.split('.');
+  let cursor = target;
+  for (const segment of segments.slice(0, -1)) {
+    const existing = cursor[segment];
+    if (!existing || typeof existing !== 'object' || Array.isArray(existing)) cursor[segment] = {};
+    cursor = /** @type {Record<string, unknown>} */ (cursor[segment]);
+  }
+  const leaf = segments.at(-1);
+  if (leaf && !(leaf in cursor)) cursor[leaf] = value;
 }
 
 /**
@@ -135,12 +153,12 @@ function main() {
     const localeCode = file.replace(/\.json$/, '');
     const locale = readJson(path, file);
     const localeKeys = new Set(flattenKeys(locale));
-    const expectedKeys = new Set(Object.keys(expectedKeysForLocale(
+    const expectedKeys = expectedKeysForLocale(
       enFlat,
       pluralBases,
       getPluralCategories(localeCode),
-    )));
-    const missing = [...expectedKeys].filter((key) => !localeKeys.has(key));
+    );
+    const missing = Object.keys(expectedKeys).filter((key) => !localeKeys.has(key));
 
     if (missing.length === 0) {
       console.log(`${file}: up to date (${localeKeys.size} keys)`);

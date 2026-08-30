@@ -389,6 +389,7 @@ import type {
 function physicalDivergenceStateCopy(
   state: PhysicalDivergenceState,
   historyPoints: number,
+  reason = '',
 ): string {
   switch (state) {
     case 'PHYSICAL_DIVERGENCE_STATE_OK':
@@ -399,6 +400,15 @@ function physicalDivergenceStateCopy(
         required: 60,
       });
     case 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT':
+      if (reason === 'physical_print_older_than_12_calendar_days') {
+        return `${t('components.commodities.physical')}: ${t('popups.expired')}`;
+      }
+      if (reason === 'paper_snapshot_older_than_36_hours') {
+        return `${t('components.commodities.paper')}: ${t('popups.expired')}`;
+      }
+      if (reason === 'fx_snapshot_older_than_60_hours') {
+        return `FX: ${t('popups.expired')}`;
+      }
       return t('components.commodities.divergence.states.staleInput');
     case 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT':
       return t('components.commodities.divergence.states.missingInput');
@@ -679,7 +689,7 @@ export class CommoditiesPanel extends Panel {
 
   private _renderPhysicalDivergenceReading(reading: PhysicalDivergenceReading): string {
     if (reading.state !== 'PHYSICAL_DIVERGENCE_STATE_OK') {
-      return `<div class="physical-divergence-state" style="margin-top:4px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(physicalDivergenceStateCopy(reading.state, reading.historyPoints))}</div>`;
+      return `<div class="physical-divergence-state" style="margin-top:4px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(physicalDivergenceStateCopy(reading.state, reading.historyPoints, reading.reason))}</div>`;
     }
     const label = physicalRegimeLabel(reading.regime);
     const color = physicalRegimeColor(reading.regime);
@@ -709,7 +719,13 @@ export class CommoditiesPanel extends Panel {
       if (composite.index == null) throw new Error('Ok physical divergence composite has no index');
       label = t('components.commodities.divergence.compositeValue', { value: composite.index.toFixed(1) });
     } else {
-      label = physicalDivergenceStateCopy(composite.state, 0);
+      const nonOkMember = this._physicalDivergence?.readings.find((reading) => reading.state === composite.state)
+        ?? this._physicalDivergence?.readings.find((reading) => reading.state !== 'PHYSICAL_DIVERGENCE_STATE_OK');
+      label = physicalDivergenceStateCopy(
+        composite.state,
+        nonOkMember?.historyPoints ?? 0,
+        nonOkMember?.reason ?? composite.reason,
+      );
     }
     return `<div class="physical-divergence-composite" style="margin-bottom:8px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(label)}</div>`;
   }

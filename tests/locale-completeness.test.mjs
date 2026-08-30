@@ -70,16 +70,27 @@ describe('locale completeness', () => {
     const template = {
       cart: {
         items_one: 'one item',
-        items_few: 'few items',
         items_other: 'many items',
       },
       plain: 'Plain copy',
     };
     const locale = { cart: { items_one: 'uno' } };
-    const expected = new Set(['cart.items_one', 'cart.items_other', 'plain']);
+    const templateFlat = flatten(template);
+    const expected = expectedKeysForLocale(
+      templateFlat,
+      findPluralBases(templateFlat),
+      ['zero', 'one', 'two', 'few', 'many', 'other'],
+    );
 
     assert.deepEqual(syncFromTemplate(template, locale, expected), {
-      cart: { items_one: 'uno', items_other: 'many items' },
+      cart: {
+        items_one: 'uno',
+        items_other: 'many items',
+        items_zero: 'many items',
+        items_two: 'many items',
+        items_few: 'many items',
+        items_many: 'many items',
+      },
       plain: 'Plain copy',
     });
   });
