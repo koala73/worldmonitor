@@ -167,6 +167,14 @@ export function resolveCountryCode(raw: unknown): string | null {
   // key is gone now (and a data invariant forbids new ones), but the gate
   // still closes the same class for any future regeneration that slips one in.
   //
+  // The gate and that invariant cover DIFFERENT halves of the class and
+  // neither subsumes the other: this gate only runs once the input has been
+  // split on a trailing parenthetical, so a bare composite (`Morocco Western
+  // Sahara`, or `Morocco / Western Sahara` — normalization folds `/` to a
+  // space) is answered by the step-1 exact lookup above and never reaches
+  // here. Removing the key is what makes those forms null; the gate is what
+  // makes `X (Y)` null. Both are pinned in tests/mcp-country-code-resolve.test.mts.
+  //
   // Compare NAME-map hits only, never resolveDesignator: its bare alpha-2
   // passthrough makes a two-letter modifier like `DR` self-resolve, which would
   // read `Congo (DR)` as a disagreement and reject a valid designator.
