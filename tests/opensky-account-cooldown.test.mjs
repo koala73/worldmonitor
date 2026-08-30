@@ -4,16 +4,20 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 const {
   OPENSKY_COOLDOWN_KEY,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_MAX_CLOCK_SKEW_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   OPENSKY_MAX_DEADLINE_SET_LUA,
   OPENSKY_COMPARE_AND_DEL_LUA,
   accountFingerprint,
+  cooldownKeyForAccount,
   clampCooldownMs,
   ttlSecondsForCooldown,
   inspectCooldownRecord,
@@ -22,14 +26,151 @@ const {
   applyCompareAndDelete,
   maxDeadlineSetCommand,
   compareAndDelCommand,
+  legacyCooldownCompatibilityEnabled,
 } = createRequire(import.meta.url)('../scripts/_opensky-account-cooldown.cjs');
 
+function pushLuaValue(L, value) {
+  if (value === null || value === undefined) {
+    lua.lua_pushnil(L);
+  } else if (typeof value === 'boolean') {
+    lua.lua_pushboolean(L, value);
+  } else if (typeof value === 'number') {
+    lua.lua_pushnumber(L, value);
+  } else if (typeof value === 'string') {
+    lua.lua_pushstring(L, to_luastring(value));
+  } else {
+    const entries = Object.entries(value);
+    lua.lua_createtable(L, 0, entries.length);
+    for (const [key, entry] of entries) {
+      pushLuaValue(L, entry);
+      lua.lua_setfield(L, -2, to_luastring(key));
+    }
+  }
+}
+
+function pushLuaStringArray(L, values) {
+  lua.lua_createtable(L, values.length, 0);
+  values.forEach((value, index) => {
+    lua.lua_pushstring(L, to_luastring(String(value)));
+    lua.lua_seti(L, -2, index + 1);
+  });
+}
+
+function makeLuaRedis(initial = {}) {
+  const store = new Map(Object.entries(initial));
+  return {
+    store,
+    call(command, args) {
+      const verb = String(command).toUpperCase();
+      if (verb === 'GET') return store.get(args[0]) ?? null;
+      if (verb === 'SET') {
+        store.set(args[0], args[1]);
+        return 'OK';
+      }
+      throw new Error('Redis double: unimplemented ' + verb);
+    },
+  };
+}
+
+function runMaxDeadlineSet(redis, record, keys = [OPENSKY_COOLDOWN_KEY]) {
+  const command = maxDeadlineSetCommand(
+    keys,
+    record,
+    ttlSecondsForCooldown(record.cooldownMs),
+  );
+  const L = lauxlib.luaL_newstate();
+  lualib.luaL_openlibs(L);
+
+  lua.lua_createtable(L, 0, 1);
+  lua.lua_pushjsclosure(L, (S) => {
+    const args = [];
+    for (let index = 2; index <= lua.lua_gettop(S); index += 1) {
+      args.push(to_jsstring(lua.lua_tostring(S, index)));
+    }
+    const result = redis.call(to_jsstring(lua.lua_tostring(S, 1)), args);
+    if (result === null) lua.lua_pushnil(S);
+    else if (typeof result === 'number') lua.lua_pushnumber(S, result);
+    else lua.lua_pushstring(S, to_luastring(result));
+    return 1;
+  }, 0);
+  lua.lua_setfield(L, -2, to_luastring('call'));
+  lua.lua_setglobal(L, to_luastring('redis'));
+
+  lua.lua_createtable(L, 0, 1);
+  lua.lua_pushjsclosure(L, (S) => {
+    pushLuaValue(S, JSON.parse(to_jsstring(lua.lua_tostring(S, 1))));
+    return 1;
+  }, 0);
+  lua.lua_setfield(L, -2, to_luastring('decode'));
+  lua.lua_setglobal(L, to_luastring('cjson'));
+
+  const keyCount = Number(command[2]);
+  pushLuaStringArray(L, command.slice(3, 3 + keyCount));
+  lua.lua_setglobal(L, to_luastring('KEYS'));
+  pushLuaStringArray(L, command.slice(3 + keyCount));
+  lua.lua_setglobal(L, to_luastring('ARGV'));
+
+  const errorText = () => {
+    const message = lua.lua_tostring(L, -1);
+    return message ? to_jsstring(message) : '<no Lua error message>';
+  };
+  assert.equal(lauxlib.luaL_loadstring(L, to_luastring(OPENSKY_MAX_DEADLINE_SET_LUA)), lua.LUA_OK, errorText());
+  assert.equal(lua.lua_pcall(L, 0, 1, 0), lua.LUA_OK, errorText());
+  return lua.lua_tonumber(L, -1);
+}
+
 test('shared cooldown key and fingerprint stay stable across processes', () => {
-  assert.equal(OPENSKY_COOLDOWN_KEY, 'opensky:cooldown-until:v1');
+  assert.equal(OPENSKY_COOLDOWN_KEY, 'opensky:cooldown-until:v2');
+  assert.equal(OPENSKY_LEGACY_COOLDOWN_KEY, 'opensky:cooldown-until:v1');
   assert.equal(accountFingerprint('test-client'), accountFingerprint('test-client'));
   assert.notEqual(accountFingerprint('test-client'), accountFingerprint('other-client'));
+  const account = accountFingerprint('test-client');
+  assert.equal(cooldownKeyForAccount(account), OPENSKY_COOLDOWN_KEY + ':' + account);
+  assert.notEqual(cooldownKeyForAccount(account), cooldownKeyForAccount(accountFingerprint('other-client')));
+  assert.equal(cooldownKeyForAccount(null), OPENSKY_COOLDOWN_KEY + ':unknown');
   assert.equal(accountFingerprint(''), null);
   assert.equal(accountFingerprint(), null);
+});
+
+test('legacy compatibility has a finite cutoff', () => {
+  const cutoff = '2026-09-07T00:00:00.000Z';
+  assert.equal(legacyCooldownCompatibilityEnabled({
+    now: Date.parse('2026-09-06T23:59:59.999Z'),
+    cutoff,
+  }), true);
+  assert.equal(legacyCooldownCompatibilityEnabled({
+    now: Date.parse(cutoff),
+    cutoff,
+  }), false);
+  assert.equal(legacyCooldownCompatibilityEnabled({
+    now: Date.parse('2026-09-08T00:00:00.000Z'),
+    cutoff,
+  }), false);
+});
+
+test('max-deadline command can atomically target account and legacy keys', () => {
+  const account = accountFingerprint('test-client');
+  const accountKey = cooldownKeyForAccount(account);
+  const record = buildCooldownRecord({
+    now: 1_700_000_000_000,
+    cooldownMs: 10 * 60_000,
+    account,
+    recordedBy: 'ais-relay',
+  });
+  const command = maxDeadlineSetCommand(
+    [accountKey, OPENSKY_LEGACY_COOLDOWN_KEY],
+    record,
+    ttlSecondsForCooldown(record.cooldownMs),
+  );
+
+  assert.equal(command[2], '2');
+  assert.deepEqual(command.slice(3, 5), [accountKey, OPENSKY_LEGACY_COOLDOWN_KEY]);
+  assert.deepEqual(JSON.parse(command[5]), record);
+
+  const redis = makeLuaRedis();
+  assert.equal(runMaxDeadlineSet(redis, record, [accountKey, OPENSKY_LEGACY_COOLDOWN_KEY]), 2);
+  assert.equal(redis.store.get(accountKey), JSON.stringify(record));
+  assert.equal(redis.store.get(OPENSKY_LEGACY_COOLDOWN_KEY), JSON.stringify(record));
 });
 
 test('clamp uses the caller fallback and caps at 24h', () => {
@@ -74,6 +215,51 @@ test('inspectCooldownRecord fails open on corrupt, mismatched, and implausible r
     inspectCooldownRecord({ until: now - 1, account }, { account, now }).remainingMs,
     0,
   );
+});
+
+test('inspectCooldownRecord retains a valid maximum cooldown across small writer-reader clock skew', () => {
+  const account = accountFingerprint('test-client');
+  const recordedAt = 1_700_000_000_000;
+  const record = buildCooldownRecord({
+    now: recordedAt,
+    cooldownMs: OPENSKY_MAX_COOLDOWN_MS,
+    account,
+    recordedBy: 'seed-military-flights',
+  });
+
+  const inspected = inspectCooldownRecord(record, {
+    account,
+    now: recordedAt - 1,
+  });
+  assert.equal(inspected.remainingMs, OPENSKY_MAX_COOLDOWN_MS);
+  assert.equal(inspected.ignoreReason, undefined);
+
+  const atSkewLimit = inspectCooldownRecord(record, {
+    account,
+    now: recordedAt - OPENSKY_MAX_CLOCK_SKEW_MS,
+  });
+  assert.equal(atSkewLimit.remainingMs, OPENSKY_MAX_COOLDOWN_MS);
+
+  const malformed = inspectCooldownRecord(
+    { ...record, cooldownMs: String(record.cooldownMs) },
+    { account, now: recordedAt - 1 },
+  );
+  assert.equal(malformed.remainingMs, 0);
+  assert.equal(malformed.ignoreReason, 'implausible-deadline');
+
+  const inconsistent = inspectCooldownRecord(
+    { ...record, cooldownMs: record.cooldownMs - 1 },
+    { account, now: recordedAt - 1 },
+  );
+  assert.equal(inconsistent.remainingMs, 0);
+  assert.equal(inconsistent.ignoreReason, 'implausible-deadline');
+
+  const farFuture = inspectCooldownRecord(record, {
+    account,
+    now: recordedAt - OPENSKY_MAX_CLOCK_SKEW_MS - 1,
+  });
+  assert.equal(farFuture.remainingMs, 0);
+  assert.equal(farFuture.ignoreReason, 'implausible-deadline');
 });
 
 test('relay and seeder records are interchangeable for a matching account', () => {
@@ -134,6 +320,35 @@ test('interleaved max-deadline writes keep the longer until', () => {
   assert.equal(applyMaxDeadlineWrite(lateLong, key, longRecord).reason, 'newer-deadline');
   assert.equal(JSON.parse(lateLong[key]).until, longRecord.until);
   assert.equal(JSON.parse(lateLong[key]).recordedBy, 'seed-military-flights');
+});
+
+test('account-scoped keys preserve a new-account cooldown during rotation', () => {
+  const t0 = 1_700_000_000_000;
+  const oldAccount = accountFingerprint('old-client');
+  const newAccount = accountFingerprint('new-client');
+  const oldKey = cooldownKeyForAccount(oldAccount);
+  const newKey = cooldownKeyForAccount(newAccount);
+  const newAccountLong = buildCooldownRecord({
+    now: t0,
+    cooldownMs: 10 * 60_000,
+    account: newAccount,
+    recordedBy: 'seed-military-flights',
+  });
+  const oldAccountLaterShort = buildCooldownRecord({
+    now: t0 + 1_000,
+    cooldownMs: 90_000,
+    account: oldAccount,
+    recordedBy: 'ais-relay',
+  });
+  const store = {};
+
+  applyMaxDeadlineWrite(store, newKey, newAccountLong);
+  applyMaxDeadlineWrite(store, oldKey, oldAccountLaterShort);
+
+  assert.notEqual(oldKey, newKey);
+  assert.equal(JSON.parse(store[newKey]).account, newAccount);
+  assert.equal(JSON.parse(store[newKey]).until, newAccountLong.until);
+  assert.equal(inspectCooldownRecord(JSON.parse(store[newKey]), { account: newAccount, now: t0 }).remainingMs, 600_000);
 });
 
 test('compare-and-delete refuses a stale success after a newer longer cooldown', () => {
@@ -212,6 +427,9 @@ test('EVAL command builders carry the shared Lua and compare args', () => {
   assert.equal(setCmd[3], OPENSKY_COOLDOWN_KEY);
   assert.equal(JSON.parse(setCmd[4]).until, record.until);
   assert.equal(setCmd[6], String(record.until));
+  assert.equal(setCmd[7], record.account);
+  assert.match(OPENSKY_MAX_DEADLINE_SET_LUA, /type\(existing\) == 'table'/);
+  assert.match(OPENSKY_MAX_DEADLINE_SET_LUA, /existing\['account'\] == incomingAccount/);
 
   const delCmd = compareAndDelCommand(OPENSKY_COOLDOWN_KEY, {
     expectedJson: JSON.stringify(record),
@@ -224,14 +442,69 @@ test('EVAL command builders carry the shared Lua and compare args', () => {
   assert.equal(delCmd[6], String(record.recordedAt));
 });
 
+test('max-deadline Lua self-heals scalars and respects OpenSky account rotation', () => {
+  const key = OPENSKY_COOLDOWN_KEY;
+  const t0 = 1_700_000_000_000;
+  const oldAccount = accountFingerprint('old-client');
+  const newAccount = accountFingerprint('new-client');
+  const scalarRepair = buildCooldownRecord({
+    now: t0,
+    cooldownMs: 90_000,
+    account: newAccount,
+    recordedBy: 'ais-relay',
+  });
+  const redis = makeLuaRedis({ [key]: JSON.stringify('legacy-scalar') });
+
+  assert.equal(runMaxDeadlineSet(redis, scalarRepair), 1);
+  assert.equal(redis.store.get(key), JSON.stringify(scalarRepair));
+
+  const oldAccountLong = buildCooldownRecord({
+    now: t0,
+    cooldownMs: 10 * 60_000,
+    account: oldAccount,
+    recordedBy: 'seed-military-flights',
+  });
+  const newAccountShort = buildCooldownRecord({
+    now: t0 + 1_000,
+    cooldownMs: 90_000,
+    account: newAccount,
+    recordedBy: 'ais-relay',
+  });
+  redis.store.set(key, JSON.stringify(oldAccountLong));
+
+  assert.equal(runMaxDeadlineSet(redis, newAccountShort), 1);
+  assert.equal(redis.store.get(key), JSON.stringify(newAccountShort));
+
+  const newAccountLong = buildCooldownRecord({
+    now: t0 + 2_000,
+    cooldownMs: 10 * 60_000,
+    account: newAccount,
+    recordedBy: 'seed-military-flights',
+  });
+  const newAccountLaterShort = buildCooldownRecord({
+    now: t0 + 3_000,
+    cooldownMs: 90_000,
+    account: newAccount,
+    recordedBy: 'ais-relay',
+  });
+  redis.store.set(key, JSON.stringify(newAccountLong));
+
+  assert.equal(runMaxDeadlineSet(redis, newAccountLaterShort), 0);
+  assert.equal(redis.store.get(key), JSON.stringify(newAccountLong));
+});
+
 test('relay and seeder wire the shared atomic helpers instead of SET/DEL', () => {
   const relay = readFileSync(join(here, '../scripts/ais-relay.cjs'), 'utf8');
   const seeder = readFileSync(join(here, '../scripts/seed-military-flights.mjs'), 'utf8');
   assert.match(relay, /maxDeadlineSetCommand/);
   assert.match(relay, /OPENSKY_MAX_DEADLINE_SET_LUA/);
+  assert.match(relay, /cooldownKeyForAccount/);
+  assert.match(relay, /OPENSKY_LEGACY_COOLDOWN_KEY/);
   assert.doesNotMatch(relay, /upstashSet\(OPENSKY_COOLDOWN_KEY/);
   assert.match(seeder, /maxDeadlineSetCommand/);
   assert.match(seeder, /compareAndDelCommand/);
+  assert.match(seeder, /cooldownKeyForAccount/);
+  assert.match(seeder, /OPENSKY_LEGACY_COOLDOWN_KEY/);
   assert.doesNotMatch(seeder, /redisSet\(\s*[\s\S]*OPENSKY_COOLDOWN_KEY/);
   assert.doesNotMatch(seeder, /redisDel\(\s*[\s\S]*OPENSKY_COOLDOWN_KEY/);
 });
