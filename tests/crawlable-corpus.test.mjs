@@ -796,7 +796,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.sources.count, 1);
-      assert.equal(manifest.generatorContentVersion, '2026-08-29');
+      assert.equal(manifest.generatorContentVersion, '2026-08-30');
       const sitemapEntries = buildSitemapEntries({
         repoRoot,
         publicDir: outDir,
