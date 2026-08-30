@@ -141,11 +141,18 @@ describe('agent readiness: Agent Plugins manifest', () => {
       );
     }
     assert.match(publicLlms, /repository package/i);
-    for (const relativePath of ['public/agents.md', 'public/developers.md', 'public/developers/llms.txt']) {
+    const repositoryPackage = /repository\s+package/i;
+    for (const relativePath of [
+      'public/agents.md',
+      'public/developers.md',
+      'public/developers/llms.txt',
+      'public/home.md',
+      'public/agent.txt',
+    ]) {
       const body = readFileSync(join(ROOT, relativePath), 'utf-8');
       assert.match(
         body,
-        /repository package/i,
+        repositoryPackage,
         `${relativePath} must describe the Agent Plugin as a repository package`,
       );
     }
