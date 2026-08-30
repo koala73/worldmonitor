@@ -6,6 +6,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 import { regionForCountry } from './shared/geography.js';
 import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
+import { METHODOLOGY_VERSION as PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION } from './lib/physical-divergence.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -990,7 +991,7 @@ function extractPhysicalPremiumRegimeTransition(d) {
       || transition.detectedAt > nowMs
       || typeof transition?.id !== 'string'
       || transition.id !== `physical-premium:${transition.metal}:${transition.fromRegime}-${transition.toRegime}:${transition.detectedAt}`
-      || transition.methodologyVersion !== 'physical-divergence-v1'
+      || transition.methodologyVersion !== PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION
     ) return [];
     // Freshness is per transitioning metal — the other metal may still be
     // ramping (insufficient_history) or independently stale without suppressing

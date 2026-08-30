@@ -13,7 +13,7 @@ description: "WorldMonitor 如何用稳健历史、明确数据状态和仅限�
 
 Seeder 按实物公布日期把黄金和白银分别写入 `market:physical-premium-history:v1:gold` 与 `market:physical-premium-history:v1:silver`。同一日期会替换旧点。写入、去重和截断在一个 Redis 操作中完成。每个列表最多保留 750 点，分类器使用最新 250 点，至少需要 60 个有效点。
 
-每个点和响应都声明 `methodologyVersion: physical-divergence-v1`。
+每个点和响应都声明 `methodologyVersion: physical-divergence-v2`。
 
 ```text
 稳健 z = 0.67448975 * (当前值 - 中位数) / MAD
@@ -35,7 +35,20 @@ MAD = median(abs(历史值 - 中位数))
 
 相对百分位阈值为 80、95 和 99，分别进入 `elevated`、`stressed` 和 `extreme`。因此，黄金溢价达到 3% 时至少为 `stressed`，即使历史窗口中还有更高值。
 
-单金属压力指数范围为 0 到 100，并在绝对阈值之间分段插值。相对状态同时设置 0、50、75 或 100 的下限。综合指数为 `70% 黄金 + 30% 白银`，且只在两个金属状态均为 `ok` 时发布。
+单金属压力指数范围为 0 到 100。绝对幅度在压缩后的分段顶点 45（elevated）、70（stressed）、以及略低于 90（接近 extreme；stressed 分段故意不到 90，避免两位小数舍入顶到 extreme 下限）之间插值；只有突破绝对 extreme 溢价阈值（黄金 5%、白银 20%）才发布 `100`。
+
+当相对阶梯超过绝对幅度时，`index` 仍表示**带状态有序下限的压力幅度**，不是百分位的副本：
+
+| 状态 | 指数下限 |
+| --- | ---: |
+| normal | 0 |
+| elevated | 45 |
+| stressed | 70 |
+| extreme | 90 |
+
+`index = max(absoluteStressIndex, regimeFloor)`。仅由相对阶梯触发的 extreme 下限为 90，不会顶满 100，从而把刻度顶端留给绝对 extreme，并保证指数对状态等级单调：任何 `stressed` 读数的指数都不会高于任何 `extreme` 读数。`regime` 仍承载混合分类（绝对与相对取较高者）；百分位作为独立字段发布。
+
+综合指数为 `70% 黄金 + 30% 白银`，且只在两个金属状态均为 `ok` 时发布。
 
 ## 趋势和数据状态
 
@@ -61,3 +74,4 @@ MAD = median(abs(历史值 - 中位数))
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
 | `physical-divergence-v1` | 2026-08-30 | 首次发布有界历史、混合状态、明确数据状态、综合指数、趋势和转换信号。 |
+| `physical-divergence-v2` | 2026-08-30 | 指数下限压缩为 0 / 45 / 70 / 90；绝对分段顶点嵌在这些下限之下；`100` 留给绝对 extreme，避免仅相对 extreme 顶满刻度（#7423）。固定 `methodologyVersion` 的客户端应重新建立基线。 |

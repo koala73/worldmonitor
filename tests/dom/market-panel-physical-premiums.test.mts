@@ -40,7 +40,7 @@ function divergenceResponse(
       physicalAsOf: '2026-08-18',
       paperAsOf: Date.parse('2026-08-18T12:22:24.000Z'),
       historyKey: 'market:physical-premium-history:v1:gold',
-      methodologyVersion: 'physical-divergence-v1',
+      methodologyVersion: 'physical-divergence-v2',
       provenance: {
         physicalSource: 'Shanghai Gold Exchange SHAU PM benchmark',
         physicalSymbol: 'SHAU',
@@ -53,7 +53,7 @@ function divergenceResponse(
         fxAsOf: Date.parse('2026-08-18T12:28:48.000Z'),
         historyKey: 'market:physical-premium-history:v1:gold',
         historyWindowPoints: 250,
-        methodologyVersion: 'physical-divergence-v1',
+        methodologyVersion: 'physical-divergence-v2',
       },
     }],
     composite: {
@@ -61,13 +61,13 @@ function divergenceResponse(
       reason: ok ? '' : state.toLowerCase(),
       index: ok ? 62.5 : undefined,
       weights: [
-        { metal: 'gold', weight: 0.7, methodologyVersion: 'physical-divergence-v1' },
-        { metal: 'silver', weight: 0.3, methodologyVersion: 'physical-divergence-v1' },
+        { metal: 'gold', weight: 0.7, methodologyVersion: 'physical-divergence-v2' },
+        { metal: 'silver', weight: 0.3, methodologyVersion: 'physical-divergence-v2' },
       ],
-      methodologyVersion: 'physical-divergence-v1',
+      methodologyVersion: 'physical-divergence-v2',
     },
     evaluatedAt: Date.parse('2026-08-18T12:30:00.000Z'),
-    methodologyVersion: 'physical-divergence-v1',
+    methodologyVersion: 'physical-divergence-v2',
   };
 }
 

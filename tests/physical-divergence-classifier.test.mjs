@@ -48,7 +48,7 @@ function current(metal = 'gold', overrides = {}) {
   };
 }
 
-describe('physical divergence methodology v1', () => {
+describe('physical divergence methodology v2', () => {
   it('keeps the shared stale boundary inclusive through day 12', () => {
     const nowMs = Date.parse('2026-10-13T12:00:00.000Z');
     assert.equal(isPhysicalDivergencePrintStale('2026-10-01', nowMs), false);
@@ -98,6 +98,168 @@ describe('physical divergence methodology v1', () => {
     assert.equal(classifyPhysicalPremiumRegime('gold', 0.5, 100), 'extreme');
     assert.equal(classifyPhysicalPremiumRegime('silver', 2.4999, 100), 'normal');
     assert.equal(classifyPhysicalPremiumRegime('silver', 2.5, 100), 'extreme');
+  });
+
+  it('keeps index monotonic in regime rank and reserves 100 for absolute extreme (#7423)', () => {
+    // Relative-only extreme: gold at half the elevated floor topping a calm window.
+    // Absolute stress for 0.5% is well below the extreme premium floor; the published index
+    // must still clear every stressed reading without saturating the 0–100 scale at 100.
+    const relativeExtreme = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 0.5, premiumUsdPerOz: 15 }),
+      history: [
+        point(0, 0.5),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 0.1)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(relativeExtreme.state, 'ok');
+    assert.equal(relativeExtreme.regime, 'extreme');
+    assert.equal(relativeExtreme.percentile, 100);
+    assert.equal(relativeExtreme.index, 90);
+    assert.ok(relativeExtreme.index < 100);
+
+    // Absolute stressed just under the extreme premium floor. Trailing values sit higher so
+    // the relative ladder cannot escalate past absolute magnitude.
+    const absoluteStressed = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 4.999, premiumUsdPerOz: 149.97 }),
+      history: [
+        point(0, 4.999),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 12)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(absoluteStressed.state, 'ok');
+    assert.equal(absoluteStressed.regime, 'stressed');
+    assert.ok(absoluteStressed.index < relativeExtreme.index);
+    assert.ok(absoluteStressed.index >= 70);
+    assert.ok(absoluteStressed.index < 90);
+
+    // Near-ceiling absolute stressed must stay strictly below the extreme floor after the
+    // published two-decimal round (a full *20 span would round 4.9995+ up to 90).
+    const nearCeilingStressed = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 4.9999, premiumUsdPerOz: 149.997 }),
+      history: [
+        point(0, 4.9999),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 12)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(nearCeilingStressed.regime, 'stressed');
+    assert.ok(nearCeilingStressed.index < 90);
+    assert.ok(nearCeilingStressed.index < relativeExtreme.index);
+
+    // Absolute extreme clears the metal floor and alone may publish 100.
+    const absoluteExtreme = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 5, premiumUsdPerOz: 150 }),
+      history: [
+        point(0, 5),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 12)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(absoluteExtreme.state, 'ok');
+    assert.equal(absoluteExtreme.regime, 'extreme');
+    assert.equal(absoluteExtreme.index, 100);
+
+    // Silver mirrors the same compressed floors with its own absolute thresholds.
+    const silverRelativeExtreme = buildPhysicalDivergenceReading({
+      metal: 'silver',
+      current: current('silver', { premiumPct: 2.5, premiumUsdPerOz: 0.75 }),
+      history: [
+        point(0, 2.5),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 0.5)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    const silverNearCeilingStressed = buildPhysicalDivergenceReading({
+      metal: 'silver',
+      current: current('silver', { premiumPct: 19.999, premiumUsdPerOz: 6 }),
+      history: [
+        point(0, 19.999),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 40)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    const silverAbsoluteExtreme = buildPhysicalDivergenceReading({
+      metal: 'silver',
+      current: current('silver', { premiumPct: 20, premiumUsdPerOz: 6 }),
+      history: [
+        point(0, 20),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 40)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(silverRelativeExtreme.regime, 'extreme');
+    assert.equal(silverRelativeExtreme.index, 90);
+    assert.equal(silverNearCeilingStressed.regime, 'stressed');
+    assert.ok(silverNearCeilingStressed.index < 90);
+    assert.equal(silverAbsoluteExtreme.regime, 'extreme');
+    assert.equal(silverAbsoluteExtreme.index, 100);
+
+    // Relative stressed at the half-elevated gate with percentile exactly 95
+    // (57 of 60 window values at or below the current premium).
+    const relativeStressed = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 0.5, premiumUsdPerOz: 15 }),
+      history: [
+        point(0, 0.5),
+        ...Array.from({ length: 56 }, (_, index) => point(index + 1, 0.1)),
+        ...Array.from({ length: 3 }, (_, index) => point(index + 57, 0.6)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(relativeStressed.regime, 'stressed');
+    assert.equal(relativeStressed.percentile, 95);
+    assert.equal(relativeStressed.index, 70);
+
+    // Absolute normal / elevated with higher trailing values so relative stays quiet.
+    const absoluteNormal = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 0.4, premiumUsdPerOz: 12 }),
+      history: [
+        point(0, 0.4),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 2)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    const absoluteElevated = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { premiumPct: 2.5, premiumUsdPerOz: 75 }),
+      history: [
+        point(0, 2.5),
+        ...Array.from({ length: 59 }, (_, index) => point(index + 1, 10)),
+      ],
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    assert.equal(absoluteNormal.regime, 'normal');
+    assert.equal(absoluteElevated.regime, 'elevated');
+    assert.ok(absoluteNormal.index < 45);
+    assert.ok(absoluteElevated.index >= 45);
+    assert.ok(absoluteElevated.index < 70);
+
+    const maxOf = (...readings) => Math.max(...readings.map((reading) => reading.index));
+    const minOf = (...readings) => Math.min(...readings.map((reading) => reading.index));
+    // Stressed must never strictly outscore extreme; lower bands stay at or below higher ones.
+    assert.ok(maxOf(absoluteNormal) <= minOf(absoluteElevated));
+    assert.ok(maxOf(absoluteElevated) <= minOf(absoluteStressed, relativeStressed, nearCeilingStressed));
+    assert.ok(
+      maxOf(absoluteStressed, relativeStressed, nearCeilingStressed, silverNearCeilingStressed)
+        < minOf(relativeExtreme, absoluteExtreme, silverRelativeExtreme, silverAbsoluteExtreme),
+    );
   });
 
   it('uses median and MAD instead of mean and standard deviation under an outlier', () => {
