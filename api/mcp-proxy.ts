@@ -6,6 +6,8 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
+import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
+import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
@@ -578,7 +580,16 @@ async function handleListTools(req: Request, cors: Record<string, string>, meta:
 }
 
 async function handleCallTool(req: Request, cors: Record<string, string>, meta: ProxyMeta): Promise<Response> {
-  const body = await req.json();
+  let body;
+  try {
+    const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
+    body = JSON.parse(new TextDecoder().decode(bodyBytes));
+  } catch (err) {
+    if (err instanceof RequestBodyTooLargeError) {
+      return jsonResponse({ error: err.message }, 413, cors);
+    }
+    return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
+  }
   const { serverUrl: rawServer, toolName, toolArgs, customHeaders } = body;
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
   if (!toolName) return jsonResponse({ error: 'Missing toolName' }, 400, cors);

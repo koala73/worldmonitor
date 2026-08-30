@@ -14,12 +14,13 @@
 // Genuine tool-execution failures deliberately stay `isError` results — the
 // MCP spec reserves top-level errors for protocol-level failures only.
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
+import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 
 export const config = { runtime: 'edge' };
 
 const UPSTREAM_URL = 'https://worldmonitor.mintlify.dev/docs/mcp';
 const UPSTREAM_TIMEOUT_MS = 30_000;
-const MAX_REQUEST_BODY_BYTES = 262_144; // mirrors the MCP JMESPath output cap
 const RATE_LIMIT_ERROR_CODE = -32029; // JSON-RPC code mirrored from api/mcp.ts
 
 const RATE_LIMIT_SCOPE = '/api/docs-mcp';
@@ -237,9 +238,15 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(upstream.body, { status: upstream.status, headers: upstreamResponseHeaders(upstream) });
   }
 
-  const bodyBytes = await req.arrayBuffer();
-  if (bodyBytes.byteLength > MAX_REQUEST_BODY_BYTES) {
-    return jsonRpcErrorResponse(413, null, -32600, `Request body exceeds ${MAX_REQUEST_BODY_BYTES} bytes`);
+  // Same shared MCP JSON-RPC body cap as `/api/mcp` (#7406).
+  let bodyBytes: Uint8Array;
+  try {
+    bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
+  } catch (err) {
+    if (err instanceof RequestBodyTooLargeError) {
+      return jsonRpcErrorResponse(413, null, -32600, err.message);
+    }
+    return jsonRpcErrorResponse(400, null, -32600, 'Invalid request body');
   }
   const bodyText = new TextDecoder().decode(bodyBytes);
   const classified = classifyJsonRpcRequest(bodyText);

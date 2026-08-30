@@ -332,6 +332,13 @@ export const MCP_LOG_LEVELS: ReadonlySet<string> = new Set([
 export const JMESPATH_MAX_EXPR_BYTES = 1024;
 export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 
+// Re-export so existing `api/mcp.ts` / test imports keep working. Definition
+// lives in `./body-limits` so Edge facades can import the cap without the
+// MCP upgrade/attribution module graph. Imported (not just re-exported) because
+// a bare `export ... from` creates no local binding for SERVER_INSTRUCTIONS.
+import { MAX_JSON_RPC_BODY_BYTES } from './body-limits';
+export { MAX_JSON_RPC_BODY_BYTES };
+
 // tools/list tool-description compression cap (v1.5.0). Defined here
 // rather than near `compressDescription` so SERVER_INSTRUCTIONS can
 // quote it without a temporal-dead-zone error. The compressDescription
@@ -353,7 +360,7 @@ const JMESPATH_SPEC_URL = 'https://jmespath.org/specification.html';
 export const SERVER_INSTRUCTIONS = [
   `Use optional \`jmespath\` only when a tool input schema advertises it. Server-side projection is applied AFTER per-tool filter/summary; attribution-bound tools can omit it. Typical 80-95% token reduction. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,
   '',
-  `Limits: expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
+  `Limits: request body ≤ ${MAX_JSON_RPC_BODY_BYTES}B (over-cap POSTs are rejected before parsing with HTTP 413 + -32600 and error.data.reason 'body-too-large'; shrink the payload, do not retry it), expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',
   `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt (still counts toward the 60/min rate limit), so use freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
