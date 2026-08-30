@@ -132,6 +132,62 @@ describe('resolveCountryCode — the ladder', () => {
     // and `China (Taiwan)` as CN. Ambiguous input must fail, not guess.
     assert.equal(resolveCountryCode('Congo (DRC)'), null);
     assert.equal(resolveCountryCode('China (Taiwan)'), null);
+    // The name map holds composite keys that are territorial CLAIMS, not names
+    // (`morocco western sahara` -> MA), so recombination alone would answer
+    // Morocco here. The disagreement gate must run first.
+    assert.equal(resolveCountryCode('Western Sahara (Morocco)'), null);
+  });
+
+  it('still resolves a two-letter modifier that is not itself a country name', () => {
+    // Regression guard on the gate above: comparing via the full ladder rather
+    // than name-map hits would let `DR` self-resolve as bare alpha-2, read this
+    // as a disagreement, and reject a perfectly good designator.
+    assert.equal(resolveCountryCode('Congo (DR)'), 'CD');
+    assert.equal(resolveCountryCode('Republic of Korea (Democratic)'), 'KP');
+  });
+
+  it('rejects an over-long designator without doing quadratic work', () => {
+    // The parenthetical match is quadratic in input length and the argument
+    // arrives from an LLM over the network: ~192KB burned ~46s of Edge CPU per
+    // request before the length gate. The assertion is on TIME, because the
+    // return value was already null — nothing else in the suite would notice.
+    const pathological = 'a ('.repeat(64_000);
+    const started = Date.now();
+    assert.equal(resolveCountryCode(pathological), null);
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed < 250, `resolution took ${elapsed}ms — the length gate is not holding`);
+  });
+
+  it('accepts the longest real designator in the shipped data', () => {
+    // Positive control for the length cap: prove it is not so tight that it
+    // rejects genuine input.
+    const longest = Object.keys(COUNTRY_NAMES).reduce((a, b) => (b.length > a.length ? b : a), '');
+    assert.ok(longest.length > 20, `guard: expected a long key, got ${JSON.stringify(longest)}`);
+    assert.ok(resolveCountryCode(longest), `longest real name did not resolve: ${JSON.stringify(longest)}`);
+  });
+
+  // Generated sweep. The hand-written parenthetical cases all use inputs whose
+  // stem is unambiguous — precisely the ones that could not catch a stem
+  // collapse. For every multi-word name, drop one token: where the remaining
+  // stem is itself a key for a DIFFERENT country, `<stem> (<dropped>)` must
+  // never silently answer as the stem's country.
+  it('never collapses a split name onto a different country', () => {
+    const names = COUNTRY_NAMES as Record<string, string>;
+    const wrong: Array<{ probe: string; got: string | null; stem: string }> = [];
+    for (const [key, iso2] of Object.entries(names)) {
+      const tokens = key.split(' ');
+      if (tokens.length < 2) continue;
+      for (let i = 0; i < tokens.length; i++) {
+        const stem = [...tokens.slice(0, i), ...tokens.slice(i + 1)].join(' ');
+        const stemIso2 = names[stem];
+        if (!stemIso2 || stemIso2 === iso2) continue;
+        const probe = `${stem} (${tokens[i]})`;
+        const got = resolveCountryCode(probe);
+        if (got === stemIso2) wrong.push({ probe, got, stem });
+      }
+    }
+    assert.deepEqual(wrong, [],
+      'a dropped token must not leave the answer pointing at the stem country');
   });
 
   it('returns null rather than guessing', () => {
@@ -415,6 +471,19 @@ describe('country tools resolve their argument end-to-end', () => {
         'the violation must name the offending value so an agent can self-correct');
     });
   }
+
+  it('rejects a non-string country_code as -32602 rather than crashing', async () => {
+    // `{"toString":"x"}` is legal JSON. The error formatter used to run
+    // `String(raw)`, which invokes the value's own toString — shadowed here by
+    // a non-callable string — throwing `Cannot convert object to primitive
+    // value` and turning a clean 400 into a 500. The guard crashed instead of
+    // guarding.
+    const urls = stubDownstream({});
+    const rpc = await callTool('get_country_risk', { country_code: { toString: 'x' } });
+    assert.equal(urls.length, 0, `must not call downstream: ${JSON.stringify(urls)}`);
+    assert.equal(rpc.error?.code, -32602, `expected a validation error: ${JSON.stringify(rpc).slice(0, 400)}`);
+    assert.equal(rpc.error?.data?.violations?.[0]?.field, 'country_code');
+  });
 
   for (const tool of ['get_airspace', 'get_maritime_activity']) {
     it(`${tool} reports an unresolvable country without querying another`, async () => {

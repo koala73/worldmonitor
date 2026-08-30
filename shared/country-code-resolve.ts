@@ -132,10 +132,26 @@ function resolveDesignator(value: string): string | null {
   return null;
 }
 
+/**
+ * Upper bound on a caller-supplied designator, checked before any regex or
+ * Unicode work runs.
+ *
+ * The parenthetical match below is quadratic in the input length, and the
+ * argument comes from an LLM over the network with no length limit of its own:
+ * a ~192KB value burned ~46s of Edge CPU per request. NFKD compounds it (U+FDFA
+ * expands one character to eighteen) and the `&` pass adds another 5x, all
+ * ahead of the regex. One gate closes both. The longest real designator in the
+ * shipped data is 32 characters (`democratic republic of the congo`), so this
+ * is generous. Mirrors the repo's other untrusted-string caps —
+ * `JMESPATH_MAX_EXPR_BYTES` (api/mcp/constants.ts) and `MAX_JSON_RPC_ID_BYTES`
+ * (api/mcp/handler.ts).
+ */
+const MAX_DESIGNATOR_LENGTH = 128;
+
 export function resolveCountryCode(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
-  if (trimmed.length === 0) return null;
+  if (trimmed.length === 0 || trimmed.length > MAX_DESIGNATOR_LENGTH) return null;
 
   const whole = resolveDesignator(trimmed);
   if (whole) return whole;
@@ -146,18 +162,42 @@ export function resolveCountryCode(raw: unknown): string | null {
   // as CN. In curated feed data the parenthetical is a historical alias
   // (`Russia (Soviet Union)`); in caller text it is usually a DISAMBIGUATOR,
   // and the two readings point at different countries.
-  const parenthetical = trimmed.match(/^(.*?)\s*\(([^)]*)\)$/);
+  const parenthetical = trimmed.match(/^([^(]*)\s*\(([^)]*)\)$/);
   if (!parenthetical) return null;
-  const base = parenthetical[1].trim();
-  const inner = parenthetical[2].trim();
+  const base = (parenthetical[1] ?? '').trim();
+  const inner = (parenthetical[2] ?? '').trim();
   if (!base || !inner) return resolveDesignator(base || inner);
 
-  // A recombination that lands on an exact key in the curated name map is
-  // unambiguous by construction — it IS that country's name. This is what
-  // turns `Samoa (American)` into AS, `Sudan (South)` into SS and
-  // `Guinea (Equatorial)` into GQ instead of their larger neighbours.
-  for (const combined of [`${inner} ${base}`, `${base} ${inner}`]) {
-    const hit = asIso2(NAME_TO_ISO2[normalizeCountryToken(combined)]);
+  // Two sides that each NAME a different country make the input ambiguous, and
+  // this must be decided before recombination: the name map holds composite
+  // keys that are territorial claims rather than names (`morocco western
+  // sahara` -> MA), so `Western Sahara (Morocco)` would otherwise recombine
+  // onto Morocco and silently answer for the wrong country — the exact class
+  // this module exists to close, on a disputed territory.
+  //
+  // Compare NAME-map hits only, never resolveDesignator: its bare alpha-2
+  // passthrough makes a two-letter modifier like `DR` self-resolve, which would
+  // read `Congo (DR)` as a disagreement and reject a valid designator.
+  const baseName = asIso2(NAME_TO_ISO2[normalizeCountryToken(base)]);
+  const innerName = asIso2(NAME_TO_ISO2[normalizeCountryToken(inner)]);
+  if (baseName && innerName && baseName !== innerName) return null;
+
+  // A recombination that lands on an exact key in the curated name map names a
+  // single country. This turns `Samoa (American)` into AS, `Sudan (South)` into
+  // SS and `Guinea (Equatorial)` into GQ instead of their larger neighbours.
+  //
+  // Try every insertion position, not just the two ends: the parenthetical is
+  // often a token lifted from the MIDDLE of the name, so `congo rep (dem)`
+  // reassembles only as `congo dem rep` (CD) and appending it would have left
+  // the answer at CG. Any exact key hit is that country by definition, and the
+  // one family of keys where that is not true — composite territorial claims
+  // like `morocco western sahara` — is already rejected by the gate above.
+  // Bounded work: the input is length-capped, so this is a handful of lookups.
+  const baseTokens = normalizeCountryToken(base).split(' ').filter(Boolean);
+  const innerToken = normalizeCountryToken(inner);
+  for (let at = 0; at <= baseTokens.length; at++) {
+    const combined = [...baseTokens.slice(0, at), innerToken, ...baseTokens.slice(at)].join(' ');
+    const hit = asIso2(NAME_TO_ISO2[combined]);
     if (hit) return hit;
   }
 

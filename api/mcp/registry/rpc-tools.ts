@@ -45,7 +45,13 @@ type McpBriefSource = {
 const MAX_ECHOED_COUNTRY_INPUT = 64;
 
 function echoCountryInput(raw: unknown): string {
-  const text = typeof raw === 'string' ? raw.trim() : String(raw ?? '');
+  // Never stringify a non-string. `String(x)` runs the value's own toString /
+  // valueOf, and `{"toString":"x"}` is legal JSON a caller can send: the
+  // shadowed, non-callable toString makes String() throw
+  // `TypeError: Cannot convert object to primitive value`. That turns this
+  // guard — whose whole job is to produce a clean 400 — into a 500. Describing
+  // the type is also more useful to the caller than `[object Object]`.
+  const text = typeof raw === 'string' ? raw.trim() : `<non-string ${typeof raw}>`;
   return text.length > MAX_ECHOED_COUNTRY_INPUT
     ? `${text.slice(0, MAX_ECHOED_COUNTRY_INPUT)}…`
     : text;
