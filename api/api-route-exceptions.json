@@ -713,6 +713,13 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
+    {
+      "path": "api/user/passkey-offer.ts",
+      "category": "internal-helper",
+      "reason": "Passkey-offer controller reservation endpoint. Clerk-authenticated; claims one of three account slots with Redis HSETNX so concurrent or stale browsers cannot lower or bypass the lifetime prompt cap. Clerk unsafe metadata remains a migration source and browser-readable terminal mirror. The unversioned response is private UI coordination state, not a product data API.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
 
     {
       "path": "api/latest-brief.ts",

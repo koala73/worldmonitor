@@ -37,14 +37,20 @@ describe('glossary data integrity', () => {
     }
   });
 
-  it('the short definition restates the term (answer-block shape)', () => {
+  it('short definitions stay answer-shaped and ≤25 words (#7381)', () => {
     // AEO/citation surfaces read the first sentence as a standalone answer;
-    // it should name the thing it defines, not open with a pronoun.
+    // it should name the thing it defines, not open with a pronoun, and stay
+    // short enough to quote before the body elaborates.
     for (const t of GLOSSARY_TERMS) {
       const needle = (t.abbr || t.term.split(' ')[0]).toLowerCase();
       assert.ok(
         t.short.toLowerCase().includes(needle),
         `short definition for ${t.slug} should name the term (looked for "${needle}")`
+      );
+      const wordCount = t.short.trim().split(/\s+/).length;
+      assert.ok(
+        wordCount <= 25,
+        `short definition for ${t.slug} is ${wordCount} words (max 25)`
       );
     }
   });

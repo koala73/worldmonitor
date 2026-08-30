@@ -60,21 +60,21 @@ describe('offline WebMCP eval corpus', () => {
     const coverage = validateEvalFixture(fixture);
 
     assert.deepEqual(fixture.toolInventory.imperative, getProductionImperativeToolNames());
-    assert.equal(coverage.caseCount, 35);
+    assert.equal(coverage.caseCount, 39);
     assert.deepEqual(coverage.categoryCounts, {
       dashboard_context: 6,
-      dashboard_control: 20,
+      dashboard_control: 24,
       country_brief: 2,
       search_selection: 3,
       procurement: 3,
       negative: 1,
     });
-    assert.equal(coverage.directCount, 28);
+    assert.equal(coverage.directCount, 32);
     assert.equal(coverage.ambiguousCount, 7);
     assert.equal(coverage.alternatePlanCaseCount, 3);
     assert.equal(coverage.failureCaseCount, 5);
     assert.equal(coverage.midChainFailureCaseCount, 4);
-    assert.equal(coverage.wrongToolNegativeCaseCount, 35);
+    assert.equal(coverage.wrongToolNegativeCaseCount, 39);
     assert.equal(coverage.symbolicBindingCount, 3);
   });
 
@@ -178,8 +178,8 @@ describe('offline WebMCP prediction scorer', () => {
 
     assert.equal(report.status, 'passed');
     assert.deepEqual(report.summary, {
-      total: 35,
-      passed: 35,
+      total: 39,
+      passed: 39,
       failed: 0,
       unexpected: 0,
     });
