@@ -686,7 +686,7 @@ it('still emits a gold transition when silver is insufficient_history', () => {
         fromRegime: 'normal',
         toRegime: 'elevated',
         detectedAt,
-        methodologyVersion: 'physical-divergence-v1',
+        methodologyVersion: 'physical-divergence-v2',
       }],
     },
   });
