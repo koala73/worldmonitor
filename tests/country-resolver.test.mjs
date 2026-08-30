@@ -57,13 +57,13 @@ describe('resolver parity', () => {
     'hong kong sar china': 'HK', 'iran islamic rep': 'IR',
     'korea dem peoples rep': 'KP', 'korea rep': 'KR', 'lao pdr': 'LA',
     'macao sar china': 'MO', 'micronesia fed sts': 'FM',
-    'morocco western sahara': 'MA', 'north macedonia': 'MK',
+    'north macedonia': 'MK',
     'occupied palestinian territory': 'PS', 'palestinian territories': 'PS',
     'palestine state of': 'PS', 'russian federation': 'RU',
     'slovak republic': 'SK', 'st kitts and nevis': 'KN', 'st lucia': 'LC',
     'st vincent and the grenadines': 'VC', 'syrian arab republic': 'SY',
     'the bahamas': 'BS', 'timor leste': 'TL', 'turkiye': 'TR',
-    'united states of america': 'US', 'venezuela rb': 'VE',
+    'u s': 'US', 'united states of america': 'US', 'venezuela rb': 'VE',
     'viet nam': 'VN', 'west bank and gaza': 'PS', 'yemen rep': 'YE',
   };
 
@@ -72,6 +72,29 @@ describe('resolver parity', () => {
       const result = resolveIso2({ name }, resolvers);
       assert.equal(result, expected, `"${name}" → ${result}, expected ${expected}`);
     }
+  });
+
+  // The fixture above is a hand-copy of COUNTRY_ALIAS_MAP in
+  // scripts/build-country-names.cjs, and a hand-copy drifts: `u s` sat in the
+  // generator for months while the fixture — and the generated JSON — lacked
+  // it, so `U.S.` resolved to null with nothing red. Pin the two together.
+  // Parsed from source rather than required: that module writes
+  // country-names.json at load, so requiring it would regenerate the data
+  // under test (same reason tests/notification-relay-country-scope-5359.test.mjs
+  // reads seed-aviation.mjs as text).
+  it('the fixture covers every COUNTRY_ALIAS_MAP entry in the generator', () => {
+    const src = readFileSync(resolve(root, 'scripts/build-country-names.cjs'), 'utf8');
+    const block = src.match(/const COUNTRY_ALIAS_MAP = \{([\s\S]*?)\n\};/);
+    assert.ok(block, 'guard: COUNTRY_ALIAS_MAP block not found — update this parser');
+    const declared = Object.fromEntries(
+      [...block[1].matchAll(/^\s*'([a-z][^']*)':\s*'([A-Z]{2})'/gm)].map((m) => [m[1], m[2]]),
+    );
+    assert.ok(Object.keys(declared).length >= 30,
+      `guard: parsed only ${Object.keys(declared).length} aliases — the parser has gone blind`);
+    assert.deepEqual(
+      Object.keys(declared).sort(), Object.keys(oldAliases).sort(),
+      'the generator alias table and this fixture have drifted — sync them',
+    );
   });
 
   it('resolves ISO3 codes', () => {

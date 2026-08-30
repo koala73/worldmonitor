@@ -1042,6 +1042,11 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
       assert.match(norway, /<meta name="twitter:card" content="summary_large_image">/);
       assert.match(norway, /href="\/docs\/methodology\/country-resilience-index"/);
+      assert.match(
+        norway,
+        /<img src="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png" alt="[^"]+" width="120" height="63"/,
+        'corpus pages must expose a real image for multimodal retrieval (#7382)',
+      );
 
       const corpusData = await loadCorpusData({ rootDir: repoRoot });
       const countryByCode = new Map(corpusData.countries.map((country) => [country.code, country]));
@@ -1263,6 +1268,11 @@ describe('crawlable corpus generator', () => {
       const norwayLd = jsonLdObjects(norway);
       const norwayWebPage = norwayLd.find((entry) => entry['@type'] === 'WebPage');
       assert.ok(norwayWebPage?.about?.['@type'] === 'Country' && norwayWebPage.about?.name === 'Norway');
+      assert.equal(norwayWebPage?.primaryImageOfPage?.['@type'], 'ImageObject');
+      assert.equal(
+        norwayWebPage?.primaryImageOfPage?.contentUrl,
+        'https://www.worldmonitor.app/favico/og-image.png',
+      );
       assert.ok(norwayLd.some((entry) => entry['@type'] === 'BreadcrumbList'));
       const switzerland = read(outDir, 'countries/switzerland/index.html');
       assert.match(switzerland, /<strong>Official name:<\/strong> Swiss Confederation/);
@@ -1554,6 +1564,8 @@ describe('crawlable corpus generator', () => {
       const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
       assert.match(hormuz, /<h1>Strait of Hormuz<\/h1>/);
       assert.match(hormuz, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/chokepoints\/strait-of-hormuz\/">/);
+      assert.match(hormuz, /about 20% of the world.s seaborne crude oil/);
+      assert.doesNotMatch(hormuz, /a very large share of the world.s seaborne crude oil/);
       // Deep-link CTA into the live map (pans to + opens the waterway popup).
       assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?chokepoint=hormuz_strait&amp;utm_source=seo-chokepoint">Open Strait of Hormuz on the live map/);
       assert.match(hormuz, /href="\/docs\/methodology\/chokepoints"/);
@@ -1797,8 +1809,11 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-08-29');
     assert.ok(data.sources.resilienceSnapshot.includes(data.resilience.capturedAt));
+    // Family lastmods use material + page/generator versions only — not the
+    // Dataset schema stamp that previously forced a shared build date (#7382).
     assert.equal(data.lastmod.countries, '2026-08-30');
     assert.equal(data.lastmod.research, '2026-08-30');
+    assert.equal(data.lastmod.chokepoints, '2026-08-30');
     assert.equal(
       data.lastmod.sources,
       sourcePageLastmod({

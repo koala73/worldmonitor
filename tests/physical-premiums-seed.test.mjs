@@ -599,6 +599,137 @@ describe('physical premium seed', () => {
     assert.equal(meta.inputFreshUntil, Date.parse('2026-08-30T16:00:00.000Z'));
   });
 
+  // #7424: insufficient_history is expected during the ~60-day ramp, so it must
+  // stay sourceState 'ok'. A drop below the published high-water mark is the
+  // regression that must turn the probe non-green — including after the bad
+  // depth has already been written once (prior-vs-current alone would clear).
+  it('keeps the initial history ramp green while raising the high-water mark', () => {
+    const nowMs = Date.parse('2026-08-18T12:30:00.000Z');
+    const day10 = {
+      readings: ['gold', 'silver'].map((metal) => ({
+        metal,
+        state: 'insufficient_history',
+        historyPoints: 10,
+        physicalAsOf: '2026-08-18',
+        paperAsOf: '2026-08-18T12:30:00.000Z',
+        provenance: { fxAsOf: '2026-08-18T12:30:00.000Z' },
+      })),
+      composite: { state: 'insufficient_history', reason: 'member_not_ok:gold:insufficient_history' },
+    };
+    const day10Meta = physicalDivergenceMeta(day10, nowMs);
+    assert.equal(day10Meta.sourceState, 'ok');
+    assert.equal(day10Meta.minHistoryPoints, 10);
+    assert.equal(day10Meta.maxHistoryPointsSeen, 10);
+
+    const day11 = {
+      readings: day10.readings.map((reading) => ({ ...reading, historyPoints: 11 })),
+      composite: day10.composite,
+    };
+    const day11Meta = physicalDivergenceMeta(day11, nowMs, day10Meta);
+    assert.equal(day11Meta.sourceState, 'ok');
+    assert.equal(day11Meta.minHistoryPoints, 11);
+    assert.equal(day11Meta.maxHistoryPointsSeen, 11);
+  });
+
+  it('marks a post-activation history regression degraded until depth recovers', () => {
+    const nowMs = Date.parse('2026-08-18T12:30:00.000Z');
+    const priorMeta = {
+      minHistoryPoints: 80,
+      maxHistoryPointsSeen: 80,
+      sourceState: 'ok',
+    };
+    const regressed = {
+      readings: ['gold', 'silver'].map((metal) => ({
+        metal,
+        state: 'insufficient_history',
+        historyPoints: metal === 'gold' ? 5 : 80,
+        physicalAsOf: '2026-08-18',
+        paperAsOf: '2026-08-18T12:30:00.000Z',
+        provenance: { fxAsOf: '2026-08-18T12:30:00.000Z' },
+      })),
+      composite: { state: 'insufficient_history', reason: 'member_not_ok:gold:insufficient_history' },
+    };
+
+    const first = physicalDivergenceMeta(regressed, nowMs, priorMeta);
+    assert.equal(first.sourceState, 'degraded');
+    assert.equal(first.minHistoryPoints, 5);
+    assert.equal(first.maxHistoryPointsSeen, 80);
+    assert.equal(first.sourceReason, 'history_points_regressed:min=5:max=80');
+
+    // Sustained at the low watermark must stay degraded — comparing only to the
+    // immediate prior snapshot would falsely clear after the first bad publish.
+    const sustained = physicalDivergenceMeta(regressed, nowMs, first);
+    assert.equal(sustained.sourceState, 'degraded');
+    assert.equal(sustained.maxHistoryPointsSeen, 80);
+
+    const recovered = {
+      readings: regressed.readings.map((reading) => ({ ...reading, historyPoints: 80, state: 'ok' })),
+      composite: { state: 'ok', reason: '' },
+    };
+    const recoveredMeta = physicalDivergenceMeta(recovered, nowMs, sustained);
+    assert.equal(recoveredMeta.sourceState, 'ok');
+    assert.equal(recoveredMeta.minHistoryPoints, 80);
+    assert.equal(recoveredMeta.maxHistoryPointsSeen, 80);
+  });
+
+  it('seeds the high-water mark from legacy minHistoryPoints when max is absent', () => {
+    const nowMs = Date.parse('2026-08-18T12:30:00.000Z');
+    const legacyPrior = { minHistoryPoints: 60, sourceState: 'ok' };
+    const regressed = {
+      readings: ['gold', 'silver'].map((metal) => ({
+        metal,
+        state: 'insufficient_history',
+        historyPoints: 0,
+        physicalAsOf: '2026-08-18',
+        paperAsOf: '2026-08-18T12:30:00.000Z',
+        provenance: { fxAsOf: '2026-08-18T12:30:00.000Z' },
+      })),
+      composite: { state: 'insufficient_history', reason: 'member_not_ok:gold:insufficient_history' },
+    };
+    const meta = physicalDivergenceMeta(regressed, nowMs, legacyPrior);
+    assert.equal(meta.sourceState, 'degraded');
+    assert.equal(meta.maxHistoryPointsSeen, 60);
+
+    // Input faults still outrank the history-regression grade.
+    regressed.readings[1].state = 'stale_input';
+    assert.equal(physicalDivergenceMeta(regressed, nowMs, legacyPrior).sourceState, 'stale');
+    regressed.readings[1].state = 'missing_input';
+    assert.equal(physicalDivergenceMeta(regressed, nowMs, legacyPrior).sourceState, 'error');
+  });
+
+  it('resets the high-water mark when methodology version changes', () => {
+    const nowMs = Date.parse('2026-08-18T12:30:00.000Z');
+    const priorMeta = {
+      minHistoryPoints: 250,
+      maxHistoryPointsSeen: 250,
+      methodologyVersion: `${METHODOLOGY_VERSION}-prior`,
+      sourceState: 'ok',
+    };
+    const ramping = {
+      readings: ['gold', 'silver'].map((metal) => ({
+        metal,
+        state: 'insufficient_history',
+        historyPoints: 5,
+        physicalAsOf: '2026-08-18',
+        paperAsOf: '2026-08-18T12:30:00.000Z',
+        provenance: { fxAsOf: '2026-08-18T12:30:00.000Z' },
+      })),
+      composite: { state: 'insufficient_history', reason: 'member_not_ok:gold:insufficient_history' },
+    };
+
+    const meta = physicalDivergenceMeta(ramping, nowMs, priorMeta);
+    assert.equal(meta.sourceState, 'ok');
+    assert.equal(meta.minHistoryPoints, 5);
+    assert.equal(meta.maxHistoryPointsSeen, 5);
+    assert.equal(meta.methodologyVersion, METHODOLOGY_VERSION);
+
+    // Same methodology still pins the high-water across a real regression.
+    priorMeta.methodologyVersion = METHODOLOGY_VERSION;
+    const sameMethodology = physicalDivergenceMeta(ramping, nowMs, priorMeta);
+    assert.equal(sameMethodology.sourceState, 'degraded');
+    assert.equal(sameMethodology.maxHistoryPointsSeen, 250);
+  });
+
   it('publishes bounded histories, the derived snapshot, metadata, and transition cooldowns', async () => {
     const payload = buildPhysicalPremiumPayload({
       goldRows: parseSgeBenchmarkHtml(goldHtml, { contract: 'SHAU', unit: 'gram' }),
@@ -664,18 +795,99 @@ describe('physical premium seed', () => {
       assert.equal(commands.filter(([verb]) => verb === 'EVAL').length, 4);
       assert.deepEqual(retryDelays, [250]);
       assert.ok(commands.some((command) => command[0] === 'GET' && command[1] === 'test:market:physical-divergence:v1'));
+      assert.ok(commands.some((command) => (
+        command[0] === 'GET' && command[1] === 'test:seed-meta:market:physical-divergence'
+      )));
       const publish = commands.find((command) => command[1] === PUBLISH_DIVERGENCE_LUA);
       assert.ok(publish);
       assert.equal(publish[3], 'test:market:physical-divergence:v1');
       assert.equal(publish[4], 'test:seed-meta:market:physical-divergence');
       assert.equal(publish[5], 'test:seed-activated:market:physical-divergence');
       const publishedKeys = publish.slice(3, 3 + Number(publish[2]));
+      const publishedMeta = JSON.parse(publish[3 + Number(publish[2]) + 1]);
+      assert.equal(publishedMeta.minHistoryPoints, 60);
+      assert.equal(publishedMeta.maxHistoryPointsSeen, 60);
+      assert.equal(publishedMeta.sourceState, 'ok');
       const cooldownWrites = publishedKeys.filter((key) => (
         key.startsWith('test:market:physical-divergence-transition-cooldown:v1:')
       ));
       assert.ok(snapshot.transitions.length > 0);
       assert.equal(cooldownWrites.length, snapshot.transitions.length);
       assert.equal(commands.some(([verb]) => verb === 'SET'), false);
+    } finally {
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    }
+  });
+
+  it('publishes degraded seed-meta when prior high-water history has regressed', async () => {
+    const payload = buildPhysicalPremiumPayload({
+      goldRows: parseSgeBenchmarkHtml(goldHtml, { contract: 'SHAU', unit: 'gram' }),
+      silverRows: parseSgeBenchmarkHtml(silverHtml, { contract: 'SHAG', unit: 'kilogram' }),
+      commodityQuotes: {
+        quotes: [{ symbol: 'GC=F', price: 4300 }, { symbol: 'SI=F', price: 70 }],
+      },
+      fxRates: { CNY: 0.1486, fallbackCurrencies: [] },
+      computedAt: '2026-08-18T12:30:00.000Z',
+    });
+    const shortHistories = Object.fromEntries(payload.premiums.map((premium) => [
+      premium.metal,
+      Array.from({ length: 5 }, (_, index) => ({
+        date: new Date(Date.parse('2026-08-18T00:00:00.000Z') - index * 86_400_000).toISOString().slice(0, 10),
+        premiumPct: index === 0 ? premium.premiumPct : 0,
+        premiumUsdPerOz: index === 0 ? premium.premiumUsdPerOz : 0,
+        physicalAsOf: new Date(Date.parse('2026-08-18T00:00:00.000Z') - index * 86_400_000).toISOString().slice(0, 10),
+        paperAsOf: new Date(Date.parse('2026-08-18T12:30:00.000Z') - index * 86_400_000).toISOString(),
+        methodologyVersion: METHODOLOGY_VERSION,
+      })),
+    ]));
+    const commands = [];
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    try {
+      const snapshot = await publishPhysicalDivergenceDerivedData({
+        payload,
+        prefix: 'test:',
+        nowMs: Date.parse('2026-08-18T12:30:00.000Z'),
+        retryDelayFn: async () => {},
+        commandFn: async (_creds, command) => {
+          commands.push(command);
+          if (command[0] === 'EVAL' && command[1] === APPEND_HISTORY_LUA) {
+            const metal = command[3].endsWith(':gold') ? 'gold' : 'silver';
+            return { result: shortHistories[metal].map((entry) => JSON.stringify(entry)) };
+          }
+          if (command[0] === 'EVAL' && command[1] === PUBLISH_DIVERGENCE_LUA) {
+            return { result: Number(command[2]) };
+          }
+          if (command[0] === 'GET' && command[1] === 'test:seed-meta:market:physical-divergence') {
+            return {
+              result: JSON.stringify({
+                minHistoryPoints: 80,
+                maxHistoryPointsSeen: 80,
+                sourceState: 'ok',
+              }),
+            };
+          }
+          if (command[0] === 'GET') return { result: null };
+          return { result: 'OK' };
+        },
+      });
+
+      assert.ok(snapshot.readings.every((reading) => reading.state === 'insufficient_history'));
+      assert.ok(commands.some((command) => (
+        command[0] === 'GET' && command[1] === 'test:seed-meta:market:physical-divergence'
+      )));
+      const publish = commands.find((command) => command[1] === PUBLISH_DIVERGENCE_LUA);
+      assert.ok(publish);
+      const publishedMeta = JSON.parse(publish[3 + Number(publish[2]) + 1]);
+      assert.equal(publishedMeta.sourceState, 'degraded');
+      assert.equal(publishedMeta.minHistoryPoints, 5);
+      assert.equal(publishedMeta.maxHistoryPointsSeen, 80);
+      assert.equal(publishedMeta.sourceReason, 'history_points_regressed:min=5:max=80');
     } finally {
       if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
       else process.env.UPSTASH_REDIS_REST_URL = previousUrl;

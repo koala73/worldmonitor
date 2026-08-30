@@ -20,6 +20,8 @@
     { "source": "/pro/", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/pro", "permanent": true },
     { "source": "/zh/:match*", "destination": "https://www.worldmonitor.app/docs/zh/:match*", "permanent": true },
     { "source": "/api-reference/:match*", "destination": "https://www.worldmonitor.app/docs/api-reference/:match*", "permanent": true },
+    { "source": "/api", "destination": "/docs/api-reference", "permanent": false },
+    { "source": "/api/", "destination": "/docs/api-reference", "permanent": false },
     { "source": "/docs", "destination": "/docs/documentation", "permanent": false },
     { "source": "/security.txt", "destination": "/.well-known/security.txt", "permanent": true },
     { "source": "/index.html", "destination": "/", "permanent": true },
@@ -542,20 +544,6 @@
       ]
     },
     {
-      "source": "/",
-      "headers": [
-        { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
-      ]
-    },
-    {
-      "source": "/dashboard.html",
-      "headers": [
-        { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
-      ]
-    },
-    {
       "source": "/mcp-grant",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
@@ -682,6 +670,20 @@
       ]
     },
     {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+      ]
+    },
+    {
+      "source": "/dashboard.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+      ]
+    },
+    {
       "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
@@ -714,7 +716,7 @@
     {
       "source": "/dashboard",
       "headers": [
-        { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
