@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package worldmonitor.scorecard.v1;
+
+import "buf/validate/validate.proto";
+
+message ScorecardObservation {
+  string name = 1;
+  double value = 2;
+  int32 year = 3 [(buf.validate.field).int32.gte = 1900, (buf.validate.field).int32.lte = 2200];
+  string unit = 4;
+  string source = 5;
+  string indicator_code = 6;
+}
+
+message ScorecardEvidence {
+  string input_id = 1;
+  bool available = 2;
+  double value = 3;
+  bool has_value = 4;
+  int32 year = 5 [(buf.validate.field).int32.gte = 0, (buf.validate.field).int32.lte = 2200];
+  string unit = 6;
+  string source = 7;
+  string source_key = 8;
+  string unavailable_reason = 9 [(buf.validate.field).string.pattern = "^(?:|source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$"];
+  string quality = 10 [(buf.validate.field).string.pattern = "^(?:|observed|retained|derived)$"];
+  repeated ScorecardObservation observations = 11;
+  // ISO-2 member that supplied this evidence. Empty only on a country scorecard.
+  string country_code = 12 [(buf.validate.field).string.pattern = "^(?:|[A-Z]{2})$"];
+}
+
+message ScorecardMemberWeight {
+  string country_code = 1 [(buf.validate.field).string.pattern = "^[A-Z]{2}$"];
+  // Population in millions used by population-weighted components.
+  double population_millions = 2 [(buf.validate.field).double.gte = 0];
+  // Read before population_millions; false means the numeric zero is a placeholder.
+  bool has_population = 3;
+}
+
+message FiveFactorPillar {
+  string pillar = 1 [(buf.validate.field).string.pattern = "^(?:food|energy|demographics|technology|defense)$"];
+  // Read before score and sub_score. When false, both numeric zeros are protobuf placeholders for insufficient data.
+  bool has_score = 2;
+  int32 score = 3 [(buf.validate.field).int32.gte = 0, (buf.validate.field).int32.lte = 5];
+  double sub_score = 4 [(buf.validate.field).double.gte = 0, (buf.validate.field).double.lte = 100];
+  string band = 5 [(buf.validate.field).string.pattern = "^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$"];
+  double input_coverage = 6 [(buf.validate.field).double.gte = 0, (buf.validate.field).double.lte = 1];
+  string aggregation_method = 7 [(buf.validate.field).string.pattern = "^(?:country-weighted-components|aggregate-physical-inputs|population-weighted-continuous-score)$"];
+  repeated ScorecardEvidence inputs = 8;
+  repeated string insufficient_reasons = 9 [(buf.validate.field).repeated.items.string.pattern = "^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$"];
+  repeated string included_members = 10 [(buf.validate.field).repeated.items.string.pattern = "^[A-Z]{2}$"];
+  repeated ExcludedBlocMember excluded_members = 11;
+  // Exact member populations available to the bloc aggregation.
+  repeated ScorecardMemberWeight member_weights = 12;
+}
+
+message FiveFactorPillarSummary {
+  string pillar = 1 [(buf.validate.field).string.pattern = "^(?:food|energy|demographics|technology|defense)$"];
+  // Read before score and sub_score. When false, both numeric zeros are protobuf placeholders for insufficient data.
+  bool has_score = 2;
+  int32 score = 3 [(buf.validate.field).int32.gte = 0, (buf.validate.field).int32.lte = 5];
+  double sub_score = 4 [(buf.validate.field).double.gte = 0, (buf.validate.field).double.lte = 100];
+  string band = 5 [(buf.validate.field).string.pattern = "^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$"];
+  double input_coverage = 6 [(buf.validate.field).double.gte = 0, (buf.validate.field).double.lte = 1];
+  repeated string insufficient_reasons = 7 [(buf.validate.field).repeated.items.string.pattern = "^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$"];
+}
+
+message FiveFactorCountryScorecardSummary {
+  string country_code = 1 [(buf.validate.field).string.pattern = "^[A-Z]{2}$"];
+  repeated FiveFactorPillarSummary pillars = 2;
+}
+
+message FiveFactorCountryScorecard {
+  string country_code = 1 [(buf.validate.field).string.pattern = "^[A-Z]{2}$"];
+  string methodology_version = 2 [(buf.validate.field).string.const = "1.0.0"];
+  string computed_at = 3;
+  repeated FiveFactorPillar pillars = 4;
+}
+
+message ExcludedBlocMember {
+  string country_code = 1 [(buf.validate.field).string.pattern = "^[A-Z]{2}$"];
+  string reason = 2 [(buf.validate.field).string.pattern = "^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$"];
+}
+
+message FiveFactorBlocScorecard {
+  string id = 1;
+  string label = 2;
+  string methodology_version = 3 [(buf.validate.field).string.const = "1.0.0"];
+  string computed_at = 4;
+  repeated string members = 5 [(buf.validate.field).repeated.items.string.pattern = "^[A-Z]{2}$"];
+  repeated string included_members = 6 [(buf.validate.field).repeated.items.string.pattern = "^[A-Z]{2}$"];
+  repeated ExcludedBlocMember excluded_members = 7;
+  repeated FiveFactorPillar pillars = 8;
+}

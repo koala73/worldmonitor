@@ -341,6 +341,20 @@
       }
     },
     {
+      "name": "get_five_factor_scorecard",
+      "description": "Return the frozen v1 food, energy, demographics, technology, and defense scorecard for exactly one country or bloc. Select a country_code, one official preset, or a custom members list. Read every hasScore, available, and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a WorldMonitor subscription.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "list_five_factor_scorecards",
+      "description": "List compact v1 scorecards; read hasScore first because false makes numeric zero an insufficient-data placeholder. Returns bands, coverage, and insufficient-data reasons without the full evidence ledger. Use get_five_factor_scorecard for source provenance and raw observations. Requires a WorldMonitor subscription.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
       "name": "get_consumer_prices",
       "description": "Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).",
       "_meta": {

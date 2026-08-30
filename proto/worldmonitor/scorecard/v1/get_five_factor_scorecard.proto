@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.scorecard.v1;
+
+import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
+import "worldmonitor/scorecard/v1/scorecard.proto";
+
+message GetFiveFactorScorecardRequest {
+  // ISO 3166-1 alpha-2 country code for the requested scorecard.
+  string country_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = { name: "countryCode", required: true }
+  ];
+}
+
+message GetFiveFactorScorecardResponse {
+  FiveFactorCountryScorecard scorecard = 1;
+  bool unavailable = 2;
+  string unavailable_reason = 3 [(buf.validate.field).string.pattern = "^(?:|country-unavailable|scorecard-snapshot-unavailable)$"];
+}

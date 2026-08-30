@@ -543,6 +543,16 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   // orphaned stagings naturally.
   return await withRetry(
     async () => {
+      if (options.publishAtomically) {
+        await options.publishAtomically({
+          canonicalKey,
+          payload,
+          payloadValue,
+          ttlSeconds,
+        });
+        return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+      }
+
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
 
@@ -2078,6 +2088,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // existing canonical-TTL behavior for backward compatibility.
     preserveKeyTtls = [],
     beforePublish,
+    publishAtomically,
     afterPublish,
     afterValidationSkip,
     afterPreservedValidationSkip,
@@ -2100,6 +2111,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   }
   if (afterPublish && typeof afterPublish !== 'function') {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterPublish must be a function`);
+    process.exit(1);
+  }
+  if (publishAtomically && typeof publishAtomically !== 'function') {
+    console.error(`  CONTRACT VIOLATION: ${domain}:${resource} publishAtomically must be a function`);
     process.exit(1);
   }
   if (afterFreshness && typeof afterFreshness !== 'function') {
@@ -2439,12 +2454,30 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await exitAfterTelemetryFlush(0);
     }
 
-    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
-      envelopeMeta,
-      beforePublish: beforePublish
-        ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
-        : undefined,
-    });
+    let publishResult;
+    try {
+      publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
+        envelopeMeta,
+        beforePublish: beforePublish
+          ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
+          : undefined,
+        publishAtomically: publishAtomically
+          ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
+          : undefined,
+      });
+    } catch (error) {
+      // An atomic publisher either switches its complete key cohort or leaves
+      // the prior cohort untouched. If staging or the final switch fails,
+      // extend that untouched last-good cohort before surfacing the failure.
+      // Validation skips are handled below and retain their stricter policy.
+      if (publishAtomically) {
+        const preserved = await preserveExistingKeys().catch(() => false);
+        if (!preserved) {
+          console.error(`  FAILURE: atomic publish failed and last-good preservation was incomplete`);
+        }
+      }
+      throw error;
+    }
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
       const preserved = await preserveExistingKeys();

@@ -250,7 +250,7 @@ function ensureYamlJmespathParam(lines, start, end) {
 
   let paramEnd = end;
   for (let i = paramIndex + 1; i < end; i++) {
-    if (/^ {16}- name: \S+/.test(lines[i]) || /^ {12}responses:\s*$/.test(lines[i])) {
+    if (/^ {16}- name: \S+/.test(lines[i]) || /^ {12}\S/.test(lines[i])) {
       paramEnd = i;
       break;
     }
