@@ -58,9 +58,15 @@ let unsubscribeConvex: (() => void) | null = null;
 // and as `cause` (for Sentry's structured display) so events remain debuggable (WORLDMONITOR-ND).
 function normalizeCaughtError(action: string, err: unknown): Error {
   if (err instanceof Error) return err;
-  // Chrome iOS / WKWebView: DOMException is not always `instanceof Error`.
+  // Chrome iOS / WKWebView: DOMException is not always `instanceof Error`, so
+  // a SecurityError from window.open / location assignment fell through to the
+  // synthetic "threw non-Error: …" branch below and titled its Sentry issue
+  // after the wrapper rather than the fault (WORLDMONITOR-11D). Keep the
+  // `[billing] <action>:` prefix every other error from this module carries —
+  // without it the same fault produces two differently-shaped titles depending
+  // on which branch caught it, and neither says where it happened.
   if (typeof DOMException !== 'undefined' && err instanceof DOMException) {
-    const wrapped = new Error(`${err.name}: ${err.message}`);
+    const wrapped = new Error(`[billing] ${action}: ${err.name}: ${err.message}`);
     (wrapped as Error & { cause?: unknown }).cause = err;
     return wrapped;
   }

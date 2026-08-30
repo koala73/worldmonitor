@@ -123,7 +123,19 @@ async function invokeOpenUrlBounded(url: string): Promise<void> {
  * (`strict-origin-when-cross-origin`) for cross-origin targets.
  */
 function openWindowWithHandle(url: string): Window | null {
-  const win = window.open(url, '_blank');
+  // `window.open` does not always merely RETURN null when refused: Chrome
+  // Mobile iOS / WebKit can throw SecurityError (DOMException 18) instead —
+  // notably once the user-gesture window is spent, which is exactly the state
+  // this module reaches after awaiting a portal-session round-trip. A throw
+  // here escapes every caller, including the fresh-open fallback the reserved
+  // tab drops into, so normalize refusal to the null this function already
+  // documents as its "did it open?" answer.
+  let win: Window | null;
+  try {
+    win = window.open(url, '_blank');
+  } catch {
+    return null;
+  }
   if (win) {
     try {
       win.opener = null;

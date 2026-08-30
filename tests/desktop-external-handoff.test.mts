@@ -43,6 +43,14 @@ interface WindowProbe {
   invokeHangs: boolean;
   /** Simulates a popup blocker: window.open returns null. */
   popupBlocked: boolean;
+  /**
+   * Chrome Mobile iOS / WebKit THROWS SecurityError from `window.open` rather
+   * than returning null once the user-gesture window is spent. Distinct from
+   * `popupBlocked`, which is the well-behaved refusal.
+   */
+  openThrowsSecurityError: boolean;
+  /** Same-tab `location.assign` throws — the last fallback can refuse too. */
+  assignThrowsSecurityError: boolean;
 }
 
 let probe: WindowProbe;
@@ -121,6 +129,8 @@ function installWindow(kind: 'desktop' | 'web'): void {
     invokeRejects: false,
     invokeHangs: false,
     popupBlocked: false,
+    openThrowsSecurityError: false,
+    assignThrowsSecurityError: false,
   };
 
   const desktop = kind === 'desktop';
@@ -131,6 +141,7 @@ function installWindow(kind: 'desktop' | 'web'): void {
     origin: desktop ? 'tauri://localhost' : 'https://worldmonitor.app',
     href: desktop ? 'tauri://localhost/index.html' : 'https://worldmonitor.app/dashboard',
     assign: (url: string) => {
+      if (probe.assignThrowsSecurityError) throw makeSecurityError();
       probe.assigned.push(url);
     },
   };
@@ -146,6 +157,7 @@ function installWindow(kind: 'desktop' | 'web'): void {
     // the tab present in the tab list.
     open: (url: string, target?: string, features?: string) => {
       probe.opened.push([url, target, features]);
+      if (probe.openThrowsSecurityError) throw makeSecurityError();
       if (probe.popupBlocked) return null;
       // The tab opens either way; only the HANDLE is withheld. Recording it
       // in `handedOutTabs` would be wrong — nothing can sever an opener it
@@ -441,6 +453,37 @@ describe('openExternalUrl — web', () => {
     assert.equal(outcome, 'popup');
     assert.equal(probe.closedTabs, 1, 'an unreadable reserved handle must still be closed');
     assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
+  });
+
+  // `window.open` itself can THROW rather than return null once the gesture
+  // window is spent — which is the state the fresh-open fallback runs in,
+  // after the reserved tab has already been found unusable. Without the guard
+  // the recovery path throws on the way out of the recovery.
+  it('treats a SecurityError from window.open like a blocked popup', async () => {
+    installWindow('web');
+    probe.openThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'same-tab');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('recovers when the reserved tab AND window.open both refuse', async () => {
+    // The full iOS shape: the handle is poison, and re-opening is refused too.
+    installWindow('web');
+    const reserved = makeTab({ hrefAssignThrows: true });
+    probe.openThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'same-tab');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('returns failed, without throwing, when even same-tab assign refuses', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    probe.assignThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'failed');
+    assert.deepEqual(probe.assigned, []);
   });
 });
 
