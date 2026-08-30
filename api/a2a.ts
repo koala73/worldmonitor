@@ -15,6 +15,8 @@
 
 import { suggestTools } from './_agent-tool-suggest';
 import { PUBLIC_RESOURCE_REGISTRY } from './mcp/resources/index';
+import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
+import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 // Re-exported so existing consumers (tests, api/ask.ts historically) keep a
@@ -58,6 +60,8 @@ const BASE_HEADERS: Record<string, string> = {
 interface JsonRpcError {
   code: number;
   message: string;
+  /** Structured self-correction payload (e.g. the #7406 body-size rejection). */
+  data?: unknown;
 }
 
 type JsonRpcId = string | number | null;
@@ -225,10 +229,25 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
+  // Same shared JSON-RPC body cap as the MCP entry points (#7406): this route is
+  // anonymous and edge-run, and `extractText` walks every message part before the
+  // MAX_QUERY_CHARS slice, so the bytes must be bounded ahead of JSON.parse.
   let body: unknown;
   try {
-    body = await req.json();
-  } catch {
+    const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
+    body = JSON.parse(new TextDecoder().decode(bodyBytes));
+  } catch (err) {
+    if (err instanceof RequestBodyTooLargeError) {
+      return rpcError(
+        null,
+        {
+          code: -32600,
+          message: err.message,
+          data: { reason: 'body-too-large', maxBytes: err.maxBytes, nextStep: 'Shrink the request body below maxBytes and retry.' },
+        },
+        413,
+      );
+    }
     return rpcError(null, { code: -32700, message: 'Parse error: request body is not valid JSON.' });
   }
 

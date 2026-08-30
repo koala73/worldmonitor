@@ -4,6 +4,21 @@ type BoundedBodyResponse = {
 };
 
 /**
+ * Thrown when a request body exceeds the configured byte cap — either via
+ * advertised `Content-Length` or while streaming the body. Callers must
+ * reject without parsing.
+ */
+export class RequestBodyTooLargeError extends Error {
+  readonly maxBytes: number;
+
+  constructor(maxBytes: number) {
+    super(`Request body exceeds ${maxBytes} bytes`);
+    this.name = 'RequestBodyTooLargeError';
+    this.maxBytes = maxBytes;
+  }
+}
+
+/**
  * Read at most `maxBytes` of a sibling Response. Used only to classify
  * untrusted error bodies; the unread tail is discarded, never copied.
  */
@@ -39,4 +54,62 @@ export async function readBoundedResponseText(
   } finally {
     await reader.cancel().catch(() => {});
   }
+}
+
+/**
+ * Read a request body with an early `Content-Length` reject and a streaming
+ * byte cap. Mirrors `api/security/report.js` / the railway control plane:
+ * oversized bodies are cancelled rather than buffered to completion, and the
+ * unread tail is never copied into the returned buffer.
+ */
+export async function readBoundedRequestBody(
+  request: Request,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  if (!Number.isFinite(maxBytes) || maxBytes < 0) {
+    throw new TypeError('maxBytes must be a non-negative finite number');
+  }
+
+  const contentLengthRaw = request.headers.get('content-length');
+  if (contentLengthRaw !== null && contentLengthRaw !== '') {
+    const contentLength = Number(contentLengthRaw);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      if (request.body) {
+        await request.body.cancel().catch(() => {});
+      }
+      throw new RequestBodyTooLargeError(maxBytes);
+    }
+  }
+
+  if (!request.body) return new Uint8Array();
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new RequestBodyTooLargeError(maxBytes);
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    if (!(err instanceof RequestBodyTooLargeError)) {
+      await reader.cancel().catch(() => {});
+    }
+    throw err;
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }

@@ -10,7 +10,9 @@ import {
   validateProMcpAuthorization,
   wwwAuthHeader,
 } from './auth';
+import { readBoundedRequestBody, RequestBodyTooLargeError } from './bounded-body';
 import {
+  MAX_JSON_RPC_BODY_BYTES,
   MCP_LOG_LEVELS,
   negotiateProtocolVersion,
   SERVER_INSTRUCTIONS,
@@ -714,17 +716,34 @@ async function mcpHandlerInner(
   // Parse body BEFORE auth: the method decides whether credentials are required
   // (public discovery methods are servable anonymously). Malformed/missing-method
   // POSTs are a client error regardless of auth, so returning -32600 here (rather
-  // than 401-then-32600) leaks nothing.
+  // than 401-then-32600) leaks nothing. The byte cap (#7406) sits ahead of
+  // JSON.parse so an oversized body never reaches method dispatch — matching
+  // api/docs-mcp.ts (HTTP 413 + JSON-RPC -32600).
   let body: JsonRpcRequest;
   try {
-    const parsed: unknown = await req.json();
+    const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bodyBytes));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       usage.phase = 'malformed';
       return rpcError(null, -32600, 'Invalid request: expected object', corsHeaders);
     }
     body = parsed as JsonRpcRequest;
-  } catch {
+  } catch (err) {
     usage.phase = 'malformed';
+    if (err instanceof RequestBodyTooLargeError) {
+      // Structured `data` so an agent can self-correct without parsing the
+      // message string — same contract as the -32001/-32002 denials and the
+      // _jmespath_error envelope. `id` is null because the body was rejected
+      // before parsing, so the caller's id was never read.
+      return rpcError(
+        null,
+        -32600,
+        err.message,
+        corsHeaders,
+        { reason: 'body-too-large', maxBytes: err.maxBytes, nextStep: 'Shrink the request body below maxBytes and retry.' },
+        413,
+      );
+    }
     return rpcError(null, -32600, 'Invalid request: malformed JSON', corsHeaders);
   }
 
