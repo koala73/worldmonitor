@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   authedGet,
+  freezeCrawlableLivePulse,
   mintSession,
   normalizeApiBase,
 } from '../scripts/freeze-crawlable-live-pulse.mjs';
@@ -54,5 +55,120 @@ describe('freeze crawlable live pulse API base routing', () => {
     ]);
     assert.ok(calls.every((call) => call.origin === base && call.referer === `${base}/`));
     assert.equal(calls[1].cookie, 'wm-session=test-token');
+  });
+});
+
+// These gates are the only thing standing between a half-captured freeze and a
+// corpus that silently reverts hundreds of pages to the pre-pulse placeholder
+// state. Without positive controls they can be deleted with a green CI.
+describe('freeze crawlable live pulse coverage gates', () => {
+  const originalFetch = globalThis.fetch;
+  const BASE = 'https://staging.worldmonitor.test';
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function jsonResponse(body) {
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+  }
+
+  function countryPayload() {
+    return {
+      upstreamUnavailable: false,
+      advisoryLevel: 'normal',
+      sanctionsCount: 0,
+      sanctionsActive: true,
+      fetchedAt: Date.now(),
+      cii: undefined,
+    };
+  }
+
+  function chokepointPayload(ids) {
+    return {
+      fetchedAt: Date.now(),
+      chokepoints: ids.map((id) => ({
+        id,
+        disruptionScore: 10,
+        status: 'green',
+        activeWarnings: 0,
+        aisDisruptions: 0,
+        transitSummary: { dataAvailable: false },
+      })),
+    };
+  }
+
+  function humanitarianPayload() {
+    return {
+      updatedAt: Date.now(),
+      referencePeriod: '2026-08-01',
+      events: 10,
+      fatalities: 2,
+      politicalViolenceEvents: 3,
+      demonstrationEvents: 1,
+    };
+  }
+
+  /**
+   * Serve a full, healthy freeze except for the parts the caller withholds.
+   * `dropCountriesAfter` fails every country request past that index;
+   * `chokepointIds` limits which chokepoints the upstream reports.
+   */
+  function stubFetch({ dropCountriesAfter = Infinity, chokepointIds = null } = {}) {
+    let countriesServed = 0;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.endsWith('/api/wm-session')) return jsonResponse({ token: 'test-token' });
+      if (href.includes('get-country-risk')) {
+        countriesServed += 1;
+        if (countriesServed > dropCountriesAfter) {
+          return { ok: false, status: 503, text: async () => '{}' };
+        }
+        return jsonResponse(countryPayload());
+      }
+      if (href.includes('get-chokepoint-status')) {
+        return jsonResponse(chokepointPayload(chokepointIds ?? [
+          'suez', 'malacca_strait', 'hormuz_strait', 'bab_el_mandeb', 'panama',
+          'taiwan_strait', 'cape_of_good_hope', 'gibraltar', 'bosphorus',
+          'korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait',
+        ]));
+      }
+      if (href.includes('get-humanitarian-summary')) return jsonResponse(humanitarianPayload());
+      throw new Error(`unexpected request: ${href}`);
+    };
+  }
+
+  it('rejects a freeze that captured far fewer countries than the corpus renders', async () => {
+    stubFetch({ dropCountriesAfter: 100 });
+    await assert.rejects(
+      freezeCrawlableLivePulse({ apiBase: BASE, requestGapMs: 0 }),
+      /captured only 100 of \d+ countries/,
+      'a 100-country capture must not pass when the corpus renders far more',
+    );
+  });
+
+  it('rejects a freeze missing any chokepoint the registry defines', async () => {
+    stubFetch({ chokepointIds: ['suez', 'malacca_strait', 'hormuz_strait'] });
+    await assert.rejects(
+      freezeCrawlableLivePulse({ apiBase: BASE, requestGapMs: 0 }),
+      /captured only 3 of \d+ chokepoints/,
+      'a truncated chokepoint list must fail rather than ship placeholder pages',
+    );
+  });
+
+  it('survives a chokepoint-status outage without discarding the country work', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-chokepoint-status')) throw new Error('offline');
+      return outer(url);
+    };
+    // The run must fail on the coverage gate (0 chokepoints), NOT on an
+    // unhandled rejection from the single unguarded fetch.
+    await assert.rejects(
+      freezeCrawlableLivePulse({ apiBase: BASE, requestGapMs: 0 }),
+      /captured only 0 of \d+ chokepoints/,
+      'a chokepoint outage must degrade into the coverage gate, not an uncaught throw',
+    );
   });
 });

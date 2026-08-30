@@ -47,6 +47,14 @@ const SCHEMA_ORG_CONTEXT_URL = 'https://schema.org';
 const RESILIENCE_SNAPSHOT_DIR = 'docs/snapshots';
 const RESILIENCE_SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
 const LIVE_PULSE_SNAPSHOT_RE = /^crawlable-live-pulse-(\d{4}-\d{2}-\d{2})\.json$/;
+// A crisis reference period must be a real calendar month/day, never a sentinel.
+const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
+// The committed pulse is published as "Current signal". Nothing re-runs the
+// freeze automatically except .github/workflows/crawlable-pulse-refresh.yml, so
+// bound the age here: a forgotten or failed refresh must red the build rather
+// than silently republish months-old numbers under a current-state heading.
+// Sized to clear the monthly refresh cadence with slack.
+const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
 const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
@@ -302,6 +310,16 @@ export function resolveLatestLivePulseSnapshotPath(rootDir = DEFAULT_ROOT) {
   if (!snapshot.countries || !snapshot.chokepoints || !snapshot.crises || !snapshot.signalConvergence) {
     throw new Error(`${relativePath} is missing required live-pulse sections`);
   }
+  const capturedAtMs = Date.parse(`${snapshot.capturedAt}T00:00:00Z`);
+  const ageDays = Number.isFinite(capturedAtMs)
+    ? (Date.now() - capturedAtMs) / 86_400_000
+    : Number.POSITIVE_INFINITY;
+  if (ageDays > MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS) {
+    throw new Error(
+      `${relativePath} is ${Math.round(ageDays)} days old (max ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}); `
+      + 'run `npm run freeze:crawlable-live-pulse` to republish current values',
+    );
+  }
   return relativePath;
 }
 
@@ -491,6 +509,23 @@ function chokepointDatasetDownload(chokepoint, { tradeRoutesById }) {
   });
 }
 
+function sumRows(rows, key) {
+  return rows.reduce((total, row) => total + (Number.isFinite(row?.[key]) ? row[key] : 0), 0);
+}
+
+/** Numeric crisis totals for the machine-readable download, or nulls when withheld. */
+function pulseTotals(pulse) {
+  const rows = Array.isArray(pulse.rows) ? pulse.rows : [];
+  if (pulse.eventsTotal === null || rows.length === 0) {
+    return { eventsTotal: null, fatalities: null, politicalViolenceEvents: null };
+  }
+  return {
+    eventsTotal: sumRows(rows, 'events'),
+    fatalities: sumRows(rows, 'fatalities'),
+    politicalViolenceEvents: sumRows(rows, 'political'),
+  };
+}
+
 function crisisDatasetDownload(crisis, pulse = null) {
   return stableJson({
     dataset: 'crisis-tracker',
@@ -505,9 +540,11 @@ function crisisDatasetDownload(crisis, pulse = null) {
     ...(pulse ? {
       maintainedPulse: {
         state: pulse.state,
-        eventsTotal: pulse.eventsTotal,
-        fatalities: pulse.fatalities,
-        politicalViolenceEvents: pulse.politicalViolenceEvents,
+        // The pulse carries Intl-formatted display strings ("9,824"); a Dataset
+        // download must be machine-readable, so re-derive the totals from the
+        // raw per-country rows. `eventsTotal === null` stays the marker for
+        // "reference periods differ, combined total withheld".
+        ...pulseTotals(pulse),
         referencePeriod: pulse.referencePeriod,
         asOf: pulse.asOf,
         missingCountries: pulse.missingCountries,
@@ -1783,7 +1820,8 @@ function renderCountryPage({
     ? `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`
     : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because the country does not meet the published ranking eligibility criteria.`;
   const pulse = livePulse?.countries?.[country.code] || null;
-  const hasPulse = Boolean(pulse && (pulse.partial || pulse.score));
+  // Gate on presence, not truthiness: a legitimate score of 0 must still publish.
+  const hasPulse = pulse != null && (pulse.partial === true || pulse.score != null);
   const liveState = hasPulse ? (pulse.partial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
     ? (pulse.partial ? 'Published partial pulse' : 'Published pulse')
@@ -1819,9 +1857,11 @@ ${liveGrid}
           ${liveUpdatedMarkup({
             asOf: pulse?.asOf || null,
             fallbackLabel: 'Live enhancement pending',
-            prefix: pulse?.partial ? 'Retrieved' : 'Published pulse',
+            // Always "Published pulse": the stamp is when the pulse was frozen,
+            // not when a reader retrieved it. Matches the hydrate-side wording.
+            prefix: 'Published pulse',
           })}
-          <button class="refresh" type="button" data-live-refresh ${hasPulse ? '' : 'disabled'}>Refresh live data</button>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
         </div>
         <noscript><p>Enable JavaScript to refresh the current API result. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The structural resilience snapshot remains available below.'}</p></noscript>
       </section>
@@ -2019,7 +2059,9 @@ ${routes.map((route) => {
   relatedItems.push('<a href="/blog/glossary/maritime-chokepoint/">What is a maritime chokepoint?</a>');
 
   const pulse = livePulse?.chokepoints?.[chokepoint.id] || null;
-  const hasPulse = Boolean(pulse?.disruptionScore);
+  // Presence, not truthiness -- a fully calm chokepoint scores 0, which is a
+  // real published value and must not fall back to the loading skeleton.
+  const hasPulse = pulse != null && pulse.disruptionScore != null;
   const liveState = hasPulse ? (pulse.partial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
     ? (pulse.partial ? 'Published partial pulse' : 'Published pulse')
@@ -2062,7 +2104,7 @@ ${liveGrid}
             fallbackLabel: 'Live enhancement pending',
             prefix: 'Published pulse',
           })}
-          <button class="refresh" type="button" data-live-refresh ${hasPulse ? '' : 'disabled'}>Refresh live data</button>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
         </div>
         <noscript><p>Enable JavaScript to refresh the current API result. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The static waterway and route context remains available below.'}</p></noscript>
       </section>
@@ -2209,7 +2251,11 @@ function renderCrisisPage({ crisis, baseUrl, lastmod, livePulse = null, livePuls
   const path = `/crises/${crisis.slug}/`;
   const dashboardUrl = withUtmSource(absoluteUrl(baseUrl, crisis.dashboardPath), 'seo-crisis');
   const pulse = livePulse?.crises?.[crisis.slug] || null;
-  const hasPulse = Boolean(pulse?.referencePeriod);
+  // Require a real observation window. crisisTrackerViewModel substitutes the
+  // sentinel 'Mixed reference periods' when covered countries report different
+  // HAPI months; publishing that as a period would put it in the page prose and
+  // the Dataset description while temporalCoverage silently drops to undefined.
+  const hasPulse = pulse != null && OBSERVATION_PERIOD_RE.test(String(pulse.referencePeriod ?? ''));
   const liveState = hasPulse ? pulse.state : 'loading';
   const liveStatus = hasPulse
     ? (pulse.state === 'partial' ? 'Published partial pulse' : 'Published pulse')
@@ -2271,7 +2317,7 @@ ${countryRows}
             fallbackLabel: 'Live enhancement pending',
             prefix: 'Published pulse',
           })}
-          <button class="refresh" type="button" data-live-refresh ${hasPulse ? '' : 'disabled'}>Refresh live data</button>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
         </div>
         <noscript><p>Enable JavaScript to refresh current monthly summaries. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The tracker scope and methodology remain available on this page.'}</p></noscript>
       </section>
@@ -2433,7 +2479,7 @@ ${examples}
       </div>
       <h2>Where to go next</h2>
       <p>Open the <a href="/?utm_source=seo-tool">live dashboard</a> for map layers, or read the full methodology in <a href="/docs/geographic-convergence">geographic convergence</a>. Country pages expose related instability scores; this page is the citable correlation definition.</p>
-      <p class="source">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: ${escapeHtml(snapshotPath)}. Captured ${escapeHtml(signalConvergence.capturedAt)}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: ${escapeHtml(snapshotPath)}. Methodology reference, last reviewed ${escapeHtml(prettyDate(lastmod))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -2454,8 +2500,10 @@ ${examples}
           description,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          dateModified: signalConvergence.capturedAt,
-          temporalCoverage: datasetTemporalCoverage(signalConvergence.capturedAt),
+          // This reference is a formula plus documentation-derived examples --
+          // it has no observation window, so it carries no temporalCoverage and
+          // is dated from its content version, not the freeze wall clock.
+          dateModified: lastmod,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured: [

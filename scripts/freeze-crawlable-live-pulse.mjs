@@ -27,9 +27,37 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const API_BASE = (process.env.API_BASE || 'https://www.worldmonitor.app').replace(/\/$/, '');
 const USER_AGENT = process.env.USER_AGENT
   || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
-const REQUEST_GAP_MS = Number(process.env.PULSE_FREEZE_GAP_MS || 120);
-const HTTP_TIMEOUT_MS = Number(process.env.PULSE_FREEZE_TIMEOUT_MS || 20_000);
+// `Number(env || fallback)` only substitutes the fallback for unset/empty. A typo
+// like `20s` parses to NaN, which Node coerces to a ~1ms timer -- every request
+// would abort instantly and surface as "captured only 0 countries" instead of a
+// bad-env-var error. Fail back to the documented default explicitly.
+function numberFromEnv(name, fallback) {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+const REQUEST_GAP_MS = numberFromEnv('PULSE_FREEZE_GAP_MS', 120);
+const HTTP_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_TIMEOUT_MS', 20_000);
 const OUTPUT_BASENAME = process.env.PULSE_FREEZE_OUTPUT_BASENAME || '';
+
+// Countries the upstream may legitimately fail to serve in a single run before
+// the freeze is considered too thin to publish. Chokepoints and crises are small
+// enough sets that partial capture is never acceptable.
+const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
+
+// Operator-facing review-hygiene text the chokepoint status contract appends
+// (THREAT_CONFIG_STALE_NOTE in server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts).
+// It is useful in the live tool but must not be frozen into the crawlable corpus,
+// where it becomes indexed, quotable page content.
+const INTERNAL_NOTE_RE = /\s*;?\s*Threat baseline last reviewed[^;]*?review recommended\.?/gi;
+
+function publishableDescription(value) {
+  const cleaned = String(value || '')
+    .replace(INTERNAL_NOTE_RE, '')
+    .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
+    .trim();
+  return cleaned || 'No additional status note was supplied.';
+}
 
 const RESILIENCE_SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
 const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
@@ -151,9 +179,13 @@ function countryRecord(view, payload, freezeStartedAt) {
     trend: view.partial ? null : view.trend,
     advisory: view.advisory,
     sanctions: view.sanctions,
-    asOf: view.computedAt === null
-      ? new Date(freezeStartedAt).toISOString()
-      : new Date(view.computedAt).toISOString(),
+    // `computedAt === null` means the upstream supplied nothing datable. The
+    // browser path deliberately renders no <time datetime> in that case; the
+    // freeze must not invent one either, or every such page publishes a
+    // machine-readable retrieval claim sourced from the harvest clock. The
+    // harvest instant is kept separately for operator forensics.
+    asOf: view.computedAt === null ? null : new Date(view.computedAt).toISOString(),
+    retrievedAt: new Date(freezeStartedAt).toISOString(),
     methodologyVersion: view.methodologyVersion || '',
     geoConvergence: Number.isFinite(payload?.cii?.components?.geoConvergence)
       ? payload.cii.components.geoConvergence
@@ -167,7 +199,7 @@ function chokepointRecord(view) {
     status: view.status,
     congestion: view.congestion,
     warnings: view.warnings,
-    description: view.description,
+    description: publishableDescription(view.description),
     todayTransits: view.todayTransits,
     weekMovement: view.weekMovement,
     partial: view.partial === true,
@@ -247,6 +279,9 @@ function signalConvergenceReference(capturedAt) {
 export async function freezeCrawlableLivePulse({
   apiBase = API_BASE,
   rootDir = REPO_ROOT,
+  // Injectable so the coverage gates can be exercised without a 20+ second
+  // inter-request delay; production callers keep the throttled default.
+  requestGapMs = REQUEST_GAP_MS,
 } = {}) {
   const base = normalizeApiBase(apiBase);
   const freezeStartedAt = Date.now();
@@ -270,18 +305,31 @@ export async function freezeCrawlableLivePulse({
     } catch (error) {
       countryErrors.push({ code, message: error instanceof Error ? error.message : String(error) });
     }
-    await sleep(REQUEST_GAP_MS);
+    await sleep(requestGapMs);
   }
 
-  const chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token, base);
-  const chokepoints = {};
+  // Every other network call in this run degrades per-item into *Errors. Left
+  // unguarded, a single transient failure here would propagate out of the
+  // function and discard the ~190 country records already fetched above.
+  let chokepointPayload = null;
   const chokepointErrors = [];
-  for (const id of chokepointIds) {
-    try {
-      const view = chokepointStatusViewModel(chokepointPayload, id, freezeStartedAt);
-      chokepoints[id] = chokepointRecord(view);
-    } catch (error) {
-      chokepointErrors.push({ id, message: error instanceof Error ? error.message : String(error) });
+  try {
+    chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token, base);
+  } catch (error) {
+    chokepointErrors.push({
+      id: '*',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  const chokepoints = {};
+  if (chokepointPayload !== null) {
+    for (const id of chokepointIds) {
+      try {
+        const view = chokepointStatusViewModel(chokepointPayload, id, freezeStartedAt);
+        chokepoints[id] = chokepointRecord(view);
+      } catch (error) {
+        chokepointErrors.push({ id, message: error instanceof Error ? error.message : String(error) });
+      }
     }
   }
 
@@ -301,7 +349,7 @@ export async function freezeCrawlableLivePulse({
         } catch (error) {
           results.push({ code: country.code, error });
         }
-        await sleep(REQUEST_GAP_MS);
+        await sleep(requestGapMs);
       }
       const view = crisisTrackerViewModel(results, crisis.coverage, freezeStartedAt);
       crisisSnapshots[crisis.slug] = crisisRecord(view);
@@ -352,19 +400,25 @@ export async function freezeCrawlableLivePulse({
     },
   };
 
-  if (Object.keys(countries).length < 100) {
+  // Gate against the universe the corpus actually renders, not a magic number.
+  // The corpus builds one page per code/id, so a capture that clears a fixed
+  // floor while missing dozens of entries would silently return those pages to
+  // the pre-pulse placeholder state with a green build.
+  const minCountries = Math.max(1, codes.length - MAX_COUNTRY_CAPTURE_SHORTFALL);
+  if (Object.keys(countries).length < minCountries) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(countries).length} countries; expected at least 100`,
+      `Pulse freeze captured only ${Object.keys(countries).length} of ${codes.length} countries; `
+      + `expected at least ${minCountries}`,
     );
   }
-  if (Object.keys(chokepoints).length < 10) {
+  if (Object.keys(chokepoints).length < chokepointIds.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(chokepoints).length} chokepoints; expected at least 10`,
+      `Pulse freeze captured only ${Object.keys(chokepoints).length} of ${chokepointIds.length} chokepoints`,
     );
   }
-  if (Object.keys(crisisSnapshots).length < 4) {
+  if (Object.keys(crisisSnapshots).length < crises.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} crises; expected 4`,
+      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`,
     );
   }
 

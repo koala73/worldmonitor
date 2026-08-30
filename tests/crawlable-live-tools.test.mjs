@@ -810,8 +810,116 @@ describe('crawlable live intelligence view models', () => {
       await loadCountryRisk(tool);
       assert.equal(tool.querySelector('[data-live-advisory]').textContent, 'Exercise Increased Caution');
       assert.equal(tool.querySelector('[data-live-sanctions]').textContent, '2 designated entities');
-      assert.match(tool.querySelector('[data-live-status]').textContent, /published pulse/i);
+      // This tile has no numeric score on screen (it SSR'd partial), so the
+      // status must not claim the published pulse is being shown.
+      assert.equal(
+        tool.querySelector('[data-live-status]').textContent,
+        'Live refresh unavailable — advisory and sanctions only',
+      );
       assert.equal(tool.dataset.state, 'error');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('does not claim a published pulse is shown after a partial hydrate wiped the score', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/ukraine/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="UA" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>62</span><small data-live-band>Elevated</small></strong></div>
+          <div class="metric"><strong data-live-trend>+1.2</strong></div>
+          <div class="metric"><strong data-live-advisory>Do Not Travel</strong></div>
+          <div class="metric"><strong data-live-sanctions>12 designated entities</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-country-risk]');
+    const originalFetch = globalThis.fetch;
+    let phase = 'ready';
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      if (phase === 'ready') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            upstreamUnavailable: false,
+            advisoryLevel: 'Do Not Travel',
+            sanctionsCount: 12,
+            fetchedAt: Date.now(),
+            cii: undefined,
+          }),
+        };
+      }
+      throw new Error('offline');
+    };
+    try {
+      // Positive control: while the published score is still on screen, the
+      // preserve path may legitimately claim it.
+      assert.match(tool.querySelector('[data-live-score]').textContent, /\d/);
+
+      // A partial hydrate replaces the published score with an em-dash...
+      await loadCountryRisk(tool);
+      assert.equal(tool.querySelector('[data-live-score]').textContent, '—');
+
+      // ...so a later soft failure must not assert the published pulse is visible.
+      phase = 'fail';
+      await loadCountryRisk(tool);
+      assert.equal(
+        tool.querySelector('[data-live-status]').textContent,
+        'Live refresh unavailable — advisory and sanctions only',
+        'must not claim "showing published pulse" once the score has been wiped',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('labels a retained SSR stamp as the published pulse, not a live retrieval', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/andorra/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="AD" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>—</span><small data-live-band>No current score</small></strong></div>
+          <div class="metric"><strong data-live-trend>Unavailable</strong></div>
+          <div class="metric"><strong data-live-advisory>Exercise Normal Precautions</strong></div>
+          <div class="metric"><strong data-live-sanctions>None in feed</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-country-risk]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          upstreamUnavailable: false,
+          advisoryLevel: 'Exercise Increased Caution',
+          sanctionsCount: 2,
+          fetchedAt: 0,
+          cii: undefined,
+        }),
+      };
+    };
+    try {
+      await loadCountryRisk(tool);
+      const updated = tool.querySelector('[data-live-updated]').textContent;
+      // The advisory below was fetched just now; the retained stamp belongs to
+      // the published pulse, so it must not be labelled "Retrieved".
+      assert.doesNotMatch(updated, /^Retrieved/, `stale stamp labelled as a live retrieval: ${updated}`);
+      assert.match(updated, /^Published pulse /);
+      assert.match(updated, /refreshed live/);
     } finally {
       globalThis.fetch = originalFetch;
     }

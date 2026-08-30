@@ -666,15 +666,19 @@ function formatDateTime(timestamp) {
 function setToolState(tool, state, status) {
   tool.dataset.state = state;
   setText(tool, '[data-live-status]', status);
+  // While loading, a tool with no published pulse has an empty grid and a
+  // paragraph explaining the wait. Revealing the grid before values arrive
+  // would swap that explanation for blank labelled metrics.
+  const revealValues = state !== 'loading' || hasPublishedLivePulse(tool);
   for (const busy of tool.querySelectorAll('[data-live-grid]')) {
-    busy.hidden = false;
+    if (revealValues) busy.hidden = false;
     busy.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
   }
   for (const fallback of tool.querySelectorAll('[data-live-fallback]')) {
-    fallback.hidden = true;
+    fallback.hidden = revealValues;
   }
   for (const description of tool.querySelectorAll('[data-chokepoint-description]')) {
-    description.hidden = false;
+    if (revealValues) description.hidden = false;
   }
   for (const control of tool.querySelectorAll('[data-live-refresh]')) {
     control.disabled = state === 'loading';
@@ -805,8 +809,11 @@ function renderCountryRiskViewModel(tool, view) {
         // Keep any SSR (or prior) datetime so a later soft failure still
         // preserves advisory/sanctions via hasPublishedLivePulse().
         const existingDatetime = updated.getAttribute('datetime');
+        // The retained datetime is the PUBLISHED pulse instant, not the moment
+        // the advisory/sanctions below were fetched -- those just came back live.
+        // Naming it "Retrieved" would date fresh data with a stale stamp.
         updated.textContent = existingDatetime
-          ? `Retrieved ${formatDateTime(Date.parse(existingDatetime))} · advisory and sanctions only; no combined instability score`
+          ? `Published pulse ${formatDateTime(Date.parse(existingDatetime))} · advisory and sanctions refreshed live; no combined instability score`
           : 'Advisory and sanctions signals retrieved live; no combined instability score for this country.';
       } else {
         setTime(tool, '[data-live-updated]', view.computedAt, 'Retrieved');
@@ -831,9 +838,21 @@ function renderCountryRiskViewModel(tool, view) {
   else setToolState(tool, 'ready', 'API result');
 }
 
+/** True when the score cell still holds a published numeric value. */
+function hasVisibleScore(tool, selector) {
+  const text = tool?.querySelector?.(selector)?.textContent ?? '';
+  return /\d/.test(text);
+}
+
 function renderCountryRiskError(tool) {
   if (hasPublishedLivePulse(tool)) {
-    setToolState(tool, 'error', 'Live refresh unavailable — showing published pulse');
+    // A prior PARTIAL hydrate may already have replaced the published score
+    // with '—'. Claiming "showing published pulse" over that would assert the
+    // dated number is on screen when it is not, inverting the very mechanism
+    // this branch exists to protect.
+    setToolState(tool, 'error', hasVisibleScore(tool, '[data-live-score]')
+      ? 'Live refresh unavailable — showing published pulse'
+      : 'Live refresh unavailable — advisory and sanctions only');
     return;
   }
   setText(tool, '[data-live-score]', '—');
@@ -964,7 +983,13 @@ export async function loadCrisis(tool) {
   } catch {
     if (!isCurrentRequest(tool, state)) return;
     if (hasPublishedLivePulse(tool)) {
-      setToolState(tool, 'error', 'Live refresh unavailable — showing published pulse');
+      // A prior mixed-reference-period hydrate replaces the published totals
+      // with 'See countries', so only claim the pulse is shown when a number
+      // actually survives. (The chokepoint path always writes a numeric score,
+      // so it has no equivalent wipe.)
+      setToolState(tool, 'error', hasVisibleScore(tool, '[data-crisis-events]')
+        ? 'Live refresh unavailable — showing published pulse'
+        : 'Live refresh unavailable — per-country summaries only');
       return;
     }
     setText(tool, '[data-crisis-events]', '—');
