@@ -314,8 +314,16 @@ function formatStaticDateTime(iso) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'UTC',
     timeZoneName: 'short',
   }).format(new Date(timestamp));
+}
+
+function pulseDateOnly(asOf, fallback) {
+  if (typeof asOf === 'string' && /^\d{4}-\d{2}-\d{2}/.test(asOf)) {
+    return asOf.slice(0, 10);
+  }
+  return fallback;
 }
 
 function liveUpdatedMarkup({ asOf, fallbackLabel, prefix = 'Published pulse' }) {
@@ -2319,7 +2327,7 @@ ${snapshotSection}
           description: datasetDescription,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          dateModified: hasPulse ? (pulse.asOf || lastmod) : lastmod,
+          dateModified: hasPulse ? pulseDateOnly(pulse.asOf, lastmod) : lastmod,
           temporalCoverage: hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),

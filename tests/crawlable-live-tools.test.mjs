@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { Window } from 'happy-dom';
 
 import {
   airportDisruptionViewModel,
   chokepointStatusViewModel,
   crisisTrackerViewModel,
+  hasPublishedLivePulse,
   hazardPulseViewModel,
+  loadChokepoint,
+  loadCountryRisk,
   loadHazards,
   militaryFlightsViewModel,
   pointInBounds,
@@ -695,6 +699,65 @@ describe('crawlable live intelligence view models', () => {
       if (originalWindow === undefined) delete globalThis.window;
       else globalThis.window = originalWindow;
     }
+  });
+
+  it('preserves SSR country and chokepoint pulse values when live refresh fails', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/ukraine/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="UA" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>71.4</span><small data-live-band>Elevated</small></strong></div>
+          <div class="metric"><strong data-live-trend>+1.2</strong></div>
+          <div class="metric"><strong data-live-advisory>Level 4</strong></div>
+          <div class="metric"><strong data-live-sanctions>12</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-chokepoint-score>72</span><small data-chokepoint-band>Red</small></strong></div>
+          <div class="metric"><strong data-chokepoint-congestion>High</strong></div>
+          <div class="metric"><strong data-chokepoint-warnings>3 warnings</strong></div>
+          <div class="metric"><strong data-chokepoint-transits>11</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>+2.5%</strong></div>
+        </div>
+        <p data-chokepoint-description>Elevated shipping warnings.</p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+
+    const country = document.querySelector('[data-live-country-risk]');
+    const chokepoint = document.querySelector('[data-live-chokepoint]');
+    assert.equal(hasPublishedLivePulse(country), true);
+    assert.equal(hasPublishedLivePulse(chokepoint), true);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      throw new Error('offline');
+    };
+    try {
+      await loadCountryRisk(country);
+      await loadChokepoint(chokepoint);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(country.querySelector('[data-live-score]').textContent, '71.4');
+    assert.equal(country.querySelector('[data-live-band]').textContent, 'Elevated');
+    assert.equal(country.querySelector('[data-live-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
+    assert.match(country.querySelector('[data-live-status]').textContent, /published pulse/i);
+    assert.equal(country.dataset.state, 'error');
+
+    assert.equal(chokepoint.querySelector('[data-chokepoint-score]').textContent, '72');
+    assert.equal(chokepoint.querySelector('[data-chokepoint-band]').textContent, 'Red');
+    assert.equal(chokepoint.querySelector('[data-live-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
+    assert.match(chokepoint.querySelector('[data-live-status]').textContent, /published pulse/i);
+    assert.equal(chokepoint.dataset.state, 'error');
   });
 
   it('commits counters, URL, and dashboard link only for the latest request', async () => {

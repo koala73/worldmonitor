@@ -1629,6 +1629,11 @@ describe('crawlable corpus generator', () => {
         observationInterval: redSeaReference.maintainedPulse?.referencePeriod,
         lastmod: pageLastmod(redSea),
       });
+      assert.match(
+        String(redSeaDataset.dateModified),
+        /^\d{4}-\d{2}-\d{2}$/,
+        'crisis Dataset dateModified must be a calendar date, not a full ISO timestamp',
+      );
       assert.equal(redSeaDataset.isAccessibleForFree, true);
       assert.match(
         JSON.stringify(redSeaDataset.distribution),

@@ -687,7 +687,11 @@ function setTime(root, selector, timestamp, prefix) {
   let target = element;
   if (element.tagName !== 'TIME') {
     const replacement = (root.ownerDocument || document).createElement('time');
-    replacement.setAttribute('data-live-updated', '');
+    for (const attr of element.attributes) {
+      if (attr.name.startsWith('data-')) {
+        replacement.setAttribute(attr.name, attr.value);
+      }
+    }
     element.replaceWith(replacement);
     target = replacement;
   }
@@ -698,6 +702,11 @@ function setTime(root, selector, timestamp, prefix) {
   }
   target.textContent = `${prefix} ${formatDateTime(timestamp)}`;
   target.setAttribute('datetime', new Date(timestamp).toISOString());
+}
+
+/** True when SSR (or a prior successful hydrate) already stamped a dated pulse. */
+export function hasPublishedLivePulse(tool) {
+  return Boolean(tool.querySelector('[data-live-updated][datetime]'));
 }
 
 function renderList(root, selector, rows, formatter, emptyMessage = 'No current matches in this bounded result.') {
@@ -813,6 +822,10 @@ function renderCountryRiskViewModel(tool, view) {
 }
 
 function renderCountryRiskError(tool) {
+  if (hasPublishedLivePulse(tool)) {
+    setToolState(tool, 'error', 'Live refresh unavailable — showing published pulse');
+    return;
+  }
   setText(tool, '[data-live-score]', '—');
   setText(tool, '[data-live-band]', 'Unavailable');
   setText(tool, '[data-live-trend]', 'Unavailable');
@@ -827,7 +840,7 @@ function renderCountryRiskError(tool) {
   setToolState(tool, 'error', 'Temporarily unavailable');
 }
 
-async function loadCountryRisk(tool) {
+export async function loadCountryRisk(tool) {
   const countryCode = String(tool.dataset.countryCode || '').toUpperCase();
   if (!/^[A-Z]{2}$/.test(countryCode)) {
     cancelToolRequest(tool);
@@ -853,7 +866,7 @@ async function loadCountryRisk(tool) {
   }
 }
 
-async function loadChokepoint(tool) {
+export async function loadChokepoint(tool) {
   const state = beginToolRequest(tool);
   const id = String(tool.dataset.chokepointId || '');
   setToolState(tool, 'loading', 'Connecting…');
@@ -875,6 +888,10 @@ async function loadChokepoint(tool) {
     setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial API result' : 'API result');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
+    if (hasPublishedLivePulse(tool)) {
+      setToolState(tool, 'error', 'Live refresh unavailable — showing published pulse');
+      return;
+    }
     setText(tool, '[data-chokepoint-score]', '—');
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
     setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
@@ -887,7 +904,7 @@ async function loadChokepoint(tool) {
   }
 }
 
-async function loadCrisis(tool) {
+export async function loadCrisis(tool) {
   const state = beginToolRequest(tool);
   const countries = [...tool.querySelectorAll('[data-crisis-country]')].map((row) => ({
     code: String(row.dataset.countryCode || '').toUpperCase(),
@@ -934,6 +951,10 @@ async function loadCrisis(tool) {
     setToolState(tool, view.state, view.state === 'partial' ? 'Partial API result' : 'API result');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
+    if (hasPublishedLivePulse(tool)) {
+      setToolState(tool, 'error', 'Live refresh unavailable — showing published pulse');
+      return;
+    }
     setText(tool, '[data-crisis-events]', '—');
     setText(tool, '[data-crisis-fatalities]', '—');
     setText(tool, '[data-crisis-political]', '—');
