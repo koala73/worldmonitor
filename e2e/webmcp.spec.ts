@@ -74,6 +74,36 @@ type DashboardPanelCatalogProbe = {
   uniqueCount: number;
 };
 
+type PanelLayoutEntryProbe = {
+  collapsed: boolean;
+  collapsible: boolean;
+  fixed: boolean;
+  fullscreen: boolean;
+  fullscreenCapable: boolean;
+  id: string;
+  index: number;
+  region: 'sidebar' | 'bottom';
+};
+
+type PanelLayoutSnapshotProbe = {
+  nextCursor?: string;
+  panelCount: number;
+  panels: PanelLayoutEntryProbe[];
+  panelsTruncated?: boolean;
+  regions: {
+    bottom: { available: boolean; panelCount: number };
+    sidebar: { available: boolean; panelCount: number };
+  };
+};
+
+type VisiblePanelLayoutProbe = {
+  collapsed: boolean;
+  fullscreen: boolean;
+  id: string;
+  index: number;
+  region: 'sidebar' | 'bottom';
+};
+
 type ToolStartMark = {
   detail?: {
     targetCancellationSupported?: boolean;
@@ -251,6 +281,131 @@ async function storedMapMode(page: Page): Promise<string | null> {
   const raw = await page.evaluate(() => localStorage.getItem('worldmonitor-map-mode'));
   if (raw == null) return null;
   return JSON.parse(raw) as string;
+}
+
+async function executeDashboardToolWithCallerSignal(
+  page: Page,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<unknown> {
+  return page.evaluate(async ({ toolName, payload }) => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(
+        tool: WebMCP.RegisteredTool,
+        input: string,
+        options?: { signal?: AbortSignal },
+      ): Promise<unknown>;
+    };
+    const provider = document.modelContext as ExecutableModelContext | undefined;
+    if (!provider || typeof provider.executeTool !== 'function') {
+      throw new Error('Chrome WebMCP execution API is unavailable.');
+    }
+    const parseOutput = (value: unknown): unknown => {
+      if (typeof value !== 'string') return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    };
+    const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
+    if (!tool) throw new Error(`${toolName} was not discovered.`);
+    const controller = new AbortController();
+    return parseOutput(await provider.executeTool(
+      tool,
+      JSON.stringify(payload),
+      { signal: controller.signal },
+    ));
+  }, { toolName: name, payload: input });
+}
+
+function isPanelLayoutSnapshot(value: unknown): value is PanelLayoutSnapshotProbe {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && Array.isArray((value as PanelLayoutSnapshotProbe).panels)
+    && (value as PanelLayoutSnapshotProbe).regions
+    && typeof (value as PanelLayoutSnapshotProbe).panelCount === 'number',
+  );
+}
+
+async function readFullPanelLayout(page: Page): Promise<PanelLayoutSnapshotProbe> {
+  const panels: PanelLayoutEntryProbe[] = [];
+  let cursor: string | undefined;
+  let latest: PanelLayoutSnapshotProbe | null = null;
+  let pages = 0;
+  for (; pages < 80; pages += 1) {
+    const raw = await executeDashboardTool(
+      page,
+      'get_panel_layout',
+      cursor ? { cursor } : {},
+    );
+    if (!isPanelLayoutSnapshot(raw)) {
+      throw new Error('get_panel_layout returned a non-layout result.');
+    }
+    latest = raw;
+    for (const panel of raw.panels) {
+      if (panels.some((existing) => existing.id === panel.id)) {
+        throw new Error(`get_panel_layout repeated panel ${panel.id}.`);
+      }
+      panels.push(panel);
+    }
+    if (raw.panelsTruncated !== true) break;
+    if (typeof raw.nextCursor !== 'string' || raw.nextCursor.length === 0) {
+      throw new Error('Paginated get_panel_layout is missing its next cursor.');
+    }
+    cursor = raw.nextCursor;
+  }
+  if (!latest) throw new Error('get_panel_layout did not return a layout page.');
+  if (pages >= 80) throw new Error('get_panel_layout pagination did not terminate.');
+  return { ...latest, panels, panelCount: latest.panelCount };
+}
+
+async function readVisiblePanelLayout(
+  page: Page,
+  includeBottom: boolean,
+): Promise<VisiblePanelLayoutProbe[]> {
+  return page.evaluate((readBottom) => {
+    const collect = (
+      gridId: string,
+      region: 'sidebar' | 'bottom',
+    ): VisiblePanelLayoutProbe[] => {
+      const grid = document.getElementById(gridId);
+      if (!grid) return [];
+      const panels: VisiblePanelLayoutProbe[] = [];
+      let index = 0;
+      for (const child of Array.from(grid.children)) {
+        if (!(child instanceof HTMLElement) || !child.classList.contains('panel')) continue;
+        const id = child.dataset.panel;
+        if (!id) continue;
+        panels.push({
+          collapsed: child.classList.contains('panel-collapsed'),
+          fullscreen: child.classList.contains('live-news-fullscreen'),
+          id,
+          index,
+          region,
+        });
+        index += 1;
+      }
+      return panels;
+    };
+    return [
+      ...collect('panelsGrid', 'sidebar'),
+      ...(readBottom ? collect('mapBottomGrid', 'bottom') : []),
+    ];
+  }, includeBottom);
+}
+
+function visibleStateFromLayout(layout: PanelLayoutSnapshotProbe): VisiblePanelLayoutProbe[] {
+  return layout.panels
+    .filter((panel) => panel.region === 'sidebar' || layout.regions.bottom.available)
+    .map((panel) => ({
+      collapsed: panel.collapsed,
+      fullscreen: panel.fullscreen,
+      id: panel.id,
+      index: panel.index,
+      region: panel.region,
+    }));
 }
 
 async function waitForCountryGeometry(page: Page): Promise<void> {
@@ -1183,6 +1338,192 @@ test.describe('top-level WebMCP dashboard contract', () => {
     const enabledPanels = (afterReload.context as { panels?: { enabled?: string[] } })
       .panels?.enabled ?? [];
     expect(enabledPanels).toContain('giving');
+  });
+
+  test('applies panel layout mutations and proves visible order and state', async ({ page }, testInfo) => {
+    test.skip(productionSmoke, 'Must not mutate production panel layout.');
+    testInfo.setTimeout(120_000);
+    await dismissMissionPreset(page);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await waitForDashboardTools(page);
+    await closeMissionPresetIfOpen(page);
+    await expect(page.locator('#panelsGrid > .panel[data-panel]').first()).toBeAttached({
+      timeout: 60_000,
+    });
+
+    await expect.poll(async () => {
+      const layout = await readFullPanelLayout(page);
+      return layout.panels.some((panel) => panel.collapsible && panel.fullscreenCapable)
+        && layout.panels.filter((panel) => panel.region === 'sidebar').length >= 2;
+    }, {
+      message: 'layout snapshot must include a collapsible fullscreen panel and a move peer',
+      timeout: 60_000,
+    }).toBe(true);
+
+    const initialLayout = await readFullPanelLayout(page);
+    const initialVisible = await readVisiblePanelLayout(
+      page,
+      initialLayout.regions.bottom.available,
+    );
+    expect(initialVisible).toEqual(visibleStateFromLayout(initialLayout));
+    expect(initialLayout.panels.length).toBeGreaterThan(0);
+
+    const fullscreenPanel = initialLayout.panels.find((panel) => panel.fullscreenCapable);
+    expect(fullscreenPanel, 'a fullscreen-capable panel must be mounted').toBeTruthy();
+    const fullscreenId = fullscreenPanel!.id;
+
+    const enterFullscreen = await executeDashboardTool(page, 'set_panel_fullscreen', {
+      panelId: fullscreenId,
+      fullscreen: true,
+    });
+    expect(enterFullscreen).toMatchObject({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: fullscreenId,
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+    });
+    await expect(page.locator(`.panel[data-panel="${fullscreenId}"]`)).toHaveClass(/live-news-fullscreen/);
+    await expect(page.locator('body')).toHaveClass(/live-news-fullscreen-active/);
+
+    const afterFullscreen = await readFullPanelLayout(page);
+    expect(afterFullscreen.panels.find((panel) => panel.id === fullscreenId)).toMatchObject({
+      fullscreen: true,
+    });
+    expect(await readVisiblePanelLayout(page, afterFullscreen.regions.bottom.available))
+      .toEqual(visibleStateFromLayout(afterFullscreen));
+
+    const exitFullscreen = await executeDashboardTool(page, 'set_panel_fullscreen', {
+      panelId: fullscreenId,
+      fullscreen: false,
+    });
+    expect(exitFullscreen).toMatchObject({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: fullscreenId,
+      requestedFullscreen: false,
+      effectiveFullscreen: false,
+    });
+    await expect(page.locator(`.panel[data-panel="${fullscreenId}"]`)).not.toHaveClass(/live-news-fullscreen/);
+    await expect(page.locator('body')).not.toHaveClass(/live-news-fullscreen-active/);
+
+    const collapsePanel = afterFullscreen.panels.find((panel) => panel.collapsible)
+      ?? fullscreenPanel;
+    expect(collapsePanel, 'a collapsible panel must be mounted').toBeTruthy();
+    const collapseId = collapsePanel!.id;
+    const requestedCollapsed = true;
+
+    const sidebarPeers = afterFullscreen.panels.filter((panel) => panel.region === 'sidebar');
+    const movePanel = sidebarPeers.find((panel) => panel.id !== collapseId && panel.fixed !== true)
+      ?? sidebarPeers.find((panel) => panel.fixed !== true);
+    expect(movePanel, 'a movable sidebar panel must be mounted').toBeTruthy();
+    const moveId = movePanel!.id;
+    const moveToBottom = afterFullscreen.regions.bottom.available === true;
+    const moveRegion = moveToBottom ? 'bottom' as const : 'sidebar' as const;
+    const moveIndex = moveToBottom
+      ? 0
+      : (movePanel!.index === 0 ? sidebarPeers.length - 1 : 0);
+
+    const collapsed = await executeDashboardToolWithCallerSignal(page, 'set_panel_collapsed', {
+      panelId: collapseId,
+      collapsed: requestedCollapsed,
+    });
+    const moved = await executeDashboardToolWithCallerSignal(page, 'move_panel', {
+      panelId: moveId,
+      region: moveRegion,
+      index: moveIndex,
+    });
+    const collapseOutput = collapsed as { ok?: boolean; reason?: string };
+    const moveOutput = moved as { ok?: boolean; reason?: string };
+    if (
+      collapseOutput.reason === 'target_cancellation_unsupported'
+      || moveOutput.reason === 'target_cancellation_unsupported'
+    ) {
+      await attachJsonEvidence(testInfo, 'webmcp-panel-layout.json', {
+        initialLayout,
+        enterFullscreen,
+        exitFullscreen,
+        collapsed,
+        moved,
+        skipped: 'target_cancellation_unsupported',
+      });
+      test.skip(true, 'Host omitted the target-side AbortSignal; persist proof requires cancellation.');
+    }
+
+    expect(collapsed).toMatchObject({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_collapsed',
+      panelId: collapseId,
+      requestedCollapsed,
+      effectiveCollapsed: requestedCollapsed,
+    });
+    await expect(page.locator(`.panel[data-panel="${collapseId}"]`)).toHaveClass(/panel-collapsed/);
+    await expect(page.locator(`.panel[data-panel="${collapseId}"] .panel-collapse-btn`))
+      .toHaveAttribute('aria-expanded', 'false');
+
+    expect(moved).toMatchObject({
+      ok: true,
+      status: 'applied',
+      actionType: 'move',
+      panelId: moveId,
+      region: moveRegion,
+      index: moveIndex,
+    });
+
+    const afterMutations = await readFullPanelLayout(page);
+    expect(afterMutations.panels.find((panel) => panel.id === collapseId)).toMatchObject({
+      collapsed: requestedCollapsed,
+    });
+    expect(afterMutations.panels.find((panel) => panel.id === moveId)).toMatchObject({
+      region: moveRegion,
+      index: moveIndex,
+    });
+    expect(await readVisiblePanelLayout(page, afterMutations.regions.bottom.available))
+      .toEqual(visibleStateFromLayout(afterMutations));
+    if (moveToBottom) {
+      await expect(page.locator(`#mapBottomGrid > .panel[data-panel="${moveId}"]`)).toBeAttached();
+    }
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForDashboardTools(page);
+    await closeMissionPresetIfOpen(page);
+    await expect(page.locator(`#${moveToBottom ? 'mapBottomGrid' : 'panelsGrid'} > .panel[data-panel="${moveId}"]`))
+      .toBeAttached({ timeout: 60_000 });
+
+    await expect.poll(async () => {
+      const layout = await readFullPanelLayout(page);
+      const collapsedEntry = layout.panels.find((panel) => panel.id === collapseId);
+      const movedEntry = layout.panels.find((panel) => panel.id === moveId);
+      return collapsedEntry?.collapsed === requestedCollapsed
+        && movedEntry?.region === moveRegion
+        && movedEntry?.index === moveIndex;
+    }, {
+      message: 'persistent collapse and move must survive reload',
+      timeout: 60_000,
+    }).toBe(true);
+
+    const afterReload = await readFullPanelLayout(page);
+    expect(afterReload.panels.find((panel) => panel.id === fullscreenId)).toMatchObject({
+      fullscreen: false,
+    });
+    expect(await readVisiblePanelLayout(page, afterReload.regions.bottom.available))
+      .toEqual(visibleStateFromLayout(afterReload));
+    await expect(page.locator(`.panel[data-panel="${collapseId}"]`)).toHaveClass(/panel-collapsed/);
+    await expect(page.locator('body')).not.toHaveClass(/live-news-fullscreen-active/);
+
+    await attachJsonEvidence(testInfo, 'webmcp-panel-layout.json', {
+      initialLayout,
+      enterFullscreen,
+      exitFullscreen,
+      collapsed,
+      moved,
+      afterMutations,
+      afterReload,
+    });
   });
 
   test('applies time range and country focus, and gates 2D/3D without target cancellation', async ({ page }, testInfo) => {
