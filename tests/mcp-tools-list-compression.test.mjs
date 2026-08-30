@@ -156,13 +156,22 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.deepEqual(cacheTool.inputSchema.properties.summary, SUMMARY_SCHEMA);
     });
 
-    it('every tool has inputSchema.properties.jmespath STRUCTURALLY equal to JMESPATH_SCHEMA (deepEqual not ===)', async () => {
+    it('every projection-safe tool has the JMESPath schema and attribution-bound tools omit it', async () => {
       const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
       const tools = await getRegistry();
+      const attributionBoundTools = new Set(['get_resilience_indicators']);
       for (const t of tools) {
+        if (attributionBoundTools.has(t.name)) {
+          assert.ok(!('jmespath' in (t.inputSchema?.properties ?? {})), `tool "${t.name}" must omit jmespath`);
+          continue;
+        }
         assert.ok(t.inputSchema?.properties?.jmespath, `tool "${t.name}" missing jmespath schema`);
         assert.deepEqual(t.inputSchema.properties.jmespath, JMESPATH_SCHEMA, `tool "${t.name}" jmespath shape differs`);
       }
+      assert.deepEqual(
+        tools.filter((t) => !('jmespath' in (t.inputSchema?.properties ?? {}))).map((t) => t.name),
+        [...attributionBoundTools],
+      );
     });
 
     it('RPC tool result does NOT have summary in properties', async () => {

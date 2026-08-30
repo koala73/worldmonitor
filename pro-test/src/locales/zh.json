@@ -51,7 +51,7 @@
     "freeF2": "精选信息源、标注来源和地图图层"
   },
   "whyUpgrade": {
-    "title": "为什么升级",
+    "title": "为什么升级到 World Monitor Pro？",
     "noiseTitle": "抢先知晓",
     "noiseDesc": "AIS 异常 → Brent 跳升 → 不到一分钟就到您的 Slack。信号,而非标题。",
     "fasterTitle": "问什么都行",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "交付工作台",
-    "title": "您的个人情报工作台",
+    "title": "什么是个人情报桌面？",
     "body": "每次发送最多30条排序项目，跨源去重，按你的监控名单计分。选择你的频率——每日、两次每日或每周——附带AI评估和监控信号，发送至Slack、Discord、Telegram、Email或webhook。",
     "closer": "不是邮件通讯。是分析师。",
     "channels": "Slack · Discord · Telegram · 邮件 · Webhook · AES-256 加密 · 静音时段"
@@ -93,7 +93,7 @@
     "asToldTo": "转述对象"
   },
   "audience": {
-    "title": "为需要快速获取信号的人而造",
+    "title": "World Monitor 为谁而构建？",
     "investorsTitle": "投资者与投资组合经理",
     "investorsDesc": "追踪全球股票、分析师目标、估值指标和宏观指标,并与地缘政治风险信号并置。",
     "tradersTitle": "能源与大宗商品交易员",
@@ -108,7 +108,7 @@
     "teamsDesc": "从个人使用迈向共享工作流、API 访问、TV 应用与托管部署。"
   },
   "dataCoverage": {
-    "title": "World Monitor 追踪什么",
+    "title": "World Monitor 监控什么？",
     "subtitle": "服务域同步摄入。市场、宏观、地缘政治、能源、基础设施——全部规范化并渲染在WebGL地球上。",
     "markets": "金融市场与股票",
     "marketsDesc": "全球股票分析、大宗商品、加密货币、ETF 资金流、分析师目标与 FRED 宏观数据",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO 等级",
-    "title": "永不停歇的 AI 分析师",
+    "title": "World Monitor AI 分析师做什么？",
     "subtitle": "免费仪表板向您展示世界。Pro 则给您一位可问询的分析师、可订阅的摘要和可构建其上的原语。股票、宏观、地缘政治风险 — 以及它们之间的关联。",
     "equityResearch": "股票研究",
     "equityResearchDesc": "具财务可视化、分析师目标价与估值指标的全球股票分析。追踪市场动力所在。",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API 等级",
-    "title": "程序化情报",
+    "title": "API 和代理如何使用 World Monitor？",
     "subtitle": "面向基于 World Monitor 数据构建的开发者、分析师与团队。独立于 Pro — 可同时使用或单独使用。",
     "restApi": "跨服务域的REST API——提供JavaScript、Python、Ruby、Go的官方SDK",
     "authenticated": "按密钥鉴权、按等级限速",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE 等级",
-    "title": "情报基础设施",
+    "title": "World Monitor Enterprise 包含什么？",
     "subtitle": "面向需要完整平台、最高安全性、AI 代理、TV 应用与深度数据的政府、机构、交易台与组织。",
     "security": "政府级安全",
     "securityDesc": "气隙部署、本地 Docker、专属云租户、SOC 2 Type II 路径、SSO/MFA 与完整审计轨迹。",
@@ -227,7 +227,7 @@
     "contactFailed": "发送失败。请发送邮件至 enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "比较等级",
+    "title": "World Monitor 各套餐如何对比？",
     "feature": "功能",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -271,10 +271,25 @@
     "fKeyAuth": "密钥鉴权",
     "fSsoMfa": "SSO/MFA/RBAC/审计",
     "noteBelow": "核心平台保持免费。付费方案解锁股票研究、宏观分析、AI 简报与组织级使用。",
-    "f50plus": "可用"
+    "f50plus": "可用",
+    "sourcesRow": "信息源",
+    "followedRow": "关注国家",
+    "tabsRow": "仪表板选项卡",
+    "fUnlimited": "无限",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "所有图层",
+    "fLayersNoResilience": "除弹性外的所有图层",
+    "fStandardCadence": "标准",
+    "fQuotes30s": "行情报价：30秒",
+    "panelsRow": "启用的面板",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "全部"
   },
   "faq": {
-    "title": "常见问题",
+    "title": "关于 World Monitor Pro 的常见问题",
     "q1": "World Monitor 仍然免费吗?",
     "a1": "是的。核心平台保持免费。Pro 版本增加了股票研究、宏观分析和 AI 简报。Pro Business 版本增加了商业许可证和数据导出。Enterprise 版本增加了团队部署和 TV 应用。",
     "q2": "为什么要付费使用 Pro?",
@@ -298,12 +313,12 @@
     "q11": "摘要的个性化程度如何?",
     "a11": "选择你的频率——每日、两次每日或每周。我们针对你的警报规则和监控名单重新评分每条追踪的新闻，跨源去重，并发送最多30条排序项目，附带AI评估和监控信号。实时警报也可用于重要事件。",
     "q12": "刷新率是多少?",
-    "a12": "Pro 近实时。Free 为 5–15 分钟。",
+    "a12": "Pro 每 30 秒刷新一次行情报价。其他数据遵循各自来源的更新节奏。Free 保持标准来源节奏。",
     "q13": "我的数据会去向哪里?",
     "a13": "通知通道在静止时使用 AES-256 加密。摘要从不以未脱敏的方式离开我们的管线。"
   },
   "finalCta": {
-    "title": "从 Pro 开始。扩展到 Enterprise。",
+    "title": "我如何开始使用 Pro 或与销售团队沟通？",
     "subtitle": "继续免费使用 World Monitor,或升级以获取股票研究、宏观分析和 AI 简报。若您的组织需要团队访问、TV 应用或 API 支持,请与我们联系。",
     "talkToSales": "联系销售"
   },
@@ -326,7 +341,7 @@
     "suffixPerYear": "/年",
     "amountCustom": "自定义",
     "opening": "打开中…",
-    "headerTitle": "选择您的计划",
+    "headerTitle": "World Monitor 需要多少费用？",
     "headerSubtitle": "从实时监控到完整的情报基础设施。选择适合您任务的层级。",
     "billingMonthly": "月度",
     "billingAnnual": "年度",
@@ -468,7 +483,7 @@
     },
     "live": {
       "eyebrow": "实时在线\t",
-      "title": "此页面连接到与仪表板相同的 API。\t",
+      "title": "此页面现在显示的实时数据是什么？",
       "subtitle": "World Monitor 全天候监控的百余个信号中的四个。\t",
       "liveBadge": "实时\t",
       "sampleBadge": "示例\t",
@@ -487,7 +502,7 @@
     },
     "moments": {
       "eyebrow": "关联引擎",
-      "title": "优势在于看到信号一起移动。",
+      "title": "World Monitor 如何关联信号？",
       "sub": "你可以从百个地方找到数据源。优势是一个统一界面，在这里地缘政治、海运、商品、宏观、市场、天气、基础设施、网络安全、新闻和国家风险可以相互解释。",
       "signalStack": "融合信号",
       "correlation": "关联",
@@ -551,7 +566,7 @@
     },
     "firstFive": {
       "eyebrow": "从零开始快速上手",
-      "title": "你在实时地图上的前五分钟。",
+      "title": "在地图上的前五分钟会发生什么？",
       "sub": "无导览、无空状态、无注册墙。这就是实际情况。",
       "f1Title": "地图已在动态更新",
       "f1Desc": "冲突、船舶、航班、火灾和中断在页面加载时实时呈现。无需提前配置任何内容。",
@@ -567,7 +582,7 @@
     },
     "depth": {
       "eyebrow": "深层次分析",
-      "title": "深度即产品。",
+      "title": "World Monitor 数据模型的深度如何？",
       "sub": "下面的每个数字现在都在仪表板中实时更新——不是路线图。",
       "s1v": "共享",
       "s1l": "地图图层",
@@ -617,7 +632,7 @@
     },
     "agents": {
       "eyebrow": "为构建者与AI代理",
-      "title": "基于实时世界情报构建——来自任何技术栈。",
+      "title": "我如何从自己的堆栈在 World Monitor 上构建？",
       "sub": "地图上的所有内容也都是API。通过MCP接入Claude、从任何地方调用REST端点，或安装适用于Python、Ruby、Go或JavaScript的原生客户端——你的代码用实时数据而不是训练数据进行研究。",
       "b1": "MCP工具——风险评分、制约点、冲突、市场、简报",
       "b2": "文档化REST API——一份OpenAPI 3.1规范，一个密钥",
@@ -660,7 +675,7 @@
     },
     "faq": {
       "eyebrow": "无隐藏条件",
-      "title": "合理的问题。",
+      "title": "关于 World Monitor 的常见问题是什么？",
       "q1": "World Monitor 真的免费吗？",
       "a1": "可以。实时地图——除弹性、精选源、国家简报、突发警报和监控界面外的每一个图层——免费提供，无需注册，无试用期限。Pro为信息源付费：添加WM Analyst、场景引擎、Route Explorer、定时摘要、AI客户端的MCP接入和弹性地图图层。无广告，无账户意味着没有用户数据出售。",
       "q2": "什么是全球智能仪表板？",
@@ -685,7 +700,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "世界地图不会等你。",
+      "title": "我如何开始监控世界地图？",
       "subtitle": "您阅读本页面时，它在不断更新——海峡、热点、市场、精选动态。其中之一将成为明天的头条。抢先发现——免费，无需账户。",
       "button": "率先找到它",
       "note": "免费 · 无需注册 · 秒速加载",

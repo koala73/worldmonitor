@@ -53,12 +53,22 @@ export interface McpToolExecutionContext {
 export interface BaseToolDef {
   name: string;
   description: string;
-  inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    required: string[];
+    oneOf?: Array<Record<string, unknown>>;
+  };
   // Per-tool output budget. When serialised tool output exceeds this AFTER
   // _postFilter + summary + JMESPath, the server returns a `_budget_exceeded`
   // envelope instead of the oversized payload. Required so a new tool can't
   // be added without an explicit budget choice.
   _outputBudgetBytes: number;
+  // Attribution-bound responses may opt out of the universal JMESPath
+  // projection when projecting fields independently would make an otherwise
+  // permitted value unsafe to redistribute. The dispatcher also enforces the
+  // denial as defence in depth.
+  _jmespathDisabled?: true;
   // U7 (R7, R9): membership in the always-free subset — servable to an
   // uncredentialed caller, consuming no quota for any principal. Declared HERE,
   // on the tool itself, so the roster and the tool definition cannot drift
@@ -289,7 +299,12 @@ export interface ApplyJmespathResult {
 export interface PublicToolShape {
   name: string;
   description: string;
-  inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    required: string[];
+    oneOf?: Array<Record<string, unknown>>;
+  };
   outputSchema: object;
   annotations: {
     readOnlyHint: boolean;

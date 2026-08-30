@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
+import { wgiObservationSource } from '../shared/wgi-source-provenance.js';
 
 import {
   RESILIENCE_STATIC_INDEX_KEY,
@@ -104,6 +105,11 @@ describe('resilience static seed WGI indicator contract', () => {
     for (const storedKey of WGI_INDICATORS) {
       assert.match(storedKey, /^[A-Z]{2}\.EST$/, `stored key ${storedKey} must stay the bare code`);
       assert.equal(wgiUpstreamIndicatorId(storedKey), `GOV_WGI_${storedKey}`);
+      assert.equal(
+        wgiObservationSource(storedKey).sourceUrl,
+        `https://api.worldbank.org/v2/country/all/indicator/${wgiUpstreamIndicatorId(storedKey)}`,
+        `producer request and scorer provenance must stay in exact parity for ${storedKey}`,
+      );
     }
   });
 

@@ -844,6 +844,11 @@ export class SearchModal {
     this.handleSearch();
   }
 
+  /** Seed an open session from SearchAction / `?q=` without going through keystrokes. */
+  public applyQuery(term: string): void {
+    this.applyProgrammaticQuery(term);
+  }
+
   private appendSeeAllCommandsLink(): void {
     if (!this.resultsList) return;
     const link = document.createElement('a');

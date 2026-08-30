@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/resilience/v1/get_resilience_runtime_manifest.proto";
+
+// Source-level attribution and provenance for one indicator. Composite
+// indicators repeat this message once for every upstream source they use.
+message ResilienceIndicatorSource {
+  // Stable source or cache key used by the resilience scorer.
+  string key = 1;
+  // Human-readable provider or dataset name.
+  string name = 2;
+  // Attribution text that callers must preserve when displaying the value.
+  string attribution = 3;
+  // Audited source license or redistribution classification.
+  string license = 4;
+  // Canonical provider or methodology URL when one is available.
+  string url = 5;
+  // True only when this source was recorded for the selected country observation.
+  // False means the entry is registry attribution, not observation provenance.
+  bool observation_provenance = 6;
+  // Canonical URL for the audited source license or redistribution terms.
+  string license_url = 7;
+  // Canonical attribution URL when it differs from the source dataset URL.
+  string attribution_url = 8;
+}
+
+// Selectively exposed raw observation. Availability fields keep a withheld or
+// absent value distinct from a genuine numeric zero or empty categorical value.
+message ResilienceIndicatorRawValue {
+  // True only when at least one raw value representation may be redistributed.
+  bool available = 1;
+  // Numeric raw observation. Read numeric_value_available before this value.
+  double numeric_value = 2;
+  // True when numeric_value contains an audited redistributable observation.
+  bool numeric_value_available = 3;
+  // Categorical raw observation. Read text_value_available before this value.
+  string text_value = 4;
+  // True when text_value contains an audited redistributable observation.
+  bool text_value_available = 5;
+  // Unit attached to the raw observation, for example percent or days.
+  string unit = 6;
+  // available, absent, restricted, audit-incomplete, conditional,
+  // ineligible-observation, or unknown-indicator.
+  string status = 7;
+  // Human-readable explanation for an unavailable or withheld value.
+  string reason = 8;
+}
+
+// Reconciled metadata for one resilience dimension.
+message ResilienceIndicatorDimension {
+  // Stable dimension identifier from the resilience construct.
+  string id = 1;
+  // Final dimension score on the 0-100 scale.
+  double score = 2;
+  // Fraction of active dimension weight backed by observations, from 0 to 1.
+  double coverage = 3;
+  // Dimension score before a policy cap or other post-blend adjustment.
+  double pre_policy_score = 4;
+  // Name of the applied post-blend policy cap, or empty when none applies.
+  string policy_cap_name = 5;
+  // Multiplicative factor applied by the post-blend policy cap.
+  double policy_cap_factor = 6;
+  // Sum of literal indicator contributions before dimension-level policy.
+  double literal_contribution_total = 7;
+  // Sum of exposed effective contributions. This reconciles to score.
+  double effective_contribution_total = 8;
+  // False for retired or runtime-disabled placeholder dimensions.
+  bool active = 9;
+  // True when effective_contribution_total is required to equal score.
+  bool reconciliation_available = 10;
+  // Explanation when this dimension is inactive or cannot reconcile contributions.
+  string reason = 11;
+}
+
+// One registry indicator and its effective contribution to a dimension.
+message ResilienceIndicator {
+  // Stable indicator identifier from the 72-row registry.
+  string id = 1;
+  // Stable identifier of the dimension that owns this indicator.
+  string dimension = 2;
+  // Scoring tier: core, enrichment, or experimental.
+  string tier = 3;
+  // Active means the current construct version can use this indicator.
+  bool active = 4;
+  // True when this country observation participated in the dimension score.
+  bool included_in_dimension_score = 5;
+  // observed, imputed, missing, fallback, source-failure, inactive, retired,
+  // or not-applicable.
+  string state = 6;
+  // Explains exclusion, inactive selection, retirement, or fallback state.
+  string reason = 7;
+
+  // True when normalized_score contains the score used by the scorer.
+  bool normalized_score_available = 8;
+  // Indicator score normalized to the 0-100 resilience scale.
+  double normalized_score = 9;
+  // Configured indicator weight before runtime selection or reweighting.
+  double nominal_weight = 10;
+  // True when runtime_weight applies to this execution path.
+  bool runtime_weight_available = 11;
+  // Weight selected by the executed scorer branch before normalization.
+  double runtime_weight = 12;
+  // True when scoring_weight_share applies to this execution path.
+  bool scoring_weight_share_available = 13;
+  // Indicator share of the active blend after runtime reweighting.
+  double scoring_weight_share = 14;
+
+  // Indicator contribution before dimension-level caps or adjustments.
+  double literal_contribution = 15;
+  // Reconciled contribution after dimension-level caps or adjustments.
+  double effective_contribution = 16;
+  // Empty for observed or unavailable rows; otherwise the scorer taxonomy.
+  string imputation_class = 17;
+
+  // True when source_year contains the provider observation year.
+  bool source_year_available = 18;
+  // Provider observation year, not the WorldMonitor retrieval year.
+  uint32 source_year = 19;
+  // Age of the source observation, not the time since WorldMonitor fetched it.
+  bool observation_age_available = 20;
+  // Integer observation age expressed in observation_age_unit.
+  uint32 observation_age_value = 21;
+  // "days" for an observation timestamp or "years" for an annual source row.
+  string observation_age_unit = 22;
+  // "observation-timestamp" or "source-year". Never derived from retrieval time.
+  string observation_age_basis = 23;
+  // True when retrieved_at contains an explicit retrieval timestamp.
+  bool retrieved_at_available = 24;
+  // Explicit ISO-8601 retrieval timestamp; never inferred from source year.
+  string retrieved_at = 25;
+  // True when observed_at contains a provider observation timestamp.
+  bool observed_at_available = 26;
+  // Provider observation timestamp in ISO-8601 form.
+  string observed_at = 27;
+
+  repeated ResilienceIndicatorSource sources = 28;
+  ResilienceIndicatorRawValue raw_value = 29;
+}
+
+message GetResilienceIndicatorsRequest {
+  // Required ISO 3166-1 alpha-2 country code.
+  string country_code = 1 [(sebuf.http.query) = {name: "countryCode", required: true}];
+}
+
+message GetResilienceIndicatorsResponse {
+  // Normalized ISO 3166-1 alpha-2 country code used by the scorer.
+  string country_code = 1;
+  // Stable decomposition method used to reconcile rows to dimension scores.
+  string methodology = 2;
+  // Active score formula tag, for example d6 or pc.
+  string formula = 3;
+  // Source snapshot version used for the score, normally an ISO date.
+  string data_version = 4;
+  // Public resilience score schema version.
+  string schema_version = 5;
+  ResilienceRuntimeConstructVersions construct_versions = 6;
+  repeated ResilienceIndicatorDimension dimensions = 7;
+  // All 72 registry rows, including inactive or unavailable indicators.
+  repeated ResilienceIndicator indicators = 8;
+}

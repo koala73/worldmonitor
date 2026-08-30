@@ -12,6 +12,7 @@ import {
   WEBMCP_SPA_TOOL_NAMES,
   WEBMCP_TOOL_BUDGETS,
   WEBMCP_VARIANT_INVENTORIES,
+  WEBMCP_MISSION_PICKER_REASONS,
 } from '../src/config/webmcp.ts';
 import { SITE_VARIANTS } from '../src/config/variant.ts';
 import {
@@ -22,6 +23,12 @@ import {
   WEBMCP_TOOL_CANCELLATION_POLICY,
   buildWebMcpTools as buildProductionWebMcpTools,
 } from '../src/services/webmcp.ts';
+
+import { PANEL_LAYOUT_DENIAL_REASONS } from '../src/services/panel-layout-actions.ts';
+import {
+  MISSION_PRESET_APPLY_DENY_REASONS,
+  MISSION_PRESET_UNAVAILABLE_REASONS,
+} from '../src/services/webmcp-mission-preset-catalog.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -163,6 +170,58 @@ function createBindings(overrides: Record<string, unknown> = {}) {
       changed: true,
       message: 'Panel enabled.',
     }),
+    listMissionPresets: async () => ({
+      ok: true as const,
+      variant: 'full',
+      activePresetId: null,
+      presets: [{
+        id: 'supply-chain-risk' as const,
+        label: 'Supply-Chain Risk',
+        view: 'global' as const,
+        timeRange: '7d' as const,
+        panelCount: 2,
+        layerCount: 1,
+        active: false,
+        monitorCompatible: true,
+        entitled: true,
+        available: true,
+      }],
+      count: 1,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: true,
+      monitor: 'full',
+      map: {
+        view: 'global',
+        zoom: 2.3,
+        timeRange: '7d',
+        enabledLayers: ['tradeRoutes'],
+      },
+      panels: { enabled: ['map', 'supply-chain'] },
+      message: 'Mission preset applied: Supply-Chain Risk.',
+    }),
+    openMissionPicker: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      destination: 'mission_picker' as const,
+      overlay: 'open' as const,
+      message: 'Opened mission presets.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: ['weather'],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
     applyDashboardTabAction: async (action: { type: string; tabId?: string; name?: string }) => (
       action.type === 'list'
         ? {
@@ -183,6 +242,56 @@ function createBindings(overrides: Record<string, unknown> = {}) {
             activeTabId: action.tabId ?? 'tab-main01-abc123',
           }
     ),
+
+    getPanelLayout: async () => ({
+      regions: {
+        sidebar: { available: true, panelCount: 1 },
+        bottom: { available: false, panelCount: 0 },
+      },
+      panels: [{
+        id: 'giving',
+        region: 'sidebar' as const,
+        index: 0,
+        collapsed: false,
+        fullscreen: false,
+        collapsible: false,
+        fullscreenCapable: false,
+        fixed: false,
+      }],
+      panelCount: 1,
+    }),
+    setPanelCollapsed: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      actionType: 'set_collapsed' as const,
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: true,
+      changed: true,
+      message: 'Panel collapsed.',
+      persisted: true,
+    }),
+    movePanel: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      actionType: 'move' as const,
+      panelId: 'giving',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      message: 'Moved panel.',
+      persisted: true,
+    }),
+    setPanelFullscreen: async () => ({
+      ok: true,
+      status: 'applied' as const,
+      actionType: 'set_fullscreen' as const,
+      panelId: 'live-news',
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+      changed: true,
+      message: 'Panel entered fullscreen.',
+    }),
     getAccessContext: async () => ({
       accountState: 'signed_out' as const,
       clerk: 'unavailable' as const,
@@ -214,6 +323,10 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   open_alerts: {},
   open_dashboard_panel: { panelId: 'markets' },
   set_panel_enabled: { panelId: 'giving', enabled: true },
+  get_panel_layout: {},
+  set_panel_collapsed: { panelId: 'live-news', collapsed: true },
+  move_panel: { panelId: 'giving', region: 'sidebar', index: 0 },
+  set_panel_fullscreen: { panelId: 'live-news', fullscreen: true },
   set_map_view: { view: 'eu', zoom: 4 },
   set_map_layers: { layers: { weather: true } },
   set_time_range: { timeRange: '24h' },
@@ -226,6 +339,9 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   create_dashboard_tab: { name: 'Markets' },
   rename_dashboard_tab: { tabId: 'tab-main01-abc123', name: 'Workspace' },
   delete_dashboard_tab: { tabId: 'tab-main01-abc123', confirm: true },
+  list_mission_presets: {},
+  apply_mission_preset: { presetId: 'supply-chain-risk' },
+  open_mission_picker: {},
   get_access_context: {},
   open_sign_in: {},
 };
@@ -249,6 +365,7 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'src/services/webmcp.ts',
   'src/services/webmcp-map-layer-catalog.ts',
   'src/services/webmcp-panel-catalog.ts',
+  'src/services/webmcp-mission-preset-catalog.ts',
   'src/App.ts',
   'src/app/webmcp-dashboard.ts',
   'src/app/dashboard-action-binding.ts',
@@ -265,6 +382,7 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'src/app/webmcp-search-controller.ts',
   'src/app/webmcp-search-effects.ts',
   'src/app/search-selection-dispatcher.ts',
+  'src/services/panel-layout-actions.ts',
   'src/app/panel-layout.ts',
   'src/components/PanelTabBar.ts',
   'src/services/tab-store.ts',
@@ -294,7 +412,9 @@ const WEBMCP_FOCUSED_VERIFICATION_TESTS = [
   'tests/webmcp-search-effects.test.mts',
   'tests/webmcp-dashboard.test.mts',
   'tests/dashboard-tab-actions.test.mts',
+  'tests/panel-layout-actions.test.mts',
   'tests/webmcp-panel-catalog.test.mts',
+  'tests/webmcp-mission-presets.test.mts',
   'tests/agent-bus-actions.test.mts',
   'tests/agent-bus-applier.test.mts',
   'tests/country-map-focus.test.mts',
@@ -348,6 +468,34 @@ function assertCancellationTable(guide: string, startHeading: string, endHeading
   }
 }
 
+/**
+ * Every stable reason the panel-layout and mission-preset tools can report.
+ * A reason that reaches a caller but is absent from a guide leaves that agent
+ * with no documented recovery, so both language guides must name all of them.
+ */
+const WEBMCP_DOCUMENTED_REASONS = [...new Set([
+  ...PANEL_LAYOUT_DENIAL_REASONS,
+  ...MISSION_PRESET_UNAVAILABLE_REASONS,
+  ...MISSION_PRESET_APPLY_DENY_REASONS,
+  ...WEBMCP_MISSION_PICKER_REASONS,
+])].sort();
+
+function assertReasonsDocumented(
+  guide: string,
+  startHeading: string,
+  endHeading: string,
+  label: string,
+) {
+  // Scoped to the reasons section on purpose: several reason names also appear
+  // in unrelated prose elsewhere in the guide, so a whole-document search would
+  // pass for a reason that was never actually documented as an outcome.
+  const section = visibleMdx(sectionBetween(guide, startHeading, endHeading));
+  const missing = WEBMCP_DOCUMENTED_REASONS.filter(
+    (reason) => !section.includes(`\`${reason}\``),
+  );
+  assert.deepEqual(missing, [], `${label} does not document these WebMCP reasons`);
+}
+
 function assertMaintainerSourceExists(source: string) {
   const lastSlash = source.lastIndexOf('/');
   const directory = source.slice(0, lastSlash);
@@ -372,6 +520,8 @@ function assertGuideContract(
     journeys: string;
     cancellation: string;
     cancellationEnd: string;
+    reasons: string;
+    reasonsEnd: string;
     sourceMap: string;
     verification: string;
     verificationEnd: string;
@@ -401,6 +551,7 @@ function assertGuideContract(
   const focusedTestPaths = [...verification.matchAll(/^\s{2}(tests\/[^\s\\]+)(?:\s+\\)?$/gm)]
     .map((match) => match[1]);
   assert.deepEqual(focusedTestPaths, WEBMCP_FOCUSED_VERIFICATION_TESTS);
+  assertReasonsDocumented(publicGuide, headings.reasons, headings.reasonsEnd, 'The WebMCP public guide');
   assert.match(publicGuide, /target_cancellation_unsupported/);
   assert.match(publicGuide, /WebMcpToolError/);
   assert.match(publicGuide, /webmcp-maintenance/);
@@ -535,6 +686,8 @@ describe('WebMCP canonical inventories', () => {
           journeys: '## Common browser-agent journeys',
           cancellation: '### Host support and cancellation',
           cancellationEnd: '<Warning>',
+          reasons: '### Panel layout and mission preset reasons',
+          reasonsEnd: '## Human control and UI behavior',
           sourceMap: '## Source map',
           verification: '## Verification ladder',
           verificationEnd: '## Release smoke checklist',
@@ -550,6 +703,8 @@ describe('WebMCP canonical inventories', () => {
           journeys: '## 常见浏览器智能体流程',
           cancellation: '### 宿主支持与取消',
           cancellationEnd: '<Warning>',
+          reasons: '### 面板布局与任务预设的拒绝原因',
+          reasonsEnd: '## 人工控制与 UI 行为',
           sourceMap: '## 源文件图',
           verification: '## 验证阶梯',
           verificationEnd: '## 发布冒烟检查清单',
@@ -572,6 +727,8 @@ describe('WebMCP canonical inventories', () => {
       journeys: '## Common browser-agent journeys',
       cancellation: '### Host support and cancellation',
       cancellationEnd: '<Warning>',
+      reasons: '### Panel layout and mission preset reasons',
+      reasonsEnd: '## Human control and UI behavior',
       sourceMap: '## Source map',
       verification: '## Verification ladder',
       verificationEnd: '## Release smoke checklist',
@@ -612,6 +769,21 @@ describe('WebMCP canonical inventories', () => {
         headings,
       ),
     );
+    assert.throws(() => assertGuideContract(
+      publicGuide.replaceAll('`preset_incompatible`', 'preset-incompatible'),
+      maintainerGuide,
+      headings,
+    ));
+    assert.throws(() => assertGuideContract(
+      publicGuide.replaceAll('`panel_fixed`', 'panel-fixed'),
+      maintainerGuide,
+      headings,
+    ));
+    assert.throws(() => assertGuideContract(
+      publicGuide.replace(/^\| `unavailable` \| `open_mission_picker`.*$/m, ''),
+      maintainerGuide,
+      headings,
+    ));
     assert.throws(() => assertGuideContract(
       publicGuide,
       maintainerGuide.replace('## Source map', '## Sources'),
@@ -686,6 +858,13 @@ describe('WebMCP imperative schema and budget contract', () => {
       openSearchResult: async () => { throw privateError; },
       applyDashboardTabAction: async () => { throw privateError; },
       setPanelEnabled: async () => { throw privateError; },
+      listMissionPresets: async () => { throw privateError; },
+      applyMissionPreset: async () => { throw privateError; },
+      openMissionPicker: async () => { throw privateError; },
+      getPanelLayout: async () => { throw privateError; },
+      setPanelCollapsed: async () => { throw privateError; },
+      movePanel: async () => { throw privateError; },
+      setPanelFullscreen: async () => { throw privateError; },
       getAccessContext: async () => { throw privateError; },
       openSignIn: async () => { throw privateError; },
     }), () => {});

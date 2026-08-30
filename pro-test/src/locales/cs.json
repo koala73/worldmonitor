@@ -51,7 +51,7 @@
     "freeF2": "Kurované kanály, atribuované zdroje a mapové vrstvy"
   },
   "whyUpgrade": {
-    "title": "Proč upgradovat",
+    "title": "Proč upgradovat na World Monitor Pro?",
     "noiseTitle": "Vězte první",
     "noiseDesc": "AIS anomálie → skok Brent → váš Slack za méně než minutu. Signál, ne titulky.",
     "fasterTitle": "Zeptejte se na cokoli",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "DORUČOVACÍ PULT",
-    "title": "Vaše osobní zpravodajské pracoviště",
+    "title": "Co je osobní intelligence desk?",
     "body": "Až 30 řazených položek na odeslání, deduplikovány napříč zdroji, vyhodnoceny podle vašeho sledovacího seznamu. Zvolte si svůj rytmus — denně, dvakrát denně nebo týdně — s AI vyhodnocením a signály k monitorování doručovanými na Slack, Discord, Telegram, Email nebo webhook.",
     "closer": "Žádný newsletter. Analytik.",
     "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 šifrované · Tiché hodiny"
@@ -93,7 +93,7 @@
     "asToldTo": "sděleno"
   },
   "audience": {
-    "title": "Postaveno pro ty, kdo potřebují signál rychle",
+    "title": "Pro koho je World Monitor určen?",
     "investorsTitle": "Investoři a správci portfolií",
     "investorsDesc": "Sledujte globální akcie, cíle analytiků, oceňovací metriky a makro ukazatele spolu s geopolitickými rizikovými signály.",
     "tradersTitle": "Obchodníci s energií a komoditami",
@@ -108,7 +108,7 @@
     "teamsDesc": "Přejděte od individuálního použití ke sdíleným workflow, API přístupu, TV aplikacím a řízeným nasazením."
   },
   "dataCoverage": {
-    "title": "Co World Monitor sleduje",
+    "title": "Co World Monitor sleduje?",
     "subtitle": "Domény služeb příjímané současně. Trhy, makroekonomika, geopolitika, energetika, infrastruktura — vše normalizováno a vykresleno na globu WebGL.",
     "markets": "Finanční trhy a akcie",
     "marketsDesc": "Globální analýza akcií, komodit, krypta, toky ETF, cíle analytiků a makro data FRED",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO ÚROVEŇ",
-    "title": "Váš AI analytik, který nikdy nespí",
+    "title": "Co dělá analytik World Monitor AI?",
     "subtitle": "Dashboard zdarma vám ukazuje svět. Pro vám dává analytika k dotazování, digest k odběru a primitivy ke stavbě. Akcie, makro, geopolitické riziko — a souvislosti mezi nimi.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Globální analýza akcií s vizualizací finančních dat, cenových cílů analytiků a oceňovacích metrik. Sledujte, co hýbe trhy.",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API ÚROVEŇ",
-    "title": "Programové zpravodajství",
+    "title": "Jak API a agenti používají World Monitor?",
     "subtitle": "Pro vývojáře, analytiky a týmy stavějící na datech World Monitor. Samostatné od Pro — použijte obě nebo jen jedno.",
     "restApi": "REST API napříč doménami služeb — oficiální SDK pro JavaScript, Python, Ruby, Go",
     "authenticated": "Ověřeno klíčem, rate-limited dle úrovně",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE ÚROVEŇ",
-    "title": "Zpravodajská infrastruktura",
+    "title": "Co obsahuje World Monitor Enterprise?",
     "subtitle": "Pro vlády, instituce, trading desky a organizace potřebující plnou platformu s maximálním zabezpečením, AI agenty, TV aplikacemi a hloubkou dat.",
     "security": "Zabezpečení vládní úrovně",
     "securityDesc": "Air-gapped nasazení, on-premises Docker, dedikovaný cloud tenant, cesta SOC 2 Type II, SSO/MFA a plný audit trail.",
@@ -227,7 +227,7 @@
     "contactFailed": "Odeslání selhalo. Napište na enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Porovnat úrovně",
+    "title": "Jak se plány World Monitor srovnávají?",
     "feature": "Funkce",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -271,10 +271,25 @@
     "fKeyAuth": "Auth klíčem",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití.",
-    "f50plus": "Dostupné"
+    "f50plus": "Dostupné",
+    "sourcesRow": "Zdroje",
+    "followedRow": "Sledované země",
+    "tabsRow": "Záložky dashboardu",
+    "fUnlimited": "Neomezeno",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Všechny vrstvy",
+    "fLayersNoResilience": "Všechny kromě Resilience",
+    "fStandardCadence": "Standardní",
+    "fQuotes30s": "Tržní kotace: 30s",
+    "panelsRow": "Panely povoleny",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Všechny"
   },
   "faq": {
-    "title": "Často kladené otázky",
+    "title": "Často kladené otázky o World Monitor Pro",
     "q1": "Je World Monitor stále zdarma?",
     "a1": "Ano. Základní platforma zůstává zdarma. Pro přidává akciový výzkum, makroanalytiku a AI briefingy. Pro Business přidává komerční licenci a export dat. Enterprise přidává nasazení týmu a TV aplikace.",
     "q2": "Proč platit za Pro?",
@@ -298,12 +313,12 @@
     "q11": "Jak personalizovaný je digest?",
     "a11": "Zvolte si svůj rytmus — denně, dvakrát denně nebo týdně. Přehodnocujeme každý sledovaný příspěvek podle vašich pravidel upozornění a sledovacího seznamu, deduplikujeme napříč zdroji a posíláme až 30 řazených položek s AI vyhodnocením a signály k monitorování zapsanými do vašeho kontextu. Upozornění v reálném čase jsou také dostupná pro kritické události.",
     "q12": "Jaká je frekvence obnovování?",
-    "a12": "Téměř v reálném čase pro Pro. 5–15 minut na Free.",
+    "a12": "Pro obnovuje tržní kotace každých 30 sekund. Ostatní data se řídí kadencí svého zdroje. Free zůstává na standardní kadenci zdroje.",
     "q13": "Kam jdou má data?",
     "a13": "Notifikační kanály jsou šifrovány AES-256 v klidu. Digesty nikdy neopouštějí naši pipeline bez redakce."
   },
   "finalCta": {
-    "title": "Začněte s Pro. Škálujte na Enterprise.",
+    "title": "Jak začít s Pro nebo mluvit se prodejním týmem?",
     "subtitle": "Používejte World Monitor zdarma, nebo upgradujte pro equity research, makro analytiku a AI briefingy. Pokud vaše organizace potřebuje týmový přístup, TV aplikace nebo API podporu, pojďme si promluvit.",
     "talkToSales": "Kontaktovat prodej"
   },
@@ -326,7 +341,7 @@
     "suffixPerYear": "/rok",
     "amountCustom": "Vlastní",
     "opening": "Otevírání…",
-    "headerTitle": "Vyberte si svůj plán",
+    "headerTitle": "Kolik stojí World Monitor?",
     "headerSubtitle": "Od monitorování v reálném čase až po kompletní infrastrukturu pro zpravodajství. Zvolte úroveň, která vyhovuje vaší misi.",
     "billingMonthly": "Měsíčně",
     "billingAnnual": "Ročně",
@@ -468,7 +483,7 @@
     },
     "live": {
       "eyebrow": "Live právě teď",
-      "title": "Tato stránka je připojena ke stejným API jako dashboard.",
+      "title": "Jaká živá data tato stránka právě nyní zobrazuje?",
       "subtitle": "Čtyři z více než sto signálů, které World Monitor neustále sleduje.",
       "liveBadge": "Live",
       "sampleBadge": "Vzorek",
@@ -487,7 +502,7 @@
     },
     "moments": {
       "eyebrow": "Korelační engine",
-      "title": "Výhoda spočívá v tom, že signály se pohybují společně.",
+      "title": "Jak World Monitor koreluje signály?",
       "sub": "Zdroje dat najdete na stovce míst. Výhoda je jeden povrch, kde geopolitika, námořní doprava, komodity, makro, trhy, počasí, infrastruktura, kyber, zprávy a riziko zemí si mohou navzájem vysvětlit.",
       "signalStack": "Signály sloučeny",
       "correlation": "Korelace",
@@ -551,7 +566,7 @@
     },
     "firstFive": {
       "eyebrow": "Od nuly k orientaci",
-      "title": "Vaših prvních pět minut na živé mapě.",
+      "title": "Co se stane během prvních pěti minut na mapě?",
       "sub": "Bez průvodce, bez prázdných stavů, bez zdi přihlášení. Toto se skutečně děje.",
       "f1Title": "Mapa se již pohybuje",
       "f1Desc": "Konflikty, plavidla, lety, požáry a výpadky se vykreslují při načítání stránky. Nic se nejdříve nekonfiguruje.",
@@ -567,7 +582,7 @@
     },
     "depth": {
       "eyebrow": "Pod kapotou",
-      "title": "Hloubka je produkt.",
+      "title": "Jak hluboký je datový model World Monitor?",
       "sub": "Každé číslo níže je dnes živé na řídicím panelu — ne na roadmapě.",
       "s1v": "Sdílený",
       "s1l": "Mapové vrstvy",
@@ -617,7 +632,7 @@
     },
     "agents": {
       "eyebrow": "Pro tvůrce a AI agenty",
-      "title": "Vytvářejte na základě živé světové inteligence — z libovolného stacku.",
+      "title": "Jak vytvářím na World Monitor ze svého vlastního stacku?",
       "sub": "Vše na mapě je také API. Připojte to do Claudea přes MCP, zavolejte REST endpointy odkudkoli, nebo nainstalujte nativního klienta pro Python, Ruby, Go nebo JavaScript — váš kód provádí výzkum s živými daty místo paměti trénovacích dat.",
       "b1": "MCP nástroje — skóre rizika, úzká místa, konflikty, trhy, souhrny",
       "b2": "Dokumentované REST API — jedna specifikace OpenAPI 3.1, jeden klíč",
@@ -660,7 +675,7 @@
     },
     "faq": {
       "eyebrow": "Bez háčku",
-      "title": "Logické otázky.",
+      "title": "Jaké jsou běžné otázky o World Monitor?",
       "q1": "Je World Monitor opravdu zdarma?",
       "a1": "Ano. Živá mapa — každá vrstva kromě Resilience, kurovaných kanálů, zemských souhrnů, kritických upozornění a monitorovacích ploch — je zdarma bez registrace a bez časového limitu zkoušky. Pro platí za kanály: přidává WM Analyst, scenario engine, Route Explorer, plánované souhrny, přístup MCP pro AI klienty a mapovou vrstvu Resilience. Bez reklam a bez účtu znamená, že nejsou žádná uživatelská data k prodeji.",
       "q2": "Co je globální inteligentní panel?",
@@ -685,7 +700,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "Světová mapa na tebe nečeká.",
+      "title": "Jak začít sledovat mapu světa?",
       "subtitle": "Zatímco čteš tuto stránku, všechno se pořád pohybovalo — průlivy, hotspoty, trhy, kurátorované feedy. Jeden z nich je zítřejší titulní strana. Najdi ho první — zdarma, bez účtu.",
       "button": "Najdi jej první",
       "note": "Zdarma · Bez registrace · Načte se za sekundy",

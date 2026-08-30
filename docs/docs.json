@@ -18,6 +18,20 @@
       "twitter:card": "summary_large_image",
       "twitter:site": "@worldmonitorai",
       "twitter:image": "https://www.worldmonitor.app/favico/og-image.png"
+    },
+    "organization": {
+      "id": "https://www.worldmonitor.app/#organization",
+      "name": "World Monitor",
+      "url": "https://www.worldmonitor.app/",
+      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://www.npmjs.com/package/worldmonitor",
+        "https://x.com/worldmonitorai",
+        "https://x.com/eliehabib",
+        "https://discord.gg/re63kWKxaz",
+        "https://www.wired.com/story/world-monitor-elie-habib/"
+      ]
     }
   },
   "colors": {
@@ -104,6 +118,8 @@
                   "methodology/news-credibility",
                   "country-instability-index",
                   "methodology/country-resilience-index",
+                  "methodology/resilience-indicator-licensing",
+                  "methodology/five-factor-scorecard",
                   "methodology/chokepoints",
                   "methodology/pipelines",
                   "methodology/storage",
@@ -454,7 +470,7 @@
         ]
       },
       {
-        "language": "zh-Hans",
+        "language": "zh",
         "navbar": {
           "links": [
             {
@@ -576,6 +592,8 @@
                   "zh/methodology/news-credibility",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
+                  "zh/methodology/resilience-indicator-licensing",
+                  "zh/methodology/five-factor-scorecard",
                   "zh/methodology/chokepoints",
                   "zh/methodology/pipelines",
                   "zh/methodology/storage",

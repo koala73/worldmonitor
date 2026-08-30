@@ -112,7 +112,8 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
   const { content: rootContent } = welcomeRoot();
   const heroIndex = rootContent.indexOf('By the time it&#x27;s news,');
   const taskIndex = rootContent.indexOf('What are you trying to find out?');
-  const liveIndex = rootContent.indexOf('This page is plugged into the same APIs as the dashboard.');
+  // Keep in sync with welcome.live.title in pro-test/src/locales/en.json (#7381).
+  const liveIndex = rootContent.indexOf('What live data is this page showing right now?');
   assert.ok(heroIndex >= 0, 'hero should remain in the prerendered root');
   assert.ok(taskIndex > heroIndex, 'task routes should follow the hero');
   assert.ok(liveIndex > taskIndex, 'live proof should follow the task routes');

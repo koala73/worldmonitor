@@ -22,6 +22,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let authListener: (() => void) | null = null;
+type Reservation = 'reserved' | 'cap-reached' | 'unavailable';
+let reservationCalls = 0;
+let reserveImpl: () => Promise<Reservation> = async () => 'reserved';
 
 const state = {
   clerkLoaded: true,
@@ -39,6 +42,13 @@ vi.mock('@/services/clerk', () => ({
   getClerk: () => (state.clerkLoaded
     ? { user: state.userId ? { id: state.userId, passkeys: state.passkeys } : null, session: state.sessionId ? { id: state.sessionId } : null }
     : null),
+}));
+
+vi.mock('@/services/passkey-offer-reservation', () => ({
+  reserveAccountOffer: () => {
+    reservationCalls += 1;
+    return reserveImpl();
+  },
 }));
 
 vi.mock('@/services/passkeys', async (orig) => {
@@ -102,6 +112,101 @@ beforeEach(() => {
   state.sessionId = 'sess_1';
   state.ready = false;
   state.passkeys = [];
+  reservationCalls = 0;
+  reserveImpl = async () => 'reserved';
+});
+
+describe('the account reservation stays single-flight', () => {
+  it('does not start a second reservation for a repeated Clerk emission', async () => {
+    let release!: (result: Reservation) => void;
+    const pending = new Promise<Reservation>((resolve) => { release = resolve; });
+    reserveImpl = () => pending;
+
+    const c = makeController();
+    c.init();
+    authListener?.();
+    await flush();
+
+    state.userId = 'user_abc';
+    state.ready = true;
+    authListener?.();
+    await flush();
+    await flush();
+    authListener?.();
+    await flush();
+    await flush();
+
+    release('reserved');
+    await flush();
+    await flush();
+    const calls = reservationCalls;
+    const promptCount = mounted();
+    c.destroy();
+
+    expect(calls).toBe(1);
+    expect(promptCount).toBe(1);
+  });
+
+  it('does not mount when destroy runs during the reservation', async () => {
+    let release!: (result: Reservation) => void;
+    const pending = new Promise<Reservation>((resolve) => { release = resolve; });
+    reserveImpl = () => pending;
+
+    const c = makeController();
+    c.init();
+    authListener?.();
+    await flush();
+
+    state.userId = 'user_abc';
+    state.ready = true;
+    authListener?.();
+    await flush();
+    await flush();
+    c.destroy();
+
+    release('reserved');
+    await flush();
+    await flush();
+    const promptCount = mounted();
+    c.destroy();
+
+    expect(promptCount).toBe(0);
+  });
+
+  it('re-evaluates the new identity after the prior account reservation settles', async () => {
+    let release!: (result: Reservation) => void;
+    const first = new Promise<Reservation>((resolve) => { release = resolve; });
+    reserveImpl = () => first;
+
+    const c = makeController();
+    c.init();
+    authListener?.();
+    await flush();
+
+    state.userId = 'user_a';
+    state.ready = true;
+    authListener?.();
+    await flush();
+    await flush();
+
+    state.userId = 'user_b';
+    state.sessionId = 'sess_2';
+    authListener?.();
+    await flush();
+    await flush();
+
+    reserveImpl = async () => 'reserved';
+    release('reserved');
+    await flush();
+    await flush();
+    await flush();
+    const calls = reservationCalls;
+    const promptCount = mounted();
+    c.destroy();
+
+    expect(calls).toBe(2);
+    expect(promptCount).toBe(1);
+  });
 });
 
 describe('offer blocked by an overlay is retried when it closes', () => {

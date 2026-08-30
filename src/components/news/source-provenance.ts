@@ -5,11 +5,12 @@ import {
   getSourceTier,
   getSourceTierBadgeTitle,
   getSourceType,
+  resolveRegisteredTelegramSourceName,
   resolveTelegramSourceName,
 } from '@/config/feeds';
 import { escapeHtml } from '@/utils/sanitize';
 
-export { resolveTelegramSourceName };
+export { resolveRegisteredTelegramSourceName, resolveTelegramSourceName };
 
 export interface PrimarySourceProvenanceHtml {
   riskBadge: string;

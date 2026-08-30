@@ -1,9 +1,11 @@
 ---
 title: "国家韧性指数"
-description: "面向 196 个国家、包含 72 个指标的实时韧性评分体系，覆盖 21 个活跃维度与 6 大领域 —— 一个每 6 小时刷新一次的 0-100 综合指数，采用 OECD、JRC 等国际对等标准进行同侪基准比较，用于衡量国家治理、经济、社会与安全韧性的相对强弱、动态变化与结构性差距。"
+description: "面向 196 个国家的实时韧性评分体系。实时 API 每 6 小时刷新，可抓取的国家快照每月发布。"
 ---
 
 WorldMonitor 国家韧性指数（CRI）以 0-100 分对 196 国公开可排名范围进行评分，将长期结构能力与当前运营压力结合为可操作的韧性指标。上游静态/来源源可以包含更广泛的领土集合，但公开的 CRI 排名在分数发布前过滤到可排名范围。CRI 不依赖静态国家风险评级，而是每 6 小时从官方和权威来源更新，并公开完整的来源溯源、覆盖率和插补上下文，让分析师能准确看到分数*为什么*变动以及其中多少是真实数据与插补数据。
+
+实时 API 分数每 6 小时刷新。可抓取的国家快照通过凭据验证的全范围捕获每月发布。每个国家页面都会标明快照文件、捕获日期、时间覆盖范围和发布说明。[修订与更正日志](/zh/corrections)记录影响已发布快照的重要方法变更。
 
 本文档描述指数**当前发布**的行为。版本化有两个独立维度：
 
@@ -46,6 +48,8 @@ CRI 在产品的三个位置呈现，均由同一当前发布分数驱动：
 - **地图分级统计图** — 韧性分数驱动主地图上的国家级分级统计图层。从地图的图层面板或通过 Cmd+K 切换。
 
 三个仪表盘面均可免费查看。直接分数和排名 API 调用需要正常的 Pro/API 认证路径，而运行时清单在 `/api/resilience/v1/get-runtime-manifest` 公开；请参见 [Resilience service](https://github.com/koala73/worldmonitor/blob/main/docs/api/ResilienceService.openapi.yaml) 了解 HTTP 合约。
+
+仅限 Pro 的 `/api/resilience/v1/get-resilience-indicators` 方法可在完整的 72 行注册表上解释单个国家的分数。它报告活动评分器所使用的确切归一化分量分数与运行时权重，然后把策略生效后的有效贡献与每个已发布的维度分数对账。各行还区分已观测、插补、缺失、回退、来源失败、未启用、已退役与不适用等状态。现有的 `get-resilience-score` 响应保持不变。原始来源值是选择性提供的，并在[指标再分发审查](./resilience-indicator-licensing.mdx)下失败关闭；受限行仍会返回 WorldMonitor 的归一化分数、贡献、来源署名，以及已知时的来源年份。
 
 ## 概览
 
@@ -750,7 +754,7 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 2. **缓存失效**：按国分数缓存从 `resilience:score:v9:` 升级到 `resilience:score:v10:`，排名缓存从 `resilience:ranking:v9` 升级到 `resilience:ranking:v10`，分数历史从 `resilience:history:v4:` 升级到 `resilience:history:v5:`（随后在恢复领域权重再平衡中升级到 `resilience:score:v11:`、`resilience:ranking:v11` 和 `resilience:history:v6:` — 见上方 Redis 键表了解当前值）。版本升级是干净启动保护；实际跨公式隔离是写入每个缓存分数/排名载荷的 `_formula` 标签和每个历史有序集合成员上的 `:d6` / `:pc` 后缀，在读取时检查，使标志翻转强制重建而无需等待 TTL。
 3. **方法论感知级别阈值**：`classifyResilienceLevel` 读取 `isPillarCombineEnabled()` 并将高/中截断从 70/40（6 领域）切换到 60/30（支柱组合）。无此变更，尺度压缩本身将仅因公式变更而非国家状况变更，将 FI（75.64 → 68.60）和 NZ（76.26 → 67.93）从"高"降级到"中"。重新锚定的截断为每个旧标签正确的国家保留定性标签。
 4. **重新锚定发布门带**：`tests/resilience-pillar-combine-activation.test.mts` 将高带锚点（NO、CH、DK）锁定在 ≥ 55（vs 6 领域公式的 ≥ 70 下限），低带锚点（YE、SO）在 ≤ 40（vs ≤ 45）。快照测试从每个快照读取 `methodologyFormula` 并应用匹配带。参考版重计算确认带在领域加权支柱聚合后有裕度成立：NO = 74.85（≥ 55 by 19.85 分），YE = 29.20（≤ 40 by 10.80 分）。
-5. **投影和权威快照**：`docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` 携带激活前使用的 52 国预览表。`docs/snapshots/resilience-ranking-2026-05-28.json` 携带标志激活后的权威全范围实时捕获；它早于 P1-1 领域加权支柱聚合修复，作为 P1-1 前历史捕获保留，直到生成下一次实时全范围捕获。
+5. **投影和权威快照**：`docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` 携带激活前使用的 52 国预览表。`docs/snapshots/resilience-ranking-2026-05-28.json` 保留为已标记的 P1-1 前历史捕获。`docs/snapshots/resilience-ranking-2026-08-29.json` 是当前全范围捕获，并在支柱聚合中应用领域设计权重。
 
 回退：设 `RESILIENCE_PILLAR_COMBINE_ENABLED=false`，刷新当前 `resilience:score:v28:*`、`resilience:ranking:v28`、`resilience:history:v22:*` 和 `resilience:intervals:v11:*` 键（或等待 TTL 过期）。6 领域公式与支柱组合在 `_shared.ts` 中并存，回退无需代码变更。
 

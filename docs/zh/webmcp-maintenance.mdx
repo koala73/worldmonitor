@@ -15,10 +15,11 @@ description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免
 4. 正确设置 `readOnlyHint` 与 `untrustedContentHint`。名称、描述、参数描述、schema、输出和错误必须符合 `WEBMCP_TOOL_BUDGETS`。
 5. 在每次调用时重新检查认证、权益、变体、渲染器、挂载状态和能力状态。工具发现不能授予持久权限。
 6. 对于声明式工具，只在真实表单已连接且可用时暴露属性。表单等待、隐藏、重置、销毁或不符合条件时，移除这些属性。
-7. 同时更新 `docs/webmcp.mdx` 与 `docs/zh/webmcp.mdx`。所有权、验证或发布步骤改变时，也要同时更新两份维护指南。
-8. 扩展确定性生命周期与 UI 测试。如果工具选择或链式调用改变，请添加直接、模糊、错误工具、替代顺序和链中失败的 eval 用例。
-9. 如果注册路由或源发生变化，请把 Vercel、Docker、本地 Vite、Origin Trial、同源策略和 embed 拒绝响应头作为一个安全边界一起更新并测试。
-10. 先运行本地同 SHA 证明，再运行生产同 SHA 冒烟测试。单元测试和部署状态不能证明生产验收。
+7. 在一个导出的运行时列表中声明每个稳定的拒绝原因，并由该列表推导其 TypeScript 联合类型。不要手工维护第二份原因名称副本。
+8. 同时更新 `docs/webmcp.mdx` 与 `docs/zh/webmcp.mdx`，并在两份文档中写明每个新增原因。若某个已声明的原因在任一语言中缺失，指南契约测试将失败。所有权、验证或发布步骤改变时，也要同时更新两份维护指南。
+9. 扩展确定性生命周期与 UI 测试。如果工具选择或链式调用改变，请添加直接、模糊、错误工具、替代顺序和链中失败的 eval 用例。
+10. 如果注册路由或源发生变化，请把 Vercel、Docker、本地 Vite、Origin Trial、同源策略和 embed 拒绝响应头作为一个安全边界一起更新并测试。
+11. 先运行本地同 SHA 证明，再运行生产同 SHA 冒烟测试。单元测试和部署状态不能证明生产验收。
 
 ## 源文件图
 
@@ -26,14 +27,14 @@ description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免
 |---|---|
 | `src/config/webmcp.ts` | 规范的首页、仪表板、声明式和逐变体清单，以及共享 schema 与输出预算。 |
 | `src/services/webmcp.ts` | 命令式描述符、schema、注册生命周期、受限结果与错误、遥测和取消策略。 |
-| `src/services/webmcp-map-layer-catalog.ts` 和 `src/services/webmcp-panel-catalog.ts` | 分页图层与面板目录、筛选、权益叠加和稳定可用性原因。 |
+| `src/services/webmcp-map-layer-catalog.ts`、`src/services/webmcp-panel-catalog.ts` 和 `src/services/webmcp-mission-preset-catalog.ts` | 分页图层与面板目录、捆绑任务预设目录、筛选、权益叠加和稳定可用性原因。 |
 | `src/App.ts`、`src/app/webmcp-dashboard.ts` 和 `src/app/dashboard-action-binding.ts` | 启动顺序、UI 就绪、销毁、仪表板上下文、目录快照和人工操作路径绑定。 |
 | `shared/agent-bus-actions.ts`、`shared/agent-bus-contract.ts` 和 `src/app/agent-bus-applier.ts` | 类型化仪表板动作协议，以及通过现有 UI 状态应用动作。 |
 | `src/app/country-map-focus.ts` 和 `src/app/map-dimension-control.ts` | 国家边界框聚焦，以及共享 2D 或 3D 控件路径。 |
 | `src/config/panel-enablement.ts` 和 `src/app/panel-enablement.ts` | 面板启用策略，以及 `set_panel_enabled` 使用的设置持久化与应用路径。 |
 | `src/app/webmcp-access.ts`、`src/services/webmcp-access-snapshot.ts` 和 `src/services/clerk.ts` | 实时访问上下文、无个人身份信息的快照，以及现有 Clerk 登录对话框。 |
 | `src/app/webmcp-search-controller.ts`、`src/app/webmcp-search-effects.ts` 和 `src/app/search-selection-dispatcher.ts` | 不透明搜索能力、绑定效果类别、失效、实时状态复核和可见结果选择。 |
-| `src/app/panel-layout.ts`、`src/components/PanelTabBar.ts`、`src/services/tab-store.ts` 和 `src/services/dashboard-tab-actions.ts` | 仪表板标签页 UI、持久化、名称与 ID 限制，以及列出、选择、创建、重命名和删除操作。 |
+| `src/services/panel-layout-actions.ts`、`src/app/panel-layout.ts`、`src/components/PanelTabBar.ts`、`src/services/tab-store.ts` 和 `src/services/dashboard-tab-actions.ts` | 面板布局快照/折叠/移动/全屏策略，以及仪表板标签页 UI、持久化、名称与 ID 限制，和列出、选择、创建、重命名、删除操作。 |
 | `src/components/GlobalProcurementPanel.ts` | 条件式声明工具 `search_procurement` 的表单、可见等待状态、重置、取消和受限结果。 |
 | `pro-test/welcome.html` | `launchWorldMonitor` 和 `getWorldMonitorMcpEndpoint` 的零导入首页注册。 |
 | `vercel.json`、`docker/nginx-security-headers.conf`、`docker/nginx-embed-security-headers.conf`、`vite.config.ts` 和 `pro-test/vite.config.ts` | Trial 注册、源隔离、同源许可、本地测试一致性和明确的 embed 拒绝。 |
@@ -55,7 +56,9 @@ npm run docs:check
   tests/webmcp-search-effects.test.mts \
   tests/webmcp-dashboard.test.mts \
   tests/dashboard-tab-actions.test.mts \
+  tests/panel-layout-actions.test.mts \
   tests/webmcp-panel-catalog.test.mts \
+  tests/webmcp-mission-presets.test.mts \
   tests/agent-bus-actions.test.mts \
   tests/agent-bus-applier.test.mts \
   tests/country-map-focus.test.mts \
@@ -99,7 +102,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-有头生产套件会测试真实 Origin Trial。它验证线上 SHA、安全响应头、二十四工具清单与 schema、冷启动调用、受限访问与登录结果、只读目录、取消行为、全部六个仪表板源、专用源根路由重定向和跨源 embed 拒绝。会修改生产状态的测试只在本地运行。
+有头生产套件会测试真实 Origin Trial。它验证线上 SHA、安全响应头、三十一个工具的清单与 schema、冷启动调用、受限访问与登录结果、只读目录、取消行为、全部六个仪表板源、专用源根路由重定向和跨源 embed 拒绝。会修改生产状态的测试只在本地运行。
 
 请把 `test-results/` 下的 `webmcp-smoke.json`、`webmcp-cancellation.json` 与 `webmcp-production-matrix.json` 保存为发布证据。还要确认 `/embed` 和 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档与 embed 页面没有获得顶层清单。
 

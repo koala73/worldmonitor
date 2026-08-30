@@ -28,14 +28,7 @@ const jsonLd = {
   "url": "https://www.worldmonitor.app/blog/",
   "inLanguage": "en-US",
   "publisher": {
-    "@type": "Organization",
-    "@id": "https://www.worldmonitor.app/#organization",
-    "name": "World Monitor",
-    "url": "https://www.worldmonitor.app",
-    "logo": {
-      "@type": "ImageObject",
-      "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
-    }
+    "@id": "https://www.worldmonitor.app/#organization"
   },
   "blogPost": posts.map(post => {
     const authorName = post.data.author || DEFAULT_AUTHOR;
@@ -102,10 +95,11 @@ const jsonLd = {
               />
             </picture>
           )}
-          <div class="tag">
-            {post.data.pinned && <span class="pin">Pinned</span>}
-            {post.data.audience}
-          </div>
+          {post.data.pinned && (
+            <div class="tag">
+              <span class="pin">Pinned</span>
+            </div>
+          )}
           <h2>{post.data.title}</h2>
           <p>{post.data.description}</p>
           <div class="meta">

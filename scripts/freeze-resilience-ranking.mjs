@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Freeze a live snapshot of the resilience ranking for regression-verification
-// of published figures. Writes to docs/snapshots/resilience-ranking-<YYYY-MM-DD>.json.
+// Freeze a resilience ranking with its country score details and identities.
+// Writes to docs/snapshots/resilience-ranking-<YYYY-MM-DD>.json.
 //
 // Usage:
 //   API_BASE=https://api.worldmonitor.app node scripts/freeze-resilience-ranking.mjs
@@ -9,9 +9,9 @@
 //     RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-YYYY-MM-DD.json \
 //     node scripts/freeze-resilience-ranking.mjs
 //
-// The script hits GET /api/resilience/v1/get-resilience-ranking, enriches each
-// item with the country name (shared/country-names.json reverse-lookup), and
-// writes a frozen JSON artifact alongside a methodology block. Pair with
+// The script reads the API by default or the production Redis snapshots when
+// RESILIENCE_RANKING_SOURCE=redis. It adds per-country score details and
+// Wikidata identities, then writes a frozen artifact with methodology. Pair with
 // tests/resilience-ranking-snapshot.test.mts to regression-verify the ordering
 // invariants (monotonic, unique ranks, anchors in expected bands) against any
 // frozen snapshot committed into the repo.
@@ -21,9 +21,19 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 
+import { Redis } from '@upstash/redis';
+
+import { loadEnvFile } from './_seed-utils.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
+const LEGACY_COUNTRY_SNAPSHOT_PATH = path.join(
+  REPO_ROOT,
+  'docs',
+  'snapshots',
+  'resilience-ranking-2026-05-28.json',
+);
 const RESILIENCE_SCORER_PATH = path.join(
   REPO_ROOT,
   'server',
@@ -54,6 +64,31 @@ const FORMULA_CHECK_COUNTRIES = (process.env.RESILIENCE_RANKING_FORMULA_CHECK_CO
   .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
 const FORMULA_SCORE_TOLERANCE = Number(process.env.RESILIENCE_RANKING_FORMULA_TOLERANCE || 0.25);
 const OUTPUT_BASENAME = process.env.RESILIENCE_RANKING_OUTPUT_BASENAME || '';
+const DETAILS_CONCURRENCY = Number(process.env.RESILIENCE_RANKING_DETAILS_CONCURRENCY || 6);
+const CAPTURE_SOURCE = process.env.RESILIENCE_RANKING_SOURCE || 'api';
+const WIKIDATA_SPARQL_URL = 'https://query.wikidata.org/sparql';
+const HTTP_TIMEOUT_MS = 30_000;
+const COMMON_COUNTRY_NAMES = Object.freeze({
+  HK: 'Hong Kong',
+  LC: 'Saint Lucia',
+  MM: 'Myanmar',
+  MO: 'Macau',
+  TR: 'Turkey',
+});
+const COUNTRY_REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+
+loadEnvFile(import.meta.url, {
+  only: [
+    'WORLDMONITOR_API_KEY',
+    'WM_API_KEY',
+    'UPSTASH_REDIS_REST_URL',
+    'UPSTASH_REDIS_REST_TOKEN',
+  ],
+});
+
+function worldMonitorApiKey() {
+  return process.env.WM_API_KEY || process.env.WORLDMONITOR_API_KEY || '';
+}
 
 const METHODOLOGY_BY_FORMULA = {
   'domain-weighted-6d': {
@@ -150,6 +185,46 @@ async function loadResilienceMethodologyMetadata() {
   return computeResilienceMethodologyMetadataFromSource(sourceText);
 }
 
+let resilienceCacheKeysPromise;
+function loadResilienceCacheKeys() {
+  resilienceCacheKeysPromise ||= fs.readFile(
+    path.join(REPO_ROOT, 'server', 'worldmonitor', 'resilience', 'v1', '_shared.ts'),
+    'utf8',
+  ).then((sourceText) => {
+    function exportedString(name) {
+      const match = sourceText.match(new RegExp(`export\\s+const\\s+${name}\\s*=\\s*['\"]([^'\"]+)['\"]`));
+      if (!match) throw new Error(`Could not read ${name} from resilience _shared.ts`);
+      return match[1];
+    }
+    return {
+      ranking: exportedString('RESILIENCE_RANKING_CACHE_KEY'),
+      scorePrefix: exportedString('RESILIENCE_SCORE_CACHE_PREFIX'),
+    };
+  });
+  return resilienceCacheKeysPromise;
+}
+
+let redisClient;
+function getRedisClient() {
+  if (redisClient) return redisClient;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required');
+  redisClient = new Redis({
+    url,
+    token,
+    signal: () => AbortSignal.timeout(HTTP_TIMEOUT_MS),
+  });
+  return redisClient;
+}
+
+async function readRedisJson(key) {
+  const value = await getRedisClient().get(key);
+  if (value == null) throw new Error(`Redis key ${key} is missing`);
+  if (value && typeof value === 'object' && '_seed' in value && 'data' in value) return value.data;
+  return value;
+}
+
 export function buildSnapshotMethodology(methodologyConfig, methodologyMetadata) {
   return {
     ...methodologyConfig,
@@ -178,6 +253,114 @@ async function loadCountryNameMap() {
   return reverse;
 }
 
+async function loadLegacyCountryNames() {
+  const snapshot = JSON.parse(await fs.readFile(LEGACY_COUNTRY_SNAPSHOT_PATH, 'utf8'));
+  return new Map(
+    [...(snapshot.items || []), ...(snapshot.greyedOut || [])]
+      .map((country) => [String(country.countryCode || '').toUpperCase(), country.countryName])
+      .filter(([code, name]) => /^[A-Z]{2}$/.test(code) && typeof name === 'string' && name),
+  );
+}
+
+function wikidataIdentityQuery() {
+  return `SELECT ?country ?code ?countryLabel ?officialName ?officialNameRank WHERE {
+  ?country wdt:P297 ?code.
+  FILTER(STRLEN(?code) = 2)
+  OPTIONAL {
+    ?country p:P1448 ?officialNameStatement.
+    ?officialNameStatement ps:P1448 ?officialName;
+      wikibase:rank ?officialNameRank.
+    OPTIONAL { ?officialNameStatement pq:P580 ?officialNameStart. }
+    OPTIONAL { ?officialNameStatement pq:P582 ?officialNameEnd. }
+    FILTER(LANG(?officialName) = "en")
+    FILTER(?officialNameRank != wikibase:DeprecatedRank)
+    FILTER(!BOUND(?officialNameStart) || ?officialNameStart <= NOW())
+    FILTER(!BOUND(?officialNameEnd) || ?officialNameEnd > NOW())
+  }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+}`;
+}
+
+export function selectWikidataIdentities(countryCodes, bindings) {
+  const requested = new Set(countryCodes);
+  const candidates = new Map();
+  for (const binding of bindings || []) {
+    const code = String(binding?.code?.value || '').toUpperCase();
+    const entity = String(binding?.country?.value || '');
+    const qid = entity.match(/\/entity\/(Q\d+)$/)?.[1];
+    const commonName = String(binding?.countryLabel?.value || '').trim();
+    if (!requested.has(code) || !qid || !commonName) continue;
+    const identity = {
+      commonName,
+      officialName: String(binding?.officialName?.value || commonName).trim(),
+      officialNameRank: String(binding?.officialNameRank?.value || ''),
+      sameAs: `https://www.wikidata.org/wiki/${qid}`,
+    };
+    candidates.set(code, [...(candidates.get(code) || []), identity]);
+  }
+  const identities = new Map();
+  for (const [code, values] of candidates) {
+    const expected = COUNTRY_REGION_NAMES.of(code)?.toLocaleLowerCase('en-US');
+    values.sort((left, right) => {
+      const leftExact = left.commonName.toLocaleLowerCase('en-US') === expected;
+      const rightExact = right.commonName.toLocaleLowerCase('en-US') === expected;
+      if (leftExact !== rightExact) return leftExact ? -1 : 1;
+      const leftPreferred = left.officialNameRank.endsWith('#PreferredRank');
+      const rightPreferred = right.officialNameRank.endsWith('#PreferredRank');
+      if (leftPreferred !== rightPreferred) return leftPreferred ? -1 : 1;
+      return left.commonName.length - right.commonName.length
+        || left.commonName.localeCompare(right.commonName)
+        || right.officialName.length - left.officialName.length
+        || (left.officialName < right.officialName ? -1 : left.officialName > right.officialName ? 1 : 0)
+        || left.sameAs.localeCompare(right.sameAs);
+    });
+    const { officialNameRank: _officialNameRank, ...identity } = values[0];
+    identities.set(code, identity);
+  }
+  const missing = countryCodes.filter((code) => !identities.has(code));
+  if (missing.length > 0) {
+    throw new Error(`Wikidata P297 identities missing for: ${missing.join(', ')}`);
+  }
+  return identities;
+}
+
+async function fetchWikidataIdentities(countryCodes) {
+  const url = new URL(WIKIDATA_SPARQL_URL);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('query', wikidataIdentityQuery());
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/sparql-results+json',
+      'User-Agent': 'WorldMonitor-CorpusSnapshot/1.0 (https://www.worldmonitor.app/sources/)',
+    },
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} from ${WIKIDATA_SPARQL_URL}`);
+  }
+  const payload = await response.json();
+  return selectWikidataIdentities(countryCodes, payload?.results?.bindings);
+}
+
+function normalizeCountryIdentity(code, identity, legacyName, fallbackName) {
+  const commonName = COMMON_COUNTRY_NAMES[code]
+    || COUNTRY_REGION_NAMES.of(code)
+    || identity?.commonName
+    || fallbackName
+    || code;
+  const officialName = identity?.officialName || identity?.commonName || commonName;
+  const legacyNames = legacyName && legacyName !== commonName ? [legacyName] : [];
+  const alternateNames = [...new Set([legacyName, identity?.commonName, officialName]
+    .filter((name) => name && name !== commonName))];
+  return {
+    commonName,
+    officialName,
+    alternateNames,
+    legacyNames,
+    sameAs: identity?.sameAs || '',
+  };
+}
+
 function baseHeaders() {
   return {
     accept: 'application/json, text/plain, */*',
@@ -203,6 +386,7 @@ async function mintSessionCookie() {
       'content-type': 'application/json',
     },
     body: '{}',
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} from ${SESSION_URL}: ${await response.text().catch(() => '')}`);
@@ -217,8 +401,9 @@ async function mintSessionCookie() {
 
 async function buildAuthHeaders() {
   const headers = baseHeaders();
-  if (process.env.WORLDMONITOR_API_KEY) {
-    headers['X-WorldMonitor-Key'] = process.env.WORLDMONITOR_API_KEY;
+  const apiKey = worldMonitorApiKey();
+  if (apiKey) {
+    headers['X-WorldMonitor-Key'] = apiKey;
   } else {
     headers.cookie = await mintSessionCookie();
   }
@@ -226,11 +411,14 @@ async function buildAuthHeaders() {
 }
 
 async function fetchJson(url, headers) {
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    const credentialHint = response.status === 401 && SCORE_URL && url.startsWith(SCORE_URL) && !process.env.WORLDMONITOR_API_KEY
-      ? ' Set WORLDMONITOR_API_KEY to a Pro/API key; post-flip ranking snapshots must verify score anchors through get-resilience-score and cannot be captured from an unauthenticated shell.'
+    const credentialHint = response.status === 401 && SCORE_URL && url.startsWith(SCORE_URL) && !worldMonitorApiKey()
+      ? ' Set WM_API_KEY or WORLDMONITOR_API_KEY to a Pro/API key; post-flip ranking snapshots must verify score anchors through get-resilience-score and cannot be captured from an unauthenticated shell.'
       : '';
     throw new Error(`HTTP ${response.status} from ${url}: ${body}${credentialHint}`);
   }
@@ -238,13 +426,114 @@ async function fetchJson(url, headers) {
 }
 
 async function fetchRanking(headers) {
+  if (CAPTURE_SOURCE === 'redis') {
+    const keys = await loadResilienceCacheKeys();
+    return readRedisJson(keys.ranking);
+  }
   return fetchJson(RANKING_URL, headers);
 }
 
 async function fetchScore(countryCode, headers) {
+  if (CAPTURE_SOURCE === 'redis') {
+    const keys = await loadResilienceCacheKeys();
+    return readRedisJson(`${keys.scorePrefix}${countryCode}`);
+  }
   const url = new URL(SCORE_URL);
   url.searchParams.set('countryCode', countryCode);
   return fetchJson(url.toString(), headers);
+}
+
+function finiteOptionalNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function normalizeDimension(dimension, countryCode, domainId) {
+  const id = String(dimension?.id || '');
+  if (!id) throw new Error(`${countryCode}.${domainId} has a dimension without an id`);
+  return {
+    id,
+    score: finiteNumber(dimension?.score, `${countryCode}.${domainId}.${id}.score`),
+    coverage: finiteNumber(dimension?.coverage, `${countryCode}.${domainId}.${id}.coverage`),
+    imputationClass: String(dimension?.imputationClass || ''),
+    freshness: {
+      lastObservedAtMs: String(dimension?.freshness?.lastObservedAtMs || ''),
+      staleness: String(dimension?.freshness?.staleness || ''),
+    },
+  };
+}
+
+function normalizeCountryDetails(score, countryCode) {
+  const domains = (score?.domains || []).map((domain) => {
+    const id = String(domain?.id || '');
+    if (!id) throw new Error(`${countryCode} has a domain without an id`);
+    if (!Array.isArray(domain?.dimensions) || domain.dimensions.length === 0) {
+      throw new Error(`${countryCode}.${id} must include dimensions`);
+    }
+    return {
+      id,
+      score: finiteNumber(domain?.score, `${countryCode}.${id}.score`),
+      weight: finiteNumber(domain?.weight, `${countryCode}.${id}.weight`),
+      dimensions: (domain?.dimensions || []).map(
+        (dimension) => normalizeDimension(dimension, countryCode, id),
+      ),
+    };
+  });
+  const pillars = (score?.pillars || []).map((pillar) => {
+    const id = String(pillar?.id || '');
+    if (!id) throw new Error(`${countryCode} has a pillar without an id`);
+    return {
+      id,
+      score: finiteNumber(pillar?.score, `${countryCode}.${id}.score`),
+      weight: finiteNumber(pillar?.weight, `${countryCode}.${id}.weight`),
+      coverage: finiteNumber(pillar?.coverage, `${countryCode}.${id}.coverage`),
+      domainIds: (pillar?.domains || []).map((domain) => String(domain?.id || '')).filter(Boolean),
+    };
+  });
+  if (domains.length === 0 || pillars.length === 0) {
+    throw new Error(`${countryCode} score details must include domains and pillars`);
+  }
+  return {
+    overallScore: finiteNumber(score?.overallScore, `${countryCode}.overallScore`),
+    baselineScore: finiteOptionalNumber(score?.baselineScore),
+    stressScore: finiteOptionalNumber(score?.stressScore),
+    stressFactor: finiteOptionalNumber(score?.stressFactor),
+    trend: String(score?.trend || 'unknown'),
+    change30d: finiteNumber(score?.change30d, `${countryCode}.change30d`),
+    imputationShare: finiteOptionalNumber(score?.imputationShare),
+    dataVersion: String(score?.dataVersion || ''),
+    schemaVersion: String(score?.schemaVersion || ''),
+    domains,
+    pillars,
+  };
+}
+
+async function mapWithConcurrency(values, concurrency, operation) {
+  const results = new Array(values.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < values.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await operation(values[index], index);
+    }
+  }
+  await Promise.all(Array.from(
+    { length: Math.min(concurrency, values.length) },
+    () => worker(),
+  ));
+  return results;
+}
+
+async function fetchCountryDetails(countryCodes, headers) {
+  if (!Number.isInteger(DETAILS_CONCURRENCY) || DETAILS_CONCURRENCY < 1 || DETAILS_CONCURRENCY > 12) {
+    throw new Error(`RESILIENCE_RANKING_DETAILS_CONCURRENCY must be an integer from 1 to 12, got ${DETAILS_CONCURRENCY}`);
+  }
+  const details = await mapWithConcurrency(
+    countryCodes,
+    DETAILS_CONCURRENCY,
+    async (countryCode) => normalizeCountryDetails(await fetchScore(countryCode, headers), countryCode),
+  );
+  return new Map(countryCodes.map((countryCode, index) => [countryCode, details[index]]));
 }
 
 function round1(n) {
@@ -336,7 +625,7 @@ async function verifyDeclaredFormula(headers) {
   );
   return {
     declaredFormula: METHODOLOGY_FORMULA,
-    scoreEndpoint: SCORE_URL,
+    scoreEndpoint: CAPTURE_SOURCE === 'redis' ? 'Production Upstash Redis score cache' : SCORE_URL,
     tolerance: FORMULA_SCORE_TOLERANCE,
     checks,
   };
@@ -351,7 +640,7 @@ function attachRankingVerification(ranking, formulaVerification) {
 
   return {
     ...formulaVerification,
-    rankingEndpoint: RANKING_URL,
+    rankingEndpoint: CAPTURE_SOURCE === 'redis' ? 'Production Upstash Redis ranking cache' : RANKING_URL,
     checks: formulaVerification.checks.map((check) => {
       const rankingItem = rankingByCountry.get(check.countryCode);
       if (!rankingItem) {
@@ -373,19 +662,51 @@ function attachRankingVerification(ranking, formulaVerification) {
   };
 }
 
-function enrichItems(items, nameMap, startRank) {
-  return items.map((item, i) => ({
-    rank: startRank + i,
-    countryCode: item.countryCode,
-    countryName: nameMap[item.countryCode] ?? item.countryCode,
-    overallScore: round1(item.overallScore),
-    overallScoreRaw: item.overallScore,
-    level: item.level,
-    lowConfidence: Boolean(item.lowConfidence),
-    dimensionCoverage: Math.round((item.overallCoverage ?? 0) * 100) / 100,
-    headlineEligible: Boolean(item.headlineEligible),
-    rankStable: Boolean(item.rankStable),
-  }));
+function enrichItems(
+  items,
+  { nameMap, identities, legacyNames, detailsByCode },
+  startRank,
+) {
+  return items.map((item, index) => {
+    const countryCode = String(item.countryCode || '').toUpperCase();
+    const details = detailsByCode.get(countryCode);
+    if (!details) throw new Error(`Score details missing for ${countryCode}`);
+    const identity = normalizeCountryIdentity(
+      countryCode,
+      identities.get(countryCode),
+      legacyNames.get(countryCode),
+      nameMap[countryCode],
+    );
+    const rankingScore = finiteOptionalNumber(item.overallScore) ?? details.overallScore;
+    if (Math.abs(rankingScore - details.overallScore) > FORMULA_SCORE_TOLERANCE) {
+      throw new Error(
+        `${countryCode} ranking score=${rankingScore} differs from score details=${details.overallScore}`,
+      );
+    }
+    return {
+      rank: startRank == null ? null : startRank + index,
+      countryCode,
+      countryName: identity.commonName,
+      identity,
+      overallScore: round1(rankingScore),
+      overallScoreRaw: rankingScore,
+      level: item.level || 'unclassified',
+      lowConfidence: Boolean(item.lowConfidence),
+      dimensionCoverage: Math.round((item.overallCoverage ?? 0) * 100) / 100,
+      headlineEligible: Boolean(item.headlineEligible),
+      rankStable: Boolean(item.rankStable),
+      baselineScore: details.baselineScore,
+      stressScore: details.stressScore,
+      stressFactor: details.stressFactor,
+      trend: details.trend,
+      change30d: details.change30d,
+      imputationShare: details.imputationShare,
+      dataVersion: details.dataVersion,
+      scoreSchemaVersion: details.schemaVersion,
+      domains: details.domains,
+      pillars: details.pillars,
+    };
+  });
 }
 
 function resolveRankingSnapshotOutputPath(capturedAt, outputBasename = OUTPUT_BASENAME) {
@@ -410,33 +731,60 @@ function resolveRankingSnapshotOutputPath(capturedAt, outputBasename = OUTPUT_BA
 }
 
 async function main() {
-  if (!API_BASE) {
+  if (!['api', 'redis'].includes(CAPTURE_SOURCE)) {
+    console.error('[freeze-resilience-ranking] RESILIENCE_RANKING_SOURCE must be api or redis');
+    process.exit(2);
+  }
+  if (CAPTURE_SOURCE === 'api' && !API_BASE) {
     console.error('[freeze-resilience-ranking] API_BASE env var required (e.g. https://api.worldmonitor.app)');
     process.exit(2);
   }
-  if (FORCE_RANKING_REFRESH && !process.env.WORLDMONITOR_API_KEY) {
+  if (CAPTURE_SOURCE === 'api' && FORCE_RANKING_REFRESH && !worldMonitorApiKey()) {
     console.error(
-      '[freeze-resilience-ranking] WORLDMONITOR_API_KEY is required when RESILIENCE_RANKING_REFRESH is enabled; set RESILIENCE_RANKING_REFRESH=false to capture the cached public ranking instead',
+      '[freeze-resilience-ranking] WM_API_KEY or WORLDMONITOR_API_KEY is required when RESILIENCE_RANKING_REFRESH is enabled; set RESILIENCE_RANKING_REFRESH=false to capture the cached public ranking instead',
     );
     process.exit(2);
   }
 
   const nameMap = await loadCountryNameMap();
   const methodologyMetadata = await loadResilienceMethodologyMetadata();
-  const headers = await buildAuthHeaders();
+  const headers = CAPTURE_SOURCE === 'api' ? await buildAuthHeaders() : {};
   const formulaCheck = await verifyDeclaredFormula(headers);
   const ranking = await fetchRanking(headers);
   const formulaVerification = attachRankingVerification(ranking, formulaCheck);
 
   const items = Array.isArray(ranking.items) ? ranking.items : [];
   const greyedOut = Array.isArray(ranking.greyedOut) ? ranking.greyedOut : [];
-
-  const ranked = enrichItems(items, nameMap, 1);
+  const countryCodes = [...items, ...greyedOut].map((item) => String(item.countryCode || '').toUpperCase());
+  if (new Set(countryCodes).size !== countryCodes.length) {
+    throw new Error('Ranking payload contains duplicate country codes');
+  }
+  const legacyNames = await loadLegacyCountryNames();
+  const [identities, detailsByCode] = await Promise.all([
+    fetchWikidataIdentities(countryCodes),
+    fetchCountryDetails(countryCodes, headers),
+  ]);
+  const enrichment = { nameMap, identities, legacyNames, detailsByCode };
+  const ranked = enrichItems(items, enrichment, 1);
+  const unranked = enrichItems(greyedOut, enrichment, null);
   const capturedAt = new Date().toISOString().slice(0, 10);
 
   const snapshot = {
     capturedAt,
-    source: `Live capture via ${RANKING_URL}`,
+    source: CAPTURE_SOURCE === 'redis'
+      ? 'Production Upstash Redis resilience ranking snapshot'
+      : `Live capture via ${RANKING_URL}`,
+    snapshotNote: METHODOLOGY_FORMULA === 'pillar-combined-penalized-v1'
+      ? `Post-P1-1 full-universe capture: pillar scores applied domain design weights inside pillar aggregation on ${capturedAt}.`
+      : `Historical full-universe capture using the ${METHODOLOGY_FORMULA} formula on ${capturedAt}.`,
+    detailSource: CAPTURE_SOURCE === 'redis'
+      ? 'Production Upstash Redis per-country resilience score snapshots'
+      : SCORE_URL,
+    identitySource: {
+      name: 'Wikidata P297 country identity',
+      url: WIKIDATA_SPARQL_URL,
+      license: 'CC0 1.0',
+    },
     commitSha: commitSha(),
     schemaVersion: '2.0',
     methodologyFormula: METHODOLOGY_FORMULA,
@@ -447,22 +795,17 @@ async function main() {
     ),
     totals: {
       rankedCountries: ranked.length,
-      greyedOutCount: greyedOut.length,
+      greyedOutCount: unranked.length,
     },
     items: ranked,
-    greyedOut: greyedOut.map((item) => ({
-      countryCode: item.countryCode,
-      countryName: nameMap[item.countryCode] ?? item.countryCode,
-      overallCoverage: Math.round((item.overallCoverage ?? 0) * 100) / 100,
-      headlineEligible: Boolean(item.headlineEligible),
-    })),
+    greyedOut: unranked,
   };
 
   const outPath = resolveRankingSnapshotOutputPath(capturedAt);
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
   console.log(`[freeze-resilience-ranking] wrote ${outPath}`);
-  console.log(`[freeze-resilience-ranking] items=${ranked.length} greyedOut=${greyedOut.length} commit=${snapshot.commitSha.slice(0, 10)}`);
+  console.log(`[freeze-resilience-ranking] items=${ranked.length} greyedOut=${unranked.length} commit=${snapshot.commitSha.slice(0, 10)}`);
 }
 
 export {

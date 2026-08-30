@@ -235,6 +235,8 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_mineral_production` | Who mines / refines a commodity (USGS MCS shares + HHI; BGS fill). |
 | `get_food_stocks` | USDA PSD cereal stocks-to-use per country (or `WORLD`) by marketing year, optional per-commodity filter. |
 | `get_demographics_capability` | Country age structure, education capacity, and industrial-workforce observations (UN WPP, UNESCO UIS, ILOSTAT). |
+| `get_five_factor_scorecard` | Frozen v1 food, energy, demographics, technology, and defense scorecard for one country, official bloc preset, or validated custom bloc. Preserves input availability and source provenance. |
+| `list_five_factor_scorecards` | Compact country-by-country five-factor pillar scores, bands, coverage, and insufficient-data reasons. Read `hasScore` before numeric scores; false means zero is an insufficient-data placeholder. Use the single-scorecard tool for the full evidence ledger. |
 
 ### Energy
 
@@ -294,7 +296,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 
 | Tool | Description |
 |------|-------------|
-| `get_airspace` | Live ADS-B over a country. Params: `country_code` (2-letter code), `type` (`all`/`civilian`/`military`). |
+| `get_airspace` | Live ADS-B over a country. Params: `country_code` (alpha-2, alpha-3, or English country name), `type` (`all`/`civilian`/`military`). |
 | `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `country_code`. |
 | `get_aviation_status` | FAA airport delays, NOTAM closures, tracked military aircraft. |
 | `get_infrastructure_status` | Cloudflare Radar outages, major cloud/internet service status. |
@@ -372,6 +374,8 @@ Reverse lookup workflow:
 | `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
 | `get_chokepoint_status` | `GET /api/intelligence/v1/get-country-port-activity`<br/>`GET /api/supply-chain/v1/get-chokepoint-status` |
+| `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
+| `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |

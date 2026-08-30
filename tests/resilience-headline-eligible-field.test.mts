@@ -127,6 +127,11 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
         // Education is active by default. The legacy fixture predates only
         // headlineEligible, not the current construct generation.
         _educationState: 'education-on',
+        // Keep this fixture on the cache-read path under the current score
+        // generation contract. The test isolates headlineEligible backfill;
+        // missing trace metadata is covered separately as a stale generation.
+        _traceGenerationId: 'headline-backfill-generation',
+        _traceCacheIdentity: 'd6:schema-2.0:energy-legacy:education-active:financial-system-rollback',
         // headlineEligible deliberately omitted — at v17 (PR 6 / §U7),
         // every legitimate writer stamps the field. Missing-from-cache
         // is anomalous, so the conservative backfill default is `false`

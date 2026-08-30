@@ -1026,7 +1026,7 @@ describe('handler warm pipeline is chunked', () => {
     );
     assert.match(
       src,
-      /for\s*\([^)]*i\s*\+=\s*SET_BATCH/,
+      /persistRedisCommandsWithRetry\(allSetCommands,\s*SET_BATCH\)/,
       'pipeline SETs must be issued in SET_BATCH-sized chunks',
     );
   });

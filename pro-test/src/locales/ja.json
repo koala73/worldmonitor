@@ -51,7 +51,7 @@
     "freeF2": "厳選フィード、ソース表示、マップレイヤー"
   },
   "whyUpgrade": {
-    "title": "アップグレードする理由",
+    "title": "World Monitor Pro にアップグレードする理由は?",
     "noiseTitle": "一番に知る",
     "noiseDesc": "AIS 異常 → Brent の急騰 → あなたの Slack へ 1 分以内。見出しではなく、シグナル。",
     "fasterTitle": "何でも尋ねる",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "デリバリーデスク",
-    "title": "あなたのパーソナル・インテリジェンス・デスク",
+    "title": "パーソナル インテリジェンス デスクとは何ですか?",
     "body": "送信ごとに最大30件のランク付きアイテム、ソース間での重複排除、ウォッチリストに対するスコアリング。配信頻度を選択 — 日次、2日次、または週次 — AI Assessment と注視すべき Signals が Slack、Discord、Telegram、Email、またはウェブフックに配信されます。",
     "closer": "ニュースレターではない。アナリストだ。",
     "channels": "Slack · Discord · Telegram · メール · Webhook · AES-256 暗号化 · サイレント時間"
@@ -93,7 +93,7 @@
     "asToldTo": "談話相手"
   },
   "audience": {
-    "title": "速やかにシグナルを必要とする人のために",
+    "title": "World Monitor は誰向けですか?",
     "investorsTitle": "投資家とポートフォリオマネージャー",
     "investorsDesc": "グローバル株式、アナリスト目標、評価指標、マクロ指標を、地政学リスクシグナルと並べて追跡。",
     "tradersTitle": "エネルギー・商品トレーダー",
@@ -108,7 +108,7 @@
     "teamsDesc": "個人利用から共有ワークフロー、API アクセス、TV アプリ、マネージドデプロイへ。"
   },
   "dataCoverage": {
-    "title": "World Monitor が追跡するもの",
+    "title": "World Monitor は何を監視していますか?",
     "subtitle": "複数のサービスドメインを同時に取り込み。市場、マクロ、地政学、エネルギー、インフラ — すべて正規化され、WebGL グローブにレンダリング。",
     "markets": "金融市場と株式",
     "marketsDesc": "グローバル株式分析、商品、暗号資産、ETF フロー、アナリスト目標、FRED マクロデータ",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO ティア",
-    "title": "決して眠らない、あなたの AI アナリスト",
+    "title": "World Monitor AI アナリストは何をしますか?",
     "subtitle": "無料のダッシュボードは世界を見せる。Pro は、尋ねるためのアナリスト、購読するダイジェスト、そして構築のためのプリミティブを提供する。株式、マクロ、地政学リスク — そしてそれらの関係。",
     "equityResearch": "エクイティリサーチ",
     "equityResearchDesc": "財務可視化、アナリスト目標株価、評価指標を備えたグローバル株式分析。市場を動かすものを追跡。",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API ティア",
-    "title": "プログラマティックインテリジェンス",
+    "title": "API とエージェントは World Monitor をどのように使用しますか?",
     "subtitle": "World Monitor のデータ上に構築する開発者、アナリスト、チーム向け。Pro と独立 — 両方でも片方でも。",
     "restApi": "サービスドメイン横断 REST API — JavaScript、Python、Ruby、Go の公式 SDK",
     "authenticated": "キー単位で認証、ティア単位でレート制限",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE ティア",
-    "title": "インテリジェンスインフラ",
+    "title": "World Monitor Enterprise には何が含まれていますか?",
     "subtitle": "最大限のセキュリティ、AI エージェント、TV アプリ、データ深度を備えたフルプラットフォームを必要とする政府、機関、トレーディングデスク、組織向け。",
     "security": "政府水準のセキュリティ",
     "securityDesc": "エアギャップ配備、オンプレミス Docker、専有クラウドテナント、SOC 2 Type II ルート、SSO/MFA、完全な監査証跡。",
@@ -227,7 +227,7 @@
     "contactFailed": "送信に失敗しました。enterprise@worldmonitor.app までメールください"
   },
   "pricingTable": {
-    "title": "ティアを比較",
+    "title": "World Monitor プランはどのように比較されていますか?",
     "feature": "機能",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -271,10 +271,25 @@
     "fKeyAuth": "キー認証",
     "fSsoMfa": "SSO/MFA/RBAC/監査",
     "noteBelow": "コアプラットフォームは無料のまま。有料プランはエクイティリサーチ、マクロアナリティクス、AI ブリーフ、組織利用をアンロック。",
-    "f50plus": "利用可能"
+    "f50plus": "利用可能",
+    "sourcesRow": "情報源",
+    "followedRow": "監視対象国",
+    "tabsRow": "ダッシュボードタブ",
+    "fUnlimited": "無制限",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "全レイヤー",
+    "fLayersNoResilience": "Resilience以外すべて",
+    "fStandardCadence": "標準",
+    "fQuotes30s": "市場相場: 30秒",
+    "panelsRow": "有効なパネル",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "すべて"
   },
   "faq": {
-    "title": "よくある質問",
+    "title": "World Monitor Pro についてよくある質問",
     "q1": "World Monitor はまだ無料ですか?",
     "a1": "はい。コアプラットフォームは引き続き無料です。Proは株式調査、マクロ分析、AIブリーフィングを追加します。Pro Businessは商用ライセンスとデータエクスポートを追加します。Enterpriseはチームデプロイメントとテレビアプリを追加します。",
     "q2": "なぜ Pro を支払うのですか?",
@@ -298,12 +313,12 @@
     "q11": "ダイジェストはどれほどパーソナライズされていますか?",
     "a11": "配信頻度を選択 — 日次、2日次、または週次。当社は監視対象の全ストーリーをアラートルールとウォッチリストに対して再スコアリング、ソース間での重複排除を行い、最大30件のランク付きアイテムを AI Assessment と注視すべき Signals とともにあなたのコンテキストに送信します。重大イベントの場合はリアルタイムアラートも利用可能です。",
     "q12": "更新頻度は?",
-    "a12": "Pro はほぼリアルタイム。Free は 5–15 分。",
+    "a12": "Pro は市場相場を30秒ごとに更新します。その他のデータは各ソース固有の更新間隔に従います。Free は標準のソース間隔のままです。",
     "q13": "データはどこへ行きますか?",
     "a13": "通知チャネルは保存時に AES-256 で暗号化されています。ダイジェストは決して未編集のまま当社のパイプラインを離れることはありません。"
   },
   "finalCta": {
-    "title": "Pro で始める。Enterprise までスケールする。",
+    "title": "Pro を開始するか、営業に連絡するにはどうすればよいですか?",
     "subtitle": "World Monitor を無料で使い続けるか、エクイティリサーチ、マクロアナリティクス、AI ブリーフのためにアップグレードしてください。組織がチームアクセス、TV アプリ、API サポートを必要とする場合はご相談ください。",
     "talkToSales": "営業に相談する"
   },
@@ -326,7 +341,7 @@
     "suffixPerYear": "/年",
     "amountCustom": "カスタム",
     "opening": "開いています…",
-    "headerTitle": "プランを選択",
+    "headerTitle": "World Monitor の料金はいくらですか?",
     "headerSubtitle": "リアルタイム監視から完全なインテリジェンスインフラストラクチャまで。あなたのミッションに合ったティアを選びましょう。",
     "billingMonthly": "月額",
     "billingAnnual": "年額",
@@ -468,7 +483,7 @@
     },
     "live": {
       "eyebrow": "現在ライブ配信中",
-      "title": "このページは、ダッシュボードと同じ API に接続されています。",
+      "title": "このページが現在表示しているライブデータは何ですか?",
       "subtitle": "World Monitor が 24 時間監視する 100 以上のシグナルのうち 4 つ。",
       "liveBadge": "ライブ",
       "sampleBadge": "サンプル",
@@ -487,7 +502,7 @@
     },
     "moments": {
       "eyebrow": "相関エンジン",
-      "title": "エッジは複数のシグナルが一緒に動くのを見ている。",
+      "title": "World Monitor はシグナルをどのように相関させていますか?",
       "sub": "フィードは100カ所で見つけることができます。エッジはジオポリティクス、海運、コモディティ、マクロ、マーケット、天気、インフラ、サイバー、ニュース、国家リスクが互いに説明できる唯一の表面です。",
       "signalStack": "統合されたシグナル",
       "correlation": "相関",
@@ -551,7 +566,7 @@
     },
     "firstFive": {
       "eyebrow": "ゼロから始める",
-      "title": "ライブマップでの最初の 5 分間。",
+      "title": "マップで最初の 5 分間に何が起きますか?",
       "sub": "ツアーなし、空の状態なし、サインアップ画面なし。これが実際に起こることです。",
       "f1Title": "マップはすでに動いている",
       "f1Desc": "紛争、船舶、飛行機、火災、障害はページ読み込み時にレンダリングされます。最初に設定するものはありません。",
@@ -567,7 +582,7 @@
     },
     "depth": {
       "eyebrow": "内部の仕組み",
-      "title": "深さこそが製品。",
+      "title": "World Monitor データモデルの深さはどのくらいですか?",
       "sub": "以下のすべての数字は今日ダッシュボードでライブです — ロードマップではありません。",
       "s1v": "共有",
       "s1l": "マップレイヤー",
@@ -617,7 +632,7 @@
     },
     "agents": {
       "eyebrow": "ビルダー・AIエージェント向け",
-      "title": "ライブ世界インテリジェンスの上に構築——任意のスタックから。",
+      "title": "独自のスタックから World Monitor 上にビルドするにはどうすればよいですか?",
       "sub": "マップ上のすべてはAPI化されています。MCP経由でClaudeに接続、REST エンドポイントをどこからでも呼び出し、Python、Ruby、Go、JavaScriptのネイティブクライアントをインストール——コードは学習データの記憶ではなくライブデータで研究します。",
       "b1": "MCP ツール — リスクスコア、チョークポイント、紛争、市場、ブリーフ",
       "b2": "ドキュメント化された REST API — OpenAPI 3.1 スペック 1 つ、キー 1 つ",
@@ -660,7 +675,7 @@
     },
     "faq": {
       "eyebrow": "落とし穴なし",
-      "title": "妥当な質問。",
+      "title": "World Monitor についてよくある質問は何ですか?",
       "q1": "World Monitorは本当に無料ですか？",
       "a1": "はい。ライブマップ — Resilience、厳選フィード、国別ブリーフ、ブレーキングアラート、監視サーフェス以外のすべてのレイヤー — はサインアップなしで無料、トライアル期間制限なし。Pro はフィードに対応：WM Analyst、シナリオエンジン、Route Explorer、スケジュール済みダイジェスト、AI クライアント向け MCP アクセス、Resilience マップレイヤーを追加。広告なし、アカウントなしはユーザーデータを販売する必要がないという意味です。",
       "q2": "グローバルインテリジェンスダッシュボードとは何ですか？",
@@ -685,7 +700,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "ワールドマップはあなたを待ちません。",
+      "title": "ワールドマップの監視を開始するにはどうすればよいですか?",
       "subtitle": "このページを読んでいる間も、海峡、ホットスポット、市場、キュレートされたフィードが動き続けています。その1つは明日のトップニュースになるかもしれません。真っ先に見つけましょう—無料、アカウント不要。",
       "button": "最初に見つける",
       "note": "無料 · サインアップ不要 · 数秒で読み込み",

@@ -348,8 +348,10 @@ export const TOOL_DESCRIPTION_MAX_BYTES = 120;
 // docs/mcp-jmespath.mdx, docs/mcp-error-catalog.mdx, and
 // docs/mcp-tools-reference.mdx, fetched on demand instead of amortising
 // ~550 bytes per session.
+const JMESPATH_SPEC_URL = 'https://jmespath.org/specification.html';
+
 export const SERVER_INSTRUCTIONS = [
-  'Every tool accepts an optional `jmespath` string. Server-side projection applied AFTER per-tool filter/summary; typical 80-95% token reduction. Grammar: https://jmespath.org/specification.html. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.',
+  `Use optional \`jmespath\` only when a tool input schema advertises it. Server-side projection is applied AFTER per-tool filter/summary; attribution-bound tools can omit it. Typical 80-95% token reduction. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,
   '',
   `Limits: expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',

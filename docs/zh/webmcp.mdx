@@ -50,7 +50,7 @@ Origin Trial 令牌有时限。发布检查必须验证实际部署的响应头�
 1. 打开 `chrome://flags/#enable-webmcp-testing`。
 2. 将 **WebMCP for testing** 设为 **Enabled**。
 3. 完全重新启动 Chrome。
-4. 本地启动 WorldMonitor。打开 `/dashboard` 检查含二十四个工具的仪表板；不要使用 `/embed`。若要检查含两个工具的静态首页，请先运行 `npm run build:pro`，再打开 `/pro/welcome.html`。本地 Vite 的 `/` 会加载仪表板 SPA，只有生产环境才把 `/` 重写到欢迎页。
+4. 本地启动 WorldMonitor。打开 `/dashboard` 检查含三十一个工具的仪表板；不要使用 `/embed`。若要检查含两个工具的静态首页，请先运行 `npm run build:pro`，再打开 `/pro/welcome.html`。本地 Vite 的 `/` 会加载仪表板 SPA，只有生产环境才把 `/` 重写到欢迎页。
 5. 在 DevTools 中确认特性检测：
 
 ```js
@@ -65,7 +65,7 @@ Boolean(document.modelContext?.registerTool)
 
 1. 更新 ChatGPT 桌面应用，并选择当前支持站点工具的模型和工作区。
 2. 在内置浏览器中打开 `https://www.worldmonitor.app/`。测试仪表板清单时请使用 `/dashboard`。
-3. 在浏览器地址栏中选择 **Site tools**，再选择 **Available site tools**。首页列出两个命令式工具，仪表板列出二十四个。
+3. 在浏览器地址栏中选择 **Site tools**，再选择 **Available site tools**。首页列出两个命令式工具，仪表板列出三十一个。
 4. 保持该页面打开，并要求 ChatGPT Work 或 Codex 使用 WorldMonitor 工具。
 5. 如果没有显示工具，请在内置浏览器中重新加载页面，再次检查 **Available site tools**。
 
@@ -84,9 +84,9 @@ WorldMonitor 注册完整仪表板清单，并在调用时应用以下取消类�
 
 | 类别 | 工具 | 宿主未提供目标侧 `AbortSignal` 时的行为 |
 |---|---|---|
-| `read-only` | `get_dashboard_context`、`get_access_context`、`list_map_layers`、`list_dashboard_panels`、`search_dashboard`、`list_dashboard_tabs` | 正常执行。 |
-| `view-state` | `openSearch`、`open_settings`、`open_alerts`、`open_sign_in`、`open_dashboard_panel`、`set_map_view`、`set_time_range`、`focus_country` | 正常执行，但调用方取消无法停止已开始的可见变更。 |
-| `cancellation-required` | `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_map_layers`、`set_map_mode`、`select_dashboard_tab`、`create_dashboard_tab`、`rename_dashboard_tab`、`delete_dashboard_tab` | 在动作开始前返回 `target_cancellation_unsupported`。 |
+| `read-only` | `get_dashboard_context`、`get_access_context`、`list_map_layers`、`list_dashboard_panels`、`search_dashboard`、`list_dashboard_tabs`、`get_panel_layout`、`list_mission_presets` | 正常执行。 |
+| `view-state` | `openSearch`、`open_settings`、`open_alerts`、`open_sign_in`、`open_dashboard_panel`、`set_map_view`、`set_time_range`、`focus_country`、`set_panel_fullscreen`、`open_mission_picker` | 正常执行，但调用方取消无法停止已开始的可见变更。 |
+| `cancellation-required` | `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_panel_collapsed`、`move_panel`、`set_map_layers`、`set_map_mode`、`select_dashboard_tab`、`create_dashboard_tab`、`rename_dashboard_tab`、`delete_dashboard_tab`、`apply_mission_preset` | 在动作开始前返回 `target_cancellation_unsupported`。 |
 | `result-dependent` | `open_search_result` | 执行视图状态结果，拒绝持久化、消耗配额或外部导航结果。 |
 
 <Warning>
@@ -116,7 +116,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 ### 仪表板命令式工具
 
-六个仪表板变体都注册相同的二十四个命令式工具。登录和权益变化不会改变注册集合。每次调用都会重新检查实时状态与[宿主的取消支持](#宿主支持与取消)。
+六个仪表板变体都注册相同的三十一个命令式工具。登录和权益变化不会改变注册集合。每次调用都会重新检查实时状态与[宿主的取消支持](#宿主支持与取消)。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|
@@ -130,6 +130,10 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | `open_alerts` | 空对象；不允许其他属性。 | 打开提醒浮层并停留在 notifications 标签，不修改提醒内容。桌面应用中不可用。 |
 | `open_dashboard_panel` | 必填字符串 `panelId`，长度 1–96，模式 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`；不允许其他属性。 | 经权益感知 UI 路径打开并滚动到当前已启用的可用面板。已禁用面板返回 `panel_disabled`；使用 `set_panel_enabled` 更改目录面板是否启用。此工具不会自行启用面板。 |
 | `set_panel_enabled` | 必填字符串 `panelId`，长度 1–96，模式 `^[a-z0-9][a-z0-9@_-]*$`；必填布尔值 `enabled`；不允许其他属性。 | 经用户使用的同一设置持久化/应用路径启用或禁用目录面板。返回请求状态、实际状态及是否变更。启用未知、不兼容、无权益或达到免费档上限的面板会被拒绝。需要目标侧取消。 |
+| `get_panel_layout` | 可选字符串 `cursor`（上一页 `nextCursor` 面板 ID）；不允许其他属性。 | 只读返回有效布局：稳定面板 ID、命名区域（`sidebar` / `bottom`）、顺序索引、折叠与全屏状态，以及区域可用性。`panelsTruncated` 为 true 时用 `nextCursor` 继续。 |
+| `set_panel_collapsed` | 必填字符串 `panelId`，长度 1–96，模式 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`；必填布尔值 `collapsed`；不允许其他属性。 | 经可见折叠控件与持久化路径折叠或展开已挂载面板。状态已匹配时幂等成功。不支持的面板返回 `collapse_unsupported`。需要目标侧取消。 |
+| `move_panel` | 必填字符串 `panelId`；必填字符串 `region`（`sidebar` 或 `bottom`）；必填整数 `index` ≥ 0；不允许其他属性。 | 经与键盘重排相同的持久化路径，将已挂载面板移到命名区域与从 0 开始的索引。不使用指针坐标。底部区域不可用时返回 `region_unavailable`。需要目标侧取消。 |
+| `set_panel_fullscreen` | 必填字符串 `panelId`；必填布尔值 `fullscreen`；不允许其他属性。 | 经可见全屏控件进入或退出面板全屏（直播新闻 / 网络摄像头）。仅会话视图状态；不支持的面板返回 `fullscreen_unsupported`。 |
 | `set_map_view` | 二选一且只能选一：`view`；或 `lat` 加 `lon`。`view` 可为 `global`、`america`、`mena`、`eu`、`asia`、`latam`、`africa`、`oceania`；`lat` 范围 -85.051129–85.051129，`lon` 范围 -180–180，可选 `zoom` 范围 1–10。 | 移动可见地图。 |
 | `set_map_layers` | 必填对象 `layers`，含 1–10 个布尔项；键长 1–30，匹配 `^[a-z][A-Za-z0-9_-]*$`；顶层不允许其他属性。 | 启用或禁用允许的可见图层，并返回逐图层结果。 |
 | `set_time_range` | 必填字符串 `timeRange`：`1h`、`6h`、`24h`、`48h`、`7d` 或 `all`；不允许其他属性。 | 通过仪表板控件设置可见地图时间范围。返回请求值与生效值。 |
@@ -142,6 +146,9 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | `create_dashboard_tab` | 可选字符串 `name`，长度 1–40；不允许其他属性。 | 创建并激活工作区。同名工作区会复用。达到上限时返回 `tab_cap`。 |
 | `rename_dashboard_tab` | 必填 `tabId` 与必填 `name`，名称长度 1–40；不允许其他属性。 | 按稳定 ID 重命名标签页。 |
 | `delete_dashboard_tab` | 必填 `tabId` 与必填布尔值 `confirm`；不允许其他属性。 | 仅当 `confirm` 为 true 时删除。最后一个标签页不能删除。 |
+| `list_mission_presets` | 可选布尔值 `available`；不允许其他属性。 | 只读返回当前监视器下的全部捆绑任务预设。每项使用稳定预设 ID 与面板/图层数量，不暴露付费内容。可用项还包含目标视图与时间范围。包含 active、monitorCompatible、entitled、available 标志，以及 gated 时的稳定 `unavailableReason`。 |
+| `apply_mission_preset` | 必填字符串 `presetId`，长度 1–48，模式 `^[a-z][a-z0-9-]*$`；不允许其他属性。 | 经用户使用的同一任务控制路径应用捆绑任务预设。写入前报告权益与监视器兼容性。返回最终监视器、地图视图、时间范围、启用图层与启用面板 ID。需要目标侧取消。失败时恢复先前仪表板状态。 |
+| `open_mission_picker` | 空对象；不允许其他属性。 | 打开任务预设选择器，不应用预设。 |
 | `get_access_context` | 空对象；不允许其他属性。 | 只读返回此标签页是已退出、仍在加载账户状态，还是已登录，以及产品档位、能力标志、面板与仪表板标签页限额，以及主机能否取消工具。不包含姓名、电子邮件、账户 ID、令牌或会话详情。 |
 | `open_sign_in` | 空对象；不允许其他属性。 | 打开本页现有的 Clerk 登录对话框。不接受凭据、一次性验证码或身份提供方选择。当 Clerk 不可用或对话框已打开时，返回稳定原因。 |
 
@@ -169,6 +176,10 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | 枚举全部面板 | `list_dashboard_panels` | 跟随 `nextCursor` 直到 `hasMore` 为 false。已禁用、未挂载和被门禁的面板仍出现在目录中，并带有稳定的 `unavailableReason`。 |
 | 打开已知面板 | `list_dashboard_panels` 或 `get_dashboard_context` → `open_dashboard_panel` | 使用当前页面返回的面板 ID。面板即使已挂载，也可能被禁用或不适用于当前方案。 |
 | 启用或禁用目录面板 | `list_dashboard_panels` → `set_panel_enabled` | 使用返回的稳定面板 ID，而不是标签或 CSS 选择器。检查 `effectiveEnabled` 和 `changed`。重复同一请求会成功且 `changed: false`。若浏览器不能提供目标侧取消，则该工具不可用。 |
+| 查看面板顺序与折叠/全屏状态 | `get_panel_layout` | 使用返回的面板 ID、区域（`sidebar` / `bottom`）与索引。`panelsTruncated` 为 true 时跟随 `nextCursor`。 |
+| 折叠或展开面板 | `get_panel_layout` → `set_panel_collapsed` | 仅 `collapsible: true` 的面板会成功。重复同一状态会成功且 `changed: false`。需要目标侧取消。 |
+| 移动或重排面板 | `get_panel_layout` → `move_panel` | 传入稳定面板 ID、命名区域与从 0 开始的索引。分栏布局未激活时底部移动返回 `region_unavailable`。需要目标侧取消。 |
+| 进入或退出面板全屏 | `get_panel_layout` → `set_panel_fullscreen` | 仅 `fullscreenCapable: true` 的面板会成功。会话视图状态，不会跨重新加载持久化。 |
 | 切换监视器 | `switch_monitor` | 传入稳定键（`full`、`tech`、`finance`、`happy`、`commodity`、`energy`），不要使用显示标签。确认 `context.variant` 和可见的页头选中项。 |
 | 打开设置 | `open_settings` | 确认设置浮层和 Settings 标签。此工具不会修改设置内容。 |
 | 打开提醒 | `open_alerts` | 确认 notifications 标签。将 `unavailable` 视为终止的门禁结果，不得推断账户细节。此工具不会修改提醒内容。 |
@@ -191,6 +202,9 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 | 创建或复用命名工作区 | `list_dashboard_tabs` → `create_dashboard_tab` | 已存在名称会返回该标签页。达到上限时返回 `tab_cap`。 |
 | 重命名工作区 | `list_dashboard_tabs` → `rename_dashboard_tab` | 名称会修剪，最长 40 个字符。 |
 | 删除工作区 | `list_dashboard_tabs` → 带 `confirm: true` 的 `delete_dashboard_tab` | 需要明确确认。最后一个标签页不能删除。 |
+| 列出任务预设 | `list_mission_presets` | 使用稳定预设 ID。检查 `available`、`monitorCompatible`、`entitled` 与 `unavailableReason`。 |
+| 应用任务预设 | `list_mission_presets` → `apply_mission_preset` | 传入返回的可用预设 ID。确认返回的监视器、地图视图、时间范围、启用图层与启用面板。浏览器无法提供目标侧取消时不可用。失败时先前仪表板状态保持不变。 |
+| 打开任务选择器 | `open_mission_picker` | 确认任务弹出层。此工具不应用预设。 |
 
 不要猜测面板 ID、图层 ID、标签页 ID、结果键、权益或隐藏数据。先读取当前页面状态或适当的目录，再调用一个受限操作，检查结果和可见效果，然后继续。
 
@@ -207,6 +221,39 @@ WebMCP 返回原生 JavaScript 值。它不使用托管 MCP 服务器的 `{ cont
 | 调用方取消 | Promise 以 `AbortError` 被拒绝 | 停止等待。如果浏览器未提供目标侧 signal，这不能证明页面工作已停止；发出冲突操作前应检查可见 UI。 |
 
 命令式工具输出最多包含 1,500 个序列化字符。搜索描述符和其他第三方派生文本会被限制长度并标记为不可信，但智能体仍必须把它们当作数据，而不是指令。预期拒绝会保留为普通工具结果，因为某些浏览器智能体会删除 Promise 拒绝中的有用页面错误详情。
+
+### 面板布局与任务预设的拒绝原因
+
+面板布局工具与任务预设工具在每个非成功结果中都会返回稳定的 `reason`。请读取 `reason` 而不是消息，并将其视为当前页面状态下的终态结果。
+
+| 原因 | 由哪些工具返回 | 含义与恢复方法 |
+|---|---|---|
+| `malformed_arguments` | `get_panel_layout`、`set_panel_collapsed`、`move_panel`、`set_panel_fullscreen`、`apply_mission_preset`、`open_mission_picker` | 存在未知属性、cursor 不是字符串、面板 ID 不符合 `^[A-Za-z0-9][A-Za-z0-9@_-]*$`，或预设 ID 不符合 `^[a-z][a-z0-9-]*$`。请修正参数，不要用相同载荷重试。 |
+| `panel_not_found` | `get_panel_layout` | `cursor` 对应的面板在翻页之间已离开布局。请不带 cursor 重新开始列举。 |
+| `panel_not_mounted` | `set_panel_collapsed`、`move_panel`、`set_panel_fullscreen` | 该面板未挂载在当前布局中。它仍可能是有效的目录面板，请先用 `set_panel_enabled` 启用。 |
+| `collapse_unsupported` | `set_panel_collapsed` | 该面板没有折叠控件。只有 `get_panel_layout` 中 `collapsible: true` 的面板才接受此操作。 |
+| `fullscreen_unsupported` | `set_panel_fullscreen` | 该面板没有全屏控件。只有 `fullscreenCapable: true` 的面板才接受此操作。 |
+| `invalid_region` | `move_panel` | `region` 既不是 `sidebar` 也不是 `bottom`。 |
+| `invalid_index` | `move_panel` | `index` 为负数、非整数，或大于目标区域中其他面板的数量。 |
+| `region_unavailable` | `move_panel` | 目标区域在当前视口不可用——分栏布局未激活时移动到 `bottom`。请先读取 `regions.bottom.available`。 |
+| `layout_unavailable` | `set_panel_collapsed`、`move_panel`、`set_panel_fullscreen` | 仪表板布局管理器尚未就绪。请等待仪表板稳定，然后重新读取 `get_panel_layout`。 |
+| `persist_failed` | `set_panel_collapsed`、`move_panel` | 存储写入失败，但两个工具此前发生的事情不同。`set_panel_collapsed` 先持久化再重绘，因此**什么都没有改变**：结果带有 `changed: false`，`effectiveCollapsed` 保存的是未改变的实时状态——绝不要报告一次并未发生的折叠。`move_panel` 先移动 DOM，因此移动可见且带有 `changed: true`，但仅限本次会话。两者都带有 `persisted: false`。 |
+| `unknown_preset` | `apply_mission_preset` | 该 ID 不属于内置预设。请使用 `list_mission_presets` 返回的 ID。 |
+| `preset_incompatible` | `apply_mission_preset`，以及 `list_mission_presets` 行上的 `unavailableReason` | 该预设的非 map 面板中，出现在当前监视器默认面板集内的少于两个。请先使用 `switch_monitor`。 |
+| `preset_not_entitled` | `apply_mission_preset`，以及 `list_mission_presets` 行上的 `unavailableReason` | 当前套餐无法启用该预设所需的某个面板。请改为提供可用预设。 |
+| `apply_failed` | `apply_mission_preset` | 任务控制拒绝了本次写入。先前的仪表板状态已恢复；决定下一步之前请读取 `get_dashboard_context`。 |
+| `unavailable` | `open_mission_picker` | 该仪表板不提供任务预设。请将其视为该监视器下的终态结果，不要重试，也不要改用 `apply_mission_preset`。 |
+| `target_cancellation_unsupported` | `set_panel_collapsed`、`move_panel`、`apply_mission_preset` | 宿主没有把调用的 `AbortSignal` 交给页面。没有发生任何写入。参见[宿主支持与取消](#宿主支持与取消)。 |
+
+有些失败以 Promise 拒绝而不是受限结果的形式出现。仪表板被销毁时，各个面板布局工具、`list_mission_presets` 与 `apply_mission_preset` 都会以 `WebMcpToolError` 拒绝，并在消息中给出原因 `app_destroyed`；`list_mission_presets` 还会拒绝格式错误的参数和无法识别的变体，而不是把它们作为结果返回。这些都必须在拒绝路径上处理。
+
+`open_mission_picker` 是例外：它的绑定不会预先检查仪表板是否已销毁，因此它会返回带有 `app_destroyed` 的受限导航结果——是结果，而不是拒绝。对该工具需要同时处理两条分支。
+
+<Note>
+`get_panel_layout` 从不因布局未就绪而拒绝。它会返回空快照——`panelCount: 0`、没有 `panels`、`regions.bottom.available: false`——这与仪表板确实没有挂载面板的情况无法区分。不要根据一次空读取就报告“该仪表板没有面板”；请等待仪表板稳定后重新读取。
+</Note>
+
+当预设的非 map 面板中至少有两个出现在当前变体的默认面板集内时，该预设即与监视器兼容；`list_mission_presets` 将其报告为 `monitorCompatible`。被限制的行会省略 `view` 与 `timeRange`，以便每个监视器的目录都保持在 1,500 字符输出预算之内。有两个原因目前是保留且不可达的：没有任何已发布面板设置布局 `fixed` 标志，因此无法观察到 `panel_fixed`；仪表板也不会把宿主取消能力传入预设目录，因此 `list_mission_presets` 的行永远不会带有 `target_cancellation_unsupported`。
 
 ## 人工控制与 UI 行为
 
@@ -296,11 +343,17 @@ Inspector 的自然语言工作流默认会把提示词发送给外部 Gemini �
 | `getTools()` 一直等待，或 Origin Trial 页面最终没有清单 | 页面可能在注册完成前访问了 provider | 重新加载页面，等待文档加载和 WorldMonitor 注册完成，然后只读取一次清单。不要轮询 `document.modelContext`。 |
 | 只能看到首页工具清单 | 智能体位于静态首页 | 调用 `launchWorldMonitor`，或导航到 `/dashboard` 以使用命令式仪表板清单。 |
 | 能看到命令式仪表板清单，但没有 `search_procurement` | 宿主不支持声明式工具，或条件式表单当前不符合条件 | 在 ChatGPT 内置浏览器中，这是预期行为。在 Chrome 中，请打开并启用全球采购面板，满足权益要求，等待数据稳定，并确保表单可见且空闲。 |
-| 调用返回 `target_cancellation_unsupported` | 浏览器接受了 WebMCP，但没有把调用的 `AbortSignal` 交给页面 | 使用只读工具或可逆视图状态工具。不得绕过 `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_map_layers`、`set_map_mode` 或仪表板标签页变更的拒绝。对于 `open_search_result`，请选择视图状态结果，或等待能够取消持久化工作的宿主。 |
+| 调用返回 `target_cancellation_unsupported` | 浏览器接受了 WebMCP，但没有把调用的 `AbortSignal` 交给页面 | 使用只读工具或可逆视图状态工具。不得绕过 `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_panel_collapsed`、`move_panel`、`set_map_layers`、`set_map_mode`、`apply_mission_preset` 或仪表板标签页变更的拒绝。对于 `open_search_result`，请选择视图状态结果，或等待能够取消持久化工作的宿主。 |
 | 面板或图层被拒绝 | 当前页面状态未通过实时变体、渲染器、启用状态或权益检查 | 读取 `reason` 和每个目标状态。通过正常可见控件改变状态，或询问用户；不得强制走隐藏路径。 |
 | `open_search_result` 报告键无效、过期、状态已变化或目标不可用 | 一次性能力已失效，或搜索后仪表板状态发生变化 | 重新运行 `search_dashboard`，在打开前向用户展示新结果。不得把键重新解释为 URL。 |
 | 标签页变更返回 `tab_cap`、`last_tab` 或 `confirmation_required` | 仪表板标签栏也会拒绝同一操作 | 重新列出标签页。删除需要 `confirm: true`，且不能移除最后一个标签页。 |
-| 标签页变更返回 `persist_failed` 且 `persisted: false` | 本次会话中的可见标签页已改变，但无法写入存储 | 不要把结果视为持久结果。解决存储限制后重新列出标签页。 |
+| 标签页或 `move_panel` 变更返回 `persist_failed` 且 `persisted: false` | 本次会话中的可见变更已生效，但无法写入其存储键——标签页为 `worldmonitor-tabs-v1`，移动为 `panel-order` 与 `panel-order-bottom-set` | 不要把结果视为持久结果。请用户释放存储或退出隐私模式，然后重新读取当前状态。 |
+| `set_panel_collapsed` 返回 `persist_failed` | 折叠先持久化再重绘，因此写入失败时面板从未改变 | 读取 `changed: false` 与 `effectiveCollapsed`，不要告诉用户面板已折叠。解决存储问题后再重试。 |
+| 布局变更返回 `panel_not_mounted`、`collapse_unsupported` 或 `fullscreen_unsupported` | 该面板不在布局中，或没有对应控件 | 读取 `get_panel_layout`，使用返回的、`collapsible: true` 或 `fullscreenCapable: true` 的面板 ID。缺失的目录面板请先用 `set_panel_enabled` 启用。 |
+| `move_panel` 返回 `invalid_region`、`invalid_index` 或 `region_unavailable` | 命名区域或从 0 开始的索引不是该布局上的合法位置 | `index` 不得超过目标区域中其他面板的数量。移动到 `bottom` 之前请检查 `regions.bottom.available`。 |
+| `get_panel_layout` 返回 `panelCount: 0` 且没有面板 | 布局管理器尚未稳定，或仪表板确实没有挂载面板 | 该读取从不拒绝，因此空快照具有二义性。请等待仪表板稳定后重新读取，再报告没有面板。 |
+| 任务预设调用返回 `preset_incompatible`、`preset_not_entitled` 或 `unknown_preset` | 该预设不适配当前监视器、当前套餐或内置目录 | 使用 `list_mission_presets` 返回的 ID。兼容性要求该预设的非 map 面板中至少有两个出现在当前监视器内。请使用 `switch_monitor` 或改为提供可用预设。 |
+| `apply_mission_preset` 返回 `apply_failed` | 校验通过后任务控制仍拒绝了写入 | 先前的仪表板状态已恢复。决定下一步之前请读取 `get_dashboard_context`；不要循环重复同一次应用。 |
 | 调用方收到 `AbortError`，但 UI 随后仍发生变化 | 浏览器取消了调用方 Promise，但没有取消页面执行 | 以可见页面为准。等待页面稳定后再执行后续操作，并在问题报告中记录浏览器版本。 |
 | 顶层页面能使用工具，但 `/embed` 或跨源 frame 不能使用 | 安全边界按设计工作 | 无需恢复。使用顶层 WorldMonitor 页面，或针对目标集成使用托管 MCP 服务器。 |
 

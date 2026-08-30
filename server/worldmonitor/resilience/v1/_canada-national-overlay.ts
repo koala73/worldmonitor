@@ -5,6 +5,7 @@
 export const RESILIENCE_BOC_VALET_KEY = 'economic:boc-valet:v1';
 export const RESILIENCE_STATCAN_WDS_KEY = 'economic:statcan-wds:v1';
 export const STATCAN_SCORE_PROVIDER = 'Statistics Canada';
+export const STATCAN_WDS_SOURCE_URL = 'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods';
 
 export type ImfMacroLike = {
   inflationPct?: number | null;
@@ -36,6 +37,8 @@ export type BocValetPayload = {
 export type CanadaScoreFreshness = {
   sourceKey: typeof RESILIENCE_STATCAN_WDS_KEY;
   observedAt: string | null;
+  retrievedAt: string | null;
+  sourceUrl: typeof STATCAN_WDS_SOURCE_URL;
   provider: typeof STATCAN_SCORE_PROVIDER;
 };
 
@@ -50,10 +53,15 @@ function statcanObservedAt(...tokens: Array<string | null | undefined>): string 
   return null;
 }
 
-export function stampStatcanScoreFreshness(...tokens: Array<string | null | undefined>): CanadaScoreFreshness {
+export function stampStatcanScoreFreshness(
+  observedAt: string | null | undefined,
+  retrievedAt?: string | null,
+): CanadaScoreFreshness {
   return {
     sourceKey: RESILIENCE_STATCAN_WDS_KEY,
-    observedAt: statcanObservedAt(...tokens),
+    observedAt: statcanObservedAt(observedAt),
+    retrievedAt: statcanObservedAt(retrievedAt),
+    sourceUrl: STATCAN_WDS_SOURCE_URL,
     provider: STATCAN_SCORE_PROVIDER,
   };
 }
@@ -142,10 +150,16 @@ export function applyCanadaNationalOverlay(
     usedStatcanInflation: statcanInflation != null,
     usedStatcanUnemployment: statcanUnemployment != null,
     inflationFreshness: statcanInflation != null
-      ? stampStatcanScoreFreshness(sources.statcan?.inflationRefPer)
+      ? stampStatcanScoreFreshness(
+          sources.statcan?.inflationRefPer,
+          sources.statcan?.inflationReleaseTime,
+        )
       : null,
     unemploymentFreshness: statcanUnemployment != null
-      ? stampStatcanScoreFreshness(sources.statcan?.unemploymentRefPer)
+      ? stampStatcanScoreFreshness(
+          sources.statcan?.unemploymentRefPer,
+          sources.statcan?.unemploymentReleaseTime,
+        )
       : null,
     bocUsdCad,
     bocPolicyRate,

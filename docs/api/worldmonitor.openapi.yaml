@@ -24855,6 +24855,127 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/resilience/v1/get-resilience-indicators:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetResilienceIndicators
+            description: GetResilienceIndicators explains one country's score at indicator level. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetResilienceIndicators
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: countryCode
+                  in: query
+                  description: Required ISO 3166-1 alpha-2 country code.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "constructVersions":
+                                    "education": "example"
+                                    "energy": "example"
+                                    "financialSystemExposure": "example"
+                                "countryCode": "US"
+                                "dataVersion": "example"
+                                "dimensions":
+                                    - "active": true
+                                      "coverage": 1.5
+                                      "effectiveContributionTotal": 1
+                                      "id": "example-id"
+                                      "literalContributionTotal": 1
+                                "formula": "example"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_resilience_v1_GetResilienceIndicatorsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/resilience/v1/get-food-stocks:
         get:
             tags:
@@ -25314,6 +25435,7 @@ paths:
                                 "constructVersions":
                                     "education": "example"
                                     "energy": "example"
+                                    "financialSystemExposure": "example"
                                 "dataVersion": "example"
                                 "deployedCommitSha": "example"
                                 "flags":
@@ -26174,6 +26296,485 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/scorecard/v1/get-five-factor-scorecard:
+        get:
+            tags:
+                - ScorecardService
+            summary: GetFiveFactorScorecard
+            description: PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetFiveFactorScorecard
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: countryCode
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code for the requested scorecard.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Z]{2}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "scorecard":
+                                    "computedAt": "2026-01-15T12:00:00Z"
+                                    "countryCode": "US"
+                                    "methodologyVersion": "1.0.0"
+                                    "pillars":
+                                        - "aggregationMethod": "country-weighted-components"
+                                          "band": "mixed-capability"
+                                          "excludedMembers":
+                                              - "countryCode": "US"
+                                                "reason": "source-unavailable"
+                                          "hasScore": true
+                                          "includedMembers":
+                                              - "US"
+                                          "inputCoverage": 1
+                                          "inputs":
+                                              - "available": true
+                                                "countryCode": ""
+                                                "hasValue": true
+                                                "inputId": "example-id"
+                                                "observations":
+                                                    - "indicatorCode": "IT.NET.USER.ZS"
+                                                      "name": "internetUsePercent"
+                                                      "source": "World Bank"
+                                                      "unit": "percent"
+                                                      "value": 92.4
+                                                      "year": 2025
+                                                "quality": "observed"
+                                                "source": "example"
+                                                "sourceKey": "example"
+                                                "unavailableReason": ""
+                                                "unit": "example"
+                                                "value": 1.5
+                                                "year": 1
+                                          "insufficientReasons":
+                                              - "source-unavailable"
+                                          "memberWeights":
+                                              - "countryCode": "US"
+                                                "hasPopulation": true
+                                                "populationMillions": 1.5
+                                          "pillar": "food"
+                                          "score": 3
+                                          "subScore": 42.5
+                                "unavailable": false
+                                "unavailableReason": ""
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_scorecard_v1_GetFiveFactorScorecardResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/scorecard/v1/list-five-factor-scorecards:
+        get:
+            tags:
+                - ScorecardService
+            summary: ListFiveFactorScorecards
+            description: PRO-gated. Requires entitlement tier >= 1.
+            operationId: ListFiveFactorScorecards
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "computedAt": "2026-01-15T12:00:00Z"
+                                "methodologyVersion": "1.0.0"
+                                "scorecards":
+                                    - "countryCode": "US"
+                                      "pillars":
+                                          - "band": "mixed-capability"
+                                            "hasScore": true
+                                            "inputCoverage": 1
+                                            "insufficientReasons":
+                                                - "source-unavailable"
+                                            "pillar": "food"
+                                            "score": 3
+                                            "subScore": 42.5
+                                "unavailable": false
+                                "unavailableReason": ""
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_scorecard_v1_ListFiveFactorScorecardsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/scorecard/v1/get-bloc-scorecard:
+        get:
+            tags:
+                - ScorecardService
+            summary: GetBlocScorecard
+            description: PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetBlocScorecard
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: preset
+                  in: query
+                  description: 'Official bloc preset: USMCA, EU27, BRICS, GCC, ASEAN, or NATO. Values are case-sensitive. Omit when members is provided.'
+                  required: false
+                  example: "NATO"
+                  schema:
+                    type: string
+                    pattern: '^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$'
+                - name: members
+                  in: query
+                  description: Custom list of 2-30 unique uppercase ISO 3166-1 alpha-2 members. Provide either preset or members; do not provide both.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "US"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^[A-Z]{2}$
+                    minItems: 2
+                    maxItems: 30
+                    uniqueItems: true
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            x-worldmonitor-selector-one-of:
+                - preset
+                - members
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "scorecard":
+                                    "computedAt": "2026-01-15T12:00:00Z"
+                                    "excludedMembers":
+                                        - "countryCode": "US"
+                                          "reason": "source-unavailable"
+                                    "id": "example-id"
+                                    "includedMembers":
+                                        - "US"
+                                    "label": "example"
+                                    "members":
+                                        - "US"
+                                    "methodologyVersion": "1.0.0"
+                                    "pillars":
+                                        - "aggregationMethod": "country-weighted-components"
+                                          "band": "mixed-capability"
+                                          "excludedMembers":
+                                              - "countryCode": "US"
+                                                "reason": "source-unavailable"
+                                          "hasScore": true
+                                          "includedMembers":
+                                              - "US"
+                                          "inputCoverage": 1
+                                          "inputs":
+                                              - "available": true
+                                                "countryCode": ""
+                                                "hasValue": true
+                                                "inputId": "example-id"
+                                                "observations":
+                                                    - "indicatorCode": "IT.NET.USER.ZS"
+                                                      "name": "internetUsePercent"
+                                                      "source": "World Bank"
+                                                      "unit": "percent"
+                                                      "value": 92.4
+                                                      "year": 2025
+                                                "quality": "observed"
+                                                "source": "example"
+                                                "sourceKey": "example"
+                                                "unavailableReason": ""
+                                                "unit": "example"
+                                                "value": 1.5
+                                                "year": 1
+                                          "insufficientReasons":
+                                              - "source-unavailable"
+                                          "memberWeights":
+                                              - "countryCode": "US"
+                                                "hasPopulation": true
+                                                "populationMillions": 1.5
+                                          "pillar": "food"
+                                          "score": 3
+                                          "subScore": 42.5
+                                "unavailable": false
+                                "unavailableReason": ""
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_scorecard_v1_GetBlocScorecardResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -49503,6 +50104,265 @@ components:
                  uses the pillar-combined score with the min-pillar penalty term in
                  _shared.ts#penalizedPillarScore. The legacy six-domain weighted aggregate
                  remains the flag-off rollback path.
+        worldmonitor_resilience_v1_GetResilienceIndicatorsRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: Required ISO 3166-1 alpha-2 country code.
+            required:
+                - countryCode
+        worldmonitor_resilience_v1_GetResilienceIndicatorsResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: Normalized ISO 3166-1 alpha-2 country code used by the scorer.
+                methodology:
+                    type: string
+                    description: Stable decomposition method used to reconcile rows to dimension scores.
+                formula:
+                    type: string
+                    description: Active score formula tag, for example d6 or pc.
+                dataVersion:
+                    type: string
+                    description: Source snapshot version used for the score, normally an ISO date.
+                schemaVersion:
+                    type: string
+                    description: Public resilience score schema version.
+                constructVersions:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeConstructVersions'
+                dimensions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceIndicatorDimension'
+                indicators:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceIndicator'
+        worldmonitor_resilience_v1_ResilienceRuntimeConstructVersions:
+            type: object
+            properties:
+                energy:
+                    type: string
+                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
+                education:
+                    type: string
+                    description: 'Safe derived education construct version. Valid values: "active" or "rollback".'
+                financialSystemExposure:
+                    type: string
+                    description: 'Safe derived financial-system construct version. Valid values: "active" or "rollback".'
+        worldmonitor_resilience_v1_ResilienceIndicatorDimension:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Stable dimension identifier from the resilience construct.
+                score:
+                    type: number
+                    format: double
+                    description: Final dimension score on the 0-100 scale.
+                coverage:
+                    type: number
+                    format: double
+                    description: Fraction of active dimension weight backed by observations, from 0 to 1.
+                prePolicyScore:
+                    type: number
+                    format: double
+                    description: Dimension score before a policy cap or other post-blend adjustment.
+                policyCapName:
+                    type: string
+                    description: Name of the applied post-blend policy cap, or empty when none applies.
+                policyCapFactor:
+                    type: number
+                    format: double
+                    description: Multiplicative factor applied by the post-blend policy cap.
+                literalContributionTotal:
+                    type: number
+                    format: double
+                    description: Sum of literal indicator contributions before dimension-level policy.
+                effectiveContributionTotal:
+                    type: number
+                    format: double
+                    description: Sum of exposed effective contributions. This reconciles to score.
+                active:
+                    type: boolean
+                    description: False for retired or runtime-disabled placeholder dimensions.
+                reconciliationAvailable:
+                    type: boolean
+                    description: True when effective_contribution_total is required to equal score.
+                reason:
+                    type: string
+                    description: Explanation when this dimension is inactive or cannot reconcile contributions.
+            description: Reconciled metadata for one resilience dimension.
+        worldmonitor_resilience_v1_ResilienceIndicator:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Stable indicator identifier from the 72-row registry.
+                dimension:
+                    type: string
+                    description: Stable identifier of the dimension that owns this indicator.
+                tier:
+                    type: string
+                    description: 'Scoring tier: core, enrichment, or experimental.'
+                active:
+                    type: boolean
+                    description: Active means the current construct version can use this indicator.
+                includedInDimensionScore:
+                    type: boolean
+                    description: True when this country observation participated in the dimension score.
+                state:
+                    type: string
+                    description: |-
+                        observed, imputed, missing, fallback, source-failure, inactive, retired,
+                         or not-applicable.
+                reason:
+                    type: string
+                    description: Explains exclusion, inactive selection, retirement, or fallback state.
+                normalizedScoreAvailable:
+                    type: boolean
+                    description: True when normalized_score contains the score used by the scorer.
+                normalizedScore:
+                    type: number
+                    format: double
+                    description: Indicator score normalized to the 0-100 resilience scale.
+                nominalWeight:
+                    type: number
+                    format: double
+                    description: Configured indicator weight before runtime selection or reweighting.
+                runtimeWeightAvailable:
+                    type: boolean
+                    description: True when runtime_weight applies to this execution path.
+                runtimeWeight:
+                    type: number
+                    format: double
+                    description: Weight selected by the executed scorer branch before normalization.
+                scoringWeightShareAvailable:
+                    type: boolean
+                    description: True when scoring_weight_share applies to this execution path.
+                scoringWeightShare:
+                    type: number
+                    format: double
+                    description: Indicator share of the active blend after runtime reweighting.
+                literalContribution:
+                    type: number
+                    format: double
+                    description: Indicator contribution before dimension-level caps or adjustments.
+                effectiveContribution:
+                    type: number
+                    format: double
+                    description: Reconciled contribution after dimension-level caps or adjustments.
+                imputationClass:
+                    type: string
+                    description: Empty for observed or unavailable rows; otherwise the scorer taxonomy.
+                sourceYearAvailable:
+                    type: boolean
+                    description: True when source_year contains the provider observation year.
+                sourceYear:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Provider observation year, not the WorldMonitor retrieval year.
+                observationAgeAvailable:
+                    type: boolean
+                    description: Age of the source observation, not the time since WorldMonitor fetched it.
+                observationAgeValue:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Integer observation age expressed in observation_age_unit.
+                observationAgeUnit:
+                    type: string
+                    description: '"days" for an observation timestamp or "years" for an annual source row.'
+                observationAgeBasis:
+                    type: string
+                    description: '"observation-timestamp" or "source-year". Never derived from retrieval time.'
+                retrievedAtAvailable:
+                    type: boolean
+                    description: True when retrieved_at contains an explicit retrieval timestamp.
+                retrievedAt:
+                    type: string
+                    description: Explicit ISO-8601 retrieval timestamp; never inferred from source year.
+                observedAtAvailable:
+                    type: boolean
+                    description: True when observed_at contains a provider observation timestamp.
+                observedAt:
+                    type: string
+                    description: Provider observation timestamp in ISO-8601 form.
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceIndicatorSource'
+                rawValue:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceIndicatorRawValue'
+            description: One registry indicator and its effective contribution to a dimension.
+        worldmonitor_resilience_v1_ResilienceIndicatorSource:
+            type: object
+            properties:
+                key:
+                    type: string
+                    description: Stable source or cache key used by the resilience scorer.
+                name:
+                    type: string
+                    description: Human-readable provider or dataset name.
+                attribution:
+                    type: string
+                    description: Attribution text that callers must preserve when displaying the value.
+                license:
+                    type: string
+                    description: Audited source license or redistribution classification.
+                url:
+                    type: string
+                    description: Canonical provider or methodology URL when one is available.
+                observationProvenance:
+                    type: boolean
+                    description: |-
+                        True only when this source was recorded for the selected country observation.
+                         False means the entry is registry attribution, not observation provenance.
+                licenseUrl:
+                    type: string
+                    description: Canonical URL for the audited source license or redistribution terms.
+                attributionUrl:
+                    type: string
+                    description: Canonical attribution URL when it differs from the source dataset URL.
+            description: |-
+                Source-level attribution and provenance for one indicator. Composite
+                 indicators repeat this message once for every upstream source they use.
+        worldmonitor_resilience_v1_ResilienceIndicatorRawValue:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: True only when at least one raw value representation may be redistributed.
+                numericValue:
+                    type: number
+                    format: double
+                    description: Numeric raw observation. Read numeric_value_available before this value.
+                numericValueAvailable:
+                    type: boolean
+                    description: True when numeric_value contains an audited redistributable observation.
+                textValue:
+                    type: string
+                    description: Categorical raw observation. Read text_value_available before this value.
+                textValueAvailable:
+                    type: boolean
+                    description: True when text_value contains an audited redistributable observation.
+                unit:
+                    type: string
+                    description: Unit attached to the raw observation, for example percent or days.
+                status:
+                    type: string
+                    description: |-
+                        available, absent, restricted, audit-incomplete, conditional,
+                         ineligible-observation, or unknown-indicator.
+                reason:
+                    type: string
+                    description: Human-readable explanation for an unavailable or withheld value.
+            description: |-
+                Selectively exposed raw observation. Availability fields keep a withheld or
+                 absent value distinct from a genuine numeric zero or empty categorical value.
         worldmonitor_resilience_v1_GetFoodStocksRequest:
             type: object
             properties:
@@ -49820,15 +50680,6 @@ components:
                 total:
                     type: integer
                     format: int32
-        worldmonitor_resilience_v1_ResilienceRuntimeConstructVersions:
-            type: object
-            properties:
-                energy:
-                    type: string
-                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
-                education:
-                    type: string
-                    description: 'Safe derived education construct version. Valid values: "active" or "rollback".'
         worldmonitor_resilience_v1_ResilienceRuntimeIntervalState:
             type: object
             properties:
@@ -50328,6 +51179,431 @@ components:
                 ScenarioTemplate mirrors the catalog shape served by
                  GET /api/scenario/v1/list-scenario-templates. The authoritative template
                  registry lives in server/worldmonitor/supply-chain/v1/scenario-templates.ts.
+        worldmonitor_scorecard_v1_GetFiveFactorScorecardRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code for the requested scorecard.
+            required:
+                - countryCode
+        worldmonitor_scorecard_v1_GetFiveFactorScorecardResponse:
+            type: object
+            properties:
+                scorecard:
+                    $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorCountryScorecard'
+                unavailable:
+                    type: boolean
+                unavailableReason:
+                    type: string
+                    pattern: ^(?:|country-unavailable|scorecard-snapshot-unavailable)$
+            required:
+                - unavailable
+                - unavailableReason
+            oneOf:
+                - required:
+                    - scorecard
+                  properties:
+                    unavailable:
+                        const: false
+                    unavailableReason:
+                        const: ''
+                - not:
+                    required:
+                        - scorecard
+                  properties:
+                    unavailable:
+                        const: true
+                    unavailableReason:
+                        enum:
+                            - country-unavailable
+                            - scorecard-snapshot-unavailable
+        worldmonitor_scorecard_v1_FiveFactorCountryScorecard:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                methodologyVersion:
+                    type: string
+                    const: 1.0.0
+                computedAt:
+                    type: string
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorPillar'
+            required:
+                - computedAt
+                - countryCode
+                - methodologyVersion
+                - pillars
+        worldmonitor_scorecard_v1_FiveFactorPillar:
+            type: object
+            properties:
+                pillar:
+                    type: string
+                    pattern: ^(?:food|energy|demographics|technology|defense)$
+                hasScore:
+                    type: boolean
+                    description: Read before score and sub_score. When false, both numeric zeros are protobuf placeholders for insufficient data.
+                score:
+                    type: integer
+                    maximum: 5
+                    minimum: 0
+                    format: int32
+                subScore:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                band:
+                    type: string
+                    pattern: ^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$
+                inputCoverage:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                aggregationMethod:
+                    type: string
+                    pattern: ^(?:country-weighted-components|aggregate-physical-inputs|population-weighted-continuous-score)$
+                inputs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_ScorecardEvidence'
+                insufficientReasons:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
+                includedMembers:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^[A-Z]{2}$
+                excludedMembers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_ExcludedBlocMember'
+                memberWeights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_ScorecardMemberWeight'
+            required:
+                - aggregationMethod
+                - band
+                - excludedMembers
+                - hasScore
+                - includedMembers
+                - inputCoverage
+                - inputs
+                - insufficientReasons
+                - memberWeights
+                - pillar
+                - score
+                - subScore
+        worldmonitor_scorecard_v1_ScorecardEvidence:
+            type: object
+            properties:
+                inputId:
+                    type: string
+                available:
+                    type: boolean
+                value:
+                    type: number
+                    format: double
+                hasValue:
+                    type: boolean
+                year:
+                    type: integer
+                    maximum: 2200
+                    minimum: 0
+                    format: int32
+                unit:
+                    type: string
+                source:
+                    type: string
+                sourceKey:
+                    type: string
+                unavailableReason:
+                    type: string
+                    pattern: ^(?:|source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
+                quality:
+                    type: string
+                    pattern: ^(?:|observed|retained|derived)$
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_ScorecardObservation'
+                countryCode:
+                    type: string
+                    pattern: ^(?:|[A-Z]{2})$
+                    description: ISO-2 member that supplied this evidence. Empty only on a country scorecard.
+            required:
+                - available
+                - countryCode
+                - hasValue
+                - inputId
+                - observations
+                - quality
+                - source
+                - sourceKey
+                - unavailableReason
+                - unit
+                - value
+                - year
+        worldmonitor_scorecard_v1_ScorecardObservation:
+            type: object
+            properties:
+                name:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                year:
+                    type: integer
+                    maximum: 2200
+                    minimum: 1900
+                    format: int32
+                unit:
+                    type: string
+                source:
+                    type: string
+                indicatorCode:
+                    type: string
+            required:
+                - indicatorCode
+                - name
+                - source
+                - unit
+                - value
+                - year
+        worldmonitor_scorecard_v1_ExcludedBlocMember:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                reason:
+                    type: string
+                    pattern: ^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
+            required:
+                - countryCode
+                - reason
+        worldmonitor_scorecard_v1_ScorecardMemberWeight:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                populationMillions:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: Population in millions used by population-weighted components.
+                hasPopulation:
+                    type: boolean
+                    description: Read before population_millions; false means the numeric zero is a placeholder.
+            required:
+                - countryCode
+                - hasPopulation
+                - populationMillions
+        worldmonitor_scorecard_v1_ListFiveFactorScorecardsRequest:
+            type: object
+        worldmonitor_scorecard_v1_ListFiveFactorScorecardsResponse:
+            type: object
+            properties:
+                scorecards:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorCountryScorecardSummary'
+                unavailable:
+                    type: boolean
+                unavailableReason:
+                    type: string
+                    pattern: ^(?:|scorecard-snapshot-unavailable)$
+                methodologyVersion:
+                    type: string
+                    pattern: ^(?:|1\.0\.0)$
+                computedAt:
+                    type: string
+            required:
+                - computedAt
+                - methodologyVersion
+                - scorecards
+                - unavailable
+                - unavailableReason
+            oneOf:
+                - properties:
+                    unavailable:
+                        const: false
+                    unavailableReason:
+                        const: ''
+                    methodologyVersion:
+                        const: 1.0.0
+                - properties:
+                    unavailable:
+                        const: true
+                    unavailableReason:
+                        const: scorecard-snapshot-unavailable
+                    methodologyVersion:
+                        const: ''
+                    computedAt:
+                        const: ''
+                    scorecards:
+                        maxItems: 0
+        worldmonitor_scorecard_v1_FiveFactorCountryScorecardSummary:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorPillarSummary'
+            required:
+                - countryCode
+                - pillars
+        worldmonitor_scorecard_v1_FiveFactorPillarSummary:
+            type: object
+            properties:
+                pillar:
+                    type: string
+                    pattern: ^(?:food|energy|demographics|technology|defense)$
+                hasScore:
+                    type: boolean
+                    description: Read before score and sub_score. When false, both numeric zeros are protobuf placeholders for insufficient data.
+                score:
+                    type: integer
+                    maximum: 5
+                    minimum: 0
+                    format: int32
+                subScore:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                band:
+                    type: string
+                    pattern: ^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$
+                inputCoverage:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                insufficientReasons:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
+            required:
+                - band
+                - hasScore
+                - inputCoverage
+                - insufficientReasons
+                - pillar
+                - score
+                - subScore
+        worldmonitor_scorecard_v1_GetBlocScorecardRequest:
+            type: object
+            properties:
+                preset:
+                    type: string
+                    pattern: ^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$
+                    description: 'Official bloc preset: USMCA, EU27, BRICS, GCC, ASEAN, or NATO. Values are case-sensitive. Omit when members is provided.'
+                members:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^[A-Z]{2}$
+                    minItems: 2
+                    maxItems: 30
+                    uniqueItems: true
+                    description: Custom list of 2-30 unique uppercase ISO 3166-1 alpha-2 members. Provide either preset or members; do not provide both.
+            oneOf:
+                - required:
+                    - preset
+                  not:
+                    required:
+                        - members
+                - required:
+                    - members
+                  not:
+                    required:
+                        - preset
+        worldmonitor_scorecard_v1_GetBlocScorecardResponse:
+            type: object
+            properties:
+                scorecard:
+                    $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorBlocScorecard'
+                unavailable:
+                    type: boolean
+                unavailableReason:
+                    type: string
+                    pattern: ^(?:|bloc-members-unavailable|scorecard-snapshot-unavailable)$
+            required:
+                - unavailable
+                - unavailableReason
+            oneOf:
+                - required:
+                    - scorecard
+                  properties:
+                    unavailable:
+                        const: false
+                    unavailableReason:
+                        const: ''
+                - not:
+                    required:
+                        - scorecard
+                  properties:
+                    unavailable:
+                        const: true
+                    unavailableReason:
+                        enum:
+                            - bloc-members-unavailable
+                            - scorecard-snapshot-unavailable
+        worldmonitor_scorecard_v1_FiveFactorBlocScorecard:
+            type: object
+            properties:
+                id:
+                    type: string
+                label:
+                    type: string
+                methodologyVersion:
+                    type: string
+                    const: 1.0.0
+                computedAt:
+                    type: string
+                members:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^[A-Z]{2}$
+                includedMembers:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^[A-Z]{2}$
+                excludedMembers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_ExcludedBlocMember'
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorPillar'
+            required:
+                - computedAt
+                - excludedMembers
+                - id
+                - includedMembers
+                - label
+                - members
+                - methodologyVersion
+                - pillars
         worldmonitor_seismology_v1_ListEarthquakesRequest:
             type: object
             properties:

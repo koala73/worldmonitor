@@ -20,6 +20,19 @@ import {
 // must fail if site identity is ever widened back to the filename.
 
 const site = (file, pred) => ({ source: 'site', rule: `site:${file}:1`, file, pred });
+const route = (source, path, detail) => ({ source, rule: `${source}:${path}`, detail });
+
+describe('entitlement crosswalk route classifier', () => {
+  for (const [source, detail] of [
+    ['premiumPath', 'bearer gate'],
+    ['tierGated', 'tier>=1'],
+  ]) {
+    it(`maps scorecard ${source} routes to resilience scores`, () => {
+      const value = classify(route(source, '/api/scorecard/v1/get-five-factor-scorecard', detail));
+      assert.equal(value?.cap, 'resilience.scores');
+    });
+  }
+});
 
 describe('entitlement crosswalk classifier', () => {
   it('maps a known file with its known predicate', () => {

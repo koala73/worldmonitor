@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 import {
   buildSnapshotMethodology,
   computeResilienceMethodologyMetadataFromSource,
+  selectWikidataIdentities,
 } from '../scripts/freeze-resilience-ranking.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -33,5 +34,41 @@ describe('freeze-resilience-ranking methodology metadata', () => {
 
     assert.equal(methodology.dimensionCount, metadata.activeDimensionCount);
     assert.match(methodology.coverageLabel, /21 per-dimension coverage values/);
+  });
+
+  it('selects the same Wikidata identity regardless of result ordering', () => {
+    const binding = ({ qid, code, name, officialName, preferred = false }) => ({
+      country: { value: `http://www.wikidata.org/entity/${qid}` },
+      code: { value: code },
+      countryLabel: { value: name },
+      officialName: officialName ? { value: officialName } : undefined,
+      officialNameRank: officialName
+        ? { value: `http://wikiba.se/ontology#${preferred ? 'PreferredRank' : 'NormalRank'}` }
+        : undefined,
+    });
+    const candidates = [
+      binding({ qid: 'Q229', code: 'CY', name: 'Cyprus', officialName: 'Republic of Cyprus' }),
+      binding({ qid: 'Q999', code: 'CY', name: 'Cyprus region' }),
+      binding({ qid: 'Q229', code: 'CY', name: 'Cyprus', officialName: 'Cyprus Republic' }),
+    ];
+
+    const forward = selectWikidataIdentities(['CY'], candidates).get('CY');
+    const reversed = selectWikidataIdentities(['CY'], [...candidates].reverse()).get('CY');
+
+    assert.deepEqual(forward, reversed);
+    assert.deepEqual(forward, {
+      commonName: 'Cyprus',
+      officialName: 'Republic of Cyprus',
+      sameAs: 'https://www.wikidata.org/wiki/Q229',
+    });
+
+    const chinaCandidates = [
+      binding({ qid: 'Q148', code: 'CN', name: "People's Republic of China", officialName: "People's Republic of China" }),
+      binding({ qid: 'Q148', code: 'CN', name: "People's Republic of China", officialName: 'Peoples Republic of China' }),
+    ];
+    assert.equal(
+      selectWikidataIdentities(['CN'], chinaCandidates).get('CN').officialName,
+      "People's Republic of China",
+    );
   });
 });
