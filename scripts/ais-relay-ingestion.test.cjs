@@ -179,6 +179,7 @@ test('timed-out Telegram RPCs reset the client and allow a clean reconnect', asy
     RELAY_TEST_TELEGRAM: 'true',
     RELAY_TEST_TELEGRAM_RPC_NEVER_USERNAMES: 'stuck_channel',
     RELAY_TEST_TELEGRAM_DISCONNECT_DELAY_MS: '60',
+    RELAY_TEST_TELEGRAM_DISCONNECT_REJECT: 'true',
     RELAY_TEST_TELEGRAM_SKIP_FULL_CHANNEL: 'true',
   });
   const { child, port } = await relay.ready;
@@ -192,6 +193,30 @@ test('timed-out Telegram RPCs reset the client and allow a clean reconnect', asy
     assert.ok(Date.now() - reconnectStartedAt >= 50, 'reconnect must wait for the old client to disconnect');
     assert.equal((relay.getOutput().match(/\[Relay\]\[TestTelegram\] connect/g) || []).length, 2);
     assert.equal((relay.getOutput().match(/getEntity recovery_channel/g) || []).length, 1);
+  } finally {
+    await stop(child);
+  }
+});
+
+test('a full-channel timeout stops before messages and recovers on a new client', async () => {
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '0',
+    TELEGRAM_CHANNEL_TIMEOUT_MS: '25',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_FULL_NEVER_USERNAMES: 'stuck_channel',
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    const timedOut = await get(port, '/telegram/channel?username=stuck_channel&limit=20');
+    const recovered = await get(port, '/telegram/channel?username=recovery_channel&limit=20');
+    assert.equal(timedOut.status, 503);
+    assert.equal(recovered.status, 200);
+    assert.doesNotMatch(relay.getOutput(), /getMessages 20 stuck_channel/);
+    assert.equal((relay.getOutput().match(/getMessages 20 recovery_channel/g) || []).length, 1);
   } finally {
     await stop(child);
   }

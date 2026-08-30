@@ -1318,11 +1318,19 @@ function buildTelegramChannelPreview(entity, fallbackUsername, memberCount = nul
   };
 }
 
+function assertTelegramConnectionCurrent(connection) {
+  if (telegramState.client !== connection.client || telegramState.api !== connection.Api) {
+    throw createTelegramStatusError('Telegram client reset during request', 503);
+  }
+}
+
 async function resolveTelegramChannelWithConnection(normalized, connection) {
+  assertTelegramConnectionCurrent(connection);
   const cached = getCachedTelegramValue(telegramResolveCache, normalized);
   if (cached) return cached;
 
   return withTelegramLookupSingleFlight(`resolve:${normalized}`, async () => {
+    assertTelegramConnectionCurrent(connection);
     const freshCached = getCachedTelegramValue(telegramResolveCache, normalized);
     if (freshCached) return freshCached;
 
@@ -1352,6 +1360,7 @@ async function resolveTelegramChannelWithConnection(normalized, connection) {
       }
     }
 
+    assertTelegramConnectionCurrent(connection);
     const value = {
       preview: buildTelegramChannelPreview(entity, normalized, memberCount),
       entity,
@@ -1384,10 +1393,12 @@ async function fetchTelegramChannelFeed(username, limit = 20) {
 
     const connection = await initTelegramClientIfNeeded();
     const { preview, entity } = await resolveTelegramChannelWithConnection(normalized, connection);
+    assertTelegramConnectionCurrent(connection);
     const msgs = await runTelegramRpc(
       `getMessages(${normalized})`,
       () => connection.client.getMessages(entity, { limit: safeLimit }),
     );
+    assertTelegramConnectionCurrent(connection);
 
     const items = [];
     const channel = { handle: preview.username, label: preview.title, topic: 'osint', region: 'watchlist' };
@@ -1469,7 +1480,7 @@ async function initTelegramClientIfNeeded() {
       await pendingDisconnect;
     } catch (error) {
       telegramState.lastError = `telegram disconnect failed: ${error?.message || error}`;
-      throw createTelegramStatusError(telegramState.lastError, 503);
+      console.warn('[Relay] Telegram disconnect failed after forced socket teardown:', telegramState.lastError);
     }
     if (telegramDisconnectPromise === pendingDisconnect) telegramDisconnectPromise = null;
   }
@@ -1562,6 +1573,9 @@ async function connectTelegramClient() {
           pendingLookupRejects.clear();
           const delayMs = readTelegramNumberEnv('RELAY_TEST_TELEGRAM_DISCONNECT_DELAY_MS', 0);
           if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+          if (process.env.RELAY_TEST_TELEGRAM_DISCONNECT_REJECT === 'true') {
+            throw new Error('TEST_TELEGRAM_DISCONNECT_FAILED');
+          }
         },
         getEntity: async username => {
           console.log(`[Relay][TestTelegram] getEntity ${username}`);
@@ -1577,17 +1591,24 @@ async function connectTelegramClient() {
           return new TestTelegramChannel(username);
         },
         invoke: async request => {
-          await rpcDelay();
           console.log(`[Relay][TestTelegram] getFullChannel ${request.channel.username}`);
+          const never = String(process.env.RELAY_TEST_TELEGRAM_FULL_NEVER_USERNAMES || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          if (never.includes(request.channel.username)) {
+            return new Promise((_, reject) => pendingLookupRejects.add(reject));
+          }
+          await rpcDelay();
           return {
             fullChat: new TestTelegramChannelFull(
               Math.max(0, Number(process.env.RELAY_TEST_TELEGRAM_MEMBER_COUNT || 1234)),
             ),
           };
         },
-        getMessages: async (_entity, { limit }) => {
+        getMessages: async (entity, { limit }) => {
+          console.log(`[Relay][TestTelegram] getMessages ${limit} ${entity.username}`);
           await rpcDelay();
-          console.log(`[Relay][TestTelegram] getMessages ${limit}`);
           const messages = JSON.parse(process.env.RELAY_TEST_TELEGRAM_MESSAGES || '[]');
           return Array.isArray(messages) ? messages.slice(0, limit) : [];
         },
@@ -1667,6 +1688,7 @@ async function pollTelegramOnce() {
   let mediaSkipped = 0;
 
   for (const channel of channels) {
+    if (telegramState.client !== client || telegramState.api !== connection.Api) break;
     if (Date.now() - pollStart > TELEGRAM_POLL_CYCLE_TIMEOUT_MS) {
       console.warn(`[Relay] Telegram poll cycle timeout (${Math.round(TELEGRAM_POLL_CYCLE_TIMEOUT_MS / 1000)}s), polled ${channelsPolled}/${channels.length} channels`);
       break;
@@ -1677,6 +1699,7 @@ async function pollTelegramOnce() {
 
     try {
       const entity = await runTelegramRpc(`getEntity(${handle})`, () => client.getEntity(handle));
+      assertTelegramConnectionCurrent(connection);
       const msgs = await runTelegramRpc(
         `getMessages(${handle})`,
         () => client.getMessages(entity, {
@@ -1684,6 +1707,7 @@ async function pollTelegramOnce() {
           minId,
         }),
       );
+      assertTelegramConnectionCurrent(connection);
 
       for (const msg of msgs) {
         if (!msg || !msg.id) continue;
