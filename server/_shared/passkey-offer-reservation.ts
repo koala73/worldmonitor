@@ -1,4 +1,4 @@
-import { ACCOUNT_OFFER_CAP } from '../../shared/passkey-offer-contract.ts';
+import { ACCOUNT_OFFER_CAP } from '../../shared/passkey-offer-contract';
 
 export interface PasskeyOfferSlotStore {
   /** Returns true only when this call claimed an unused slot. */

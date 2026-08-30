@@ -225,11 +225,11 @@ describe('PasskeyOfferPrompt — overlay arbitration', () => {
 
   it('defers the arrival announcement until an initially hidden card is restored', () => {
     const { prompt, el } = mount();
-    let runFrame: (() => void) | null = null;
+    const scheduledFrame: { run: (() => void) | null } = { run: null };
     prompt.hide();
-    prompt.announceOnMount((cb) => { runFrame = cb; return 1; });
+    prompt.announceOnMount((cb) => { scheduledFrame.run = cb; return 1; });
 
-    runFrame?.();
+    scheduledFrame.run?.();
     expect(announce(el)?.textContent).toBe('');
 
     prompt.restore(immediate);
