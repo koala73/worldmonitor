@@ -127,9 +127,14 @@ const relativeFloor = floors.elevated / 2;
 const clearsRelativeFloor = premiumPct >= relativeFloor;
 ```
 
-Half is not arbitrary. It is the largest gate that keeps all three relative tiers reachable — the
-whole band between `elevated/2` and `elevated` is territory where percentile is the only thing that
-can escalate — while still requiring a premium of real size before history is allowed to speak.
+Half is a policy choice inside a constrained range, not a value the constraint picks out. The
+constraint is only that the gate sit strictly *below* the absolute `elevated` floor: the band
+between the gate and that floor is the territory where percentile is the only thing that can
+escalate, so a gate at the floor itself leaves that band empty and the 80th-percentile rung
+unreachable. Any gate below the floor — 0.75, 0.9, 0.99 for gold — satisfies that equally well.
+What half buys is the trade-off, not the reachability: a lower gate lets history speak sooner on
+smaller premiums, a higher one demands more absolute size first. Do not present the specific
+fraction as though arithmetic forced it.
 
 **The strongest evidence that half matched the original design intent: the author's pre-existing
 percentile boundary test already used gold `0.5`.** `tests/physical-divergence-classifier.test.mjs:77-86`
@@ -148,9 +153,11 @@ The failure has a published name — the **event/regime reclassification problem
 external indices that use percentiles have explicit defenses against it. The ECB CISS is worth
 studying because it looks like a counterexample and is not:
 
-- It is percentile-only *at the indicator level*, but against a long **expanding** sample (back to
-  1980, ~1,149 observations before its recursive phase), so a single new print moves the rank
-  fractionally rather than pinning it.
+- It is percentile-only *at the indicator level*, against a long **expanding** sample (back to
+  1980, ~1,149 observations before its recursive phase). Be careful about what length buys: it
+  does **not** prevent pinning. An inclusive percentile ranks a new maximum at 100 no matter how
+  many observations precede it — the arithmetic is the same at 250 points and at 10,000. Length
+  only damps the *non-maximum* updates, making ordinary moves smaller.
 - Its **regime** ladder is set on the index *level* via Markov-switching, **never on percentiles**.
 - Its 99th percentile over 24 years sits around **0.70 on a 0-1 scale**, not 1.0 — the value is
   diluted by aggregation across 15 indicators.
