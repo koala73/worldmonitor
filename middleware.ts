@@ -450,7 +450,11 @@ async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response
   const html = await upstream.text();
   const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
   const headers = new Headers(upstream.headers);
-  headers.delete('content-length');
+  // Fetch already decoded the body; hop-by-hop / recomputed framing must not
+  // be forwarded onto the rewritten string response (Mintlify serves br).
+  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
+    headers.delete(name);
+  }
   headers.set('x-wm-docs-locale-seo', '1');
   // Ensure shared caches vary on the headers that select this proxy path.
   const vary = headers.get('vary');
