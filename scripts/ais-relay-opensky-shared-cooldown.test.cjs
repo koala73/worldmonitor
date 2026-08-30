@@ -59,6 +59,7 @@ function spawnRelay(extraEnv) {
       OPENSKY_REQUEST_SPACING_MS: '1',
       OPENSKY_CLIENT_ID: 'test-client',
       OPENSKY_CLIENT_SECRET: 'test-secret',
+      OPENSKY_LEGACY_COOLDOWN_COMPAT_UNTIL: '2099-01-01T00:00:00.000Z',
       NODE_OPTIONS: `--require=${preload}`,
       ...extraEnv,
     },
@@ -166,9 +167,11 @@ async function createUpstashMock({ getResponses = {}, failGets = false, getDelay
     setsFor: (key) => commands.filter(
       (entry) => Array.isArray(entry.command) && entry.command[0] === 'SET' && entry.command[1] === key,
     ),
-    evalsFor: (key) => commands.filter(
-      (entry) => Array.isArray(entry.command) && entry.command[0] === 'EVAL' && entry.command[3] === key,
-    ),
+    evalsFor: (key) => commands.filter((entry) => {
+      if (!Array.isArray(entry.command) || entry.command[0] !== 'EVAL') return false;
+      const keyCount = Number(entry.command[2]);
+      return entry.command.slice(3, 3 + keyCount).includes(key);
+    }),
     env: {
       UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${server.address().port}`,
       UPSTASH_REDIS_REST_TOKEN: 'test-upstash-token',
@@ -187,6 +190,11 @@ async function createUpstashMock({ getResponses = {}, failGets = false, getDelay
   };
 }
 
+function evalArgs(command) {
+  const keyCount = Number(command[2]);
+  return command.slice(3 + keyCount);
+}
+
 test('a header-less relay 429 persists a seeder-cadence fallback, not the 90s local default', async () => {
   const redis = await createUpstashMock();
   const { child, ready } = spawnRelay({
@@ -203,7 +211,8 @@ test('a header-less relay 429 persists a seeder-cadence fallback, not the 90s lo
     const evals = redis.evalsFor(OPENSKY_COOLDOWN_KEY);
     assert.equal(evals.length, 1, 'relay must write the shared cooldown key on a header-less 429');
     assert.equal(evals[0].command[1], OPENSKY_MAX_DEADLINE_SET_LUA);
-    const record = JSON.parse(evals[0].command[4]);
+    const args = evalArgs(evals[0].command);
+    const record = JSON.parse(args[0]);
     assert.equal(record.recordedBy, 'ais-relay');
     assert.equal(record.retryAfterSeconds, null);
     assert.equal(record.cooldownMs, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS);
@@ -212,7 +221,7 @@ test('a header-less relay 429 persists a seeder-cadence fallback, not the 90s lo
       `shared deadline ${record.until} must span the seeder */5 cadence`,
     );
     assert.equal(
-      evals[0].command[5],
+      args[1],
       String(ttlSecondsForCooldown(OPENSKY_SHARED_FALLBACK_COOLDOWN_MS)),
       'Redis TTL must cover the persist fallback, not the short local cooldown',
     );
@@ -241,11 +250,13 @@ test('a relay 429 persists the shared cooldown key the seeder reads (#6253)', as
     const evals = redis.evalsFor(OPENSKY_COOLDOWN_KEY);
     assert.equal(evals.length, 1, 'relay must write the shared cooldown key on 429');
     assert.equal(evals[0].command[1], OPENSKY_MAX_DEADLINE_SET_LUA);
-    const record = JSON.parse(evals[0].command[4]);
+    const record = JSON.parse(evalArgs(evals[0].command)[0]);
     assert.equal(record.recordedBy, 'ais-relay');
     assert.equal(record.account, accountFingerprint('test-client'));
     assert.equal(record.retryAfterSeconds, 120);
     assert.ok(record.until > Date.now());
+    assert.equal(evals[0].command[2], '2', 'the rollout write must update v2 and v1 in one EVAL');
+    assert.equal(redis.evalsFor(OPENSKY_LEGACY_COOLDOWN_KEY).length, 1, 'old readers must see the new cooldown');
   } finally {
     await stop(child);
     await redis.close();
@@ -278,8 +289,39 @@ test('a matching legacy v1 cooldown is honored and copied into the account v2 ke
     assert.equal(metrics.opensky.upstreamFetches, 0);
     const migrations = redis.evalsFor(OPENSKY_COOLDOWN_KEY);
     assert.equal(migrations.length, 1);
-    assert.deepEqual(JSON.parse(migrations[0].command[4]), record);
+    assert.deepEqual(JSON.parse(evalArgs(migrations[0].command)[0]), record);
     assert.equal(redis.evalsFor(OPENSKY_LEGACY_COOLDOWN_KEY).length, 0, 'v1 is read but never modified');
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
+test('an expired legacy cutoff avoids v1 reads on clean v2 misses', async () => {
+  const record = buildCooldownRecord({
+    cooldownMs: 10 * 60_000,
+    account: accountFingerprint('test-client'),
+    recordedBy: 'seed-military-flights',
+  });
+  const redis = await createUpstashMock({
+    getResponses: {
+      [OPENSKY_COOLDOWN_KEY]: [{ result: null }, { result: null }],
+      [OPENSKY_LEGACY_COOLDOWN_KEY]: { result: JSON.stringify(record) },
+    },
+  });
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    OPENSKY_LEGACY_COOLDOWN_COMPAT_UNTIL: '2000-01-01T00:00:00.000Z',
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200',
+  });
+  try {
+    const { port } = await ready;
+    const response = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    assert.equal(response.status, 200);
+    assert.notEqual(response.headers['x-cache'], 'RATE-LIMITED');
+    assert.equal(redis.getsFor(OPENSKY_LEGACY_COOLDOWN_KEY).length, 0);
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 1);
   } finally {
     await stop(child);
     await redis.close();

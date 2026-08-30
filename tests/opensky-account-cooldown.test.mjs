@@ -26,6 +26,7 @@ const {
   applyCompareAndDelete,
   maxDeadlineSetCommand,
   compareAndDelCommand,
+  legacyCooldownCompatibilityEnabled,
 } = createRequire(import.meta.url)('../scripts/_opensky-account-cooldown.cjs');
 
 function pushLuaValue(L, value) {
@@ -71,9 +72,9 @@ function makeLuaRedis(initial = {}) {
   };
 }
 
-function runMaxDeadlineSet(redis, record) {
+function runMaxDeadlineSet(redis, record, keys = [OPENSKY_COOLDOWN_KEY]) {
   const command = maxDeadlineSetCommand(
-    OPENSKY_COOLDOWN_KEY,
+    keys,
     record,
     ttlSecondsForCooldown(record.cooldownMs),
   );
@@ -103,9 +104,10 @@ function runMaxDeadlineSet(redis, record) {
   lua.lua_setfield(L, -2, to_luastring('decode'));
   lua.lua_setglobal(L, to_luastring('cjson'));
 
-  pushLuaStringArray(L, [command[3]]);
+  const keyCount = Number(command[2]);
+  pushLuaStringArray(L, command.slice(3, 3 + keyCount));
   lua.lua_setglobal(L, to_luastring('KEYS'));
-  pushLuaStringArray(L, command.slice(4));
+  pushLuaStringArray(L, command.slice(3 + keyCount));
   lua.lua_setglobal(L, to_luastring('ARGV'));
 
   const errorText = () => {
@@ -128,6 +130,47 @@ test('shared cooldown key and fingerprint stay stable across processes', () => {
   assert.equal(cooldownKeyForAccount(null), OPENSKY_COOLDOWN_KEY + ':unknown');
   assert.equal(accountFingerprint(''), null);
   assert.equal(accountFingerprint(), null);
+});
+
+test('legacy compatibility has a finite cutoff', () => {
+  const cutoff = '2026-09-07T00:00:00.000Z';
+  assert.equal(legacyCooldownCompatibilityEnabled({
+    now: Date.parse('2026-09-06T23:59:59.999Z'),
+    cutoff,
+  }), true);
+  assert.equal(legacyCooldownCompatibilityEnabled({
+    now: Date.parse(cutoff),
+    cutoff,
+  }), false);
+  assert.equal(legacyCooldownCompatibilityEnabled({
+    now: Date.parse('2026-09-08T00:00:00.000Z'),
+    cutoff,
+  }), false);
+});
+
+test('max-deadline command can atomically target account and legacy keys', () => {
+  const account = accountFingerprint('test-client');
+  const accountKey = cooldownKeyForAccount(account);
+  const record = buildCooldownRecord({
+    now: 1_700_000_000_000,
+    cooldownMs: 10 * 60_000,
+    account,
+    recordedBy: 'ais-relay',
+  });
+  const command = maxDeadlineSetCommand(
+    [accountKey, OPENSKY_LEGACY_COOLDOWN_KEY],
+    record,
+    ttlSecondsForCooldown(record.cooldownMs),
+  );
+
+  assert.equal(command[2], '2');
+  assert.deepEqual(command.slice(3, 5), [accountKey, OPENSKY_LEGACY_COOLDOWN_KEY]);
+  assert.deepEqual(JSON.parse(command[5]), record);
+
+  const redis = makeLuaRedis();
+  assert.equal(runMaxDeadlineSet(redis, record, [accountKey, OPENSKY_LEGACY_COOLDOWN_KEY]), 2);
+  assert.equal(redis.store.get(accountKey), JSON.stringify(record));
+  assert.equal(redis.store.get(OPENSKY_LEGACY_COOLDOWN_KEY), JSON.stringify(record));
 });
 
 test('clamp uses the caller fallback and caps at 24h', () => {

@@ -614,6 +614,7 @@ const {
   buildCooldownRecord,
   maxDeadlineSetCommand,
   compareAndDelCommand,
+  legacyCooldownCompatibilityEnabled,
 } = createRequire(import.meta.url)('./_opensky-account-cooldown.cjs');
 const OPENSKY_ACCOUNT_FINGERPRINT = openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID);
 const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(OPENSKY_ACCOUNT_FINGERPRINT);
@@ -768,6 +769,7 @@ async function readOpenSkyCooldown() {
       ignoreReason: inspected.ignoreReason || null,
     };
     if (inspected.remainingMs > 0) return inactiveResult;
+    if (!legacyCooldownCompatibilityEnabled()) return inactiveResult;
     return readLegacyOpenSkyCooldown(creds, inactiveResult);
   } catch (err) {
     console.warn(`  [OpenSky Quota] cooldown read failed, proceeding without it: ${err.message || err}`);
@@ -790,12 +792,16 @@ async function recordOpenSkyCooldown(retryAfterSeconds) {
   const creds = getOptionalRedisCredentials();
   if (!creds) return;
   try {
-    // The TTL outlives the deadline so a live key always answers the read; the
-    // successful-call path deletes it, and the TTL is only the backstop.
+    // A single EVAL dual-writes v2 and v1 during the bounded rollout bridge,
+    // so an old process sees the same account cooldown. The legacy key drops
+    // out automatically after the cutoff.
+    const keys = legacyCooldownCompatibilityEnabled({ now: record.recordedAt })
+      ? [OPENSKY_COOLDOWN_KEY, OPENSKY_LEGACY_COOLDOWN_KEY]
+      : [OPENSKY_COOLDOWN_KEY];
     await withRetry(() => redisCommand(
       creds.url,
       creds.token,
-      maxDeadlineSetCommand(OPENSKY_COOLDOWN_KEY, record, ttlSecondsForCooldown(cooldownMs)),
+      maxDeadlineSetCommand(keys, record, ttlSecondsForCooldown(cooldownMs)),
       { label: `Redis EVAL max-deadline ${OPENSKY_COOLDOWN_KEY}`, timeoutMs: 10_000 },
     ), 2, 1000);
   } catch (err) {

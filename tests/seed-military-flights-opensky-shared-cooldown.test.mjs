@@ -8,6 +8,7 @@ process.env.OPENSKY_CLIENT_SECRET = 'test-secret';
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
 process.env.WM_SEED_RETRY_DELAY_MS = '1';
+process.env.OPENSKY_LEGACY_COOLDOWN_COMPAT_UNTIL = '2099-01-01T00:00:00.000Z';
 delete process.env.OPENSKY_PROXY_AUTH;
 delete process.env.PROXY_URL;
 
@@ -80,7 +81,10 @@ function install({ redisRecord = null, legacyRedisRecord = null, redisError = fa
 }
 
 beforeEach(() => install());
-afterEach(() => { globalThis.fetch = originalFetch; });
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  process.env.OPENSKY_LEGACY_COOLDOWN_COMPAT_UNTIL = '2099-01-01T00:00:00.000Z';
+});
 
 function emptySources() {
   return { regions: [] };
@@ -151,6 +155,26 @@ test('a matching legacy v1 cooldown remains honored when migration fails', async
   assert.match(fetchSources.regions[0].authStatus, /^quota-cooldown:/);
 });
 
+test('an expired legacy cutoff avoids the v1 read on a clean v2 miss', async () => {
+  const record = buildCooldownRecord({
+    cooldownMs: 10 * 60_000,
+    account: accountFingerprint('test-id'),
+    recordedBy: 'ais-relay',
+  });
+  process.env.OPENSKY_LEGACY_COOLDOWN_COMPAT_UNTIL = '2000-01-01T00:00:00.000Z';
+  install({ legacyRedisRecord: record, allowOpenSky: true });
+  const fetchSources = emptySources();
+  await fetchOpenSkyGlobal({
+    source: { value: 'none' },
+    fetchSources,
+    seenIds: new Set(),
+    allStates: [],
+  });
+  assert.equal(redisGets, 1);
+  assert.ok(openskyCalls >= 1);
+  assert.match(fetchSources.regions[0].authStatus, /^(success|empty):/);
+});
+
 test('a mismatched legacy v1 cooldown fails open and is not migrated', async () => {
   const record = buildCooldownRecord({
     cooldownMs: 10 * 60_000,
@@ -205,17 +229,22 @@ function installInterleavedStore(store, { onOpenSky, allowOpenSky = true } = {})
       let command = null;
       try { command = JSON.parse(init?.body || 'null'); } catch { command = null; }
       if (Array.isArray(command) && command[0] === 'EVAL') {
-        const key = command[3];
+        const keyCount = Number(command[2]);
+        const keys = command.slice(3, 3 + keyCount);
+        const args = command.slice(3 + keyCount);
         if (command[1] === OPENSKY_MAX_DEADLINE_SET_LUA) {
-          const record = JSON.parse(command[4]);
-          const decision = applyMaxDeadlineWrite(store, key, record, Number(command[5]));
-          return Response.json({ result: decision.write ? 1 : 0 });
+          const record = JSON.parse(args[0]);
+          const writes = keys.reduce((count, key) => {
+            const decision = applyMaxDeadlineWrite(store, key, record, Number(args[1]));
+            return count + (decision.write ? 1 : 0);
+          }, 0);
+          return Response.json({ result: writes });
         }
         if (command[1] === OPENSKY_COMPARE_AND_DEL_LUA) {
-          const decision = applyCompareAndDelete(store, key, {
-            expectedJson: command[4],
-            expectedRevision: command[5],
-            watermarkUntil: Number(command[6]),
+          const decision = applyCompareAndDelete(store, keys[0], {
+            expectedJson: args[0],
+            expectedRevision: args[1],
+            watermarkUntil: Number(args[2]),
           });
           return Response.json({ result: decision.delete ? 1 : 0 });
         }
@@ -235,6 +264,25 @@ function installInterleavedStore(store, { onOpenSky, allowOpenSky = true } = {})
     throw new Error(`unexpected fetch ${raw}`);
   };
 }
+
+test('a seeder 429 atomically dual-writes v2 and v1 for old readers', async () => {
+  const store = {};
+  installInterleavedStore(store, {
+    allowOpenSky: (raw) => {
+      if (raw.startsWith(TOKEN_URL)) return Response.json({ access_token: 'tok', expires_in: 1800 });
+      return new Response('quota', { status: 429, headers: { 'Retry-After': '120' } });
+    },
+  });
+  await fetchOpenSkyGlobal({
+    source: { value: 'none' },
+    fetchSources: emptySources(),
+    seenIds: new Set(),
+    allStates: [],
+  });
+
+  assert.ok(store[OPENSKY_COOLDOWN_KEY]);
+  assert.equal(store[OPENSKY_LEGACY_KEY], store[OPENSKY_COOLDOWN_KEY]);
+});
 
 test('a Redis read failure fails open so the seeder still attempts OpenSky', async () => {
   install({ redisError: true, allowOpenSky: true });

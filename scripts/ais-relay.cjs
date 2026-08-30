@@ -37,6 +37,7 @@ const {
   inspectCooldownRecord,
   buildCooldownRecord,
   maxDeadlineSetCommand,
+  legacyCooldownCompatibilityEnabled,
 } = require('./_opensky-account-cooldown.cjs');
 const OPENSKY_ACCOUNT_FINGERPRINT = openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID);
 const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(OPENSKY_ACCOUNT_FINGERPRINT);
@@ -9139,7 +9140,11 @@ async function readLegacySharedOpenSkyCooldownMs() {
       record,
       ttlSecondsForCooldown(inspected.remainingMs),
     );
-    const written = await upstashEval(OPENSKY_MAX_DEADLINE_SET_LUA, [OPENSKY_COOLDOWN_KEY], command.slice(4));
+    const written = await upstashEval(
+      OPENSKY_MAX_DEADLINE_SET_LUA,
+      [OPENSKY_COOLDOWN_KEY],
+      command.slice(4),
+    );
     if (written == null && UPSTASH_ENABLED) {
       console.warn('[Relay] OpenSky legacy cooldown migration returned non-OK');
     }
@@ -9188,6 +9193,7 @@ async function readSharedOpenSkyCooldownMs() {
     // A v2 transport or parse failure must remain fail-open. Only a clean
     // empty, expired, or mismatched v2 read may consult the legacy key.
     if (v2ReadFailed) return 0;
+    if (!legacyCooldownCompatibilityEnabled()) return 0;
     const legacyRemainingMs = await readLegacySharedOpenSkyCooldownMs();
     if (legacyRemainingMs > 0) {
       mergeLocalOpenSkyCooldown(Date.now() + legacyRemainingMs);
@@ -9214,14 +9220,22 @@ async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Dat
     recordedBy: 'ais-relay',
   });
   try {
-    // Atomic max-deadline write: a late shorter persist must not erase a
-    // longer seeder (or earlier relay) lockout already stored at this key.
+    // During the bounded rollout bridge, one EVAL updates the account-scoped
+    // key and v1 atomically so an old process cannot miss a new lockout.
+    // After the cutoff, only v2 remains on the hot path.
+    const keys = legacyCooldownCompatibilityEnabled({ now: completedAt })
+      ? [OPENSKY_COOLDOWN_KEY, OPENSKY_LEGACY_COOLDOWN_KEY]
+      : [OPENSKY_COOLDOWN_KEY];
     const command = maxDeadlineSetCommand(
-      OPENSKY_COOLDOWN_KEY,
+      keys,
       record,
       ttlSecondsForCooldown(persistCooldownMs),
     );
-    const written = await upstashEval(OPENSKY_MAX_DEADLINE_SET_LUA, [OPENSKY_COOLDOWN_KEY], command.slice(4));
+    const written = await upstashEval(
+      OPENSKY_MAX_DEADLINE_SET_LUA,
+      keys,
+      command.slice(3 + keys.length),
+    );
     if (written == null && UPSTASH_ENABLED) {
       console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
     }
