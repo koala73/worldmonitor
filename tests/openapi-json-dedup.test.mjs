@@ -503,6 +503,11 @@ describe('public OpenAPI dedupe (real bundle)', () => {
 });
 
 describe('build-openapi-json wiring', () => {
+  it('keeps the transform source reviewable as text', () => {
+    const src = readFileSync(resolve(root, 'scripts/openapi-dedup-responses.mjs'));
+    assert.equal(src.includes(0), false, 'literal NUL bytes make Git treat the JavaScript source as binary');
+  });
+
   it('the build script applies response and shared-provenance dedupe before writing JSON', () => {
     const src = readFileSync(buildScriptPath, 'utf8');
     assert.match(src, /from '\.\/openapi-dedup-responses\.mjs'/);
