@@ -22,6 +22,19 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const read = (rel) => readFileSync(join(root, rel), 'utf8');
 
+function cssRule(source, selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = source.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{`));
+  assert.ok(match && match.index !== undefined, `missing ${selector} rule`);
+  const open = source.indexOf('{', match.index);
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth += 1;
+    if (source[i] === '}' && --depth === 0) return source.slice(open + 1, i);
+  }
+  throw new Error(`unterminated ${selector} block`);
+}
+
 describe('issue #7377 GEO content credibility', () => {
   it('(a) keeps audience in frontmatter/JSON-LD but not visible body chrome', () => {
     const post = read('blog-site/src/layouts/BlogPost.astro');
@@ -48,6 +61,34 @@ describe('issue #7377 GEO content credibility', () => {
       index,
       /\{post\.data\.audience\}/,
       'blog index cards must not render the audience persona string',
+    );
+  });
+
+  it('scopes the card-title top spacer to non-pinned cards so pinned tags do not double-pad', () => {
+    const css = read('blog-site/src/styles/global.css');
+    const index = read('blog-site/src/pages/index.astro');
+
+    assert.match(
+      index,
+      /\{post\.data\.pinned && \([\s\S]*?class="tag"/,
+      'pinned cards still render the .tag block that owns the top spacer',
+    );
+
+    const tagPad = cssRule(css, '.post-card .tag');
+    assert.match(tagPad, /padding-top:\s*1\.25rem/, 'pinned .tag keeps the original 1.25rem top spacer');
+
+    const allTitles = cssRule(css, '.post-card h2');
+    assert.doesNotMatch(
+      allTitles,
+      /padding-top:\s*1\.25rem/,
+      'unqualified .post-card h2 must not add a second top spacer on pinned cards',
+    );
+
+    const ordinaryTitles = cssRule(css, '.post-card:not(.pinned) h2');
+    assert.match(
+      ordinaryTitles,
+      /padding-top:\s*1\.25rem/,
+      'ordinary cards keep the former .tag top spacer on the title',
     );
   });
 
