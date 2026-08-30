@@ -887,7 +887,7 @@ function safeEnd(res, statusCode, headers, body) {
     res.end(body);
     return true;
   } catch {
-    return false;
+    return;
   }
 }
 
@@ -982,7 +982,11 @@ function readTelegramNumberEnv(name, fallback, min = 0, max = Number.POSITIVE_IN
 }
 
 const TELEGRAM_ENABLED = Boolean(process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH && process.env.TELEGRAM_SESSION);
-const TELEGRAM_POLL_INTERVAL_MS = Math.max(15_000, Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 60_000));
+const TELEGRAM_POLL_INTERVAL_FLOOR_MS = RELAY_TEST_MODE ? 10 : 15_000;
+const TELEGRAM_POLL_INTERVAL_MS = Math.max(
+  TELEGRAM_POLL_INTERVAL_FLOOR_MS,
+  Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 60_000),
+);
 const TELEGRAM_MAX_FEED_ITEMS = Math.max(50, Number(process.env.TELEGRAM_MAX_FEED_ITEMS || 200));
 const TELEGRAM_MAX_TEXT_CHARS = Math.max(200, Number(process.env.TELEGRAM_MAX_TEXT_CHARS || 800));
 const TELEGRAM_STARTUP_DELAY_MS = readTelegramNumberEnv('TELEGRAM_STARTUP_DELAY_MS', 120_000);
@@ -1740,6 +1744,13 @@ async function connectTelegramClient() {
             return new Promise((_, reject) => pendingLookupRejects.add(reject));
           }
           await rpcDelay();
+          const delayedRejects = String(process.env.RELAY_TEST_TELEGRAM_RPC_REJECT_USERNAMES || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          if (delayedRejects.includes('*') || delayedRejects.includes(String(username).toLowerCase())) {
+            throw new Error('TEST_TELEGRAM_RPC_FAILED');
+          }
           const csvEnv = name => String(process.env[name] || '')
             .split(',')
             .map(value => value.trim().toLowerCase())
@@ -1833,6 +1844,13 @@ async function connectTelegramClient() {
 
 const TELEGRAM_CHANNEL_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_CHANNEL_TIMEOUT_MS', 15_000, 10);
 const TELEGRAM_POLL_CYCLE_TIMEOUT_MS = 180_000; // 3min max for entire poll cycle
+const TELEGRAM_POLL_STUCK_AFTER_MS = RELAY_TEST_MODE
+  ? readTelegramNumberEnv(
+    'RELAY_TEST_TELEGRAM_POLL_STUCK_AFTER_MS',
+    TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000,
+    10,
+  )
+  : TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -1923,6 +1941,14 @@ async function pollTelegramOnce() {
         break;
       }
     }
+
+    // Rest AFTER the channel, not merely between RPC dispatches. The queue
+    // paces start-to-start, so leaning on it alone would make this loop's
+    // effective spacing `max(interval, pair latency)` instead of the
+    // `pair latency + interval` that main ships — roughly 1.75x the request
+    // rate against a shared account whose FLOOD_WAIT takes the curated feed
+    // down with it. Outside the try so a failing channel rests too.
+    await new Promise(resolve => setTimeout(resolve, TELEGRAM_RPC_MIN_INTERVAL_MS));
   }
 
   if (newItems.length) {
@@ -1960,24 +1986,25 @@ async function pollTelegramOnce() {
   }
 }
 
-let telegramPollInFlight = false;
-let telegramPollStartedAt = 0;
+let telegramPollRun = null;
 
 function guardedTelegramPoll() {
-  if (telegramPollInFlight) {
-    const stuck = Date.now() - telegramPollStartedAt;
-    if (stuck > TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000) {
-      console.warn(`[Relay] Telegram poll stuck for ${Math.round(stuck / 1000)}s — force-clearing in-flight flag`);
-      telegramPollInFlight = false;
-    } else {
-      return;
+  if (telegramPollRun) {
+    const stuck = Date.now() - telegramPollRun.startedAt;
+    if (stuck > TELEGRAM_POLL_STUCK_AFTER_MS && !telegramPollRun.warned) {
+      console.warn(`[Relay] Telegram poll stuck for ${Math.round(stuck / 1000)}s, waiting for the current poll to settle`);
+      telegramPollRun.warned = true;
     }
+    return false;
   }
-  telegramPollInFlight = true;
-  telegramPollStartedAt = Date.now();
+
+  const run = { startedAt: Date.now(), warned: false };
+  telegramPollRun = run;
   pollTelegramOnce()
     .catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e))
-    .finally(() => { telegramPollInFlight = false; });
+    .finally(() => {
+      if (telegramPollRun === run) telegramPollRun = null;
+    });
 }
 
 function startTelegramPollLoop() {
@@ -11574,8 +11601,8 @@ const server = http.createServer(async (req, res) => {
         lastPollAt: telegramState.lastPollAt ? new Date(telegramState.lastPollAt).toISOString() : null,
         hasError: !!telegramState.lastError,
         lastError: telegramState.lastError || null,
-        pollInFlight: telegramPollInFlight,
-        pollInFlightSince: telegramPollInFlight && telegramPollStartedAt ? new Date(telegramPollStartedAt).toISOString() : null,
+        pollInFlight: telegramPollRun !== null,
+        pollInFlightSince: telegramPollRun ? new Date(telegramPollRun.startedAt).toISOString() : null,
       },
       xFeed: {
         enabled: X_ENABLED,
@@ -13921,6 +13948,15 @@ server.listen(PORT, () => {
         shipType: 35,
         timestamp: Date.now(),
       });
+    }
+    // Opt-in seam: background loops stay off by default in test mode, but the
+    // curated Telegram poll had no coverage at all as a result — including its
+    // pacing, which is the property that keeps a shared MTProto account below
+    // Telegram's flood threshold. Gated behind RELAY_TEST_MODE *and* an
+    // explicit flag, so it cannot start outside the test harness.
+    if (process.env.RELAY_TEST_TELEGRAM_POLL === 'true') {
+      console.log('[Relay] Test mode: starting the Telegram poll loop on request');
+      startTelegramPollLoop();
     }
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
