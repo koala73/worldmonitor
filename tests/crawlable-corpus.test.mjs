@@ -1289,6 +1289,21 @@ describe('crawlable corpus generator', () => {
         /\/api\//,
         'chokepoint Dataset downloads must be static artifacts, not API routes',
       );
+      const hormuzReference = JSON.parse(read(outDir, 'chokepoints/strait-of-hormuz/reference.json'));
+      assert.equal(hormuzReference.dataset, 'chokepoint-reference');
+      assert.equal(hormuzReference.id, 'hormuz_strait');
+      assert.ok(hormuzReference.modelledTradeRoutes.length > 0);
+      assert.deepEqual(hormuzDataset.variableMeasured, [
+        'Geographic coordinates',
+        'Connected waters',
+        'Energy shock model support',
+        'Modelled trade routes',
+      ]);
+      assert.doesNotMatch(
+        JSON.stringify(hormuzDataset),
+        /Disruption score|Congestion|AIS disruptions|Daily vessel transits/,
+        'chokepoint Dataset metadata must describe the generated reference artifact, not live API fields',
+      );
       const additionalProps = Array.isArray(hormuzPage.about.additionalProperty)
         ? hormuzPage.about.additionalProperty
         : [hormuzPage.about.additionalProperty].filter(Boolean);
@@ -1332,6 +1347,15 @@ describe('crawlable corpus generator', () => {
         JSON.stringify(redSeaDataset.distribution),
         /\/api\//,
         'crisis Dataset downloads must be static artifacts, not API routes',
+      );
+      const redSeaReference = JSON.parse(read(outDir, 'crises/red-sea-security/tracker.json'));
+      assert.equal(redSeaReference.dataset, 'crisis-tracker');
+      assert.ok(redSeaReference.coverage.some((country) => country.code === 'YE'));
+      assert.deepEqual(redSeaDataset.variableMeasured, ['Tracker scope', 'Covered countries']);
+      assert.doesNotMatch(
+        JSON.stringify(redSeaDataset),
+        /Recorded conflict events|Recorded fatalities|Political violence events|Humanitarian reference period/,
+        'crisis Dataset metadata must describe the generated tracker artifact, not live API fields',
       );
       assertDataCatalogPresent(redSea, '/crises/red-sea-security/');
 
