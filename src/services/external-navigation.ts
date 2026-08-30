@@ -136,6 +136,32 @@ function openWindowWithHandle(url: string): Window | null {
 }
 
 /**
+ * `Window.closed` can itself throw SecurityError on Chrome Mobile iOS /
+ * WKWebView after `window.open('', '_blank')`. Treat that as "unusable".
+ */
+function isWindowStillOpen(win: Window): boolean {
+  try {
+    return !win.closed;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Close a reserved blank tab without letting SecurityError escape. Used when
+ * the handle cannot be navigated (scheme reject, desktop handoff, or a
+ * thrown `location.href` assignment — WORLDMONITOR-11C).
+ */
+function closeWindowQuietly(win: Window | null | undefined): void {
+  if (!win) return;
+  try {
+    win.close();
+  } catch {
+    // Blank-tab close can throw the same SecurityError as navigating it.
+  }
+}
+
+/**
  * Reserve a blank tab SYNCHRONOUSLY inside a click handler so an async
  * external navigation can land in it without tripping the popup blocker.
  * Callers must call this before awaiting anything, then pass the handle to
@@ -178,7 +204,7 @@ export async function openExternalUrl(
   const targetUrl = typeof url === 'string' ? url : url.toString();
   if (!isOpenableExternalUrl(targetUrl)) {
     reportOpenFailure(targetUrl, 'rejected-scheme');
-    if (preopened && !preopened.closed) preopened.close();
+    closeWindowQuietly(preopened);
     return 'failed';
   }
 
@@ -186,7 +212,7 @@ export async function openExternalUrl(
     // A pre-reserved tab is a web-only workaround. Close any handle a caller
     // reserved before it knew the runtime, so the OS browser doesn't come
     // forward over an orphaned blank WebView window.
-    if (preopened && !preopened.closed) preopened.close();
+    closeWindowQuietly(preopened);
     try {
       await invokeOpenUrlBounded(targetUrl);
       return 'native';
@@ -209,9 +235,19 @@ export async function openExternalUrl(
     }
   }
 
-  if (preopened && !preopened.closed) {
-    preopened.location.href = targetUrl;
-    return 'popup';
+  if (preopened) {
+    try {
+      if (isWindowStillOpen(preopened)) {
+        preopened.location.href = targetUrl;
+        return 'popup';
+      }
+    } catch {
+      // Chrome Mobile iOS / WKWebView: assigning href on a blank tab reserved
+      // via window.open('') throws SecurityError (DOMException 18). Close the
+      // orphan and fall through to a fresh open / same-tab assign so a normal
+      // https portal URL never rejects (WORLDMONITOR-11C).
+      closeWindowQuietly(preopened);
+    }
   }
   const fresh = openWindowWithHandle(targetUrl);
   if (fresh) return 'popup';
@@ -222,6 +258,11 @@ export async function openExternalUrl(
     reportOpenFailure(targetUrl, 'popup-blocked');
     return 'failed';
   }
-  window.location.assign(targetUrl);
-  return 'same-tab';
+  try {
+    window.location.assign(targetUrl);
+    return 'same-tab';
+  } catch {
+    reportOpenFailure(targetUrl, 'same-tab-assign-failed');
+    return 'failed';
+  }
 }

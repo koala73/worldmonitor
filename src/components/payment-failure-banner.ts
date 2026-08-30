@@ -121,7 +121,10 @@ export function initPaymentFailureBanner(): () => void {
       updateBtn.addEventListener('click', () => {
         // Pre-reserve portal tab synchronously to survive popup blocker.
         const reservedWin = prereserveBillingPortalTab();
-        void openBillingPortal(reservedWin);
+        // openBillingPortal is specified never to reject for recoverable nav
+        // failures; this catch is belt-and-suspenders so a future throw cannot
+        // become an unhandledrejection on the billing CTA (WORLDMONITOR-11C).
+        void openBillingPortal(reservedWin).catch(() => {});
       });
     }
 
