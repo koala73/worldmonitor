@@ -4,6 +4,8 @@ import type {
   ScorecardServiceHandler,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/scorecard/v1/service_server';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { asFiveFactorSnapshot, createFiveFactorReadDeadline, readFiveFactorListProjection, readFiveFactorSnapshot, type ScorecardSnapshotReader } from './_read-snapshot';
 import { toPublicCountryScorecardSummary, toPublicStoredCountryScorecardSummary } from './_response';
@@ -18,6 +20,7 @@ export async function listFiveFactorScorecardsWithReader(
     snapshotValue = await reader();
   } catch (error) {
     console.warn('[scorecard] snapshot read failed operation=list-five-factor-scorecards', error instanceof Error ? error.message : 'unknown');
+    void captureSilentError(error, { tags: { route: 'scorecard/list-five-factor-scorecards', step: 'snapshot-read' } });
     return markNoStoreFallbackResponse(ctx.request, {
       scorecards: [],
       unavailable: true,

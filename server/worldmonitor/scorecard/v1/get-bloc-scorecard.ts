@@ -5,6 +5,8 @@ import type {
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/scorecard/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/scorecard/v1/service_server';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { resolveBlocSelection } from './_bloc-presets';
 import { asFiveFactorSnapshot, readFiveFactorSnapshot, type ScorecardSnapshotReader } from './_read-snapshot';
@@ -31,6 +33,7 @@ export async function getBlocScorecardWithReader(
     snapshotValue = await reader(selection.members);
   } catch (error) {
     console.warn('[scorecard] snapshot read failed operation=get-bloc-scorecard', error instanceof Error ? error.message : 'unknown');
+    void captureSilentError(error, { tags: { route: 'scorecard/get-bloc-scorecard', step: 'snapshot-read' } });
     return markNoStoreFallbackResponse(ctx.request, {
       unavailable: true,
       unavailableReason: 'scorecard-snapshot-unavailable',
