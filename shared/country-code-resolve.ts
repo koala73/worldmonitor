@@ -28,8 +28,56 @@ import ISO3_TO_ISO2 from './iso3-to-iso2.json';
  * geometry.
  */
 
-const NAME_TO_ISO2: Record<string, string> = COUNTRY_NAMES;
-const ISO3_MAP: Record<string, string> = ISO3_TO_ISO2;
+// Null-prototype copies. Both maps are indexed by a key derived from untrusted
+// caller input, and a bare `map[key]` on a normal object reaches the prototype
+// chain: `__proto__` returns Object.prototype and `constructor` the Object
+// constructor. Both are truthy, so they would satisfy a `if (hit) return hit`
+// guard and escape as a NON-STRING despite this module's `string | null`
+// signature — landing in `encodeURIComponent(code)` at the call sites.
+/**
+ * Aliases the generated map lacks. Kept byte-identical to `EXTRA_ALIASES` in
+ * `shared/country-name-to-iso2.cjs` — the two resolvers must not diverge, and
+ * `tests/mcp-country-code-resolve.test.mts` pins them by enumerating that
+ * module's MERGED export rather than the raw JSON (enumerating the JSON is
+ * blind to exactly this table, which is how the divergence went unnoticed).
+ */
+const EXTRA_ALIASES: Record<string, string> = { 'bosnia herzegovina': 'BA' };
+
+const NAME_TO_ISO2: Record<string, string> =
+  Object.assign(Object.create(null), COUNTRY_NAMES, EXTRA_ALIASES);
+const ISO3_MAP: Record<string, string> = Object.assign(Object.create(null), ISO3_TO_ISO2);
+
+/** The only shape any caller may receive — also the downstream proto's rule. */
+const ISO2_PATTERN = /^[A-Z]{2}$/;
+const ISO3_PATTERN = /^[A-Z]{3}$/;
+
+/**
+ * Every alpha-2 code this repo knows, drawn from the values of both maps.
+ *
+ * A bare two-letter argument is checked against this rather than waved through
+ * on shape alone. `XX` satisfies `^[A-Z]{2}$` and so satisfies the downstream
+ * proto too — waving it through just relocates the failure to the HTTP 400
+ * this module exists to stop. Verified superset: every key of
+ * `shared/country-bboxes.js` is in here, as are XK, TW, PS, EH and AQ, so
+ * nothing real is lost by being strict.
+ */
+const KNOWN_ISO2: ReadonlySet<string> = new Set([
+  ...Object.values(COUNTRY_NAMES as Record<string, string>),
+  ...Object.values(ISO3_TO_ISO2 as Record<string, string>),
+]);
+
+/**
+ * Last line of defence: every return path funnels through this, so a malformed
+ * or regenerated data file can never widen what leaves this module.
+ */
+function asIso2(value: unknown): string | null {
+  return typeof value === 'string' && ISO2_PATTERN.test(value) ? value : null;
+}
+
+/** A bare alpha-2 argument: correct shape AND a code we actually know. */
+function asKnownIso2(value: string): string | null {
+  return ISO2_PATTERN.test(value) && KNOWN_ISO2.has(value) ? value : null;
+}
 
 /**
  * Mirrors the key normalization in `scripts/build-country-names.cjs`, which
@@ -72,23 +120,52 @@ export function normalizeCountryToken(raw: unknown): string {
  *     three-character ALIASES with no alpha-3 entry; the one three-character key
  *     present in both (`usa`) agrees, so the order is unambiguous.
  */
+/** One designator, no parenthetical handling: name/alias, alpha-2, alpha-3. */
+function resolveDesignator(value: string): string | null {
+  const byName = asIso2(NAME_TO_ISO2[normalizeCountryToken(value)]);
+  if (byName) return byName;
+
+  const upper = value.trim().toUpperCase();
+  const known = asKnownIso2(upper);
+  if (known) return known;
+  if (ISO3_PATTERN.test(upper)) return asIso2(ISO3_MAP[upper]);
+  return null;
+}
+
 export function resolveCountryCode(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
 
-  const direct = NAME_TO_ISO2[normalizeCountryToken(trimmed)];
-  if (direct) return direct;
+  const whole = resolveDesignator(trimmed);
+  if (whole) return whole;
 
-  const stripped = trimmed.replace(/\s*\([^)]*\)\s*$/, '');
-  if (stripped !== trimmed) {
-    const viaStripped = NAME_TO_ISO2[normalizeCountryToken(stripped)];
-    if (viaStripped) return viaStripped;
+  // Trailing parenthetical. The earlier version simply DISCARDED it and kept
+  // the base name, which reproduced the very bug this module exists to fix:
+  // `Congo (DRC)` answered as CG (Republic of the Congo) and `China (Taiwan)`
+  // as CN. In curated feed data the parenthetical is a historical alias
+  // (`Russia (Soviet Union)`); in caller text it is usually a DISAMBIGUATOR,
+  // and the two readings point at different countries.
+  const parenthetical = trimmed.match(/^(.*?)\s*\(([^)]*)\)$/);
+  if (!parenthetical) return null;
+  const base = parenthetical[1].trim();
+  const inner = parenthetical[2].trim();
+  if (!base || !inner) return resolveDesignator(base || inner);
+
+  // A recombination that lands on an exact key in the curated name map is
+  // unambiguous by construction — it IS that country's name. This is what
+  // turns `Samoa (American)` into AS, `Sudan (South)` into SS and
+  // `Guinea (Equatorial)` into GQ instead of their larger neighbours.
+  for (const combined of [`${inner} ${base}`, `${base} ${inner}`]) {
+    const hit = asIso2(NAME_TO_ISO2[normalizeCountryToken(combined)]);
+    if (hit) return hit;
   }
 
-  const upper = trimmed.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return upper;
-  if (/^[A-Z]{3}$/.test(upper)) return ISO3_MAP[upper] ?? null;
-
-  return null;
+  const fromInner = resolveDesignator(inner);
+  const fromBase = resolveDesignator(base);
+  // Both sides naming a country is only meaningful when they agree
+  // (`GB (United Kingdom)`, `Iraq (IQ)`). When they disagree the input is
+  // genuinely ambiguous — say so rather than picking one and being wrong.
+  if (fromInner && fromBase) return fromInner === fromBase ? fromInner : null;
+  return fromInner ?? fromBase ?? null;
 }

@@ -2967,7 +2967,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     const data = JSON.parse(body.result.content[0].text);
-    assert.ok(data.error?.includes('Unknown country code'), 'must return error for unknown code');
+    // `XX` is well-formed alpha-2 but not a country, so it fails resolution
+    // rather than reaching the bounding-box lookup. The message must name the
+    // offending value; "no coverage" would wrongly imply XX is a real country.
+    assert.ok(data.error?.includes('Could not resolve'), `must reject unresolvable code: ${data.error}`);
+    assert.ok(data.error?.includes('XX'), 'error must name the offending value');
   });
 
   it('get_airspace returns partial:true + warning when military source fails', async () => {
@@ -3250,7 +3254,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }));
     const body = await res.json();
     const data = JSON.parse(body.result.content[0].text);
-    assert.ok(data.error?.includes('Unknown country code'), 'must return error for unknown code');
+    // See the get_airspace counterpart: `ZZ` is unresolvable, not uncovered.
+    assert.ok(data.error?.includes('Could not resolve'), `must reject unresolvable code: ${data.error}`);
+    assert.ok(data.error?.includes('ZZ'), 'error must name the offending value');
   });
 
   it('get_maritime_activity returns JSON-RPC -32603 when vessel API fails', async () => {

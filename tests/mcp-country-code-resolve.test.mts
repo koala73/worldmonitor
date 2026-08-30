@@ -20,7 +20,8 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { normalizeCountryToken, resolveCountryCode } from '../shared/country-code-resolve.ts';
@@ -98,14 +99,68 @@ describe('resolveCountryCode — the ladder', () => {
     assert.equal(resolveCountryCode('Côte d’Ivoire'), 'CI');
   });
 
-  it('strips a trailing historical parenthetical', () => {
+  it('resolves a trailing historical parenthetical', () => {
     assert.equal(resolveCountryCode('Russia (Soviet Union)'), 'RU');
     assert.equal(resolveCountryCode('Myanmar (Burma)'), 'MM');
+    assert.equal(resolveCountryCode('Yemen (North Yemen)'), 'YE');
+  });
+
+  it('resolves a CODE paired with a parenthetical name', () => {
+    // The first cut computed the stripped form but only retried the NAME map
+    // with it, while the alpha-2/alpha-3 steps still tested the raw string —
+    // so every code-plus-parenthetical form returned null even though the old
+    // truncation got all of them right. `Iraq (IQ)` worked and `IQ (Iraq)` did
+    // not, which is the asymmetry that exposed it.
+    assert.equal(resolveCountryCode('GB (United Kingdom)'), 'GB');
+    assert.equal(resolveCountryCode('IQ (Iraq)'), 'IQ');
+    assert.equal(resolveCountryCode('Iraq (IQ)'), 'IQ');
+    assert.equal(resolveCountryCode('DEU (Germany)'), 'DE');
+  });
+
+  it('recombines a split country name rather than answering for the neighbour', () => {
+    // `Samoa (American)` must not resolve to Samoa. A recombination that hits
+    // an exact key in the curated name map IS that country by construction.
+    assert.equal(resolveCountryCode('Samoa (American)'), 'AS');
+    assert.equal(resolveCountryCode('Sudan (South)'), 'SS');
+    assert.equal(resolveCountryCode('Guinea (Equatorial)'), 'GQ');
+    assert.equal(resolveCountryCode('Niger (Republic)'), 'NE');
+  });
+
+  it('returns null when a parenthetical disambiguator contradicts the base name', () => {
+    // The exact bug class this module exists to close: discarding the
+    // parenthetical made `Congo (DRC)` answer as CG (Republic of the Congo)
+    // and `China (Taiwan)` as CN. Ambiguous input must fail, not guess.
+    assert.equal(resolveCountryCode('Congo (DRC)'), null);
+    assert.equal(resolveCountryCode('China (Taiwan)'), null);
   });
 
   it('returns null rather than guessing', () => {
     for (const bad of ['', '   ', 'Foo', 'ZZZ', 'not a country', '12', null, undefined, 42, {}]) {
       assert.equal(resolveCountryCode(bad as unknown), null, `expected null for ${JSON.stringify(bad)}`);
+    }
+  });
+
+  it('does not resolve inherited Object.prototype keys', () => {
+    // The maps are JSON objects indexed by a caller-derived key, so a bare
+    // `map[key]` truthiness check reaches the prototype chain: `__proto__`
+    // yielded Object.prototype and `constructor` the Object constructor —
+    // both truthy, so they escaped as a NON-STRING despite the `string | null`
+    // return type and flowed into `encodeURIComponent(code)` downstream.
+    // Only already-lowercase keys reach this (normalization lowercases, so
+    // `toString` becomes `tostring` and misses), but that is incidental, not a
+    // guard. Assert the whole class, not the two live instances.
+    for (const key of ['__proto__', 'constructor', 'prototype', 'toString', 'valueOf',
+      'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString', '__defineGetter__']) {
+      assert.equal(resolveCountryCode(key), null, `expected null for ${JSON.stringify(key)}`);
+    }
+  });
+
+  it('never returns a non-string', () => {
+    const probes = ['__proto__', 'constructor', 'Iraq', 'IRQ', 'iq', 'UK', 'Foo', ''];
+    for (const probe of probes) {
+      const resolved = resolveCountryCode(probe);
+      assert.ok(resolved === null || typeof resolved === 'string',
+        `${probe} -> ${typeof resolved} ${String(resolved).slice(0, 40)}`);
     }
   });
 
@@ -143,45 +198,70 @@ describe('data invariants the ladder order depends on', () => {
 // what drift already cost once: a 12-entry stub of the name resolver silently
 // narrowed country scoping in production. Pin agreement instead of trusting it.
 describe('agreement with shared/country-name-to-iso2.cjs', () => {
-  const { countryNameToIso2 } = require('../shared/country-name-to-iso2.cjs');
+  const { countryNameToIso2, COUNTRY_NAME_TO_ISO2 } = require('../shared/country-name-to-iso2.cjs');
 
-  it('resolves every name-map key identically', () => {
-    const disagreements = Object.keys(COUNTRY_NAMES)
+  it('resolves every key of the .cjs MERGED map identically', () => {
+    // Enumerate the merged export, not the raw JSON. The .cjs layers an
+    // EXTRA_ALIASES table on top of country-names.json, so a test keyed on the
+    // JSON is blind by construction to the one entry where the two resolvers
+    // could differ — and it passed green while `Bosnia-Herzegovina` resolved
+    // in the .cjs and returned null here.
+    const disagreements = Object.keys(COUNTRY_NAME_TO_ISO2)
       .map((key) => ({ key, ours: resolveCountryCode(key), theirs: countryNameToIso2(key) }))
       .filter((row) => row.ours !== row.theirs);
     assert.deepEqual(disagreements, []);
   });
 
+  it('carries the .cjs EXTRA_ALIASES entries the generated JSON lacks', () => {
+    // Positive control for the enumeration above: assert the alias exists
+    // outside country-names.json, so a future refactor that drops the local
+    // EXTRA_ALIASES table fails here instead of silently narrowing coverage.
+    assert.equal((COUNTRY_NAMES as Record<string, string>)['bosnia herzegovina'], undefined,
+      'guard: this alias must NOT be in the generated JSON, or this test proves nothing');
+    assert.equal(resolveCountryCode('Bosnia-Herzegovina'), 'BA');
+    assert.equal(resolveCountryCode('bosnia herzegovina'), 'BA');
+  });
+
   it('normalizes tokens identically', () => {
+    // The .cjs does not export its normalizer, so compare through lookups:
+    // identical normalization means identical resolution for every probe.
+    // (An idempotency check of normalizeCountryToken against itself was here
+    // and proved nothing about the sibling — dropped rather than left to imply
+    // cross-implementation coverage it never provided.)
     const probes = ["Côte d'Ivoire", 'Côte d’Ivoire', 'Bosnia & Herzegovina', 'Timor-Leste',
-      'Korea, Republic of', '  Spaced   Out  ', 'St. Kitts and Nevis'];
-    const theirs = require('../shared/country-name-to-iso2.cjs');
+      'Korea, Republic of', '  Spaced   Out  ', 'St. Kitts and Nevis', 'Bosnia-Herzegovina'];
     for (const probe of probes) {
-      // The .cjs does not export its normalizer, so compare through lookups:
-      // identical normalization means identical resolution for every probe.
-      assert.equal(resolveCountryCode(probe), theirs.countryNameToIso2(probe), probe);
-    }
-    // And the exported normalizer must be idempotent + already-normalized-stable.
-    for (const probe of probes) {
-      assert.equal(normalizeCountryToken(normalizeCountryToken(probe)), normalizeCountryToken(probe), probe);
+      assert.equal(resolveCountryCode(probe), countryNameToIso2(probe), probe);
     }
   });
 
-  it('is a strict superset — it adds alpha-3, which the .cjs lacks', () => {
+  it('adds alpha-3, which the .cjs lacks', () => {
     assert.equal(countryNameToIso2('IRQ'), null, 'guard: the .cjs still has no alpha-3 step');
     assert.equal(resolveCountryCode('IRQ'), 'IQ');
+  });
+
+  it('deliberately diverges from the .cjs on an ambiguous parenthetical', () => {
+    // Not a superset: the .cjs discards the parenthetical unconditionally,
+    // which is right for its curated UCDP feed and wrong for caller text.
+    // Pin the divergence so it reads as a decision, not drift.
+    assert.equal(countryNameToIso2('Congo (DRC)'), 'CG');
+    assert.equal(resolveCountryCode('Congo (DRC)'), null);
   });
 });
 
 // The regression guard that makes the fix stick: no MCP tool executor may
 // coerce a country argument by truncation again.
 describe('no MCP executor truncates a country code', () => {
-  it('rpc-tools.ts contains no slice(0, 2) country coercion', () => {
-    const source = readFileSync(
-      fileURLToPath(new URL('../api/mcp/registry/rpc-tools.ts', import.meta.url)), 'utf8');
-    const offenders = source.split('\n')
-      .map((line, i) => ({ line: line.trim(), no: i + 1 }))
-      .filter(({ line }) => /country_?[Cc]ode/.test(line) && /\.slice\(\s*0\s*,\s*2\s*\)/.test(line));
+  it('no registry file coerces a country code by truncation', () => {
+    // Scan every registry module, not just the one that had the bug — the same
+    // two-line coercion in a sibling tool file would be just as silent.
+    const registryDir = fileURLToPath(new URL('../api/mcp/registry/', import.meta.url));
+    const offenders = readdirSync(registryDir)
+      .filter((name) => name.endsWith('.ts'))
+      .flatMap((name) => readFileSync(join(registryDir, name), 'utf8').split('\n')
+        .map((line, i) => ({ file: name, no: i + 1, line: line.trim() }))
+        .filter(({ line }) => !line.startsWith('*') && !line.startsWith('//')
+          && /country_?[Cc]ode/.test(line) && /\.slice\(\s*0\s*,\s*2\s*\)/.test(line)));
     assert.deepEqual(offenders, [],
       'truncating a country name to two letters yields a VALID code for the WRONG country — resolve it instead');
   });
@@ -214,6 +294,18 @@ describe('country tools resolve their argument end-to-end', () => {
       });
     };
     return urls;
+  }
+
+  /** Same, but also records each request's body — get_country_brief POSTs. */
+  function stubDownstreamWithBodies(payload: Record<string, unknown>) {
+    const calls: Array<{ url: string; body: string }> = [];
+    globalThis.fetch = async (input: unknown, init: { body?: unknown } = {}) => {
+      calls.push({ url: String(input), body: typeof init.body === 'string' ? init.body : '' });
+      return new Response(JSON.stringify(payload), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    return calls;
   }
 
   async function callTool(tool: string, params: Record<string, unknown>) {
@@ -290,11 +382,59 @@ describe('country tools resolve their argument end-to-end', () => {
       'returned a bounding box that is not Iraq\'s');
   });
 
-  it('reports an unresolvable country instead of silently querying another', async () => {
-    const urls = stubDownstream({ countryCode: 'XX' });
-    const rpc = await callTool('get_country_risk', { country_code: 'Wakanda' });
-    assert.equal(urls.length, 0, `must not call downstream: ${JSON.stringify(urls)}`);
-    const text = JSON.stringify(rpc);
-    assert.match(text, /Wakanda/, `the error must name the offending value: ${text.slice(0, 400)}`);
+  it('get_country_brief resolves "Iraq" to IQ', async () => {
+    // The fourth call site, and the most agent-facing of the set — its own
+    // description invites an LLM to ask for country intelligence by name.
+    const calls = stubDownstreamWithBodies({
+      country_code: 'IQ', brief: 'x', framework: '', generatedAt: '2026-08-30T00:00:00.000Z',
+      provider: 'p', model: 'm', sources: [], categories: { world: { items: [] } },
+    });
+    await callTool('get_country_brief', { country_code: 'Iraq' });
+    // This tool POSTs the code in the request body, not the query string.
+    const brief = calls.find((c) => c.url.includes('get-country-intel-brief'));
+    assert.ok(brief, `no brief call: ${JSON.stringify(calls.map((c) => c.url))}`);
+    const sent = JSON.parse(brief.body || '{}');
+    assert.equal(sent.country_code ?? sent.countryCode, 'IQ',
+      `sent the wrong country: ${brief.body.slice(0, 200)}`);
   });
+
+  // Unresolvable input must fail loudly. The two tools that throw surface as
+  // JSON-RPC -32602; the two that map to a bounding box return a result-level
+  // {error}. Assert the actual shape, not just that some text mentions the value.
+  for (const tool of ['get_country_risk', 'get_country_brief']) {
+    it(`${tool} rejects an unresolvable country as -32602 with violations`, async () => {
+      const urls = stubDownstream({ countryCode: 'XX' });
+      const rpc = await callTool(tool, { country_code: 'Wakanda' });
+      assert.equal(urls.length, 0, `must not call downstream: ${JSON.stringify(urls)}`);
+      assert.equal(rpc.error?.code, -32602, `wrong error shape: ${JSON.stringify(rpc).slice(0, 400)}`);
+      assert.equal(rpc.error?.message, 'Invalid params');
+      const violations = rpc.error?.data?.violations;
+      assert.ok(Array.isArray(violations) && violations.length > 0, 'expected violations[]');
+      assert.equal(violations[0].field, 'country_code');
+      assert.match(violations[0].description, /Wakanda/,
+        'the violation must name the offending value so an agent can self-correct');
+    });
+  }
+
+  for (const tool of ['get_airspace', 'get_maritime_activity']) {
+    it(`${tool} reports an unresolvable country without querying another`, async () => {
+      const urls = stubDownstream({});
+      const rpc = await callTool(tool, { country_code: 'Wakanda' });
+      assert.equal(urls.length, 0, `must not call downstream: ${JSON.stringify(urls)}`);
+      const payload = JSON.parse(rpc.result.content[0].text);
+      assert.match(payload.error ?? '', /Wakanda/, `expected a named error: ${JSON.stringify(payload)}`);
+    });
+
+    it(`${tool} distinguishes "no coverage" from "unresolvable"`, async () => {
+      // 92 of the 306 resolvable names have no COUNTRY_BBOXES entry, so this
+      // branch is common, not a corner case — and this diff rewrote its message.
+      const urls = stubDownstream({});
+      const rpc = await callTool(tool, { country_code: 'Bahrain' });
+      assert.equal(urls.length, 0, `must not call downstream: ${JSON.stringify(urls)}`);
+      const payload = JSON.parse(rpc.result.content[0].text);
+      assert.match(payload.error ?? '', /no bounding box/,
+        `a resolvable country lacking coverage must not read as bad input: ${JSON.stringify(payload)}`);
+      assert.match(payload.error ?? '', /BH/, 'the message should name the resolved code');
+    });
+  }
 });

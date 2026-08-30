@@ -54,6 +54,17 @@ function echoCountryInput(raw: unknown): string {
 const COUNTRY_ARG_HINT =
   'Pass an ISO 3166-1 alpha-2 code (e.g. "IQ"), an alpha-3 code ("IRQ"), or an English country name ("Iraq").';
 
+// Two shapes for the same fault, each forced by the tool's own output schema —
+// not an accident of which branch was easier to edit. get_country_brief and
+// get_country_risk mirror their proto responses verbatim (a schema-coverage
+// guard fails the build if a declared field stops existing on the wire), so
+// they have nowhere to put an `error` field and throw RpcValidationError,
+// which dispatch maps to JSON-RPC -32602 with `error.data.violations[]`.
+// get_airspace and get_maritime_activity already declared a result-level
+// `error` property for the no-bounding-box case, so resolution failures reuse
+// it. A new country-scoped tool should follow whichever rule its schema forces,
+// not pick freely.
+
 /**
  * Resolve a `country_code` tool argument, or throw the same structured 400 the
  * downstream proto would have raised — reaching the agent as JSON-RPC -32602
@@ -1194,7 +1205,7 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "US", "DE", "CN", "IR"' },
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
         allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
       },
@@ -1402,7 +1413,7 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "RU", "IR", "CN", "UA"' },
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
       },
       required: ['country_code'],
     },
@@ -1868,7 +1879,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: {
           type: 'string',
-          description: 'ISO 3166-1 alpha-2 country code (e.g. "AE", "US", "GB", "JP")',
+          description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")',
         },
         type: {
           type: 'string',
@@ -2031,7 +2042,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: {
           type: 'string',
-          description: 'ISO 3166-1 alpha-2 country code (e.g. "AE", "SA", "JP", "EG")',
+          description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")',
         },
       },
       required: ['country_code'],
