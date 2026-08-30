@@ -3368,8 +3368,12 @@ export class App {
     // Cmd+K so the modal is created only when a query is actually present.
     const searchQuery = this.pendingDeepLinkSearchQuery;
     this.pendingDeepLinkSearchQuery = null;
-    if (searchQuery) {
+    if (
+      searchQuery
+      && (url.pathname === '/dashboard' || url.pathname === '/dashboard/')
+    ) {
       void this.openSearch({ initialQuery: searchQuery });
+      return;
     }
 
     // Check for country brief deep link: ?c=IR (captured early before URL sync)
