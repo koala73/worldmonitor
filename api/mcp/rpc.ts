@@ -12,12 +12,16 @@ export function rpcOk(id: unknown, result: unknown, extraHeaders: Record<string,
   return jsonResponse({ jsonrpc: '2.0', id: id ?? null, result }, 200, withMcpNoStore(extraHeaders));
 }
 
+// `status` defaults to 200 — JSON-RPC errors ride HTTP 200 by convention here.
+// Pass an explicit status only for the transport-level escalations the error
+// catalog documents (e.g. 413 for an over-cap body, #7406).
 export function rpcError(
   id: unknown,
   code: number,
   message: string,
   extraHeaders: Record<string, string> = {},
   data?: unknown,
+  status = 200,
 ): Response {
   return jsonResponse(
     {
@@ -25,7 +29,7 @@ export function rpcError(
       id: id ?? null,
       error: { code, message, ...(data === undefined ? {} : { data }) },
     },
-    200,
+    status,
     withMcpNoStore(extraHeaders),
   );
 }
