@@ -89,6 +89,26 @@ async function search(query: string): Promise<string> {
 }
 
 describe('SearchModal result-status announcements', () => {
+  it('applies a SearchAction query to an open modal without a keystroke', () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1200,
+    });
+
+    modal = new SearchModal(document.body, { placeholder: 'Search' });
+    modal.registerSource('country', [{
+      id: 'suez-canal',
+      title: 'Suez Canal',
+      data: null,
+    }]);
+    modal.open();
+    modal.applyQuery('Suez Canal');
+
+    expect(document.querySelector<HTMLInputElement>('.search-input')?.value).toBe('Suez Canal');
+    expect(document.querySelector<HTMLElement>('.search-results-status')?.textContent)
+      .toBe('1 result for suez canal');
+  });
+
   it.each(['desktop', 'mobile'] as const)(
     'replaces a stale ordinary count with the %s live-flight action after debounce',
     async (viewport) => {

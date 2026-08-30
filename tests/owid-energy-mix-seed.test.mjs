@@ -25,12 +25,12 @@ const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 
 function makeCountries(overrides = []) {
   const base = new Map([
-    ['DE', { iso2: 'DE', country: 'Germany',      year: 2023, coalShare: 26, gasShare: 15, oilShare: 1,  renewShare: 56, importShare: 4,  nuclearShare: 2,  windShare: 34, solarShare: 12, hydroShare: 3,  seededAt: '' }],
-    ['IT', { iso2: 'IT', country: 'Italy',         year: 2023, coalShare: 5,  gasShare: 47, oilShare: 2,  renewShare: 40, importShare: 15, nuclearShare: 0,  windShare: 7,  solarShare: 10, hydroShare: 15, seededAt: '' }],
-    ['ZA', { iso2: 'ZA', country: 'South Africa',  year: 2023, coalShare: 88, gasShare: 0,  oilShare: 1,  renewShare: 8,  importShare: 2,  nuclearShare: 5,  windShare: 3,  solarShare: 2,  hydroShare: 1,  seededAt: '' }],
-    ['SA', { iso2: 'SA', country: 'Saudi Arabia',  year: 2023, coalShare: 0,  gasShare: 38, oilShare: 62, renewShare: 0,  importShare: 0,  nuclearShare: 0,  windShare: 0,  solarShare: 0,  hydroShare: 0,  seededAt: '' }],
-    ['MT', { iso2: 'MT', country: 'Malta',         year: 2023, coalShare: null, gasShare: null, oilShare: 3, renewShare: 10, importShare: 93, nuclearShare: null, windShare: 5, solarShare: 5, hydroShare: 0, seededAt: '' }],
-    ['NO', { iso2: 'NO', country: 'Norway',        year: 2023, coalShare: 0,  gasShare: 2,  oilShare: 0,  renewShare: 97, importShare: -2, nuclearShare: 0,  windShare: 8,  solarShare: 0,  hydroShare: 89, seededAt: '' }],
+    ['DE', { iso2: 'DE', country: 'Germany',      year: 2023, coalShare: 26, gasShare: 15, oilShare: 1,  renewShare: 56, importShare: 4,  nuclearShare: 2,  windShare: 34, solarShare: 12, hydroShare: 3,  primaryEnergyConsumptionTwh: 3200, seededAt: '' }],
+    ['IT', { iso2: 'IT', country: 'Italy',         year: 2023, coalShare: 5,  gasShare: 47, oilShare: 2,  renewShare: 40, importShare: 15, nuclearShare: 0,  windShare: 7,  solarShare: 10, hydroShare: 15, primaryEnergyConsumptionTwh: 1800, seededAt: '' }],
+    ['ZA', { iso2: 'ZA', country: 'South Africa',  year: 2023, coalShare: 88, gasShare: 0,  oilShare: 1,  renewShare: 8,  importShare: 2,  nuclearShare: 5,  windShare: 3,  solarShare: 2,  hydroShare: 1,  primaryEnergyConsumptionTwh: 1600, seededAt: '' }],
+    ['SA', { iso2: 'SA', country: 'Saudi Arabia',  year: 2023, coalShare: 0,  gasShare: 38, oilShare: 62, renewShare: 0,  importShare: 0,  nuclearShare: 0,  windShare: 0,  solarShare: 0,  hydroShare: 0, primaryEnergyConsumptionTwh: 3100, seededAt: '' }],
+    ['MT', { iso2: 'MT', country: 'Malta',         year: 2023, coalShare: null, gasShare: null, oilShare: 3, renewShare: 10, importShare: 93, nuclearShare: null, windShare: 5, solarShare: 5, hydroShare: 0, primaryEnergyConsumptionTwh: 27, seededAt: '' }],
+    ['NO', { iso2: 'NO', country: 'Norway',        year: 2023, coalShare: 0,  gasShare: 2,  oilShare: 0,  renewShare: 97, importShare: -2, nuclearShare: 0,  windShare: 8,  solarShare: 0,  hydroShare: 89, primaryEnergyConsumptionTwh: 510, seededAt: '' }],
   ]);
   for (const [iso2, patch] of overrides) base.set(iso2, { ...base.get(iso2), ...patch });
   return base;
@@ -161,8 +161,8 @@ describe('buildAllCountriesMap', () => {
       '_all entry count must match _countries count');
   });
 
-  it('each entry has exactly the 9 numeric share fields plus year', () => {
-    const expectedFields = ['year', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare'];
+  it('each entry has exactly the 9 numeric share fields, consumption, and year', () => {
+    const expectedFields = ['year', 'balanceYear', 'balanceImportSharePercent', 'importYear', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
     const all = buildAllCountriesMap(makeCountries());
     for (const [iso2, entry] of Object.entries(all)) {
       const keys = Object.keys(entry).sort();
@@ -191,6 +191,7 @@ describe('buildAllCountriesMap', () => {
     assert.equal(all['DE'].coalShare, 26);
     assert.equal(all['NO'].renewShare, 97);
     assert.equal(all['SA'].oilShare, 62);
+    assert.equal(all['DE'].primaryEnergyConsumptionTwh, 3200);
   });
 
   it('keys are ISO2 codes matching the input map keys', () => {
@@ -214,6 +215,71 @@ describe('golden fixture (OWID CSV)', () => {
     assert.ok(countries.size >= 1, `expected >=1 country, got ${countries.size}`);
   });
 
+  it('does not let a newer consumption-only row replace the latest complete energy-mix row', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'United States,USA,2023,20,40,1,18,21,10,5,6,7,25000',
+      'United States,USA,2024,,,,,,,,,,26000',
+    ].join('\n'));
+    assert.equal(countries.get('US')?.year, 2023);
+    assert.equal(countries.get('US')?.importShare, 7);
+    assert.equal(countries.get('US')?.primaryEnergyConsumptionTwh, 25_000);
+  });
+
+  it('keeps the latest complete balance when a newer electricity-share row omits imports', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'United States,USA,2023,20,40,1,18,21,10,5,6,7,25000',
+      'United States,USA,2024,18,42,1,18,21,11,6,5,,26000',
+    ].join('\n'));
+    const us = countries.get('US');
+    assert.equal(us?.year, 2024);
+    assert.equal(us?.coalShare, 18);
+    assert.equal(us?.balanceYear, 2023);
+    assert.equal(us?.balanceImportSharePercent, 7);
+    assert.equal(us?.importShare, 7);
+    assert.equal(us?.importYear, 2023);
+    assert.equal(us?.primaryEnergyConsumptionTwh, 25_000);
+  });
+
+  it('keeps importShare when the row reports imports but no primary energy consumption', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'Malta,MLT,2023,,,3,,10,5,5,0,93,',
+    ].join('\n'));
+    const mt = countries.get('MT');
+    // Regression guard: gating importShare on primaryEnergyConsumptionTwh
+    // dropped it entirely for every country OWID reports imports but no
+    // consumption for, silently degrading the energy profile, the intel
+    // brief, the deep-dive panel and the regional balance vector.
+    assert.equal(mt?.importShare, 93, 'importShare must not require a consumption reading');
+    assert.equal(mt?.importYear, 2023);
+    // The scorecard's physical ratio still refuses an incomplete pair.
+    assert.equal(mt?.balanceYear, null);
+    assert.equal(mt?.balanceImportSharePercent, null);
+    assert.equal(mt?.primaryEnergyConsumptionTwh, null);
+  });
+
+  it('tracks importShare and the balance pair on independent years', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'United States,USA,2022,20,40,1,18,21,10,5,6,7,25000',
+      'United States,USA,2024,,,,,,,,,9,',
+    ].join('\n'));
+    const us = countries.get('US');
+    // The standalone percentage advances to its own latest vintage...
+    assert.equal(us?.importShare, 9);
+    assert.equal(us?.importYear, 2024);
+    // ...while the scorecard's same-row pair stays on the year that had both.
+    assert.equal(us?.balanceYear, 2022);
+    assert.equal(us?.balanceImportSharePercent, 7);
+    assert.equal(us?.primaryEnergyConsumptionTwh, 25_000);
+  });
+
   it('picks the most recent year per country (US 2023 over 2022)', () => {
     const countries = parseOwidCsv(csv);
     const us = countries.get('US');
@@ -222,7 +288,7 @@ describe('golden fixture (OWID CSV)', () => {
   });
 
   it('all parsed entries have the expected share fields', () => {
-    const expected = ['coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare'];
+    const expected = ['coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
     const countries = parseOwidCsv(csv);
     for (const [iso2, entry] of countries) {
       for (const field of expected) {
@@ -246,5 +312,11 @@ describe('golden fixture (OWID CSV)', () => {
     assert.ok(countries.has('US'), 'US missing');
     assert.ok(countries.has('DE'), 'DE missing');
     assert.ok(countries.has('JP'), 'JP missing');
+  });
+
+  it('preserves primary-energy consumption as TWh', () => {
+    const countries = parseOwidCsv(csv);
+    assert.equal(countries.get('US')?.primaryEnergyConsumptionTwh, 25_000);
+    assert.equal(countries.get('DE')?.primaryEnergyConsumptionTwh, 3_200);
   });
 });

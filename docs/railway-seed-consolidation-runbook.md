@@ -1099,8 +1099,9 @@ any red check anywhere strands this service's builds.
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
-| **Members** | Resilience Scores (6h), Resilience Static (annual window Oct 1-3, skips most runs), Food Stocks (monthly USDA PSD + FAOSTAT fill; needs `USDA_FAS_PSD_API_KEY`) |
-| **Wall budget** | 570 seconds, below Railway's 10-minute container kill. Section timeouts are 240s / 420s / 480s, so each fits the budget once the runner's 10s kill grace is added. Resilience Scores stays first in the array: it is the member that keeps `resilience:ranking:v27` and `resilience:intervals:v10:*` alive between cron fires, so it must be offered the budget before the heavier annual and monthly members. |
+| **Members** | Resilience Scores (2h admission interval), Resilience Static (90d, skips most runs), Food Stocks (monthly USDA PSD + FAOSTAT fill; needs `USDA_FAS_PSD_API_KEY`), Five-Factor Scorecard (daily Redis-only scoring) |
+| **Wall budget** | 570 seconds, below Railway's 10-minute container kill. Section timeouts are 240s / 280s / 480s / 180s, so every member fits alone once the runner's 10s kill grace is added. Resilience Scores stays first because it keeps the ranking and interval caches alive. Five-Factor Scorecard stays last: if a long-cadence section consumes its reservation, the runner defers scorecard before start; it fits on the next normal tick when Static and Food skip. The 180s scorecard reservation contains the 25s source-read deadline, Redis retry ceiling, atomic publication, and process-cleanup headroom. |
+| **Scorecard measurement** | Read-only production-source `--dry-run` on 2026-08-29: 196 countries, 3,716,740 serialized bytes, 1.82s wall time, and 220,577,792-byte maximum RSS. Validation passed and Redis was not modified. This is placement and payload-size evidence, not deployment or production-acceptance evidence. |
 | **Do not** | raise any section timeout above `maxBundleMs - 10_000`. A section whose timeout plus kill grace exceeds the budget is deferred on **every** tick while the bundle still exits 0 — #6556 ran this service dead for six hours behind a green badge. `tests/bundle-budget-admission.test.mjs` fails the PR, and `runBundle` refuses to start, but the arithmetic is worth knowing before you edit. |
 
 ### Bundle 5: seed-bundle-derived-signals

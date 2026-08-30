@@ -1,0 +1,97 @@
+name: Refresh Published Resilience Snapshot
+
+on:
+  schedule:
+    - cron: '17 5 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: resilience-snapshot-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          # workflow_dispatch can target a feature branch; publication must
+          # always branch from main so the review PR stays free of unrelated commits.
+          ref: refs/heads/main
+      - name: Reconcile the monthly review branch
+        id: reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          period=$(date -u +%Y-%m)
+          branch="automation/resilience-snapshot-${period}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          if [ -n "$existing_pr" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Monthly snapshot PR #${existing_pr} already exists."
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore(resilience): refresh published snapshot ${period}" \
+              --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus and root sitemap."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.reconcile.outputs.skip != 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.reconcile.outputs.skip != 'true'
+        run: npm ci --ignore-scripts
+      - name: Capture the current full-universe ranking
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          API_BASE: https://api.worldmonitor.app
+          WORLDMONITOR_API_KEY: ${{ secrets.WORLDMONITOR_API_KEY }}
+        run: |
+          if [ -z "$WORLDMONITOR_API_KEY" ]; then
+            echo "::error title=Missing snapshot credential::Configure the WORLDMONITOR_API_KEY repository secret."
+            exit 1
+          fi
+          node scripts/freeze-resilience-ranking.mjs
+      - name: Rebuild and verify published artifacts
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
+          npm run build:crawlable-corpus
+          npm run build:sitemap
+          node --import tsx --test \
+            tests/resilience-published-snapshot.test.mjs \
+            tests/resilience-ranking-snapshot.test.mts \
+            tests/sitemap-generation.test.mjs
+      - name: Open the monthly snapshot PR
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+        run: |
+          snapshot_date=$(date -u +%F)
+          snapshot_path="docs/snapshots/resilience-ranking-${snapshot_date}.json"
+          git switch -c "$BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$snapshot_path" public/sitemap.xml
+          git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
+          git push --set-upstream origin "$BRANCH_NAME"
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore(resilience): refresh published snapshot ${snapshot_date}" \
+            --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus and root sitemap."

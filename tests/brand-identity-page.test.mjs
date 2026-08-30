@@ -57,24 +57,16 @@ describe('World Monitor brand-identity page', () => {
 });
 
 describe('Organization JSON-LD NAP alignment', () => {
-  it('keeps index.html Organization locality in Dubai, AE without a street or phone', () => {
+  it('keeps index.html linked to the canonical Organization without redeclaring it', () => {
     const orgs = organizationBlocks(read('index.html'));
-    assert.ok(orgs.length >= 1, 'index.html must include Organization JSON-LD');
-    for (const org of orgs) {
-      assert.equal(org.name, 'World Monitor');
-      assert.equal(org.url, 'https://www.worldmonitor.app/');
-      assert.equal(org.address?.addressLocality, 'Dubai');
-      assert.equal(org.address?.addressCountry, 'AE');
-      assert.equal(org.address?.streetAddress, undefined);
-      assert.equal(org.telephone, undefined);
-      assert.ok(org.sameAs.includes('https://x.com/eliehabib'));
-      assert.ok(org.sameAs.includes('https://x.com/worldmonitorai'));
-    }
+    assert.equal(orgs.length, 0, 'the dashboard must not redeclare Organization');
+    const html = read('index.html');
+    assert.match(html, /"publisher": \{\s*"@id": "https:\/\/www\.worldmonitor\.app\/#organization"\s*\}/);
   });
 
-  it('keeps the marketing welcome Organization NAP aligned with prerender', () => {
+  it('keeps the canonical welcome Organization NAP aligned', () => {
     const welcome = organizationBlocks(read('pro-test/welcome.html'));
-    assert.ok(welcome.length >= 1, 'welcome.html must include Organization JSON-LD');
+    assert.equal(welcome.length, 1, 'welcome.html must declare one Organization');
     for (const org of welcome) {
       assert.equal(org.address?.addressLocality, 'Dubai');
       assert.equal(org.address?.addressCountry, 'AE');
@@ -86,8 +78,6 @@ describe('Organization JSON-LD NAP alignment', () => {
       read('pro-test/welcome.html'),
       /rel="alternate" type="text\/markdown" href="\/world-monitor\.md"/,
     );
-    assert.match(read('pro-test/prerender.mjs'), /addressLocality: 'Dubai'/);
-    assert.match(read('pro-test/prerender.mjs'), /addressCountry: 'AE'/);
-    assert.doesNotMatch(read('pro-test/prerender.mjs'), /Q140439514/);
+    assert.doesNotMatch(read('pro-test/prerender.mjs'), /Organization JSON-LD|ORGANIZATION_JSONLD/);
   });
 });

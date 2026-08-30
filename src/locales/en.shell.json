@@ -390,6 +390,9 @@
     "demographicsCapability": {
       "title": "Demographics & Workforce"
     },
+    "fiveFactorScorecard": {
+      "title": "Five-Factor Resilience Scorecard"
+    },
     "defenseIndustrial": {
       "title": "Defense Industrial Base",
       "expenditure": "Military spend",

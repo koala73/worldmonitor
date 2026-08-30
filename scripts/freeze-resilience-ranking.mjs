@@ -774,6 +774,9 @@ async function main() {
     source: CAPTURE_SOURCE === 'redis'
       ? 'Production Upstash Redis resilience ranking snapshot'
       : `Live capture via ${RANKING_URL}`,
+    snapshotNote: METHODOLOGY_FORMULA === 'pillar-combined-penalized-v1'
+      ? `Post-P1-1 full-universe capture: pillar scores applied domain design weights inside pillar aggregation on ${capturedAt}.`
+      : `Historical full-universe capture using the ${METHODOLOGY_FORMULA} formula on ${capturedAt}.`,
     detailSource: CAPTURE_SOURCE === 'redis'
       ? 'Production Upstash Redis per-country resilience score snapshots'
       : SCORE_URL,

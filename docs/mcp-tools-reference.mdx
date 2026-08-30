@@ -626,6 +626,76 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_five_factor_scorecard`
+
+Return the frozen v1 scorecard for exactly one country or bloc. Choose one of a country code, an official bloc preset, or a custom member list. The response comes from one atomic seeded snapshot, so its country and bloc evidence share the same cohort and methodology version.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | one selector | ISO 3166-1 alpha-2 country code. Case-insensitive. |
+| `preset` | string | one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
+| `members` | string[] | one selector | Custom bloc of 2–30 unique uppercase ISO-2 codes. |
+
+- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument; use `jmespath` to trim evidence.
+- **Kind:** canonical RPC proxy over `scorecard:five-factor:v1`; it does not fetch source datasets at request time.
+- **Freshness:** daily seed with a 36-hour freshness budget. Read `computedAt`, `methodologyVersion`, and the seed health metadata separately when operational freshness matters.
+
+Read `hasScore` before every pillar `score` and `subScore`. A false flag means the proto3 zero is a placeholder, not a resilience score. Read each input's `available` and `hasValue` before its numeric `value`. `insufficientReasons` and `unavailableReason` explain missing coverage, including the source-policy case `redistribution-blocked`.
+
+Food and energy blocs aggregate physical production and consumption before scoring. Demographics, technology, and defense continuous sub-scores use population weighting. This means a bloc score is deliberately not an average of member bands. See the [Five-Factor Scorecard methodology](/methodology/five-factor-scorecard).
+
+<CodeGroup>
+
+```bash Country
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"country_code":"DE"}}
+  }'
+```
+
+```bash Official bloc
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"preset":"ASEAN"}}
+  }'
+```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+List a compact summary for every country in the frozen scorecard cohort. Each row keeps the pillar score, band, input coverage, and insufficient-data reasons, but omits raw inputs and source observations so the complete country set stays within the MCP output budget.
+
+- **Parameters:** none
+- **API endpoint:** `GET /api/scorecard/v1/list-five-factor-scorecards`
+- **Access:** `subscription` — requires a Pro subscription.
+- **Kind:** compact projection of the same atomic `scorecard:five-factor:v1` snapshot.
+
+Use `get_five_factor_scorecard` when you need input provenance, raw observations, or bloc aggregation.
+Always read `hasScore` before `score` or `subScore`. When `hasScore` is false, both numeric zeros are protobuf placeholders for insufficient data, not measured zero resilience.
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+  }'
+```
+
 ### `get_mineral_production`
 
 Country shares of mine and refinery production, plus HHI, from the annual USGS Mineral Commodity Summaries seed (BGS fills commodities MCS lacks, notably uranium). Use this for "who refines X" / "what does country Y produce". Deposit locations stay on `get_commodity_geo`.

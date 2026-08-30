@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMapUrlState, buildMapUrl } from '../src/utils/urlState.ts';
+import {
+  parseMapUrlState,
+  buildMapUrl,
+  readDashboardSearchQuery,
+  DASHBOARD_SEARCH_QUERY_MAX_CHARS,
+} from '../src/utils/urlState.ts';
 
 const EMPTY_LAYERS = {
   conflicts: false, bases: false, cables: false, pipelines: false,
@@ -44,6 +49,26 @@ describe('parseMapUrlState expanded param', () => {
   it('ignores expanded=0', () => {
     const state = parseMapUrlState('?country=IR&expanded=0', EMPTY_LAYERS);
     assert.equal(state.expanded, undefined);
+  });
+});
+
+describe('readDashboardSearchQuery', () => {
+  it('reads a SearchAction term from ?q=', () => {
+    assert.equal(readDashboardSearchQuery('?q=hormuz%20strait'), 'hormuz strait');
+  });
+
+  it('trims whitespace and ignores empty values', () => {
+    assert.equal(readDashboardSearchQuery('?q=%20%20'), null);
+    assert.equal(readDashboardSearchQuery('?q='), null);
+    assert.equal(readDashboardSearchQuery('?country=IR'), null);
+  });
+
+  it('caps oversized pasted queries', () => {
+    const oversized = 'a'.repeat(DASHBOARD_SEARCH_QUERY_MAX_CHARS + 25);
+    assert.equal(
+      readDashboardSearchQuery(`?q=${oversized}`)?.length,
+      DASHBOARD_SEARCH_QUERY_MAX_CHARS,
+    );
   });
 });
 

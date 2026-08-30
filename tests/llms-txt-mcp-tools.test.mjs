@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +11,8 @@ const LLMS_FILES = ['public/llms.txt', 'public/llms-full.txt', 'public/api/llms.
 const LLMS_TEXTS = new Map(
   LLMS_FILES.map((rel) => [rel, readFileSync(join(ROOT, rel), 'utf-8')]),
 );
+const PACKAGE_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8')).version;
+const OPENAPI_BYTES = statSync(join(ROOT, 'docs/api/worldmonitor.openapi.yaml')).size;
 
 // Every MCP tool name uses a verb prefix (get_/generate_/analyze_/search_/
 // describe_), so this picks tool citations out of the backticked prose
@@ -83,5 +85,32 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
       const withoutMarkdownLinks = line.replace(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g, '');
       assert.doesNotMatch(withoutMarkdownLinks, /https?:\/\//, `list item contains a bare URL: ${line}`);
     }
+  });
+
+  it('public/llms.txt identifies its release and update date', () => {
+    assert.match(
+      LLMS_TEXTS.get('public/llms.txt'),
+      new RegExp(`^> Version: ${PACKAGE_VERSION.replaceAll('.', '\\.')} · Last updated: \\d{4}-\\d{2}-\\d{2}$`, 'm'),
+    );
+  });
+
+  it('routes unauthenticated agent examples through the key-free sandbox', () => {
+    for (const [rel, text] of LLMS_TEXTS) {
+      assert.doesNotMatch(
+        text,
+        /https:\/\/api\.worldmonitor\.app\/api\//,
+        `${rel} must not present key-required API operations as directly callable examples`,
+      );
+      assert.match(text, /https:\/\/www\.worldmonitor\.app\/sandbox\/index\.json/);
+      assert.match(text, /API key required/i);
+    }
+  });
+
+  it('annotates the oversized OpenAPI YAML link with its byte size', () => {
+    const formattedBytes = new Intl.NumberFormat('en-US').format(OPENAPI_BYTES);
+    assert.match(
+      LLMS_TEXTS.get('public/llms.txt'),
+      new RegExp(`openapi\\.yaml[^\\n]*${formattedBytes} bytes`, 'i'),
+    );
   });
 });

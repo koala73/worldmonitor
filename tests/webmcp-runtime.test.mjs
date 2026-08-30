@@ -146,6 +146,47 @@ function createBindings(overrides = {}) {
       changed: true,
       message: 'Panel enabled.',
     }),
+    listMissionPresets: async () => ({
+      ok: true,
+      variant: 'full',
+      activePresetId: null,
+      presets: [],
+      count: 0,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: true,
+      monitor: 'full',
+      map: {
+        view: 'global',
+        zoom: 2.3,
+        timeRange: '7d',
+        enabledLayers: [],
+      },
+      panels: { enabled: [] },
+      message: 'Applied.',
+    }),
+    openMissionPicker: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'mission_picker',
+      overlay: 'open',
+      message: 'Opened mission presets.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
     applyDashboardTabAction: async (action) => (
       action.type === 'list'
         ? {
@@ -166,6 +207,56 @@ function createBindings(overrides = {}) {
             activeTabId: typeof action.tabId === 'string' ? action.tabId : 'tab-main01-abc123',
           }
     ),
+
+    getPanelLayout: async () => ({
+      regions: {
+        sidebar: { available: true, panelCount: 1 },
+        bottom: { available: false, panelCount: 0 },
+      },
+      panels: [{
+        id: 'giving',
+        region: 'sidebar',
+        index: 0,
+        collapsed: false,
+        fullscreen: false,
+        collapsible: false,
+        fullscreenCapable: false,
+        fixed: false,
+      }],
+      panelCount: 1,
+    }),
+    setPanelCollapsed: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_collapsed',
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: true,
+      changed: true,
+      message: 'Panel collapsed.',
+      persisted: true,
+    }),
+    movePanel: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'move',
+      panelId: 'giving',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      message: 'Moved panel.',
+      persisted: true,
+    }),
+    setPanelFullscreen: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: 'live-news',
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+      changed: true,
+      message: 'Panel entered fullscreen.',
+    }),
     getAccessContext: async () => ({
       accountState: 'signed_out',
       clerk: 'unavailable',
@@ -397,6 +488,50 @@ describe('WebMCP registry behavioral contract', () => {
     );
   });
 
+  it('preserves regional panel index 0 in get_panel_layout', async () => {
+    // Bottom-region index 0 is a valid ordinal. Coercing with `||` would replace
+    // it with the flatten fallback (1 when a sidebar panel precedes it).
+    const provider = new FakeWebMcpModelContext();
+    const harness = trackedRuntime(provider);
+    registerWebMcpTools(createBindings({
+      getPanelLayout: async () => ({
+        regions: {
+          sidebar: { available: true, panelCount: 1 },
+          bottom: { available: true, panelCount: 1 },
+        },
+        panels: [
+          {
+            id: 'giving',
+            region: 'sidebar',
+            index: 0,
+            collapsed: false,
+            fullscreen: false,
+            collapsible: false,
+            fullscreenCapable: false,
+            fixed: false,
+          },
+          {
+            id: 'live-news',
+            region: 'bottom',
+            index: 0,
+            collapsed: false,
+            fullscreen: false,
+            collapsible: true,
+            fullscreenCapable: true,
+            fixed: false,
+          },
+        ],
+        panelCount: 2,
+      }),
+    }), harness.runtime);
+    await settlePromises();
+
+    const layout = await executeRegistered(provider, 'get_panel_layout');
+    assert.equal(layout.regions.bottom.panelCount, 1);
+    assert.equal(layout.panels[1].id, 'live-news');
+    assert.equal(layout.panels[1].index, 0, 'bottom panel must keep regional index 0');
+  });
+
   it('denies tools whose effects can outlive cancellation when the host omits the target signal', async () => {
     // Layer, panel, map-mode, tab, and monitor changes can persist or leave
     // the current origin. An uncancellable invocation can outlive the session,
@@ -406,13 +541,16 @@ describe('WebMCP registry behavioral contract', () => {
     assert.deepEqual(
       [...CANCELLATION_REQUIRED_WEBMCP_TOOLS].sort(),
       [
+        'apply_mission_preset',
         'create_dashboard_tab',
         'delete_dashboard_tab',
+        'move_panel',
         'openCountryBrief',
         'rename_dashboard_tab',
         'select_dashboard_tab',
         'set_map_layers',
         'set_map_mode',
+        'set_panel_collapsed',
         'set_panel_enabled',
         'switch_monitor',
       ],
@@ -422,6 +560,7 @@ describe('WebMCP registry behavioral contract', () => {
     let openCalls = 0;
     let tabCalls = 0;
     let panelCalls = 0;
+    let missionCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
     registerWebMcpTools(createBindings({
@@ -457,6 +596,25 @@ describe('WebMCP registry behavioral contract', () => {
           message: 'Panel enabled.',
         };
       },
+      applyMissionPreset: async () => {
+        missionCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          presetId: 'supply-chain-risk',
+          label: 'Supply-Chain Risk',
+          changed: true,
+          monitor: 'full',
+          map: {
+            view: 'global',
+            zoom: 2.3,
+            timeRange: '7d',
+            enabledLayers: [],
+          },
+          panels: { enabled: [] },
+          message: 'Applied.',
+        };
+      },
     }), harness.runtime);
     await settlePromises();
 
@@ -488,6 +646,30 @@ describe('WebMCP registry behavioral contract', () => {
       ),
       denial,
     );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'apply_mission_preset',
+        JSON.stringify({ presetId: 'supply-chain-risk' }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'set_panel_collapsed',
+        JSON.stringify({ panelId: 'live-news', collapsed: true }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'move_panel',
+        JSON.stringify({ panelId: 'giving', region: 'sidebar', index: 0 }),
+      ),
+      denial,
+    );
     for (const [tool, input] of [
       ['select_dashboard_tab', { tabId: 'tab-main01-abc123' }],
       ['create_dashboard_tab', { name: 'Markets' }],
@@ -512,6 +694,7 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(openCalls, 1, 'result-dependent open_search_result must reach its binding');
     assert.equal(tabCalls, 0, 'persistent dashboard tab tools must not reach their binding');
     assert.equal(panelCalls, 0, 'persistent panel changes must not reach their binding');
+    assert.equal(missionCalls, 0, 'persistent mission preset changes must not reach their binding');
   });
 
   it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {

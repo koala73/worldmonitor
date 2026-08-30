@@ -455,6 +455,9 @@ const STANDALONE_KEYS = {
   // UN WPP + UNESCO/World Bank + ILOSTAT capability data (#6437). The country
   // deep-dive fetches this seeded key on demand; it is not bootstrap-hydrated.
   demographicsCapability:   'demographics:capability:v1',
+  // Atomic country evidence + derived five-factor results (#6441). The public
+  // API and MCP service read this key only; no request-time source fan-out.
+  scorecardFiveFactor:       'scorecard:five-factor:v1',
   resilienceRanking:        'resilience:ranking:v28',
   productCatalog:           'product-catalog:v3',
   energySpineCountries:     'energy:spine:v1:_countries',
@@ -558,6 +561,8 @@ const STANDALONE_KEYS = {
   // into canadaAlerts / canadaRoads / torontoRoads. No map panel yet.
   torontoTps: 'safety:toronto-tps:v1',
 };
+
+const FIVE_FACTOR_SCORECARD_READ_MODEL_KEY = 'scorecard:five-factor:v1:read-model';
 
 const SEED_META = {
   // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
@@ -1157,6 +1162,19 @@ const SEED_META = {
       status: 'EMPTY',
     },
   },
+  scorecardFiveFactor: {
+    key: 'seed-meta:scorecard:five-factor',
+    maxStaleMin: 2160, // Daily section; 36h allows one delayed Railway tick before the 3d data TTL.
+    minRecordCount: 180,
+    minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 120, defense: 30 },
+    activationKey: 'seed-activated:scorecard:five-factor',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 6441,
+      activationKey: 'seed-activated:scorecard:five-factor',
+    },
+  },
   resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 840, requireResilienceCacheState: true }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron); 14h budget tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys that preempt a scheduled tick; alerts at 2 missed ticks (18h gap). Bumped from 720 — see comment below.
   resilienceIntervals: { key: 'seed-meta:resilience:intervals',        maxStaleMin: 840, minRecordCount: RESILIENCE_INTERVAL_MIN_RECORD_COUNT, requireResilienceCacheState: true }, // bundled into seed-bundle-resilience, written by the Resilience-Scores section. Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC) — empirically verified 2026-04-28 via Railway logs showing 6h gaps between successful runs (the prior `intervalMs=2h with hourly fires` claim did not match what's deployed; either the bundle interval gate or the Railway service schedule makes the effective cadence 6h). 840 = 14h staleness ≈ 2.33× cadence: tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys; alerts at 2 missed ticks (18h gap). The 180-record floor matches the atomic publisher: a fresh probe cannot hide a mixed or shrunken fleet. Matches resilienceRanking above (same Resilience-Scores section writes both). Prior values: 20160 (14d, 168× — silent on real outage), 1080 (18h, 3× — over-permissive: masks a 12h outage), 720 (12h, 2× — exact floor; flipped UptimeRobot WARNING for ~1min on every Railway-deploy-preempted tick: 2026-05-10 incident at 18:02 UTC, seedAgeMin=722 vs maxStale=720 after the 12:00 UTC tick was skipped during an in-flight deploy), 360 (1× — false-positive on routine jitter, 2026-04-28: seedAgeMin=367 vs maxStale=360). Re-tighten ONLY if/when the actual Railway cron schedule is verified sub-6h.
   energyExposure:       { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // monthly cron on 1st; 50400min = 35d = TTL matches cron cadence + 5d buffer
@@ -1412,6 +1430,11 @@ const ON_DEMAND_KEYS = new Set([
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
   'physicalPremiums',
+  // Five-factor scorecard (#6441). Vercel can ship this probe before the
+  // Railway resilience bundle publishes the first daily cohort. The seeder
+  // writes a permanent marker in the same EVAL as that first successful
+  // cohort; absence is pending until then and strict afterward.
+  'scorecardFiveFactor',
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
   'bisPolicy', 'bisExchange', 'bisCredit',
@@ -1492,6 +1515,7 @@ const ACTIVATION_MARKERS = {
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
+  scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
@@ -2703,6 +2727,17 @@ function composeChinaCoverageStatus(entry, raw, readError = false) {
   return { ...entry, ...projected, seedStatus };
 }
 
+function composeScorecardReadModelStatus(entry, raw, readError = false) {
+  if (!entry) return entry;
+  if (readError) return { ...entry, status: 'REDIS_PARTIAL', readModelReady: false };
+  const readModelReady = Number(raw) === 1;
+  if (readModelReady) return { ...entry, readModelReady: true };
+  if (STATUS_COUNTS[entry.status] === 'crit' || entry.status === 'SEED_ERROR') {
+    return { ...entry, readModelReady: false };
+  }
+  return { ...entry, status: 'COVERAGE_PARTIAL', seedStatus: entry.status, readModelReady: false };
+}
+
 function parseHealthVerdictSnapshot(raw, now, { requireChecks = true } = {}) {
   if (typeof raw !== 'string') return null;
   const snapshot = parseRedisValue(raw);
@@ -3163,6 +3198,7 @@ export async function handleHealth(req, ctx, options = {}) {
       ...activationEntries.map(([, marker]) => ['EXISTS', marker]),
       ['GET', CHINA_COVERAGE_SUMMARY_KEY],
       ['GET', STANDALONE_KEYS.educationAttainment],
+      ['HEXISTS', FIVE_FACTOR_SCORECARD_READ_MODEL_KEY, 'metadata'],
       ...fredRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
@@ -3225,7 +3261,8 @@ export async function handleHealth(req, ctx, options = {}) {
   const educationPayloadResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length + 1];
   const educationPayload = unwrapEnvelope(parseRedisValue(educationPayloadResult?.result)).data;
   const educationPayloadRankableCount = parseEducationPayloadRankableRecordCount(educationPayload);
-  const fredRolloutOffset = allDataKeys.length + allMetaKeys.length + activationEntries.length + 2;
+  const scorecardReadModelResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length + 2];
+  const fredRolloutOffset = allDataKeys.length + allMetaKeys.length + activationEntries.length + 3;
   const fredRatesRolloutUntil = parseFredRatesRolloutUntil(
     results.slice(fredRolloutOffset, fredRolloutOffset + fredRolloutCommands.length),
   );
@@ -3260,6 +3297,13 @@ export async function handleHealth(req, ctx, options = {}) {
       let entry = classifyKey(name, redisKey, opts, classifyCtx);
       if (name === 'chinaCoverage') {
         entry = composeChinaCoverageStatus(entry, chinaCoverageRaw, Boolean(chinaCoverageResult?.error));
+      }
+      if (name === 'scorecardFiveFactor') {
+        entry = composeScorecardReadModelStatus(
+          entry,
+          scorecardReadModelResult?.result,
+          Boolean(scorecardReadModelResult?.error),
+        );
       }
       checks[name] = entry;
       if (typeof entry.contentFreshnessPendingUntil === 'string') {
@@ -3435,6 +3479,7 @@ export const __testing__ = {
   CHINA_COVERAGE_SUMMARY_KEY,
   projectChinaCoverageStatus,
   composeChinaCoverageStatus,
+  composeScorecardReadModelStatus,
   healthVerdictRedisKey,
   parseHealthVerdictSnapshot,
   // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs

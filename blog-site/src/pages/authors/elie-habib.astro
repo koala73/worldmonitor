@@ -30,10 +30,7 @@ const jsonLd = {
       image: 'https://unavatar.io/github/koala73',
       jobTitle: 'Founder of World Monitor',
       worksFor: {
-        '@type': 'Organization',
         '@id': 'https://www.worldmonitor.app/#organization',
-        name: 'World Monitor',
-        url: 'https://www.worldmonitor.app',
       },
       sameAs: [
         'https://x.com/eliehabib',
@@ -45,6 +42,30 @@ const jsonLd = {
         'Geopolitical risk',
         'Financial markets',
         'Artificial intelligence',
+      ],
+    },
+    {
+      '@type': 'BreadcrumbList',
+      '@id': `${profileUrl}#breadcrumb`,
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'World Monitor',
+          item: 'https://www.worldmonitor.app/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Blog',
+          item: 'https://www.worldmonitor.app/blog/',
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          name: 'Elie Habib',
+          item: profileUrl,
+        },
       ],
     },
   ],

@@ -16,5 +16,9 @@
 *.jsx  text eol=lf
 *.cjs  text eol=lf
 
+# sebuf's generated TypeScript ends with one structural blank line. Keep Git's
+# whitespace gate focused on hand-authored code while preserving generator bytes.
+src/generated/**/*.ts whitespace=-blank-at-eof
+
 # Preserve the byte-identical upstream Umami patch, including its indented blank lines.
 docker/umami/session-data-upsert.patch -whitespace

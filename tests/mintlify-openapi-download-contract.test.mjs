@@ -18,7 +18,7 @@ describe('Mintlify OpenAPI download contract', () => {
   it('binds both API Reference tabs to the unified World Monitor bundle', () => {
     for (const [language, label] of [
       ['en', 'API Reference'],
-      ['zh-Hans', 'API 参考'],
+      ['zh', 'API 参考'],
     ]) {
       const tab = findTab(language, label);
       assert.ok(tab, `${language} ${label} tab must exist`);

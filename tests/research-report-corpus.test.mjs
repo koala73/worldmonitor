@@ -10,10 +10,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 
-import {
-  buildCorpus,
-  CORPUS_GENERATOR_CONTENT_VERSION,
-} from '../scripts/build-crawlable-corpus.mjs';
+import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
 import {
   assertNoUnresolvedTokens,
   computeReportMetrics,
@@ -95,7 +92,7 @@ describe('research report corpus (#5668)', () => {
       focus.observationEnd <= String(snapshot.capturedAt).slice(0, 10),
       'observation period must end on or before the retrieval date',
     );
-    assert.match(html, new RegExp(`<meta name="lastmod" content="${CORPUS_GENERATOR_CONTENT_VERSION}">`));
+    assert.match(html, /<meta name="lastmod" content="2026-08-30">/);
     assert.match(
       html,
       new RegExp(`published <time datetime="${report.datePublished}">`),

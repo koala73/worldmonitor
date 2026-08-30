@@ -39,7 +39,7 @@ function unusedNavigationResult(
 
 function unusedNavigationBindings(): Pick<
   WebMcpAppBindings,
-  'switchMonitor' | 'openSettings' | 'openAlerts'
+  'switchMonitor' | 'openSettings' | 'openAlerts' | 'listMissionPresets' | 'applyMissionPreset' | 'openMissionPicker'
 > {
   return {
     switchMonitor: async () => unusedNavigationResult('full', { navigation: 'none' }),
@@ -51,6 +51,45 @@ function unusedNavigationBindings(): Pick<
       overlay: 'open',
       tab: 'notifications',
     }),
+    listMissionPresets: async () => ({
+      ok: true,
+      variant: 'full',
+      activePresetId: null,
+      presets: [],
+      count: 0,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: false,
+      monitor: 'full',
+      message: 'Unused mission preset binding.',
+    }),
+    openMissionPicker: async () => unusedNavigationResult('mission_picker', {
+      overlay: 'open',
+    }),
+  };
+}
+
+function unusedPanelLayoutBindings(): Pick<
+  WebMcpAppBindings,
+  'getPanelLayout' | 'setPanelCollapsed' | 'movePanel' | 'setPanelFullscreen'
+> {
+  return {
+    getPanelLayout: async () => {
+      throw new Error('Unexpected panel layout read.');
+    },
+    setPanelCollapsed: async () => {
+      throw new Error('Unexpected panel layout mutation.');
+    },
+    movePanel: async () => {
+      throw new Error('Unexpected panel layout mutation.');
+    },
+    setPanelFullscreen: async () => {
+      throw new Error('Unexpected panel layout mutation.');
+    },
   };
 }
 
@@ -97,6 +136,7 @@ describe('App WebMCP country binding cold start', () => {
       setPanelEnabled: async () => {
         throw new Error('Unexpected dashboard panel mutation.');
       },
+      ...unusedPanelLayoutBindings(),
       applyDashboardTabAction: async () => {
         throw new Error('Unexpected dashboard tab action.');
       },
@@ -215,6 +255,7 @@ describe('App WebMCP country binding cold start', () => {
       setPanelEnabled: async () => {
         throw new Error('Unexpected dashboard panel mutation.');
       },
+      ...unusedPanelLayoutBindings(),
       applyDashboardTabAction: async () => {
         throw new Error('Unexpected dashboard tab action.');
       },
