@@ -49,6 +49,8 @@ CRI 在产品的三个位置呈现，均由同一当前发布分数驱动：
 
 三个仪表盘面均可免费查看。直接分数和排名 API 调用需要正常的 Pro/API 认证路径，而运行时清单在 `/api/resilience/v1/get-runtime-manifest` 公开；请参见 [Resilience service](https://github.com/koala73/worldmonitor/blob/main/docs/api/ResilienceService.openapi.yaml) 了解 HTTP 合约。
 
+仅限 Pro 的 `/api/resilience/v1/get-resilience-indicators` 方法可在完整的 72 行注册表上解释单个国家的分数。它报告活动评分器所使用的确切归一化分量分数与运行时权重，然后把策略生效后的有效贡献与每个已发布的维度分数对账。各行还区分已观测、插补、缺失、回退、来源失败、未启用、已退役与不适用等状态。现有的 `get-resilience-score` 响应保持不变。原始来源值是选择性提供的，并在[指标再分发审查](./resilience-indicator-licensing.mdx)下失败关闭；受限行仍会返回 WorldMonitor 的归一化分数、贡献、来源署名，以及已知时的来源年份。
+
 ## 概览
 
 WorldMonitor 国家韧性指数以 0-100 分对 196 国公开可排名范围评分，使用 72 个指标覆盖 21 个活跃维度和 6 个领域（加上 2 个结构性退役维度为模式连续性在注册表中以 `coverage=0` 保留）。排名处理器仍可将低置信度或标题不合格的国家路由到 `greyedOut[]`，但可排名范围本身由提交的 UN 成员 + SAR 白名单固定。它将结构基线指标（治理质量、健康基础设施、财政能力）与实时压力信号（网络威胁、冲突事件、航运中断）和恢复能力指标（财政空间、储备、进口集中度）结合，产出每 6 小时更新的单一韧性分数。
