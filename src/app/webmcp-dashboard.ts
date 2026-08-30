@@ -30,7 +30,7 @@ import {
   type MissionPresetId,
 } from '@/services/mission-presets';
 import type { ApplyMissionPresetResult } from '@/services/webmcp';
-import { WEBMCP_MISSION_PICKER_REASONS } from '@/config/webmcp';
+import { WEBMCP_MISSION_PICKER_REASON } from '@/config/webmcp';
 import type { PanelConfig } from '@/types';
 import type { AgentBusApplierOptions } from './agent-bus-applier';
 import type { RendererKind } from '@/config/map-layer-definitions';
@@ -526,7 +526,7 @@ export function applyWebMcpOpenMissionPicker(
       ok: false,
       status: 'denied',
       destination: 'mission_picker',
-      reason: WEBMCP_MISSION_PICKER_REASONS[0],
+      reason: WEBMCP_MISSION_PICKER_REASON.unavailable,
       message: 'Mission presets are not available on this dashboard.',
       context,
     };
