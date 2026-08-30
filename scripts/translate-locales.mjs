@@ -92,7 +92,7 @@ export function flatten(obj, prefix = '', out = {}) {
   return out;
 }
 
-function setNested(obj, dotted, value) {
+export function localePathTokens(dotted) {
   // Path tokens are either object keys (split on `.`) or array indices
   // (`name[3]`). Split into a flat token list with explicit string/number
   // typing so we can materialise arrays vs objects on demand.
@@ -106,6 +106,11 @@ function setNested(obj, dotted, value) {
       }
     }
   }
+  return tokens;
+}
+
+function setNested(obj, dotted, value) {
+  const tokens = localePathTokens(dotted);
   let cur = obj;
   for (let i = 0; i < tokens.length - 1; i++) {
     const tok = tokens[i];

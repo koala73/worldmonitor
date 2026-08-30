@@ -1999,6 +1999,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // warning without discarding the retained record count from health output.
   const inputFreshUntil = Number(meta?.inputFreshUntil);
   const inputFreshnessExpired = seedCfg.enforceInputFreshUntil === true
+    && meta?.sourceState === 'ok'
     && (!Number.isFinite(inputFreshUntil) || inputFreshUntil <= now);
   const sourceDegraded = inputFreshnessExpired || (typeof meta?.sourceState === 'string'
     && meta.sourceState !== 'ok'

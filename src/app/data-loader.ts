@@ -2589,7 +2589,7 @@ export class DataLoaderManager implements AppModule {
         if (!energyLoaded) energyPanel?.updateTape([]);
       }
 
-      if (commoditiesPanel) {
+      if (commoditiesPanel?.shouldRefreshPhysicalComparison()) {
         try {
           await loadPhysicalPremiumComparison(
             commoditiesPanel,

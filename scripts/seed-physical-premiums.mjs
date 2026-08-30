@@ -49,6 +49,8 @@ export const FX_RATES_KEY = 'shared:fx-rates:v1';
 export const TROY_OUNCE_GRAMS = 31.1034768;
 
 const CACHE_TTL_SECONDS = 3 * 24 * 3600;
+export const PHYSICAL_PREMIUM_LOCK_TTL_MS = 10 * 60 * 1000;
+export const PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS = 60 * 1000;
 const DIVERGENCE_TTL_SECONDS = 16 * 24 * 3600;
 const TRANSITION_COOLDOWN_SECONDS = TRANSITION_COOLDOWN_MS / 1000;
 const DERIVED_REDIS_MAX_ATTEMPTS = 3;
@@ -708,6 +710,8 @@ export async function runPhysicalPremiumSeed(args = process.argv.slice(2)) {
   const prefix = env === 'production' ? '' : `${env}:${sha}:`;
   const resource = env === 'production' ? 'physical-premium' : `physical-premium:${env}:${sha}`;
   return runSeed('market', resource, `${prefix}${PHYSICAL_PREMIUM_KEY}`, fetchPhysicalPremiums, {
+    lockTtlMs: PHYSICAL_PREMIUM_LOCK_TTL_MS,
+    fetchPhaseTimeoutMs: PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS,
     validateFn: validatePhysicalPremiumPayload,
     ttlSeconds: CACHE_TTL_SECONDS,
     sourceVersion: 'sge-shau-shag+commodity-snapshot+shared-fx-v1',

@@ -95,6 +95,14 @@ describe('locale completeness', () => {
     });
   });
 
+  it('rebuilds missing flattened array paths as arrays', () => {
+    const template = { pricing: { features: ['First', 'Second'] } };
+    const expected = { 'pricing.features[0]': 'First', 'pricing.features[1]': 'Second' };
+
+    assert.deepEqual(syncFromTemplate(template, {}, expected), template);
+    assert.equal(Array.isArray(syncFromTemplate(template, {}, expected).pricing.features), true);
+  });
+
   for (const file of localeFiles) {
     it(`${file} contains every key required by its CLDR plural rules`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));

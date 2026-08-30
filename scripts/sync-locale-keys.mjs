@@ -31,6 +31,7 @@ import {
   findPluralBases,
   flatten,
   getPluralCategories,
+  localePathTokens,
 } from './translate-locales.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -111,15 +112,19 @@ export function syncFromTemplate(template, locale, expectedKeys, prefix = '') {
 }
 
 function setMissingDottedPath(target, keyPath, value) {
-  const segments = keyPath.split('.');
+  const segments = localePathTokens(keyPath).map((token) => token.value);
   let cursor = target;
-  for (const segment of segments.slice(0, -1)) {
+  for (let index = 0; index < segments.length - 1; index++) {
+    const segment = segments[index];
+    const wantsArray = typeof segments[index + 1] === 'number';
     const existing = cursor[segment];
-    if (!existing || typeof existing !== 'object' || Array.isArray(existing)) cursor[segment] = {};
-    cursor = /** @type {Record<string, unknown>} */ (cursor[segment]);
+    if (!existing || typeof existing !== 'object' || Array.isArray(existing) !== wantsArray) {
+      cursor[segment] = wantsArray ? [] : {};
+    }
+    cursor = cursor[segment];
   }
   const leaf = segments.at(-1);
-  if (leaf && !(leaf in cursor)) cursor[leaf] = value;
+  if (leaf !== undefined && !(leaf in cursor)) cursor[leaf] = value;
 }
 
 /**

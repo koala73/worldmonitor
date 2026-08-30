@@ -6,7 +6,9 @@ import fengari from 'fengari';
 
 import {
   PHYSICAL_DIVERGENCE_KEY,
+  PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS,
   PHYSICAL_PREMIUM_HISTORY_KEY_PREFIX,
+  PHYSICAL_PREMIUM_LOCK_TTL_MS,
   APPEND_HISTORY_LUA,
   PUBLISH_DIVERGENCE_LUA,
   appendPhysicalPremiumHistory,
@@ -119,7 +121,68 @@ return #list, result, list
   return execution;
 }
 
+function executePublishDivergenceLua(command) {
+  const { lua, lauxlib, lualib, to_jsstring, to_luastring } = fengari;
+  const state = lauxlib.luaL_newstate();
+  lualib.luaL_openlibs(state);
+  const keyCount = Number(command[2]);
+  const keys = command.slice(3, 3 + keyCount);
+  const args = command.slice(3 + keyCount);
+  const source = `
+KEYS = { ${keys.map((value) => JSON.stringify(value)).join(', ')} }
+ARGV = { ${args.map((value) => JSON.stringify(value)).join(', ')} }
+local writes = {}
+local ttls = {}
+redis = {}
+function redis.call(commandName, ...)
+  local values = { ... }
+  if commandName ~= 'SET' then error('unsupported Redis command: ' .. commandName) end
+  writes[values[1]] = values[2]
+  if values[3] == 'EX' then ttls[values[1]] = tonumber(values[4]) end
+  return 'OK'
+end
+local function executeProductionScript()
+${PUBLISH_DIVERGENCE_LUA}
+end
+executeProductionScript()
+local result = {}
+for _, key in ipairs(KEYS) do
+  table.insert(result, key)
+  table.insert(result, writes[key] or '__missing__')
+  table.insert(result, tostring(ttls[key] or -1))
+end
+return result
+`;
+  const status = lauxlib.luaL_dostring(state, to_luastring(source));
+  if (status !== lua.LUA_OK) {
+    const message = to_jsstring(lua.lua_tostring(state, -1));
+    lua.lua_close(state);
+    throw new Error(message);
+  }
+  const resultIndex = lua.lua_absindex(state, -1);
+  const flat = Array.from({ length: lua.lua_rawlen(state, resultIndex) }, (_, offset) => {
+    lua.lua_rawgeti(state, resultIndex, offset + 1);
+    const value = to_jsstring(lua.lua_tostring(state, -1));
+    lua.lua_pop(state, 1);
+    return value;
+  });
+  lua.lua_close(state);
+  return Object.fromEntries(Array.from({ length: keyCount }, (_, index) => {
+    const offset = index * 3;
+    return [flat[offset], {
+      value: flat[offset + 1] === '__missing__' ? undefined : flat[offset + 1],
+      ttlSeconds: Number(flat[offset + 2]),
+    }];
+  }));
+}
+
 describe('physical premium seed', () => {
+  it('keeps the bounded fetch phase inside the Redis lease', () => {
+    assert.equal(PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS, 60_000);
+    assert.equal(PHYSICAL_PREMIUM_LOCK_TTL_MS, 600_000);
+    assert.ok(PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS < PHYSICAL_PREMIUM_LOCK_TTL_MS);
+  });
+
   it('parses the latest PM prints from real SGE response fixtures', () => {
     const gold = parseSgeBenchmarkHtml(goldHtml, { contract: 'SHAU', unit: 'gram' });
     const silver = parseSgeBenchmarkHtml(silverHtml, { contract: 'SHAG', unit: 'kilogram' });
@@ -348,6 +411,15 @@ describe('physical premium seed', () => {
     assert.equal(command[11], '0');
     assert.equal(JSON.parse(command.at(-1)).transitionId, snapshot.transitions[0].id);
 
+    const previewWrites = executePublishDivergenceLua(command);
+    assert.deepEqual(JSON.parse(previewWrites[command[3]].value), snapshot);
+    assert.equal(previewWrites[command[3]].ttlSeconds, Number(command[9]));
+    assert.equal(JSON.parse(previewWrites[command[4]].value).sourceState, 'ok');
+    assert.equal(previewWrites[command[4]].ttlSeconds, Number(command[9]));
+    assert.equal(previewWrites[command[5]].value, undefined);
+    assert.equal(JSON.parse(previewWrites[command[6]].value).transitionId, snapshot.transitions[0].id);
+    assert.equal(previewWrites[command[6]].ttlSeconds, Number(command[10]));
+
     const productionCommand = physicalDivergencePublishCommand({
       divergenceKey: 'market:physical-divergence:v1',
       metaKey: 'seed-meta:market:physical-divergence',
@@ -356,6 +428,9 @@ describe('physical premium seed', () => {
     });
     assert.equal(productionCommand[5], 'seed-activated:market:physical-divergence');
     assert.equal(productionCommand.at(-1), '1');
+    const productionWrites = executePublishDivergenceLua(productionCommand);
+    assert.equal(productionWrites[productionCommand[5]].value, '1');
+    assert.equal(productionWrites[productionCommand[5]].ttlSeconds, -1);
   });
 
   it('derives health from every member and publishes the earliest input deadline', () => {

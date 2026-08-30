@@ -88,6 +88,21 @@ afterEach(() => {
 });
 
 describe('CommoditiesPanel physical-premium tab', () => {
+  it('loads once for discovery and refreshes only while unavailable or selected', () => {
+    expect(panel.shouldRefreshPhysicalComparison()).toBe(true);
+    panel.updatePhysicalPremiums({
+      premiums: [{ metal: 'gold', premiumUsdPerOz: 1, premiumPct: 1, computedAt: '2026-08-18T12:30:00.000Z' }],
+      fx: undefined,
+    });
+    expect(panel.shouldRefreshPhysicalComparison()).toBe(false);
+    expect(panel.selectTab('physical').ok).toBe(true);
+    expect(panel.shouldRefreshPhysicalComparison()).toBe(true);
+
+    const unavailablePanel = new CommoditiesPanel();
+    unavailablePanel.showPhysicalDivergenceUnavailable();
+    expect(unavailablePanel.shouldRefreshPhysicalComparison()).toBe(true);
+  });
+
   it('shows raw SGE and COMEX legs, premium, source, and physical observation date', async () => {
     panel.renderCommodities([
       { symbol: 'GC=F', display: 'Gold', price: 4455.6, change: 0.5 },
@@ -286,7 +301,7 @@ describe('CommoditiesPanel physical-premium tab', () => {
     for (const [reason, expected] of cases) {
       const response = divergenceResponse('PHYSICAL_DIVERGENCE_STATE_STALE_INPUT');
       response.readings[0]!.reason = reason;
-      response.composite.reason = 'member_not_ok:gold:stale_input';
+      response.composite!.reason = 'member_not_ok:gold:stale_input';
       panel.updatePhysicalDivergence(response);
       await flush();
       const text = panel.getElement().textContent ?? '';

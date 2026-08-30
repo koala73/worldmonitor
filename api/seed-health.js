@@ -653,6 +653,7 @@ export async function handleSeedHealth(req, options = {}) {
       && recordCount > 0;
     const inputFreshUntil = Number(meta.inputFreshUntil);
     const inputFreshnessExpired = cfg.enforceInputFreshUntil === true
+      && meta.sourceState === 'ok'
       && (!Number.isFinite(inputFreshUntil) || inputFreshUntil <= evaluationNow);
     const sourceError = inputFreshnessExpired || (typeof meta.sourceState === 'string'
       && meta.sourceState !== 'ok'

@@ -56,7 +56,9 @@ describe('physical market service freshness', () => {
     let premiumCalls = 0;
     let divergenceCalls = 0;
     let failDivergence = false;
-    globalThis.fetch = async (input) => {
+    const requestSignals = [];
+    globalThis.fetch = async (input, init) => {
+      requestSignals.push(init?.signal);
       const path = new URL(typeof input === 'string' ? input : input.url).pathname;
       if (path.endsWith('/get-physical-premiums')) {
         premiumCalls += 1;
@@ -67,7 +69,7 @@ describe('physical market service freshness', () => {
       }
       if (path.endsWith('/get-physical-divergence-index')) {
         divergenceCalls += 1;
-        if (failDivergence) throw new Error('Redis unavailable');
+        if (failDivergence) throw new DOMException('Request timed out', 'AbortError');
         return response({
           readings: [{ metal: 'gold' }, { metal: 'silver' }],
           composite: { state: divergenceCalls === 1 ? 'PHYSICAL_DIVERGENCE_STATE_OK' : 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT' },
@@ -88,14 +90,17 @@ describe('physical market service freshness', () => {
 
       assert.equal(premiumCalls, 2);
       assert.equal(divergenceCalls, 2);
+      assert.equal(requestSignals.length, 4);
+      assert.equal(requestSignals.every((signal) => signal instanceof AbortSignal), true);
       assert.equal(firstPremium.fx?.asOf, 'premium-1');
       assert.equal(secondPremium.fx?.asOf, 'premium-2');
       assert.equal(firstDivergence.composite?.state, 'PHYSICAL_DIVERGENCE_STATE_OK');
       assert.equal(secondDivergence.composite?.state, 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT');
 
       failDivergence = true;
-      await assert.rejects(fetchPhysicalDivergence, /Redis unavailable/);
+      await assert.rejects(fetchPhysicalDivergence, { name: 'AbortError' });
       assert.equal(divergenceCalls, 3);
+      assert.equal(requestSignals.at(-1) instanceof AbortSignal, true);
     } finally {
       globalThis.fetch = originalFetch;
       clearAllCircuitBreakers();

@@ -214,14 +214,14 @@ export async function fetchCommodityQuotes(
 
 export async function fetchPhysicalPremiums(): Promise<GetPhysicalPremiumsResponse> {
   return physicalPremiumBreaker.execute(async () => {
-    return client.getPhysicalPremiums({ metals: [] });
+    return client.getPhysicalPremiums({ metals: [] }, { signal: AbortSignal.timeout(15_000) });
   }, emptyPhysicalPremiumFallback, {
     shouldCache: () => false,
   });
 }
 
 export async function fetchPhysicalDivergence(): Promise<GetPhysicalDivergenceIndexResponse> {
-  return client.getPhysicalDivergenceIndex({ metals: [] });
+  return client.getPhysicalDivergenceIndex({ metals: [] }, { signal: AbortSignal.timeout(15_000) });
 }
 
 // ========================================================================

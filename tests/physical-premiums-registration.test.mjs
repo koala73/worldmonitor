@@ -84,6 +84,10 @@ describe('physical premium production registration', () => {
     assert.match(seeder, /PHYSICAL_PREMIUM_ACTIVATION_KEY = 'seed-activated:market:physical-premium'/);
     assert.match(seeder, /publishPhysicalDivergenceDerivedData\(\{ payload, prefix \}\)/);
     assert.match(seeder, /PHYSICAL_DIVERGENCE_ACTIVATION_KEY = 'seed-activated:market:physical-divergence'/);
+    assert.match(
+      seeder,
+      /runSeed\('market',[\s\S]*?lockTtlMs: PHYSICAL_PREMIUM_LOCK_TTL_MS,[\s\S]*?fetchPhaseTimeoutMs: PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS/,
+    );
 
     assert.equal(health.BOOTSTRAP_KEYS.physicalPremiums, undefined);
     assert.equal(health.STANDALONE_KEYS.physicalPremiums, PHYSICAL_PREMIUM_KEY);

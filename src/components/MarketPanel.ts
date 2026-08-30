@@ -601,6 +601,7 @@ export class CommoditiesPanel extends Panel {
   private _physicalPremiumFxAsOf = '';
   private _physicalDivergence: GetPhysicalDivergenceIndexResponse | null = null;
   private _physicalDivergenceUnavailable = false;
+  private _physicalComparisonAttempted = false;
 
   constructor() {
     super({ id: 'commodities', title: t('panels.commodities'), infoTooltip: t('components.commodities.infoTooltip') });
@@ -614,6 +615,10 @@ export class CommoditiesPanel extends Panel {
 
   public getActiveTab(): CommoditiesTab {
     return this._tab;
+  }
+
+  public shouldRefreshPhysicalComparison(): boolean {
+    return !this._physicalComparisonAttempted || this._tab === 'physical' || this._physicalPremiums.length === 0;
   }
 
   public selectTab(tab: string): CommoditiesTabSelectionResult {
@@ -649,18 +654,21 @@ export class CommoditiesPanel extends Panel {
   }
 
   public updatePhysicalPremiums(response: GetPhysicalPremiumsResponse): void {
+    this._physicalComparisonAttempted = true;
     this._physicalPremiums = response.premiums;
     this._physicalPremiumFxAsOf = response.fx?.asOf ?? '';
     this._render();
   }
 
   public updatePhysicalDivergence(response: GetPhysicalDivergenceIndexResponse): void {
+    this._physicalComparisonAttempted = true;
     this._physicalDivergence = response;
     this._physicalDivergenceUnavailable = false;
     this._render();
   }
 
   public showPhysicalDivergenceUnavailable(): void {
+    this._physicalComparisonAttempted = true;
     this._physicalDivergence = null;
     this._physicalDivergenceUnavailable = true;
     this._render();
