@@ -222,7 +222,19 @@ export default function middleware(request: Request) {
   ) {
     const cleaned = stripIndexNoiseQuery(url);
     if (cleaned) {
-      return Response.redirect(cleaned.toString(), 308);
+      // Built by hand rather than via Response.redirect() so the response can
+      // carry Vary + no-store. This redirect is decided by User-Agent; a 308
+      // is cacheable by default (RFC 9110 §15.4.9). Without those headers a
+      // crawler can warm the tagged URL and a shared edge cache can replay
+      // the clean Location to a human, stripping `ref` before referral capture.
+      return new Response(null, {
+        status: 308,
+        headers: {
+          Location: cleaned.toString(),
+          Vary: 'User-Agent',
+          'Cache-Control': 'private, no-store',
+        },
+      });
     }
   }
 

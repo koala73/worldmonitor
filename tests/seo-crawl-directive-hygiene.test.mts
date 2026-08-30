@@ -65,6 +65,8 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
     assert.ok(res instanceof Response);
     assert.equal(res.status, 308);
     assert.equal(res.headers.get('location'), 'https://finance.worldmonitor.app/dashboard');
+    assert.equal(res.headers.get('vary'), 'User-Agent');
+    assert.equal(res.headers.get('cache-control'), 'private, no-store');
   });
 
   it('leaves human traffic with referral params untouched for client capture', () => {
