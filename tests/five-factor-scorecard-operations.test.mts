@@ -28,6 +28,31 @@ describe('five-factor operational wiring', () => {
     assert.equal(healthTesting.composeScorecardReadModelStatus(base, null, true).status, 'REDIS_PARTIAL');
   });
 
+  it('bounds the new health probe acknowledgement to the first Railway tick', () => {
+    const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8')) as {
+      acknowledged: Array<{
+        name: string;
+        status: string;
+        issue: number;
+        expiresAt: string;
+        cutover?: { probeKey?: string; activatedAt?: string; firstScheduledRunAt?: string };
+      }>;
+    };
+    const acknowledgement = baseline.acknowledged.find((entry) => entry.name === 'scorecardFiveFactor');
+    assert.deepEqual(acknowledgement, {
+      name: 'scorecardFiveFactor',
+      status: 'EMPTY',
+      issue: 6441,
+      reason: 'The new scorecard health probe can be empty only until the first six-hour Railway bundle tick after activation.',
+      expiresAt: '2026-08-30T06:00:00.000Z',
+      cutover: {
+        probeKey: 'seed-meta:scorecard:five-factor',
+        activatedAt: '2026-08-30T00:00:00.000Z',
+        firstScheduledRunAt: '2026-08-30T06:00:00.000Z',
+      },
+    });
+  });
+
   it('places the measured cheap section last with safe admission arithmetic', () => {
     const bundle = readFileSync(new URL('../scripts/seed-bundle-resilience.mjs', import.meta.url), 'utf8');
     assert.match(bundle, /label:\s*'Five-Factor-Scorecard'/);
