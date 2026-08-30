@@ -740,6 +740,13 @@ describe('deploy/cache configuration guardrails', () => {
     const spaNoCache = getCacheHeaderValue(SPA_HTML_CACHE_SOURCE);
     assert.equal(spaNoCache, 'private, no-cache, must-revalidate');
     assert.ok(!spaNoCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+    for (const route of ['/', '/dashboard', '/dashboard.html']) {
+      assert.equal(
+        effectiveCacheControl(route),
+        'public, max-age=0, must-revalidate',
+        `${route} must keep the public revalidation policy after all matching rules apply`,
+      );
+    }
   });
 
   it('disables caching for the apex /mcp-grant Pro-MCP consent page (both URL forms)', () => {
@@ -795,11 +802,12 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
   });
 
-  it('keeps production sourcemaps opt-in so deploy/desktop dist stay map-free (#7382)', () => {
+  it('emits public sourcemaps for preview attribution while production stays opt-in (#7382)', () => {
     assert.match(
       viteConfigSource,
-      /sourcemap:\s*process\.env\.WM_EMIT_SOURCEMAPS\s*===\s*'1'\s*\?\s*'hidden'\s*:\s*false/,
+      /const emitPublicSourceMaps = process\.env\.WM_EMIT_SOURCEMAPS === '1'[\s\S]*\|\| process\.env\.VERCEL_ENV === 'preview'/,
     );
+    assert.match(viteConfigSource, /sourcemap:\s*emitPublicSourceMaps/);
   });
 
 
