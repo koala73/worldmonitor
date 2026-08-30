@@ -385,6 +385,16 @@ function physicalDivergenceMinHistoryPoints(snapshot) {
 
 function physicalDivergencePriorHighWater(previousMeta) {
   if (!previousMeta || typeof previousMeta !== 'object') return 0;
+  // History lists drop foreign-methodology points on read so a METHODOLOGY_VERSION
+  // bump can ramp cleanly. Reset the high-water with that drop — otherwise a
+  // prior full window keeps the probe degraded until the new methodology rebuilds
+  // every point (well past the operational 60-day threshold).
+  if (
+    typeof previousMeta.methodologyVersion === 'string'
+    && previousMeta.methodologyVersion !== METHODOLOGY_VERSION
+  ) {
+    return 0;
+  }
   const fromMax = Number(previousMeta.maxHistoryPointsSeen);
   if (Number.isFinite(fromMax) && fromMax >= 0) return fromMax;
   // Pre-#7424 meta published minHistoryPoints without a high-water field. Carry

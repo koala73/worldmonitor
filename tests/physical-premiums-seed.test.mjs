@@ -697,6 +697,39 @@ describe('physical premium seed', () => {
     assert.equal(physicalDivergenceMeta(regressed, nowMs, legacyPrior).sourceState, 'error');
   });
 
+  it('resets the high-water mark when methodology version changes', () => {
+    const nowMs = Date.parse('2026-08-18T12:30:00.000Z');
+    const priorMeta = {
+      minHistoryPoints: 250,
+      maxHistoryPointsSeen: 250,
+      methodologyVersion: `${METHODOLOGY_VERSION}-prior`,
+      sourceState: 'ok',
+    };
+    const ramping = {
+      readings: ['gold', 'silver'].map((metal) => ({
+        metal,
+        state: 'insufficient_history',
+        historyPoints: 5,
+        physicalAsOf: '2026-08-18',
+        paperAsOf: '2026-08-18T12:30:00.000Z',
+        provenance: { fxAsOf: '2026-08-18T12:30:00.000Z' },
+      })),
+      composite: { state: 'insufficient_history', reason: 'member_not_ok:gold:insufficient_history' },
+    };
+
+    const meta = physicalDivergenceMeta(ramping, nowMs, priorMeta);
+    assert.equal(meta.sourceState, 'ok');
+    assert.equal(meta.minHistoryPoints, 5);
+    assert.equal(meta.maxHistoryPointsSeen, 5);
+    assert.equal(meta.methodologyVersion, METHODOLOGY_VERSION);
+
+    // Same methodology still pins the high-water across a real regression.
+    priorMeta.methodologyVersion = METHODOLOGY_VERSION;
+    const sameMethodology = physicalDivergenceMeta(ramping, nowMs, priorMeta);
+    assert.equal(sameMethodology.sourceState, 'degraded');
+    assert.equal(sameMethodology.maxHistoryPointsSeen, 250);
+  });
+
   it('publishes bounded histories, the derived snapshot, metadata, and transition cooldowns', async () => {
     const payload = buildPhysicalPremiumPayload({
       goldRows: parseSgeBenchmarkHtml(goldHtml, { contract: 'SHAU', unit: 'gram' }),
