@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { SITE_MAP, classify } from '../scripts/generate-entitlement-crosswalk.mjs';
+import {
+  SITE_BASELINE,
+  SITE_MAP,
+  classify,
+  diffSiteCounts,
+} from '../scripts/generate-entitlement-crosswalk.mjs';
 
 // The crosswalk's checksum (`unmappedGates: 0`) is only worth something if an
 // unclassified gate can actually reach it. The first version keyed code sites on
@@ -65,6 +70,55 @@ describe('entitlement crosswalk classifier', () => {
       for (const p of v.preds ?? []) {
         assert.ok(KNOWN.has(p), `SITE_MAP ${re} lists unknown predicate "${p}"`);
       }
+    }
+  });
+});
+
+// (file, predicate) identity closed two holes but not the third: a SECOND gate
+// of the SAME kind in the SAME file is indistinguishable from the first. Review
+// demonstrated it by adding an unrelated hasPremiumAccess() call to
+// src/app/panel-layout.ts, already mapped for that predicate — the sweep went
+// 289 -> 290 rules and still reported 0 unmapped. Pinning the expected count per
+// (file, predicate) is what actually closes it.
+
+describe('entitlement crosswalk gate-count baseline', () => {
+  it('reports no drift when observed counts equal the baseline', () => {
+    assert.deepEqual(diffSiteCounts({ ...SITE_BASELINE }), []);
+  });
+
+  it('catches a SECOND gate of the same kind in the same file', () => {
+    const key = 'src/app/panel-layout.ts::hasPremiumAccess';
+    assert.ok(key in SITE_BASELINE, `${key} should be pinned in the baseline`);
+    const drift = diffSiteCounts({ ...SITE_BASELINE, [key]: SITE_BASELINE[key] + 1 });
+    assert.equal(drift.length, 1, 'an added same-kind gate must be reported');
+    assert.equal(drift[0].key, key);
+    assert.equal(drift[0].now, SITE_BASELINE[key] + 1);
+  });
+
+  it('catches a REMOVED gate as well as an added one', () => {
+    const key = Object.keys(SITE_BASELINE)[0];
+    const actual = { ...SITE_BASELINE };
+    delete actual[key];
+    const drift = diffSiteCounts(actual);
+    assert.equal(drift.length, 1);
+    assert.equal(drift[0].now, 0, 'a deleted gate must surface, not pass silently');
+  });
+
+  it('catches a gate in a file absent from the baseline', () => {
+    const drift = diffSiteCounts({ ...SITE_BASELINE, 'src/services/__new.ts::tier': 1 });
+    assert.equal(drift.length, 1);
+    assert.equal(drift[0].was, 0);
+  });
+
+  it('the pinned baseline is non-empty and well formed', () => {
+    const keys = Object.keys(SITE_BASELINE);
+    assert.ok(keys.length > 20, 'baseline should cover the real gate surface');
+    for (const k of keys) {
+      assert.match(k, /^[^:]+::[a-zA-Z]+$/, `baseline key "${k}" must be file::predicate`);
+      assert.ok(
+        Number.isInteger(SITE_BASELINE[k]) && SITE_BASELINE[k] > 0,
+        `count for ${k} must be a positive integer`,
+      );
     }
   });
 });
