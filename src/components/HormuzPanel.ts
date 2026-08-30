@@ -148,11 +148,11 @@ export class HormuzPanel extends Panel {
 
   private renderDependencies(): string {
     const response = this.dependencies;
-    if (!response || response.upstreamUnavailable) {
-      return `<div class="hz-dependencies" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.unavailable'))}</div></div>`;
-    }
-    if (response.dependencies.length === 0) {
-      return `<div class="hz-dependencies" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.noCoverage'))}</div></div>`;
+    if (!response || response.upstreamUnavailable || response.dependencies.length === 0) {
+      const emptyMessage = !response || response.upstreamUnavailable
+        ? t('components.supplyVulnerability.unavailable')
+        : t('components.supplyVulnerability.noCoverage');
+      return `<div class="hz-dependencies" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMessage)}</div></div>`;
     }
 
     const countries = new Map<string, typeof response.dependencies[number]>();

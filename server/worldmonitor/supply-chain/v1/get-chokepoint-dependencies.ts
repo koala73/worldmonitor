@@ -5,14 +5,18 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
+import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 import {
+  CHOKEPOINT_DEPENDENCIES_KEY,
+  chokepointDependencyShardKey,
+  isMatchingShard,
   mapChokepointDependency,
   type RawChokepointIndex,
+  type RawChokepointShard,
   stringValue,
+  vulnerabilityShardSlot,
 } from './_vulnerability-projection';
-
-export const CHOKEPOINT_KEY = 'supply-chain:chokepoint-dependencies:v1';
 
 export async function getChokepointDependencies(
   _ctx: ServerContext,
@@ -23,9 +27,24 @@ export async function getChokepointDependencies(
     throw new ValidationError([{ field: 'chokepointId', description: 'chokepointId must be a canonical chokepoint id' }]);
   }
 
-  const payload = await getCachedJson(CHOKEPOINT_KEY, true).catch(() => null) as RawChokepointIndex | null;
-  const chokepoint = payload?.chokepoints?.[chokepointId];
-  const pageSize = Math.min(100, Math.max(1, req.pageSize || 25));
+  const payload = await getCachedJson(CHOKEPOINT_DEPENDENCIES_KEY, true).catch(() => null) as RawChokepointIndex | null;
+  let chokepoint = payload?.chokepoints?.[chokepointId];
+  let shardUnavailable = false;
+  if (payload && !payload.chokepoints) {
+    const slot = vulnerabilityShardSlot(payload.slot);
+    const chokepointIds = Array.isArray(payload.chokepointIds)
+      ? payload.chokepointIds.filter((id): id is string => typeof id === 'string')
+      : null;
+    if (slot === undefined || chokepointIds == null) {
+      shardUnavailable = true;
+    } else if (chokepointIds.includes(chokepointId)) {
+      const shard = await getCachedJson(chokepointDependencyShardKey(slot, chokepointId), true)
+        .catch(() => null) as RawChokepointShard | null;
+      if (isMatchingShard(payload, shard)) chokepoint = shard?.chokepoint;
+      else shardUnavailable = true;
+    }
+  }
+  const pageSize = clampInt(req.pageSize, 25, 1, 100);
   return {
     chokepointId,
     chokepoint: stringValue(chokepoint?.name),
@@ -34,6 +53,6 @@ export async function getChokepointDependencies(
       : [],
     generatedAt: stringValue(payload?.generatedAt),
     methodologyVersion: stringValue(payload?.methodologyVersion),
-    upstreamUnavailable: payload == null,
+    upstreamUnavailable: payload == null || shardUnavailable,
   };
 }
