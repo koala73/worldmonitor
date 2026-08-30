@@ -67,6 +67,8 @@
     "docs:check": "node scripts/docs-stats.mjs --check",
     "entitlement:crosswalk": "node scripts/generate-entitlement-crosswalk.mjs",
     "entitlement:crosswalk:check": "node scripts/generate-entitlement-crosswalk.mjs --check",
+    "scorecard:edge-mirrors": "node scripts/generate-scorecard-edge-mirrors.mjs",
+    "scorecard:edge-mirrors:check": "node scripts/generate-scorecard-edge-mirrors.mjs --check",
     "study:story-phase-fading": "node scripts/study-story-phase-fading.mjs",
     "study:story-phase-fading:check": "node scripts/study-story-phase-fading.mjs --check",
     "sources:generate": "node scripts/source-attribution.mjs --write",

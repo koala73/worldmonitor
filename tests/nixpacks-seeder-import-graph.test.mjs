@@ -78,7 +78,7 @@ const baseContract = {
   installedPackages,
 };
 
-export function sourceBootstrapsTsx(src) {
+function sourceBootstrapsTsx(src) {
   const sourceFile = ts.createSourceFile('seeder.mjs', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   let registerName = null;
   for (const statement of sourceFile.statements) {

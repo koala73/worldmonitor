@@ -136,6 +136,7 @@ generate: clean ## Generate code from proto definitions
 	@# Product-only provider values must be removed after every schema/example
 	@# injector so a later generator step cannot reintroduce them.
 	@node scripts/openapi-restrict-provider-redistribution.mjs
+	@node scripts/generate-scorecard-edge-mirrors.mjs
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main

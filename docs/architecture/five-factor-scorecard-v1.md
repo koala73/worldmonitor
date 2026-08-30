@@ -84,18 +84,25 @@ and then apply the absolute bands.
 
 ## Module boundary
 
-The shared scoring core lives under `scripts/scorecard/v1/` so the browser/API
-build and the measured Railway seeder package use one implementation:
+The canonical scoring core lives under `scripts/scorecard/v1/`, inside the
+measured scripts-root Railway package:
 
-- `_types.ts`: evidence, result, snapshot, and scorer types.
-- `_input-registry.ts`: the closed `SCORECARD_INPUT_REGISTRY`.
-- `_methodology.ts`: version, goalposts, weights, floors, bands, and rounding.
-- `_source-adapters.ts`: upstream snapshots to declared evidence.
-- `_score-country.ts`: pure country scoring.
-- `_source-registry.ts`: the authoritative Redis source-key map.
+- `_types.mts`: evidence, result, snapshot, and scorer types.
+- `_input-registry.mts`: the closed `SCORECARD_INPUT_REGISTRY`.
+- `_methodology.mts`: version, goalposts, weights, floors, bands, and rounding.
+- `_source-adapters.mts`: upstream snapshots to declared evidence.
+- `_score-country.mts`: pure country scoring.
+- `_source-registry.mts`: the authoritative Redis source-key map.
 
-The server surface under `server/worldmonitor/scorecard/v1/` contains thin
-re-export bridges for the shared core, plus the runtime-only modules:
+Vercel Edge Functions cannot import that scripts-only tree. The
+`generate-scorecard-edge-mirrors.mjs` generator therefore emits concrete `.ts`
+mirrors under `server/worldmonitor/scorecard/v1/`, rewrites local `.mts`
+specifiers, and leaves the measured Railway placement unchanged. `make
+generate`, the no-write mirror check, and the Edge packaging test keep the
+manifest complete and the emitted modules byte-current with the canonical
+sources. Do not edit the generated mirrors.
+
+The server surface also contains runtime-only modules:
 
 - `_score-bloc.ts`: pure physical and population-weighted bloc scoring.
 - `_bloc-presets.ts`: versioned preset membership and custom-member validation.
@@ -103,9 +110,9 @@ re-export bridges for the shared core, plus the runtime-only modules:
 - `_response.ts`: internal result to generated response conversion.
 - handler modules: country, list, and bloc RPC methods.
 
-The Railway service watches and packages both roots explicitly; the bridge
-keeps Edge handlers inside the server import boundary without copying scorer
-logic.
+The Railway service watches and packages only its canonical scripts-root
+closure. Edge handlers import only the generated server copies, so neither
+runtime crosses its deployment boundary.
 
 The seeder batch-reads the upstream Redis keys and validates the complete next
 snapshot. Before canonical publish it writes a unique, expiring staging hash.

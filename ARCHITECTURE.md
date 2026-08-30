@@ -170,7 +170,7 @@ Edge functions are bundled per file: each deployed function may not pull in unre
 
 `server/worldmonitor/<domain>/v1/handler.ts` exports handler objects with per-RPC functions. Each RPC function uses `cachedFetchJson()` from `server/_shared/redis.ts` for cache-miss coalescing: concurrent requests for the same key share a single upstream fetch and Redis write.
 
-The `scorecard/v1` domain is an exception to request-time upstream fetching. Its generated `ScorecardService` country, list, and bloc RPCs read one frozen cohort from `scorecard:five-factor:v1:read-model`, then use `scorecard:five-factor:v1` only as a bounded last-good fallback. The shared pure adapters and country scorer live under `scripts/scorecard/v1/`; the server domain owns Redis reads, bloc scoring, and public response conversion. See [Five-factor scorecard v1 architecture](docs/architecture/five-factor-scorecard-v1.md).
+The `scorecard/v1` domain is an exception to request-time upstream fetching. Its generated `ScorecardService` country, list, and bloc RPCs read one frozen cohort from `scorecard:five-factor:v1:read-model`, then use `scorecard:five-factor:v1` only as a bounded last-good fallback. The canonical pure adapters and country scorer live under `scripts/scorecard/v1/` for the scripts-root Railway publisher; a checked generator emits Edge-safe copies under the server domain, which owns Redis reads, bloc scoring, and public response conversion. See [Five-factor scorecard v1 architecture](docs/architecture/five-factor-scorecard-v1.md).
 
 **Source files**: `api/`, `server/gateway.ts`, `server/router.ts`, `server/_shared/redis.ts`, `server/worldmonitor/`
 
