@@ -130,7 +130,7 @@ describe('TelegramIntelPanel watchlist lifecycle', () => {
 
   it('ignores an in-flight preview after the relay becomes unavailable', async () => {
     vi.useFakeTimers();
-    let resolvePreview: ((value: TelegramChannelPreview) => void) | null = null;
+    let resolvePreview!: (value: TelegramChannelPreview) => void;
     telegramMocks.fetchChannelPreview.mockReturnValue(new Promise<TelegramChannelPreview>(resolve => {
       resolvePreview = resolve;
     }));
@@ -143,7 +143,7 @@ describe('TelegramIntelPanel watchlist lifecycle', () => {
     expect(telegramMocks.fetchChannelPreview).toHaveBeenCalledOnce();
 
     disableRelay(panel);
-    resolvePreview?.({
+    resolvePreview({
       username: 'test_channel',
       title: 'Test Channel',
       memberCount: null,
