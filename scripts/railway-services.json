@@ -348,6 +348,7 @@
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_static-ref-heavy-order.mjs",
       "scripts/_defense-industrial-source.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",

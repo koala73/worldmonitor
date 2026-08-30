@@ -27,6 +27,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import {
+  claimStaticRefHeavyTurn,
+  orderStaticRefHeavySections,
+} from '../scripts/_static-ref-heavy-order.mjs';
 import {
   ADMISSION_HEADROOM_MS,
   BUNDLE_PREFLIGHT_HEADROOM_MS,
@@ -228,7 +233,7 @@ test('seed-bundle-resilience admits Resilience-Scores on a cron tick (#6556 regr
   );
 });
 
-test('#6806: static-ref splits light from heavy, and neither half has an ordering question', () => {
+test('#6806: static-ref light fits together and heavy ordering stays starvation-safe', () => {
   // The bug this shape exists to kill: leftover ran Arms-Suppliers (371s
   // measured) first on every tick because a member that never publishes never
   // stops being due, and the 199s remaining could not admit Mineral-Production's
@@ -298,11 +303,6 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
   // A fixed order would hand the permanently-due member the lead slot forever,
   // which is exactly the starvation this split undoes.
   const heavySrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
-  assert.match(
-    heavySrc,
-    /const sections = \[\.\.\.SECTIONS\.slice\(offset\), \.\.\.SECTIONS\.slice\(0, offset\), \.\.\.DAILY_SECTIONS\]/,
-    'the rotated heavy slot must be offered before the daily projection',
-  );
   const military = heavy.sections.find((section) => section.label === 'Military-Bases');
   const daily = heavy.sections.find((section) => section.label === 'Supply-Vulnerability');
   assert.ok(
@@ -311,7 +311,82 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
   );
   assert.match(
     heavySrc,
-    /SECTIONS\.slice\(offset\)/,
+    /claimStaticRefHeavyTurn\(\)[\s\S]*orderStaticRefHeavySections\(SECTIONS, DAILY_SECTIONS, claimedTurn\)/,
     'seed-bundle-static-ref-heavy.mjs must rotate its lead slot; a fixed order restarves the others',
+  );
+
+  const worstCaseAdmissions = (orderedSections, dueLabels) => {
+    let reservedMs = 0;
+    const admitted = [];
+    for (const section of orderedSections) {
+      if (!dueLabels.has(section.label)) continue;
+      const reservationMs = section.timeoutMs + KILL_GRACE_MS;
+      if (reservedMs + reservationMs > heavy.maxBundleMs) continue;
+      admitted.push(section.label);
+      reservedMs += reservationMs;
+    }
+    return admitted;
+  };
+  const dueLabels = new Set(['Military-Bases', 'Supply-Vulnerability']);
+  for (let firstTurn = 0; firstTurn < 6; firstTurn += 1) {
+    const admissions = [firstTurn, firstTurn + 1].map((turn) => worstCaseAdmissions(
+      orderStaticRefHeavySections(
+        heavy.sections.filter((section) => section.label !== 'Supply-Vulnerability'),
+        [daily],
+        turn,
+      ),
+      dueLabels,
+    ));
+    assert.ok(
+      admissions.some((labels) => labels.includes('Supply-Vulnerability')),
+      `daily projection must be admitted within two claimed turns from ${firstTurn}, even while Military-Bases remains due`,
+    );
+    assert.ok(
+      admissions.some((labels) => labels.includes('Military-Bases')),
+      `Military-Bases must retain a worst-case slot within two claimed turns from ${firstTurn}`,
+    );
+  }
+});
+
+test('#6449: static-ref-heavy claims durable turns per invocation, not calendar-day parity', async () => {
+  const commands = [];
+  const fetchImpl = async (_url, init) => {
+    commands.push(JSON.parse(init.body));
+    return { ok: true, json: async () => ({ result: commands.length }) };
+  };
+  const options = {
+    credentials: { restUrl: 'https://redis.example', token: 'secret' },
+    fetchImpl,
+  };
+
+  assert.equal(await claimStaticRefHeavyTurn(options), 0);
+  assert.equal(await claimStaticRefHeavyTurn(options), 1);
+  assert.deepEqual(commands, [
+    ['INCR', 'bundle:turn:static-ref-heavy'],
+    ['INCR', 'bundle:turn:static-ref-heavy'],
+  ]);
+
+  let called = false;
+  assert.equal(await claimStaticRefHeavyTurn({
+    fetchImpl: async () => { called = true; },
+    credentials: null,
+  }), null);
+  assert.equal(called, false, 'missing Redis credentials must fail safe without a network request');
+
+  for (const failingFetch of [
+    async () => ({ ok: false, status: 503, headers: new Headers() }),
+    async () => ({ ok: true, json: async () => ({ unexpected: true }) }),
+    async () => { throw new Error('network unavailable'); },
+  ]) {
+    assert.equal(await claimStaticRefHeavyTurn({
+      credentials: { restUrl: 'https://redis.example', token: 'secret' },
+      fetchImpl: failingFetch,
+    }), null, 'failed turn claims must not invent a scheduler turn');
+  }
+
+  assert.match(
+    readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8'),
+    /if \(claimedTurn == null\) \{[\s\S]*throw new Error/,
+    'a failed durable claim must fail the bundle loudly instead of biasing either cadence class',
   );
 });
