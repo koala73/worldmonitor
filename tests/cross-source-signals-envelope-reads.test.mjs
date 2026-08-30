@@ -701,18 +701,27 @@ it('fails closed when a divergence reading has an unknown state', () => {
   );
 });
 
-it('fails the production aggregate when a present divergence reading has no known state', async () => {
+it('contains an unknown divergence state while preserving unrelated aggregate signals', async () => {
   for (const state of ['future_state', undefined, null]) {
     const readings = freshPhysicalReadings(now);
     readings[0].state = state;
-    await assert.rejects(
-      aggregateCrossSourceSignals({
-        readSourceData: async () => ({
+    const aggregate = await aggregateCrossSourceSignals({
+      readSourceData: async () => ({
           'market:physical-divergence:v1': { readings, transitions: [] },
-        }),
+          'seismology:earthquakes:v1': {
+            earthquakes: [{
+              id: 'kept-quake',
+              place: '120km E of Honshu, Japan',
+              magnitude: 7.2,
+              occurredAt: now - HOUR,
+            }],
+          },
       }),
-      /Unknown physical divergence state/,
-    );
+    });
+    assert.equal(aggregate.signals.some((signal) => (
+      signal.type === 'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION'
+    )), false);
+    assert.equal(aggregate.signals.some((signal) => signal.id === 'quake:kept-quake'), true);
   }
 });
 

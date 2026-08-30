@@ -149,4 +149,25 @@ describe('production WebMCP panel-tab binding', () => {
     })).rejects.toMatchObject({ name: 'AbortError' });
     expect(panel.getActiveTab()).toBe('commodities');
   });
+
+  it('does not select the physical tab when cancellation arrives during preparation', async () => {
+    const panel = new CommoditiesPanel();
+    const controller = new AbortController();
+    let finishPreparation!: () => void;
+    const prepareTab = vi.fn(() => new Promise<void>((resolve) => {
+      finishPreparation = resolve;
+    }));
+
+    const selection = selectWebMcpPanelTab({ commodities: panel }, 'commodities', 'physical', {
+      waitForUiReady: async () => {},
+      prepareTab,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(prepareTab).toHaveBeenCalledOnce());
+    controller.abort(new DOMException('Cancelled.', 'AbortError'));
+    finishPreparation();
+
+    await expect(selection).rejects.toMatchObject({ name: 'AbortError' });
+    expect(panel.getActiveTab()).toBe('commodities');
+  });
 });

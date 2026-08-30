@@ -177,6 +177,31 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     assert.equal(body.composite.weights.length, 2);
   });
 
+  it('accepts a valid stored regime transition while keeping the reading RPC transition-free', async () => {
+    const detectedAt = NOW_MS - 60_000;
+    const stored = {
+      ...snapshot(60),
+      transitions: [{
+        id: `physical-premium:gold:normal-elevated:${detectedAt}`,
+        metal: 'gold',
+        fromRegime: 'normal',
+        toRegime: 'elevated',
+        detectedAt,
+        methodologyVersion: METHODOLOGY_VERSION,
+      }],
+    };
+    installRedisMock(stored);
+
+    const response = await routeHandler()(
+      new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index'),
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.readings.length, 2);
+    assert.equal('transitions' in body, false);
+  });
+
   it('returns explicit missing_input states when the derived snapshot is absent', async () => {
     installRedisMock(null);
     const request = new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index');

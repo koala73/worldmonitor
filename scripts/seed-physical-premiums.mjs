@@ -309,7 +309,7 @@ async function readTransitionCooldown(creds, key, commandFn) {
 
 function isTransientDerivedRedisError(error) {
   const status = Number(error?.status ?? String(error?.message ?? '').match(/Upstash HTTP (\d{3})/)?.[1]);
-  if (status === 429 || status >= 500) return true;
+  if (status === 408 || status === 429 || status >= 500) return true;
   return error?.name === 'AbortError'
     || error?.name === 'TimeoutError'
     || error instanceof TypeError;

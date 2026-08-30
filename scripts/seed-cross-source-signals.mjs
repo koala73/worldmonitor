@@ -955,20 +955,15 @@ function extractRegulatoryAction(d) {
   });
 }
 
-export class PhysicalDivergenceStateError extends TypeError {
-  constructor(state) {
-    super(`Unknown physical divergence state: ${String(state)}`);
-    this.name = 'PhysicalDivergenceStateError';
-  }
-}
-
 function extractPhysicalPremiumRegimeTransition(d) {
   const payload = d['market:physical-divergence:v1'];
   const nowMs = Date.now();
   const readings = Array.isArray(payload?.readings) ? payload.readings : [];
   const knownStates = new Set(['ok', 'insufficient_history', 'stale_input', 'missing_input']);
   for (const reading of readings) {
-    if (!knownStates.has(reading?.state)) throw new PhysicalDivergenceStateError(reading?.state);
+    if (!knownStates.has(reading?.state)) {
+      throw new TypeError(`Unknown physical divergence state: ${String(reading?.state)}`);
+    }
   }
   const readingsByMetal = new Map(readings.map((reading) => [reading?.metal, reading]));
   const inputsFresh = ['gold', 'silver'].every((metal) => {
@@ -1103,7 +1098,6 @@ async function aggregateCrossSourceSignals({ readSourceData = readAllSourceKeys 
       const extracted = extractor(sourceData);
       allSignals.push(...extracted);
     } catch (err) {
-      if (err instanceof PhysicalDivergenceStateError) throw err;
       console.warn(`  Extractor ${extractor.name} failed: ${err.message}`);
     }
   }

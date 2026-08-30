@@ -760,6 +760,21 @@ describe('physical premium seed', () => {
     assert.equal(transientAttempts, 3);
     assert.deepEqual(delays, [250, 500]);
 
+    let timeoutAttempts = 0;
+    await assert.rejects(
+      retryDerivedRedisCommand(
+        creds,
+        ['GET', 'test:key'],
+        async () => {
+          timeoutAttempts += 1;
+          throw Object.assign(new Error('Upstash HTTP 408'), { status: 408 });
+        },
+        async () => {},
+      ),
+      /Upstash HTTP 408/,
+    );
+    assert.equal(timeoutAttempts, 3);
+
     const cappedDelays = [];
     let cappedAttempts = 0;
     await assert.rejects(

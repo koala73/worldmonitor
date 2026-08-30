@@ -1,7 +1,4 @@
 import { normalizePhysicalDivergenceSnapshot } from './physical-divergence-snapshot';
-import { McpStoredDataValidationError } from './mcp-stored-data-validation-error';
-
-export { McpStoredDataValidationError } from './mcp-stored-data-validation-error';
 
 export const PHYSICAL_PREMIUM_SYMBOL_ALIASES: Record<string, string[]> = {
   gold: ['gold', 'xau', 'gc=f'],
@@ -108,10 +105,7 @@ export function normalizePhysicalDivergenceDataset(data: Record<string, unknown>
   let normalized: ReturnType<typeof normalizePhysicalDivergenceSnapshot>;
   try {
     normalized = normalizePhysicalDivergenceSnapshot(raw, nowMs);
-  } catch (error) {
-    if (error instanceof TypeError && error.message.startsWith('Unknown physical divergence state:')) {
-      throw new McpStoredDataValidationError(error.message);
-    }
+  } catch {
     delete data['physical-divergence'];
     return;
   }

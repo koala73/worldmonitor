@@ -69,7 +69,14 @@ const dataset = {
       ],
       methodologyVersion: 'physical-divergence-v1',
     },
-    transitions: [],
+    transitions: [{
+      id: `physical-premium:gold:normal-elevated:${Date.parse('2026-08-18T12:29:00.000Z')}`,
+      metal: 'gold',
+      fromRegime: 'normal',
+      toRegime: 'elevated',
+      detectedAt: Date.parse('2026-08-18T12:29:00.000Z'),
+      methodologyVersion: 'physical-divergence-v1',
+    }],
   },
   crypto: { quotes: [{ symbol: 'BTC' }] },
 };
@@ -173,21 +180,38 @@ describe('get_market_data physical premium coverage', () => {
     assert.equal((unrelated['physical-divergence'] as { composite?: unknown }).composite, undefined);
   });
 
-  it('fails closed on an unknown divergence state', () => {
+  it('contains an unknown divergence state without breaking unrelated market data', () => {
     const corrupted = structuredClone(dataset);
     corrupted['physical-divergence'].readings[0].state = 'future_state';
-    assert.throws(
-      () => tool._postFilter?.(corrupted, { limit: 0 }),
-      /Unknown physical divergence state/,
+    const filtered = tool._postFilter?.(corrupted, { asset_class: ['equity'], limit: 0 });
+
+    assert.deepEqual(
+      filtered,
+      { 'stocks-bootstrap': { quotes: [{ symbol: 'AAPL' }, { symbol: 'MSFT' }] } },
     );
   });
 
-  it('fails the real MCP execution path on an unknown divergence state', async () => {
+  it('contains an unknown divergence state through the real MCP execution path', async () => {
     const corrupted = structuredClone(dataset['physical-divergence']);
     corrupted.readings[0].state = 'future_state';
-    await assert.rejects(
-      executeWithStoredData({ symbols: ['AAPL'], limit: 0 }, corrupted),
-      /Unknown physical divergence state/,
+    const result = await executeWithStoredData({ symbols: ['AAPL'], limit: 0 }, corrupted);
+
+    assert.equal(result.data['physical-divergence'], undefined);
+    assert.deepEqual(
+      (result.data['stocks-bootstrap'] as { quotes: Array<{ symbol: string }> }).quotes,
+      [{ symbol: 'AAPL' }],
+    );
+  });
+
+  it('contains a malformed non-state divergence snapshot through the real MCP path', async () => {
+    const corrupted = structuredClone(dataset['physical-divergence']);
+    corrupted.readings[0].methodologyVersion = 'future-method';
+    const result = await executeWithStoredData({ symbols: ['AAPL'], limit: 0 }, corrupted);
+
+    assert.equal(result.data['physical-divergence'], undefined);
+    assert.deepEqual(
+      (result.data['stocks-bootstrap'] as { quotes: Array<{ symbol: string }> }).quotes,
+      [{ symbol: 'AAPL' }],
     );
   });
 

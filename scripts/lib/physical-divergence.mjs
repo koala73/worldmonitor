@@ -11,7 +11,7 @@ export const MIN_HISTORY_POINTS = 60;
 // Two times the daily physical-print cadence prevents a repeated transition on the next seed run.
 export const TRANSITION_COOLDOWN_MS = 48 * 60 * 60 * 1000;
 
-export const METAL_METHODOLOGY = Object.freeze({
+const METAL_METHODOLOGY = Object.freeze({
   gold: Object.freeze({
     weight: 0.7,
     absoluteFloors: Object.freeze({ elevated: 1, stressed: 3, extreme: 5 }),
@@ -65,7 +65,7 @@ export function robustZScore(current, values) {
   return round(0.67448975 * (current - center) / mad, 6);
 }
 
-export function percentileRank(current, values) {
+function percentileRank(current, values) {
   const valid = Array.isArray(values) ? values.filter(finite) : [];
   if (!finite(current) || valid.length === 0) return null;
   const atOrBelow = valid.filter((value) => value <= current).length;
