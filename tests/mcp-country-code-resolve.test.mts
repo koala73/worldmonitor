@@ -65,6 +65,25 @@ describe('resolveCountryCode — the ladder', () => {
     assert.equal(resolveCountryCode('  De  '), 'DE');
   });
 
+  it('accepts real alpha-2 codes the local maps omit', () => {
+    // The two maps are geojson-derived and incomplete. Gating the alpha-2 path
+    // on their contents rejected eight real ISO 3166-1 codes, turning requests
+    // the tool schema promises to accept into JSON-RPC -32602. Shape is the
+    // only correct test for a bare code.
+    for (const code of ['CX', 'TK', 'BV', 'SJ', 'YT', 'RE', 'MQ', 'GP']) {
+      assert.equal(resolveCountryCode(code), code, `${code} is a valid ISO 3166-1 alpha-2 code`);
+    }
+  });
+
+  it('passes an unassigned two-letter code through rather than rejecting it', () => {
+    // `XX` is not a country, so it cannot yield the WRONG country — it fails
+    // honestly downstream. That is a different and lesser problem than
+    // truncating a NAME, which yields a valid code for a real other country.
+    // Pinned so the trade-off is a recorded decision, not an accident.
+    assert.equal(resolveCountryCode('XX'), 'XX');
+    assert.equal(resolveCountryCode('ZZ'), 'ZZ');
+  });
+
   it('maps alpha-3', () => {
     assert.equal(resolveCountryCode('IRQ'), 'IQ');
     assert.equal(resolveCountryCode('chn'), 'CN');

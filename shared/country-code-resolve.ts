@@ -52,31 +52,11 @@ const ISO2_PATTERN = /^[A-Z]{2}$/;
 const ISO3_PATTERN = /^[A-Z]{3}$/;
 
 /**
- * Every alpha-2 code this repo knows, drawn from the values of both maps.
- *
- * A bare two-letter argument is checked against this rather than waved through
- * on shape alone. `XX` satisfies `^[A-Z]{2}$` and so satisfies the downstream
- * proto too — waving it through just relocates the failure to the HTTP 400
- * this module exists to stop. Verified superset: every key of
- * `shared/country-bboxes.js` is in here, as are XK, TW, PS, EH and AQ, so
- * nothing real is lost by being strict.
- */
-const KNOWN_ISO2: ReadonlySet<string> = new Set([
-  ...Object.values(COUNTRY_NAMES as Record<string, string>),
-  ...Object.values(ISO3_TO_ISO2 as Record<string, string>),
-]);
-
-/**
  * Last line of defence: every return path funnels through this, so a malformed
  * or regenerated data file can never widen what leaves this module.
  */
 function asIso2(value: unknown): string | null {
   return typeof value === 'string' && ISO2_PATTERN.test(value) ? value : null;
-}
-
-/** A bare alpha-2 argument: correct shape AND a code we actually know. */
-function asKnownIso2(value: string): string | null {
-  return ISO2_PATTERN.test(value) && KNOWN_ISO2.has(value) ? value : null;
 }
 
 /**
@@ -126,8 +106,18 @@ function resolveDesignator(value: string): string | null {
   if (byName) return byName;
 
   const upper = value.trim().toUpperCase();
-  const known = asKnownIso2(upper);
-  if (known) return known;
+  // Shape only, deliberately — do NOT gate this on the codes these two maps
+  // happen to contain. They are geojson-derived and incomplete: CX (Christmas
+  // Island), TK (Tokelau), BV, SJ, YT, RE, MQ and GP are all real ISO 3166-1
+  // codes absent from them, and a membership check rejected every one, turning
+  // valid requests the tool schema promises to accept into -32602.
+  //
+  // Letting an unassigned code like `XX` through is the lesser evil and not
+  // what this module guards against: it is not a country, so it cannot produce
+  // a WRONG country — it fails honestly downstream. Truncating a NAME to two
+  // letters is the bug here, because that yields a valid code for a real,
+  // different country.
+  if (ISO2_PATTERN.test(upper)) return upper;
   if (ISO3_PATTERN.test(upper)) return asIso2(ISO3_MAP[upper]);
   return null;
 }

@@ -1406,6 +1406,30 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(Object.keys(full.data.macro.countries).length, 3, 'no args → all countries retained');
   });
 
+  it('get_country_macro: a country NAME narrows, rather than falling open to all', async () => {
+    // `pickMapKeys` FAILS OPEN — a filter matching nothing returns the whole
+    // map (api/mcp/filters.ts:100). The country-briefing prompt fans one
+    // argument out to three tools, and once the other two accepted names, an
+    // un-normalized name reaching this one spliced EVERY country's macro
+    // indicators into a single-country brief.
+    const macro = { countries: { US: { inflationPct: 3 }, DE: { inflationPct: 2 }, CN: { inflationPct: 1 } }, seededAt: 1 };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 3 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    for (const designator of ['Germany', 'DEU']) {
+      mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+      const out = await callTool('get_country_macro', { countries: [designator] });
+      assert.deepEqual(
+        Object.keys(out.data.macro.countries),
+        ['DE'],
+        `"${designator}" must narrow to DE, not fall open to every country`,
+      );
+    }
+  });
+
   it('get_energy_intelligence: country filter matches the gas-storage string[] payload', async () => {
     // Regression: energy:gas-storage:v1:_countries is a string[] of ISO2 codes,
     // NOT an array of {iso2} objects. A filter that reads c.iso2 drops everything.
@@ -2967,11 +2991,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     const data = JSON.parse(body.result.content[0].text);
-    // `XX` is well-formed alpha-2 but not a country, so it fails resolution
-    // rather than reaching the bounding-box lookup. The message must name the
-    // offending value; "no coverage" would wrongly imply XX is a real country.
-    assert.ok(data.error?.includes('Could not resolve'), `must reject unresolvable code: ${data.error}`);
-    assert.ok(data.error?.includes('XX'), 'error must name the offending value');
+    // `XX` is shape-valid alpha-2, so it passes through resolution and misses
+    // the bounding-box table. Resolution deliberately does NOT gate on a known-
+    // code list: the two local maps are geojson-derived and omit real codes
+    // (CX, TK, BV, SJ, YT, RE, MQ, GP), so gating rejected valid input.
+    assert.ok(data.error?.includes('No airspace coverage'), `expected a coverage error: ${data.error}`);
+    assert.ok(data.error?.includes('XX'), 'error must name the code');
   });
 
   it('get_airspace returns partial:true + warning when military source fails', async () => {
@@ -3254,9 +3279,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }));
     const body = await res.json();
     const data = JSON.parse(body.result.content[0].text);
-    // See the get_airspace counterpart: `ZZ` is unresolvable, not uncovered.
-    assert.ok(data.error?.includes('Could not resolve'), `must reject unresolvable code: ${data.error}`);
-    assert.ok(data.error?.includes('ZZ'), 'error must name the offending value');
+    // See the get_airspace counterpart: `ZZ` is shape-valid and uncovered.
+    assert.ok(data.error?.includes('No maritime coverage'), `expected a coverage error: ${data.error}`);
+    assert.ok(data.error?.includes('ZZ'), 'error must name the code');
   });
 
   it('get_maritime_activity returns JSON-RPC -32603 when vessel API fails', async () => {
