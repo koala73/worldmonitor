@@ -145,11 +145,25 @@ function runAggregate(env: Record<string, string>) {
   });
 }
 
+const gitLocalEnvVars = spawnSync('git', ['rev-parse', '--local-env-vars'], {
+  encoding: 'utf8',
+}).stdout.trim().split('\n').filter(Boolean);
+
+function isolatedGitEnv() {
+  const env = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_SYSTEM: '/dev/null',
+  };
+  for (const name of gitLocalEnvVars) delete env[name];
+  return env;
+}
+
 function git(cwd: string, args: string[]) {
   return spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+    env: isolatedGitEnv(),
   });
 }
 
@@ -205,7 +219,7 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
     const advancedResult = spawnSync('git', ['commit-tree', tree, '-p', expectedSha, '-m', 'advanced'], {
       cwd: repo,
       encoding: 'utf8',
-      env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+      env: isolatedGitEnv(),
     });
     assert.equal(advancedResult.status, 0, advancedResult.stderr);
     const advanced = advancedResult.stdout.trim();
@@ -223,7 +237,7 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
     cwd: repo,
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...isolatedGitEnv(),
       ...workflow.env,
       EXPECTED_HEAD_SHA: expectedSha,
       GENERATED_CHANGED: mode === 'current' ? 'false' : 'true',
