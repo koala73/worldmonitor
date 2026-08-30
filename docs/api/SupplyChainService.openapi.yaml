@@ -3031,14 +3031,6 @@ paths:
                   schema:
                     type: string
                     pattern: '^[A-Z]{2}$'
-                - name: jmespath
-                  in: query
-                  description: |-
-                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
-                  required: false
-                  example: "keys(@)"
-                  schema:
-                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -3057,9 +3049,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                oneOf:
-                                    - $ref: '#/components/schemas/ValidationError'
-                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                                $ref: '#/components/schemas/ValidationError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -3159,14 +3149,6 @@ paths:
                   schema:
                     type: integer
                     format: int32
-                - name: jmespath
-                  in: query
-                  description: |-
-                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
-                  required: false
-                  example: "keys(@)"
-                  schema:
-                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -3190,9 +3172,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                oneOf:
-                                    - $ref: '#/components/schemas/ValidationError'
-                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                                $ref: '#/components/schemas/ValidationError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -3308,14 +3288,6 @@ paths:
                   schema:
                     type: integer
                     format: int32
-                - name: jmespath
-                  in: query
-                  description: |-
-                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
-                  required: false
-                  example: "keys(@)"
-                  schema:
-                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -3368,9 +3340,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                oneOf:
-                                    - $ref: '#/components/schemas/ValidationError'
-                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                                $ref: '#/components/schemas/ValidationError'
                 "401":
                     description: Missing or invalid API key.
                     content:

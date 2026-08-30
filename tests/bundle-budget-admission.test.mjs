@@ -424,9 +424,24 @@ test('#6449: static-ref-heavy claims durable turns per invocation, not calendar-
     'a lost claim response must repeat the unexecuted turn after lease expiry, never skip it',
   );
 
+  // A failed claim must not bias either cadence class. That property comes from
+  // NOT advancing the turn (the next invocation claims the same turn, asserted
+  // above), not from crashing: claimStaticRefHeavyTurn returns the same null for
+  // genuine lease contention, absent credentials, and any transient Upstash
+  // failure, so throwing cost all four members a full daily tick on a momentary
+  // blip. Assert the anti-bias goal plus a graceful defer.
+  const bundleSource = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
   assert.match(
-    readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8'),
-    /if \(turnClaim == null\) \{[\s\S]*throw new Error[\s\S]*onTerminalComplete:[\s\S]*acknowledgeStaticRefHeavyTurn/,
-    'a failed durable claim must fail the bundle loudly instead of biasing either cadence class',
+    bundleSource,
+    /if \(turnClaim == null\) \{[\s\S]*process\.exit\(0\)[\s\S]*onTerminalComplete:[\s\S]*acknowledgeStaticRefHeavyTurn/,
+    'a failed durable claim must defer to the next tick, not skip all four members',
   );
+  assert.doesNotMatch(
+    bundleSource,
+    /if \(turnClaim == null\) \{[\s\S]{0,400}throw new Error/,
+    'a transient Redis failure is indistinguishable from contention and must not crash the bundle',
+  );
+  // The turn is only ever advanced by the acknowledgement hook, which a deferred
+  // tick never reaches — that is what preserves rotation fairness.
+  assert.match(bundleSource, /onTerminalComplete: async \(\) => \{[\s\S]*acknowledgeStaticRefHeavyTurn\(turnClaim\)/);
 });

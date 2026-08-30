@@ -198,6 +198,17 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
   live: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=300',
 };
 
+// REST parity with the MCP dispatch reject: these responses carry
+// attribution-bound provider evidence (resilience indicators, and the BGS
+// mineral evidence behind supply vulnerability), so a projection that strips the
+// source/licence/retrieval fields is refused rather than served.
+const PROJECTION_DISABLED_PATHS: ReadonlySet<string> = new Set([
+  '/api/resilience/v1/get-resilience-indicators',
+  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/supply-chain/v1/get-chokepoint-dependencies',
+  '/api/supply-chain/v1/list-vulnerability-rankings',
+]);
+
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // 'live' tier — bbox-quantized + tanker-aware caching upstream of the
   // 60s in-handler cache, absorbing identical-bbox requests at the CDN
@@ -2279,7 +2290,7 @@ export function createDomainGateway(
       let responseView = new Uint8Array(bodyBytes);
       const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
       if (
-        pathname === '/api/resilience/v1/get-resilience-indicators'
+        PROJECTION_DISABLED_PATHS.has(pathname)
         && jmespathExpr
       ) {
         const errorBody = JSON.stringify({

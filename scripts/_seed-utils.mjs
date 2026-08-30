@@ -2472,7 +2472,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       // the prior cohort untouched. If staging or the final switch fails,
       // extend that untouched last-good cohort before surfacing the failure.
       // Validation skips are handled below and retain their stricter policy.
-      if (publishAtomically) {
+      // A thrown `beforePublish` is the same shape: it runs ahead of every
+      // canonical/extra write, so the prior cohort is likewise untouched and the
+      // deep coverage rejections that live there must not cost last-good TTLs.
+      if (publishAtomically || beforePublish) {
         const preserved = await preserveExistingKeys().catch(() => false);
         if (!preserved) {
           console.error(`  FAILURE: atomic publish failed and last-good preservation was incomplete`);

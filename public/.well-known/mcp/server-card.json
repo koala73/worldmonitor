@@ -419,14 +419,14 @@
     },
     {
       "name": "get_supply_vulnerabilities",
-      "description": "Return one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance. Missing evidence stays absent and state/reasons explain why; never interpret an absent score as zero.",
+      "description": "An absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
     },
     {
       "name": "get_chokepoint_dependencies",
-      "description": "Return the highest-scoring country and commodity dependencies for one maritime chokepoint from the same snapshot as country vulnerabilities. Scores may be absent when coverage is insufficient; read state and reasons before drawing conclusions.",
+      "description": "An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }

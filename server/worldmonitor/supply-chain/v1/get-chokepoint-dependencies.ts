@@ -5,20 +5,21 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
-import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 import { requiresRedistributableProvidersForDirectRpc } from '../../../_shared/provider-redistribution';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
 import {
   VULNERABILITY_COHORT_KEY,
   chokepointDependencyShardKey,
+  resolvePageSize,
   enforceDependencyRedistributionPolicy,
   hasCurrentRedistributionPolicy,
   isMatchingShard,
+  locateEntityShard,
   mapChokepointDependency,
   type RawVulnerabilityCohort,
   type RawChokepointShard,
   stringValue,
-  vulnerabilityShardSlot,
 } from './_vulnerability-projection';
 
 export async function getChokepointDependencies(
@@ -36,21 +37,27 @@ export async function getChokepointDependencies(
   let chokepoint = payload?.chokepoints?.[chokepointId];
   let shardUnavailable = false;
   if (payload && !payload.chokepoints) {
-    const slot = vulnerabilityShardSlot(payload.slot);
-    const chokepointIds = Array.isArray(payload.chokepointIds)
-      ? payload.chokepointIds.filter((id): id is string => typeof id === 'string')
-      : null;
-    if (slot === undefined || chokepointIds == null) {
+    const located = locateEntityShard(
+      payload,
+      payload.chokepointIds,
+      chokepointId,
+      chokepointDependencyShardKey,
+    );
+    if (located.status === 'unavailable') {
       shardUnavailable = true;
-    } else if (chokepointIds.includes(chokepointId)) {
-      const shard = await getCachedJson(chokepointDependencyShardKey(slot, chokepointId), true)
+    } else if (located.status === 'read') {
+      const shard = await getCachedJson(located.key, true)
         .catch(() => null) as RawChokepointShard | null;
       if (isMatchingShard(payload, shard) && shard?.chokepoint?.id === chokepointId) chokepoint = shard.chokepoint;
       else shardUnavailable = true;
     }
   }
-  const pageSize = clampInt(req.pageSize, 25, 1, 100);
+  const pageSize = resolvePageSize(req.pageSize, 25, 100);
   const requireRedistributable = requiresRedistributableProvidersForDirectRpc(ctx.request);
+  // The body below is redacted per principal, but these paths sit on the shared
+  // `daily` CDN tier. Without this the redacted and unredacted shapes share one
+  // cache key on the public origin both browsers and verified MCP call.
+  if (requireRedistributable) markNoCacheResponse(ctx.request);
   const dependencies = Array.isArray(chokepoint?.dependencies)
     ? chokepoint.dependencies
       .map((record) => enforceDependencyRedistributionPolicy(

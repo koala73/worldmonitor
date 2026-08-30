@@ -72,11 +72,23 @@ const DAILY_SECTIONS = [
 
 // The Redis turn advances once per actual invocation. Calendar parity is not a
 // safe substitute: if Railway misses a day, two executions can have the same
-// parity and repeat the same lead class. A missing claim is a scheduler-control
-// failure, so stop loudly rather than biasing one cadence class indefinitely.
+// parity and repeat the same lead class.
+//
+// A null claim is NOT a crash. claimStaticRefHeavyTurn collapses three cases into
+// null — another run legitimately holds the lease, credentials are absent, and any
+// transient Upstash failure (including its 5s timeout). Throwing here skipped all
+// four members for the whole daily tick on what is often a momentary blip, which
+// is far more damaging than deferring one rotation. Not advancing the turn also
+// preserves the anti-bias property the rotation exists for: the next invocation
+// claims the same turn, so no cadence class is skipped. Mirrors the graceful
+// `process.exit(0)` that _seed-utils.mjs already uses for lock contention.
 const turnClaim = await claimStaticRefHeavyTurn();
 if (turnClaim == null) {
-  throw new Error('[Bundle:static-ref-heavy] could not claim the durable scheduler turn');
+  console.log(
+    '[Bundle:static-ref-heavy] could not claim the durable scheduler turn '
+    + '(lease held by another run, or Redis unavailable) — deferring to the next tick.',
+  );
+  process.exit(0);
 }
 const sections = orderStaticRefHeavySections(SECTIONS, DAILY_SECTIONS, turnClaim.turn);
 

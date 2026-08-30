@@ -39,6 +39,15 @@ import { utf8ByteLength } from './utils';
 // throw/fall-back path can be exercised directly — it can't be triggered
 // through the public handler because every registry `_postFilter` is
 // defensively written and won't throw on JSON-RPC input.
+// Tools whose payloads carry attribution-bound provider evidence. A JMESPath
+// projection could detach the values from the source/licence/retrieval fields
+// that make their redistribution permissible, so projection is refused outright.
+const ATTRIBUTION_BOUND_TOOLS: ReadonlySet<string> = new Set([
+  'get_resilience_indicators',
+  'get_supply_vulnerabilities',
+  'get_chokepoint_dependencies',
+]);
+
 export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
@@ -270,8 +279,10 @@ export async function dispatchToolsCall(
   // attached to their source, licence, retrieval time, and provenance fields.
   // Reject projection before quota reservation and execution so a caller
   // cannot use the universal JMESPath facility to separate those fields.
+  // The supply-vulnerability tools carry BGS mineral evidence under the same
+  // "attribution required; redistribution restricted" licence.
   if (
-    tool.name === 'get_resilience_indicators'
+    ATTRIBUTION_BOUND_TOOLS.has(tool.name)
     && typeof p.arguments?.jmespath === 'string'
     && p.arguments.jmespath.length > 0
   ) {

@@ -832,6 +832,21 @@ const SCORECARD_EVIDENCE_REASON_VALUES = ['', 'source-unavailable', 'country-una
 const SCORECARD_REASON_VALUES = SCORECARD_EVIDENCE_REASON_VALUES.slice(1);
 const SCORECARD_TOP_LEVEL_REASON_VALUES = ['', 'country-unavailable', 'bloc-members-unavailable', 'scorecard-snapshot-unavailable'];
 
+// Closed vocabularies emitted by scripts/shared/supply-vulnerability-score.mjs.
+// `band` includes '' because the redistribution-blocked path clears it rather
+// than nulling it (server/.../_vulnerability-projection.ts).
+const VULNERABILITY_BAND_VALUES = ['', 'low', 'moderate', 'high', 'critical'];
+const VULNERABILITY_STATE_VALUES = ['ok', 'stale_input', 'insufficient_data'];
+const VULNERABILITY_REASON_VALUES = [
+  'missing_source_concentration',
+  'missing_transit_exposure',
+  'missing_transit_status',
+  'stale_source_concentration',
+  'stale_transit_exposure',
+  'stale_buffer',
+  'redistribution_blocked',
+];
+
 const SCORECARD_OBSERVATION_OUTPUT_SCHEMA = {
   type: 'object' as const,
   required: ['name', 'value', 'year', 'unit', 'source', 'indicatorCode'],
@@ -2916,12 +2931,16 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_supply_vulnerabilities',
+    // Payload carries BGS mineral evidence under an attribution-required,
+    // redistribution-restricted licence; a projection could strip the
+    // source/licence/retrieval fields that authorise reuse.
+    _jmespathDisabled: true,
     // A full reviewed portfolio currently carries 23 commodities and the
     // complete 13-route provenance set per commodity. Production-shape
     // dispatch tests measure ~321 KiB, so 512 KiB preserves the evidence with
     // useful growth headroom instead of charging quota for a budget envelope.
     _outputBudgetBytes: 524288,
-    description: 'Return one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance. Missing evidence stays absent and state/reasons explain why; never interpret an absent score as zero.',
+    description: 'An absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2937,8 +2956,11 @@ export const RPC_TOOLS: ToolDef[] = [
         country: { type: 'string' },
         vulnerabilities: { type: 'array', items: { type: 'object', properties: {
           commodityId: { type: 'string' }, commodity: { type: 'string' },
-          score: { type: ['number', 'null'] }, band: { type: 'string' }, state: { type: 'string' },
-          reasons: { type: 'array', items: { type: 'string' } }, coverage: { type: 'array', items: { type: 'string' } },
+          score: { type: ['number', 'null'] },
+          band: { type: 'string', enum: VULNERABILITY_BAND_VALUES },
+          state: { type: 'string', enum: VULNERABILITY_STATE_VALUES },
+          reasons: { type: 'array', items: { type: 'string', enum: VULNERABILITY_REASON_VALUES } },
+          coverage: { type: 'array', items: { type: 'string' } },
           components: VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA, methodologyVersion: { type: 'string' },
         } } },
         generatedAt: { type: 'string' },
@@ -2966,8 +2988,12 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_chokepoint_dependencies',
+    // Payload carries BGS mineral evidence under an attribution-required,
+    // redistribution-restricted licence; a projection could strip the
+    // source/licence/retrieval fields that authorise reuse.
+    _jmespathDisabled: true,
     _outputBudgetBytes: 131072,
-    description: 'Return the highest-scoring country and commodity dependencies for one maritime chokepoint from the same snapshot as country vulnerabilities. Scores may be absent when coverage is insufficient; read state and reasons before drawing conclusions.',
+    description: 'An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2985,8 +3011,11 @@ export const RPC_TOOLS: ToolDef[] = [
           countryIso2: { type: 'string' }, countryName: { type: 'string' },
           commodityId: { type: 'string' }, commodity: { type: 'string' },
           transitShare: { type: 'number' }, weightedTransitShare: { type: 'number' },
-          score: { type: ['number', 'null'] }, band: { type: 'string' }, state: { type: 'string' },
-          reasons: { type: 'array', items: { type: 'string' } }, methodologyVersion: { type: 'string' },
+          score: { type: ['number', 'null'] },
+          band: { type: 'string', enum: VULNERABILITY_BAND_VALUES },
+          state: { type: 'string', enum: VULNERABILITY_STATE_VALUES },
+          reasons: { type: 'array', items: { type: 'string', enum: VULNERABILITY_REASON_VALUES } },
+          methodologyVersion: { type: 'string' },
         } } },
         generatedAt: { type: 'string' }, methodologyVersion: { type: 'string' },
         upstreamUnavailable: { type: 'boolean' },

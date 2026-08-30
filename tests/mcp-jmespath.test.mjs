@@ -268,9 +268,19 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const body = await res.json();
       const tools = body.result.tools;
       assert.ok(tools.length > 0);
+      // Derived from the registry's own `_jmespathDisabled` flag, not a hardcoded
+      // name: a newly added attribution-bound tool used to slip past this
+      // assertion, which is how the supply-vulnerability tools shipped
+      // advertising a projection over BGS-licensed evidence.
+      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+      const attributionBound = new Set(
+        TOOL_REGISTRY.filter((t) => t._jmespathDisabled === true).map((t) => t.name),
+      );
+      assert.ok(attributionBound.size > 0, 'expected attribution-bound tools to be declared');
       for (const tool of tools) {
-        if (tool.name === 'get_resilience_indicators') {
-          assert.equal(tool.inputSchema?.properties?.jmespath, undefined);
+        if (attributionBound.has(tool.name)) {
+          assert.equal(tool.inputSchema?.properties?.jmespath, undefined,
+            `attribution-bound tool "${tool.name}" must not advertise jmespath`);
           continue;
         }
         assert.ok(tool.inputSchema?.properties?.jmespath,
