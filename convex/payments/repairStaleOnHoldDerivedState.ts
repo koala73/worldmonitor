@@ -13,7 +13,6 @@
  * leaving the deployment workflow red and the repair safe to retry.
  */
 
-import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import {
   recomputeEntitlementFromAllSubs,
@@ -25,8 +24,8 @@ const REPAIR_MARKER =
 const MAX_SUBSCRIPTIONS = 500;
 
 export const run = internalMutation({
-  args: { observedAt: v.optional(v.number()) },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
     const completed = await ctx.db
       .query("counters")
       .withIndex("by_name", (q) => q.eq("name", REPAIR_MARKER))
@@ -43,7 +42,7 @@ export const run = internalMutation({
       };
     }
 
-    const observedAt = args.observedAt ?? Date.now();
+    const observedAt = Date.now();
     const staleSubscriptions = await ctx.db
       .query("subscriptions")
       .withIndex("by_status_currentPeriodEnd", (q) =>

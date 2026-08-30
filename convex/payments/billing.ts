@@ -487,6 +487,31 @@ function getSubscriptionStatusPriority(status: string): number {
   }
 }
 
+function getSubscriptionSelectionPriority(
+  subscription: Pick<Doc<"subscriptions">, "status" | "currentPeriodEnd">,
+  at: number,
+): number {
+  if (subscription.status === "active") return 0;
+  if (isCoveringAt(subscription, at)) {
+    return subscription.status === "on_hold" ? 1 : 2;
+  }
+  return 3;
+}
+
+function compareSubscriptionsForSelection(
+  a: Pick<Doc<"subscriptions">, "status" | "currentPeriodEnd" | "updatedAt">,
+  b: Pick<Doc<"subscriptions">, "status" | "currentPeriodEnd" | "updatedAt">,
+  at: number,
+): number {
+  const priorityDelta =
+    getSubscriptionSelectionPriority(a, at) - getSubscriptionSelectionPriority(b, at);
+  if (priorityDelta !== 0) return priorityDelta;
+  if (a.currentPeriodEnd !== b.currentPeriodEnd) {
+    return b.currentPeriodEnd - a.currentPeriodEnd;
+  }
+  return b.updatedAt - a.updatedAt;
+}
+
 // Pro Business buyers get the same day-0 activation interstitial as Pro
 // (KTD9) — the tier is a larger Pro, not a separate product line. Mirrored by
 // the client allowlist in src/services/pro-activation-state.ts.
@@ -612,8 +637,9 @@ export const getSubscriptionForUser = query({
       return null;
     }
 
-    // Fetch all subscriptions for user and prefer active/on_hold over cancelled/expired.
-    // Avoids the bug where a cancelled sub created after an active one hides the active one.
+    // Fetch all subscriptions for user and prefer current coverage over ended rows.
+    // Avoids a newer ended row hiding an active subscription, or a stale hold
+    // hiding a cancelled subscription that is still paid through.
     const allSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -621,19 +647,8 @@ export const getSubscriptionForUser = query({
 
     if (allSubs.length === 0) return null;
 
-    allSubs.sort((a, b) => {
-      // Ended subscriptions are equivalent for display selection. Prefer the
-      // one whose coverage ended most recently so returning-subscriber links
-      // preserve the latest plan instead of always favoring cancelled.
-      const pa = a.status === "active" ? 0 : a.status === "on_hold" ? 1 : 2;
-      const pb = b.status === "active" ? 0 : b.status === "on_hold" ? 1 : 2;
-      if (pa !== pb) return pa - pb; // active first
-      if (pa === 2) {
-        const periodDelta = b.currentPeriodEnd - a.currentPeriodEnd;
-        if (periodDelta !== 0) return periodDelta;
-      }
-      return b.updatedAt - a.updatedAt;
-    });
+    const now = Date.now();
+    allSubs.sort((a, b) => compareSubscriptionsForSelection(a, b, now));
 
     // Safe: we checked length > 0 above
     const subscription = allSubs[0]!;
@@ -646,7 +661,7 @@ export const getSubscriptionForUser = query({
     const firstProBillingCycle =
       isProActivationPlan(subscription.planKey) &&
       isFirstBillingCycle(subscription) &&
-      isCoveringAt(subscription, Date.now());
+      isCoveringAt(subscription, now);
     const activationOnboardingEligible =
       firstProBillingCycle &&
       !(await hasConfirmedActivationPresentation(ctx, subscription._id));
@@ -1055,10 +1070,11 @@ export const getCustomerByUserId = internalQuery({
  *      when it DOES match the requesting userId, it's the best
  *      remaining signal — better than NO_CUSTOMER for a paying user.
  *
- * Subscription preference (within tier 1+2): active → on_hold →
- * cancelled → other; tie-break by newest `updatedAt`. A given userId
- * may have multiple subscription rows over time (cancelled + new), so
- * sorting is required — there's no per-userId uniqueness invariant.
+ * Subscription preference (within tier 1+2): active → paid-through
+ * on_hold → paid-through cancelled → ended; tie-break by latest period end,
+ * then newest `updatedAt`. A given userId may have multiple subscription rows
+ * over time (cancelled + new), so sorting is required — there's no per-userId
+ * uniqueness invariant.
  *
  * Returns null only when all three tiers fail (no subs at all OR no
  * customer_id anywhere across subs/customers). Caller throws
@@ -1073,12 +1089,10 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       .take(50);
 
     if (subs.length > 0) {
-      const sorted = [...subs].sort((a, b) => {
-        const pa = getSubscriptionStatusPriority(a.status);
-        const pb = getSubscriptionStatusPriority(b.status);
-        if (pa !== pb) return pa - pb;
-        return b.updatedAt - a.updatedAt;
-      });
+      const now = Date.now();
+      const sorted = [...subs].sort((a, b) =>
+        compareSubscriptionsForSelection(a, b, now),
+      );
 
       for (const sub of sorted) {
         // Tier 1: stable column populated by the webhook handler.
@@ -2915,18 +2929,7 @@ export const getCheckoutBlockingSubscription = internalQuery({
             targetCatalogEntry.tierGroup,
           )
         ) return false;
-        if (sub.status === "active") return true;
-        // on_hold blocks only while still paid-through, same bound as
-        // cancelled: Dodo can leave a payment-failed sub on hold forever, and
-        // an unbounded block would permanently lock the user out of ever
-        // re-subscribing in this billing family (they can't pay us again
-        // because they once failed to pay us). Within the paid period the
-        // block stands — recovery belongs in the customer portal, not a
-        // duplicate checkout.
-        return (
-          (sub.status === "on_hold" || sub.status === "cancelled") &&
-          sub.currentPeriodEnd > now
-        );
+        return isCoveringAt(sub, now);
       })
       .sort((a, b) => {
         const pa = getSubscriptionStatusPriority(a.status);

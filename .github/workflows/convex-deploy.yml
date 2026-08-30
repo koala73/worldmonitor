@@ -190,22 +190,6 @@ jobs:
         continue-on-error: true
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-      - id: repair_stale_on_hold_derived_state
-        name: Repair stale on_hold derived state (idempotent)
-        # GHSA-hw94-8c4h-m9qp bounded future entitlement recomputes, but rows
-        # already stranded by the old predicate need one production repair.
-        # The mutation preserves Dodo's on_hold status, fixes only derived
-        # entitlements/grants, and writes a durable completion marker after
-        # the bounded atomic pass succeeds. Running this after every deploy is
-        # therefore a cheap no-op once production has been repaired. This runs
-        # immediately after the first production deploy containing the fix. A
-        # failure reds this workflow; workflow_dispatch is the explicit retry
-        # path because record-baseline still records code that Convex already
-        # deployed even when a post-deploy repair or seed fails.
-        run: npx convex run --prod payments/repairStaleOnHoldDerivedState:run
-        continue-on-error: true
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       - id: seed_followed_countries_shards
         name: Seed followedCountries shards (idempotent)
         # The `followCountry` / `unfollowCountry` / `mergeAnonymousLocal`
@@ -237,12 +221,43 @@ jobs:
         run: |
           if [ "${{ steps.seed_dodo_webhook_failure_summary.outcome }}" != "success" ] \
             || [ "${{ steps.seed_intel_history_append_lock.outcome }}" != "success" ] \
-            || [ "${{ steps.repair_stale_on_hold_derived_state.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_shards.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_country_locks.outcome }}" != "success" ]; then
             echo "::error::One or more post-deploy repairs/seeds failed; inspect the steps above"
             exit 1
           fi
+
+  # Temporary, independently retryable production repair. Remove this job and
+  # its contract assertions only after a production main-push run reports
+  # `alreadyCompleted: true` for marker
+  # `payments.repairStaleOnHoldDerivedState.v1.completedAt`.
+  repair-stale-on-hold-derived-state:
+    needs: [changes, deploy]
+    if: >-
+      always()
+      && needs.changes.result == 'success'
+      && (
+        needs.deploy.outputs.deployed == 'success'
+        || (
+          needs.changes.outputs.convex == 'false'
+          && needs.deploy.result == 'skipped'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Repair stale on_hold derived state (idempotent)
+        run: npx convex run --prod payments/repairStaleOnHoldDerivedState:run
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 
   record-baseline:
     # The ONLY job holding `contents: write`, and it deliberately runs no

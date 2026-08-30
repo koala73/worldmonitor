@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import schema from "../schema";
 import { internal } from "../_generated/api";
@@ -127,59 +127,86 @@ describe("isCoveringAt on_hold bound (GHSA-hw94-8c4h-m9qp)", () => {
 
 describe("on_hold entitlement lifecycle (GHSA-hw94-8c4h-m9qp)", () => {
   test("paid-through hold keeps the paid plan clamped to currentPeriodEnd", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP + 2000);
     const t = convexTest(schema, modules);
-    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    try {
+      await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
 
-    await processEvent(t, "wh_hold_1", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
-    await processEvent(
-      t,
-      "wh_hold_2",
-      "subscription.on_hold",
-      makeSubscriptionPayload({ status: "on_hold" }),
-      BASE_TIMESTAMP + 1000,
-    );
+      await processEvent(
+        t,
+        "wh_hold_1",
+        "subscription.active",
+        makeSubscriptionPayload(),
+        BASE_TIMESTAMP,
+      );
+      await processEvent(
+        t,
+        "wh_hold_2",
+        "subscription.on_hold",
+        makeSubscriptionPayload({ status: "on_hold" }),
+        BASE_TIMESTAMP + 1000,
+      );
 
-    const entitlement = await getEntitlement(t);
-    // Not revoked (business policy), but pinned to the paid-through boundary —
-    // never extendable past what the customer actually paid for.
-    expect(entitlement?.planKey).toBe("pro_monthly");
-    expect(entitlement?.validUntil).toBe(PERIOD_END);
+      const entitlement = await getEntitlement(t);
+      // Not revoked (business policy), but pinned to the paid-through boundary —
+      // never extendable past what the customer actually paid for.
+      expect(entitlement?.planKey).toBe("pro_monthly");
+      expect(entitlement?.validUntil).toBe(PERIOD_END);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a hold event arriving after the paid-through boundary downgrades to free", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP + 2000);
     const t = convexTest(schema, modules);
-    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    try {
+      await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
 
-    await processEvent(t, "wh_hold_3", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
-    await processEvent(
-      t,
-      "wh_hold_4",
-      "subscription.on_hold",
-      makeSubscriptionPayload({ status: "on_hold" }),
-      BASE_TIMESTAMP + 1000,
-    );
-    // Dodo can replay/retry hold events indefinitely; one lands after the
-    // period the customer paid for has ended.
-    await processEvent(
-      t,
-      "wh_hold_5",
-      "subscription.on_hold",
-      makeSubscriptionPayload({ status: "on_hold" }),
-      AFTER_PERIOD_END,
-    );
+      await processEvent(
+        t,
+        "wh_hold_3",
+        "subscription.active",
+        makeSubscriptionPayload(),
+        BASE_TIMESTAMP,
+      );
+      await processEvent(
+        t,
+        "wh_hold_4",
+        "subscription.on_hold",
+        makeSubscriptionPayload({ status: "on_hold" }),
+        BASE_TIMESTAMP + 1000,
+      );
+      // Dodo can replay/retry hold events indefinitely; one lands after the
+      // period the customer paid for has ended.
+      vi.setSystemTime(AFTER_PERIOD_END);
+      await processEvent(
+        t,
+        "wh_hold_5",
+        "subscription.on_hold",
+        makeSubscriptionPayload({ status: "on_hold" }),
+        AFTER_PERIOD_END,
+      );
 
-    const entitlement = await getEntitlement(t);
-    expect(entitlement?.planKey).toBe("free");
-    expect(entitlement?.validUntil).toBe(AFTER_PERIOD_END);
+      const entitlement = await getEntitlement(t);
+      expect(entitlement?.planKey).toBe("free");
+      expect(entitlement?.validUntil).toBe(AFTER_PERIOD_END);
 
-    // The dunning episode anchor must not move on the repeat hold event.
-    const sub = await t.run(async (ctx) => {
-      return ctx.db
-        .query("subscriptions")
-        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_test_001"))
-        .unique();
-    });
-    expect(sub?.onHoldAt).toBe(BASE_TIMESTAMP + 1000);
+      // The dunning episode anchor must not move on the repeat hold event.
+      const sub = await t.run(async (ctx) => {
+        return ctx.db
+          .query("subscriptions")
+          .withIndex("by_dodoSubscriptionId", (q) =>
+            q.eq("dodoSubscriptionId", "sub_test_001"),
+          )
+          .unique();
+      });
+      expect(sub?.onHoldAt).toBe(BASE_TIMESTAMP + 1000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a stale higher-tier hold cannot clobber a later paid subscription", async () => {
@@ -352,9 +379,15 @@ describe("checkout blocking for on_hold subscriptions", () => {
 // ---------------------------------------------------------------------------
 
 describe("stale on_hold derived-state repair", () => {
-  test("repairs every affected user and Business grant once without rewriting provider state", async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("uses the processing clock to repair every affected user and mark completion once", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(AFTER_PERIOD_END);
     const t = convexTest(schema, modules);
-    const observedAt = AFTER_PERIOD_END;
+    const processingAt = AFTER_PERIOD_END;
 
     await t.run(async (ctx) => {
       // One user has two stale higher-tier holds plus a genuinely covering Pro
@@ -363,7 +396,7 @@ describe("stale on_hold derived-state repair", () => {
       for (const [id, planKey, periodEnd] of [
         ["sub_stale_enterprise", "enterprise", PERIOD_END],
         // Equality is intentionally stale: isCoveringAt uses a strict > bound.
-        ["sub_boundary_enterprise", "enterprise", observedAt],
+        ["sub_boundary_enterprise", "enterprise", processingAt],
       ] as const) {
         await ctx.db.insert("subscriptions", {
           userId: "user-multi-hold",
@@ -383,10 +416,10 @@ describe("stale on_hold derived-state repair", () => {
         dodoProductId: "pdt_live_pro",
         planKey: "pro_monthly",
         status: "active",
-        currentPeriodStart: observedAt,
+        currentPeriodStart: processingAt,
         currentPeriodEnd: NEW_PERIOD_END,
         rawPayload: {},
-        updatedAt: observedAt,
+        updatedAt: processingAt,
       });
       await ctx.db.insert("entitlements", {
         userId: "user-multi-hold",
@@ -444,23 +477,23 @@ describe("stale on_hold derived-state repair", () => {
         dodoProductId: "pdt_healthy_hold",
         planKey: "pro_monthly",
         status: "on_hold",
-        currentPeriodStart: observedAt,
+        currentPeriodStart: processingAt,
         currentPeriodEnd: NEW_PERIOD_END,
         rawPayload: {},
-        updatedAt: observedAt,
+        updatedAt: processingAt,
       });
       await ctx.db.insert("entitlements", {
         userId: "healthy-hold-user",
         planKey: "pro_monthly",
         features: getFeaturesForPlan("pro_monthly"),
         validUntil: NEW_PERIOD_END,
-        updatedAt: observedAt,
+        updatedAt: processingAt,
       });
     });
 
     const result = await t.mutation(
       internal.payments.repairStaleOnHoldDerivedState.run,
-      { observedAt },
+      {},
     );
     expect(result).toEqual({
       ok: true,
@@ -469,14 +502,20 @@ describe("stale on_hold derived-state repair", () => {
       repairedUsers: 2,
       grantsChecked: 1,
       grantsRevoked: 1,
-      completedAt: observedAt,
+      completedAt: processingAt,
     });
 
     const state = await t.run(async (ctx) => {
       const subscriptions = await ctx.db.query("subscriptions").collect();
       const entitlements = await ctx.db.query("entitlements").collect();
       const grant = await ctx.db.query("businessProGrants").first();
-      return { subscriptions, entitlements, grant };
+      const marker = await ctx.db
+        .query("counters")
+        .withIndex("by_name", (q) =>
+          q.eq("name", "payments.repairStaleOnHoldDerivedState.v1.completedAt"),
+        )
+        .unique();
+      return { subscriptions, entitlements, grant, marker };
     });
     const entitlementFor = (userId: string) =>
       state.entitlements.find((entitlement) => entitlement.userId === userId);
@@ -492,25 +531,27 @@ describe("stale on_hold derived-state repair", () => {
     });
     expect(entitlementFor("business-owner")).toMatchObject({
       planKey: "free",
-      validUntil: observedAt,
+      validUntil: processingAt,
     });
     expect(entitlementFor("business-invitee")).toMatchObject({
       planKey: "free",
-      validUntil: observedAt,
+      validUntil: processingAt,
     });
     expect(entitlementFor("healthy-hold-user")).toMatchObject({
       planKey: "pro_monthly",
       validUntil: NEW_PERIOD_END,
-      updatedAt: observedAt,
+      updatedAt: processingAt,
     });
     expect(state.grant?.status).toBe("revoked");
+    expect(state.marker?.value).toBe(processingAt);
 
     // The deploy workflow invokes this after every Convex deploy. A durable
     // completion marker makes later runs cheap and prevents repeated cache
     // churn while retaining a summary that contains no user identifiers.
+    vi.setSystemTime(processingAt + 1);
     const rerun = await t.mutation(
       internal.payments.repairStaleOnHoldDerivedState.run,
-      { observedAt: observedAt + 1 },
+      {},
     );
     expect(rerun).toEqual({
       ok: true,
@@ -519,13 +560,14 @@ describe("stale on_hold derived-state repair", () => {
       repairedUsers: 0,
       grantsChecked: 0,
       grantsRevoked: 0,
-      completedAt: observedAt,
+      completedAt: processingAt,
     });
   });
 
   test("fails closed without a completion marker when the audited bound is exceeded", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(AFTER_PERIOD_END);
     const t = convexTest(schema, modules);
-    const observedAt = AFTER_PERIOD_END;
 
     await t.run(async (ctx) => {
       for (let index = 0; index < 501; index += 1) {
@@ -546,7 +588,7 @@ describe("stale on_hold derived-state repair", () => {
     await expect(
       t.mutation(
         internal.payments.repairStaleOnHoldDerivedState.run,
-        { observedAt },
+        {},
       ),
     ).rejects.toThrow("repair refused 501+ rows; the audited bound is 500");
 

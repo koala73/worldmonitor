@@ -1308,11 +1308,10 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     const repair = WORKFLOW.jobs['repair-stale-on-hold-derived-state'];
     assert.ok(repair, 'the repair must be a separate job so a later non-Convex push can retry it');
     assert.deepEqual(repair.needs, ['changes', 'deploy']);
-    assert.match(repair.if, /always\(\)/);
-    assert.match(repair.if, /needs\.changes\.result == 'success'/);
-    assert.match(repair.if, /needs\.deploy\.outputs\.deployed == 'success'/);
-    assert.match(repair.if, /needs\.changes\.outputs\.convex == 'false'/);
-    assert.match(repair.if, /needs\.deploy\.result == 'skipped'/);
+    assert.equal(
+      repair.if.replace(/\s+/g, ' ').trim(),
+      "always() && needs.changes.result == 'success' && ( needs.deploy.outputs.deployed == 'success' || ( needs.changes.outputs.convex == 'false' && needs.deploy.result == 'skipped' ) )",
+    );
 
     const repairCommands = repair.steps.map((step) => step.run ?? '').join('\n');
     assert.match(

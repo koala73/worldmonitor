@@ -330,8 +330,8 @@ export function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "current
 
 /**
  * A prior subscription is eligible for post-lapse reactivation messaging only
- * after access has actually ended. `on_hold` and cancelled-but-paid-through
- * rows are deliberately excluded: those users are still in recovery/current
+ * after access has actually ended. `on_hold` and cancelled rows remain
+ * excluded while paid through: those users are still in recovery/current
  * access flows, not win-back.
  */
 function isLapsedAt<
@@ -340,7 +340,9 @@ function isLapsedAt<
   },
 >(s: T, at: number): boolean {
   if (s.status === "expired") return true;
-  if (s.status === "cancelled") return s.currentPeriodEnd < at;
+  if (s.status === "on_hold" || s.status === "cancelled") {
+    return s.currentPeriodEnd < at;
+  }
   return s.status === "active" && s.renewalVerificationState === "lapsed";
 }
 
@@ -465,21 +467,21 @@ async function pickBestAcceptedBusinessGrant(
 export async function recomputeEntitlementFromAllSubs(
   ctx: MutationCtx,
   userId: string,
-  eventTimestamp: number,
+  observedAt: number,
 ): Promise<void> {
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .first();
-  if (entitlement?.compUntil && entitlement.compUntil > eventTimestamp) {
+  if (entitlement?.compUntil && entitlement.compUntil > observedAt) {
     console.log(
       `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
     );
     return;
   }
 
-  const bestSub = await pickBestCoveringSub(ctx, userId, eventTimestamp);
-  const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, eventTimestamp);
+  const bestSub = await pickBestCoveringSub(ctx, userId, observedAt);
+  const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, observedAt);
 
   // Normalize both sources to the same comparison shape. A Business Pro grant
   // confers Pro-tier features (`pro_monthly`) without creating a fake
@@ -496,14 +498,14 @@ export async function recomputeEntitlementFromAllSubs(
           : null;
 
   if (best) {
-    await upsertEntitlements(ctx, userId, best.planKey, best.validUntil, eventTimestamp);
+    await upsertEntitlements(ctx, userId, best.planKey, best.validUntil, observedAt);
     return;
   }
 
-  // No covering sub or grant — downgrade to free. validUntil = eventTimestamp marks the
+  // No covering sub or grant — downgrade to free. validUntil = observedAt marks the
   // immediate-revoke point; entitlement queries fall back to free-tier defaults
   // when validUntil is in the past.
-  await upsertEntitlements(ctx, userId, "free", eventTimestamp, eventTimestamp);
+  await upsertEntitlements(ctx, userId, "free", observedAt, observedAt);
 }
 
 /**
@@ -1460,14 +1462,11 @@ export async function handleSubscriptionOnHold(
     `[subscriptionHelpers] Subscription ${data.subscription_id} on hold -- payment failure`,
   );
 
-  // Entitlements are NOT revoked immediately -- a paid-through hold keeps
-  // covering until currentPeriodEnd (isCoveringAt). The recompute clamps the
-  // entitlement's validUntil to the best covering sub, so if Dodo never sends
-  // another event for this sub (holds can sit forever), access still lapses
-  // at the paid-through boundary instead of being re-grantable past it
-  // (GHSA-hw94-8c4h-m9qp). A hold event arriving after currentPeriodEnd
-  // downgrades right away unless another sub still covers the user.
-  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+  // Provider time orders and records this subscription event, but present
+  // coverage must use processing time. A delayed historical hold can arrive
+  // after its paid-through boundary; recomputing at eventTimestamp would let
+  // that expired higher-tier row displace a subscription that covers now.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, Date.now());
 
   // Day-0 dunning email (#4932), same non-blocking scheduler pattern as the
   // welcome email. The action re-validates state (still on_hold, same
