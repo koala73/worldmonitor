@@ -1,0 +1,49 @@
+---
+title: "人口结构与劳动力能力"
+description: "WorldMonitor 如何基于联合国 WPP、UNESCO UIS、世界银行 WDI 与 ILOSTAT，按国家汇集年龄结构、教育管道与工业劳动力观测值。"
+---
+
+## 目的
+
+关于一个国家的三个独立能力问题：谁处于劳动年龄、还能持续多久，教育管道正在产出什么，以及劳动力是否具备制造业基础所需的工业技能。
+
+由 `GET /api/resilience/v1/get-demographics-capability?country_code=<ISO2>` 与 MCP `get_demographics_capability` 提供。两者均需 Pro 订阅。
+
+## 三个独立组别
+
+响应刻意不是单一的混合指数。每个组别各自解析，来自各自的数据源，遵循各自的时钟。
+
+### 年龄结构——联合国世界人口展望
+
+`medianAge`、`workingAgePopulation`、`oldAgeDependency`、`totalDependency`，以及前瞻性的 `workingAgeProjection`。WPP 每两年发布一次修订；两次修订之间的预测值来自同一序列，而非新的估算。
+
+### 教育管道——UNESCO UIS 与世界银行 WDI
+
+`tertiaryEnrollment`、`stemGraduates` 及相关的受教育程度指标。UIS 为主；WDI 在 UIS 覆盖中断处补充。报告滞后很长——三到五年属于常态，而非缺陷。
+
+### 工业劳动力——ILOSTAT
+
+`manufacturingShare`、`trainedIndustrialWorkforce`、`craftTrades`、`plantOperators`、`researchers`。ILOSTAT 的覆盖是三者中最稀薄的：一个国家可能拥有最新的 WPP 年龄结构，却完全没有可用的 ILOSTAT 观测值。
+
+## 阅读响应
+
+每项指标携带四样东西：数值、其 `year`、其 `source`、其 `unit`，以及明确的 `available` 标志。
+
+**先读 `available`，再读数值。** 这些是 proto3 消息——缺失的数字会序列化为 `0`，而中位年龄为零或制造业占比为零绝不是真实观测值。该标志是区分"已测量"与"缺失"的唯一依据。
+
+**不要跨组别取平均。** 它们的年份与覆盖不同。一个国家的 ILOSTAT 记录有八年之久而 WPP 记录是最新的，并不意味着它拥有八年前的人口概况；而是意味着有两个必须分开阅读的观测值。响应将它们分开正是出于此因。
+
+**`retained`** 标记因当前上游请求失败而从此前抓取中沿用的数值。它是具有已知时效的真实数据。
+
+顶层的 `available: false` 表示没有任何组别解析成功——该国在三者中均无可用观测值，这不同于各组别各自携带部分可用性的国家。
+
+## 更新频率
+
+种子程序按该数据集最慢的有用周期刷新。上游发布是约束条件：WPP 每两年一次，UIS 与 WDI 每年一次但有多年滞后，ILOSTAT 按国家不定期发布。
+
+## 相关
+
+- [Pro 情报套件](/zh/pro-intelligence-suite)
+- [五因子记分卡](/zh/methodology/five-factor-scorecard)——将这些观测值作为其人口支柱
+- [国家韧性指数](/zh/methodology/country-resilience-index)
+- [数据源](/zh/data-sources)

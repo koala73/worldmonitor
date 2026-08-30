@@ -1,0 +1,66 @@
+---
+title: "国防工业基础"
+description: "WorldMonitor 如何将世界银行军事能力指标与 SIPRI 武器转让数据合并为各国供应国份额与依赖集中度。"
+---
+
+## 目的
+
+关于一个国家国防态势的两个问题：它资助并维持多少军事能力，以及它在主要武器上依赖谁。前者来自世界银行的年度指标，后者来自 SIPRI 的武器转让登记册，归约为供应国份额。
+
+由 `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` 与 MCP `get_defense_industrial_base` 提供。两者均需 Pro 订阅。
+
+## 第一部分——军事能力
+
+世界银行 `MS.MIL.*` 序列，每个国家每年一个观测值：
+
+| 字段 | 序列 |
+| --- | --- |
+| `expenditurePctGdp` | 军费占 GDP 比重 |
+| `expenditureUsd` | 以现价美元计的军费 |
+| `personnel` | 武装部队人员 |
+| `armsExportsTiv` | 武器出口，TIV |
+| `armsImportsTiv` | 武器进口，TIV |
+
+每项指标携带 `value`、`year`、`previousValue`、`previousYear`、`source` 及自身的 `available` 标志。前一次观测与当前观测一并提供，因此调用方无需第二次请求即可展示变化方向。各指标的年份不同——世界银行并不按同一时钟发布整个系列。
+
+## 第二部分——供应国依赖
+
+SIPRI 按年份发布供应国到接收国的转让数据。对每个进口国，种子程序在五年滚动窗口内计算：
+
+- `suppliers`——每个供应国占该进口国 TIV 总量的份额
+- `supplierHhi`——该依赖关系的集中度
+- `windowStartYear` / `windowEndYear`——实际使用的窗口
+
+```text
+supplierHhi = sum(tivShare_i^2)   对每个供应国 i
+```
+
+此处以 0–1 报告，而非矿产所用的 0–10,000 标度。数值越高表示主导供应国越少。
+
+### TIV 不是货币
+
+趋势指标值衡量的是转让*量*——它是所交付军事能力的代理指标，依据已知的单位生产成本校准。它不是价格、不是合同金额，也不可与第一部分的美元军费数字相比较。切勿用货币符号呈现它。
+
+### 映射覆盖率
+
+`supplierHhi` 基于**完整**的正 TIV 分母计算。`suppliers` 仅列出供应方能解析为 ISO-2 国家的行。`supplierMappingCoverage` 是已映射的正 TIV 份额。
+
+两者刻意不作调和：将未映射的 TIV 从分母中剔除会低估集中度，等于假装那些转让没有发生。在将所列供应国视为详尽名单之前请先读 `supplierMappingCoverage`——为 0.97 时名单基本完整；远低于此时，它只是一个样本。
+
+### 保留
+
+`supplierRetained: true` 表示该进口国当前的 SIPRI 请求失败，保留了此前存储的记录而非丢弃。此时 `supplierFetchedAt` 报告的是被保留记录的原始时间戳，而非失败的尝试。被保留的记录是具有已知时效的真实数据，因此提供它而非空响应。
+
+## 时钟
+
+`fetchedAt` 是所提供数值中**最早**的来源时间戳，因此可安全地理解为"此处没有任何数据比它更新"。`industrialFetchedAt` 与 `supplierFetchedAt` 给出各部分的时钟。世界银行与 SIPRI 两部分按不同日程更新——SIPRI 的年度更新在每年三月发布。
+
+## 许可
+
+SIPRI 的条款要求署名并禁止再分发完整数据库。因此 WorldMonitor 存储并提供衍生的各国供应国份额，绝不提供贸易登记册本身。[数据源](/zh/data-sources)中的许可表记录了相关条款。
+
+## 相关
+
+- [Pro 情报套件](/zh/pro-intelligence-suite)
+- [五因子记分卡](/zh/methodology/five-factor-scorecard)——将供应商多元化作为其国防支柱输入
+- [数据源](/zh/data-sources)

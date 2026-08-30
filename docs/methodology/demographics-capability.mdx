@@ -1,0 +1,49 @@
+---
+title: "Demographics & Workforce Capability"
+description: "How WorldMonitor assembles age structure, education pipeline, and industrial workforce observations per country from UN WPP, UNESCO UIS, World Bank WDI, and ILOSTAT."
+---
+
+## Purpose
+
+Three separate capability questions about one country: who is of working age and for how much longer, what the education pipeline is producing, and whether the workforce holds the industrial skills a manufacturing base needs.
+
+Served from `GET /api/resilience/v1/get-demographics-capability?country_code=<ISO2>` and MCP `get_demographics_capability`. Both require a Pro subscription.
+
+## Three independent groups
+
+The response is deliberately not a single blended index. Each group resolves on its own, from its own source, on its own clock.
+
+### Age structure — UN World Population Prospects
+
+`medianAge`, `workingAgePopulation`, `oldAgeDependency`, `totalDependency`, and a forward `workingAgeProjection`. WPP publishes revisions every two years; between revisions the projection is the same series, not a fresh estimate.
+
+### Education pipeline — UNESCO UIS and World Bank WDI
+
+`tertiaryEnrollment`, `stemGraduates`, and related attainment measures. UIS is primary; WDI fills where UIS coverage lapses. Reporting lag is long — three to five years is ordinary, not a fault.
+
+### Industrial workforce — ILOSTAT
+
+`manufacturingShare`, `trainedIndustrialWorkforce`, `craftTrades`, `plantOperators`, `researchers`. ILOSTAT coverage is the thinnest of the three: a country can have current WPP age structure and no usable ILOSTAT observation at all.
+
+## Reading the response
+
+Every metric carries four things: the value, its `year`, its `source`, its `unit`, and an explicit `available` flag.
+
+**Read `available` before the value.** These are proto3 messages — an absent number serializes as `0`, and a zero median age or a zero manufacturing share is never a real observation. The flag is the only thing separating "measured" from "missing".
+
+**Do not average across groups.** They have different vintages and different coverage. A country whose ILOSTAT row is eight years old and whose WPP row is current does not have an eight-year-old demographic profile; it has two observations that must be read separately. The response keeps them apart for that reason.
+
+**`retained`** marks a value carried forward from a previous fetch because the current upstream request failed. It is real data with a known age.
+
+The top-level `available: false` means no group resolved at all — the country has no usable observation in any of the three, which is different from a country whose groups each carry their own partial availability.
+
+## Cadence
+
+The seeder refreshes on the slowest useful cycle for the set. Upstream publication is the binding constraint: WPP every two years, UIS and WDI annually with multi-year lag, ILOSTAT irregularly by country.
+
+## Related
+
+- [Pro Intelligence Suite](/pro-intelligence-suite)
+- [Five-factor scorecard](/methodology/five-factor-scorecard) — consumes these observations as its demographics pillar
+- [Country resilience index](/methodology/country-resilience-index)
+- [Data sources](/data-sources)

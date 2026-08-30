@@ -1,0 +1,66 @@
+---
+title: "Defense Industrial Base"
+description: "How WorldMonitor combines World Bank military-capacity indicators with SIPRI arms-transfer data into per-country supplier shares and dependency concentration."
+---
+
+## Purpose
+
+Two questions about one country's defense position: how much military capacity does it fund and field, and who does it depend on for major weapons. The first comes from World Bank annual indicators, the second from SIPRI's arms-transfer register reduced to supplier shares.
+
+Served from `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` and MCP `get_defense_industrial_base`. Both require a Pro subscription.
+
+## Part A — military capacity
+
+World Bank `MS.MIL.*` series, one observation per country per year:
+
+| Field | Series |
+| --- | --- |
+| `expenditurePctGdp` | Military expenditure as a share of GDP |
+| `expenditureUsd` | Military expenditure in current USD |
+| `personnel` | Armed forces personnel |
+| `armsExportsTiv` | Arms exports, TIV |
+| `armsImportsTiv` | Arms imports, TIV |
+
+Each metric carries `value`, `year`, `previousValue`, `previousYear`, `source` and its own `available` flag. The previous observation is served alongside the current one so a caller can show direction without a second request. Years differ per metric — World Bank does not publish the whole family on one clock.
+
+## Part B — supplier dependency
+
+SIPRI publishes supplier-to-recipient transfers by year. For each importer the seeder computes, over a trailing five-year window:
+
+- `suppliers` — each supplier's share of the importer's total TIV
+- `supplierHhi` — concentration of that dependency
+- `windowStartYear` / `windowEndYear` — the window actually used
+
+```text
+supplierHhi = sum(tivShare_i^2)   for each supplier i
+```
+
+Reported 0–1 here rather than the 0–10,000 scale used for minerals. Higher means fewer dominant suppliers.
+
+### TIV is not money
+
+The Trend Indicator Value measures transfer *volume* — it is a proxy for military capability delivered, calibrated to known unit production costs. It is not a price, not a contract value, and not comparable to the USD expenditure figures in Part A. Never render it with a currency symbol.
+
+### Mapping coverage
+
+`supplierHhi` is computed over the **full** positive-TIV denominator. `suppliers` lists only rows whose supplier resolved to an ISO-2 country. `supplierMappingCoverage` is the share of positive TIV that mapped.
+
+The two are deliberately not reconciled: dropping unmapped TIV from the denominator would understate concentration by pretending the unmapped transfers did not happen. Read `supplierMappingCoverage` before treating the listed suppliers as exhaustive — at 0.97 the list is essentially complete; well below that, it is a sample.
+
+### Retention
+
+`supplierRetained: true` means this importer's current SIPRI request failed and the previously stored row was kept rather than dropped. `supplierFetchedAt` then reports the retained row's original timestamp, not the failed attempt. A retained row is real data with a known age, which is why it is served instead of an empty response.
+
+## Clocks
+
+`fetchedAt` is the **oldest** source timestamp among the values served, so it is safe to treat as "nothing here is newer than this". `industrialFetchedAt` and `supplierFetchedAt` give the per-part clocks. The World Bank and SIPRI parts update on different schedules — SIPRI's annual update lands each March.
+
+## Licensing
+
+SIPRI's terms require attribution and prohibit redistributing the full database. WorldMonitor therefore stores and serves derived per-country supplier shares, never the trade register itself. The licensing table in [Data sources](/data-sources) records the terms.
+
+## Related
+
+- [Pro Intelligence Suite](/pro-intelligence-suite)
+- [Five-factor scorecard](/methodology/five-factor-scorecard) — consumes supplier diversity as its defense-pillar input
+- [Data sources](/data-sources)

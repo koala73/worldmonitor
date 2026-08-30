@@ -7,7 +7,9 @@ description: "How WorldMonitor classifies Shanghai physical gold and silver prem
 
 The Physical Precious-Metals Divergence Index measures stress between Shanghai Gold Exchange physical benchmark prices and the related COMEX futures snapshots. It is a market-structure indicator, not trading advice.
 
-The method uses the daily gold and silver premiums from `GET /api/market/v1/get-physical-premiums`. The public derived response is available from `GET /api/market/v1/get-physical-divergence-index` and MCP `get_market_data`.
+The method uses the daily gold and silver premiums from `GET /api/market/v1/get-physical-premiums`. The derived response is available from `GET /api/market/v1/get-physical-divergence-index`.
+
+Both routes require a Pro subscription — see [Pro Intelligence Suite](/pro-intelligence-suite). The cache-backed MCP tool `get_market_data` also carries the `physical-premium` and `physical-divergence` datasets in its bundle, and that tool remains available to signed-in free accounts within their daily allowance.
 
 ## History
 

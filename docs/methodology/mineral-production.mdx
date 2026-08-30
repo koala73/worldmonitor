@@ -1,0 +1,62 @@
+---
+title: "Mineral Production & Processing Concentration"
+description: "How WorldMonitor derives per-commodity mine and refinery country shares and HHI concentration from USGS Mineral Commodity Summaries with BGS fill."
+---
+
+## Purpose
+
+Deposits and production are different maps. The critical-minerals layer shows where a resource *sits*; this dataset shows where it is actually mined and, separately, where it is refined. Refining is usually the more concentrated of the two, and it is the stage that fails first under an export control.
+
+Served from `GET /api/supply-chain/v1/get-mineral-production` and MCP `get_mineral_production`. Both require a Pro subscription.
+
+## Sources
+
+| Source | Role |
+| --- | --- |
+| USGS Mineral Commodity Summaries | Primary. Annual, published each January, covers mine and refinery production. USGS commodity names are the canonical keys. |
+| British Geological Survey | Fill for commodity-stages USGS does not break out, via an alias map onto the USGS names. |
+
+Both permit derived aggregates. The snapshot stores country shares, not a mirror of either publication.
+
+## Vocabulary
+
+The commodity list is a controlled set defined in `scripts/shared/`, seeded with the strategic group: rare earths, lithium, cobalt, copper, nickel, graphite, tungsten, gallium, germanium, helium, aluminum, and uranium. USGS names are canonical; BGS names are resolved through an alias map so a commodity is never double-counted under two spellings.
+
+## Stages
+
+Each commodity carries up to two independent snapshots:
+
+- `mine` — extraction
+- `refinery` — processing
+
+A commodity can have one stage and not the other. A missing stage is `null`, and the API renders it as an explicit unavailable rather than an empty share table.
+
+## Concentration
+
+Per stage, the Herfindahl-Hirschman Index is computed over country shares:
+
+```text
+HHI = sum(share_i^2)   for each producing country i
+```
+
+Reported on the conventional 0–10,000 scale. Higher means fewer dominant producers.
+
+The denominator is the full published production for the stage, including the residual bucket. Excluding it would inflate every named country's share.
+
+## Three fields that change the reading
+
+**`withheld`** — the source suppressed this country's figure, usually for commercial confidentiality. Its share is *unknown*, not zero. `withheldCount` on the stage says how many rows are affected; a stage with a high withheld count has a correspondingly less trustworthy HHI.
+
+**`residual`** — the USGS "Other countries" aggregate. It is a bucket, not a producer, and it is frequently large enough to outrank real countries: on copper mine production it lands third at roughly 13%, displacing Peru from the top three. Filter it out before ranking, and render it separately if at all.
+
+**`year`** — each commodity-stage picks its own vintage. A BGS-filled commodity can trail the snapshot's `dataYear` by several years. The row's own `year` is authoritative; the envelope's `dataYear` is only the newest across the set.
+
+## Cadence
+
+Annual. The seeder writes `supply-chain:mineral-production:v1` after each USGS publication. Between publications the snapshot is intentionally static — a stale-looking `dataYear` in mid-year is the expected state, not a seeder failure.
+
+## Related
+
+- [Pro Intelligence Suite](/pro-intelligence-suite)
+- [Supply vulnerability](/methodology/supply-vulnerability) — consumes these shares as its concentration input
+- [Data sources](/data-sources)

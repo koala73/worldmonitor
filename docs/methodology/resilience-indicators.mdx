@@ -1,0 +1,47 @@
+---
+title: "Resilience Indicators"
+description: "The indicator-level explainability layer under the country resilience score — normalized values, runtime weights, contributions reconciled per dimension, observation age, and source provenance."
+---
+
+## Purpose
+
+[The country resilience index](/methodology/country-resilience-index) publishes one score per country. This route publishes the arithmetic behind it: all 72 registered indicators, what each contributed, and where each number came from.
+
+It exists to make a score auditable. If a country's resilience moved, this is the endpoint that says which indicator moved and by how much.
+
+Served from `GET /api/resilience/v1/get-resilience-indicators?country_code=<ISO2>` and MCP `get_resilience_indicators`. Both require a Pro subscription. There is no dashboard surface — this is an API and agent endpoint.
+
+## Per indicator
+
+Each of the 72 rows carries:
+
+| Field | Meaning |
+| --- | --- |
+| Normalized score | The indicator on the engine's common scale |
+| State | Whether the value was **observed** or **imputed** |
+| Runtime weight | The weight actually applied on this run, not the registry default |
+| Contribution | The indicator's share of its dimension, reconciled so the dimension's contributions sum correctly |
+| Observation age | How old the underlying observation is |
+| Source provenance | Which upstream published it |
+
+Weights are served as applied rather than as configured because the engine renormalizes when an indicator is unavailable for a country. Reading the registry default would misattribute the score.
+
+## Observed versus imputed
+
+An imputed indicator is a real part of the score and is not hidden — but it is a modelled value, not a measurement. Any audit that treats the two identically will over-credit countries with thin coverage. The `state` field is what separates them.
+
+## Raw values and licensing
+
+Raw source values are included **only where the upstream license permits redistribution**. Elsewhere the normalized score and the provenance are served without the underlying number.
+
+That absence is a licensing boundary, not missing data — the engine has the value and used it; WorldMonitor may not republish it. The per-source terms are recorded in [Resilience indicator licensing](/methodology/resilience-indicator-licensing).
+
+## Reconciliation
+
+Contributions are reconciled to each dimension rather than reported as raw products. A caller can sum the contributions within a dimension and get the dimension's score; summing across dimensions with their dimension weights gives the country score. Values that did not reconcile are not silently rounded into place — the indicator reports its state instead.
+
+## Related
+
+- [Pro Intelligence Suite](/pro-intelligence-suite)
+- [Country resilience index](/methodology/country-resilience-index) — the score this explains
+- [Resilience indicator licensing](/methodology/resilience-indicator-licensing)

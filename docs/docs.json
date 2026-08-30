@@ -99,6 +99,7 @@
                 "pages": [
                   "overview",
                   "features",
+                  "pro-intelligence-suite",
                   "data-sources",
                   "global-procurement-intelligence",
                   "hotspots"
@@ -118,8 +119,13 @@
                   "methodology/news-credibility",
                   "country-instability-index",
                   "methodology/country-resilience-index",
+                  "methodology/resilience-indicators",
                   "methodology/resilience-indicator-licensing",
                   "methodology/five-factor-scorecard",
+                  "methodology/demographics-capability",
+                  "methodology/food-stocks",
+                  "methodology/defense-industrial-base",
+                  "methodology/mineral-production",
                   "methodology/supply-vulnerability",
                   "methodology/chokepoints",
                   "methodology/pipelines",
@@ -576,6 +582,7 @@
                 "pages": [
                   "zh/overview",
                   "zh/features",
+                  "zh/pro-intelligence-suite",
                   "zh/data-sources",
                   "zh/hotspots"
                 ]
@@ -594,8 +601,13 @@
                   "zh/methodology/news-credibility",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
+                  "zh/methodology/resilience-indicators",
                   "zh/methodology/resilience-indicator-licensing",
                   "zh/methodology/five-factor-scorecard",
+                  "zh/methodology/demographics-capability",
+                  "zh/methodology/food-stocks",
+                  "zh/methodology/defense-industrial-base",
+                  "zh/methodology/mineral-production",
                   "zh/methodology/supply-vulnerability",
                   "zh/methodology/chokepoints",
                   "zh/methodology/pipelines",
