@@ -85,4 +85,23 @@ describe('telegram-intel service', () => {
     assert.equal(feed.items[0]?.topic, 'osint');
     assert.equal((Reflect.get(globalThis, '__telegramChannelCalls') as () => number)(), 1);
   });
+
+  it('rejects malformed preview responses before caching them', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      username: 'bad handle',
+      title: 'Invalid',
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    await assert.rejects(fetchTelegramChannelPreview('invalid_preview'), /Invalid Telegram channel preview/);
+  });
+
+  it('rejects malformed channel items before applying watchlist metadata', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      source: 'telegram',
+      enabled: true,
+      items: { id: 'not-an-array' },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    await assert.rejects(fetchTelegramChannelFeed('invalid_channel', 20), /Invalid Telegram feed response/);
+  });
 });

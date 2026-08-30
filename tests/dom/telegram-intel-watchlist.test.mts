@@ -62,6 +62,56 @@ function enterChannel(panel: TelegramIntelPanel, username = 'test_channel'): HTM
 }
 
 describe('TelegramIntelPanel watchlist lifecycle', () => {
+  it('adds, renders, and removes a custom channel through the panel', async () => {
+    vi.useFakeTimers();
+    telegramMocks.fetchChannelPreview.mockResolvedValue({
+      username: 'test_channel',
+      title: 'Test Channel',
+      memberCount: 1200,
+      url: 'https://t.me/test_channel',
+    });
+    telegramMocks.fetchChannelFeed.mockResolvedValue({
+      source: 'telegram',
+      earlySignal: true,
+      enabled: true,
+      count: 1,
+      updatedAt: '2026-08-30T09:00:00.000Z',
+      items: [{
+        id: 'test_channel:1',
+        source: 'telegram',
+        channel: 'test_channel',
+        channelTitle: 'Test Channel',
+        url: 'https://t.me/test_channel/1',
+        ts: '2026-08-30T09:00:00.000Z',
+        text: 'Custom update',
+        topic: 'osint',
+        tags: [],
+        earlySignal: true,
+        watchlist: true,
+      }],
+    });
+
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    enableRelay(panel);
+    enterChannel(panel);
+    await vi.advanceTimersByTimeAsync(800);
+    panel.getElement().querySelector<HTMLButtonElement>('.telegram-intel-preview .telegram-follow-btn')?.click();
+    await vi.runAllTimersAsync();
+
+    expect(telegramMocks.fetchChannelFeed).toHaveBeenCalledWith('test_channel', 20);
+    expect(panel.getElement().querySelector('.telegram-intel-pill')?.textContent).toContain('@test_channel');
+    expect(panel.getElement().querySelector('.telegram-intel-custom-tag')).not.toBeNull();
+    expect(panel.getElement().querySelector('.telegram-intel-text')?.textContent).toContain('Custom update');
+
+    panel.getElement().querySelector<HTMLButtonElement>('.telegram-intel-pill')?.click();
+    await vi.runAllTimersAsync();
+    expect(panel.getElement().querySelector('.telegram-intel-pill')).toBeNull();
+    expect(panel.getElement().querySelector('.telegram-intel-custom-tag')).toBeNull();
+    expect(localStorage.getItem('telegram:watchlist:v1')).toBe('[]');
+    panel.destroy();
+  });
+
   it('cancels a queued preview when the relay becomes unavailable', async () => {
     vi.useFakeTimers();
     const panel = new TelegramIntelPanel();

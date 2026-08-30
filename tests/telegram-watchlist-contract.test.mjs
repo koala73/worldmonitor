@@ -14,7 +14,12 @@ describe('Telegram custom-channel architecture (#1994)', () => {
     assert.match(edge, /mode === 'channel'/);
     assert.match(edge, /relayPath = mode === 'resolve' \? '\/telegram\/resolve' : '\/telegram\/channel'/);
     assert.match(edge, /validateApiKey\(req\)/);
-    assert.match(edge, /scope: 'telegram-feed'/);
+    assert.match(edge, /feed: \{ scope: 'telegram-feed:feed', limit: 60/);
+    assert.match(edge, /resolve: \{ scope: 'telegram-feed:resolve', limit: 20/);
+    assert.match(edge, /channel: \{ scope: 'telegram-feed:channel', limit: 20/);
+    assert.match(edge, /feed: 15_000/);
+    assert.match(edge, /resolve: 35_000/);
+    assert.match(edge, /channel: 50_000/);
   });
 
   it('keeps product-managed channels separate and accepts only public Telegram channels', () => {
@@ -27,6 +32,8 @@ describe('Telegram custom-channel architecture (#1994)', () => {
     const customBlock = relay.slice(customStart, customEnd);
     assert.match(customBlock, /entity instanceof TelegramChannel/);
     assert.match(customBlock, /!entity\.username/);
+    assert.match(customBlock, /withTelegramLookupSingleFlight/);
+    assert.match(customBlock, /runTelegramRpc/);
     assert.doesNotMatch(customBlock, /telegramState\.channels\.(?:push|splice|unshift)/);
   });
 

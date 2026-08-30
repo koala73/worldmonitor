@@ -222,13 +222,14 @@ describe('api/telegram-feed contract normalization', () => {
       retryAfter: 30,
     }), {
       status: 429,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '30' },
     });
 
     const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
     const res = await handler(await makeRequest());
     assert.equal(res.status, 429);
     assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(res.headers.get('retry-after'), '30');
 
     const data = await res.json();
     assert.deepEqual(data, {
@@ -326,6 +327,22 @@ describe('api/telegram-feed contract normalization', () => {
 
     assert.equal(res.status, 400);
     assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(called, false);
+  });
+
+  it('rejects an unsupported mode before contacting the relay', async () => {
+    let called = false;
+    globalThis.fetch = async () => {
+      called = true;
+      throw new Error('should not be called');
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest('/api/telegram-feed?mode=private&username=warintel'));
+
+    assert.equal(res.status, 400);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await res.json(), { error: 'Invalid Telegram feed mode' });
     assert.equal(called, false);
   });
 

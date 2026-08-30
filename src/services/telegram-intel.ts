@@ -1,4 +1,6 @@
 import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '@/services/runtime';
+import { createTimeoutSignal } from '@/services/timeout-signal';
+import { normalizeTelegramUsername } from '@/services/telegram-watchlist';
 
 export interface TelegramItem {
   id: string;
@@ -53,6 +55,8 @@ const MISSING_TIMESTAMP_ISO = new Date(0).toISOString();
 const RESOLVE_CACHE_TTL = 60 * 60 * 1000;
 const CHANNEL_CACHE_TTL = CACHE_TTL;
 const LOOKUP_CACHE_MAX_ENTRIES = 64;
+const PREVIEW_REQUEST_TIMEOUT_MS = 40_000;
+const CHANNEL_REQUEST_TIMEOUT_MS = 55_000;
 
 const previewCache = new Map<string, { data: TelegramChannelPreview; expiresAt: number }>();
 const previewInflight = new Map<string, Promise<TelegramChannelPreview>>();
@@ -92,9 +96,9 @@ function telegramChannelUrl(username: string, limit: number): string {
   return isDesktopRuntime() ? toRuntimeUrl(path) : toApiUrl(path);
 }
 
-async function readJson<T>(response: Response): Promise<T> {
+async function readJson(response: Response): Promise<unknown> {
   if (response.ok) {
-    return response.json() as Promise<T>;
+    return response.json() as Promise<unknown>;
   }
 
   let errorMessage = `${response.status}`;
@@ -105,6 +109,66 @@ async function readJson<T>(response: Response): Promise<T> {
     errorMessage = `${response.status}`;
   }
   throw new Error(errorMessage);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function parseTelegramChannelPreview(value: unknown): TelegramChannelPreview {
+  const parsed = asRecord(value);
+  if (!parsed) throw new Error('Invalid Telegram channel preview');
+  const username = normalizeTelegramUsername(String(parsed.username || ''));
+  if (!username) throw new Error('Invalid Telegram channel preview');
+  const memberCount = parsed.memberCount == null ? null : Number(parsed.memberCount);
+  return {
+    username,
+    title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : username,
+    memberCount: memberCount != null && Number.isFinite(memberCount) && memberCount >= 0
+      ? Math.floor(memberCount)
+      : null,
+    url: `https://t.me/${username}`,
+  };
+}
+
+function parseTelegramItem(value: unknown): TelegramItem {
+  const parsed = asRecord(value);
+  if (!parsed) throw new Error('Invalid Telegram channel item');
+  const required = ['id', 'channel', 'channelTitle', 'url', 'ts', 'text', 'topic'] as const;
+  for (const key of required) {
+    if (typeof parsed[key] !== 'string') throw new Error('Invalid Telegram channel item');
+  }
+  if (!Array.isArray(parsed.tags) || !parsed.tags.every((tag): tag is string => typeof tag === 'string')) {
+    throw new Error('Invalid Telegram channel item');
+  }
+  return {
+    id: parsed.id as string,
+    source: 'telegram',
+    channel: parsed.channel as string,
+    channelTitle: parsed.channelTitle as string,
+    url: parsed.url as string,
+    ts: parsed.ts as string,
+    text: parsed.text as string,
+    topic: parsed.topic as string,
+    tags: parsed.tags,
+    earlySignal: parsed.earlySignal !== false,
+    ...(Array.isArray(parsed.mediaUrls) ? { mediaUrls: parsed.mediaUrls.filter(value => typeof value === 'string') } : {}),
+    ...(parsed.watchlist === true ? { watchlist: true } : {}),
+  };
+}
+
+function parseTelegramFeedResponse(value: unknown): TelegramFeedResponse {
+  const parsed = asRecord(value);
+  if (!parsed || !Array.isArray(parsed.items)) throw new Error('Invalid Telegram feed response');
+  const items = parsed.items.map(parseTelegramItem);
+  return {
+    source: typeof parsed.source === 'string' ? parsed.source : 'telegram',
+    earlySignal: parsed.earlySignal !== false,
+    enabled: parsed.enabled === true,
+    count: items.length,
+    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
+    items,
+  };
 }
 
 function applyWatchlistMetadata(items: TelegramItem[]): TelegramItem[] {
@@ -151,7 +215,7 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
 
   let json: TelegramFeedResponse;
   try {
-    json = await res.json();
+    json = parseTelegramFeedResponse(await res.json());
   } catch (error) {
     // A truncated or non-JSON 200 is the same class of upstream blip as a 5xx;
     // handling it differently would strand the panel on exactly the shape the
@@ -174,7 +238,9 @@ export async function fetchTelegramChannelPreview(username: string): Promise<Tel
   if (inflight) return inflight;
 
   const request = (async () => {
-    const preview = await readJson<TelegramChannelPreview>(await fetch(telegramResolveUrl(cacheKey)));
+    const preview = parseTelegramChannelPreview(await readJson(await fetch(telegramResolveUrl(cacheKey), {
+      signal: createTimeoutSignal(PREVIEW_REQUEST_TIMEOUT_MS),
+    })));
     setLookupCache(previewCache, cacheKey, preview, RESOLVE_CACHE_TTL);
     return preview;
   })();
@@ -201,7 +267,9 @@ export async function fetchTelegramChannelFeed(username: string, limit = 20): Pr
 
   const request = (async () => {
     try {
-      const response = await readJson<TelegramFeedResponse>(await fetch(telegramChannelUrl(username, safeLimit)));
+      const response = parseTelegramFeedResponse(await readJson(await fetch(telegramChannelUrl(username, safeLimit), {
+        signal: createTimeoutSignal(CHANNEL_REQUEST_TIMEOUT_MS),
+      })));
       const normalized: TelegramFeedResponse = {
         ...response,
         items: applyWatchlistMetadata(response.items || []),

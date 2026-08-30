@@ -129,7 +129,15 @@ export function subscribeTelegramWatchlistChange(cb: (entries: TelegramWatchlist
 
     cb(normalizeEntries(detail.entries));
   };
+  const storageHandler = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    cb(getTelegramWatchlistEntries());
+  };
 
   window.addEventListener(TELEGRAM_WATCHLIST_EVENT, handler);
-  return () => window.removeEventListener(TELEGRAM_WATCHLIST_EVENT, handler);
+  window.addEventListener('storage', storageHandler);
+  return () => {
+    window.removeEventListener(TELEGRAM_WATCHLIST_EVENT, handler);
+    window.removeEventListener('storage', storageHandler);
+  };
 }

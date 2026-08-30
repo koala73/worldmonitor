@@ -123,6 +123,24 @@ describe('telegram-watchlist', () => {
     unsubscribe();
   });
 
+  it('publishes persisted changes from another browser tab', () => {
+    const snapshots: string[][] = [];
+    const unsubscribe = subscribeTelegramWatchlistChange(entries => {
+      snapshots.push(entries.map(entry => entry.username));
+    });
+    globalThis.localStorage.setItem('telegram:watchlist:v1', JSON.stringify([
+      { username: 'cross_tab_channel', title: 'Cross Tab' },
+    ]));
+    const event = new Event('storage');
+    Object.defineProperty(event, 'key', { value: 'telegram:watchlist:v1' });
+    globalThis.window.dispatchEvent(event);
+
+    assert.deepEqual(snapshots, [['cross_tab_channel']]);
+    unsubscribe();
+    globalThis.window.dispatchEvent(event);
+    assert.deepEqual(snapshots, [['cross_tab_channel']]);
+  });
+
   it('caps persisted and returned entries at 20', () => {
     const entries = Array.from({ length: 25 }, (_, index) => ({
       username: `channel_${String(index).padStart(2, '0')}`,
