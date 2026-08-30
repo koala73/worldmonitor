@@ -105,6 +105,25 @@ async function invokeOpenUrlBounded(url: string): Promise<void> {
 }
 
 /**
+ * WebKit (Safari / Chrome Mobile iOS) often throws `SecurityError: The
+ * operation is insecure.` for a blocked `window.open` / cross-context
+ * navigation instead of returning `null`. Desktop Chromium returns `null`.
+ * Treat that DOMException as "blocked" so same-tab fallback can run
+ * (WORLDMONITOR-11C / WORLDMONITOR-11D).
+ *
+ * `instanceof Error` is intentionally not required: on WebKit, `DOMException`
+ * historically is not an `Error` subclass, which is why billing's
+ * `normalizeCaughtError` wrapped the production throw as `non-Error`.
+ */
+function isPopupSecurityError(err: unknown): boolean {
+  if (err == null || typeof err !== 'object') return false;
+  const name = 'name' in err ? String((err as { name?: unknown }).name) : '';
+  if (name === 'SecurityError') return true;
+  const message = 'message' in err ? String((err as { message?: unknown }).message) : '';
+  return /operation is insecure/i.test(message);
+}
+
+/**
  * `window.open` that actually yields a handle.
  *
  * `noopener` — and `noreferrer`, which implies it — makes `window.open`
@@ -123,7 +142,13 @@ async function invokeOpenUrlBounded(url: string): Promise<void> {
  * (`strict-origin-when-cross-origin`) for cross-origin targets.
  */
 function openWindowWithHandle(url: string): Window | null {
-  const win = window.open(url, '_blank');
+  let win: Window | null;
+  try {
+    win = window.open(url, '_blank');
+  } catch (err) {
+    if (isPopupSecurityError(err)) return null;
+    throw err;
+  }
   if (win) {
     try {
       win.opener = null;
@@ -133,6 +158,29 @@ function openWindowWithHandle(url: string): Window | null {
     }
   }
   return win;
+}
+
+/**
+ * Same-tab fallback for a blocked popup. `location.assign` itself can throw
+ * SecurityError on some WebKit builds when the navigation is refused; never
+ * let that escape as an unhandledrejection from `void openBillingPortal(...)`.
+ */
+function navigateSameTabOrFail(
+  targetUrl: string,
+  options?: OpenExternalUrlOptions,
+): ExternalNavOutcome {
+  if (options?.sameTabFallback === false) {
+    reportOpenFailure(targetUrl, 'popup-blocked');
+    return 'failed';
+  }
+  try {
+    window.location.assign(targetUrl);
+    return 'same-tab';
+  } catch (err) {
+    if (!isPopupSecurityError(err)) throw err;
+    reportOpenFailure(targetUrl, 'same-tab-blocked');
+    return 'failed';
+  }
 }
 
 /**
@@ -210,18 +258,25 @@ export async function openExternalUrl(
   }
 
   if (preopened && !preopened.closed) {
-    preopened.location.href = targetUrl;
-    return 'popup';
+    try {
+      preopened.location.href = targetUrl;
+      return 'popup';
+    } catch (err) {
+      // Reserved about:blank can still refuse an async cross-origin assign
+      // on iOS WebKit after the user-gesture token is spent. Close the blank
+      // tab and fall through to a fresh open / same-tab path.
+      if (!isPopupSecurityError(err)) throw err;
+      try {
+        preopened.close();
+      } catch {
+        // Ignore close failures on a window the engine already revoked.
+      }
+    }
   }
   const fresh = openWindowWithHandle(targetUrl);
   if (fresh) return 'popup';
   // Genuinely blocked, and no reserved tab. Same-tab navigation beats
   // silently doing nothing for an upgrade CTA — but not for a caller holding
   // unsaved input, which opts out and gets the failure instead.
-  if (options?.sameTabFallback === false) {
-    reportOpenFailure(targetUrl, 'popup-blocked');
-    return 'failed';
-  }
-  window.location.assign(targetUrl);
-  return 'same-tab';
+  return navigateSameTabOrFail(targetUrl, options);
 }

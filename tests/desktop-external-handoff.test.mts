@@ -36,13 +36,22 @@ interface WindowProbe {
   /** Tabs the browser opened but returned no handle for (`noopener`). */
   openedWithoutHandle: number;
   /** Every handle the fake handed back, so opener-severing is assertable. */
-  handedOutTabs: Array<{ opener: unknown }>;
+  handedOutTabs: Array<{ opener: unknown; closed: boolean; location: { href: string }; close: () => void }>;
   /** Simulates the Rust side rejecting (bad scheme, opener failure). */
   invokeRejects: boolean;
   /** Simulates a native call that never settles at all. */
   invokeHangs: boolean;
   /** Simulates a popup blocker: window.open returns null. */
   popupBlocked: boolean;
+  /**
+   * WebKit-shaped blocker: window.open throws SecurityError / DOMException
+   * instead of returning null (WORLDMONITOR-11C).
+   */
+  openThrowsSecurityError: boolean;
+  /** Reserved-tab location.href throws SecurityError (async gesture spent). */
+  reservedAssignThrowsSecurityError: boolean;
+  /** location.assign throws SecurityError (same-tab also refused). */
+  assignThrowsSecurityError: boolean;
 }
 
 let probe: WindowProbe;
@@ -55,7 +64,21 @@ function makeTab(): {
 } {
   const tab = {
     closed: false,
-    location: { href: '' },
+    location: {
+      get href(): string {
+        return tabHref;
+      },
+      set href(url: string) {
+        if (probe.reservedAssignThrowsSecurityError) {
+          // Mirror WebKit: DOMException is often NOT `instanceof Error`.
+          throw Object.assign(Object.create(null), {
+            name: 'SecurityError',
+            message: 'The operation is insecure.',
+          });
+        }
+        tabHref = url;
+      },
+    },
     // Starts non-null so `opener === null` proves the code severed it, rather
     // than passing because the fake never had one. This is the property that
     // replaced `noopener` in the feature string.
@@ -65,6 +88,7 @@ function makeTab(): {
       probe.closedTabs += 1;
     },
   };
+  let tabHref = '';
   probe.handedOutTabs.push(tab);
   return tab;
 }
@@ -86,6 +110,9 @@ function installWindow(kind: 'desktop' | 'web'): void {
     invokeRejects: false,
     invokeHangs: false,
     popupBlocked: false,
+    openThrowsSecurityError: false,
+    reservedAssignThrowsSecurityError: false,
+    assignThrowsSecurityError: false,
   };
 
   const desktop = kind === 'desktop';
@@ -96,6 +123,12 @@ function installWindow(kind: 'desktop' | 'web'): void {
     origin: desktop ? 'tauri://localhost' : 'https://worldmonitor.app',
     href: desktop ? 'tauri://localhost/index.html' : 'https://worldmonitor.app/dashboard',
     assign: (url: string) => {
+      if (probe.assignThrowsSecurityError) {
+        throw Object.assign(Object.create(null), {
+          name: 'SecurityError',
+          message: 'The operation is insecure.',
+        });
+      }
       probe.assigned.push(url);
     },
   };
@@ -111,6 +144,12 @@ function installWindow(kind: 'desktop' | 'web'): void {
     // the tab present in the tab list.
     open: (url: string, target?: string, features?: string) => {
       probe.opened.push([url, target, features]);
+      if (probe.openThrowsSecurityError) {
+        throw Object.assign(Object.create(null), {
+          name: 'SecurityError',
+          message: 'The operation is insecure.',
+        });
+      }
       if (probe.popupBlocked) return null;
       // The tab opens either way; only the HANDLE is withheld. Recording it
       // in `handedOutTabs` would be wrong — nothing can sever an opener it
@@ -350,6 +389,38 @@ describe('openExternalUrl — web', () => {
       'a settings panel with staged secrets must not be navigated out from under the user',
     );
   });
+
+  // WORLDMONITOR-11C / 11D — Chrome Mobile iOS throws SecurityError from
+  // window.open instead of returning null. Without a catch, same-tab never
+  // runs and void openBillingPortal(...) becomes an unhandledrejection.
+  it('treats a SecurityError from window.open as a blocked popup and same-tabs', async () => {
+    installWindow('web');
+    probe.openThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'same-tab');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('falls through to same-tab when a reserved tab assign throws SecurityError', async () => {
+    installWindow('web');
+    const reserved = makeTab();
+    probe.reservedAssignThrowsSecurityError = true;
+    // Fresh open after the reserved path fails is also blocked (gesture spent).
+    probe.openThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'same-tab');
+    assert.equal(reserved.closed, true, 'orphan blank tab must be closed');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('reports failed when even same-tab assign throws SecurityError', async () => {
+    installWindow('web');
+    probe.openThrowsSecurityError = true;
+    probe.assignThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'failed');
+    assert.deepEqual(probe.assigned, []);
+  });
 });
 
 /**
@@ -482,5 +553,19 @@ describe('openBillingPortal — web', () => {
 
     assert.equal(reserved?.location.href, PORTAL_URL);
     assert.deepEqual(probe.invocations, []);
+  });
+
+  it('same-tabs on WebKit SecurityError instead of rejecting the promise', async () => {
+    installWindow('web');
+    installSignedInPortalUser();
+    probe.openThrowsSecurityError = true;
+
+    // Must settle (not reject): payment-failure-banner and panel-gating call
+    // `void openBillingPortal(...)` with no .catch (WORLDMONITOR-11C).
+    assert.deepEqual(await openBillingPortal(null), {
+      outcome: 'opened',
+      url: PORTAL_URL,
+    });
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
   });
 });

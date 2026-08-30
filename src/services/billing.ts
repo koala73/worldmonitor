@@ -456,7 +456,17 @@ export async function openBillingPortal(
       closeReserved();
       return { outcome: 'no-customer' };
     }
-    return navigate(DODO_PORTAL_FALLBACK_URL);
+    // Nested try: a second throw from navigate (e.g. WebKit SecurityError on
+    // window.open / location.assign) must not escape as unhandledrejection
+    // from `void openBillingPortal(...)` callers (WORLDMONITOR-11C sibling of
+    // the handled capture above). Prefer await so rejections stay in-catch.
+    try {
+      return await navigate(DODO_PORTAL_FALLBACK_URL);
+    } catch (navErr) {
+      closeReserved();
+      console.error('[billing] fallback portal navigation failed:', navErr);
+      return { outcome: 'open-failed', url: DODO_PORTAL_FALLBACK_URL };
+    }
   }
 }
 
