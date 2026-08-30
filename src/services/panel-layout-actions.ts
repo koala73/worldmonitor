@@ -424,6 +424,25 @@ export function mutationApplied(
   };
 }
 
+export const PANEL_LAYOUT_PERSIST_FAILED_MESSAGE = 'Dashboard panel layout could not be saved.';
+
+export function applyLayoutPersistReceipt(
+  receipt: { persisted: boolean },
+  applied: PanelLayoutMutationResult,
+): PanelLayoutMutationResult {
+  if (receipt.persisted) {
+    return { ...applied, persisted: true };
+  }
+  return {
+    ...applied,
+    ok: false,
+    status: 'denied',
+    reason: 'persist_failed',
+    persisted: false,
+    message: PANEL_LAYOUT_PERSIST_FAILED_MESSAGE,
+  };
+}
+
 export function mutationDenied(
   actionType: PanelLayoutMutationResult['actionType'],
   reason: PanelLayoutDenialReason,

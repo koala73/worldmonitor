@@ -807,14 +807,16 @@ export class Panel {
 
   /**
    * Apply collapse/expand through the visible control path and persist it.
-   * Returns false when the panel has no collapse affordance.
+   * Persist first so a quota/private-mode failure leaves the live DOM unchanged.
    */
-  public setCollapsed(collapsed: boolean): boolean {
-    if (!this._collapseBtn) return false;
-    if (this._collapsed === collapsed) return true;
+  public setCollapsed(collapsed: boolean): { ok: boolean; persisted: boolean } {
+    if (!this._collapseBtn) return { ok: false, persisted: true };
+    if (this._collapsed === collapsed) return { ok: true, persisted: true };
+    if (!savePanelCollapsed(this.panelId, collapsed)) {
+      return { ok: false, persisted: false };
+    }
     this._applyCollapsed(this._collapseBtn, collapsed);
-    savePanelCollapsed(this.panelId, collapsed);
-    return true;
+    return { ok: true, persisted: true };
   }
 
   /** Override in panels that expose a fullscreen control. */

@@ -1298,7 +1298,7 @@ function boundPanelLayoutMutationResult(
       : {}),
     ...(ok ? { changed: result.changed === true } : { changed: false }),
     ...(result.unchanged === true ? { unchanged: true } : {}),
-    ...(result.persisted === true ? { persisted: true } : {}),
+    ...(typeof result.persisted === 'boolean' ? { persisted: result.persisted } : {}),
     ...(!ok && reason ? { reason } : {}),
     message: boundedText(result.message, 160) || (ok ? 'Panel layout updated.' : 'Panel layout change denied.'),
   };

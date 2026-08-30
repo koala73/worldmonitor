@@ -89,7 +89,9 @@ import {
   type DashboardTabActionResult,
 } from '@/services/dashboard-tab-actions';
 import {
+  PANEL_LAYOUT_PERSIST_FAILED_MESSAGE,
   PANEL_LAYOUT_UNAVAILABLE_RESULT,
+  applyLayoutPersistReceipt,
   describePanelLayout,
   mutationApplied as layoutMutationApplied,
   mutationDenied as layoutMutationDenied,
@@ -1437,7 +1439,7 @@ export class PanelLayoutManager implements AppModule {
       });
     }
     const panel = this.ctx.panels[resolved.panelId];
-    if (!panel?.supportsCollapse() || !panel.setCollapsed(resolved.requestedCollapsed)) {
+    if (!panel?.supportsCollapse()) {
       return layoutMutationDenied(
         'set_collapsed',
         'collapse_unsupported',
@@ -1446,6 +1448,34 @@ export class PanelLayoutManager implements AppModule {
           panelId: resolved.panelId,
           requestedCollapsed: resolved.requestedCollapsed,
           effectiveCollapsed: panel?.isCollapsed() === true,
+          changed: false,
+        },
+      );
+    }
+    const applied = panel.setCollapsed(resolved.requestedCollapsed);
+    if (!applied.ok && applied.persisted === false) {
+      return layoutMutationDenied(
+        'set_collapsed',
+        'persist_failed',
+        PANEL_LAYOUT_PERSIST_FAILED_MESSAGE,
+        {
+          panelId: resolved.panelId,
+          requestedCollapsed: resolved.requestedCollapsed,
+          effectiveCollapsed: panel.isCollapsed(),
+          changed: false,
+          persisted: false,
+        },
+      );
+    }
+    if (!applied.ok) {
+      return layoutMutationDenied(
+        'set_collapsed',
+        'collapse_unsupported',
+        'That panel does not expose a collapse control.',
+        {
+          panelId: resolved.panelId,
+          requestedCollapsed: resolved.requestedCollapsed,
+          effectiveCollapsed: panel.isCollapsed() === true,
           changed: false,
         },
       );
@@ -1591,8 +1621,7 @@ export class PanelLayoutManager implements AppModule {
         changed: false,
       });
     }
-    this.savePanelOrder();
-    return layoutMutationApplied('move', {
+    return applyLayoutPersistReceipt(this.savePanelOrder(), layoutMutationApplied('move', {
       message: 'Moved panel.',
       panelId: resolved.panelId,
       region: resolved.region,
@@ -1600,7 +1629,7 @@ export class PanelLayoutManager implements AppModule {
       changed: true,
       unchanged: false,
       persisted: true,
-    });
+    }));
   }
 
   private collectPanelLayoutEntries(): {
@@ -3587,10 +3616,10 @@ export class PanelLayoutManager implements AppModule {
     });
   }
 
-  savePanelOrder(): void {
+  savePanelOrder(): { persisted: boolean } {
     const grid = document.getElementById('panelsGrid');
     const bottomGrid = document.getElementById('mapBottomGrid');
-    if (!grid || !bottomGrid) return;
+    if (!grid || !bottomGrid) return { persisted: false };
 
     const sidebarIds = Array.from(grid.children)
       .map((el) => (el as HTMLElement).dataset.panel)
@@ -3602,8 +3631,9 @@ export class PanelLayoutManager implements AppModule {
 
     const allOrder = this.buildUnifiedOrder(sidebarIds, bottomIds);
     this.resolvedPanelOrder = allOrder;
-    saveToStorage(this.ctx.PANEL_ORDER_KEY, allOrder);
-    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', Array.from(this.bottomSetMemory));
+    const orderPersisted = saveToStorage(this.ctx.PANEL_ORDER_KEY, allOrder);
+    const bottomPersisted = saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', Array.from(this.bottomSetMemory));
+    return { persisted: orderPersisted && bottomPersisted };
   }
 
   private buildUnifiedOrder(sidebarIds: string[], bottomIds: string[]): string[] {

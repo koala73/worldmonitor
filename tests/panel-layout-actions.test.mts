@@ -5,8 +5,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
+  PANEL_LAYOUT_PERSIST_FAILED_MESSAGE,
   applyExclusiveFullscreenEnter,
+  applyLayoutPersistReceipt,
   describePanelLayout,
+  mutationApplied,
   otherFullscreenPanelIds,
   resolveMovePanel,
   resolveSetPanelCollapsed,
@@ -46,6 +49,65 @@ const bothRegions = [
   entry('giving', 'bottom', 0),
   entry('strategic-risk', 'bottom', 1),
 ];
+
+describe('applyLayoutPersistReceipt', () => {
+  it('keeps an applied move when both storage writes succeed', () => {
+    const applied = mutationApplied('move', {
+      message: 'Moved panel.',
+      panelId: 'markets',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      unchanged: false,
+    });
+    const persisted = applyLayoutPersistReceipt({ persisted: true }, applied);
+    assert.equal(persisted.ok, true);
+    assert.equal(persisted.status, 'applied');
+    assert.equal(persisted.persisted, true);
+    assert.equal(persisted.message, 'Moved panel.');
+  });
+
+  it('does not report applied after a swallowed storage failure', () => {
+    const applied = mutationApplied('move', {
+      message: 'Moved panel.',
+      panelId: 'markets',
+      region: 'bottom',
+      index: 1,
+      changed: true,
+      unchanged: false,
+    });
+    const failed = applyLayoutPersistReceipt({ persisted: false }, applied);
+    assert.deepEqual(failed, {
+      ok: false,
+      status: 'denied',
+      actionType: 'move',
+      reason: 'persist_failed',
+      persisted: false,
+      message: PANEL_LAYOUT_PERSIST_FAILED_MESSAGE,
+      panelId: 'markets',
+      region: 'bottom',
+      index: 1,
+      changed: true,
+      unchanged: false,
+    });
+  });
+
+  it('denies collapse with the effective state when persistence fails', () => {
+    const applied = mutationApplied('set_collapsed', {
+      message: 'Panel collapsed.',
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: false,
+      changed: false,
+    });
+    const failed = applyLayoutPersistReceipt({ persisted: false }, applied);
+    assert.equal(failed.reason, 'persist_failed');
+    assert.equal(failed.ok, false);
+    assert.equal(failed.persisted, false);
+    assert.equal(failed.effectiveCollapsed, false);
+    assert.equal(failed.changed, false);
+  });
+});
 
 describe('describePanelLayout', () => {
   it('reports named regions, order, collapsed, and fullscreen state', () => {
