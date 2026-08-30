@@ -162,7 +162,7 @@ describe('buildAllCountriesMap', () => {
   });
 
   it('each entry has exactly the 9 numeric share fields, consumption, and year', () => {
-    const expectedFields = ['year', 'balanceYear', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
+    const expectedFields = ['year', 'balanceYear', 'balanceImportSharePercent', 'importYear', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
     const all = buildAllCountriesMap(makeCountries());
     for (const [iso2, entry] of Object.entries(all)) {
       const keys = Object.keys(entry).sort();
@@ -238,7 +238,45 @@ describe('golden fixture (OWID CSV)', () => {
     assert.equal(us?.year, 2024);
     assert.equal(us?.coalShare, 18);
     assert.equal(us?.balanceYear, 2023);
+    assert.equal(us?.balanceImportSharePercent, 7);
     assert.equal(us?.importShare, 7);
+    assert.equal(us?.importYear, 2023);
+    assert.equal(us?.primaryEnergyConsumptionTwh, 25_000);
+  });
+
+  it('keeps importShare when the row reports imports but no primary energy consumption', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'Malta,MLT,2023,,,3,,10,5,5,0,93,',
+    ].join('\n'));
+    const mt = countries.get('MT');
+    // Regression guard: gating importShare on primaryEnergyConsumptionTwh
+    // dropped it entirely for every country OWID reports imports but no
+    // consumption for, silently degrading the energy profile, the intel
+    // brief, the deep-dive panel and the regional balance vector.
+    assert.equal(mt?.importShare, 93, 'importShare must not require a consumption reading');
+    assert.equal(mt?.importYear, 2023);
+    // The scorecard's physical ratio still refuses an incomplete pair.
+    assert.equal(mt?.balanceYear, null);
+    assert.equal(mt?.balanceImportSharePercent, null);
+    assert.equal(mt?.primaryEnergyConsumptionTwh, null);
+  });
+
+  it('tracks importShare and the balance pair on independent years', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'United States,USA,2022,20,40,1,18,21,10,5,6,7,25000',
+      'United States,USA,2024,,,,,,,,,9,',
+    ].join('\n'));
+    const us = countries.get('US');
+    // The standalone percentage advances to its own latest vintage...
+    assert.equal(us?.importShare, 9);
+    assert.equal(us?.importYear, 2024);
+    // ...while the scorecard's same-row pair stays on the year that had both.
+    assert.equal(us?.balanceYear, 2022);
+    assert.equal(us?.balanceImportSharePercent, 7);
     assert.equal(us?.primaryEnergyConsumptionTwh, 25_000);
   });
 

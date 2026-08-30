@@ -48,7 +48,7 @@ function sourceFixture() {
       },
     },
     energyMix: {
-      US: { year: 2023, primaryEnergyConsumptionTwh: 25_000, importShare: -8 },
+      US: { year: 2023, balanceYear: 2023, primaryEnergyConsumptionTwh: 25_000, balanceImportSharePercent: -8 },
     },
     staticByCountry: {
       US: {

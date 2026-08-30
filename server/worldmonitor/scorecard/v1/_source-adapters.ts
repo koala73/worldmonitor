@@ -246,10 +246,15 @@ function energyBalance(countryCode: string, source: unknown): ScorecardEvidence 
   if (!source) return sourceUnavailable('energy.productionBalance', 'OWID and World Bank');
   const entry = readCountry(source, countryCode);
   if (!entry) return countryUnavailable('energy.productionBalance', 'OWID and World Bank');
+  // Read the SAME-ROW balance pair, never the standalone `importShare`.
+  // `importShare` tracks its own latest year for the pre-existing energy
+  // surfaces, so pairing it with `primaryEnergyConsumptionTwh` would derive
+  // production from two different vintages. `balanceYear` is set only when both
+  // readings came from one row, so it must not fall back to the mix year.
   const consumption = finite(entry.primaryEnergyConsumptionTwh);
-  const netImports = finite(entry.importShare);
-  const observationYear = year(entry.balanceYear ?? entry.year);
-  if (entry.primaryEnergyConsumptionTwh == null || entry.importShare == null || (entry.balanceYear ?? entry.year) == null) {
+  const netImports = finite(entry.balanceImportSharePercent);
+  const observationYear = year(entry.balanceYear);
+  if (entry.primaryEnergyConsumptionTwh == null || entry.balanceImportSharePercent == null || entry.balanceYear == null) {
     return countryUnavailable('energy.productionBalance', 'OWID and World Bank');
   }
   if (consumption == null || !(consumption > 0) || netImports == null || observationYear == null) {

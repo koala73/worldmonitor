@@ -124,8 +124,16 @@ export function parseOwidCsv(csvText) {
     const hasElectricityShare = hasAnyElectricityShare(row);
     const importShare = safeFloat(row[COLS.imports]);
     const primaryEnergyConsumptionTwh = safeFloat(row[COLS.primaryEnergyConsumption]);
+    // Three independent vintages. `importShare` must NOT require a consumption
+    // reading: it is a standalone percentage that predates the scorecard and is
+    // read on its own by the energy profile, the intel brief, the deep-dive
+    // panel and the regional balance vector. Gating it on consumption dropped
+    // it for every country OWID reports imports but not consumption for.
+    // `balanceYear` stays the SAME-ROW pair because the scorecard derives
+    // production = consumption * (1 - netImports / 100), which is only
+    // physically meaningful when both readings share a year.
     const hasEnergyBalance = importShare != null && primaryEnergyConsumptionTwh != null;
-    if (!hasElectricityShare && !hasEnergyBalance) continue;
+    if (!hasElectricityShare && importShare == null && primaryEnergyConsumptionTwh == null) continue;
 
     const iso2 = resolveIso2({ iso3 });
     if (!iso2) continue;
@@ -143,6 +151,8 @@ export function parseOwidCsv(csvText) {
       solarShare: null,
       hydroShare: null,
       balanceYear: null,
+      balanceImportSharePercent: null,
+      importYear: null,
       importShare: null,
       primaryEnergyConsumptionTwh: null,
       seededAt: new Date().toISOString(),
@@ -161,8 +171,15 @@ export function parseOwidCsv(csvText) {
         hydroShare: safeFloat(row[COLS.hydro]),
       });
     }
+    if (importShare != null && (prev.importYear == null || year > prev.importYear)) {
+      Object.assign(prev, { importYear: year, importShare });
+    }
     if (hasEnergyBalance && (prev.balanceYear == null || year > prev.balanceYear)) {
-      Object.assign(prev, { balanceYear: year, importShare, primaryEnergyConsumptionTwh });
+      Object.assign(prev, {
+        balanceYear: year,
+        balanceImportSharePercent: importShare,
+        primaryEnergyConsumptionTwh,
+      });
     }
     byCountry.set(iso2, prev);
   }
@@ -199,14 +216,18 @@ export function buildExposureIndex(countries) {
  * Build a compact bulk map of all countries keyed by ISO2.
  * Omits `iso2`, `country`, and `seededAt` to reduce payload size (~30% savings).
  * @param {Map<string, object>} countries
- * @returns {Record<string, {year: number|null, balanceYear: number|null, coalShare: number|null, gasShare: number|null, oilShare: number|null, nuclearShare: number|null, renewShare: number|null, windShare: number|null, solarShare: number|null, hydroShare: number|null, importShare: number|null, primaryEnergyConsumptionTwh: number|null}>}
+ * @returns {Record<string, {year: number|null, balanceYear: number|null, balanceImportSharePercent: number|null, importYear: number|null, coalShare: number|null, gasShare: number|null, oilShare: number|null, nuclearShare: number|null, renewShare: number|null, windShare: number|null, solarShare: number|null, hydroShare: number|null, importShare: number|null, primaryEnergyConsumptionTwh: number|null}>}
  */
 export function buildAllCountriesMap(countries) {
   const result = {};
   for (const [iso2, entry] of countries) {
     result[iso2] = {
+      // `year` stays honestly null for a country with no electricity mix.
+      // Consumers must render "unknown", never 0 — see CountryDeepDivePanel.
       year: entry.year,
-      balanceYear: entry.balanceYear ?? entry.year,
+      balanceYear: entry.balanceYear,
+      balanceImportSharePercent: entry.balanceImportSharePercent,
+      importYear: entry.importYear ?? entry.year,
       coalShare: entry.coalShare,
       gasShare: entry.gasShare,
       oilShare: entry.oilShare,

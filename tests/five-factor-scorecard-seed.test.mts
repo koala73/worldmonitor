@@ -133,7 +133,7 @@ describe('five-factor atomic snapshot', () => {
     const degraded = buildFiveFactorSnapshot(countryCodes, {
       ...sources,
       population: { countries: { [coveredCountry]: { populationMillions: 10, year: 2024 } } },
-      energyMix: { [coveredCountry]: { balanceYear: 2024, primaryEnergyConsumptionTwh: 100, importShare: 0 } },
+      energyMix: { [coveredCountry]: { balanceYear: 2024, primaryEnergyConsumptionTwh: 100, balanceImportSharePercent: 0 } },
     }, '2026-08-29T00:00:00.000Z');
     const coverage = scorecardCoverage(degraded);
     assert.equal(coverage.scoreableCountries, 1);
@@ -154,7 +154,7 @@ describe('five-factor atomic snapshot', () => {
       },
       energyMix: Object.fromEntries(countryCodes.map((countryCode) => [
         countryCode,
-        { balanceYear: 2024, primaryEnergyConsumptionTwh: 100, importShare: 0 },
+        { balanceYear: 2024, primaryEnergyConsumptionTwh: 100, balanceImportSharePercent: 0 },
       ])),
     };
     const snapshot = buildFiveFactorSnapshot(countryCodes, cohortSources, '2026-08-29T00:00:00.000Z');

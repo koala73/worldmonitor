@@ -44,7 +44,7 @@ function handCheckCountry(countryCode: string, rawValues: number[]) {
     energyMix: { [countryCode]: {
       balanceYear: 2024,
       primaryEnergyConsumptionTwh: 100,
-      importShare: (1 - energyBalance) * 100,
+      balanceImportSharePercent: (1 - energyBalance) * 100,
     } },
     staticByCountry: { [countryCode]: {
       aquastat: { ...metric(waterStress, 'worldbank-aquastat'), indicator: 'water stress' },

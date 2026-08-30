@@ -1056,7 +1056,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       wrap.append(legend);
       this.energyBody.append(wrap);
 
-      const src = this.el('div', 'cdp-economic-source', `Data: ${data.mixYear} (OWID)`);
+      // mixYear is 0 when OWID reports no electricity mix for the country
+      // (the proto zero-value stands in for null). Rendering "Data: 0 (OWID)"
+      // reads as a real vintage, so label it unknown instead.
+      const src = this.el('div', 'cdp-economic-source', data.mixYear > 0
+        ? `Data: ${data.mixYear} (OWID)`
+        : 'Data: year unavailable (OWID)');
       this.energyBody.append(src);
     }
 
