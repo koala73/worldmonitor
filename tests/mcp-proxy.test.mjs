@@ -659,13 +659,36 @@ describe('api/mcp-proxy', () => {
           'oversized bodies must not reach upstream MCP servers',
         );
         const data = await res.json();
-        assert.match(data.error, new RegExp(String(MAX_JSON_RPC_BODY_BYTES)));
+        // Exact equality, not a substring match: api/mcp-proxy.ts is under
+        // `@ts-nocheck`, so `typecheck:api` cannot verify the RequestBodyTooLargeError
+        // wiring there. This assertion is the only thing pinning that contract.
+        assert.equal(data.error, `Request body exceeds ${MAX_JSON_RPC_BODY_BYTES} bytes`);
       } finally {
         if (previousUpstashUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
         else process.env.UPSTASH_REDIS_REST_URL = previousUpstashUrl;
         if (previousUpstashToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
         else process.env.UPSTASH_REDIS_REST_TOKEN = previousUpstashToken;
       }
+    });
+
+    it('returns 400 for a malformed JSON POST body (#7406: was 422 pre-cap)', async () => {
+      // Before #7406 the bare `await req.json()` threw past handleCallTool into
+      // handler()'s outer catch, which answered 422 and echoed the raw parser
+      // message (which quotes caller-supplied bytes). The local catch now answers
+      // a fixed 400. Pinned so neither the status nor the fixed message drifts back.
+      const res = await handler(new Request('https://worldmonitor.app/api/mcp-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WorldMonitor-Key': ENTERPRISE_KEY,
+          origin: 'https://worldmonitor.app',
+        },
+        body: '{"serverUrl":',
+      }));
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.error, 'Invalid JSON');
     });
 
     it('returns 400 for blocked host in POST body', async () => {

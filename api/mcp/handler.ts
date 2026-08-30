@@ -731,16 +731,17 @@ async function mcpHandlerInner(
   } catch (err) {
     usage.phase = 'malformed';
     if (err instanceof RequestBodyTooLargeError) {
-      return new Response(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: null,
-          error: { code: -32600, message: err.message },
-        }),
-        {
-          status: 413,
-          headers: withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders }),
-        },
+      // Structured `data` so an agent can self-correct without parsing the
+      // message string — same contract as the -32001/-32002 denials and the
+      // _jmespath_error envelope. `id` is null because the body was rejected
+      // before parsing, so the caller's id was never read.
+      return rpcError(
+        null,
+        -32600,
+        err.message,
+        corsHeaders,
+        { reason: 'body-too-large', maxBytes: err.maxBytes, nextStep: 'Shrink the request body below maxBytes and retry.' },
+        413,
       );
     }
     return rpcError(null, -32600, 'Invalid request: malformed JSON', corsHeaders);

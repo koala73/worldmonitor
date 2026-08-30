@@ -54,9 +54,20 @@ describe('readBoundedRequestBody', () => {
 
   it('cancels a streamed body that crosses the cap mid-read', async () => {
     let cancelled = false;
+    // Enqueue from pull() and close after a bounded number of pulls, rather than
+    // enqueueing everything in start(). The cap still throws on the second chunk
+    // (so `cancel` is observed on a live stream — closing in start() would make
+    // reader.cancel() a spec no-op and never fire it), but a regression that
+    // REMOVES the cap now drains and closes instead of hanging `node --test`,
+    // which has no default timeout.
+    let pulls = 0;
     const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array(10));
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 5) {
+          controller.close();
+          return;
+        }
         controller.enqueue(new Uint8Array(10));
       },
       cancel() {
@@ -81,9 +92,15 @@ describe('readBoundedRequestBody', () => {
 
   it('still caps when Content-Length understates the streamed body', async () => {
     let cancelled = false;
+    // Self-terminating for the same reason as the fixture above.
+    let pulls = 0;
     const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array(8));
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 5) {
+          controller.close();
+          return;
+        }
         controller.enqueue(new Uint8Array(8));
       },
       cancel() {
@@ -114,5 +131,84 @@ describe('readBoundedRequestBody', () => {
       32,
     );
     assert.equal(body.byteLength, 32);
+  });
+
+  // `new Request({ body })` does not set Content-Length, so without an explicit
+  // header the tests above only ever exercise the streaming path. In production
+  // every non-chunked MCP POST advertises Content-Length, so the ACCEPT side of
+  // that branch is the one real traffic takes — and the only case that fails a
+  // `>=` off-by-one.
+  it('accepts through the Content-Length branch at exactly the cap', async () => {
+    const payload = new Uint8Array(32).fill(7);
+    const body = await readBoundedRequestBody(
+      new Request('https://example.test', {
+        method: 'POST',
+        headers: { 'Content-Length': '32' },
+        body: payload,
+      }),
+      32,
+    );
+    assert.deepEqual(body, payload, 'the Content-Length path must return the body intact');
+  });
+
+  it('rejects one byte over the cap via Content-Length', async () => {
+    const payload = new Uint8Array(33).fill(7);
+    await assert.rejects(
+      () => readBoundedRequestBody(
+        new Request('https://example.test', {
+          method: 'POST',
+          headers: { 'Content-Length': '33' },
+          body: payload,
+        }),
+        32,
+      ),
+      RequestBodyTooLargeError,
+    );
+  });
+
+  // Every malformed Content-Length must fall through to the streaming cap rather
+  // than admitting an unbounded body. Number('abc')/Number('100, 100') are NaN and
+  // Number('1e999') is Infinity, so none of them satisfy the early-reject guard.
+  for (const [label, header] of [
+    ['non-numeric', 'abc'],
+    ['negative', '-1'],
+    ['empty', ''],
+    ['duplicate-joined', '100, 100'],
+    ['infinite', '1e999'],
+  ]) {
+    it(`falls through to the streaming cap on a ${label} Content-Length`, async () => {
+      await assert.rejects(
+        () => readBoundedRequestBody(
+          new Request('https://example.test', {
+            method: 'POST',
+            headers: { 'Content-Length': header },
+            body: new Uint8Array(64),
+          }),
+          32,
+        ),
+        RequestBodyTooLargeError,
+      );
+    });
+  }
+
+  it('returns an empty body for a POST with no body at all', async () => {
+    const body = await readBoundedRequestBody(
+      new Request('https://example.test', { method: 'POST' }),
+      32,
+    );
+    assert.equal(body.byteLength, 0);
+  });
+
+  it('rejects a maxBytes that is not a non-negative finite number', async () => {
+    for (const bad of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+      await assert.rejects(
+        () => readBoundedRequestBody(
+          new Request('https://example.test', { method: 'POST', body: new Uint8Array(1) }),
+          bad,
+        ),
+        TypeError,
+        `maxBytes=${String(bad)} must be a TypeError`,
+      );
+    }
   });
 });

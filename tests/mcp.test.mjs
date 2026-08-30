@@ -376,6 +376,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.id, null, 'oversized body must not reflect a parsed id');
     assert.equal(body.error?.code, -32600);
     assert.match(body.error?.message ?? '', new RegExp(String(MAX_JSON_RPC_BODY_BYTES)));
+    assert.equal(res.headers.get('Content-Type'), 'application/json');
+    // Structured self-correction payload — an agent must not have to parse the
+    // message string to learn the cap.
+    assert.equal(body.error?.data?.reason, 'body-too-large');
+    assert.equal(body.error?.data?.maxBytes, MAX_JSON_RPC_BODY_BYTES);
+    assert.ok(body.error?.data?.nextStep, 'the 413 must tell an agent what to do next');
   });
 
   it('rejects an oversized Content-Length without reading the body (#7406)', async () => {
