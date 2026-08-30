@@ -296,6 +296,14 @@ make install-plugins   # Install sebuf protoc-gen plugins (requires Go)
 
 The pinned sebuf version is set by `SEBUF_VERSION` in the `Makefile` (currently **v0.11.1**). All three plugins — `protoc-gen-ts-client`, `protoc-gen-ts-server`, `protoc-gen-openapiv3` — must be installed from the same sebuf release. If you see codegen drift after pulling, rerun `make install-plugins` to resync.
 
+### Generated Artifacts in Pull Requests
+
+`make generate` writes generated files under `src/generated/` and `docs/api/`, plus the seven scorecard Edge mirrors named by `scripts/generate-scorecard-edge-mirrors.mjs`. These files remain committed to the repository, but they must never be edited by hand.
+
+For pull requests created from branches in this repository, a read-only job runs the pinned generator against the exact PR head. A fresh writer job applies only the validated generated-artifact patch; it does not execute repository-controlled code with a write token. When generated files drift, CI appends a `chore(proto): update generated artifacts` commit to the same branch. GitHub creates fresh PR runs for the automated update in an approval-required state; a maintainer must approve them in the merge box. `proto-generated-followup` remains pending until that new head produces no further drift. CI also regenerates against the synthetic merge result so concurrent proto changes on `main` cannot leave an internally consistent branch stale after merge. The required Deploy Gate includes all proto jobs and the aggregate `proto-freshness` result.
+
+For pull requests created from forks, CI does not execute the fork's `Makefile`, `buf.gen.yaml`, generator configuration, package scripts, or generated code, and it does not certify fork-generated artifacts. Codegen input or output changes stay blocked until a maintainer moves the commit to a trusted internal branch. Dependabot codegen changes use the same read-only rule.
+
 ### OpenAPI Output
 
 `make generate` (i.e. `cd proto && buf generate`) produces:

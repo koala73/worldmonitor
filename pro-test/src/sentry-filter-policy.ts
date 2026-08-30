@@ -187,6 +187,40 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // separate Sentry clients, so the marketing copy was the gap that let
   // WORLDMONITOR-108 through.
   /webkit\.messageHandlers/,
+  // A bare `jQuery` global reference from an injected script.
+  // WORLDMONITOR-11F is the shape: `ReferenceError: jQuery is not defined` on
+  // Firefox 148 / Linux, sent by `sentry.javascript.react` with a null release,
+  // whose single frame is the prerendered welcome document itself
+  // (`https://www.worldmonitor.app/` line 1, column 445).
+  //
+  // The licence is the IDENTIFIER, not the frame — deliberately, because on
+  // this surface the document frame proves nothing (see
+  // MARKETING_DOCUMENT_FRAME: welcome.html's WebMCP bootstrap and
+  // prerender.mjs's DEFERRED_STYLES_SCRIPT are executable inline script the
+  // browser attributes to the same URL). A `ReferenceError: <name> is not
+  // defined` can only be thrown by code that reads `<name>` as a BARE
+  // identifier, and no first-party source on this surface — `pro-test/src`, the
+  // `shared/` leaves it imports, or either inline script — contains one for
+  // `jQuery`. The one `jQuery` token in the shipped marketing output is
+  // UAParser's optional-plugin hookup inside the bundled Clerk chunk,
+  // `i.jQuery || i.Zepto`: a guarded PROPERTY read on the global object, which
+  // evaluates to `undefined` and cannot raise a ReferenceError. So the throw is
+  // third-party by construction, which is what makes a frame-blind
+  // `ignoreErrors` entry safe here where `marketingBeforeSend`'s frame gates —
+  // handed one document frame — could not act at all.
+  //
+  // Already suppressed on the dashboard (`/jQuery is not defined/` in
+  // `src/bootstrap/sentry-init.ts`); the two surfaces run separate Sentry
+  // clients, which is the same gap that let WORLDMONITOR-15/-102/-107/-108/
+  // -10N/-10T/-117 through.
+  //
+  // Anchored to the whole message rather than copying the dashboard's bare
+  // substring, for the reason the `Error invoking` entry above spells out:
+  // `ignoreErrors` is frame-blind, so an unanchored pattern would also drop a
+  // first-party message that merely CONTAINS the phrase, even riding a
+  // `/pro/assets/*.js` frame. `tests/pro-sentry-filter-policy.test.mts` pins
+  // both the suppression and the bare-identifier scan that licenses it.
+  /^jQuery is not defined$/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */

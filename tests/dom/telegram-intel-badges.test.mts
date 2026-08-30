@@ -19,7 +19,7 @@ function telegramItem(overrides: Partial<Omit<TelegramItem, 'source'>> = {}): Te
     channel: 'IDFofficial',
     channelTitle: 'IDF Official',
     url: 'https://t.me/IDFofficial/1',
-    ts: new Date().toISOString(),
+    ts: '2026-01-01T00:00:00.000Z',
     text: 'Primary government claim',
     topic: 'breaking',
     tags: ['middleeast'],
