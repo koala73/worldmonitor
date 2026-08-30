@@ -122,7 +122,9 @@ function absoluteStressIndex(metal, premiumPct) {
     return 45 + ((premiumPct - floors.elevated) / (floors.stressed - floors.elevated)) * 25;
   }
   if (premiumPct < floors.extreme) {
-    return 70 + ((premiumPct - floors.stressed) / (floors.extreme - floors.stressed)) * 20;
+    // Span stops short of 20 so the open top stays below 90 after the published
+    // two-decimal round (a full *20 approaches 90 and rounds up to the extreme floor).
+    return 70 + ((premiumPct - floors.stressed) / (floors.extreme - floors.stressed)) * 19.99;
   }
   return 100;
 }

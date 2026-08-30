@@ -51,7 +51,7 @@ The classifier assigns one absolute regime and one relative regime. The higher r
 
 For example, a gold premium of 3% is at least `stressed` even when the trailing window also contains higher observations.
 
-The per-metal stress index is on a 0 to 100 scale. Absolute magnitude interpolates across compressed band tops of 45 (elevated), 70 (stressed), and 90 (just under extreme). Clearing the absolute extreme premium floor (gold 5%, silver 20%) publishes `100`.
+The per-metal stress index is on a 0 to 100 scale. Absolute magnitude interpolates across compressed band tops of 45 (elevated), 70 (stressed), and just under 90 (approaching extreme; the stressed span stops short of 90 so two-decimal rounding cannot reach the extreme floor). Clearing the absolute extreme premium floor (gold 5%, silver 20%) publishes `100`.
 
 When the relative ladder outruns absolute magnitude, `index` still means **stress magnitude with a regime-ordered floor**, not a second copy of the percentile:
 
