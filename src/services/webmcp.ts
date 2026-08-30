@@ -106,6 +106,7 @@ import {
 } from './webmcp-map-layer-catalog';
 import type { SetPanelEnabledResult } from '../config/panel-enablement';
 import {
+  MISSION_PRESET_APPLY_DENY_REASONS,
   MissionPresetCatalogError,
   isMissionPresetId,
   type MissionPresetApplyDenyReason,
@@ -1189,14 +1190,9 @@ function boundSetPanelEnabledResult(result: SetPanelEnabledResult): SetPanelEnab
   };
 }
 
-const MISSION_PRESET_APPLY_REASONS = new Set<MissionPresetApplyDenyReason>([
-  'malformed_arguments',
-  'unknown_preset',
-  'preset_incompatible',
-  'preset_not_entitled',
-  'app_destroyed',
-  'apply_failed',
-]);
+const MISSION_PRESET_APPLY_REASON_SET: ReadonlySet<string> = new Set(
+  MISSION_PRESET_APPLY_DENY_REASONS,
+);
 
 function boundMissionPresetCatalog(result: MissionPresetCatalogResult): MissionPresetCatalogResult {
   const presets = (Array.isArray(result.presets) ? result.presets : []).map((preset) => {
@@ -1244,7 +1240,7 @@ function boundApplyMissionPresetResult(result: ApplyMissionPresetResult): ApplyM
     ? result.status
     : 'denied';
   const ok = result.ok === true && (status === 'applied' || status === 'unchanged');
-  const reason = result.reason && MISSION_PRESET_APPLY_REASONS.has(result.reason)
+  const reason = result.reason && MISSION_PRESET_APPLY_REASON_SET.has(result.reason)
     ? result.reason
     : undefined;
   const map = result.map && typeof result.map === 'object'

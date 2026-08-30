@@ -242,9 +242,12 @@ The panel-layout tools and the mission-preset tools return a stable `reason` on 
 | `preset_incompatible` | `apply_mission_preset`, and as `unavailableReason` on a `list_mission_presets` row | Fewer than two of the preset's non-map panels exist in the current monitor's default panel set. Use `switch_monitor` before applying. |
 | `preset_not_entitled` | `apply_mission_preset`, and as `unavailableReason` on a `list_mission_presets` row | The current plan cannot enable a panel the preset requires. Offer an available preset instead. |
 | `apply_failed` | `apply_mission_preset` | Mission control rejected the write. The prior dashboard state has been restored; read `get_dashboard_context` before deciding what to do next. |
+| `unavailable` | `open_mission_picker` | Mission presets are not offered on this dashboard. Treat it as terminal for this monitor rather than retrying or falling back to `apply_mission_preset`. |
 | `target_cancellation_unsupported` | `set_panel_collapsed`, `move_panel`, `apply_mission_preset` | The host did not give the page the invocation's `AbortSignal`. Nothing was written. See [Host support and cancellation](#host-support-and-cancellation). |
 
-Two failures arrive as rejected promises rather than bounded results. A destroyed dashboard rejects every panel-layout and mission-preset tool with a `WebMcpToolError` naming `app_destroyed` as its reason, and `list_mission_presets` rejects malformed arguments and an unrecognized variant instead of returning them. Handle both on the rejection path.
+Some failures arrive as rejected promises rather than bounded results. A destroyed dashboard rejects the panel-layout tools, `list_mission_presets`, and `apply_mission_preset` with a `WebMcpToolError` naming `app_destroyed` as its reason, and `list_mission_presets` also rejects malformed arguments and an unrecognized variant instead of returning them. Handle those on the rejection path.
+
+`open_mission_picker` is the exception: its binding does not pre-check the destroyed dashboard, so it answers with a bounded navigation result carrying `app_destroyed` — a result, not a rejection. Branch on both for that tool.
 
 <Note>
 `get_panel_layout` never denies an unready layout. It returns an empty snapshot — `panelCount: 0`, no `panels`, and `regions.bottom.available: false` — which is indistinguishable from a dashboard that genuinely has no mounted panels. Do not report "this dashboard has no panels" from a single empty read; wait for the dashboard to settle and read again.

@@ -242,9 +242,12 @@ WebMCP 返回原生 JavaScript 值。它不使用托管 MCP 服务器的 `{ cont
 | `preset_incompatible` | `apply_mission_preset`，以及 `list_mission_presets` 行上的 `unavailableReason` | 该预设的非 map 面板中，出现在当前监视器默认面板集内的少于两个。请先使用 `switch_monitor`。 |
 | `preset_not_entitled` | `apply_mission_preset`，以及 `list_mission_presets` 行上的 `unavailableReason` | 当前套餐无法启用该预设所需的某个面板。请改为提供可用预设。 |
 | `apply_failed` | `apply_mission_preset` | 任务控制拒绝了本次写入。先前的仪表板状态已恢复；决定下一步之前请读取 `get_dashboard_context`。 |
+| `unavailable` | `open_mission_picker` | 该仪表板不提供任务预设。请将其视为该监视器下的终态结果，不要重试，也不要改用 `apply_mission_preset`。 |
 | `target_cancellation_unsupported` | `set_panel_collapsed`、`move_panel`、`apply_mission_preset` | 宿主没有把调用的 `AbortSignal` 交给页面。没有发生任何写入。参见[宿主支持与取消](#宿主支持与取消)。 |
 
-有两类失败以 Promise 拒绝而不是受限结果的形式出现。仪表板被销毁时，每个面板布局工具与任务预设工具都会以 `WebMcpToolError` 拒绝，并在消息中给出原因 `app_destroyed`；`list_mission_presets` 也会拒绝格式错误的参数和无法识别的变体，而不是把它们作为结果返回。两者都必须在拒绝路径上处理。
+有些失败以 Promise 拒绝而不是受限结果的形式出现。仪表板被销毁时，各个面板布局工具、`list_mission_presets` 与 `apply_mission_preset` 都会以 `WebMcpToolError` 拒绝，并在消息中给出原因 `app_destroyed`；`list_mission_presets` 还会拒绝格式错误的参数和无法识别的变体，而不是把它们作为结果返回。这些都必须在拒绝路径上处理。
+
+`open_mission_picker` 是例外：它的绑定不会预先检查仪表板是否已销毁，因此它会返回带有 `app_destroyed` 的受限导航结果——是结果，而不是拒绝。对该工具需要同时处理两条分支。
 
 <Note>
 `get_panel_layout` 从不因布局未就绪而拒绝。它会返回空快照——`panelCount: 0`、没有 `panels`、`regions.bottom.available: false`——这与仪表板确实没有挂载面板的情况无法区分。不要根据一次空读取就报告“该仪表板没有面板”；请等待仪表板稳定后重新读取。
