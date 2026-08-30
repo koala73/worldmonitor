@@ -14,6 +14,9 @@
 const { createHash } = require('node:crypto');
 
 const OPENSKY_COOLDOWN_KEY = 'opensky:cooldown-until:v2';
+// v1 stored every account under one key. Readers retain this name only while
+// migrating a matching account's still-live record into its v2 key.
+const OPENSKY_LEGACY_COOLDOWN_KEY = 'opensky:cooldown-until:v1';
 const OPENSKY_MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const OPENSKY_MAX_CLOCK_SKEW_MS = 5_000;
 // Header-less 429s still park the shared key. The seeder is a one-shot */5
@@ -270,6 +273,7 @@ function compareAndDelCommand(key, {
 
 module.exports = {
   OPENSKY_COOLDOWN_KEY,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_MAX_CLOCK_SKEW_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,

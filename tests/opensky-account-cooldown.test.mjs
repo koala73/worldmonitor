@@ -10,6 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const {
   OPENSKY_COOLDOWN_KEY,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_MAX_CLOCK_SKEW_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
@@ -118,6 +119,7 @@ function runMaxDeadlineSet(redis, record) {
 
 test('shared cooldown key and fingerprint stay stable across processes', () => {
   assert.equal(OPENSKY_COOLDOWN_KEY, 'opensky:cooldown-until:v2');
+  assert.equal(OPENSKY_LEGACY_COOLDOWN_KEY, 'opensky:cooldown-until:v1');
   assert.equal(accountFingerprint('test-client'), accountFingerprint('test-client'));
   assert.notEqual(accountFingerprint('test-client'), accountFingerprint('other-client'));
   const account = accountFingerprint('test-client');
@@ -454,10 +456,12 @@ test('relay and seeder wire the shared atomic helpers instead of SET/DEL', () =>
   assert.match(relay, /maxDeadlineSetCommand/);
   assert.match(relay, /OPENSKY_MAX_DEADLINE_SET_LUA/);
   assert.match(relay, /cooldownKeyForAccount/);
+  assert.match(relay, /OPENSKY_LEGACY_COOLDOWN_KEY/);
   assert.doesNotMatch(relay, /upstashSet\(OPENSKY_COOLDOWN_KEY/);
   assert.match(seeder, /maxDeadlineSetCommand/);
   assert.match(seeder, /compareAndDelCommand/);
   assert.match(seeder, /cooldownKeyForAccount/);
+  assert.match(seeder, /OPENSKY_LEGACY_COOLDOWN_KEY/);
   assert.doesNotMatch(seeder, /redisSet\(\s*[\s\S]*OPENSKY_COOLDOWN_KEY/);
   assert.doesNotMatch(seeder, /redisDel\(\s*[\s\S]*OPENSKY_COOLDOWN_KEY/);
 });

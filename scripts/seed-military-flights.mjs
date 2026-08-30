@@ -604,6 +604,7 @@ const OPENSKY_FETCH_RETRY_DELAYS = [0, 1_500];
 // to outlive the process. Redis is the only state that does (#6241).
 const {
   cooldownKeyForAccount,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   accountFingerprint: openSkyAccountFingerprint,
@@ -719,6 +720,35 @@ function formatWait(ms) {
 // try — so a throw here would kill the entire run, Wingbits included, on every
 // tick until someone deleted the key by hand. That is strictly worse than the
 // bug the cooldown exists to fix, so nothing in here may escape (#6241).
+async function readLegacyOpenSkyCooldown(creds, inactiveResult) {
+  const legacyRecord = await redisGet(creds.url, creds.token, OPENSKY_LEGACY_COOLDOWN_KEY);
+  const inspected = inspectCooldownRecord(legacyRecord, {
+    account: OPENSKY_ACCOUNT_FINGERPRINT,
+  });
+  if (inspected.ignoreReason === 'account-mismatch') {
+    console.warn('  [OpenSky Quota] ignoring legacy cooldown recorded for a different OpenSky account');
+  } else if (inspected.ignoreReason === 'implausible-deadline') {
+    console.warn('  [OpenSky Quota] ignoring implausible legacy cooldown deadline ' + inspected.until);
+  }
+  if (inspected.remainingMs <= 0) return inactiveResult;
+
+  // Copy, never delete: another process may still be on the v1 writer during
+  // rollout. The v2 max-deadline EVAL protects a concurrent account-local write.
+  try {
+    await withRetry(() => redisCommand(
+      creds.url,
+      creds.token,
+      maxDeadlineSetCommand(OPENSKY_COOLDOWN_KEY, legacyRecord, ttlSecondsForCooldown(inspected.remainingMs)),
+      { label: 'Redis EVAL migrate legacy OpenSky cooldown', timeoutMs: 10_000 },
+    ), 2, 1000);
+  } catch (err) {
+    // The existing v1 record is still authoritative for this request even
+    // when the best-effort v2 copy fails; do not turn that into a billed call.
+    console.warn('  [OpenSky Quota] failed to migrate legacy cooldown: ' + (err.message || err));
+  }
+  return { remainingMs: inspected.remainingMs, record: legacyRecord, ignoreReason: null };
+}
+
 async function readOpenSkyCooldown() {
   const creds = getOptionalRedisCredentials();
   if (!creds) return { remainingMs: 0, record: null };
@@ -732,11 +762,13 @@ async function readOpenSkyCooldown() {
     } else if (inspected.ignoreReason === 'implausible-deadline') {
       console.warn(`  [OpenSky Quota] ignoring implausible cooldown deadline ${inspected.until}`);
     }
-    return {
+    const inactiveResult = {
       remainingMs: inspected.remainingMs,
       record,
       ignoreReason: inspected.ignoreReason || null,
     };
+    if (inspected.remainingMs > 0) return inactiveResult;
+    return readLegacyOpenSkyCooldown(creds, inactiveResult);
   } catch (err) {
     console.warn(`  [OpenSky Quota] cooldown read failed, proceeding without it: ${err.message || err}`);
     return { remainingMs: 0, record: null, ignoreReason: 'read-failed' };

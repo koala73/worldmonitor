@@ -8,6 +8,7 @@ const { spawn } = require('node:child_process');
 const test = require('node:test');
 const {
   cooldownKeyForAccount,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   OPENSKY_MAX_DEADLINE_SET_LUA,
   accountFingerprint,
@@ -251,6 +252,40 @@ test('a relay 429 persists the shared cooldown key the seeder reads (#6253)', as
   }
 });
 
+test('a matching legacy v1 cooldown is honored and copied into the account v2 key', async () => {
+  const record = buildCooldownRecord({
+    cooldownMs: 10 * 60_000,
+    retryAfterSeconds: 900,
+    account: accountFingerprint('test-client'),
+    recordedBy: 'seed-military-flights',
+  });
+  const redis = await createUpstashMock({
+    getResponses: {
+      [OPENSKY_COOLDOWN_KEY]: { result: null },
+      [OPENSKY_LEGACY_COOLDOWN_KEY]: { result: JSON.stringify(record) },
+    },
+  });
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200',
+  });
+  try {
+    const { port } = await ready;
+    const response = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['x-cache'], 'RATE-LIMITED');
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 0);
+    const migrations = redis.evalsFor(OPENSKY_COOLDOWN_KEY);
+    assert.equal(migrations.length, 1);
+    assert.deepEqual(JSON.parse(migrations[0].command[4]), record);
+    assert.equal(redis.evalsFor(OPENSKY_LEGACY_COOLDOWN_KEY).length, 0, 'v1 is read but never modified');
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
 test('a seeder-written shared cooldown makes the relay skip without an upstream fetch', async () => {
   const record = buildCooldownRecord({
     cooldownMs: 10 * 60_000,
@@ -340,9 +375,11 @@ test('a cooldown written after a completed handler read stops a queued relay fet
     const { port } = await ready;
     const firstRequest = get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
     await redis.waitForGets(OPENSKY_COOLDOWN_KEY, 2);
+    await redis.waitForGets(OPENSKY_LEGACY_COOLDOWN_KEY, 2);
 
     const secondRequest = get(port, '/opensky/states/all?lamin=3&lomin=3&lamax=4&lomax=4');
     await redis.waitForGets(OPENSKY_COOLDOWN_KEY, 3);
+    await redis.waitForGets(OPENSKY_LEGACY_COOLDOWN_KEY, 3);
 
     const seederCooldown = buildCooldownRecord({
       cooldownMs: 10 * 60_000,
@@ -360,6 +397,36 @@ test('a cooldown written after a completed handler read stops a queued relay fet
     const metrics = JSON.parse((await get(port, '/metrics')).body);
     assert.equal(metrics.opensky.upstreamFetches, 1, 'a newly seeded cooldown must prevent a second billed OpenSky request');
     assert.equal(redis.getsFor(OPENSKY_COOLDOWN_KEY).length, 4, 'the second queued fetch must read the newly seeded cooldown');
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
+test('a mismatched legacy v1 cooldown fails open and is not migrated', async () => {
+  const record = buildCooldownRecord({
+    cooldownMs: 10 * 60_000,
+    account: accountFingerprint('other-account'),
+    recordedBy: 'seed-military-flights',
+  });
+  const redis = await createUpstashMock({
+    getResponses: {
+      [OPENSKY_COOLDOWN_KEY]: { result: null },
+      [OPENSKY_LEGACY_COOLDOWN_KEY]: { result: JSON.stringify(record) },
+    },
+  });
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200',
+  });
+  try {
+    const { port } = await ready;
+    const response = await get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    assert.equal(response.status, 200);
+    assert.notEqual(response.headers['x-cache'], 'RATE-LIMITED');
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 1);
+    assert.equal(redis.evalsFor(OPENSKY_COOLDOWN_KEY).length, 0);
   } finally {
     await stop(child);
     await redis.close();

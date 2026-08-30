@@ -27,6 +27,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
   cooldownKeyForAccount,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   OPENSKY_MAX_DEADLINE_SET_LUA,
@@ -9116,6 +9117,38 @@ function mergeLocalOpenSkyCooldown(untilMs) {
 const OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS = 1_000;
 let sharedOpenSkyCooldownReadPromise = null;
 
+async function readLegacySharedOpenSkyCooldownMs() {
+  const record = await upstashGet(OPENSKY_LEGACY_COOLDOWN_KEY, (reason) => {
+    console.warn('[Relay] OpenSky legacy cooldown read failed, proceeding without it: ' + reason);
+  }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
+  const inspected = inspectCooldownRecord(record, {
+    account: OPENSKY_ACCOUNT_FINGERPRINT,
+  });
+  if (inspected.ignoreReason === 'account-mismatch') {
+    console.warn('[Relay] OpenSky legacy cooldown ignored — recorded for a different account');
+  } else if (inspected.ignoreReason === 'implausible-deadline') {
+    console.warn('[Relay] OpenSky legacy cooldown ignored — implausible deadline ' + inspected.until);
+  }
+  if (inspected.remainingMs <= 0) return 0;
+
+  // Copy, never delete: a rolling deploy can still have v1 writers. The
+  // account-scoped max-deadline EVAL protects a concurrent v2 writer.
+  try {
+    const command = maxDeadlineSetCommand(
+      OPENSKY_COOLDOWN_KEY,
+      record,
+      ttlSecondsForCooldown(inspected.remainingMs),
+    );
+    const written = await upstashEval(OPENSKY_MAX_DEADLINE_SET_LUA, [OPENSKY_COOLDOWN_KEY], command.slice(4));
+    if (written == null && UPSTASH_ENABLED) {
+      console.warn('[Relay] OpenSky legacy cooldown migration returned non-OK');
+    }
+  } catch (err) {
+    console.warn('[Relay] OpenSky legacy cooldown migration failed, proceeding with the observed cooldown: ' + (err.message || err));
+  }
+  return inspected.remainingMs;
+}
+
 // Shared Redis record written by this relay and by seed-military-flights.
 // Fails OPEN on every error path: a Redis problem must never disable the
 // data tier, and the in-process cooldown still works when Redis is down (#6253).
@@ -9135,7 +9168,9 @@ async function remainingSharedOpenSkyCooldownMs() {
 
 async function readSharedOpenSkyCooldownMs() {
   try {
+    let v2ReadFailed = false;
     const record = await upstashGet(OPENSKY_COOLDOWN_KEY, (reason) => {
+      v2ReadFailed = true;
       console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${reason}`);
     }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
     const inspected = inspectCooldownRecord(record, {
@@ -9148,8 +9183,16 @@ async function readSharedOpenSkyCooldownMs() {
     }
     if (inspected.remainingMs > 0) {
       mergeLocalOpenSkyCooldown(Date.now() + inspected.remainingMs);
+      return inspected.remainingMs;
     }
-    return inspected.remainingMs;
+    // A v2 transport or parse failure must remain fail-open. Only a clean
+    // empty, expired, or mismatched v2 read may consult the legacy key.
+    if (v2ReadFailed) return 0;
+    const legacyRemainingMs = await readLegacySharedOpenSkyCooldownMs();
+    if (legacyRemainingMs > 0) {
+      mergeLocalOpenSkyCooldown(Date.now() + legacyRemainingMs);
+    }
+    return legacyRemainingMs;
   } catch (err) {
     console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${err.message || err}`);
     return 0;
