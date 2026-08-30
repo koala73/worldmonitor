@@ -56,6 +56,8 @@ describe('resilience indicator trace', () => {
     assert.equal(observed.literalContribution, 80);
     assert.equal(observed.effectiveContribution, 80);
     assert.equal(missing.state, 'missing');
+    assert.equal(observed.runtimeWeightsAvailable, true);
+    assert.equal(missing.runtimeWeightsAvailable, true);
     assert.equal(missing.effectiveContribution, 0);
   });
 
@@ -125,7 +127,7 @@ describe('resilience indicator trace', () => {
     assert.equal(reserves.sourceYear, 2024);
     assert.equal(reserves.effectiveContribution, 40);
     assert.deepEqual(reserves.observedSources, [
-      { providerName: 'World Bank Open Data', sourceUrl: 'https://api.worldbank.org/v2/' },
+      { providerName: 'World Bank Open Data', sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/FI.RES.TOTL.MO' },
     ]);
   });
 
@@ -152,6 +154,7 @@ describe('resilience indicator trace', () => {
     assert.deepEqual(snapshot.indicators.map((row) => row.indicatorId), INDICATOR_REGISTRY.map((row) => row.id));
     assert.equal(new Set(snapshot.indicators.map((row) => row.indicatorId)).size, 72);
     assert.ok(snapshot.indicators.every((row) => !row.includedInDimensionScore && row.effectiveContribution === 0));
+    assert.ok(snapshot.indicators.every((row) => row.runtimeWeightsAvailable === false));
     assert.deepEqual(
       snapshot.indicators.map((row) => row.nominalWeight),
       INDICATOR_REGISTRY.map((row) => row.weight),
@@ -184,6 +187,16 @@ describe('resilience indicator trace', () => {
     const included = rows.filter((row) => row.includedInDimensionScore);
     assert.equal(included.length, 2);
     assert.ok(included.every((row) => row.state === 'source-failure'));
+    assert.ok(included.every((row) => row.runtimeWeightsAvailable));
     assert.equal(included.reduce((sum, row) => sum + row.effectiveContribution, 0), 50);
+  });
+
+  it('does not invent runtime weights when a source fails before the scorer records a branch', () => {
+    const trace = createIndicatorTraceCollector();
+    trace.recordSourceFailure('currencyExternal');
+
+    const rows = rowsFor(trace, 'currencyExternal', 0);
+    assert.ok(rows.every((row) => row.state === 'source-failure'));
+    assert.ok(rows.every((row) => row.runtimeWeightsAvailable === false));
   });
 });

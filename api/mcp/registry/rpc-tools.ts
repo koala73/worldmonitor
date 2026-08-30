@@ -1767,6 +1767,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_resilience_indicators',
     _outputBudgetBytes: 262144,
+    _jmespathDisabled: true,
     description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Requires an ISO-2 country code and a WorldMonitor Pro subscription.',
     inputSchema: {
       type: 'object',
@@ -1815,7 +1816,7 @@ export const RPC_TOOLS: ToolDef[] = [
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       const res = await fetch(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(20_000),
       });
       await assertToolFetchOk(res, 'get-resilience-indicators');
       return res.json();

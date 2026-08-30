@@ -9,7 +9,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
-import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import {
   RESILIENCE_SCHEMA_V2_ENABLED,
   RESILIENCE_STATIC_META_KEY,
@@ -38,6 +38,7 @@ import {
 
 export const RESILIENCE_INDICATOR_METHODOLOGY = 'request-local-scorer-trace-v1';
 const RESILIENCE_INDICATOR_CACHE_TTL_SECONDS = 300;
+const RESILIENCE_INDICATOR_NEGATIVE_TTL_SECONDS = 120;
 
 type Clock = () => Date;
 type StaticMetaReader = () => Promise<unknown>;
@@ -50,6 +51,19 @@ export interface ResilienceIndicatorHandlerDependencies {
     key: string,
     fetcher: () => Promise<GetResilienceIndicatorsResponse>,
   ) => Promise<GetResilienceIndicatorsResponse | null>);
+}
+
+export function cacheResilienceIndicatorResponse(
+  key: string,
+  fetcher: () => Promise<GetResilienceIndicatorsResponse>,
+): Promise<GetResilienceIndicatorsResponse | null> {
+  return cachedFetchJson(
+    key,
+    RESILIENCE_INDICATOR_CACHE_TTL_SECONDS,
+    fetcher,
+    RESILIENCE_INDICATOR_NEGATIVE_TTL_SECONDS,
+    { cacheFetcherErrors: false },
+  );
 }
 
 interface ResponseBuildOptions {
@@ -65,6 +79,13 @@ function normalizedCountryCode(value: unknown): string | null {
 function toIsoTimestamp(value: number | null): string {
   if (!Number.isFinite(value) || Number(value) <= 0) return '';
   return new Date(Number(value)).toISOString();
+}
+
+function explicitIsoTimestamp(value: unknown): string {
+  if (typeof value === 'number') return toIsoTimestamp(value);
+  if (typeof value !== 'string') return '';
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : '';
 }
 
 function roundFour(value: number): number {
@@ -132,7 +153,7 @@ function indicatorSources(row: IndicatorTraceRow): ResilienceIndicatorSource[] {
   return sources;
 }
 
-function rawValue(row: IndicatorTraceRow): ResilienceIndicatorRawValue {
+function rawValue(row: IndicatorTraceRow, retrievedAtAvailable: boolean): ResilienceIndicatorRawValue {
   const decision = decideIndicatorRawRedistribution({
     indicatorId: row.indicatorId,
     observationState: row.state,
@@ -141,7 +162,7 @@ function rawValue(row: IndicatorTraceRow): ResilienceIndicatorRawValue {
   const hasNumeric = typeof row.rawValue === 'number' && Number.isFinite(row.rawValue);
   const hasText = typeof row.rawValue === 'string';
   const hasValue = hasNumeric || hasText;
-  const available = decision.expose && hasValue;
+  const available = decision.expose && hasValue && retrievedAtAvailable;
   return {
     available,
     numericValue: available && hasNumeric ? row.rawValue as number : 0,
@@ -149,16 +170,19 @@ function rawValue(row: IndicatorTraceRow): ResilienceIndicatorRawValue {
     textValue: available && hasText ? row.rawValue as string : '',
     textValueAvailable: available && hasText,
     unit: available ? row.rawUnit : '',
-    status: available ? 'available' : hasValue ? decision.status : 'absent',
-    reason: available ? '' : hasValue ? decision.reason : 'no-observed-raw-value',
+    status: available ? 'available' : hasValue && decision.expose ? 'conditional' : hasValue ? decision.status : 'absent',
+    reason: available ? '' : hasValue && decision.expose ? 'retrieval-timestamp-required' : hasValue ? decision.reason : 'no-observed-raw-value',
   };
 }
 
 function toIndicator(row: IndicatorTraceRow, now: Date): ResilienceIndicator {
   const normalizedScoreAvailable = Number.isFinite(row.normalizedScore);
   const isActive = row.state !== 'inactive' && row.state !== 'retired';
-  const hasRuntimeWeights = isActive;
+  const hasRuntimeWeights = row.runtimeWeightsAvailable;
   const observedAt = toIsoTimestamp(row.observedAtMs);
+  const retrievedAt = explicitIsoTimestamp(row.retrievedAt);
+  const retrievedAtAvailable = retrievedAt.length > 0;
+  const exposedRawValue = rawValue(row, retrievedAtAvailable);
   return {
     id: row.indicatorId,
     dimension: row.dimension,
@@ -180,12 +204,12 @@ function toIndicator(row: IndicatorTraceRow, now: Date): ResilienceIndicator {
     sourceYearAvailable: Number.isInteger(row.sourceYear) && Number(row.sourceYear) > 0,
     sourceYear: Number.isInteger(row.sourceYear) && Number(row.sourceYear) > 0 ? Number(row.sourceYear) : 0,
     ...observationAge(row, now),
-    retrievedAtAvailable: false,
-    retrievedAt: '',
+    retrievedAtAvailable: exposedRawValue.available && retrievedAtAvailable,
+    retrievedAt: exposedRawValue.available && retrievedAtAvailable ? retrievedAt : '',
     observedAtAvailable: observedAt.length > 0,
     observedAt,
     sources: indicatorSources(row),
-    rawValue: rawValue(row),
+    rawValue: exposedRawValue,
   };
 }
 
@@ -204,7 +228,7 @@ export function toGetResilienceIndicatorsResponse(
     constructVersions: getConstructVersions(),
     dimensions: snapshot.dimensions.map((dimension) => {
       const literalContributionTotal = roundFour(dimension.indicators.reduce(
-        (sum, row) => sum + row.literalContribution,
+        (sum, row) => sum + roundFour(row.literalContribution),
         0,
       ));
       const effectiveContributionTotal = roundFour(dimension.indicators.reduce(
@@ -234,16 +258,14 @@ export function createGetResilienceIndicators(
 ): ResilienceServiceHandler['getResilienceIndicators'] {
   const now = dependencies.now ?? (() => new Date());
   const readStaticMeta = dependencies.readStaticMeta
-    ?? (() => getCachedJson(RESILIENCE_STATIC_META_KEY, true));
+    ?? (() => strictResilienceSeedReader(RESILIENCE_STATIC_META_KEY));
   const hasInjectedBuildDependency = dependencies.reader != null
     || dependencies.now != null
     || dependencies.readStaticMeta != null;
   const responseCache = dependencies.responseCache === undefined
     ? hasInjectedBuildDependency
       ? null
-      : (key: string, fetcher: () => Promise<GetResilienceIndicatorsResponse>) => (
-          cachedFetchJson(key, RESILIENCE_INDICATOR_CACHE_TTL_SECONDS, fetcher)
-        )
+      : cacheResilienceIndicatorResponse
     : dependencies.responseCache;
 
   return async (

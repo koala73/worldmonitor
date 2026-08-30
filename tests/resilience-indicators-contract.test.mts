@@ -5,9 +5,10 @@ import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { TIER_GATED_PATHS } from '../server/_shared/entitlement-check.ts';
+import { getRequiredTier, TIER_GATED_PATHS } from '../server/_shared/entitlement-check.ts';
 import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
+import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -80,7 +81,120 @@ describe('resilience indicator RPC contract', () => {
   it('registers matching legacy premium, modern tier-1 and slow-cache gates', () => {
     assert.ok(PREMIUM_RPC_PATHS.has(ROUTE));
     assert.ok(TIER_GATED_PATHS.has(ROUTE));
+    assert.equal(getRequiredTier(ROUTE), 1);
     const gateway = read('server/gateway.ts');
     assert.match(gateway, /'\/api\/resilience\/v1\/get-resilience-indicators': 'slow'/);
+  });
+
+  it('exercises anonymous denial, validation, and success through the generated gateway route', async () => {
+    const originalKeys = process.env.WORLDMONITOR_VALID_KEYS;
+    const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const originalConvexUrl = process.env.CONVEX_SITE_URL;
+    const originalConvexSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.WORLDMONITOR_VALID_KEYS = 'issue-6507-test-key';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    process.env.CONVEX_SITE_URL = 'https://convex.example';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'issue-6507-shared-secret';
+    const { fetchImpl } = createRedisFetch({});
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      if (requestUrl.endsWith('/api/internal-validate-api-key')) {
+        return Response.json({ userId: 'issue-6507-free-user', keyId: 'free-key', name: 'Free key' });
+      }
+      if (requestUrl.endsWith('/api/internal-entitlements')) {
+        return Response.json({
+          planKey: 'free',
+          validUntil: Date.now() + 86_400_000,
+          features: {
+            tier: 0,
+            apiAccess: true,
+            apiRateLimit: 60,
+            maxDashboards: 3,
+            prioritySupport: false,
+            exportFormats: [],
+            mcpAccess: false,
+          },
+        });
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    try {
+      const [gatewayModule, generated, handlerModule] = await Promise.all([
+        import('../server/gateway.ts'),
+        import('../src/generated/server/worldmonitor/resilience/v1/service_server.ts'),
+        import('../server/worldmonitor/resilience/v1/handler.ts'),
+      ]);
+      const routes = generated.createResilienceServiceRoutes({
+        ...handlerModule.resilienceHandler,
+        getResilienceIndicators: async (ctx, request) => request.countryCode === 'DEU'
+          ? handlerModule.resilienceHandler.getResilienceIndicators(ctx, request)
+          : {
+              countryCode: request.countryCode,
+              methodology: 'request-local-scorer-trace-v1',
+              formula: 'pc',
+              dataVersion: '2026-08-30',
+              schemaVersion: '2.0',
+              constructVersions: { energy: 'legacy', education: 'active' },
+              dimensions: [],
+              indicators: [],
+            },
+      }, gatewayModule.serverOptions);
+      const gateway = gatewayModule.createDomainGateway(routes);
+      const url = 'https://worldmonitor.app/api/resilience/v1/get-resilience-indicators?countryCode=DE';
+
+      const anonymous = await gateway(new Request(url, { headers: { Origin: 'https://worldmonitor.app' } }));
+      assert.equal(anonymous.status, 401);
+
+      const free = await gateway(new Request(url, {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          'X-WorldMonitor-Key': `wm_${'a'.repeat(40)}`,
+        },
+      }));
+      assert.equal(free.status, 403);
+      assert.deepEqual(await free.json(), {
+        error: 'Upgrade required',
+        requiredTier: 1,
+        currentTier: 0,
+        planKey: 'free',
+      });
+
+      const headers = { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': 'issue-6507-test-key' };
+      const invalid = await gateway(new Request(url.replace('DE', 'DEU'), { headers }));
+      assert.equal(invalid.status, 400);
+
+      const success = await gateway(new Request(url, { headers }));
+      assert.equal(success.status, 200);
+      assert.equal((await success.json() as { countryCode?: string }).countryCode, 'DE');
+
+      const projected = await gateway(new Request(
+        `${url}&jmespath=indicators%5B%5D.rawValue`,
+        { headers },
+      ));
+      assert.equal(projected.status, 400);
+      assert.match(
+        (await projected.json() as { violations?: Array<{ description?: string }> }).violations?.[0]?.description ?? '',
+        /JMESPath.*attribution-bound/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+      else process.env.WORLDMONITOR_VALID_KEYS = originalKeys;
+      if (originalRedisUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+      if (originalRedisToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+      if (originalConvexUrl == null) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalConvexUrl;
+      if (originalConvexSecret == null) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalConvexSecret;
+    }
   });
 });

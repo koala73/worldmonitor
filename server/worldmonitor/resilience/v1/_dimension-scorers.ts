@@ -23,15 +23,27 @@ import {
 import type {
   IndicatorObservedSource,
   IndicatorTraceMetric,
-  ResilienceIndicatorId,
   ResilienceScoreOptions,
 } from './_indicator-trace';
+import type { ResilienceIndicatorId } from './_indicator-registry';
 
-const WORLD_BANK_SOURCE = [{ providerName: 'World Bank Open Data', sourceUrl: 'https://api.worldbank.org/v2/' }] as const;
-const WORLD_BANK_WGI_SOURCE = [{
-  providerName: 'World Bank Open Data',
-  sourceUrl: 'https://api.worldbank.org/v2/',
-}] as const;
+function worldBankSources(...indicatorIds: readonly string[]): readonly IndicatorObservedSource[] {
+  return indicatorIds.map((indicatorId) => ({
+    providerName: 'World Bank Open Data',
+    sourceUrl: `https://api.worldbank.org/v2/country/all/indicator/${indicatorId}`,
+  }));
+}
+
+const WORLD_BANK_FX_RESERVES_SOURCE = worldBankSources('FI.RES.TOTL.MO');
+const WORLD_BANK_TARIFF_SOURCE = worldBankSources('TM.TAX.MRCH.WM.AR.ZS');
+const WORLD_BANK_SHORT_TERM_DEBT_GNI_SOURCES = worldBankSources('DT.DOD.DSTC.CD', 'NY.GNP.MKTP.CD');
+const WORLD_BANK_ROADS_PAVED_SOURCE = worldBankSources('IS.ROD.PAVE.ZS');
+const WORLD_BANK_ELECTRICITY_ACCESS_SOURCE = worldBankSources('EG.ELC.ACCS.ZS');
+const WORLD_BANK_BROADBAND_SOURCE = worldBankSources('IT.NET.BBND.P2');
+const WORLD_BANK_ELECTRICITY_CONSUMPTION_SOURCE = worldBankSources('EG.USE.ELEC.KH.PC');
+const WORLD_BANK_POWER_LOSSES_SOURCE = worldBankSources('EG.ELC.LOSS.ZS');
+const WORLD_BANK_WATER_STRESS_SOURCE = worldBankSources('ER.H2O.FWST.ZS');
+const WORLD_BANK_RECOVERY_DEBT_RESERVE_SOURCES = worldBankSources('DT.DOD.DSTC.CD', 'FI.RES.TOTL.CD');
 const UNESCO_VIA_WORLD_BANK_SOURCES = [
   { providerName: 'UNESCO Institute for Statistics via World Bank WDI', sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/SE.SEC.CUAT.UP.FE.ZS' },
 ] as const;
@@ -275,6 +287,7 @@ interface StaticIndicatorValue {
 }
 
 interface ResilienceStaticCountryRecord {
+  seededAt?: string;
   wgi?: { indicators?: Record<string, StaticIndicatorValue> } | null;
   infrastructure?: { indicators?: Record<string, StaticIndicatorValue> } | null;
   gpi?: { score?: number; rank?: number; year?: number | null } | null;
@@ -286,6 +299,19 @@ interface ResilienceStaticCountryRecord {
   tradeToGdp?: { tradeToGdpPct?: number; year?: number | null; source?: string } | null;
   fxReservesMonths?: { months?: number; year?: number | null; source?: string } | null;
   appliedTariffRate?: { value?: number; year?: number | null; source?: string } | null;
+}
+
+type ResilienceStaticDatasetField = Exclude<keyof ResilienceStaticCountryRecord, 'seededAt'>;
+
+function staticDatasetRetrievedAt(
+  record: ResilienceStaticCountryRecord | null,
+  datasetField: ResilienceStaticDatasetField,
+): string {
+  const dataset = record?.[datasetField] as { _recovered?: { seededAt?: unknown } } | null | undefined;
+  const recovered = dataset != null && Object.prototype.hasOwnProperty.call(dataset, '_recovered');
+  const value = recovered ? dataset?._recovered?.seededAt : record?.seededAt;
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return '';
+  return new Date(Date.parse(value)).toISOString();
 }
 
 interface ImfMacroEntry {
@@ -684,6 +710,10 @@ function roundCoverage(value: number): number {
 function safeNum(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function optionalNum(value: unknown): number | null {
+  return value == null || value === '' ? null : safeNum(value);
 }
 
 export function sqrtCount(value: number): number {
@@ -1301,14 +1331,14 @@ function getStaticIndicatorValue(
   indicatorKey: string,
 ): number | null {
   const dataset = record?.[datasetField];
-  const value = safeNum(dataset?.indicators?.[indicatorKey]?.value);
+  const value = optionalNum(dataset?.indicators?.[indicatorKey]?.value);
   return value == null ? null : value;
 }
 
 function getStaticWgiValues(record: ResilienceStaticCountryRecord | null): number[] {
   const indicators = record?.wgi?.indicators ?? {};
   return WGI_INDICATOR_KEYS
-    .map((key) => safeNum(indicators[key]?.value))
+    .map((key) => optionalNum(indicators[key]?.value))
     .filter((value): value is number => value != null);
 }
 
@@ -1324,14 +1354,15 @@ const WGI_TRACE_ROWS = [
 function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): TracedWeightedMetric[] {
   const indicators = record?.wgi?.indicators ?? {};
   return WGI_TRACE_ROWS.map(([key, indicatorId]) => {
-    const value = safeNum(indicators[key]?.value);
+    const value = optionalNum(indicators[key]?.value);
     return tracedMetric(indicatorId, {
       score: value == null ? null : normalizeHigherBetter(value, -2.5, 2.5),
       weight: 1,
       rawValue: value,
       rawUnit: 'wgi_estimate',
       sourceYear: indicators[key]?.year ?? null,
-      observedSources: WORLD_BANK_WGI_SOURCE,
+      retrievedAt: staticDatasetRetrievedAt(record, 'wgi'),
+      observedSources: worldBankSources(`GOV_WGI_${key}`),
       provenanceHint: key,
     });
   });
@@ -1837,7 +1868,8 @@ export async function scoreCurrencyExternal(
       rawValue: reservesMonths,
       rawUnit: 'months_of_imports',
       sourceYear: staticRecord?.fxReservesMonths?.year ?? null,
-      observedSources: WORLD_BANK_SOURCE,
+      retrievedAt: staticDatasetRetrievedAt(staticRecord, 'fxReservesMonths'),
+      observedSources: WORLD_BANK_FX_RESERVES_SOURCE,
     }),
   ];
   const returnWithCurrencyTrace = (
@@ -1960,7 +1992,8 @@ export async function scoreTradePolicy(
       rawValue: tariffRate,
       rawUnit: 'percent',
       sourceYear: staticRecord?.appliedTariffRate?.year ?? null,
-      observedSources: WORLD_BANK_SOURCE,
+      retrievedAt: staticDatasetRetrievedAt(staticRecord, 'appliedTariffRate'),
+      observedSources: WORLD_BANK_TARIFF_SOURCE,
     }),
   ], options);
 }
@@ -2434,7 +2467,7 @@ export async function scoreFinancialSystemExposure(
       rawValue: debtPct,
       rawUnit: 'percent_gni',
       sourceYear: debtYear,
-      observedSources: debtPct == null ? [] : WORLD_BANK_SOURCE,
+      observedSources: debtPct == null ? [] : WORLD_BANK_SHORT_TERM_DEBT_GNI_SOURCES,
     }),
     tracedMetric('bisLbsXborderPctGdp', {
       // Diversity-conditioned: the sweet-spot premium is earned only in
@@ -2889,7 +2922,7 @@ export async function scoreLogisticsSupply(
   const transitScore = transitStress == null ? null : normalizeLowerBetter(transitStress, 0, 30);
 
   return tracedBlend('logisticsSupply', [
-    tracedMetric('roadsPavedLogistics', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+    tracedMetric('roadsPavedLogistics', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ROADS_PAVED_SOURCE }),
     tracedMetric('shippingStress', { score: shippingScore == null || tradeExposure == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25, rawValue: shippingStress, rawUnit: 'global_stress_score', provenanceHint: tradeExposure == null ? '' : `trade-exposure=${tradeExposure}` }),
     tracedMetric('transitDisruption', { score: transitScore == null || tradeExposure == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25, rawValue: transitStress, rawUnit: 'global_disruption_score', provenanceHint: tradeExposure == null ? '' : `trade-exposure=${tradeExposure}` }),
   ], options);
@@ -2911,10 +2944,10 @@ export async function scoreInfrastructure(
   const outagePenalty = outages.total * 4 + outages.major * 2 + outages.partial;
 
   return tracedBlend('infrastructure', [
-    tracedMetric('electricityAccess', { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3, rawValue: electricityAccess, rawUnit: 'percent_population', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.ELC.ACCS.ZS']?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
-    tracedMetric('roadsPavedInfra', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+    tracedMetric('electricityAccess', { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3, rawValue: electricityAccess, rawUnit: 'percent_population', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.ELC.ACCS.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ELECTRICITY_ACCESS_SOURCE }),
+    tracedMetric('roadsPavedInfra', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ROADS_PAVED_SOURCE }),
     tracedMetric('infraOutages', { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25, rawValue: outagePenalty, rawUnit: 'weighted_outage_penalty' }),
-    tracedMetric('broadband', { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15, rawValue: broadband, rawUnit: 'subscriptions_per_100', sourceYear: staticRecord?.infrastructure?.indicators?.['IT.NET.BBND.P2']?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+    tracedMetric('broadband', { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15, rawValue: broadband, rawUnit: 'subscriptions_per_100', sourceYear: staticRecord?.infrastructure?.indicators?.['IT.NET.BBND.P2']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_BROADBAND_SOURCE }),
   ], options);
 }
 
@@ -2968,13 +3001,13 @@ async function scoreEnergyLegacy(
   const dependencyRecord = staticRecord?.iea?.energyImportDependency;
   const mixYear = safeNum(mix?.year);
   return tracedBlend('energy', [
-    tracedMetric('energyImportDependency', { score: dependency == null ? null : normalizeLowerBetter(dependency, 0, 100), weight: 0.25, rawValue: dependency, rawUnit: 'percent_consumption', sourceYear: dependencyRecord?.year ?? null, observedSources: energyDependencyObservedSources(dependencyRecord?.source), provenanceHint: dependencyRecord?.source ?? '' }),
+    tracedMetric('energyImportDependency', { score: dependency == null ? null : normalizeLowerBetter(dependency, 0, 100), weight: 0.25, rawValue: dependency, rawUnit: 'percent_consumption', sourceYear: dependencyRecord?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'iea'), observedSources: energyDependencyObservedSources(dependencyRecord?.source), provenanceHint: dependencyRecord?.source ?? '' }),
     tracedMetric('gasShare', { score: gasShare == null ? null : normalizeLowerBetter(gasShare, 0, 100), weight: 0.12, rawValue: gasShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
     tracedMetric('coalShare', { score: coalShare == null ? null : normalizeLowerBetter(coalShare, 0, 100), weight: 0.08, rawValue: coalShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
     tracedMetric('renewShare', { score: renewShare == null ? null : normalizeHigherBetter(renewShare, 0, 100), weight: 0.05, rawValue: renewShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
     tracedMetric('euGasStorageStress', { score: storageStress == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100), weight: 0.10, rawValue: storageFillPct, rawUnit: 'percent_fill' }),
     tracedMetric('energyPriceStress', { score: exposedEnergyStress, weight: 0.10, rawValue: energyStress, rawUnit: 'mean_absolute_percent_change', provenanceHint: energyExposure == null ? '' : `energy-exposure=${energyExposure}` }),
-    tracedMetric('electricityConsumption', { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30, rawValue: electricityConsumption, rawUnit: 'kwh_per_capita', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.USE.ELEC.KH.PC']?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+    tracedMetric('electricityConsumption', { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30, rawValue: electricityConsumption, rawUnit: 'kwh_per_capita', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.USE.ELEC.KH.PC']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ELECTRICITY_CONSUMPTION_SOURCE }),
   ], options);
 }
 
@@ -3080,7 +3113,7 @@ async function scoreEnergyV2(
   return tracedBlend('energy', [
     tracedMetric('importedFossilDependence', { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35, rawValue: importedFossilDependence, rawUnit: 'percent_weighted_dependency', sourceYear: oldestSourceYear(fossilEntry?.year, dependencyRecord?.year), observedSources: importedFossilDependence == null ? [] : [...WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE, ...dependencySources], provenanceHint: dependencyRecord?.source ?? '' }),
     tracedMetric('lowCarbonGenerationShare', { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80), weight: 0.20, rawValue: lowCarbonGenerationShare, rawUnit: 'percent_generation', sourceYear: lowCarbonEntry?.year ?? null, observedSources: OWID_LOW_CARBON_SOURCE }),
-    tracedMetric('powerLossesPct', { score: powerLosses == null ? null : normalizeLowerBetter(powerLosses, 3, 25), weight: 0.20, rawValue: powerLosses, rawUnit: 'percent_output', sourceYear: powerLossesEntry?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+    tracedMetric('powerLossesPct', { score: powerLosses == null ? null : normalizeLowerBetter(powerLosses, 3, 25), weight: 0.20, rawValue: powerLosses, rawUnit: 'percent_output', sourceYear: powerLossesEntry?.year ?? null, observedSources: WORLD_BANK_POWER_LOSSES_SOURCE }),
     tracedMetric('euGasStorageStress', { score: euStorageStress == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100), weight: 0.10, rawValue: storageFillPct, rawUnit: 'percent_fill' }),
     tracedMetric('energyPriceStress', { score: exposedEnergyStress, weight: 0.15, rawValue: energyStress, rawUnit: 'mean_absolute_percent_change', provenanceHint: `fossil-exposure=${exposure}` }),
   ], options);
@@ -3428,7 +3461,7 @@ export async function scoreFoodWater(
       staticRecord == null
         ? tracedMetric('ipcPeopleInCrisis', { score: null, weight: 0.6 })
         : tracedMetric('ipcPeopleInCrisis', { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true, imputationClass: IMPUTE.ipcFood.imputationClass }),
-      tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+      tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'aquastat'), observedSources: WORLD_BANK_WATER_STRESS_SOURCE }),
     ], options);
   }
 
@@ -3446,7 +3479,7 @@ export async function scoreFoodWater(
       sourceYear: fao.year ?? null,
     }),
     tracedMetric('ipcPhase', { score: phase == null ? null : normalizeLowerBetter(phase, 1, 5), weight: 0.15, rawValue: phase, rawUnit: 'ipc_phase', sourceYear: fao.year ?? null }),
-    tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+    tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'aquastat'), observedSources: WORLD_BANK_WATER_STRESS_SOURCE }),
   ], options);
 }
 
@@ -3617,7 +3650,7 @@ export async function scoreLiquidReserveAdequacy(
     ? entry.reserveMonths / (1 - reexportShare.share)
     : entry.reserveMonths;
   return tracedBlend('liquidReserveAdequacy', [
-    tracedMetric('recoveryLiquidReserveMonths', { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0, rawValue: adjustedMonths, rawUnit: 'adjusted_months_of_imports', sourceYear: oldestSourceYear(entry.year, reexportShare?.year), observedSources: reexportShare == null ? WORLD_BANK_SOURCE : [...WORLD_BANK_SOURCE, { providerName: 'United Nations Comtrade', sourceUrl: 'https://comtradeplus.un.org/' }], provenanceHint: reexportShare == null ? '' : `reexport-share=${reexportShare.share}` }),
+    tracedMetric('recoveryLiquidReserveMonths', { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0, rawValue: adjustedMonths, rawUnit: 'adjusted_months_of_imports', sourceYear: oldestSourceYear(entry.year, reexportShare?.year), observedSources: reexportShare == null ? WORLD_BANK_FX_RESERVES_SOURCE : [...WORLD_BANK_FX_RESERVES_SOURCE, { providerName: 'United Nations Comtrade', sourceUrl: 'https://comtradeplus.un.org/' }], provenanceHint: reexportShare == null ? '' : `reexport-share=${reexportShare.share}` }),
   ], options);
 }
 
@@ -3741,7 +3774,7 @@ export async function scoreExternalDebtCoverage(
   // = score 0 (acute rollover-shock exposure). See registry entry
   // recoveryDebtToReserves for the construct rationale.
   return tracedBlend('externalDebtCoverage', [
-    tracedMetric('recoveryDebtToReserves', { score: normalizeLowerBetter(entry.debtToReservesRatio, 0, 2), weight: 1.0, rawValue: entry.debtToReservesRatio, rawUnit: 'ratio', sourceYear: entry.year ?? null, observedSources: WORLD_BANK_SOURCE }),
+    tracedMetric('recoveryDebtToReserves', { score: normalizeLowerBetter(entry.debtToReservesRatio, 0, 2), weight: 1.0, rawValue: entry.debtToReservesRatio, rawUnit: 'ratio', sourceYear: entry.year ?? null, observedSources: WORLD_BANK_RECOVERY_DEBT_RESERVE_SOURCES }),
   ], options);
 }
 
@@ -3790,8 +3823,19 @@ export async function scoreStateContinuity(
 
   const wgiValues = getStaticWgiValues(staticRecord);
   const wgiMean = mean(wgiValues);
+  const wgiIndicators = staticRecord?.wgi?.indicators ?? {};
+  const contributingWgiKeys = WGI_INDICATOR_KEYS.filter(
+    (key) => optionalNum(wgiIndicators[key]?.value) != null,
+  );
+  const wgiSourceYear = oldestSourceYear(...contributingWgiKeys.map(
+    (key) => optionalNum(wgiIndicators[key]?.year),
+  ));
+  const wgiObservedSources = worldBankSources(...contributingWgiKeys.map(
+    (key) => `GOV_WGI_${key}`,
+  ));
 
   const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
+  const ucdpObservationAvailable = Array.isArray((ucdpRaw as { events?: unknown[] } | null)?.events);
   const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + sqrtCount(ucdpSummary.deaths);
 
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
@@ -3804,8 +3848,14 @@ export async function scoreStateContinuity(
   }
 
   return tracedBlend('stateContinuity', [
-    tracedMetric('recoveryWgiContinuity', { score: wgiMean == null ? null : normalizeHigherBetter(wgiMean, -2.5, 2.5), weight: 0.5, rawValue: wgiMean, rawUnit: 'mean_wgi_estimate', observedSources: WORLD_BANK_WGI_SOURCE }),
-    tracedMetric('recoveryConflictPressure', { score: normalizeLowerBetter(ucdpRawScore, 0, 30), weight: 0.3, rawValue: ucdpRawScore, rawUnit: 'weighted_event_score' }),
+    tracedMetric('recoveryWgiContinuity', { score: wgiMean == null ? null : normalizeHigherBetter(wgiMean, -2.5, 2.5), weight: 0.5, rawValue: wgiMean, rawUnit: 'mean_wgi_estimate', sourceYear: wgiSourceYear, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'wgi'), observedSources: wgiObservedSources }),
+    tracedMetric('recoveryConflictPressure', {
+      score: normalizeLowerBetter(ucdpRawScore, 0, 30),
+      weight: 0.3,
+      state: ucdpObservationAvailable ? undefined : 'fallback',
+      rawValue: ucdpObservationAvailable ? ucdpRawScore : null,
+      rawUnit: 'weighted_event_score',
+    }),
     tracedMetric('recoveryDisplacementVelocity', {
       score: totalDisplaced == null
         ? null

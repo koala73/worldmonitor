@@ -1,33 +1,12 @@
 import type { ResilienceDimensionId, ResilienceDimensionScore } from './_dimension-scorers';
-import { INDICATOR_REGISTRY, getIndicatorSourceKeys } from './_indicator-registry';
+import {
+  INDICATOR_REGISTRY,
+  getIndicatorSourceKeys,
+  type ResilienceIndicatorId,
+} from './_indicator-registry';
 
-export const RESILIENCE_INDICATOR_IDS = [
-  'govRevenuePct', 'debtGrowthRate', 'currentAccountPct', 'unemploymentPct', 'householdDebtService',
-  'inflationStability', 'fxReservesAdequacy', 'fxVolatility', 'fxDeviation',
-  'tradeRestrictions', 'tradeBarriers', 'appliedTariffRate',
-  'shortTermExternalDebtPctGni', 'bisLbsXborderPctGdp', 'fatfListingStatus', 'financialCenterRedundancy',
-  'cyberThreats', 'internetOutages', 'gpsJamming',
-  'roadsPavedLogistics', 'shippingStress', 'transitDisruption',
-  'electricityAccess', 'roadsPavedInfra', 'infraOutages', 'broadband',
-  'energyImportDependency', 'gasShare', 'coalShare', 'renewShare', 'euGasStorageStress',
-  'energyPriceStress', 'electricityConsumption', 'importedFossilDependence',
-  'lowCarbonGenerationShare', 'powerLossesPct',
-  'wgiVoiceAccountability', 'wgiPoliticalStability', 'wgiGovernmentEffectiveness',
-  'wgiRegulatoryQuality', 'wgiRuleOfLaw', 'wgiControlOfCorruption',
-  'gpiScore', 'displacementTotal', 'unrestEvents',
-  'ucdpConflict', 'displacementHosted',
-  'rsfPressFreedom', 'socialVelocity', 'newsThreatScore',
-  'femaleUpperSecondaryAttainment',
-  'uhcIndex', 'measlesCoverage', 'hospitalBeds', 'physiciansPer1k', 'healthExpPerCapitaUsd',
-  'ipcPeopleInCrisis', 'ipcPhase', 'aquastatScore',
-  'recoveryGovRevenue', 'recoveryFiscalBalance', 'recoveryDebtToGdp', 'debtSustainabilityGap',
-  'recoveryReserveMonths', 'recoveryLiquidReserveMonths', 'recoverySovereignWealthEffectiveMonths',
-  'recoveryDebtToReserves', 'recoveryImportHhi',
-  'recoveryWgiContinuity', 'recoveryConflictPressure', 'recoveryDisplacementVelocity',
-  'recoveryFuelStockDays',
-] as const;
-
-export type ResilienceIndicatorId = typeof RESILIENCE_INDICATOR_IDS[number];
+export { RESILIENCE_INDICATOR_IDS } from './_indicator-registry';
+export type { ResilienceIndicatorId } from './_indicator-registry';
 
 export type IndicatorTraceState =
   | 'observed'
@@ -57,6 +36,7 @@ export interface IndicatorTraceMetric {
   rawValue?: number | string | null;
   rawUnit?: string;
   sourceYear?: number | null;
+  retrievedAt?: string;
   observedAtMs?: number | null;
   observedSources?: readonly IndicatorObservedSource[];
   provenanceHint?: string;
@@ -75,6 +55,7 @@ export interface IndicatorTraceContribution {
   rawValue: number | string | null;
   rawUnit: string;
   sourceYear: number | null;
+  retrievedAt: string;
   observedAtMs: number | null;
   observedSources: readonly IndicatorObservedSource[];
   provenanceHint: string;
@@ -93,6 +74,7 @@ export interface RecordedDimensionTrace {
 export interface IndicatorTraceRow extends Omit<IndicatorTraceContribution, 'state'> {
   state: IndicatorTraceState;
   dimension: ResilienceDimensionId;
+  runtimeWeightsAvailable: boolean;
   includedInDimensionScore: boolean;
   effectiveContribution: number;
   sourceKeys: readonly string[];
@@ -166,6 +148,7 @@ function contributionsFor(metrics: readonly IndicatorTraceMetric[]): IndicatorTr
       rawValue: metric.rawValue ?? null,
       rawUnit: metric.rawUnit ?? '',
       sourceYear: Number.isFinite(metric.sourceYear) ? Number(metric.sourceYear) : null,
+      retrievedAt: metric.retrievedAt ?? '',
       observedAtMs: Number.isFinite(metric.observedAtMs) ? Number(metric.observedAtMs) : null,
       observedSources: metric.observedSources ?? [],
       provenanceHint: metric.provenanceHint ?? '',
@@ -289,6 +272,7 @@ const EMPTY_CONTRIBUTION: Omit<IndicatorTraceContribution, 'indicatorId'> = {
   rawValue: null,
   rawUnit: '',
   sourceYear: null,
+  retrievedAt: '',
   observedAtMs: null,
   observedSources: [],
   provenanceHint: '',
@@ -298,14 +282,6 @@ export function materializeIndicatorTrace(
   collector: IndicatorTraceCollector,
   scores: Readonly<Record<ResilienceDimensionId, ResilienceDimensionScore>>,
 ): ResilienceIndicatorTraceSnapshot {
-  const registryIds = INDICATOR_REGISTRY.map((indicator) => indicator.id);
-  if (
-    registryIds.length !== RESILIENCE_INDICATOR_IDS.length
-    || registryIds.some((id, index) => id !== RESILIENCE_INDICATOR_IDS[index])
-  ) {
-    throw new Error('RESILIENCE_INDICATOR_IDS must match INDICATOR_REGISTRY order exactly');
-  }
-
   const rows: IndicatorTraceRow[] = [];
   const dimensions = new Map<ResilienceDimensionId, DimensionIndicatorTrace>();
   const derivedDimensions = new Map<ResilienceDimensionId, {
@@ -318,7 +294,7 @@ export function materializeIndicatorTrace(
   }>();
 
   for (const spec of INDICATOR_REGISTRY) {
-    const indicatorId = spec.id as ResilienceIndicatorId;
+    const indicatorId = spec.id;
     let derived = derivedDimensions.get(spec.dimension);
     if (!derived) {
       const recorded = collector.readDimension(spec.dimension);
@@ -360,6 +336,7 @@ export function materializeIndicatorTrace(
       ...base,
       state,
       dimension: spec.dimension,
+      runtimeWeightsAvailable: recordedRow != null,
       includedInDimensionScore: included,
       effectiveContribution: included ? effective.get(indicatorId) ?? 0 : 0,
       sourceKeys: getIndicatorSourceKeys(spec),

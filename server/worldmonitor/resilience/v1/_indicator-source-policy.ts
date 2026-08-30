@@ -50,7 +50,7 @@ export interface AuditedRawSource {
   attributionUrl?: string;
   providerAliases: readonly string[];
   sourceUrlPrefixes: readonly string[];
-  sourceUrlContains?: readonly string[];
+  sourcePathSuffixes?: readonly string[];
 }
 
 export interface IndicatorSourcePolicy {
@@ -113,6 +113,32 @@ const WORLD_BANK_SOURCE: AuditedRawSource = {
   sourceUrlPrefixes: ['https://api.worldbank.org/v2/'],
 };
 
+function worldBankSource(indicatorId: string): AuditedRawSource {
+  return {
+    ...WORLD_BANK_SOURCE,
+    sourceUrl: `https://api.worldbank.org/v2/country/all/indicator/${indicatorId}`,
+    sourcePathSuffixes: [`/indicator/${indicatorId}`],
+  };
+}
+
+function worldBankPolicy(
+  indicatorIds: readonly string[],
+  note = 'Raw redistribution was reviewed for these exact World Bank indicator paths.',
+): IndicatorSourcePolicy {
+  const sources = indicatorIds.map(worldBankSource);
+  return {
+    status: 'allow',
+    providerName: WORLD_BANK_SOURCE.providerName,
+    sourceUrl: sources.length === 1 ? sources[0]!.sourceUrl : null,
+    licenseLabel: WORLD_BANK_SOURCE.licenseLabel,
+    licenseUrl: WORLD_BANK_SOURCE.licenseUrl,
+    attribution: WORLD_BANK_SOURCE.attribution,
+    allowedRawSources: sources,
+    requiredRawSources: sources,
+    note,
+  };
+}
+
 const OWID_SOURCE: AuditedRawSource = {
   providerName: 'Our World in Data',
   sourceUrl: 'https://ourworldindata.org/',
@@ -141,7 +167,7 @@ const UNESCO_VIA_WDI_SOURCE: AuditedRawSource = {
     'unesco uis',
   ],
   sourceUrlPrefixes: ['https://api.worldbank.org/v2/'],
-  sourceUrlContains: ['/indicator/SE.SEC.CUAT.UP.FE.ZS'],
+  sourcePathSuffixes: ['/indicator/SE.SEC.CUAT.UP.FE.ZS'],
 };
 
 function allowPolicy(
@@ -201,21 +227,6 @@ function incompletePolicy(
   };
 }
 
-function conditionalPolicy(providerName: string, note: string): IndicatorSourcePolicy {
-  return {
-    status: 'conditional',
-    providerName,
-    sourceUrl: WORLD_BANK_SOURCE.sourceUrl,
-    licenseLabel: WORLD_BANK_SOURCE.licenseLabel,
-    licenseUrl: WORLD_BANK_SOURCE.licenseUrl,
-    attribution: WORLD_BANK_SOURCE.attribution,
-    allowedRawSources: [WORLD_BANK_SOURCE],
-    requiredRawSources: [WORLD_BANK_SOURCE],
-    note,
-  };
-}
-
-const WORLD_BANK = allowPolicy(WORLD_BANK_SOURCE);
 const WORLD_BANK_EDUCATION = allowPolicy(
   UNESCO_VIA_WDI_SOURCE,
   'The exact observed provider must identify UNESCO UIS via World Bank WDI.',
@@ -274,25 +285,33 @@ const COMTRADE = incompletePolicy('UN Comtrade', 'https://comtradeplus.un.org/',
 const FUEL_STOCKS = incompletePolicy('IEA / EIA', null, 'Credit the exact IEA or EIA fuel-stock series.');
 const NATIONAL_DEBT = incompletePolicy('IMF / United States Treasury national-debt sources', null, 'Credit the exact national-debt provider used for the observation.');
 
-const ENERGY_IMPORT_CONDITIONAL = conditionalPolicy(
-  'World Bank Open Data or Eurostat',
-  'Allow only a World Bank observation. Eurostat-backed observations remain audit-incomplete.',
-);
+const ENERGY_IMPORT_CONDITIONAL: IndicatorSourcePolicy = {
+  ...worldBankPolicy(['EG.IMP.CONS.ZS']),
+  status: 'conditional',
+  providerName: 'World Bank Open Data or Eurostat',
+  note: 'Allow only the exact World Bank EG.IMP.CONS.ZS observation. Eurostat-backed observations remain audit-incomplete.',
+};
 const IMPORTED_FOSSIL_CONDITIONAL: IndicatorSourcePolicy = {
+  ...worldBankPolicy(['EG.ELC.FOSL.ZS', 'EG.IMP.CONS.ZS']),
   status: 'conditional',
   providerName: 'World Bank Open Data, with a possible Eurostat net-import override',
-  sourceUrl: WORLD_BANK_SOURCE.sourceUrl,
-  licenseLabel: WORLD_BANK_SOURCE.licenseLabel,
-  licenseUrl: WORLD_BANK_SOURCE.licenseUrl,
-  attribution: WORLD_BANK_SOURCE.attribution,
-  allowedRawSources: [WORLD_BANK_SOURCE],
-  requiredRawSources: [WORLD_BANK_SOURCE],
-  note: 'The fossil-electricity input is World Bank EG.ELC.FOSL.ZS. Allow only when net-import provenance is also World Bank; an Eurostat constituent denies raw redistribution.',
+  note: 'Allow only when both exact World Bank indicator paths contributed. An Eurostat constituent denies raw redistribution.',
 };
-const LIQUID_RESERVE_CONDITIONAL = conditionalPolicy(
-  'World Bank Open Data, optionally adjusted with UN Comtrade',
-  'Allow the unadjusted World Bank observation only. If a Comtrade re-export adjustment contributed, raw redistribution is audit-incomplete.',
-);
+const LIQUID_RESERVE_CONDITIONAL: IndicatorSourcePolicy = {
+  ...worldBankPolicy(['FI.RES.TOTL.MO']),
+  status: 'conditional',
+  providerName: 'World Bank Open Data, optionally adjusted with UN Comtrade',
+  note: 'Allow the exact unadjusted World Bank observation only. If a Comtrade re-export adjustment contributed, raw redistribution is audit-incomplete.',
+};
+
+const WORLD_BANK_WGI_INDICATORS = [
+  'GOV_WGI_VA.EST',
+  'GOV_WGI_PV.EST',
+  'GOV_WGI_GE.EST',
+  'GOV_WGI_RQ.EST',
+  'GOV_WGI_RL.EST',
+  'GOV_WGI_CC.EST',
+] as const;
 
 const EUROSTAT_DISPLAY = incompletePolicy(
   'Eurostat',
@@ -308,42 +327,42 @@ export const INDICATOR_SOURCE_POLICIES = {
   unemploymentPct: IMF,
   householdDebtService: BIS,
   inflationStability: IMF,
-  fxReservesAdequacy: WORLD_BANK,
+  fxReservesAdequacy: worldBankPolicy(['FI.RES.TOTL.MO']),
   fxVolatility: BIS,
   fxDeviation: BIS,
   tradeRestrictions: WTO,
   tradeBarriers: WTO,
-  appliedTariffRate: WORLD_BANK,
-  shortTermExternalDebtPctGni: WORLD_BANK,
+  appliedTariffRate: worldBankPolicy(['TM.TAX.MRCH.WM.AR.ZS']),
+  shortTermExternalDebtPctGni: worldBankPolicy(['DT.DOD.DSTC.CD', 'NY.GNP.MKTP.CD']),
   bisLbsXborderPctGdp: BIS,
   fatfListingStatus: FATF,
   financialCenterRedundancy: BIS,
   cyberThreats: CYBER_FEEDS,
   internetOutages: CLOUDFLARE,
   gpsJamming: GPSJAM,
-  roadsPavedLogistics: WORLD_BANK,
+  roadsPavedLogistics: worldBankPolicy(['IS.ROD.PAVE.ZS']),
   shippingStress: YAHOO,
   transitDisruption: TRANSIT,
-  electricityAccess: WORLD_BANK,
-  roadsPavedInfra: WORLD_BANK,
+  electricityAccess: worldBankPolicy(['EG.ELC.ACCS.ZS']),
+  roadsPavedInfra: worldBankPolicy(['IS.ROD.PAVE.ZS']),
   infraOutages: CLOUDFLARE,
-  broadband: WORLD_BANK,
+  broadband: worldBankPolicy(['IT.NET.BBND.P2']),
   energyImportDependency: ENERGY_IMPORT_CONDITIONAL,
   gasShare: OWID,
   coalShare: OWID,
   renewShare: OWID,
   euGasStorageStress: GIE,
   energyPriceStress: ENERGY_PRICES,
-  electricityConsumption: WORLD_BANK,
+  electricityConsumption: worldBankPolicy(['EG.USE.ELEC.KH.PC']),
   importedFossilDependence: IMPORTED_FOSSIL_CONDITIONAL,
   lowCarbonGenerationShare: OWID_LOW_CARBON,
-  powerLossesPct: WORLD_BANK,
-  wgiVoiceAccountability: WORLD_BANK,
-  wgiPoliticalStability: WORLD_BANK,
-  wgiGovernmentEffectiveness: WORLD_BANK,
-  wgiRegulatoryQuality: WORLD_BANK,
-  wgiRuleOfLaw: WORLD_BANK,
-  wgiControlOfCorruption: WORLD_BANK,
+  powerLossesPct: worldBankPolicy(['EG.ELC.LOSS.ZS']),
+  wgiVoiceAccountability: worldBankPolicy(['GOV_WGI_VA.EST']),
+  wgiPoliticalStability: worldBankPolicy(['GOV_WGI_PV.EST']),
+  wgiGovernmentEffectiveness: worldBankPolicy(['GOV_WGI_GE.EST']),
+  wgiRegulatoryQuality: worldBankPolicy(['GOV_WGI_RQ.EST']),
+  wgiRuleOfLaw: worldBankPolicy(['GOV_WGI_RL.EST']),
+  wgiControlOfCorruption: worldBankPolicy(['GOV_WGI_CC.EST']),
   gpiScore: GPI,
   displacementTotal: UNHCR,
   unrestEvents: UNREST,
@@ -360,21 +379,21 @@ export const INDICATOR_SOURCE_POLICIES = {
   healthExpPerCapitaUsd: WHO,
   ipcPeopleInCrisis: IPC,
   ipcPhase: IPC,
-  aquastatScore: WORLD_BANK,
+  aquastatScore: worldBankPolicy(['ER.H2O.FWST.ZS']),
   recoveryGovRevenue: IMF,
   recoveryFiscalBalance: IMF,
   recoveryDebtToGdp: IMF,
   debtSustainabilityGap: IMF,
-  recoveryReserveMonths: WORLD_BANK,
+  recoveryReserveMonths: worldBankPolicy(['FI.RES.TOTL.MO']),
   recoveryLiquidReserveMonths: LIQUID_RESERVE_CONDITIONAL,
   recoverySovereignWealthEffectiveMonths: WIKIPEDIA_SWF,
-  recoveryDebtToReserves: WORLD_BANK,
+  recoveryDebtToReserves: worldBankPolicy(['DT.DOD.DSTC.CD', 'FI.RES.TOTL.CD']),
   recoveryImportHhi: COMTRADE,
-  recoveryWgiContinuity: WORLD_BANK,
+  recoveryWgiContinuity: worldBankPolicy(WORLD_BANK_WGI_INDICATORS),
   recoveryConflictPressure: UCDP,
   recoveryDisplacementVelocity: UNHCR,
   recoveryFuelStockDays: FUEL_STOCKS,
-} as const satisfies Record<string, IndicatorSourcePolicy>;
+} as const satisfies Record<import('./_indicator-registry').ResilienceIndicatorId, IndicatorSourcePolicy>;
 
 export type IndicatorSourcePolicyId = keyof typeof INDICATOR_SOURCE_POLICIES;
 
@@ -388,9 +407,9 @@ function normalizeProvider(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function normalizedSourceUrl(value: string): string | null {
+function normalizedSourceUrl(value: string): URL | null {
   try {
-    return new URL(value).toString();
+    return new URL(value);
   } catch {
     return null;
   }
@@ -401,8 +420,8 @@ function matchesAuditedSource(hint: IndicatorObservedSourceHint, source: Audited
   const url = typeof hint.sourceUrl === 'string' ? normalizedSourceUrl(hint.sourceUrl) : null;
   const providerMatches = !provider || source.providerAliases.some((alias) => normalizeProvider(alias) === provider);
   const urlMatches = url != null && (
-    source.sourceUrlPrefixes.some((prefix) => url.startsWith(prefix))
-    && (source.sourceUrlContains?.every((part) => url.includes(part)) ?? true)
+    source.sourceUrlPrefixes.some((prefix) => url.toString().startsWith(prefix))
+    && (source.sourcePathSuffixes?.some((suffix) => url.pathname.endsWith(suffix)) ?? true)
   );
   return providerMatches && urlMatches;
 }

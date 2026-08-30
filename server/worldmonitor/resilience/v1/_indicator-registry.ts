@@ -74,7 +74,7 @@ export function getIndicatorSourceKeys(
   return indicator.sourceKeys ?? [indicator.sourceKey];
 }
 
-export const INDICATOR_REGISTRY: IndicatorSpec[] = [
+export const INDICATOR_REGISTRY = [
   // ── macroFiscal (5 sub-metrics) ───────────────────────────────────────────
   {
     id: 'govRevenuePct',
@@ -1417,7 +1417,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     license: 'open-data',
     comprehensive: false,
   },
-];
+] as const satisfies readonly IndicatorSpec[];
+
+export type ResilienceIndicatorId = typeof INDICATOR_REGISTRY[number]['id'];
+
+/** Canonical ordered IDs, derived from the registry rather than maintained separately. */
+export const RESILIENCE_INDICATOR_IDS: readonly ResilienceIndicatorId[] = INDICATOR_REGISTRY.map(
+  (indicator) => indicator.id,
+);
 
 // Plan 2026-04-26-002 §U5 helpers — registry-driven check used by IMPUTE
 // callers in _dimension-scorers.ts. Keeping this lookup here (rather than

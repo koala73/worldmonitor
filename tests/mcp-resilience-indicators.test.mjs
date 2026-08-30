@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
+import { afterEach, describe, mock, test } from 'node:test';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { HMAC_SECRET } from './helpers/mcp-pro-deps.mjs';
@@ -8,6 +8,7 @@ const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_HMAC_SECRET = process.env.MCP_INTERNAL_HMAC_SECRET;
 
 afterEach(() => {
+  mock.restoreAll();
   globalThis.fetch = ORIGINAL_FETCH;
   if (ORIGINAL_HMAC_SECRET == null) delete process.env.MCP_INTERNAL_HMAC_SECRET;
   else process.env.MCP_INTERNAL_HMAC_SECRET = ORIGINAL_HMAC_SECRET;
@@ -17,6 +18,7 @@ describe('get_resilience_indicators MCP tool', () => {
   test('is subscription-only with exact API, coverage, schema and annotation metadata', () => {
     const tool = TOOL_REGISTRY.find((candidate) => candidate.name === 'get_resilience_indicators');
     assert.ok(tool);
+    assert.equal(tool._jmespathDisabled, true);
     assert.deepEqual(tool._apiPaths, ['GET /api/resilience/v1/get-resilience-indicators']);
     assert.deepEqual(tool.inputSchema.required, ['country_code']);
     assert.equal(tool._outputBudgetBytes, 262144);
@@ -55,7 +57,15 @@ describe('get_resilience_indicators MCP tool', () => {
     const tool = TOOL_REGISTRY.find((candidate) => candidate.name === 'get_resilience_indicators');
     assert.ok(tool?._execute);
     process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    let timeoutSignal;
+    mock.method(AbortSignal, 'timeout', (milliseconds) => {
+      assert.ok(milliseconds > 8_000, 'timeout must exceed the former cold-path limit');
+      assert.ok(milliseconds >= 15_000, 'timeout must cover the bounded cold scorer path');
+      timeoutSignal = new AbortController().signal;
+      return timeoutSignal;
+    });
     globalThis.fetch = async (input, init) => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
       const url = new URL(String(input));
       assert.equal(url.pathname, '/api/resilience/v1/get-resilience-indicators');
       assert.equal(url.searchParams.get('countryCode'), 'DE');
@@ -63,6 +73,8 @@ describe('get_resilience_indicators MCP tool', () => {
       assert.match(init?.headers?.['X-WM-MCP-Internal'] ?? '', /^\d+\.[A-Za-z0-9_-]+$/);
       assert.equal(init?.headers?.['X-WM-MCP-User-Id'], 'user-6507');
       assert.match(init?.headers?.['X-WM-MCP-Nonce'] ?? '', /^[A-Za-z0-9_-]+$/);
+      assert.equal(init?.signal, timeoutSignal);
+      assert.equal(init?.signal?.aborted, false);
       return Response.json({
         countryCode: 'DE',
         methodology: 'request-local-scorer-trace-v1',

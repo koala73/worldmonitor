@@ -2041,6 +2041,58 @@ describe('resilience source-failure aggregation (T1.7)', () => {
     assert.equal(no.imputationClass, null, 'NO has real data, no imputation class');
   });
 
+  it('scoreStateContinuity traces the oldest year and only actual WGI contributors', async () => {
+    const trace = createIndicatorTraceCollector();
+    const reader: ResilienceSeedReader = async (key) => key === 'resilience:static:XX'
+      ? {
+          wgi: {
+            indicators: {
+              'VA.EST': { value: 1.0, year: 2024 },
+              'PV.EST': { value: 0.5, year: 2019 },
+              'GE.EST': { value: null, year: 2018 },
+            },
+          },
+        }
+      : null;
+    await scoreStateContinuity('XX', reader, { trace });
+    const row = trace.readDimension('stateContinuity')?.contributions.find(
+      (entry) => entry.indicatorId === 'recoveryWgiContinuity',
+    );
+    assert.equal(row?.sourceYear, 2019);
+    assert.deepEqual(
+      row?.observedSources.map((source) => source.sourceUrl),
+      [
+        'https://api.worldbank.org/v2/country/all/indicator/GOV_WGI_VA.EST',
+        'https://api.worldbank.org/v2/country/all/indicator/GOV_WGI_PV.EST',
+      ],
+    );
+  });
+
+  it('scoreStateContinuity distinguishes a missing UCDP feed from an observed empty feed without changing the score', async () => {
+    const staticRecord = { wgi: { indicators: { 'VA.EST': { value: 1, year: 2024 } } } };
+    const scoreWithUcdp = async (ucdpRaw: unknown) => {
+      const trace = createIndicatorTraceCollector();
+      const reader: ResilienceSeedReader = async (key) => {
+        if (key === 'resilience:static:XX') return staticRecord;
+        if (key === 'conflict:ucdp-events:v1') return ucdpRaw;
+        return null;
+      };
+      const traced = await scoreStateContinuity('XX', reader, { trace });
+      const publicOnly = await scoreStateContinuity('XX', reader);
+      return { traced, publicOnly, row: trace.readDimension('stateContinuity')?.contributions.find((entry) => entry.indicatorId === 'recoveryConflictPressure') };
+    };
+
+    const missing = await scoreWithUcdp(null);
+    assert.deepEqual(missing.traced, missing.publicOnly);
+    assert.equal(missing.row?.state, 'fallback');
+    assert.equal(missing.row?.rawValue, null);
+
+    const observedEmpty = await scoreWithUcdp({ events: [] });
+    assert.deepEqual(observedEmpty.traced, observedEmpty.publicOnly);
+    assert.equal(observedEmpty.row?.state, 'observed');
+    assert.equal(observedEmpty.row?.rawValue, 0);
+  });
+
   // PR 3 §3.5: fuelStockDays retired permanently from the core score.
   // scoreFuelStockDays returns coverage=0 + observedWeight=0 +
   // imputationClass=null for every country regardless of seed content —
