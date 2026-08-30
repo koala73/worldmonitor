@@ -133,6 +133,17 @@ describe('CommoditiesPanel physical-premium tab', () => {
     expect(text).toContain('Premium: -$46.79/oz (-1.05%)');
     expect(text).toContain('Shanghai Gold Exchange SHAU PM benchmark');
     expect(text).toContain('As of 2026-08-18');
+
+    expect(panel.selectTab('commodities')).toMatchObject({ ok: true, effectiveTab: 'commodities' });
+    await flush();
+    expect(panel.selectTab('physical')).toEqual({
+      ok: true,
+      status: 'applied',
+      effectiveTab: 'physical',
+    });
+    await flush();
+    expect(panel.getActiveTab()).toBe('physical');
+    expect(panel.getElement().textContent).toContain('Shanghai Gold Exchange SHAU PM benchmark');
   });
 
   it('keeps the Physical tab when commodities fail and FX is empty', async () => {

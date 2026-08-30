@@ -370,7 +370,14 @@ interface EcbFxRateItem {
   change1d?: number | null;
 }
 
-type CommoditiesTab = 'commodities' | 'physical' | 'fx' | 'xau';
+export type CommoditiesTab = 'commodities' | 'physical' | 'fx' | 'xau';
+
+export interface CommoditiesTabSelectionResult {
+  ok: boolean;
+  status: 'applied' | 'skipped' | 'denied' | 'invalid';
+  effectiveTab: CommoditiesTab;
+  reason?: 'unknown_tab' | 'tab_unavailable';
+}
 
 // Use the generated types directly — never hand-roll a subset, which silently
 // drifts when the proto gains fields.
@@ -601,16 +608,34 @@ export class CommoditiesPanel extends Panel {
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
       const tab = btn?.dataset.tab;
-      if (
-        tab === 'commodities' ||
-        tab === 'physical' ||
-        tab === 'fx' ||
-        (tab === 'xau' && SITE_VARIANT === 'commodity')
-      ) {
-        this._tab = tab as CommoditiesTab;
-        this._render();
-      }
+      if (tab) this.selectTab(tab);
     });
+  }
+
+  public getActiveTab(): CommoditiesTab {
+    return this._tab;
+  }
+
+  public selectTab(tab: string): CommoditiesTabSelectionResult {
+    if (!['commodities', 'physical', 'fx', 'xau'].includes(tab)) {
+      return { ok: false, status: 'invalid', effectiveTab: this._tab, reason: 'unknown_tab' };
+    }
+    const next = tab as CommoditiesTab;
+    const available = next === 'commodities'
+      || (next === 'physical' && this._physicalPremiums.length > 0)
+      || (next === 'fx' && this._fxRates.length > 0)
+      || (
+        next === 'xau'
+        && SITE_VARIANT === 'commodity'
+        && this._commodityData.some((entry) => entry.symbol === 'GC=F' && entry.price !== null)
+      );
+    if (!available) {
+      return { ok: false, status: 'denied', effectiveTab: this._tab, reason: 'tab_unavailable' };
+    }
+    if (this._tab === next) return { ok: true, status: 'skipped', effectiveTab: this._tab };
+    this._tab = next;
+    this._render();
+    return { ok: true, status: 'applied', effectiveTab: this._tab };
   }
 
   public renderCommodities(data: Array<{ symbol?: string; display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
@@ -670,10 +695,7 @@ export class CommoditiesPanel extends Panel {
         ? ''
         : divergence && cohortMatches
         ? this._renderPhysicalDivergenceReading(divergence)
-        : this._renderPhysicalDivergenceReading({
-          state: 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT',
-          historyPoints: 0,
-        } as PhysicalDivergenceReading);
+        : this._renderPhysicalDivergenceState('PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT', 0);
       return `<div class="commodity-item physical-premium-item">
         <div class="commodity-name">${escapeHtml(metal)}</div>
         <div class="commodity-price">${escapeHtml(t('components.commodities.physical'))}: CNY ${escapeHtml(physicalPrice)}/${unit}</div>
@@ -689,7 +711,7 @@ export class CommoditiesPanel extends Panel {
 
   private _renderPhysicalDivergenceReading(reading: PhysicalDivergenceReading): string {
     if (reading.state !== 'PHYSICAL_DIVERGENCE_STATE_OK') {
-      return `<div class="physical-divergence-state" style="margin-top:4px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(physicalDivergenceStateCopy(reading.state, reading.historyPoints, reading.reason))}</div>`;
+      return this._renderPhysicalDivergenceState(reading.state, reading.historyPoints, reading.reason);
     }
     const label = physicalRegimeLabel(reading.regime);
     const color = physicalRegimeColor(reading.regime);
@@ -700,6 +722,14 @@ export class CommoditiesPanel extends Panel {
       <span title="${escapeHtml(t('components.commodities.divergence.fiveDayTrend'))}">${escapeHtml(arrow5d)} 5d</span>
       <span title="${escapeHtml(t('components.commodities.divergence.twentyDayTrend'))}">${escapeHtml(arrow20d)} 20d</span>
     </div>`;
+  }
+
+  private _renderPhysicalDivergenceState(
+    state: PhysicalDivergenceState,
+    historyPoints: number,
+    reason = '',
+  ): string {
+    return `<div class="physical-divergence-state" style="margin-top:4px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(physicalDivergenceStateCopy(state, historyPoints, reason))}</div>`;
   }
 
   private _renderPhysicalDivergenceComposite(): string {

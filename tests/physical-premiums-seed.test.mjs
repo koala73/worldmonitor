@@ -8,6 +8,7 @@ import {
   PHYSICAL_DIVERGENCE_KEY,
   PHYSICAL_PREMIUM_HISTORY_KEY_PREFIX,
   APPEND_HISTORY_LUA,
+  PUBLISH_DIVERGENCE_LUA,
   appendPhysicalPremiumHistory,
   buildPhysicalDivergenceSnapshot,
   buildPhysicalPremiumPayload,
@@ -17,6 +18,8 @@ import {
   parseSgeBenchmarkHtml,
   physicalPremiumHistoryKey,
   physicalPremiumHistoryWriteCommand,
+  physicalDivergenceMeta,
+  physicalDivergencePublishCommand,
   publishPhysicalDivergenceDerivedData,
   retryDerivedRedisCommand,
   physicalDivergenceActivationWrite,
@@ -214,6 +217,10 @@ describe('physical premium seed', () => {
       asOf: '2026-08-18T12:30:00.000Z',
     });
     assert.equal(validatePhysicalPremiumPayload(payload), true);
+
+    const future = structuredClone(payload);
+    future.premiums[0].physical.asOf = '2026-08-19';
+    assert.equal(validatePhysicalPremiumPayload(future), false);
   });
 
   it('fails closed on changed SGE markup', () => {
@@ -317,6 +324,35 @@ describe('physical premium seed', () => {
     assert.deepEqual(appended[0], historyPoint);
   });
 
+  it('publishes the snapshot, health metadata, and cooldowns in one pinned command', () => {
+    const snapshot = {
+      readings: [{ state: 'ok' }, { state: 'ok' }],
+      composite: { state: 'ok', reason: '' },
+      transitions: [{
+        id: 'physical-premium:gold:normal-elevated:1787056200000',
+        metal: 'gold',
+      }],
+    };
+    const command = physicalDivergencePublishCommand({
+      divergenceKey: 'test:market:physical-divergence:v1',
+      metaKey: 'test:seed-meta:market:physical-divergence',
+      snapshot,
+      nowMs: 1_787_056_200_000,
+      prefix: 'test:',
+    });
+
+    assert.equal(command[0], 'EVAL');
+    assert.equal(command[1], PUBLISH_DIVERGENCE_LUA);
+    assert.equal(command[2], '3');
+    assert.deepEqual(command.slice(3, 6), [
+      'test:market:physical-divergence:v1',
+      'test:seed-meta:market:physical-divergence',
+      'test:market:physical-divergence-transition-cooldown:v1:gold',
+    ]);
+    assert.equal(JSON.parse(command[7]).sourceState, 'ok');
+    assert.equal(JSON.parse(command.at(-1)).transitionId, snapshot.transitions[0].id);
+  });
+
   it('publishes bounded histories, the derived snapshot, metadata, and transition cooldowns', async () => {
     const payload = buildPhysicalPremiumPayload({
       goldRows: parseSgeBenchmarkHtml(goldHtml, { contract: 'SHAU', unit: 'gram' }),
@@ -360,13 +396,16 @@ describe('physical premium seed', () => {
         retryDelayFn: async (delayMs) => retryDelays.push(delayMs),
         commandFn: async (_creds, command) => {
           commands.push(command);
-          if (command[0] === 'EVAL') {
+          if (command[0] === 'EVAL' && command[1] === APPEND_HISTORY_LUA) {
             const metal = command[3].endsWith(':gold') ? 'gold' : 'silver';
             if (metal === 'gold' && !transientFailureInjected) {
               transientFailureInjected = true;
               throw Object.assign(new Error('Upstash HTTP 503'), { status: 503, retryAfterMs: 0 });
             }
             return { result: histories[metal].map((entry) => JSON.stringify(entry)) };
+          }
+          if (command[0] === 'EVAL' && command[1] === PUBLISH_DIVERGENCE_LUA) {
+            return { result: Number(command[2]) };
           }
           if (command[0] === 'GET' && command[1] === 'test:market:physical-divergence:v1') {
             return { result: JSON.stringify(previousSnapshot) };
@@ -376,16 +415,20 @@ describe('physical premium seed', () => {
         },
       });
 
-      assert.equal(commands.filter(([verb]) => verb === 'EVAL').length, 3);
+      assert.equal(commands.filter(([verb]) => verb === 'EVAL').length, 4);
       assert.deepEqual(retryDelays, [250]);
       assert.ok(commands.some((command) => command[0] === 'GET' && command[1] === 'test:market:physical-divergence:v1'));
-      assert.ok(commands.some((command) => command[0] === 'SET' && command[1] === 'test:market:physical-divergence:v1'));
-      assert.ok(commands.some((command) => command[0] === 'SET' && command[1] === 'test:seed-meta:market:physical-divergence'));
-      const cooldownWrites = commands.filter((command) => (
-        command[0] === 'SET' && command[1].startsWith('test:market:physical-divergence-transition-cooldown:v1:')
+      const publish = commands.find((command) => command[1] === PUBLISH_DIVERGENCE_LUA);
+      assert.ok(publish);
+      assert.equal(publish[3], 'test:market:physical-divergence:v1');
+      assert.equal(publish[4], 'test:seed-meta:market:physical-divergence');
+      const publishedKeys = publish.slice(3, 3 + Number(publish[2]));
+      const cooldownWrites = publishedKeys.filter((key) => (
+        key.startsWith('test:market:physical-divergence-transition-cooldown:v1:')
       ));
       assert.ok(snapshot.transitions.length > 0);
       assert.equal(cooldownWrites.length, snapshot.transitions.length);
+      assert.equal(commands.some(([verb]) => verb === 'SET'), false);
     } finally {
       if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
       else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
@@ -436,11 +479,13 @@ describe('physical premium seed', () => {
         },
       });
 
-      assert.equal(commands.some(([verb]) => verb === 'EVAL'), false);
+      assert.equal(commands.filter((command) => command[0] === 'EVAL').length, 1);
+      assert.equal(commands.find((command) => command[0] === 'EVAL')?.[1], PUBLISH_DIVERGENCE_LUA);
       assert.equal(commands.filter(([verb]) => verb === 'LRANGE').length, 2);
       assert.ok(snapshot.readings.every((reading) => reading.state === 'stale_input'));
       assert.ok(snapshot.readings.every((reading) => reading.reason === 'paper_snapshot_older_than_36_hours'));
       assert.ok(snapshot.readings.every((reading) => reading.historyPoints === 1));
+      assert.equal(physicalDivergenceMeta(snapshot, Date.parse('2026-08-20T00:00:01.000Z')).sourceState, 'stale');
     } finally {
       if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
       else process.env.UPSTASH_REDIS_REST_URL = previousUrl;

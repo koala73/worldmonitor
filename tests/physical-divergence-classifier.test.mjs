@@ -185,6 +185,21 @@ describe('physical divergence methodology v1', () => {
     assert.equal(stale.reason, 'physical_print_older_than_12_calendar_days');
   });
 
+  it('fails closed when an SGE print is later than the Shanghai business date', () => {
+    const reading = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { physical: { asOf: '2026-10-11' } }),
+      history: Array.from({ length: 60 }, (_, index) => point(index)),
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+
+    assert.deepEqual(
+      { state: reading.state, reason: reading.reason, index: reading.index },
+      { state: 'missing_input', reason: 'physical_print_in_future', index: null },
+    );
+  });
+
   it('marks stale COMEX and FX snapshots as stale_input', () => {
     const history = Array.from({ length: 60 }, (_, index) => point(index));
     const stalePaper = buildPhysicalDivergenceReading({

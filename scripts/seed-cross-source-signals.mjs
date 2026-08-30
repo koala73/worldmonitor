@@ -5,6 +5,7 @@ import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 import { regionForCountry } from './shared/geography.js';
+import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
 
 loadEnvFile(import.meta.url);
 
@@ -956,9 +957,22 @@ function extractRegulatoryAction(d) {
 
 function extractPhysicalPremiumRegimeTransition(d) {
   const payload = d['market:physical-divergence:v1'];
+  const nowMs = Date.now();
+  const readings = Array.isArray(payload?.readings) ? payload.readings : [];
+  const readingsByMetal = new Map(readings.map((reading) => [reading?.metal, reading]));
+  const inputsFresh = ['gold', 'silver'].every((metal) => {
+    const reading = readingsByMetal.get(metal);
+    return reading?.state === 'ok'
+      && physicalDivergenceStaleReason({
+        physicalAsOf: reading.physicalAsOf,
+        paperAsOf: reading.paperAsOf,
+        fxAsOf: reading.provenance?.fxAsOf,
+      }, nowMs) == null;
+  });
+  if (!inputsFresh) return [];
   const transitions = Array.isArray(payload?.transitions) ? payload.transitions : [];
   const targetMultiplier = { normal: 0.75, elevated: 1, stressed: 1.5, extreme: 2 };
-  const cutoff = Date.now() - 48 * 3600 * 1000;
+  const cutoff = nowMs - 48 * 3600 * 1000;
   return transitions.flatMap((transition) => {
     if (
       !['gold', 'silver'].includes(transition?.metal)
@@ -967,6 +981,7 @@ function extractPhysicalPremiumRegimeTransition(d) {
       || transition.fromRegime === transition.toRegime
       || !Number.isFinite(transition?.detectedAt)
       || transition.detectedAt <= cutoff
+      || transition.detectedAt > nowMs
       || typeof transition?.id !== 'string'
       || transition.id !== `physical-premium:${transition.metal}:${transition.fromRegime}-${transition.toRegime}:${transition.detectedAt}`
       || transition.methodologyVersion !== 'physical-divergence-v1'

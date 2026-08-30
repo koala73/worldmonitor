@@ -127,6 +127,14 @@ function createBindings(overrides = {}) {
       message: 'Applied dashboard action.',
       targets: [],
     }),
+    selectPanelTab: async (panelId, tab) => ({
+      ok: true,
+      status: 'applied',
+      panelId,
+      requestedTab: tab,
+      effectiveTab: tab,
+      message: 'Selected panel tab.',
+    }),
     searchDashboard: async (query) => ({
       queryLength: query.length,
       results: [],
@@ -643,6 +651,86 @@ describe('webmcp.ts: current API contract', () => {
       .find((candidate) => candidate.name === 'open_dashboard_panel');
     assert.match(tool.description, /panel_disabled/);
     assert.match(tool.description, /does not enable/i);
+  });
+
+  it('opens the commodities panel and selects its physical subtab', async () => {
+    const calls = [];
+    const tool = buildWebMcpTools(createBindings({
+      applyDashboardAction: async (action) => {
+        calls.push(action);
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: action.type,
+          message: 'Opened panel.',
+          targets: [],
+        };
+      },
+      selectPanelTab: async (panelId, tab) => {
+        calls.push({ panelId, tab });
+        return {
+          ok: true,
+          status: 'applied',
+          panelId,
+          requestedTab: tab,
+          effectiveTab: tab,
+          message: 'Selected panel tab.',
+        };
+      },
+    }), () => {}).find((candidate) => candidate.name === 'open_dashboard_panel');
+
+    assert.deepEqual(tool.inputSchema.properties.tab.enum, ['commodities', 'physical', 'fx', 'xau']);
+    const result = await tool.execute({ panelId: 'commodities', tab: 'physical' });
+    assert.deepEqual(calls, [
+      { type: 'open_panel', panelId: 'commodities' },
+      { panelId: 'commodities', tab: 'physical' },
+    ]);
+    assert.deepEqual(result.panelTab, {
+      ok: true,
+      status: 'applied',
+      panelId: 'commodities',
+      requestedTab: 'physical',
+      effectiveTab: 'physical',
+      message: 'Selected panel tab.',
+    });
+
+    const deniedTool = buildWebMcpTools(createBindings({
+      selectPanelTab: async (panelId, tab) => ({
+        ok: false,
+        status: 'denied',
+        panelId,
+        requestedTab: tab,
+        effectiveTab: 'commodities',
+        reason: 'tab_unavailable',
+        message: 'That commodities panel tab is not currently available.',
+      }),
+    }), () => {}).find((candidate) => candidate.name === 'open_dashboard_panel');
+    const denied = await deniedTool.execute({ panelId: 'commodities', tab: 'physical' });
+    assert.equal(denied.ok, false);
+    assert.equal(denied.reason, 'tab_unavailable');
+    assert.equal(denied.panelTab.effectiveTab, 'commodities');
+  });
+
+  it('includes active panel subtabs in dashboard context', async () => {
+    const context = await buildWebMcpTools(createBindings({
+      getDashboardContext: async () => ({
+        variant: 'commodity',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: {
+          mounted: ['commodities'],
+          enabled: ['commodities'],
+          activeTabs: { commodities: 'physical' },
+        },
+      }),
+    }), () => {}).find((candidate) => candidate.name === 'get_dashboard_context').execute({});
+
+    assert.deepEqual(context.panels.activeTabs, { commodities: 'physical' });
   });
 
   it('documents per-result cancellation on search_dashboard and open_search_result', () => {

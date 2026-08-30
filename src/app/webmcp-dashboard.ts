@@ -81,6 +81,12 @@ export function getWebMcpDashboardContext(
 
   const mapState = ctx.map.getState();
   const center = ctx.map.getCenter();
+  const activeTabs = Object.fromEntries(Object.entries(ctx.panels).flatMap(([panelId, panel]) => {
+    const getActiveTab = (panel as { getActiveTab?: () => unknown }).getActiveTab;
+    if (typeof getActiveTab !== 'function') return [];
+    const tab = getActiveTab.call(panel);
+    return typeof tab === 'string' ? [[panelId, tab]] : [];
+  }));
 
   return {
     variant,
@@ -99,6 +105,7 @@ export function getWebMcpDashboardContext(
       enabled: Object.entries(ctx.panelSettings)
         .filter(([, config]) => config.enabled === true)
         .map(([panelId]) => panelId),
+      activeTabs,
     },
   };
 }

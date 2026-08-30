@@ -56,6 +56,18 @@ const HOUR = 3600 * 1000;
 const now = Date.now();
 const iso = (msAgo = 0) => new Date(now - msAgo).toISOString();
 
+function freshPhysicalReadings(at = now) {
+  const physicalAsOf = new Date(at).toISOString().slice(0, 10);
+  const paperAsOf = new Date(at).toISOString();
+  return ['gold', 'silver'].map((metal) => ({
+    metal,
+    state: 'ok',
+    physicalAsOf,
+    paperAsOf,
+    provenance: { fxAsOf: paperAsOf },
+  }));
+}
+
 function seedEnvelope(data, fetchedAt = now) {
   return {
     _seed: {
@@ -519,6 +531,7 @@ const FIXTURES = [
     enveloped: false,
     payload: {
       methodologyVersion: 'physical-divergence-v1',
+      readings: freshPhysicalReadings(),
       transitions: [{
         id: `physical-premium:gold:normal-elevated:${now - HOUR}`,
         metal: 'gold',
@@ -592,6 +605,7 @@ it('physical premium transitions expire after the 48-hour emission cooldown', ()
   const now = Date.now();
   const signals = extractPhysicalPremiumRegimeTransition({
     'market:physical-divergence:v1': {
+      readings: freshPhysicalReadings(now),
       transitions: [{
         id: 'physical-premium:gold:normal-elevated:stale',
         metal: 'gold',
@@ -619,10 +633,64 @@ it('rejects non-canonical physical premium transitions', () => {
     { ...base, fromRegime: '<script>' },
     { ...base, methodologyVersion: 'future-method' },
     { ...base, id: 'attacker-controlled' },
+    {
+      ...base,
+      detectedAt: now + HOUR,
+      id: `physical-premium:gold:normal-elevated:${now + HOUR}`,
+    },
   ]) {
     assert.deepEqual(extractPhysicalPremiumRegimeTransition({
-      'market:physical-divergence:v1': { transitions: [transition] },
+      'market:physical-divergence:v1': {
+        readings: freshPhysicalReadings(now),
+        transitions: [transition],
+      },
     }), []);
+  }
+});
+
+it('rejects a recent transition when any required input clock is stale', () => {
+  const readings = freshPhysicalReadings(now);
+  readings[0].paperAsOf = new Date(now - 37 * HOUR).toISOString();
+  assert.deepEqual(extractPhysicalPremiumRegimeTransition({
+    'market:physical-divergence:v1': {
+      readings,
+      transitions: [{
+        id: `physical-premium:gold:normal-elevated:${now - HOUR}`,
+        metal: 'gold',
+        fromRegime: 'normal',
+        toRegime: 'elevated',
+        detectedAt: now - HOUR,
+        methodologyVersion: 'physical-divergence-v1',
+      }],
+    },
+  }), []);
+});
+
+it('pins every physical premium transition severity tier', () => {
+  const expected = {
+    normal: [1.5, 'CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM'],
+    elevated: [2, 'CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM'],
+    stressed: [3, 'CROSS_SOURCE_SIGNAL_SEVERITY_HIGH'],
+    extreme: [4, 'CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL'],
+  };
+  for (const [toRegime, [severityScore, severity]] of Object.entries(expected)) {
+    const detectedAt = now - HOUR;
+    const fromRegime = toRegime === 'normal' ? 'elevated' : 'normal';
+    const [signal] = extractPhysicalPremiumRegimeTransition({
+      'market:physical-divergence:v1': {
+        readings: freshPhysicalReadings(now),
+        transitions: [{
+          id: `physical-premium:gold:${fromRegime}-${toRegime}:${detectedAt}`,
+          metal: 'gold',
+          fromRegime,
+          toRegime,
+          detectedAt,
+          methodologyVersion: 'physical-divergence-v1',
+        }],
+      },
+    });
+    assert.equal(signal.severityScore, severityScore);
+    assert.equal(signal.severity, severity);
   }
 });
 

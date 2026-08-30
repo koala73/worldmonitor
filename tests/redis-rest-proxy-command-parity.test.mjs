@@ -22,7 +22,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { APPEND_HISTORY_LUA } from '../scripts/seed-physical-premiums.mjs';
+import {
+  APPEND_HISTORY_LUA,
+  PUBLISH_DIVERGENCE_LUA,
+} from '../scripts/seed-physical-premiums.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -180,6 +183,20 @@ describe('redis-rest-proxy command gate', () => {
     assert.equal(accepts(gate, ['EVAL', APPEND_HISTORY_LUA, '1', 'history']), true);
     assert.equal(
       accepts(gate, ['EVAL', `${APPEND_HISTORY_LUA} `, '1', 'history']),
+      false,
+      'a one-character script variant must stay blocked',
+    );
+  });
+
+  it('pins the physical-divergence publication by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(PUBLISH_DIVERGENCE_LUA), true);
+    assert.equal(
+      accepts(gate, ['EVAL', PUBLISH_DIVERGENCE_LUA, '2', 'snapshot', 'meta']),
+      true,
+    );
+    assert.equal(
+      accepts(gate, ['EVAL', `${PUBLISH_DIVERGENCE_LUA} `, '2', 'snapshot', 'meta']),
       false,
       'a one-character script variant must stay blocked',
     );

@@ -413,7 +413,7 @@ function applyFreshness(
     if (!staleReason) return entry;
     return {
       ...entry,
-      state: 'stale_input',
+      state: staleReason === 'physical_print_in_future' ? 'missing_input' : 'stale_input',
       reason: staleReason,
       regime: null,
       index: null,

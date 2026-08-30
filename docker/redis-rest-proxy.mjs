@@ -234,11 +234,23 @@ const PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT = [
   "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)",
   "return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)",
 ].join('\n');
+// PINNED COPY of scripts/seed-physical-premiums.mjs PUBLISH_DIVERGENCE_LUA.
+// The derived snapshot, health metadata, and transition cooldowns must become
+// visible together so a retry cannot publish a signal without its cooldown.
+const PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT = [
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])",
+  "redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])",
+  'for index = 3, #KEYS do',
+  "  redis.call('SET', KEYS[index], ARGV[index + 2], 'EX', ARGV[4])",
+  'end',
+  'return #KEYS',
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
   PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
+  PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
 ]);
 
 // Exact-text pin, not a pattern: any change to the script — including

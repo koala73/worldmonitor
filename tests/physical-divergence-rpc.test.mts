@@ -286,6 +286,23 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     assert.match(body.message, /Unknown physical divergence state/);
   });
 
+  it('rejects a stored composite that disagrees with its member readings', async () => {
+    const corrupt = snapshot(60);
+    corrupt.composite.index += 1;
+    installRedisMock(corrupt);
+
+    const response = await routeHandler()(new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index'));
+    const body = await response.json();
+    assert.equal(response.status, 500);
+    assert.match(body.message, /composite does not match its member readings/);
+
+    const filtered = marketDataTool._postFilter?.(
+      { 'physical-divergence': structuredClone(corrupt) },
+      { limit: 0 },
+    );
+    assert.equal(filtered?.['physical-divergence'], undefined);
+  });
+
   it('rejects the same malformed metal set through the public RPC and MCP boundaries', async () => {
     const corrupt = snapshot(60);
     corrupt.readings[1] = structuredClone(corrupt.readings[0]);

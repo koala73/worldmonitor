@@ -11,6 +11,7 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const PHYSICAL_PREMIUM_KEY = 'market:physical-premium:v1';
 const PHYSICAL_PREMIUM_META_KEY = 'seed-meta:market:physical-premium';
 const PHYSICAL_DIVERGENCE_KEY = 'market:physical-divergence:v1';
+const PHYSICAL_DIVERGENCE_META_KEY = 'seed-meta:market:physical-divergence';
 
 describe('physical premium production registration', () => {
   it('runs in the daily macro bundle without a license env gate', () => {
@@ -123,5 +124,30 @@ describe('physical premium production registration', () => {
       { allowOnDemand: false },
       { ...base, activationStates: new Map([['physicalPremiums', false]]) },
     ).status, 'EMPTY');
+  });
+
+  it('surfaces stale or missing divergence inputs even when the daily run is fresh', () => {
+    const now = 1_800_000_000_000;
+    for (const sourceState of ['stale', 'error']) {
+      const entry = health.classifyKey(
+        'physicalDivergence',
+        PHYSICAL_DIVERGENCE_KEY,
+        { allowOnDemand: true },
+        {
+          keyStrens: new Map([[PHYSICAL_DIVERGENCE_KEY, 2048]]),
+          keyErrors: new Map(),
+          keyMetaValues: new Map([[PHYSICAL_DIVERGENCE_META_KEY, JSON.stringify({
+            fetchedAt: now - 60_000,
+            recordCount: 2,
+            sourceState,
+          })]]),
+          keyMetaErrors: new Map(),
+          activationStates: new Map([['physicalDivergence', true]]),
+          now,
+        },
+      );
+      assert.equal(entry.status, 'SEED_ERROR');
+      assert.equal(entry.records, 2);
+    }
   });
 });

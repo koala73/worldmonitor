@@ -107,6 +107,7 @@ import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
 import type { NewsMarketCorrelationPanel } from '@/components/NewsMarketCorrelationPanel';
 import type { PositioningPanel } from '@/components/PositioningPanel';
 import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
+import type { CommoditiesPanel } from '@/components/MarketPanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
@@ -2001,6 +2002,42 @@ export class App {
           },
           syncUrlStateNow: () => this.eventHandlers.syncUrlStateNow(),
         });
+      },
+      selectPanelTab: async (panelId, tab, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (panelId !== 'commodities') {
+          return {
+            ok: false,
+            status: 'invalid',
+            panelId,
+            requestedTab: tab,
+            reason: 'panel_unsupported',
+            message: 'That panel does not expose a selectable subtab.',
+          };
+        }
+        const panel = this.state.panels[panelId] as CommoditiesPanel | undefined;
+        if (!panel) {
+          return {
+            ok: false,
+            status: 'denied',
+            panelId,
+            requestedTab: tab,
+            reason: 'panel_not_live',
+            message: 'The commodities panel is not live.',
+          };
+        }
+        const selected = panel.selectTab(tab);
+        return {
+          ...selected,
+          panelId,
+          requestedTab: tab,
+          message: selected.ok
+            ? selected.status === 'skipped' ? 'Panel tab was already selected.' : 'Selected panel tab.'
+            : selected.reason === 'unknown_tab'
+              ? 'Unknown commodities panel tab.'
+              : 'That commodities panel tab is not currently available.',
+        };
       },
       searchDashboard: async (query, scope, limit, execution) => {
         await this.waitForDashboardReady(false, execution?.signal);

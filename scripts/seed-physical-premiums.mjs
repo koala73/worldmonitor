@@ -18,7 +18,10 @@ import {
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { isMainModule } from './lib/main-module.mjs';
-import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
+import {
+  isPhysicalDivergencePrintFuture,
+  physicalDivergenceStaleReason,
+} from './shared/physical-divergence-staleness.js';
 import {
   HISTORY_LIMIT,
   METHODOLOGY_VERSION,
@@ -108,6 +111,15 @@ end
 redis.call('LPUSH', KEYS[1], ARGV[2])
 redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)
 return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)
+`.trim();
+
+export const PUBLISH_DIVERGENCE_LUA = `
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
+redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])
+for index = 3, #KEYS do
+  redis.call('SET', KEYS[index], ARGV[index + 2], 'EX', ARGV[4])
+end
+return #KEYS
 `.trim();
 
 export function physicalPremiumHistoryKey(metal, prefix = '') {
@@ -255,6 +267,45 @@ export async function retryDerivedRedisCommand(creds, command, commandFn, delayF
   throw new Error('Unreachable derived Redis retry state');
 }
 
+export function physicalDivergenceMeta(snapshot, nowMs) {
+  const stateCounts = { ok: 0, insufficient_history: 0, stale_input: 0, missing_input: 0 };
+  for (const reading of snapshot?.readings ?? []) {
+    if (Object.hasOwn(stateCounts, reading?.state)) stateCounts[reading.state] += 1;
+  }
+  const compositeState = snapshot?.composite?.state;
+  return {
+    fetchedAt: nowMs,
+    recordCount: Array.isArray(snapshot?.readings) ? snapshot.readings.length : 0,
+    methodologyVersion: METHODOLOGY_VERSION,
+    sourceState: compositeState === 'stale_input'
+      ? 'stale'
+      : compositeState === 'missing_input' ? 'error' : 'ok',
+    sourceReason: typeof snapshot?.composite?.reason === 'string'
+      ? snapshot.composite.reason.slice(0, 160)
+      : '',
+    stateCounts,
+  };
+}
+
+export function physicalDivergencePublishCommand({ divergenceKey, metaKey, snapshot, nowMs, prefix = '' }) {
+  const cooldownWrites = snapshot.transitions.map((transition) => ({
+    key: `${prefix}market:physical-divergence-transition-cooldown:v1:${transition.metal}`,
+    payload: JSON.stringify({ emittedAt: nowMs, transitionId: transition.id }),
+  }));
+  const keys = [divergenceKey, metaKey, ...cooldownWrites.map((entry) => entry.key)];
+  return [
+    'EVAL',
+    PUBLISH_DIVERGENCE_LUA,
+    String(keys.length),
+    ...keys,
+    JSON.stringify(snapshot),
+    JSON.stringify(physicalDivergenceMeta(snapshot, nowMs)),
+    String(DIVERGENCE_TTL_SECONDS),
+    String(TRANSITION_COOLDOWN_SECONDS),
+    ...cooldownWrites.map((entry) => entry.payload),
+  ];
+}
+
 export async function publishPhysicalDivergenceDerivedData({
   payload,
   prefix = '',
@@ -312,22 +363,13 @@ export async function publishPhysicalDivergenceDerivedData({
     cooldowns,
     nowMs,
   });
-  await derivedCommand(creds, [
-    'SET', divergenceKey, JSON.stringify(snapshot), 'EX', String(DIVERGENCE_TTL_SECONDS),
-  ]);
-  const publicationCommands = snapshot.transitions.map((transition) => {
-    const cooldownKey = `${prefix}market:physical-divergence-transition-cooldown:v1:${transition.metal}`;
-    return [
-      'SET', cooldownKey, JSON.stringify({ emittedAt: nowMs, transitionId: transition.id }),
-      'EX', String(TRANSITION_COOLDOWN_SECONDS),
-    ];
-  });
-  publicationCommands.push([
-    'SET', `${prefix}${PHYSICAL_DIVERGENCE_META_KEY}`,
-    JSON.stringify({ fetchedAt: nowMs, recordCount: snapshot.readings.length, methodologyVersion: METHODOLOGY_VERSION }),
-    'EX', String(DIVERGENCE_TTL_SECONDS),
-  ]);
-  await Promise.all(publicationCommands.map((command) => derivedCommand(creds, command)));
+  await derivedCommand(creds, physicalDivergencePublishCommand({
+    divergenceKey,
+    metaKey: `${prefix}${PHYSICAL_DIVERGENCE_META_KEY}`,
+    snapshot,
+    nowMs,
+    prefix,
+  }));
   return snapshot;
 }
 
@@ -518,6 +560,7 @@ export function validatePhysicalPremiumPayload(payload) {
       || !['gram', 'kilogram'].includes(premium.physical.unit)
       || !/^\d{4}-\d{2}-\d{2}$/.test(premium.physical.asOf ?? '')
       || !Number.isFinite(Date.parse(`${premium.physical.asOf}T00:00:00Z`))
+      || isPhysicalDivergencePrintFuture(premium.physical.asOf, Date.parse(premium.computedAt))
       || !Number.isFinite(premium?.paper?.price)
       || premium.paper.price <= 0
       || !parseIsoInstant(premium.paper.asOf)
