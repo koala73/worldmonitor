@@ -1688,6 +1688,16 @@
       "loading": "جارٍ الاتصال بمرحّل Telegram...",
       "empty": "لا توجد رسائل متاحة",
       "disabled": "مرحّل Telegram غير نشط",
+      "watchlistPlaceholder": "أضف قناة عامة باستخدام @username",
+      "resolving": "جارٍ التحقق من القناة...",
+      "invalidUsername": "استخدم @username عامًا على Telegram",
+      "resolveFailed": "تعذر العثور على القناة",
+      "watchlistLimit": "يمكنك متابعة ما يصل إلى {{count}} قناة مخصصة",
+      "previewMembers": "{{count}} عضو",
+      "addChannel": "إضافة قناة",
+      "added": "تمت الإضافة",
+      "remove": "إزالة",
+      "custom": "مخصصة",
       "filterAll": "الكل",
       "filterBreaking": "عاجل",
       "filterConflict": "نزاعات",
@@ -2042,6 +2052,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "مؤشر الإجهاد المادي: {{value}} / 100",
+        "fiveDayTrend": "اتجاه العلاوة لخمسة أيام تداول",
+        "regimes": {
+          "normal": "طبيعي",
+          "elevated": "مرتفع",
+          "stressed": "مضغوط",
+          "extreme": "قصوى"
+        },
+        "states": {
+          "insufficientHistory": "الإحماء: {{count}} / {{required}} نقطة تداول",
+          "staleInput": "معيار الأداء المادي قديم",
+          "missingInput": "إشارة التباعد غير متوفرة"
+        },
+        "twentyDayTrend": "اتجاه العلاوة لمدة عشرين يوم تداول"
       }
     },
     "crypto": {

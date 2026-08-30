@@ -22,7 +22,14 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { validate } from './helpers/json-schema-mini.mjs';
-import { buildProducerBackedMarketFixture } from './helpers/mcp-producer-fixtures.mjs';
+import {
+  buildProducerBackedMarketFixture,
+  buildProducerBackedPhysicalComparisonFixture,
+} from './helpers/mcp-producer-fixtures.mjs';
+import {
+  extractPhysicalPremiumRegimeTransition,
+  extractRegulatoryAction,
+} from '../scripts/seed-cross-source-signals.mjs';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
@@ -125,6 +132,75 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.deepEqual(errors, [], `producer-backed market fixture fails schema:\n  ${errors.join('\n  ')}`);
   });
 
+  it('get_market_data schema validates every producer-backed divergence state', () => {
+    const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
+    const captured = JSON.parse(readFileSync(
+      path.join(fixtureDir, 'fixtures', 'jmespath-samples', 'fat-get-market-data.response.json'),
+      'utf8',
+    ));
+    const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_market_data');
+    assert.ok(tool, 'tool get_market_data not found in registry');
+    for (const state of ['ok', 'insufficient_history', 'stale_input', 'missing_input']) {
+      const fixture = buildProducerBackedMarketFixture(captured);
+      const comparison = buildProducerBackedPhysicalComparisonFixture(state);
+      fixture.data['physical-premium'] = comparison.premium;
+      fixture.data['physical-divergence'] = comparison.divergence;
+      const errors = validate(tool.outputSchema, fixture);
+      assert.deepEqual(errors, [], `${state} producer fixture fails schema:\n  ${errors.join('\n  ')}`);
+    }
+  });
+
+  it('get_news_intelligence schema validates every newly documented transition type', () => {
+    const now = Date.now();
+    const physicalAsOf = new Date(now).toISOString().slice(0, 10);
+    const paperAsOf = new Date(now).toISOString();
+    const physical = extractPhysicalPremiumRegimeTransition({
+      'market:physical-divergence:v1': {
+        readings: ['gold', 'silver'].map((metal) => ({
+          metal,
+          state: 'ok',
+          physicalAsOf,
+          paperAsOf,
+          provenance: { fxAsOf: paperAsOf },
+        })),
+        transitions: [{
+          id: `physical-premium:gold:normal-elevated:${now}`,
+          metal: 'gold',
+          fromRegime: 'normal',
+          toRegime: 'elevated',
+          detectedAt: now,
+          methodologyVersion: 'physical-divergence-v1',
+        }],
+      },
+    });
+    const regulatory = extractRegulatoryAction({
+      'regulatory:actions:v1': {
+        actions: [{
+          id: 'regulatory-test',
+          tier: 'high',
+          agency: 'Test authority',
+          title: 'Test action',
+          publishedAt: paperAsOf,
+        }],
+      },
+    });
+    const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_news_intelligence');
+    assert.ok(tool, 'tool get_news_intelligence not found in registry');
+    const fixture = {
+      cached_at: paperAsOf,
+      stale: false,
+      data: {
+        'cross-source-signals': {
+          signals: [...physical, ...regulatory],
+          evaluatedAt: now,
+          compositeCount: 0,
+        },
+      },
+    };
+    const errors = validate(tool.outputSchema, fixture);
+    assert.deepEqual(errors, [], `producer-backed news fixture fails schema:\n  ${errors.join('\n  ')}`);
+  });
+
   it('interactive cache-tool schemas declare the authoritative fields consumed by their apps', () => {
     const dataProperties = (toolName) => {
       const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
@@ -132,7 +208,28 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       return tool.outputSchema.properties.data.properties;
     };
 
-    const newsStory = dataProperties('get_news_intelligence').insights.properties.topStories.items.properties;
+    const newsData = dataProperties('get_news_intelligence');
+    const newsTool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_news_intelligence');
+    const newsStory = newsData.insights.properties.topStories.items.properties;
+    const crossSourceSignal = newsData['cross-source-signals'].properties.signals.items.properties;
+    assert.match(newsTool.description, /physical-premium regime transitions/);
+    assert.ok(crossSourceSignal.type.enum.includes(
+      'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
+    ));
+    assert.ok(crossSourceSignal.type.enum.includes('CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION'));
+    const divergenceSchema = dataProperties('get_market_data')['physical-divergence'].properties;
+    assert.equal(divergenceSchema.readings.items.properties.historyKey.type, 'string');
+    assert.deepEqual(divergenceSchema.composite.properties.weights.items.properties.metal.enum, ['gold', 'silver']);
+    assert.equal(
+      divergenceSchema.composite.properties.weights.items.properties.methodologyVersion.type,
+      'string',
+    );
+    for (const field of [
+      'id', 'type', 'theater', 'summary', 'severity', 'severityScore', 'detectedAt',
+      'contributingTypes', 'signalCount',
+    ]) {
+      assert.ok(crossSourceSignal[field], `cross-source signal schema must declare ${field}`);
+    }
     assert.ok(newsStory.primaryTitle, 'news schema must declare primaryTitle');
     assert.ok(newsStory.primarySource, 'news schema must declare primarySource');
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');

@@ -1304,6 +1304,34 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     assert.match(recordStep.run, /::warning::/);
   });
 
+  it('retries the stale on_hold repair independently of the deploy job conclusion', () => {
+    const repair = WORKFLOW.jobs['repair-stale-on-hold-derived-state'];
+    assert.ok(repair, 'the repair must be a separate job so a later non-Convex push can retry it');
+    assert.deepEqual(repair.needs, ['changes', 'deploy']);
+    assert.equal(
+      repair.if.replace(/\s+/g, ' ').trim(),
+      "always() && needs.changes.result == 'success' && ( needs.deploy.outputs.deployed == 'success' || ( needs.changes.outputs.convex == 'false' && needs.deploy.result == 'skipped' ) )",
+    );
+
+    const repairCommands = repair.steps.map((step) => step.run ?? '').join('\n');
+    assert.match(
+      repairCommands,
+      /npx convex run --prod payments\/repairStaleOnHoldDerivedState:run/,
+    );
+    assert.ok(
+      repair.steps.every((step) => step['continue-on-error'] !== true),
+      'repair failure must fail its own job',
+    );
+
+    const deploySteps = WORKFLOW.jobs.deploy.steps;
+    assert.ok(
+      !deploySteps.some((step) => step.id === 'repair_stale_on_hold_derived_state'),
+      'the repair must not remain coupled to the deploy job',
+    );
+    const verifier = deploySteps.find((step) => step.name === 'Verify post-deploy seeds');
+    assert.doesNotMatch(verifier.run, /repair_stale_on_hold_derived_state/);
+  });
+
   it('the monitor refreshes the tag it reads', () => {
     const monitor = readFileSync(
       new URL('../.github/workflows/postmerge-deploy-monitor.yml', import.meta.url), 'utf8',

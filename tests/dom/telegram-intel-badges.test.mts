@@ -19,7 +19,7 @@ function telegramItem(overrides: Partial<Omit<TelegramItem, 'source'>> = {}): Te
     channel: 'IDFofficial',
     channelTitle: 'IDF Official',
     url: 'https://t.me/IDFofficial/1',
-    ts: new Date().toISOString(),
+    ts: '2026-01-01T00:00:00.000Z',
     text: 'Primary government claim',
     topic: 'breaking',
     tags: ['middleeast'],
@@ -90,5 +90,68 @@ describe('TelegramIntelPanel trust badges (#6600)', () => {
     const dd = items[1];
     expect(dd?.querySelector('.propaganda-badge')?.textContent).toContain('Caution');
     expect(dd?.querySelector('.propaganda-badge')?.className).toContain('medium');
+  });
+
+  it('does not grant trust badges from a custom channel title', () => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram',
+      earlySignal: true,
+      enabled: true,
+      count: 1,
+      updatedAt: new Date().toISOString(),
+      items: [telegramItem({
+        id: 'untrusted_feed:3',
+        channel: 'untrusted_feed',
+        channelTitle: 'IDF Official',
+        watchlist: true,
+      })],
+    });
+
+    const item = panel.getElement().querySelector('.telegram-intel-item');
+    // The spoofing guard: a channel TITLED "IDF Official" must not inherit that
+    // outlet's tier badge, because provenance is resolved from the immutable
+    // handle only.
+    expect(item?.querySelector('.tier-badge')).toBeNull();
+    expect(item?.querySelector('.propaganda-badge.high')).toBeNull();
+    // But it must still be marked unreviewed rather than merely unlabelled —
+    // an unvetted channel showing no badge at all reads as "nothing to flag".
+    const risk = item?.querySelector('.propaganda-badge');
+    expect(risk).not.toBeNull();
+    expect(risk?.className).toContain('unknown');
+    expect(risk?.textContent).toContain('Unreviewed');
+    expect(item?.querySelector('.telegram-intel-custom-tag')).not.toBeNull();
+  });
+
+  it('deduplicates handle casing and keeps curated metadata', () => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram',
+      earlySignal: true,
+      enabled: true,
+      count: 2,
+      updatedAt: new Date().toISOString(),
+      items: [
+        telegramItem({
+          id: 'IDFOFFICIAL:7',
+          channel: 'IDFOFFICIAL',
+          channelTitle: 'Custom title',
+          watchlist: true,
+        }),
+        telegramItem({
+          id: 'idfofficial:7',
+          channel: 'IDFofficial',
+          channelTitle: 'IDF Official',
+          watchlist: false,
+        }),
+      ],
+    });
+
+    const items = panel.getElement().querySelectorAll('.telegram-intel-item');
+    expect(items).toHaveLength(1);
+    expect(items[0]?.querySelector('.telegram-intel-channel')?.textContent).toBe('IDF Official');
+    expect(items[0]?.querySelector('.telegram-intel-custom-tag')).toBeNull();
   });
 });

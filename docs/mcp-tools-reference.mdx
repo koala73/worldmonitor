@@ -190,20 +190,20 @@ Universal arguments:
 
 ### `get_market_data`
 
-Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold and silver premiums), crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only — `symbols` filters that snapshot rather than looking up arbitrary tickers, so an unseeded ticker returns nothing instead of triggering a fetch.
+Real-time equity quotes, commodity prices, SGE physical-vs-COMEX gold and silver premiums, physical-premium divergence regimes, crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only. `symbols` filters that snapshot rather than looking up arbitrary tickers, so an unseeded ticker returns nothing instead of triggering a fetch.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
+| `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium and divergence aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Restrict the response to one or more asset classes. Omit for all. |
 | `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
 
-- **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** the `stale` flag tracks the market and sector snapshots only (**30 min** each). The daily physical-premium snapshot is deliberately not wired into this flag — its staleness is monitored on `/api/health` — so read `physicalPremiums.updatedAt` when the age of that dataset specifically matters.
+- **Freshness budget:** the `stale` flag tracks the market and sector snapshots only (**30 min** each). The daily `physicalPremiums` and `physicalDivergence` datasets are monitored on `/api/health` instead. Read their timestamps and the divergence state when age matters. The divergence method is documented in [Physical Precious-Metals Divergence Index](/methodology/physical-divergence-index).
 - Sector `valuationCoverage` separates write age (`stale`) from completeness (`sourceStatus`: `ok`, `partial`, or `degraded`). `stale` describes the seed write, not the individual records — a freshly written payload can still contain older valuations. `valuationCount` and `expectedValuationCount` follow a `symbols` filter when one is supplied. `valuationCount` counts live and replayed records together; `currentValuationCount` gives the subset actually fetched this cycle and is omitted when every record is current. `staleValuationSymbols` lists symbols served from an older snapshot — those symbols **do** have values in `valuations`, and `lastGood.fetchedAt` gives their age (bounded by a 7-day snapshot TTL). `unavailableSymbols` lists symbols with no valuation published at all, and is disjoint from `staleValuationSymbols`. `lastGood` covers both whole records and borrowed return metrics, and includes that snapshot's timestamp. `sourceStatus` is `degraded` when no record is current, `partial` when some are stale or missing. `valuationDiagnostics` is bounded per-symbol route metadata across the `v7Quote`, `v7QuoteBatch`, and `quoteSummary` routes, showing independent direct/proxy outcomes, response classes, and missing fields; it never contains credentials.
 
 <CodeGroup>
@@ -696,6 +696,42 @@ curl -s https://worldmonitor.app/mcp \
   }'
 ```
 
+### `get_resilience_indicators`
+
+Explain one country's Country Resilience Index score across the complete 72-row indicator registry. Each row carries the normalized component score, the runtime weight the active scorer used, the post-policy effective contribution, the observed or imputed state, observation age, and source provenance. Contributions reconcile to each published dimension score, so a score can be audited without reimplementing the conditional formulas.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | yes | ISO 3166-1 alpha-2 country code, for example `DE`. Case-insensitive. |
+
+- **API endpoint:** `GET /api/resilience/v1/get-resilience-indicators`
+- **Access:** `subscription` — requires a Pro subscription on both the REST and MCP paths.
+- **Kind:** request-local trace of the scorer branch that actually ran; it is not a second scoring implementation.
+- **Freshness:** reads the immutable trace generation referenced by the six-hour public score cache. The trace lives in a separate seven-hour sidecar so score and ranking reads stay small.
+
+This tool does not accept `jmespath`. Both runtimes reject a non-empty projection with JSON-RPC `-32602` or HTTP 400, because a projection could detach a permitted raw value from the attribution and retrieval fields that authorize redistributing it.
+
+Rows distinguish `observed`, `imputed`, `missing`, `fallback`, `source-failure`, `inactive`, `retired`, and `not-applicable` states. Read the state before the value: a retired or inactive row is explicit and does not claim a false reconciliation.
+
+Raw source values are selective and fail closed. A row includes a raw value only when the observation is measured, every contributing provider has a completed redistribution review, the required attribution is present, and the contributing seed has a retrieval timestamp. A restricted row still returns WorldMonitor's normalized score, contribution, source attribution, and source year when known — suppression is reported through the raw-policy status and reason, never as a numeric zero. `observationProvenance` distinguishes an exact selected source from registry-only attribution. See the [indicator licensing decisions](/methodology/resilience-indicator-licensing) for the per-source table.
+
+`sourceYear` is when the provider measured the phenomenon; `retrievedAt` is when WorldMonitor fetched it. They are not interchangeable, and observation age is always derived from the observation date. For a composite, `sourceYear` is the oldest contributing year.
+
+The public `get_resilience_score` response is unaffected by this tool and remains schema compatible.
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_resilience_indicators","arguments":{"country_code":"DE"}}
+  }'
+```
+
 ### `get_mineral_production`
 
 Country shares of mine and refinery production, plus HHI, from the annual USGS Mineral Commodity Summaries seed (BGS fills commodities MCS lacks, notably uranium). Use this for "who refines X" / "what does country Y produce". Deposit locations stay on `get_commodity_geo`.
@@ -1052,7 +1088,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_news_intelligence`
 
-AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor's intelligence layer.
+AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including transition-only gold and silver physical-premium regime changes, and security advisories from WorldMonitor's intelligence layer. Cross-source signal objects expose their type, theater, summary, severity, score, detection time, contributing types, and signal count; physical transitions use `CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION`.
 
 **Parameters (tool-specific):**
 

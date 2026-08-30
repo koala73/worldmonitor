@@ -75,7 +75,7 @@ function unusedNavigationBindings(): Pick<
 
 function unusedPanelLayoutBindings(): Pick<
   WebMcpAppBindings,
-  'getPanelLayout' | 'setPanelCollapsed' | 'movePanel' | 'setPanelFullscreen'
+  'getPanelLayout' | 'setPanelCollapsed' | 'movePanel' | 'setPanelFullscreen' | 'selectPanelTab'
 > {
   return {
     getPanelLayout: async () => {
@@ -89,6 +89,9 @@ function unusedPanelLayoutBindings(): Pick<
     },
     setPanelFullscreen: async () => {
       throw new Error('Unexpected panel layout mutation.');
+    },
+    selectPanelTab: async () => {
+      throw new Error('Unexpected panel tab mutation.');
     },
   };
 }

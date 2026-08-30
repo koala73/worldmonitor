@@ -1815,6 +1815,16 @@
       "loading": "Σύνδεση στο αναμεταδότη Telegram...",
       "empty": "Δεν υπάρχουν μηνύματα",
       "disabled": "Ο αναμεταδότης Telegram δεν είναι ενεργός",
+      "watchlistPlaceholder": "Προσθήκη δημόσιου καναλιού με @username",
+      "resolving": "Έλεγχος καναλιού...",
+      "invalidUsername": "Χρησιμοποιήστε ένα δημόσιο @username στο Telegram",
+      "resolveFailed": "Δεν ήταν δυνατή η εύρεση του καναλιού",
+      "watchlistLimit": "Μπορείτε να ακολουθείτε έως {{count}} προσαρμοσμένα κανάλια",
+      "previewMembers": "{{count}} μέλη",
+      "addChannel": "Προσθήκη καναλιού",
+      "added": "Προστέθηκε",
+      "remove": "Αφαίρεση",
+      "custom": "Προσαρμοσμένο",
       "filterAll": "Όλα",
       "filterBreaking": "Έκτακτο",
       "filterConflict": "Συγκρούσεις",
@@ -2026,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Δείκτης φυσικής πίεσης: {{value}} / 100",
+        "fiveDayTrend": "Τάση ασφαλίστρου πέντε ημερών διαπραγμάτευσης",
+        "regimes": {
+          "normal": "Κανονικό",
+          "elevated": "Υψηλό",
+          "stressed": "Επιβαρυμένο",
+          "extreme": "Ακραίο"
+        },
+        "states": {
+          "insufficientHistory": "Προθέρμανση: {{count}} / {{required}} σημεία διαπραγμάτευσης",
+          "staleInput": "Φυσικό σημείο αναφοράς ανενημέρωτο",
+          "missingInput": "Σήμα απόκλισης μη διαθέσιμο"
+        },
+        "twentyDayTrend": "Τάση premium είκοσι ημερών διαπραγμάτευσης"
       }
     },
     "crypto": {

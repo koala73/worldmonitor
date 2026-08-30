@@ -1811,6 +1811,16 @@
       "loading": "正在连接Telegram中继...",
       "empty": "暂无消息",
       "disabled": "Telegram中继未激活",
+      "watchlistPlaceholder": "通过 @username 添加公开频道",
+      "resolving": "正在查找频道...",
+      "invalidUsername": "请使用公开的 Telegram @username",
+      "resolveFailed": "找不到频道",
+      "watchlistLimit": "最多可关注 {{count}} 个自定义频道",
+      "previewMembers": "{{count}} 位成员",
+      "addChannel": "添加频道",
+      "added": "已添加",
+      "remove": "移除",
+      "custom": "自定义",
       "filterAll": "全部",
       "filterBreaking": "突发",
       "filterConflict": "冲突",
@@ -2022,6 +2032,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "物理压力指数：{{value}} / 100",
+        "fiveDayTrend": "五个交易日溢价趋势",
+        "regimes": {
+          "normal": "正常",
+          "elevated": "升高",
+          "stressed": "受压",
+          "extreme": "极端"
+        },
+        "states": {
+          "insufficientHistory": "预热中：{{count}} / {{required}} 个交易点",
+          "staleInput": "物理基准数据已过期",
+          "missingInput": "分歧信号不可用"
+        },
+        "twentyDayTrend": "二十个交易日溢价趋势"
       }
     },
     "crypto": {

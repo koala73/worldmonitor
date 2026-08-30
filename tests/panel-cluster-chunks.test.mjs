@@ -15,6 +15,7 @@ const startupModulePaths = [
   'src/app/event-handlers.ts',
   'src/app/panel-layout.ts',
   'src/app/search-manager.ts',
+  'src/app/webmcp-panel-tab-binding.ts',
 ].map((path) => resolve(repoRoot, path));
 const viteConfigPath = resolve(repoRoot, 'vite.config.ts');
 const viteConfigSource = readFileSync(viteConfigPath, 'utf8');

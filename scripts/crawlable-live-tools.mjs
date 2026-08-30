@@ -663,27 +663,59 @@ function formatDateTime(timestamp) {
   }).format(new Date(timestamp));
 }
 
-function setTime(root, selector, timestamp, prefix) {
-  const element = root.querySelector(selector);
-  if (!element) return;
-  if (timestamp === null) {
-    element.textContent = `${prefix} time unavailable`;
-    element.removeAttribute('datetime');
-    return;
-  }
-  element.textContent = `${prefix} ${formatDateTime(timestamp)}`;
-  element.setAttribute('datetime', new Date(timestamp).toISOString());
-}
-
 function setToolState(tool, state, status) {
   tool.dataset.state = state;
   setText(tool, '[data-live-status]', status);
+  // While loading, a tool with no published pulse has an empty grid and a
+  // paragraph explaining the wait. Revealing the grid before values arrive
+  // would swap that explanation for blank labelled metrics.
+  const revealValues = state !== 'loading' || hasPublishedLivePulse(tool);
   for (const busy of tool.querySelectorAll('[data-live-grid]')) {
+    if (revealValues) busy.hidden = false;
     busy.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+  }
+  for (const fallback of tool.querySelectorAll('[data-live-fallback]')) {
+    fallback.hidden = revealValues;
+  }
+  for (const description of tool.querySelectorAll('[data-chokepoint-description]')) {
+    if (revealValues) description.hidden = false;
   }
   for (const control of tool.querySelectorAll('[data-live-refresh]')) {
     control.disabled = state === 'loading';
   }
+}
+
+function setTime(root, selector, timestamp, prefix) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  let target = element;
+  if (element.tagName !== 'TIME') {
+    const replacement = (root.ownerDocument || document).createElement('time');
+    for (const attr of element.attributes) {
+      if (attr.name.startsWith('data-')) {
+        replacement.setAttribute(attr.name, attr.value);
+      }
+    }
+    element.replaceWith(replacement);
+    target = replacement;
+  }
+  if (timestamp === null) {
+    target.textContent = `${prefix} time unavailable`;
+    target.removeAttribute('datetime');
+    return;
+  }
+  target.textContent = `${prefix} ${formatDateTime(timestamp)}`;
+  target.setAttribute('datetime', new Date(timestamp).toISOString());
+}
+
+/** True when SSR (or a prior successful hydrate) already stamped a dated pulse. */
+export function hasPublishedLivePulse(tool) {
+  if (tool?.hasAttribute?.('data-published-pulse')) return true;
+  return Boolean(tool?.querySelector?.('[data-live-updated][datetime]'));
+}
+
+function markPublishedLivePulse(tool) {
+  tool?.setAttribute?.('data-published-pulse', '');
 }
 
 function renderList(root, selector, rows, formatter, emptyMessage = 'No current matches in this bounded result.') {
@@ -773,24 +805,56 @@ function renderCountryRiskViewModel(tool, view) {
   const updated = tool.querySelector('[data-live-updated]');
   if (updated) {
     if (view.partial) {
-      updated.textContent = view.computedAt === null
-        ? 'Advisory and sanctions signals retrieved live; no combined instability score for this country.'
-        : `Retrieved ${formatDateTime(view.computedAt)} · no combined instability score for this country`;
-      if (view.computedAt === null) updated.removeAttribute('datetime');
-      else updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+      if (view.computedAt === null) {
+        // Keep any SSR (or prior) datetime so a later soft failure still
+        // preserves advisory/sanctions via hasPublishedLivePulse().
+        const existingDatetime = updated.getAttribute('datetime');
+        // The retained datetime is the PUBLISHED pulse instant, not the moment
+        // the advisory/sanctions below were fetched -- those just came back live.
+        // Naming it "Retrieved" would date fresh data with a stale stamp.
+        updated.textContent = existingDatetime
+          ? `Published pulse ${formatDateTime(Date.parse(existingDatetime))} · advisory and sanctions refreshed live; no combined instability score`
+          : 'Advisory and sanctions signals retrieved live; no combined instability score for this country.';
+      } else {
+        setTime(tool, '[data-live-updated]', view.computedAt, 'Retrieved');
+        const stamped = tool.querySelector('[data-live-updated]');
+        if (stamped) {
+          stamped.textContent = `Retrieved ${formatDateTime(view.computedAt)} · no combined instability score for this country`;
+        }
+      }
     } else {
       const methodology = view.methodologyVersion
         ? ` · methodology ${view.methodologyVersion}`
         : '';
-      updated.textContent = `Computed ${formatDateTime(view.computedAt)}${methodology}`;
-      updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+      setTime(tool, '[data-live-updated]', view.computedAt, 'Computed');
+      const stamped = tool.querySelector('[data-live-updated]');
+      if (stamped) {
+        stamped.textContent = `Computed ${formatDateTime(view.computedAt)}${methodology}`;
+      }
     }
   }
+  markPublishedLivePulse(tool);
   if (view.partial) setToolState(tool, 'partial', 'Partial API result');
   else setToolState(tool, 'ready', 'API result');
 }
 
+/** True when the score cell still holds a published numeric value. */
+function hasVisibleScore(tool, selector) {
+  const text = tool?.querySelector?.(selector)?.textContent ?? '';
+  return /\d/.test(text);
+}
+
 function renderCountryRiskError(tool) {
+  if (hasPublishedLivePulse(tool)) {
+    // A prior PARTIAL hydrate may already have replaced the published score
+    // with '—'. Claiming "showing published pulse" over that would assert the
+    // dated number is on screen when it is not, inverting the very mechanism
+    // this branch exists to protect.
+    setToolState(tool, 'error', hasVisibleScore(tool, '[data-live-score]')
+      ? 'Live refresh unavailable — showing published pulse'
+      : 'Live refresh unavailable — advisory and sanctions only');
+    return;
+  }
   setText(tool, '[data-live-score]', '—');
   setText(tool, '[data-live-band]', 'Unavailable');
   setText(tool, '[data-live-trend]', 'Unavailable');
@@ -805,7 +869,7 @@ function renderCountryRiskError(tool) {
   setToolState(tool, 'error', 'Temporarily unavailable');
 }
 
-async function loadCountryRisk(tool) {
+export async function loadCountryRisk(tool) {
   const countryCode = String(tool.dataset.countryCode || '').toUpperCase();
   if (!/^[A-Z]{2}$/.test(countryCode)) {
     cancelToolRequest(tool);
@@ -831,7 +895,7 @@ async function loadCountryRisk(tool) {
   }
 }
 
-async function loadChokepoint(tool) {
+export async function loadChokepoint(tool) {
   const state = beginToolRequest(tool);
   const id = String(tool.dataset.chokepointId || '');
   setToolState(tool, 'loading', 'Connecting…');
@@ -850,9 +914,14 @@ async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? 'Unavailable');
     setText(tool, '[data-chokepoint-description]', view.description);
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
+    markPublishedLivePulse(tool);
     setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial API result' : 'API result');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
+    if (hasPublishedLivePulse(tool)) {
+      setToolState(tool, 'error', 'Live refresh unavailable — showing published pulse');
+      return;
+    }
     setText(tool, '[data-chokepoint-score]', '—');
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
     setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
@@ -865,7 +934,7 @@ async function loadChokepoint(tool) {
   }
 }
 
-async function loadCrisis(tool) {
+export async function loadCrisis(tool) {
   const state = beginToolRequest(tool);
   const countries = [...tool.querySelectorAll('[data-crisis-country]')].map((row) => ({
     code: String(row.dataset.countryCode || '').toUpperCase(),
@@ -909,9 +978,20 @@ async function loadCrisis(tool) {
       );
     }
     setTime(tool, '[data-live-updated]', view.updatedAt, 'Retrieved');
+    markPublishedLivePulse(tool);
     setToolState(tool, view.state, view.state === 'partial' ? 'Partial API result' : 'API result');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
+    if (hasPublishedLivePulse(tool)) {
+      // A prior mixed-reference-period hydrate replaces the published totals
+      // with 'See countries', so only claim the pulse is shown when a number
+      // actually survives. (The chokepoint path always writes a numeric score,
+      // so it has no equivalent wipe.)
+      setToolState(tool, 'error', hasVisibleScore(tool, '[data-crisis-events]')
+        ? 'Live refresh unavailable — showing published pulse'
+        : 'Live refresh unavailable — per-country summaries only');
+      return;
+    }
     setText(tool, '[data-crisis-events]', '—');
     setText(tool, '[data-crisis-fatalities]', '—');
     setText(tool, '[data-crisis-political]', '—');

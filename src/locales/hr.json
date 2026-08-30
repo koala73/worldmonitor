@@ -1967,6 +1967,16 @@
       "loading": "Povezivanje na Telegram relej...",
       "empty": "Nema dostupnih poruka",
       "disabled": "Telegram relej nije aktivan",
+      "watchlistPlaceholder": "Dodaj javni kanal putem @username",
+      "resolving": "Traženje kanala...",
+      "invalidUsername": "Upotrijebite javno Telegram @username",
+      "resolveFailed": "Kanal nije pronađen",
+      "watchlistLimit": "Možete pratiti do {{count}} prilagođenih kanala",
+      "previewMembers": "{{count}} članova",
+      "addChannel": "Dodaj kanal",
+      "added": "Dodano",
+      "remove": "Ukloni",
+      "custom": "Prilagođeno",
       "filterAll": "Sve",
       "filterBreaking": "Hitne vijesti",
       "filterConflict": "Sukobi",
@@ -2114,6 +2124,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Indeks fizičkog stresa: {{value}} / 100",
+        "fiveDayTrend": "Trend premije za pet trgovačkih dana",
+        "regimes": {
+          "normal": "Normalno",
+          "elevated": "Povišeno",
+          "stressed": "Opterećeno",
+          "extreme": "Ekstremno"
+        },
+        "states": {
+          "insufficientHistory": "Zagrijavanje: {{count}} / {{required}} trgovačkih točaka",
+          "staleInput": "Fizička referenca je zastarjela",
+          "missingInput": "Signal divergencije nije dostupan"
+        },
+        "twentyDayTrend": "Trend premije za dvadeset trgovačkih dana"
       }
     },
     "crypto": {

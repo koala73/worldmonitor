@@ -67,7 +67,14 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'desktop-rust',
 ] as const;
 
-const REQUIRED_GATE_WORKFLOWS = ['Test', 'Typecheck', 'Lint Code', 'Security Audit', 'Stacked Merge Guard'] as const;
+const REQUIRED_GATE_WORKFLOWS = [
+  'Test',
+  'Typecheck',
+  'Lint Code',
+  'Security Audit',
+  'Stacked Merge Guard',
+  'Proto Generation Check',
+] as const;
 
 const REQUIRED_NON_TEST_GATE_CHECKS = [
   'typecheck',
@@ -75,6 +82,7 @@ const REQUIRED_NON_TEST_GATE_CHECKS = [
   'public-docs',
   'security-audit',
   'stacked-merge-guard',
+  'proto-freshness',
 ] as const;
 
 // Jobs the deploy gate cannot require under their own name, and the check that
@@ -345,7 +353,12 @@ function securityAuditMatrixLockfiles(): string[] {
 describe('CI workflow coverage', () => {
   it('runs the proto breaking check against the full main history (#6114)', () => {
     const breakingJob = workflowJobBlock(protoCheckWorkflow, 'proto-breaking');
-    assert.doesNotMatch(breakingJob, /^\s+if:/m, 'proto-breaking must run for fork pull requests');
+    assert.match(breakingJob, /^\s+needs: changes\s*$/m);
+    assert.match(
+      breakingJob,
+      /^\s+if: needs\.changes\.outputs\.breaking == 'true'\s*$/m,
+      'proto-breaking must run for schema changes from both internal and fork pull requests',
+    );
     const [checkoutStep] = workflowStepBlocksByUses(breakingJob, 'actions/checkout');
     assert.match(
       checkoutStep,
@@ -380,10 +393,14 @@ describe('CI workflow coverage', () => {
       'breaking.use must be exactly FILE, PACKAGE, WIRE_JSON (binary WIRE intentionally omitted)',
     );
 
-    // Path-filtered Proto Generation Check is outside deploy-gate's aggregated
-    // workflows (#5402). A red `proto-breaking` check-run does not fail the
-    // required `gate` context until it is wired into deploy-gate (with a
-    // path-safe always-run/skip pattern) or listed in branch-protection/rulesets.
+    assert.ok(
+      deployGateWorkflowRunNames().includes('Proto Generation Check'),
+      'Deploy Gate must re-evaluate when proto checks finish',
+    );
+    assert.ok(
+      deployGateRequiredChecks().includes('proto-freshness'),
+      'the required gate must include the proto freshness aggregate',
+    );
   });
 
   it('runs the public documentation boundary on docs-only pull requests', () => {

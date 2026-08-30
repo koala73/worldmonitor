@@ -11,6 +11,7 @@ import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createCustomerPortalUrlForUser } from "./billing";
 import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
+import { isCoveringAt } from "./subscriptionHelpers";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
@@ -627,23 +628,13 @@ export const getDunningContext = internalQuery({
       email = customer?.email ?? "";
     }
 
-    // Winback guard: skip users who are still covered by any OTHER sub.
-    // "Live" mirrors the entitlement recompute's coverage definition:
-    // active, on_hold, or cancelled-but-paid-through — a user with an
-    // ended monthly sub plus a cancelled annual that runs another 8 months
-    // is still entitled and must NOT get "your access has ended" (PR #4935
-    // review round 2, finding 2).
     const now = Date.now();
     const siblingSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
       .collect();
     const hasLiveSub = siblingSubs.some(
-      (s) =>
-        s.dodoSubscriptionId !== sub.dodoSubscriptionId &&
-        (s.status === "active" ||
-          s.status === "on_hold" ||
-          (s.status === "cancelled" && s.currentPeriodEnd > now)),
+      (s) => s.dodoSubscriptionId !== sub.dodoSubscriptionId && isCoveringAt(s, now),
     );
 
     // Entitlement coverage beyond subscriptions (PR #4935 review round 4):
@@ -918,6 +909,7 @@ function evaluateDunningEligibility(
   // newer episode (different anchor) invalidates the scheduled send.
   if (sub.status !== "on_hold") return { ok: false, reason: "recovered" };
   if (sub.episodeAnchor !== episodeAt) return { ok: false, reason: "stale_episode" };
+  if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
   return { ok: true };
 }
 

@@ -72,6 +72,36 @@ function toText(value) {
   return value == null ? '' : String(value);
 }
 
+const TELEGRAM_USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
+// Every value here must stay under the Edge runtime's 25s begin-response
+// ceiling: this handler never streams (it awaits the whole relay body, then
+// returns one Response), so past 25s the platform kills the invocation and the
+// caller sees a platform error instead of our own 504 envelope. The relay
+// enforces a matching TELEGRAM_LOOKUP_DEADLINE_MS on its side.
+const TELEGRAM_RELAY_TIMEOUT_MS = {
+  feed: 15_000,
+  resolve: 20_000,
+  channel: 22_000,
+};
+// `channel` is the fan-out mode: one request per watchlist entry, so the limit
+// has to clear TELEGRAM_WATCHLIST_MAX_ENTRIES (20) with room for a second tab
+// and an in-window add. Setting it equal to the cap left exactly zero headroom
+// and silently dropped channels from the panel on any overlap.
+const TELEGRAM_RATE_LIMIT_POLICY = {
+  feed: { scope: 'telegram-feed:feed', limit: 60, window: '60 s' },
+  resolve: { scope: 'telegram-feed:resolve', limit: 30, window: '60 s' },
+  channel: { scope: 'telegram-feed:channel', limit: 60, window: '60 s' },
+};
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function toTelegramUsername(value) {
+  const username = toText(value).trim().replace(/^@+/, '').toLowerCase();
+  return TELEGRAM_USERNAME_RE.test(username) ? username : '';
+}
+
 /**
  * @param {unknown} value
  * @returns {string}
@@ -170,6 +200,26 @@ async function normalizeTelegramFeed(parsed) {
   };
 }
 
+/**
+ * @param {unknown} value
+ */
+function normalizeTelegramPreview(value) {
+  if (!value || typeof value !== 'object') throw new Error('Invalid Telegram channel preview');
+  const parsed = /** @type {Record<string, unknown>} */ (value);
+  const username = toTelegramUsername(parsed.username);
+  if (!username) throw new Error('Invalid Telegram channel username');
+  const title = toText(parsed.title).trim() || username;
+  const memberCount = parsed.memberCount == null || parsed.memberCount === ''
+    ? Number.NaN
+    : Number(parsed.memberCount);
+  return {
+    username,
+    title,
+    memberCount: Number.isFinite(memberCount) && memberCount >= 0 ? Math.floor(memberCount) : null,
+    url: `https://t.me/${username}`,
+  };
+}
+
 export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
@@ -196,20 +246,31 @@ export default async function handler(req) {
     return jsonResponse({ error: keyCheck.error }, 401, { 'Cache-Control': 'no-store', ...corsHeaders });
   }
 
+  const url = new URL(req.url);
+  const mode = (url.searchParams.get('mode') || 'feed').trim().toLowerCase();
+  if (!Object.hasOwn(TELEGRAM_RATE_LIMIT_POLICY, mode)) {
+    return jsonResponse({ error: 'Invalid Telegram feed mode' }, 400, { 'Cache-Control': 'no-store', ...corsHeaders });
+  }
+
   // The credential above is attributable, not scarce: POST /api/wm-session mints
   // an anonymous wms_ token to anyone (30/min/IP, 12h TTL), so without a volume
   // ceiling one token drives unbounded ?limit=200 reads of the R4 corpus for half
   // a day. Pair the gate with a limit the way the sibling credentialed relay
   // proxies already do (api/polymarket.js requireApiKey+requireRateLimit,
-  // api/rss-proxy.js's direct checkRateLimit call). 60/min/IP is double the
-  // panel's own 60s refresh cadence (REFRESH_INTERVALS.telegramIntel), so a real
-  // dashboard tab — including a burst of topic-tab switches — never trips it.
+  // api/rss-proxy.js's direct checkRateLimit call). Separate scopes keep the
+  // capped channel fanout from starving the base feed or interactive resolves.
   // Fails open when Upstash is unconfigured, matching rss-proxy.
-  const rateLimitResponse = await checkRateLimit(req, corsHeaders, {
-    scope: 'telegram-feed',
-    limit: 60,
-    window: '60 s',
-  });
+  // Deliberately fail-open (the repo default), including for resolve/channel.
+  // The tempting argument is that these modes spend a shared Telegram account's
+  // flood budget, so the limit "is" the abuse defence and should fail closed.
+  // It isn't: the hard ceiling on Telegram RPC volume is the relay's in-process
+  // queue (TELEGRAM_RPC_MAX_CONCURRENCY + a global TELEGRAM_RPC_MIN_INTERVAL_MS
+  // start interval, ~75 RPC/min), which cannot fail open because it is not
+  // backed by Redis. This limit only allocates that fixed budget fairly BETWEEN
+  // callers. Failing closed would therefore trade the whole watchlist feature
+  // for fairness during an Upstash blip, without changing the account's
+  // exposure at all.
+  const rateLimitResponse = await checkRateLimit(req, corsHeaders, TELEGRAM_RATE_LIMIT_POLICY[mode]);
   if (rateLimitResponse) return rateLimitResponse;
 
   const relayBaseUrl = getRelayBaseUrl();
@@ -218,69 +279,109 @@ export default async function handler(req) {
   }
 
   try {
-    const url = new URL(req.url);
-    const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
-    const topic = (url.searchParams.get('topic') || '').trim();
-    const channel = (url.searchParams.get('channel') || '').trim();
     const params = new URLSearchParams();
-    params.set('limit', String(limit));
-    if (topic) params.set('topic', topic);
-    if (channel) params.set('channel', channel);
+    let relayPath = '/telegram/feed';
+    if (mode === 'resolve' || mode === 'channel') {
+      const username = toTelegramUsername(url.searchParams.get('username'));
+      if (!username) {
+        return jsonResponse({ error: 'Invalid public Telegram username' }, 400, { 'Cache-Control': 'no-store', ...corsHeaders });
+      }
+      relayPath = mode === 'resolve' ? '/telegram/resolve' : '/telegram/channel';
+      params.set('username', username);
+      if (mode === 'channel') {
+        const limit = Math.max(1, Math.min(50, parseInt(url.searchParams.get('limit') || '20', 10) || 20));
+        params.set('limit', String(limit));
+      }
+    } else {
+      const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+      const topic = (url.searchParams.get('topic') || '').trim();
+      const channel = (url.searchParams.get('channel') || '').trim();
+      params.set('limit', String(limit));
+      if (topic) params.set('topic', topic);
+      if (channel) params.set('channel', channel);
+    }
 
-    const relayUrl = `${relayBaseUrl}/telegram/feed?${params}`;
+    const relayUrl = `${relayBaseUrl}${relayPath}?${params}`;
     const response = await fetchWithTimeout(relayUrl, {
-      headers: getRelayHeaders({ Accept: 'application/json' }),
-    }, 15000);
+      headers: getRelayHeaders({
+        Accept: 'application/json',
+        'User-Agent': 'WorldMonitor/1.0',
+      }),
+    }, TELEGRAM_RELAY_TIMEOUT_MS[mode]);
 
     const body = await response.text();
+    const retryAfter = response.headers.get('retry-after');
+    const relayHeaders = retryAfter ? { 'Retry-After': retryAfter } : {};
 
     // Availability now depends on a request credential, so a URL-keyed shared
     // entry would answer for the origin and hand an unauthenticated caller the
     // authorized payload — a CDN hit precedes handler auth (the #5386 failure
     // mode on /api/bootstrap). `private` bars every shared cache rather than
     // fragmenting one: each wms_ token carries a random nonce, so a Vary on the
-    // credential would key roughly one edge entry per browser anyway. The 30s
-    // browser window is preserved because the panel already assumes it
-    // (CACHE_TTL in src/services/telegram-intel.ts).
-    let cacheControl = 'private, max-age=30';
+    // credential would key roughly one edge entry per browser anyway.
+    let cacheControl = mode === 'resolve' ? 'private, max-age=3600' : 'private, max-age=30';
     if (!response.ok) {
       return buildRelayResponse(response, body, {
         'Cache-Control': 'no-store',
+        ...relayHeaders,
         ...corsHeaders,
       });
     }
 
     try {
-      const parsed = /** @type {RawTelegramFeedResponse} */ (JSON.parse(body));
+      const parsedBody = JSON.parse(body);
+      if (mode === 'resolve') {
+        const normalized = normalizeTelegramPreview(parsedBody);
+        return buildRelayResponse(response, JSON.stringify(normalized), {
+          'Cache-Control': cacheControl,
+          ...relayHeaders,
+          ...corsHeaders,
+          'Vary': VARY_CREDENTIAL,
+        });
+      }
+      const parsed = /** @type {RawTelegramFeedResponse} */ (parsedBody);
       const normalized = await normalizeTelegramFeed(parsed);
       if (normalized.count === 0) {
         cacheControl = 'private, max-age=0';
       }
       return buildRelayResponse(response, JSON.stringify(normalized), {
         'Cache-Control': cacheControl,
+        ...relayHeaders,
         ...corsHeaders,
         // Overrides the plain `Vary: Origin` from getCorsHeaders. Declares the
         // real cache key for any intermediary that stores despite `private`.
         'Vary': VARY_CREDENTIAL,
       });
     } catch (normalizeError) {
-      // Fall through to the raw relay body so a shape change upstream still
-      // serves data, but never silently: clients receive an un-normalized
-      // payload, which is a bug worth an alert.
       console.warn('[telegram-feed] normalization failed:', normalizeError?.message || String(normalizeError));
       void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' } });
+      if (mode === 'resolve') {
+        return jsonResponse({ error: 'Invalid Telegram channel response' }, 502, {
+          'Cache-Control': 'no-store',
+          ...corsHeaders,
+        });
+      }
     }
 
+    // Reached only when JSON.parse or normalization threw, i.e. the handler has
+    // already reported this body to Sentry as un-normalizable. Hand it back for
+    // the client's own tolerant parse, but never let a shape we just flagged as
+    // invalid sit in a cache for 30s.
     return buildRelayResponse(response, body, {
-      'Cache-Control': cacheControl,
+      'Cache-Control': 'no-store',
+      ...relayHeaders,
       ...corsHeaders,
       'Vary': VARY_CREDENTIAL,
     });
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';
+    // No `details`: the underlying message can carry relay transport detail
+    // (undici cause chains, MTProto text) and the browser has no use for it.
+    // It is captured server-side instead.
+    console.warn('[telegram-feed] relay request failed:', error?.message || String(error));
+    void captureSilentError(error, { tags: { route: 'api/telegram-feed', step: 'relay-fetch' } });
     return jsonResponse({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',
-      details: error?.message || String(error),
     }, isTimeout ? 504 : 502, { 'Cache-Control': 'no-store', ...corsHeaders });
   }
 }

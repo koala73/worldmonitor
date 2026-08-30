@@ -81,6 +81,31 @@ export const WEBMCP_SPA_TOOL_NAMES = [
   WEBMCP_SPA_TOOL.openSignIn,
 ] as const;
 
+/**
+ * Every stable reason `open_mission_picker` reports as a bounded navigation
+ * result. Unlike the other mission tools, its App binding does not prethrow on
+ * a destroyed dashboard, so `app_destroyed` reaches callers as a result here
+ * rather than as a rejection.
+ *
+ * `unavailable` is picker-specific and is emitted from the mission-picker path.
+ * `malformedArguments` and `appDestroyed` arrive from the shared argument and
+ * navigation paths, which keep their own literals because every navigation tool
+ * shares them.
+ */
+export const WEBMCP_MISSION_PICKER_REASON = Object.freeze({
+  malformedArguments: 'malformed_arguments',
+  unavailable: 'unavailable',
+  appDestroyed: 'app_destroyed',
+} as const);
+
+export const WEBMCP_MISSION_PICKER_REASONS = [
+  WEBMCP_MISSION_PICKER_REASON.malformedArguments,
+  WEBMCP_MISSION_PICKER_REASON.unavailable,
+  WEBMCP_MISSION_PICKER_REASON.appDestroyed,
+] as const;
+
+export type WebMcpMissionPickerReason = (typeof WEBMCP_MISSION_PICKER_REASONS)[number];
+
 export const WEBMCP_DECLARATIVE_TOOL_NAMES = [
   'search_procurement',
 ] as const;

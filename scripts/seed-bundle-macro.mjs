@@ -2,6 +2,7 @@
 import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 import { CHINA_MACRO_CACHE_KEY } from './_china-macro-contract.mjs';
 import { EDUCATION_SECTION_TIMEOUT_MS } from './seed-education-attainment.mjs';
+import { PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS } from './seed-physical-premiums.mjs';
 
 const EDUCATION_PRIORITY_UTC_DAY = 0;
 const EDUCATION_SECTION = { label: 'Education-Attainment', script: 'seed-education-attainment.mjs', seedMetaKey: 'resilience:education-attainment', canonicalKey: 'resilience:education-attainment:v1', completionMetaKey: 'seed-completion:resilience:education-attainment', intervalMs: 7 * DAY, timeoutMs: EDUCATION_SECTION_TIMEOUT_MS };
@@ -35,7 +36,9 @@ const MACRO_SECTIONS = [
   // SGE SHAU/SHAG daily PM benchmarks joined only to the already-seeded
   // commodity and FX snapshots. The seeder fails closed unless the deployment
   // has explicitly activated the documented redistribution/display license.
-  { label: 'Physical-Premiums', script: 'seed-physical-premiums.mjs', seedMetaKey: 'market:physical-premium', canonicalKey: 'market:physical-premium:v1', completionMetaKey: 'seed-completion:market:physical-premium', intervalMs: DAY, timeoutMs: 120_000 },
+  // The fetch, canonical switch, three derived Redis waves, and shared
+  // bookkeeping all fit this exported structural budget with failure headroom.
+  { label: 'Physical-Premiums', script: 'seed-physical-premiums.mjs', seedMetaKey: 'market:physical-premium', canonicalKey: 'market:physical-premium:v1', completionMetaKey: 'seed-completion:market:physical-premium', intervalMs: DAY, timeoutMs: PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS },
   { label: 'Eurostat', script: 'seed-eurostat-country-data.mjs', seedMetaKey: 'economic:eurostat-country-data', canonicalKey: 'economic:eurostat-country-data:v1', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Eurostat-HousePrices', script: 'seed-eurostat-house-prices.mjs', seedMetaKey: 'economic:eurostat-house-prices', canonicalKey: 'economic:eurostat:house-prices:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
   { label: 'Eurostat-GovDebtQ', script: 'seed-eurostat-gov-debt-q.mjs', seedMetaKey: 'economic:eurostat-gov-debt-q', canonicalKey: 'economic:eurostat:gov-debt-q:v1', intervalMs: 2 * DAY, timeoutMs: 300_000 },

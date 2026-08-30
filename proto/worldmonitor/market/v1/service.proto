@@ -27,6 +27,7 @@ import "worldmonitor/market/v1/get_market_breadth_history.proto";
 import "worldmonitor/market/v1/get_gold_intelligence.proto";
 import "worldmonitor/market/v1/get_hyperliquid_flow.proto";
 import "worldmonitor/market/v1/get_physical_premiums.proto";
+import "worldmonitor/market/v1/get_physical_divergence_index.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -53,6 +54,12 @@ service MarketService {
   // existing COMEX futures snapshot and returns every conversion input.
   rpc GetPhysicalPremiums(GetPhysicalPremiumsRequest) returns (GetPhysicalPremiumsResponse) {
     option (sebuf.http.config) = {path: "/get-physical-premiums", method: HTTP_METHOD_GET};
+  }
+
+  // GetPhysicalDivergenceIndex classifies current physical premiums against
+  // their bounded trailing histories and returns an all-metal stress composite.
+  rpc GetPhysicalDivergenceIndex(GetPhysicalDivergenceIndexRequest) returns (GetPhysicalDivergenceIndexResponse) {
+    option (sebuf.http.config) = {path: "/get-physical-divergence-index", method: HTTP_METHOD_GET};
   }
 
   // GetSectorSummary retrieves market sector performance data from Finnhub.

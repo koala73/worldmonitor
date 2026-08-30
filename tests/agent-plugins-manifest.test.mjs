@@ -46,7 +46,6 @@ const DISCOVERY_SURFACES = [
 const plugin = JSON.parse(readFileSync(join(ROOT, 'plugin.json'), 'utf-8'));
 const publicPlugin = readFileSync(join(ROOT, 'public/plugin.json'));
 const mcp = JSON.parse(readFileSync(join(ROOT, 'mcp.json'), 'utf-8'));
-const publicLlms = readFileSync(join(ROOT, 'public/llms.txt'), 'utf-8');
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'));
 const vercelConfig = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf-8'));
 const serverCard = JSON.parse(
@@ -126,14 +125,61 @@ describe('agent readiness: Agent Plugins manifest', () => {
 
   it('describes mcp.json as part of the repository package, not the HTTP manifest', () => {
     assert.equal(existsSync(join(ROOT, 'public/mcp.json')), false);
+    // The pages claim skills/*/SKILL.md lives in the repository too, so pin that half of
+    // the sentence the same way. public/.well-known/agent-skills/ is a different surface
+    // and is genuinely served; only a sibling public/skills/ would make the copy false.
+    assert.equal(
+      existsSync(join(ROOT, 'public/skills')),
+      false,
+      'public/skills/ must not be served as sibling HTTP files',
+    );
     const mcpRoute = (vercelConfig.headers ?? []).find((rule) => rule.source === '/mcp.json');
     assert.equal(mcpRoute, undefined, 'vercel.json must not serve /mcp.json as a static Agent Plugin file');
-    assert.doesNotMatch(
-      publicLlms,
-      /\[Agent Plugin\][^\n]*`plugin\.json` \+ `mcp\.json` \+ `skills\/`/,
-      'the public /plugin.json link must not promise sibling HTTP files that only exist in the repository package',
+    // The backtick trio implies sibling HTTP files next to /plugin.json. Those files
+    // only exist in the GitHub package; every discovery surface must say so explicitly
+    // (or omit the trio) rather than listing them as if they were fetchable URLs.
+    const httpSiblingPromise = /`plugin\.json` \+ `mcp\.json` \+ `skills\//;
+    // Positive control. Once the copy is correct this regex matches nothing in the tree,
+    // so every doesNotMatch below passes vacuously and an escaping slip would silently
+    // neuter all of them at once. Pin it against a known-bad string so it stays able to red.
+    assert.match('(`plugin.json` + `mcp.json` + `skills/`)', httpSiblingPromise);
+    // httpSiblingPromise only catches one literal phrasing (a comma list, a reordered trio
+    // or a bare URL all evade it), so reject the sibling URLs themselves regardless of how
+    // the surrounding prose is written.
+    const httpSiblingUrl = /worldmonitor\.app\/(?:mcp\.json|skills\/)/;
+    for (const relativePath of DISCOVERY_SURFACES) {
+      const body = readFileSync(join(ROOT, relativePath), 'utf-8');
+      assert.doesNotMatch(
+        body,
+        httpSiblingPromise,
+        `${relativePath} must not promise HTTP siblings that only exist in the repository package`,
+      );
+      assert.doesNotMatch(
+        body,
+        httpSiblingUrl,
+        `${relativePath} must not link /mcp.json or /skills/ as fetchable URLs`,
+      );
+    }
+    // Derived from DISCOVERY_SURFACES so a newly added surface is enrolled by default
+    // rather than silently exempt. The docs/*.mdx pages are excluded because they state the
+    // same contract as "The GitHub repository is the plugin package" (and its Chinese
+    // translation), which this regex cannot match; they keep their own SKILL.md assertion.
+    const repositoryPackage = /repository\s+package/i;
+    const repositoryPackageSurfaces = DISCOVERY_SURFACES.filter(
+      (relativePath) => !relativePath.startsWith('docs/'),
     );
-    assert.match(publicLlms, /repository package/i);
+    assert.ok(
+      repositoryPackageSurfaces.length >= 8,
+      'repository-package coverage shrank; every non-docs discovery surface must stay enrolled',
+    );
+    for (const relativePath of repositoryPackageSurfaces) {
+      const body = readFileSync(join(ROOT, relativePath), 'utf-8');
+      assert.match(
+        body,
+        repositoryPackage,
+        `${relativePath} must describe the Agent Plugin as a repository package`,
+      );
+    }
   });
 
   it('every well-known agent skill has a plugin skills/ SKILL.md inside the plugin root', () => {

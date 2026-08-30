@@ -1,7 +1,6 @@
 name: Deploy Gate
 run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event.inputs.sha || github.event_name }}
 
-# Runs whenever Test, Typecheck, Lint Code, Security Audit, or Stacked Merge Guard completes on a PR/push.
 # Checks whether all required PR smoke gates have passed for the same commit SHA.
 # Posts a commit status on the PR's head SHA so branch protection can see it.
 #
@@ -14,7 +13,7 @@ run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event.inp
 # stranded PR heals within 30 minutes, and a success from an older gate cannot
 # stay mergeable after the required set changes (#5851).
 
-# Five workflow_run events can target the same SHA. Keep only the newest
+# Required workflow_run events can target the same SHA. Keep only the newest
 # evaluator so their retry windows do not multiply the installation API load.
 concurrency:
   group: deploy-gate-${{ github.event.workflow_run.head_sha || github.event.inputs.sha || 'sweep' }}
@@ -22,7 +21,7 @@ concurrency:
 
 on:
   workflow_run:
-    workflows: ["Test", "Typecheck", "Lint Code", "Security Audit", "Stacked Merge Guard"]
+    workflows: ["Test", "Typecheck", "Lint Code", "Security Audit", "Stacked Merge Guard", "Proto Generation Check"]
     types: [completed]
   schedule:
     - cron: "*/30 * * * *"
@@ -150,7 +149,7 @@ jobs:
           # define a job with the id `changes`; the latter two publish under
           # `typecheck-changes` / `lint-changes` so all three are evaluated
           # instead of two being masked by the third (#5822).
-          required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","security-audit","stacked-merge-guard"]'
+          required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
           gate_contract=$(REQUIRED_JOBS="$required" python3 -c 'import hashlib, os; print(hashlib.sha256(os.environ["REQUIRED_JOBS"].encode()).hexdigest()[:12])')
           gate_stamp="[gate-contract:$gate_contract]"
           repo_owner=${REPO%%/*}
