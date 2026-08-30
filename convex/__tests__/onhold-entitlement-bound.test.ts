@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import schema from "../schema";
 import { internal } from "../_generated/api";
@@ -222,6 +222,68 @@ describe("on_hold entitlement lifecycle (GHSA-hw94-8c4h-m9qp)", () => {
       }),
       AFTER_PERIOD_END,
     );
+
+    const entitlement = await getEntitlement(t);
+    expect(entitlement?.planKey).toBe("pro_monthly");
+    expect(entitlement?.validUntil).toBe(NEW_PERIOD_END);
+  });
+
+  test("a delayed historical hold evaluates coverage at processing time", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_enterprise", "enterprise", "Enterprise");
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(
+      t,
+      "wh_delayed_hold_1",
+      "subscription.active",
+      makeSubscriptionPayload({ subscription_id: "sub_delayed_ent", product_id: "pdt_test_enterprise" }),
+      BASE_TIMESTAMP,
+    );
+    await processEvent(
+      t,
+      "wh_delayed_hold_2",
+      "subscription.active",
+      makeSubscriptionPayload({
+        subscription_id: "sub_current_pro",
+        product_id: "pdt_test_pro",
+        previous_billing_date: "2026-05-01T00:00:00Z",
+        next_billing_date: "2026-06-01T00:00:00Z",
+      }),
+      AFTER_PERIOD_END,
+    );
+
+    const historicalHoldAt = BASE_TIMESTAMP + 1000;
+    vi.useFakeTimers();
+    vi.setSystemTime(AFTER_PERIOD_END + 24 * 60 * 60 * 1000);
+    try {
+      await processEvent(
+        t,
+        "wh_delayed_hold_3",
+        "subscription.on_hold",
+        makeSubscriptionPayload({
+          subscription_id: "sub_delayed_ent",
+          product_id: "pdt_test_enterprise",
+          status: "on_hold",
+        }),
+        historicalHoldAt,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const enterpriseSub = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_delayed_ent"))
+        .unique(),
+    );
+    expect(enterpriseSub).toMatchObject({
+      status: "on_hold",
+      onHoldAt: historicalHoldAt,
+      updatedAt: historicalHoldAt,
+      currentPeriodEnd: PERIOD_END,
+    });
 
     const entitlement = await getEntitlement(t);
     expect(entitlement?.planKey).toBe("pro_monthly");

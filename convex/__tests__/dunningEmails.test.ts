@@ -540,6 +540,56 @@ describe("winback", () => {
     expect(resendSends(fetchMock)).toHaveLength(0);
   });
 
+  test("expired on_hold sibling does not suppress winback", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 40 * DAY_MS;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() - 35 * DAY_MS,
+    });
+    await seedSub(t, {
+      dodoSubscriptionId: "sub_expired_hold",
+      status: "on_hold",
+      currentPeriodEnd: Date.now() - DAY_MS,
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "winback_day30",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: true });
+    expect(resendSends(fetchMock)).toHaveLength(1);
+  });
+
+  test("paid-through on_hold sibling still suppresses winback", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 40 * DAY_MS;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() - 35 * DAY_MS,
+    });
+    await seedSub(t, {
+      dodoSubscriptionId: "sub_paid_through_hold",
+      status: "on_hold",
+      currentPeriodEnd: Date.now() + DAY_MS,
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "winback_day30",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: false, reason: "resubscribed" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
   test("still-entitled cancellation (annual paid through) is not winback-emailed", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";

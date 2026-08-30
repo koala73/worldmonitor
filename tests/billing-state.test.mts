@@ -69,14 +69,42 @@ describe('deriveBillingUxState', () => {
     assert.equal(deriveBillingUxState(sub(), null, NOW), 'active');
   });
 
-  it('on_hold wins even while the retry-window entitlement is still valid', () => {
+  it('paid-through on_hold surfaces while the retry-window entitlement is still valid', () => {
     assert.equal(deriveBillingUxState(sub({ status: 'on_hold' }), ent(), NOW), 'on_hold');
   });
 
-  it('on_hold with expired entitlement stays on_hold (not free, not pending)', () => {
+  it('paid-through on_hold surfaces with a missing or expired entitlement snapshot', () => {
+    assert.equal(deriveBillingUxState(sub({ status: 'on_hold' }), null, NOW), 'on_hold');
     assert.equal(
       deriveBillingUxState(sub({ status: 'on_hold' }), ent({ validUntil: NOW - 1 }), NOW),
       'on_hold',
+    );
+  });
+
+  it('on_hold at the exact paid-through boundary remains on_hold', () => {
+    assert.equal(
+      deriveBillingUxState(sub({ status: 'on_hold', currentPeriodEnd: NOW }), null, NOW),
+      'on_hold',
+    );
+  });
+
+  it('expired on_hold is lapsed without separate paid coverage', () => {
+    const expiredHold = sub({ status: 'on_hold', currentPeriodEnd: NOW - 1 });
+    assert.equal(deriveBillingUxState(expiredHold, null, NOW), 'lapsed');
+    assert.equal(
+      deriveBillingUxState(expiredHold, ent({ validUntil: NOW - 1 }), NOW),
+      'lapsed',
+    );
+  });
+
+  it('expired on_hold is active when a separate paid entitlement still covers', () => {
+    assert.equal(
+      deriveBillingUxState(
+        sub({ status: 'on_hold', currentPeriodEnd: NOW - 1 }),
+        ent({ validUntil: NOW + DAY }),
+        NOW,
+      ),
+      'active',
     );
   });
 
@@ -304,11 +332,19 @@ describe('isSubscriptionCoveringAt (#7315)', () => {
     assert.equal(getSubscriptionStatusTone(lapsedRow, NOW), 'ended');
   });
 
-  it('active and on_hold cover regardless of the period end (retry window keeps access)', () => {
+  it('active stays unbounded while on_hold is bounded by its inclusive paid-through end', () => {
     assert.equal(isSubscriptionCoveringAt(sub({ currentPeriodEnd: NOW - DAY }), NOW), true);
     assert.equal(
-      isSubscriptionCoveringAt(sub({ status: 'on_hold', currentPeriodEnd: NOW - DAY }), NOW),
+      isSubscriptionCoveringAt(sub({ status: 'on_hold', currentPeriodEnd: NOW + 1 }), NOW),
       true,
+    );
+    assert.equal(
+      isSubscriptionCoveringAt(sub({ status: 'on_hold', currentPeriodEnd: NOW }), NOW),
+      true,
+    );
+    assert.equal(
+      isSubscriptionCoveringAt(sub({ status: 'on_hold', currentPeriodEnd: NOW - 1 }), NOW),
+      false,
     );
   });
 
