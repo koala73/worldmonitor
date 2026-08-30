@@ -113,6 +113,14 @@ describe('mcp registry publication artifacts', () => {
     assert.match(install.run, /--retry 3/);
     assert.match(install.run, /--retry-delay 2/);
     assert.match(install.run, /sha256sum --check/);
+    const setupNode = stepNamed('Set up Node.js');
+    assert.match(setupNode.uses, /^actions\/setup-node@[a-f0-9]{40}$/);
+    assert.equal(setupNode.with['node-version'], '24');
+    assert.ok(
+      steps.findIndex((step) => step.name === 'Set up Node.js')
+        < steps.findIndex((step) => step.name === 'Prepare registry manifest'),
+      'Node 24 must be pinned before the registry manifest generator runs',
+    );
     assert.match(stepNamed('Authenticate to MCP Registry').run, /login http/);
     assert.match(stepNamed('Authenticate to MCP Registry').run, /--domain worldmonitor\.app/);
     assert.match(source, /secrets\.MCP_REGISTRY_PRIVATE_KEY/);
