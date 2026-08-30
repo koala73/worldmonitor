@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
+import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -220,4 +222,43 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.deepEqual(body, downstreamResponse);
     assert.ok(Buffer.byteLength(JSON.stringify(body)) < 262_144);
   });
+});
+
+// Every test above authenticates as Pro. The one generic denial sweep,
+// tests/mcp-free-tier-subset.test.mjs, only samples
+// `TOOL_REGISTRY.filter(t => t._freeTier !== true).slice(0, 12)` -- and since
+// get_sources is the sole free-tier tool, that window is exactly the first 12
+// CACHE_TOOLS entries. The scorecard tools live in RPC_TOOLS well past index 12,
+// so they were structurally unreachable by it: a regression in the entitlement
+// gate on these paid endpoints would have shipped with every test still green.
+describe('five-factor scorecard MCP tools refuse a free principal', () => {
+  const call = (toolName) => dispatchToolsCall(
+    new Request('https://worldmonitor.app/mcp', { method: 'POST' }),
+    { kind: 'free' },
+    { redisPipeline: async () => { throw new Error('quota must not be reached'); } },
+    { id: 1, params: { name: toolName, arguments: { countryCode: 'ZW' } } },
+    {},
+  );
+
+  // Derived from the registry rather than hardcoded, so a fourth scorecard tool
+  // added later cannot quietly skip this check the way these two skipped the
+  // sampled sweep.
+  const scorecardTools = TOOL_REGISTRY
+    .filter((tool) => tool._freeTier !== true && /five_factor_scorecard|bloc_scorecard/.test(tool.name))
+    .map((tool) => tool.name);
+
+  it('covers every gated scorecard tool in the registry', () => {
+    assert.ok(scorecardTools.length >= 2, `expected the scorecard tools in TOOL_REGISTRY, got ${JSON.stringify(scorecardTools)}`);
+    assert.ok(scorecardTools.includes('get_five_factor_scorecard'));
+    assert.ok(scorecardTools.includes('list_five_factor_scorecards'));
+  });
+
+  for (const toolName of ['get_five_factor_scorecard', 'list_five_factor_scorecards']) {
+    it(`refuses ${toolName} without an entitlement`, async () => {
+      const res = await call(toolName);
+      const body = await res.json();
+      assert.ok(body.error, `${toolName} must not be served to a free principal`);
+      assert.equal(body.error.code, -32001);
+    });
+  }
 });
