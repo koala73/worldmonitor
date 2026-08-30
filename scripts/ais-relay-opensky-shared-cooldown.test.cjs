@@ -7,13 +7,14 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const test = require('node:test');
 const {
-  OPENSKY_COOLDOWN_KEY,
+  cooldownKeyForAccount,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   OPENSKY_MAX_DEADLINE_SET_LUA,
   accountFingerprint,
   buildCooldownRecord,
   ttlSecondsForCooldown,
 } = require('./_opensky-account-cooldown.cjs');
+const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(accountFingerprint('test-client'));
 
 function get(port, requestPath) {
   return new Promise((resolve, reject) => {
@@ -86,10 +87,22 @@ function spawnRelay(extraEnv) {
 async function createUpstashMock({ getResponses = {}, failGets = false, getDelayMs = 0 } = {}) {
   const commands = [];
   const pendingTimers = new Set();
+  const getWaiters = new Set();
   const getQueues = new Map(Object.entries(getResponses).map(([key, responses]) => [
     key,
     Array.isArray(responses) ? [...responses] : [responses],
   ]));
+  const getCount = (key) => commands.filter(
+    (entry) => entry.method === 'GET' && entry.path === '/get/' + encodeURIComponent(key),
+  ).length;
+  const notifyGetWaiters = () => {
+    for (const waiter of [...getWaiters]) {
+      if (getCount(waiter.key) < waiter.count) continue;
+      clearTimeout(waiter.timer);
+      getWaiters.delete(waiter);
+      waiter.resolve();
+    }
+  };
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
@@ -97,6 +110,7 @@ async function createUpstashMock({ getResponses = {}, failGets = false, getDelay
       let command = null;
       try { command = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* GET /get */ }
       commands.push({ method: req.method, path: req.url, command });
+      if (req.method === 'GET' && req.url.startsWith('/get/')) notifyGetWaiters();
       const respond = () => {
         if (res.writableEnded) return;
         res.setHeader('Content-Type', 'application/json');
@@ -134,6 +148,20 @@ async function createUpstashMock({ getResponses = {}, failGets = false, getDelay
     getsFor: (key) => commands.filter(
       (entry) => entry.method === 'GET' && entry.path === `/get/${encodeURIComponent(key)}`,
     ),
+    waitForGets: (key, count, timeoutMs = 2_000) => {
+      if (getCount(key) >= count) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const waiter = { key, count, resolve, reject, timer: null };
+        waiter.timer = setTimeout(() => {
+          getWaiters.delete(waiter);
+          reject(new Error('timed out waiting for ' + count + ' GETs for ' + key));
+        }, timeoutMs);
+        getWaiters.add(waiter);
+      });
+    },
+    setGetResponses: (key, responses) => {
+      getQueues.set(key, Array.isArray(responses) ? [...responses] : [responses]);
+    },
     setsFor: (key) => commands.filter(
       (entry) => Array.isArray(entry.command) && entry.command[0] === 'SET' && entry.command[1] === key,
     ),
@@ -148,6 +176,11 @@ async function createUpstashMock({ getResponses = {}, failGets = false, getDelay
     close: () => {
       for (const timer of pendingTimers) clearTimeout(timer);
       pendingTimers.clear();
+      for (const waiter of getWaiters) {
+        clearTimeout(waiter.timer);
+        waiter.reject(new Error('Upstash mock closed while a GET waiter was pending'));
+      }
+      getWaiters.clear();
       return new Promise((resolve) => server.close(resolve));
     },
   };
@@ -270,7 +303,7 @@ test('a Redis read error fails open and the in-process 429 cooldown still works'
   }
 });
 
-test('a delayed Redis cooldown read fails open inside the 6s caller budget and is not repeated', async () => {
+test('a delayed Redis cooldown read fails open inside the 6s caller budget', async () => {
   const redis = await createUpstashMock({ getDelayMs: 4_000 });
   const { child, ready } = spawnRelay({
     ...redis.env,
@@ -285,11 +318,48 @@ test('a delayed Redis cooldown read fails open inside the 6s caller budget and i
     assert.notEqual(response.headers['x-cache'], 'RATE-LIMITED');
     const metrics = JSON.parse((await get(port, '/metrics')).body);
     assert.equal(metrics.opensky.upstreamFetches, 1, 'slow Redis must fail open so OpenSky still answers');
-    assert.equal(redis.getsFor(OPENSKY_COOLDOWN_KEY).length, 1, 'handler and queued fetch must share one Redis GET');
+    assert.equal(redis.getsFor(OPENSKY_COOLDOWN_KEY).length, 2, 'the queued fetch must re-check Redis immediately before OpenSky');
     assert.ok(
       elapsedMs < 3_000,
       `slow Redis must leave the 6s aviation hop enough time for OpenSky, took ${elapsedMs}ms`,
     );
+  } finally {
+    await stop(child);
+    await redis.close();
+  }
+});
+
+test('a cooldown written after a completed handler read stops a queued relay fetch', async () => {
+  const redis = await createUpstashMock();
+  const { child, ready } = spawnRelay({
+    ...redis.env,
+    RELAY_TEST_OPENSKY_STATUS_SEQUENCE: '200,200',
+    RELAY_TEST_OPENSKY_RESPONSE_DELAY_MS: '250',
+  });
+  try {
+    const { port } = await ready;
+    const firstRequest = get(port, '/opensky/states/all?lamin=1&lomin=1&lamax=2&lomax=2');
+    await redis.waitForGets(OPENSKY_COOLDOWN_KEY, 2);
+
+    const secondRequest = get(port, '/opensky/states/all?lamin=3&lomin=3&lamax=4&lomax=4');
+    await redis.waitForGets(OPENSKY_COOLDOWN_KEY, 3);
+
+    const seederCooldown = buildCooldownRecord({
+      cooldownMs: 10 * 60_000,
+      account: accountFingerprint('test-client'),
+      recordedBy: 'seed-military-flights',
+    });
+    redis.setGetResponses(OPENSKY_COOLDOWN_KEY, {
+      result: JSON.stringify(seederCooldown),
+    });
+
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
+    assert.equal(first.status, 200);
+    assert.notEqual(first.headers['x-cache'], 'RATE-LIMITED');
+    assert.equal(second.status, 429, 'the queued boundary must reject the newly armed cooldown');
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.opensky.upstreamFetches, 1, 'a newly seeded cooldown must prevent a second billed OpenSky request');
+    assert.equal(redis.getsFor(OPENSKY_COOLDOWN_KEY).length, 4, 'the second queued fetch must read the newly seeded cooldown');
   } finally {
     await stop(child);
     await redis.close();

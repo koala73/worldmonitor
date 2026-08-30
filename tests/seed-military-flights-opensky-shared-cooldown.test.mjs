@@ -13,7 +13,7 @@ delete process.env.PROXY_URL;
 
 const { fetchOpenSkyGlobal } = await import('../scripts/seed-military-flights.mjs');
 const {
-  OPENSKY_COOLDOWN_KEY,
+  cooldownKeyForAccount,
   OPENSKY_MAX_DEADLINE_SET_LUA,
   OPENSKY_COMPARE_AND_DEL_LUA,
   accountFingerprint,
@@ -21,6 +21,7 @@ const {
   applyMaxDeadlineWrite,
   applyCompareAndDelete,
 } = createRequire(import.meta.url)('../scripts/_opensky-account-cooldown.cjs');
+const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(accountFingerprint('test-id'));
 
 const originalFetch = globalThis.fetch;
 const TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
@@ -38,8 +39,7 @@ function isRedisUrl(raw) {
 }
 
 function isCooldownGet(raw) {
-  return raw.includes(`/get/${encodeURIComponent(OPENSKY_COOLDOWN_KEY)}`)
-    || raw.includes('/get/opensky:cooldown-until:v1');
+  return raw.includes(`/get/${encodeURIComponent(OPENSKY_COOLDOWN_KEY)}`);
 }
 
 function install({ redisRecord = null, redisError = false, allowOpenSky = false } = {}) {

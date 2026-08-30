@@ -13,8 +13,9 @@
 
 const { createHash } = require('node:crypto');
 
-const OPENSKY_COOLDOWN_KEY = 'opensky:cooldown-until:v1';
+const OPENSKY_COOLDOWN_KEY = 'opensky:cooldown-until:v2';
 const OPENSKY_MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const OPENSKY_MAX_CLOCK_SKEW_MS = 5_000;
 // Header-less 429s still park the shared key. The seeder is a one-shot */5
 // cron, so any deadline under 300s expires before the next tick and
 // suppresses exactly zero seeder requests. Two ticks (10 min) is the persist
@@ -24,6 +25,10 @@ const OPENSKY_SHARED_FALLBACK_COOLDOWN_MS = 10 * 60_000;
 function accountFingerprint(clientId) {
   if (!clientId) return null;
   return createHash('sha256').update(clientId).digest('hex').slice(0, 12);
+}
+
+function cooldownKeyForAccount(account) {
+  return OPENSKY_COOLDOWN_KEY + ':' + (typeof account === 'string' && account ? account : 'unknown');
 }
 
 function clampCooldownMs(retryAfterSeconds, fallbackMs, maxMs = OPENSKY_MAX_COOLDOWN_MS) {
@@ -52,9 +57,20 @@ function inspectCooldownRecord(record, {
   }
   const remainingMs = until - now;
   // Beyond the documented maximum the record cannot have come from this code
-  // path, so obey the clock rather than the value. Logged as a raw number:
-  // `new Date(n).toISOString()` throws RangeError past ±8.64e15 (#6241).
+  // path, unless this writer recorded the exact clamped duration. That lets a
+  // reader whose clock is slightly behind still honor a valid maximum window.
   if (remainingMs > maxMs) {
+    const recordedAt = record?.recordedAt;
+    const cooldownMs = record?.cooldownMs;
+    const hasRecordedDuration = typeof recordedAt === 'number'
+      && typeof cooldownMs === 'number'
+      && Number.isFinite(recordedAt)
+      && Number.isFinite(cooldownMs)
+      && cooldownMs >= 0
+      && cooldownMs <= maxMs
+      && until === recordedAt + cooldownMs
+      && recordedAt <= now + OPENSKY_MAX_CLOCK_SKEW_MS;
+    if (hasRecordedDuration) return { remainingMs: maxMs };
     return { remainingMs: 0, ignoreReason: 'implausible-deadline', until };
   }
   return { remainingMs: Math.max(0, remainingMs) };
@@ -113,14 +129,19 @@ function storedCooldownJson(raw) {
 const OPENSKY_MAX_DEADLINE_SET_LUA = `
 local current = redis.call('GET', KEYS[1])
 local newUntil = tonumber(ARGV[3])
+local incomingAccount = ARGV[4] or ''
 if newUntil == nil then
   return 0
 end
 if current then
   local ok, existing = pcall(cjson.decode, current)
-  local existingUntil = ok and tonumber(existing['until']) or nil
-  if existingUntil ~= nil and existingUntil >= newUntil then
-    return 0
+  if ok and type(existing) == 'table' then
+    local existingUntil = tonumber(existing['until'])
+    if type(existing['account']) == 'string'
+      and existing['account'] == incomingAccount
+      and existingUntil ~= nil and existingUntil >= newUntil then
+      return 0
+    end
   end
 end
 redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[2]))
@@ -164,10 +185,14 @@ function decideMaxDeadlineWrite(existingRecord, incomingRecord) {
     return { write: false, reason: 'invalid-incoming' };
   }
   const existingUntil = Number(existingRecord?.until);
-  if (Number.isFinite(existingUntil) && existingUntil >= incomingUntil) {
+  const existingAccount = existingRecord?.account;
+  const accountsMatch = typeof existingAccount === 'string'
+    && existingAccount !== ''
+    && existingAccount === incomingRecord?.account;
+  if (accountsMatch && Number.isFinite(existingUntil) && existingUntil >= incomingUntil) {
     return { write: false, reason: 'existing-deadline-wins', existingUntil };
   }
-  return { write: true, reason: Number.isFinite(existingUntil) ? 'newer-deadline' : 'missing' };
+  return { write: true, reason: Number.isFinite(existingUntil) && accountsMatch ? 'newer-deadline' : 'missing' };
 }
 
 function decideCompareAndDelete(currentRaw, {
@@ -225,6 +250,7 @@ function maxDeadlineSetCommand(key, record, ttlSeconds) {
     serializeCooldownRecord(record),
     String(ttlSeconds),
     String(record.until),
+    typeof record.account === 'string' ? record.account : '',
   ];
 }
 
@@ -245,10 +271,12 @@ function compareAndDelCommand(key, {
 module.exports = {
   OPENSKY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_MAX_CLOCK_SKEW_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   OPENSKY_MAX_DEADLINE_SET_LUA,
   OPENSKY_COMPARE_AND_DEL_LUA,
   accountFingerprint,
+  cooldownKeyForAccount,
   clampCooldownMs,
   ttlSecondsForCooldown,
   inspectCooldownRecord,

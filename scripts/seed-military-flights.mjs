@@ -603,7 +603,7 @@ const OPENSKY_FETCH_RETRY_DELAYS = [0, 1_500];
 // CANNOT live in a module variable the way the relay's does — the deadline has
 // to outlive the process. Redis is the only state that does (#6241).
 const {
-  OPENSKY_COOLDOWN_KEY,
+  cooldownKeyForAccount,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   accountFingerprint: openSkyAccountFingerprint,
@@ -614,6 +614,8 @@ const {
   maxDeadlineSetCommand,
   compareAndDelCommand,
 } = createRequire(import.meta.url)('./_opensky-account-cooldown.cjs');
+const OPENSKY_ACCOUNT_FINGERPRINT = openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID);
+const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(OPENSKY_ACCOUNT_FINGERPRINT);
 // OpenSky omits the retry-after header on some rejections; those repeat just as
 // reliably, so a header-less 429 still parks the tier. Sized against THIS
 // seeder's cadence, not the relay's sub-minute loop: the process is one-shot on
@@ -723,7 +725,7 @@ async function readOpenSkyCooldown() {
   try {
     const record = await redisGet(creds.url, creds.token, OPENSKY_COOLDOWN_KEY);
     const inspected = inspectCooldownRecord(record, {
-      account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+      account: OPENSKY_ACCOUNT_FINGERPRINT,
     });
     if (inspected.ignoreReason === 'account-mismatch') {
       console.warn('  [OpenSky Quota] ignoring cooldown recorded for a different OpenSky account');
@@ -746,7 +748,7 @@ async function recordOpenSkyCooldown(retryAfterSeconds) {
   const record = buildCooldownRecord({
     cooldownMs,
     retryAfterSeconds,
-    account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    account: OPENSKY_ACCOUNT_FINGERPRINT,
     recordedBy: 'seed-military-flights',
   });
   console.warn(
