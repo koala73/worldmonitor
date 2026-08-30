@@ -145,6 +145,14 @@ const MAP = [
   [/:\/api\/supply-chain\/v1\/(get-country-chokepoint-index|get-bypass-options)$/, { cap: 'supplychain.chokepoints' }],
   [/:\/api\/supply-chain\/v1\/(get-route-explorer-lane|get-route-impact)$/,        { cap: 'supplychain.routes' }],
   [/:\/api\/supply-chain\/v1\/(get-country-cost-shock|get-multi-sector-cost-shock|get-sector-dependency|get-country-products)$/, { cap: 'supplychain.costshock' }],
+  // Gated in the #6436-#6449 pass. Four distinct capabilities rather than
+  // folding them into their domain neighbours: each is its own seeded dataset
+  // with its own methodology page, and collapsing them would hide four newly
+  // paid capabilities inside an unchanged rule count.
+  [/:\/api\/supply-chain\/v1\/get-mineral-production$/,                            { cap: 'supplychain.minerals' }],
+  [/:\/api\/supply-chain\/v1\/(get-country-vulnerabilities|get-chokepoint-dependencies|list-vulnerability-rankings)$/, { cap: 'supplychain.vulnerability' }],
+  [/:\/api\/market\/v1\/(get-physical-premiums|get-physical-divergence-index)$/,   { cap: 'markets.physical_metals' }],
+  [/:\/api\/military\/v1\/get-defense-industrial-base$/,                           { cap: 'military.industrial_base' }],
   [/:\/api\/trade\/v1\//,                                 { cap: 'trade.flows' }],
   [/:\/api\/economic\/v1\/get-national-debt$/,            { cap: 'economic.debt' }],
   [/:\/api\/economic\/v1\/list-global-tenders$/,          { cap: 'procurement.tenders' }],
@@ -328,7 +336,7 @@ const SITE_BASELINE = {
   "server/worldmonitor/supply-chain/v1/get-sector-dependency.ts::isCallerPremium": 1,
   "server/worldmonitor/trade/v1/get-tariff-trends.ts::isCallerPremium": 1,
   "server/worldmonitor/trade/v1/list-comtrade-flows.ts::isCallerPremium": 1,
-  "src/app/data-loader.ts::hasPremiumAccess": 10,
+  "src/app/data-loader.ts::hasPremiumAccess": 11,
   "src/app/event-handlers.ts::isProUser": 2,
   "src/app/panel-layout.ts::hasPremiumAccess": 1,
   "src/components/RegionalIntelligenceBoard.ts::hasPremiumAccess": 1,
