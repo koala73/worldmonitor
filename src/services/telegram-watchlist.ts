@@ -86,7 +86,7 @@ export function setTelegramWatchlistEntries(entries: TelegramWatchlistEntry[]): 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // ignore quota/storage failures
+    throw new Error('Telegram watchlist could not be saved');
   }
 
   dispatch(next);

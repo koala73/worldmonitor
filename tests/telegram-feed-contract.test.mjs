@@ -46,6 +46,7 @@ describe('api/telegram-feed contract normalization', () => {
     globalThis.fetch = async (url, options) => {
       assert.match(String(url), /\/telegram\/feed\?limit=50$/);
       assert.equal(options?.headers?.Authorization, 'Bearer test-secret');
+      assert.equal(options?.headers?.['User-Agent'], 'WorldMonitor/1.0');
       return new Response(JSON.stringify({
         enabled: true,
         source: 'relay',

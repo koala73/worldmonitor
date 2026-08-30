@@ -91,4 +91,58 @@ describe('TelegramIntelPanel trust badges (#6600)', () => {
     expect(dd?.querySelector('.propaganda-badge')?.textContent).toContain('Caution');
     expect(dd?.querySelector('.propaganda-badge')?.className).toContain('medium');
   });
+
+  it('does not grant trust badges from a custom channel title', () => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram',
+      earlySignal: true,
+      enabled: true,
+      count: 1,
+      updatedAt: new Date().toISOString(),
+      items: [telegramItem({
+        id: 'untrusted_feed:3',
+        channel: 'untrusted_feed',
+        channelTitle: 'IDF Official',
+        watchlist: true,
+      })],
+    });
+
+    const item = panel.getElement().querySelector('.telegram-intel-item');
+    expect(item?.querySelector('.propaganda-badge')).toBeNull();
+    expect(item?.querySelector('.tier-badge')).toBeNull();
+    expect(item?.querySelector('.telegram-intel-custom-tag')).not.toBeNull();
+  });
+
+  it('deduplicates handle casing and keeps curated metadata', () => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram',
+      earlySignal: true,
+      enabled: true,
+      count: 2,
+      updatedAt: new Date().toISOString(),
+      items: [
+        telegramItem({
+          id: 'IDFOFFICIAL:7',
+          channel: 'IDFOFFICIAL',
+          channelTitle: 'Custom title',
+          watchlist: true,
+        }),
+        telegramItem({
+          id: 'idfofficial:7',
+          channel: 'IDFofficial',
+          channelTitle: 'IDF Official',
+          watchlist: false,
+        }),
+      ],
+    });
+
+    const items = panel.getElement().querySelectorAll('.telegram-intel-item');
+    expect(items).toHaveLength(1);
+    expect(items[0]?.querySelector('.telegram-intel-channel')?.textContent).toBe('IDF Official');
+    expect(items[0]?.querySelector('.telegram-intel-custom-tag')).toBeNull();
+  });
 });

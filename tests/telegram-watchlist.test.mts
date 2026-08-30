@@ -97,6 +97,32 @@ describe('telegram-watchlist', () => {
     ]);
   });
 
+  it('throws and does not publish a false state when storage rejects a write', () => {
+    setTelegramWatchlistEntries([{ username: 'existing_channel' }]);
+    const stored = globalThis.localStorage.getItem('telegram:watchlist:v1');
+    const snapshots: string[][] = [];
+    const unsubscribe = subscribeTelegramWatchlistChange(entries => {
+      snapshots.push(entries.map(entry => entry.username));
+    });
+
+    globalThis.localStorage = {
+      getItem: () => stored,
+      setItem: () => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      length: 1,
+    };
+
+    assert.throws(
+      () => addTelegramWatchlistEntry({ username: 'another_channel' }),
+      /Telegram watchlist could not be saved/,
+    );
+    assert.deepEqual(getTelegramWatchlistEntries(), [{ username: 'existing_channel' }]);
+    assert.deepEqual(snapshots, []);
+    unsubscribe();
+  });
+
   it('caps persisted and returned entries at 20', () => {
     const entries = Array.from({ length: 25 }, (_, index) => ({
       username: `channel_${String(index).padStart(2, '0')}`,

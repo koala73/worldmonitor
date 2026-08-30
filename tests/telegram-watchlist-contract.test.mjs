@@ -20,7 +20,7 @@ describe('Telegram custom-channel architecture (#1994)', () => {
   it('keeps product-managed channels separate and accepts only public Telegram channels', () => {
     const relay = read('scripts/ais-relay.cjs');
     const curatedStart = relay.indexOf('function loadTelegramChannels()');
-    const customStart = relay.indexOf('async function resolveTelegramChannel(username)');
+    const customStart = relay.indexOf('async function resolveTelegramChannelWithConnection(normalized, connection)');
     const customEnd = relay.indexOf('let telegramPermanentlyDisabled', customStart);
 
     assert.ok(curatedStart >= 0 && customStart > curatedStart && customEnd > customStart);

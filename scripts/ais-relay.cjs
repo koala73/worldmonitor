@@ -974,10 +974,12 @@ const TELEGRAM_ENABLED = Boolean(process.env.TELEGRAM_API_ID && process.env.TELE
 const TELEGRAM_POLL_INTERVAL_MS = Math.max(15_000, Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 60_000));
 const TELEGRAM_MAX_FEED_ITEMS = Math.max(50, Number(process.env.TELEGRAM_MAX_FEED_ITEMS || 200));
 const TELEGRAM_MAX_TEXT_CHARS = Math.max(200, Number(process.env.TELEGRAM_MAX_TEXT_CHARS || 800));
+const TELEGRAM_STARTUP_DELAY_MS = Math.max(0, Number(process.env.TELEGRAM_STARTUP_DELAY_MS || 120_000));
 
 const telegramState = {
   client: null,
   api: null,
+  initPromise: null,
   channels: [],
   cursorByHandle: Object.create(null),
   items: [],
@@ -1045,15 +1047,16 @@ function loadTelegramChannels() {
 }
 
 function normalizeTelegramMessage(msg, channel) {
+  const handle = sanitizeTelegramUsername(channel.handle);
   const textRaw = String(msg?.message || '');
   const text = textRaw.slice(0, TELEGRAM_MAX_TEXT_CHARS);
   const ts = msg?.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString();
   return {
-    id: `${channel.handle}:${msg.id}`,
+    id: `${handle}:${msg.id}`,
     source: 'telegram',
-    channel: channel.handle,
-    channelTitle: channel.label || channel.handle,
-    url: `https://t.me/${channel.handle}/${msg.id}`,
+    channel: handle,
+    channelTitle: channel.label || handle,
+    url: `https://t.me/${handle}/${msg.id}`,
     ts,
     text,
     topic: channel.topic || 'other',
@@ -1102,6 +1105,7 @@ function setCachedTelegramValue(cache, key, value, ttlMs) {
 }
 
 function getTelegramErrorStatus(error) {
+  if (Number.isInteger(error?.statusCode)) return error.statusCode;
   const message = String(error?.message || error || '');
   if (/invalid telegram username/i.test(message)) return 400;
   if (/only public telegram channels/i.test(message)) return 400;
@@ -1109,6 +1113,21 @@ function getTelegramErrorStatus(error) {
   if (/USERNAME_NOT_OCCUPIED|No user has|No channel has|Cannot find any entity/i.test(message)) return 404;
   if (/not active|not installed|invalidated/i.test(message)) return 503;
   return 502;
+}
+
+function createTelegramStatusError(message, statusCode, retryAfterMs = 0) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  if (retryAfterMs > 0) error.retryAfterMs = retryAfterMs;
+  return error;
+}
+
+function getTelegramErrorHeaders(error) {
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  if (Number(error?.retryAfterMs) > 0) {
+    headers['Retry-After'] = String(Math.max(1, Math.ceil(error.retryAfterMs / 1000)));
+  }
+  return headers;
 }
 
 function buildTelegramChannelPreview(entity, fallbackUsername, memberCount = null) {
@@ -1122,36 +1141,30 @@ function buildTelegramChannelPreview(entity, fallbackUsername, memberCount = nul
   };
 }
 
-async function resolveTelegramChannel(username) {
-  const normalized = sanitizeTelegramUsername(username);
+async function resolveTelegramChannelWithConnection(normalized, connection) {
   const cached = getCachedTelegramValue(telegramResolveCache, normalized);
   if (cached) return cached;
 
-  const ok = await initTelegramClientIfNeeded();
-  if (!ok || !telegramState.client) {
-    throw new Error(telegramState.lastError || 'Telegram relay not active');
-  }
-
   const entity = await withTimeout(
-    telegramState.client.getEntity(normalized),
+    connection.client.getEntity(normalized),
     TELEGRAM_CHANNEL_TIMEOUT_MS,
     `getEntity(${normalized})`,
   );
 
-  const TelegramChannel = telegramState.api?.Channel;
+  const TelegramChannel = connection.Api?.Channel;
   if (!TelegramChannel || !(entity instanceof TelegramChannel) || !entity.username) {
     throw new Error('Only public Telegram channels are supported');
   }
 
   let memberCount = null;
-  if (telegramState.api?.channels?.GetFullChannel) {
+  if (connection.Api?.channels?.GetFullChannel) {
     try {
       const full = await withTimeout(
-        telegramState.client.invoke(new telegramState.api.channels.GetFullChannel({ channel: entity })),
+        connection.client.invoke(new connection.Api.channels.GetFullChannel({ channel: entity })),
         TELEGRAM_CHANNEL_TIMEOUT_MS,
         `getFullChannel(${normalized})`,
       );
-      const ChannelFull = telegramState.api?.ChannelFull;
+      const ChannelFull = connection.Api?.ChannelFull;
       if (ChannelFull && full?.fullChat instanceof ChannelFull) {
         memberCount = full?.fullChat?.participantsCount ?? null;
       }
@@ -1168,6 +1181,14 @@ async function resolveTelegramChannel(username) {
   return value;
 }
 
+async function resolveTelegramChannel(username) {
+  const normalized = sanitizeTelegramUsername(username);
+  const cached = getCachedTelegramValue(telegramResolveCache, normalized);
+  if (cached) return cached;
+  const connection = await initTelegramClientIfNeeded();
+  return resolveTelegramChannelWithConnection(normalized, connection);
+}
+
 async function fetchTelegramChannelFeed(username, limit = 20) {
   const normalized = sanitizeTelegramUsername(username);
   const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
@@ -1175,14 +1196,10 @@ async function fetchTelegramChannelFeed(username, limit = 20) {
   const cached = getCachedTelegramValue(telegramChannelCache, cacheKey);
   if (cached) return cached;
 
-  const ok = await initTelegramClientIfNeeded();
-  if (!ok || !telegramState.client) {
-    throw new Error(telegramState.lastError || 'Telegram relay not active');
-  }
-
-  const { preview, entity } = await resolveTelegramChannel(normalized);
+  const connection = await initTelegramClientIfNeeded();
+  const { preview, entity } = await resolveTelegramChannelWithConnection(normalized, connection);
   const msgs = await withTimeout(
-    telegramState.client.getMessages(entity, { limit: safeLimit }),
+    connection.client.getMessages(entity, { limit: safeLimit }),
     TELEGRAM_CHANNEL_TIMEOUT_MS,
     `getMessages(${normalized})`,
   );
@@ -1231,38 +1248,83 @@ function destroyTelegramClient() {
 }
 
 async function initTelegramClientIfNeeded() {
-  if (!TELEGRAM_ENABLED) return false;
-  if (telegramState.client) return true;
-  if (telegramPermanentlyDisabled) return false;
+  if (!TELEGRAM_ENABLED) {
+    throw createTelegramStatusError('Telegram relay not configured', 503);
+  }
+  if (telegramState.client && telegramState.api) {
+    return { client: telegramState.client, Api: telegramState.api };
+  }
+  if (telegramPermanentlyDisabled) {
+    throw createTelegramStatusError(telegramState.lastError || 'Telegram relay not active', 503);
+  }
 
+  const retryAfterMs = (telegramState.startedAt + TELEGRAM_STARTUP_DELAY_MS) - Date.now();
+  if (retryAfterMs > 0) {
+    throw createTelegramStatusError('Telegram client startup delay active', 503, retryAfterMs);
+  }
+
+  if (telegramState.initPromise) return telegramState.initPromise;
+
+  const initPromise = connectTelegramClient();
+  telegramState.initPromise = initPromise;
+  try {
+    return await initPromise;
+  } finally {
+    if (telegramState.initPromise === initPromise) telegramState.initPromise = null;
+  }
+}
+
+async function connectTelegramClient() {
   const apiId = parseInt(String(process.env.TELEGRAM_API_ID || ''), 10);
   const apiHash = String(process.env.TELEGRAM_API_HASH || '');
   const sessionStr = String(process.env.TELEGRAM_SESSION || '');
 
-  if (!apiId || !apiHash || !sessionStr) return false;
+  if (!apiId || !apiHash || !sessionStr) {
+    throw createTelegramStatusError('Telegram relay not configured', 503);
+  }
 
   let client;
   try {
-    const { TelegramClient, Api } = await import('telegram');
-    const { StringSession } = await import('telegram/sessions/index.js');
-
-    client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
-      connectionRetries: 3,
-    });
+    let Api;
+    if (RELAY_TEST_MODE && process.env.RELAY_TEST_TELEGRAM === 'true') {
+      class TestTelegramChannel {
+        constructor(username) {
+          this.username = username;
+          this.title = `Test ${username}`;
+        }
+      }
+      Api = { Channel: TestTelegramChannel };
+      client = {
+        connect: async () => {
+          const delayMs = Math.max(0, Number(process.env.RELAY_TEST_TELEGRAM_CONNECT_DELAY_MS || 0));
+          if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+        },
+        disconnect: async () => {},
+        getEntity: async username => new TestTelegramChannel(username),
+        getMessages: async () => [],
+      };
+    } else {
+      const telegram = await import('telegram');
+      const sessions = await import('telegram/sessions/index.js');
+      Api = telegram.Api;
+      client = new telegram.TelegramClient(new sessions.StringSession(sessionStr), apiId, apiHash, {
+        connectionRetries: 3,
+      });
+    }
 
     await client.connect();
     telegramState.client = client;
     telegramState.api = Api;
     telegramState.lastError = null;
     console.log('[Relay] Telegram client connected');
-    return true;
+    return { client, Api };
   } catch (e) {
     const em = e?.message || String(e);
     if (e?.code === 'ERR_MODULE_NOT_FOUND' || /Cannot find package|Directory import/.test(em)) {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'telegram package not installed';
       console.warn('[Relay] Telegram package not installed — disabling permanently for this session');
-      return false;
+      throw createTelegramStatusError(telegramState.lastError, 503);
     }
     // Destroy the locally-created client directly — telegramState.client
     // is still null because connect() failed before the assignment. Without
@@ -1275,11 +1337,11 @@ async function initTelegramClientIfNeeded() {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
       console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
-      return false;
+      throw createTelegramStatusError(telegramState.lastError, 503);
     }
     telegramState.lastError = `telegram init failed: ${em}`;
     console.warn('[Relay] Telegram init failed:', telegramState.lastError);
-    return false;
+    throw e instanceof Error ? e : new Error(em);
   }
 }
 
@@ -1297,13 +1359,18 @@ function withTimeout(promise, ms, label) {
 }
 
 async function pollTelegramOnce() {
-  const ok = await initTelegramClientIfNeeded();
-  if (!ok) return;
+  let connection;
+  try {
+    connection = await initTelegramClientIfNeeded();
+  } catch (error) {
+    if (!telegramState.lastError) telegramState.lastError = error?.message || String(error);
+    return;
+  }
 
   const channels = telegramState.channels.length ? telegramState.channels : loadTelegramChannels();
   if (!channels.length) return;
 
-  const client = telegramState.client;
+  const client = connection.client;
   const newItems = [];
   const pollStart = Date.now();
   let channelsPolled = 0;
@@ -1416,8 +1483,6 @@ function guardedTelegramPoll() {
     .catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e))
     .finally(() => { telegramPollInFlight = false; });
 }
-
-const TELEGRAM_STARTUP_DELAY_MS = Math.max(0, Number(process.env.TELEGRAM_STARTUP_DELAY_MS || 120_000));
 
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
@@ -11172,7 +11237,7 @@ const server = http.createServer(async (req, res) => {
         'CDN-Cache-Control': 'no-store',
       }, JSON.stringify(preview));
     } catch (e) {
-      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.writeHead(getTelegramErrorStatus(e), getTelegramErrorHeaders(e));
       res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
     }
   } else if (pathname === '/telegram/channel') {
@@ -11189,7 +11254,7 @@ const server = http.createServer(async (req, res) => {
         'CDN-Cache-Control': 'no-store',
       }, JSON.stringify(payload));
     } catch (e) {
-      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.writeHead(getTelegramErrorStatus(e), getTelegramErrorHeaders(e));
       res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
     }
   } else if (pathname === '/telegram' || pathname === '/telegram/feed') {

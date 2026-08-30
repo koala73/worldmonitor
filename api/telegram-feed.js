@@ -279,7 +279,10 @@ export default async function handler(req) {
 
     const relayUrl = `${relayBaseUrl}${relayPath}?${params}`;
     const response = await fetchWithTimeout(relayUrl, {
-      headers: getRelayHeaders({ Accept: 'application/json' }),
+      headers: getRelayHeaders({
+        Accept: 'application/json',
+        'User-Agent': 'WorldMonitor/1.0',
+      }),
     }, 15000);
 
     const body = await response.text();

@@ -13,7 +13,7 @@ import {
 } from '@/services/telegram-intel';
 import {
   getPrimarySourceProvenanceBadges,
-  resolveTelegramSourceName,
+  resolveRegisteredTelegramSourceName,
 } from './news/source-provenance';
 import {
   addTelegramWatchlistEntry,
@@ -38,18 +38,26 @@ type PreviewState = {
 };
 
 function mergeTelegramItems(...groups: TelegramItem[][]): TelegramItem[] {
-  const seen = new Set<string>();
-  const items: TelegramItem[] = [];
+  const itemsById = new Map<string, TelegramItem>();
 
   for (const group of groups) {
     for (const item of group) {
-      if (!item?.id || seen.has(item.id)) continue;
-      seen.add(item.id);
-      items.push(item);
+      if (!item?.id) continue;
+      const separator = item.id.indexOf(':');
+      const handle = separator > 0
+        ? normalizeTelegramUsername(item.id.slice(0, separator))
+        : '';
+      const key = handle
+        ? `${handle}:${item.id.slice(separator + 1)}`
+        : item.id;
+      const existing = itemsById.get(key);
+      if (!existing || (existing.watchlist && !item.watchlist)) {
+        itemsById.set(key, item);
+      }
     }
   }
 
-  return items.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  return [...itemsById.values()].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
 }
 
 export class TelegramIntelPanel extends Panel {
@@ -153,6 +161,7 @@ export class TelegramIntelPanel extends Panel {
     if (!this.relayEnabled || response.error) {
       this.watchlistRequestId++;
       this.watchlistItems = [];
+      this.cancelPreviewResolve();
       this.setCount(0);
       replaceChildren(this.content,
         h('div', { className: 'empty-state error' },
@@ -173,6 +182,11 @@ export class TelegramIntelPanel extends Panel {
       this.previewTimer = null;
     }
 
+    if (!this.relayEnabled) {
+      this.cancelPreviewResolve();
+      return;
+    }
+
     const raw = this.inputEl.value || '';
     const normalized = normalizeTelegramUsername(raw);
     const requestId = ++this.previewRequestId;
@@ -187,7 +201,8 @@ export class TelegramIntelPanel extends Panel {
     this.renderPreview();
 
     this.previewTimer = setTimeout(async () => {
-      if (requestId !== this.previewRequestId) return;
+      this.previewTimer = null;
+      if (requestId !== this.previewRequestId || !this.relayEnabled) return;
 
       if (!normalized) {
         this.previewState = {
@@ -202,10 +217,10 @@ export class TelegramIntelPanel extends Panel {
 
       try {
         const channel = await fetchTelegramChannelPreview(normalized);
-        if (requestId !== this.previewRequestId) return;
+        if (requestId !== this.previewRequestId || !this.relayEnabled) return;
         this.previewState = { channel, error: null, loading: false, username: normalized };
       } catch {
-        if (requestId !== this.previewRequestId) return;
+        if (requestId !== this.previewRequestId || !this.relayEnabled) return;
         this.previewState = {
           channel: null,
           error: t('components.telegramIntel.resolveFailed'),
@@ -215,6 +230,26 @@ export class TelegramIntelPanel extends Panel {
       }
       this.renderPreview();
     }, WATCHLIST_PREVIEW_DEBOUNCE_MS);
+  }
+
+  private cancelPreviewResolve(): void {
+    this.previewRequestId++;
+    if (this.previewTimer) {
+      clearTimeout(this.previewTimer);
+      this.previewTimer = null;
+    }
+    this.previewState = { channel: null, error: null, loading: false, username: '' };
+    this.renderPreview();
+  }
+
+  private showWatchlistSaveError(username: string): void {
+    this.previewState = {
+      ...this.previewState,
+      error: t('modals.settingsWindow.failed', { error: t('common.error') }),
+      loading: false,
+      username,
+    };
+    this.renderPreview();
   }
 
   private renderPreview(): void {
@@ -229,7 +264,7 @@ export class TelegramIntelPanel extends Panel {
       return;
     }
 
-    if (this.previewState.error) {
+    if (this.previewState.error && !this.previewState.channel) {
       replaceChildren(this.previewEl,
         h('div', { className: 'telegram-intel-preview-card is-error' }, this.previewState.error),
       );
@@ -250,6 +285,9 @@ export class TelegramIntelPanel extends Panel {
       });
 
     replaceChildren(this.previewEl,
+      this.previewState.error
+        ? h('div', { className: 'telegram-intel-preview-card is-error' }, this.previewState.error)
+        : null,
       h('div', { className: 'telegram-intel-preview-card' },
         h('div', { className: 'telegram-intel-preview-copy' },
           h('div', { className: 'telegram-intel-preview-title' }, channel.title),
@@ -271,7 +309,7 @@ export class TelegramIntelPanel extends Panel {
 
   private async addPreviewChannel(): Promise<void> {
     const channel = this.previewState.channel;
-    if (!channel) return;
+    if (!channel || !this.relayEnabled) return;
 
     const alreadyAdded = this.watchlistEntries.some(entry => entry.username === channel.username);
     if (!alreadyAdded && this.watchlistEntries.length >= TELEGRAM_WATCHLIST_MAX_ENTRIES) {
@@ -285,7 +323,12 @@ export class TelegramIntelPanel extends Panel {
       return;
     }
 
-    addTelegramWatchlistEntry({ username: channel.username, title: channel.title });
+    try {
+      addTelegramWatchlistEntry({ username: channel.username, title: channel.title });
+    } catch {
+      this.showWatchlistSaveError(channel.username);
+      return;
+    }
 
     if (this.inputEl) {
       this.inputEl.value = '';
@@ -309,7 +352,13 @@ export class TelegramIntelPanel extends Panel {
         h('button', {
           type: 'button',
           className: 'telegram-intel-pill',
-          onClick: () => removeTelegramWatchlistEntry(entry.username),
+          onClick: () => {
+            try {
+              removeTelegramWatchlistEntry(entry.username);
+            } catch {
+              this.showWatchlistSaveError(entry.username);
+            }
+          },
           title: `${t('components.telegramIntel.remove')} @${entry.username}`,
           'aria-label': `${t('components.telegramIntel.remove')} @${entry.username}`,
         },
@@ -391,8 +440,10 @@ export class TelegramIntelPanel extends Panel {
       .replace(/"/g, '&quot;');
     const textHtml = escaped.replace(/\n/g, '<br>');
 
-    const sourceName = resolveTelegramSourceName(item.channelTitle, item.channel);
-    const provenance = getPrimarySourceProvenanceBadges(sourceName);
+    const sourceName = resolveRegisteredTelegramSourceName(item.channel);
+    const provenance = sourceName
+      ? getPrimarySourceProvenanceBadges(sourceName)
+      : { risk: null, tier: null };
     const riskBadge = provenance.risk
       ? h('span', { className: provenance.risk.className, title: provenance.risk.title }, provenance.risk.label)
       : null;

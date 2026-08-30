@@ -75,8 +75,60 @@ function spawnRelay(extraEnv) {
     });
   });
 
-  return { child, ready: ready.then(() => ({ child, port })) };
+  return {
+    child,
+    getOutput: () => output,
+    ready: ready.then(() => ({ child, port })),
+  };
 }
+
+test('Telegram custom lookups honor the relay startup delay', async () => {
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '5000',
+    RELAY_TEST_TELEGRAM: 'true',
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    const response = await get(port, '/telegram/resolve?username=test_channel');
+    assert.equal(response.status, 503);
+    assert.equal(response.headers['cache-control'], 'no-store');
+    assert.ok(Number(response.headers['retry-after']) >= 1);
+    assert.match(response.body, /startup delay active/);
+    assert.doesNotMatch(relay.getOutput(), /Telegram client connected/);
+  } finally {
+    await stop(child);
+  }
+});
+
+test('concurrent Telegram custom lookups share one cold connection', async () => {
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '0',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_CONNECT_DELAY_MS: '100',
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    const responses = await Promise.all(
+      Array.from({ length: 6 }, () => get(port, '/telegram/resolve?username=test_channel')),
+    );
+    assert.deepEqual(responses.map(response => response.status), [200, 200, 200, 200, 200, 200]);
+    assert.equal(
+      (relay.getOutput().match(/Telegram client connected/g) || []).length,
+      1,
+      'all cold requests must await one connection attempt',
+    );
+  } finally {
+    await stop(child);
+  }
+});
 
 // Mock Upstash REST endpoint: records every command, acknowledges writes, and
 // can return a deterministic response sequence for a specific Redis key.
