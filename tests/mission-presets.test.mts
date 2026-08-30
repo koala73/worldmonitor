@@ -935,6 +935,7 @@ describe('mission preset persistence', () => {
 
 type MissionTestCallbacks = {
   appliedOrders: string[][];
+  appliedOrderArgs: Array<string[] | undefined>;
   loadDataForLayer: string[];
   stopLayerActivity: string[];
   loadAllDataCalls: number;
@@ -1044,6 +1045,7 @@ function createMissionHarness(options: {
 
   const callbacks: MissionTestCallbacks = {
     appliedOrders: [],
+    appliedOrderArgs: [],
     loadDataForLayer: [],
     stopLayerActivity: [],
     loadAllDataCalls: 0,
@@ -1124,7 +1126,10 @@ function createMissionHarness(options: {
     waitForAisData: () => { callbacks.waitForAisCalls += 1; },
     syncDataFreshnessWithLayers: () => { callbacks.syncDataFreshnessCalls += 1; },
     applyPanelSettings: () => { callbacks.applyPanelSettingsCalls += 1; },
-    applySavedPanelOrder: (panelOrder?: string[]) => callbacks.appliedOrders.push([...(panelOrder ?? [])]),
+    applySavedPanelOrder: (panelOrder?: string[]) => {
+      callbacks.appliedOrderArgs.push(panelOrder);
+      callbacks.appliedOrders.push([...(panelOrder ?? [])]);
+    },
     stopLayerActivity: (layer: keyof MapLayers) => callbacks.stopLayerActivity.push(String(layer)),
     mountLiveNewsIfReady: () => { callbacks.mountLiveNewsCalls += 1; },
     isFreeTierFallbackActive: () => options.freeTierFallback === true,
@@ -1312,5 +1317,62 @@ describe('mission preset shell integration', () => {
 
     assert.deepEqual(enabledWorkspacePanelKeys(ctx.panelSettings), defaultWorkspacePanelKeys('full'));
     assert.deepEqual(callbacks.appliedOrders.at(-1), VARIANT_DEFAULTS.full.filter((key) => key !== 'map'));
+  });
+
+  it('restores prior ultra-wide bottom-panel IDs when a WebMCP preset apply fails after persist', async () => {
+    const { ctx, callbacks, manager } = createMissionHarness();
+    const priorOrder = ['live-news', 'markets', 'conflicts'];
+    const priorBottom = ['markets'];
+    localStorage.setItem('panel-order', JSON.stringify(priorOrder));
+    localStorage.setItem('panel-order-bottom-set', JSON.stringify(priorBottom));
+
+    let failOnce = true;
+    const originalRefresh = ctx.unifiedSettings.refreshPanelToggles.bind(ctx.unifiedSettings);
+    ctx.unifiedSettings.refreshPanelToggles = () => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('commit failed after persist');
+      }
+      originalRefresh();
+    };
+
+    assert.throws(
+      () => manager.applyMissionPresetForWebMcp('supply-chain-risk'),
+      /commit failed after persist/,
+    );
+
+    assert.deepEqual(readJsonStorage<string[]>('panel-order'), priorOrder);
+    assert.deepEqual(readJsonStorage<string[]>('panel-order-bottom-set'), priorBottom);
+    assert.equal(
+      callbacks.appliedOrderArgs.at(-1),
+      undefined,
+      'rollback must reload layout from storage instead of forcing an empty bottom set',
+    );
+    await waitForMissionTimers();
+  });
+
+  it('restores legacy bottom-panel IDs when -bottom-set is absent during WebMCP rollback', async () => {
+    const { ctx, manager } = createMissionHarness();
+    const priorOrder = ['live-news', 'markets'];
+    const priorBottom = ['live-news'];
+    localStorage.setItem('panel-order', JSON.stringify(priorOrder));
+    localStorage.setItem('panel-order-bottom', JSON.stringify(priorBottom));
+
+    let failOnce = true;
+    ctx.unifiedSettings.refreshPanelToggles = () => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('commit failed after persist');
+      }
+    };
+
+    assert.throws(
+      () => manager.applyMissionPresetForWebMcp('macro-market-watch'),
+      /commit failed after persist/,
+    );
+
+    assert.deepEqual(readJsonStorage<string[]>('panel-order'), priorOrder);
+    assert.deepEqual(readJsonStorage<string[]>('panel-order-bottom-set'), priorBottom);
+    await waitForMissionTimers();
   });
 });

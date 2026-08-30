@@ -1113,14 +1113,32 @@ export class EventHandlerManager implements AppModule {
     return layers;
   }
 
-  private persistMissionPanelOrder(panelOrder: string[]): void {
+  private persistMissionPanelOrder(panelOrder: string[], bottomPanelIds: string[] = []): void {
     saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
-    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', []);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomPanelIds);
     try {
       localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
     } catch {
       // Storage can be unavailable; the current session still applies the in-memory order.
     }
+  }
+
+  private readStoredPanelIds(key: string): string[] | null {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return null;
+      return parsed.filter((value): value is string => typeof value === 'string');
+    } catch {
+      return null;
+    }
+  }
+
+  private snapshotEffectiveBottomPanelIds(): string[] {
+    const bottomSet = this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
+    if (bottomSet) return bottomSet;
+    return this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY + '-bottom') ?? [];
   }
 
   private scheduleMissionDataRefresh(): void {
@@ -1258,28 +1276,18 @@ export class EventHandlerManager implements AppModule {
     panelSettings: Record<string, PanelConfig>;
     mapLayers: MapLayers;
     panelOrder: string[];
+    bottomPanelIds: string[];
     presetId: string | null;
     mapView: MapView;
     mapZoom: number;
     timeRange: string;
   } {
     const mapState = this.ctx.map?.getState();
-    let panelOrder: string[] = [];
-    try {
-      const raw = localStorage.getItem(this.ctx.PANEL_ORDER_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown;
-        if (Array.isArray(parsed)) {
-          panelOrder = parsed.filter((value): value is string => typeof value === 'string');
-        }
-      }
-    } catch {
-      panelOrder = [];
-    }
     return {
       panelSettings: structuredClone(this.ctx.panelSettings),
       mapLayers: { ...this.ctx.mapLayers },
-      panelOrder,
+      panelOrder: this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY) ?? [],
+      bottomPanelIds: this.snapshotEffectiveBottomPanelIds(),
       presetId: loadStoredMissionPreset()?.id ?? null,
       mapView: (mapState?.view ?? 'global') as MapView,
       mapZoom: mapState?.zoom ?? 2,
@@ -1291,6 +1299,7 @@ export class EventHandlerManager implements AppModule {
     panelSettings: Record<string, PanelConfig>;
     mapLayers: MapLayers;
     panelOrder: string[];
+    bottomPanelIds: string[];
     presetId: string | null;
     mapView: MapView;
     mapZoom: number;
@@ -1305,14 +1314,14 @@ export class EventHandlerManager implements AppModule {
     this.ctx.mapLayers = { ...snapshot.mapLayers };
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-    this.persistMissionPanelOrder(snapshot.panelOrder);
+    this.persistMissionPanelOrder(snapshot.panelOrder, snapshot.bottomPanelIds);
     if (snapshot.presetId) {
       saveMissionPreset(snapshot.presetId as MissionPresetId);
     } else {
       clearMissionPreset();
     }
     this.applyPanelSettings();
-    this.callbacks.applySavedPanelOrder?.(snapshot.panelOrder);
+    this.callbacks.applySavedPanelOrder?.();
     this.ctx.unifiedSettings?.refreshPanelToggles();
     this.ctx.map?.setLayers(this.ctx.mapLayers);
     this.applyMissionMapLayerTransitions(previousMapLayers, this.ctx.mapLayers);
