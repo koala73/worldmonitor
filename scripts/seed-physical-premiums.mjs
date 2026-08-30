@@ -376,33 +376,73 @@ function physicalDivergenceInputFreshUntil(snapshot) {
   return deadlines.length > 0 ? Math.min(...deadlines) : null;
 }
 
-export function physicalDivergenceMeta(snapshot, nowMs) {
+function physicalDivergenceMinHistoryPoints(snapshot) {
+  if (!Array.isArray(snapshot?.readings) || snapshot.readings.length === 0) return 0;
+  return Math.min(...snapshot.readings.map((reading) => (
+    Number.isFinite(reading?.historyPoints) ? reading.historyPoints : 0
+  )));
+}
+
+function physicalDivergencePriorHighWater(previousMeta) {
+  if (!previousMeta || typeof previousMeta !== 'object') return 0;
+  // History lists drop foreign-methodology points on read so a METHODOLOGY_VERSION
+  // bump can ramp cleanly. Reset the high-water with that drop — otherwise a
+  // prior full window keeps the probe degraded until the new methodology rebuilds
+  // every point (well past the operational 60-day threshold).
+  if (
+    typeof previousMeta.methodologyVersion === 'string'
+    && previousMeta.methodologyVersion !== METHODOLOGY_VERSION
+  ) {
+    return 0;
+  }
+  const fromMax = Number(previousMeta.maxHistoryPointsSeen);
+  if (Number.isFinite(fromMax) && fromMax >= 0) return fromMax;
+  // Pre-#7424 meta published minHistoryPoints without a high-water field. Carry
+  // that floor forward so a mid-ramp or peak deployment cannot re-baseline
+  // itself on the next tick. An already-trough publish (min already collapsed
+  // under old code) cannot recover the lost peak from meta alone — that needs
+  // a ramp-deadline gate or an operator-set high-water, which is out of scope.
+  const fromMin = Number(previousMeta.minHistoryPoints);
+  return Number.isFinite(fromMin) && fromMin >= 0 ? fromMin : 0;
+}
+
+export function physicalDivergenceMeta(snapshot, nowMs, previousMeta = null) {
   const stateCounts = { ok: 0, insufficient_history: 0, stale_input: 0, missing_input: 0 };
   for (const reading of snapshot?.readings ?? []) {
     if (Object.hasOwn(stateCounts, reading?.state)) stateCounts[reading.state] += 1;
   }
-  const sourceState = stateCounts.missing_input > 0
-    ? 'error'
-    : stateCounts.stale_input > 0 ? 'stale' : 'ok';
+  // Health gates read sourceState and inputFreshUntil. `insufficient_history`
+  // maps to 'ok' during the initial ~60-day ramp (depth is still accruing). A
+  // drop below the published high-water mark is the regression case that must
+  // turn the probe non-green: history keys carry no TTL, so eviction/deletion
+  // leaves every input clock fresh while the index can never print a value.
+  const minHistoryPoints = physicalDivergenceMinHistoryPoints(snapshot);
+  const maxHistoryPointsSeen = Math.max(
+    physicalDivergencePriorHighWater(previousMeta),
+    minHistoryPoints,
+  );
+  const historyRegressed = minHistoryPoints < maxHistoryPointsSeen;
+  const compositeReason = typeof snapshot?.composite?.reason === 'string'
+    ? snapshot.composite.reason.slice(0, 160)
+    : '';
+  let sourceState = 'ok';
+  let sourceReason = compositeReason;
+  if (stateCounts.missing_input > 0) {
+    sourceState = 'error';
+  } else if (stateCounts.stale_input > 0) {
+    sourceState = 'stale';
+  } else if (historyRegressed) {
+    sourceState = 'degraded';
+    sourceReason = `history_points_regressed:min=${minHistoryPoints}:max=${maxHistoryPointsSeen}`;
+  }
   return {
     fetchedAt: nowMs,
     recordCount: Array.isArray(snapshot?.readings) ? snapshot.readings.length : 0,
     methodologyVersion: METHODOLOGY_VERSION,
     sourceState,
-    sourceReason: typeof snapshot?.composite?.reason === 'string'
-      ? snapshot.composite.reason.slice(0, 160)
-      : '',
-    // Health gates read sourceState and inputFreshUntil, and `insufficient_history` maps to
-    // 'ok' on both (correctly — it is the expected state for the first ~60 print days).
-    // Publishing the window depth as well is what lets a probe tell "still ramping up" apart
-    // from "was working, history list is now gone", which is otherwise invisible: the
-    // history key carries no TTL, so a regression means eviction or deletion, and every
-    // clock stays fresh throughout.
-    minHistoryPoints: Array.isArray(snapshot?.readings) && snapshot.readings.length > 0
-      ? Math.min(...snapshot.readings.map((reading) => (
-        Number.isFinite(reading?.historyPoints) ? reading.historyPoints : 0
-      )))
-      : 0,
+    sourceReason,
+    minHistoryPoints,
+    maxHistoryPointsSeen,
     stateCounts,
     inputFreshUntil: physicalDivergenceInputFreshUntil(snapshot),
   };
@@ -415,6 +455,7 @@ export function physicalDivergencePublishCommand({
   nowMs,
   prefix = '',
   activate = prefix === '',
+  previousMeta = null,
 }) {
   const cooldownWrites = snapshot.transitions.map((transition) => ({
     key: `${prefix}market:physical-divergence-transition-cooldown:v1:${transition.metal}`,
@@ -436,7 +477,7 @@ export function physicalDivergencePublishCommand({
     String(keys.length),
     ...keys,
     JSON.stringify(snapshot),
-    JSON.stringify(physicalDivergenceMeta(snapshot, nowMs)),
+    JSON.stringify(physicalDivergenceMeta(snapshot, nowMs, previousMeta)),
     String(DIVERGENCE_TTL_SECONDS),
     String(TRANSITION_COOLDOWN_SECONDS),
     activate ? '1' : '0',
@@ -455,6 +496,7 @@ export async function publishPhysicalDivergenceDerivedData({
   if (!creds) throw nonRetryableError('Physical divergence publication requires Redis credentials');
 
   const divergenceKey = `${prefix}${PHYSICAL_DIVERGENCE_KEY}`;
+  const metaKey = `${prefix}${PHYSICAL_DIVERGENCE_META_KEY}`;
   const derivedCommand = (nextCreds, command) => (
     retryDerivedRedisCommand(nextCreds, command, commandFn, retryDelayFn)
   );
@@ -477,9 +519,13 @@ export async function publishPhysicalDivergenceDerivedData({
   const previousSnapshotPromise = derivedCommand(creds, ['GET', divergenceKey]).then((body) => (
     parseStoredJson(body, 'Prior physical divergence snapshot')
   ));
-  const [historyEntries, previousSnapshot] = await Promise.all([
+  const previousMetaPromise = derivedCommand(creds, ['GET', metaKey]).then((body) => (
+    parseStoredJson(body, 'Prior physical divergence seed meta')
+  ));
+  const [historyEntries, previousSnapshot, previousMeta] = await Promise.all([
     historyEntriesPromise,
     previousSnapshotPromise,
+    previousMetaPromise,
   ]);
   const histories = Object.fromEntries(historyEntries);
 
@@ -503,10 +549,11 @@ export async function publishPhysicalDivergenceDerivedData({
   });
   await derivedCommand(creds, physicalDivergencePublishCommand({
     divergenceKey,
-    metaKey: `${prefix}${PHYSICAL_DIVERGENCE_META_KEY}`,
+    metaKey,
     snapshot,
     nowMs,
     prefix,
+    previousMeta,
   }));
   return snapshot;
 }

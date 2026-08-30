@@ -159,11 +159,21 @@ export function resolveCountryCode(raw: unknown): string | null {
   if (!base || !inner) return resolveDesignator(base || inner);
 
   // Two sides that each NAME a different country make the input ambiguous, and
-  // this must be decided before recombination: the name map holds composite
-  // keys that are territorial claims rather than names (`morocco western
-  // sahara` -> MA), so `Western Sahara (Morocco)` would otherwise recombine
-  // onto Morocco and silently answer for the wrong country — the exact class
-  // this module exists to close, on a disputed territory.
+  // this must be decided before recombination: the name map once held
+  // composite keys that are territorial claims rather than names (`morocco
+  // western sahara` -> MA), so `Western Sahara (Morocco)` would otherwise
+  // recombine onto Morocco and silently answer for the wrong country — the
+  // exact class this module exists to close, on a disputed territory. That
+  // key is gone now (and a data invariant forbids new ones), but the gate
+  // still closes the same class for any future regeneration that slips one in.
+  //
+  // The gate and that invariant cover DIFFERENT halves of the class and
+  // neither subsumes the other: this gate only runs once the input has been
+  // split on a trailing parenthetical, so a bare composite (`Morocco Western
+  // Sahara`, or `Morocco / Western Sahara` — normalization folds `/` to a
+  // space) is answered by the step-1 exact lookup above and never reaches
+  // here. Removing the key is what makes those forms null; the gate is what
+  // makes `X (Y)` null. Both are pinned in tests/mcp-country-code-resolve.test.mts.
   //
   // Compare NAME-map hits only, never resolveDesignator: its bare alpha-2
   // passthrough makes a two-letter modifier like `DR` self-resolve, which would
@@ -180,8 +190,9 @@ export function resolveCountryCode(raw: unknown): string | null {
   // often a token lifted from the MIDDLE of the name, so `congo rep (dem)`
   // reassembles only as `congo dem rep` (CD) and appending it would have left
   // the answer at CG. Any exact key hit is that country by definition, and the
-  // one family of keys where that is not true — composite territorial claims
-  // like `morocco western sahara` — is already rejected by the gate above.
+  // one family of keys where that was not true — composite territorial claims
+  // like `morocco western sahara` — is rejected by the gate above (and barred
+  // from the shipped map by a data invariant).
   // Bounded work: the input is length-capped, so this is a handful of lookups.
   const baseTokens = normalizeCountryToken(base).split(' ').filter(Boolean);
   const innerToken = normalizeCountryToken(inner);

@@ -82,6 +82,10 @@ export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-30';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-30';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-30';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
+// Dataset schema version stamps Dataset JSON-LD shape changes. It must NOT
+// fold into every family's sitemap/page lastmod — that made ~90% of main
+// sitemap entries share one schema-bump date (#7382). Keep it for Dataset
+// dateModified only where a schema change actually lands in the payload.
 const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-30';
 const CRISIS_PAGE_CONTENT_VERSION = '2026-08-30';
 const TOOLS_PAGE_CONTENT_VERSION = '2026-08-30';
@@ -133,7 +137,7 @@ const CHOKEPOINT_CONTENT = {
     region: 'Persian Gulf ↔ Gulf of Oman',
     glossarySlug: 'strait-of-hormuz',
     blurb:
-      'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth: a very large share of the world’s seaborne crude oil and LNG has no alternative route out of the Gulf.',
+      'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth: about 20% of the world’s seaborne crude oil — and a large share of LNG — has no alternative route out of the Gulf.',
   },
   bab_el_mandeb: {
     region: 'Red Sea ↔ Gulf of Aden',
@@ -1235,7 +1239,6 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
-    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -1247,7 +1250,6 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     livePulse.capturedAt,
     CORPUS_GENERATOR_CONTENT_VERSION,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
-    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const toolsLastmod = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
@@ -1260,12 +1262,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     livePulse.capturedAt,
     CORPUS_GENERATOR_CONTENT_VERSION,
     CRISIS_PAGE_CONTENT_VERSION,
-    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
     CORPUS_GENERATOR_CONTENT_VERSION,
-    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
@@ -1358,6 +1358,39 @@ function breadcrumbLd(baseUrl, items) {
   };
 }
 
+function imageObjectLd(baseUrl, ogImage, ogImageAlt) {
+  return {
+    '@type': 'ImageObject',
+    contentUrl: absoluteUrl(baseUrl, ogImage),
+    url: absoluteUrl(baseUrl, ogImage),
+    width: 1200,
+    height: 630,
+    caption: ogImageAlt,
+    name: ogImageAlt,
+  };
+}
+
+const PAGE_TYPES_WITH_PRIMARY_IMAGE = new Set([
+  'WebPage',
+  'CollectionPage',
+  'ItemPage',
+]);
+
+function withPrimaryImage(entry, image) {
+  if (!entry || typeof entry !== 'object') return entry;
+  const type = entry['@type'];
+  const types = Array.isArray(type) ? type : [type];
+  if (!types.some((value) => PAGE_TYPES_WITH_PRIMARY_IMAGE.has(value))) {
+    return entry;
+  }
+  if (entry.primaryImageOfPage || entry.image) return entry;
+  return {
+    ...entry,
+    primaryImageOfPage: image,
+    image,
+  };
+}
+
 function pageDocument({
   baseUrl,
   path,
@@ -1380,12 +1413,17 @@ function pageDocument({
   robots = INDEXABLE_ROBOTS_CONTENT,
 }) {
   const canonical = absoluteUrl(baseUrl, path);
+  const pageImage = imageObjectLd(baseUrl, ogImage, ogImageAlt);
   // Allow a single JSON-LD object or an array of sibling graphs (e.g. WebPage
   // + FAQPage + ItemList for AI-extractable use-case workflows — #7381).
+  // Attach ImageObject to page-shaped graphs so multimodal crawlers see a
+  // primary image even when the HTML body is mostly text (#7382).
   const ld = [
     ...(Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : []),
     breadcrumbs,
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .map((entry) => withPrimaryImage(entry, pageImage));
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>
@@ -1434,6 +1472,8 @@ function pageDocument({
       a:hover { text-decoration: underline; }
       header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 20px; }
       header { padding-top: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+      .brand-mark { margin: 0 0 14px; }
+      .brand-mark img { display: block; width: 120px; height: 63px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); object-fit: cover; }
       nav { display: flex; gap: 4px 14px; flex-wrap: wrap; font-size: 14px; }
       nav a { display: inline-flex; align-items: center; min-height: 44px; }
       main { padding-top: 36px; padding-bottom: 52px; }
@@ -1499,6 +1539,9 @@ ${extraStyles}
   </head>
   <body${bodyClass ? ` class="${escapeHtml(bodyClass)}"` : ''}>
     <header>
+      <p class="brand-mark">
+        <img src="${escapeHtml(absoluteUrl(baseUrl, ogImage))}" alt="${escapeHtml(ogImageAlt)}" width="120" height="63" decoding="async" fetchpriority="low">
+      </p>
       <nav aria-label="Primary">
 ${renderedNav}
       </nav>
@@ -2165,7 +2208,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
           description: `A World Monitor maritime reference dataset for ${chokepoint.displayName}, with its position, connected waters, energy shock model support, and modelled trade-route corridors.`,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          dateModified: lastmod,
+          dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION),
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured: [
@@ -2373,7 +2416,10 @@ ${snapshotSection}
           description: datasetDescription,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          dateModified: hasPulse ? pulseDateOnly(pulse.asOf, lastmod) : lastmod,
+          dateModified: laterDate(
+            hasPulse ? pulseDateOnly(pulse.asOf, lastmod) : lastmod,
+            DATASET_SCHEMA_CONTENT_VERSION,
+          ),
           temporalCoverage: hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),

@@ -289,7 +289,6 @@ const COUNTRY_NAME_TO_ISO2 = Object.freeze({
   'montenegro': 'ME',
   'montserrat': 'MS',
   'morocco': 'MA',
-  'morocco western sahara': 'MA',
   'mozambique': 'MZ',
   'myanmar': 'MM',
   'namibia': 'NA',

@@ -13,7 +13,7 @@
 // Only the residue that truncates to something invalid ("" from a missing arg)
 // ever reached Sentry as an HTTP 400. The wrong-country answers were silent.
 //
-// These cases pin the resolution ladder, the two data invariants its ORDER
+// These cases pin the resolution ladder, the three data invariants its ORDER
 // rests on, agreement with the sibling CommonJS resolver, and — through the
 // real MCP handler — that the tools now send the resolved code downstream.
 
@@ -151,10 +151,32 @@ describe('resolveCountryCode — the ladder', () => {
     // and `China (Taiwan)` as CN. Ambiguous input must fail, not guess.
     assert.equal(resolveCountryCode('Congo (DRC)'), null);
     assert.equal(resolveCountryCode('China (Taiwan)'), null);
-    // The name map holds composite keys that are territorial CLAIMS, not names
-    // (`morocco western sahara` -> MA), so recombination alone would answer
-    // Morocco here. The disagreement gate must run first.
+    // The name map previously held a composite territorial-CLAIM key
+    // (`morocco western sahara` -> MA). Recombination alone would answer
+    // Morocco here. The disagreement gate must run first; the claim key was
+    // also dropped from the map (issue #7405), and a data invariant pins that.
     assert.equal(resolveCountryCode('Western Sahara (Morocco)'), null);
+  });
+
+  it('rejects every spelling of the retired Morocco/Western Sahara claim', () => {
+    // Dropping the composite key (issue #7405) was NOT behaviour-neutral, and
+    // the case above hides that: `Western Sahara (Morocco)` was already null
+    // before the removal, because its tokens are in the other order and never
+    // matched the key. These three DID change, MA -> null, because
+    // normalizeCountryToken folds `/`, `(` and `)` to spaces, so all three
+    // collapse onto the deleted key and used to win at step 1 of the ladder.
+    //
+    // `Morocco / Western Sahara` is the live label on rsf.org's country
+    // profile, so it is a plausible agent-supplied argument, not a synthetic
+    // one. Null is the intended answer — a disputed territory should not
+    // silently resolve to the claimant — but it is a decision, so pin it.
+    assert.equal(resolveCountryCode('Morocco / Western Sahara'), null);
+    assert.equal(resolveCountryCode('Morocco (Western Sahara)'), null);
+    assert.equal(resolveCountryCode('Morocco Western Sahara'), null);
+    // Guard: each half must still resolve on its own, or the assertions above
+    // would pass for the trivial reason that neither country is in the map.
+    assert.equal(resolveCountryCode('Morocco'), 'MA');
+    assert.equal(resolveCountryCode('Western Sahara'), 'EH');
   });
 
   it('still resolves a two-letter modifier that is not itself a country name', () => {
@@ -248,8 +270,30 @@ describe('resolveCountryCode — the ladder', () => {
   });
 });
 
-// The ladder's ORDER is only safe because of two properties of the shipped
-// data. If a future regeneration of country-names.json breaks either one, the
+/**
+ * Keys that split at a space into two halves which are BOTH names in the same
+ * map and resolve to DIFFERENT countries — the signature of a territorial
+ * claim rather than a country name. Extracted so the invariant below can prove
+ * the detector fires before asserting it finds nothing.
+ */
+function findClaimKeys(names: Record<string, string>): string[] {
+  const claimKeys = new Set<string>();
+  for (const key of Object.keys(names)) {
+    const tokens = key.split(' ');
+    for (let i = 1; i < tokens.length; i++) {
+      const left = tokens.slice(0, i).join(' ');
+      const right = tokens.slice(i).join(' ');
+      if (names[left] && names[right] && names[left] !== names[right]) {
+        claimKeys.add(key);
+        break;
+      }
+    }
+  }
+  return [...claimKeys].sort();
+}
+
+// The ladder's ORDER is only safe because of three properties of the shipped
+// data. If a future regeneration of country-names.json breaks any of them, the
 // order has to be revisited — so assert the properties, not just the outcomes.
 describe('data invariants the ladder order depends on', () => {
   it('the name map has exactly one two-character key, and it is uk', () => {
@@ -265,6 +309,45 @@ describe('data invariants the ladder order depends on', () => {
       .filter((row) => row.viaIso3 && row.viaIso3 !== row.iso2);
     assert.deepEqual(conflicts, [],
       'the name map wins over the alpha-3 map, so a disagreement would silently change which country resolves');
+  });
+
+  it('composite name keys that split into two different countries match the known allowlist', () => {
+    // A key that splits into two DISTINCT name-map countries is a territorial
+    // CLAIM, not a country name (`morocco western sahara` -> MA while both
+    // halves resolve on their own). Recombination's premise is that an exact
+    // hit names a single country; these keys break that. The disagreement gate
+    // does NOT cover this: it runs only inside the `X (Y)` branch, while a bare
+    // composite key is answered by the ladder's step-1 exact lookup and never
+    // reaches it. So the data property needs its own pin — a regen that adds
+    // another claim key would reopen a silent wrong-country path with every
+    // behavioural test still green.
+    //
+    // SCOPE (deliberate): this detects only TWO-SIDED claims, where both halves
+    // are themselves name-map keys. A one-sided composite whose modifier is not
+    // a key (`taiwan province china` — neither `taiwan province` nor `province
+    // china` is a key) slips through. Widening to any contiguous sub-run that is
+    // a key was measured and flags 17 legitimate qualifier names (`south sudan`,
+    // `papua new guinea`, `american samoa`, ...), so it would cost more than it
+    // catches. One-sided claims stay a human-review matter — which is why the
+    // alias table in scripts/build-country-names.cjs carries the explanation.
+    //
+    // Run over the MERGED map the resolver actually consults, not the raw JSON:
+    // NAME_TO_ISO2 layers EXTRA_ALIASES on top, and a check keyed on the JSON is
+    // blind by construction to exactly the entries that differ between them.
+    const { COUNTRY_NAME_TO_ISO2 } = require('../shared/country-name-to-iso2.cjs');
+
+    // Positive control FIRST: an empty result below proves nothing unless the
+    // detector demonstrably fires. Mirrors the `guard:` assertions this file
+    // already uses for the .cjs alias and alpha-3 checks.
+    assert.deepEqual(
+      findClaimKeys({ ...COUNTRY_NAME_TO_ISO2, 'morocco western sahara': 'MA' }),
+      ['morocco western sahara'],
+      'guard: the detector must flag a known claim key, or the assertion below is vacuous');
+
+    // Empty allowlist: the only prior claim key (`morocco western sahara` -> MA)
+    // earned nothing for resolution and was dropped with the generator alias.
+    assert.deepEqual(findClaimKeys(COUNTRY_NAME_TO_ISO2), [],
+      'a new composite claim key must be reviewed — do not silently reintroduce one');
   });
 });
 

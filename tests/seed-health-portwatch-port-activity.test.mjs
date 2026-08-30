@@ -237,6 +237,25 @@ test('seed-health enforces the physical-divergence input deadline after activati
   }
 });
 
+test('seed-health flags physical-divergence history regression while inputs stay fresh', async () => {
+  installSeedHealthPipelineMock(174, {
+    physicalDivergenceMeta: {
+      fetchedAt: TEST_NOW,
+      recordCount: 2,
+      sourceState: 'degraded',
+      sourceReason: 'history_points_regressed:min=5:max=80',
+      minHistoryPoints: 5,
+      maxHistoryPointsSeen: 80,
+      inputFreshUntil: TEST_NOW + 60_000,
+    },
+  });
+
+  const { body } = await readSeedHealth();
+  const entry = body.seeds['market:physical-divergence'];
+  assert.equal(entry.status, 'error');
+  assert.equal(entry.stale, true);
+});
+
 test('seed-health flags stale decision-critical PortWatch content separately from heartbeat', async () => {
   const now = TEST_NOW;
   installSeedHealthPipelineMock(174, {

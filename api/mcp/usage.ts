@@ -37,7 +37,11 @@ export type McpPhase =
   | 'billing'    // pre-check rejected with a billing-verification denial (#4770)
   | 'limit'      // per-minute rate limit or fail-closed free-tier limiter outage
   | 'dispatch'   // tools/call quota (429) / reservation unavailable (503)
-  | 'malformed'  // unparseable JSON-RPC envelope
+  // Unparseable JSON-RPC envelope (HTTP 200 + -32600) OR an over-cap request
+  // body rejected before parsing (HTTP 413 + -32600, #7406). Both map to
+  // `malformed_request`, matching server/gateway.ts's F14 convention for
+  // body-size rejections; the HTTP status on the same event separates them.
+  | 'malformed'
   | 'transport'  // method/SSE-transport level (405, replay 4xx)
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
 

@@ -11,6 +11,7 @@ description: "Every error shape the World Monitor MCP server emits — JSON-RPC 
   - JSON-RPC envelope helpers           api/mcp/rpc.ts (rpcOk, rpcError)
   - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
   - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
+  - Body-size cap -32600 (HTTP 413)     api/mcp/bounded-body.ts (readBoundedRequestBody) + api/mcp/body-limits.ts (MAX_JSON_RPC_BODY_BYTES)
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
   - Billing -32002 / -32603 denials     api/mcp/auth.ts (getMcpBillingVerificationDenial) + api/mcp/dispatch.ts (BillingDenialError re-emit)
   - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
@@ -51,7 +52,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 | `-32003`  | Required data inputs unavailable — the tool's upstream seeds could not be read | **200**            | Retryable; `error.data` names the unavailable/failed inputs           |
 | `-32004`  | SSE replay cursor not found — the resumed stream expired or landed on another instance | **404**    | Re-issue the original POST instead of resuming                        |
 | `-32029`  | Rate-limited — per-minute throttle, Pro daily cap, free-account allowance, OR anonymous free-tier ceiling | **200** (per-min) / **429** (daily, allowance, anon ceiling) | Honour `Retry-After`; for 200/per-min back off ~1s                    |
-| `-32600`  | Malformed JSON-RPC request envelope                                    | **200**                   | Fix the request encoder; this is a client bug                         |
+| `-32600`  | Malformed JSON-RPC request envelope, OR a request body over the 256 KiB cap | **200** (malformed) / **400** / **406** (SSE replay) / **413** (over cap) | Fix the request encoder for the malformed cases; for **413**, shrink the payload |
 | `-32601`  | Method not found                                                       | **200**                   | Use a method advertised in the initialize result's `capabilities`     |
 | `-32602`  | Invalid params — missing/unknown tool, prompt, or resource URI         | **200**                   | Fix the params; consult `tools/list`, `prompts/list`, or `resources/list` |
 | `-32603`  | Internal error — auth service / quota / tool execution failure         | **200** (tool) / **503** (infra) | Retry with backoff; if persistent, file an issue                      |
@@ -251,7 +252,9 @@ Paid-plan customers also receive account notices and bounded-cadence email when 
 
 ### `-32600` — Invalid request envelope
 
-Fires when the request body isn't valid JSON, isn't a JSON object, lacks a string `method` field, or carries an invalid `id` (a string `id` longer than 256 UTF-8 bytes is rejected with `Invalid request: invalid id`). The SSE-replay preconditions reuse the code at non-200 statuses: a replay `GET` without `Accept: text/event-stream` gets `-32600` at HTTP 406, and one without `Mcp-Session-Id` gets it at HTTP 400. Strictly a client encoder bug — well-formed JSON-RPC clients will never see this in production.
+Fires when the request body isn't valid JSON, isn't a JSON object, lacks a string `method` field, or carries an invalid `id` (a string `id` longer than 256 UTF-8 bytes is rejected with `Invalid request: invalid id`). The SSE-replay preconditions reuse the code at non-200 statuses: a replay `GET` without `Accept: text/event-stream` gets `-32600` at HTTP 406, and one without `Mcp-Session-Id` gets it at HTTP 400.
+
+The code is also reused at **HTTP 413** for a request body over the 256 KiB cap (`MAX_JSON_RPC_BODY_BYTES`). That case is **not** an encoder bug — a perfectly well-formed client hits it by sending an oversized `tools/call` argument, and because the body is rejected before parsing the server cannot echo your `id` (it is always `null`). Apart from the 413, this is strictly a client encoder bug that well-formed JSON-RPC clients will not see in production.
 
 ```json
 {
@@ -261,7 +264,7 @@ Fires when the request body isn't valid JSON, isn't a JSON object, lacks a strin
 }
 ```
 
-**What to do.** Audit the request encoder. The body must be a JSON object with a string `method` and (for any method besides `notifications/*`) an `id` field. If you see `-32600` from a known-good client library, file an issue against this server — it should never reach you.
+**What to do.** Check the HTTP status first. On **413**, shrink the request body below 256 KiB — trim the oversized `tools/call` argument, or page the work into smaller calls; do not retry the same payload. On **200/400/406**, audit the request encoder: the body must be a JSON object with a string `method` and (for any method besides `notifications/*`) an `id` field. If you see a non-413 `-32600` from a known-good client library, file an issue against this server — that case should never reach you.
 
 ### `-32601` — Method not found
 
@@ -365,6 +368,7 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 | **404** | JSON-RPC envelope         | `-32004`         | SSE replay cursor not found (stream expired or reconnect reached another instance). |
 | **405** | empty                     | n/a              | Request method outside `POST`/`GET`/`HEAD`/`OPTIONS`, or an SSE-flavoured `GET`/`HEAD` with no `Last-Event-ID` (no standalone server→client stream is offered). `Allow: POST, GET, HEAD, OPTIONS` header set. |
 | **406** | JSON-RPC envelope         | `-32600`         | SSE replay `GET` without `Accept: text/event-stream`. |
+| **413** | JSON-RPC envelope         | `-32600`         | Request body exceeds the 256 KiB JSON-RPC cap (`MAX_JSON_RPC_BODY_BYTES`). Rejected before `JSON.parse`, so `id` is always `null`. Shrink the payload — usually an oversized `tools/call` argument — and retry. |
 | **429** | JSON-RPC envelope         | `-32029`         | Pro daily cap, free-account allowance, anonymous free-tier ceiling, or pre-auth key-validation flood. `Retry-After` set (seconds-until-UTC-midnight for the daily/allowance cases). (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
 | **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, rate-limit backend fail-closed, or quota-reservation Redis failure (`Retry-After: 5`); OR renewal verification pending/failed (`X-Billing-Verification` set, dynamic `Retry-After` 1-60s). |
 

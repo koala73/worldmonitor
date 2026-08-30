@@ -41,7 +41,11 @@ for (const f of geojson.features) {
   }
 }
 
-// B. COUNTRY_ALIAS_MAP from _country-resolver.mjs (37 entries, hardcoded)
+// B. COUNTRY_ALIAS_MAP from _country-resolver.mjs (hardcoded). Not exported —
+// this module writes country-names.json at load, so a test that `require`d it
+// would regenerate the data it is asserting on. tests/country-resolver.test.mjs
+// instead parses these entries out of this file's source and asserts its parity
+// fixture covers every one, which is how the fixture's `u s` drift surfaced.
 const COUNTRY_ALIAS_MAP = {
   'bahamas the': 'BS',
   'cape verde': 'CV',
@@ -59,7 +63,14 @@ const COUNTRY_ALIAS_MAP = {
   'lao pdr': 'LA',
   'macao sar china': 'MO',
   'micronesia fed sts': 'FM',
-  'morocco western sahara': 'MA',
+  // Deliberately omitted: `morocco western sahara` is a territorial claim, not
+  // a country name — both halves already resolve on their own, and the key
+  // breaks recombination's "exact hit names one country" premise (issue #7405).
+  //
+  // Deleting a key HERE does not delete it from the shipped JSON: this script
+  // seeds `result` from country-names.json and only ever adds (see `add`), so
+  // the JSON is authoritative for removals and this table is additive-only.
+  // Both had to be edited to retire the key.
   'north macedonia': 'MK',
   'occupied palestinian territory': 'PS',
   'palestinian territories': 'PS',

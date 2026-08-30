@@ -923,6 +923,8 @@ export default defineConfig(({ mode }) => {
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
+  const emitPublicSourceMaps = process.env.WM_EMIT_SOURCEMAPS === '1'
+    || process.env.VERCEL_ENV === 'preview';
 
   return {
     html: {
@@ -1122,6 +1124,7 @@ export default defineConfig(({ mode }) => {
       format: 'es',
     },
     build: {
+      sourcemap: emitPublicSourceMaps,
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.

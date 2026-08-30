@@ -176,6 +176,34 @@ describe('a2a: JSON-RPC endpoint', () => {
     assert.equal((await wrong.json()).error.code, -32600);
   });
 
+  it('rejects an oversized JSON-RPC body before parsing (#7406)', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
+    const rpcBody = '{"jsonrpc":"2.0","id":1,"method":"message/send","params":{}}';
+    const oversized = `${rpcBody.slice(0, -1)}${' '.repeat(MAX_JSON_RPC_BODY_BYTES - rpcBody.length + 1)}}`;
+    assert.ok(
+      new TextEncoder().encode(oversized).byteLength > MAX_JSON_RPC_BODY_BYTES,
+      'fixture must exceed the shared body cap',
+    );
+
+    const res = await post(oversized);
+    assert.equal(res.status, 413, 'oversized bodies must be HTTP 413');
+    const body = await res.json();
+    assert.equal(body.id, null, 'a pre-parse reject cannot echo an id');
+    assert.equal(body.error.code, -32600);
+    assert.equal(body.error.data?.reason, 'body-too-large');
+    assert.equal(body.error.data?.maxBytes, MAX_JSON_RPC_BODY_BYTES);
+  });
+
+  it('accepts a JSON-RPC body at the exact byte cap (#7406)', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
+    const rpcBody = '{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{}}';
+    const atCap = `${rpcBody.slice(0, -1)}${' '.repeat(MAX_JSON_RPC_BODY_BYTES - rpcBody.length)}}`;
+    assert.equal(new TextEncoder().encode(atCap).byteLength, MAX_JSON_RPC_BODY_BYTES);
+
+    const res = await post(atCap);
+    assert.notEqual(res.status, 413, 'a body exactly at the cap must not be rejected');
+  });
+
   it('GET → 405 with Allow header; OPTIONS → 204 with CORS', async () => {
     const get = await handler(new Request('https://worldmonitor.app/a2a', { method: 'GET' }));
     assert.equal(get.status, 405);
