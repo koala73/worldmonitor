@@ -418,6 +418,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_intel_timeline',
     'get_mineral_production',
     'get_similar_events',
+    'list_five_factor_scorecards',
     'search_flight_prices_by_date',
     'search_flights',
     'search_intel_history',

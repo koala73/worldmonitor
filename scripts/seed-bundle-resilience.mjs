@@ -52,6 +52,17 @@ await runBundle('resilience', [
   // rather than being SIGTERM'd here, which the runner counts as a hard
   // failure. 480_000 leaves that bound 60s of publish headroom.
   { label: 'Food-Stocks', script: 'seed-food-stocks.mjs', seedMetaKey: 'resilience:food-stocks', intervalMs: 30 * DAY, timeoutMs: 480_000 },
+  // Redis-only source read + pure scoring. A read-only production-source dry
+  // run on 2026-08-29 built and validated 196 countries in 1.82s, producing a
+  // 3,716,740-byte snapshot (220,577,792-byte max RSS). The dry-run made no
+  // Redis write. Publication stages the projection in one bounded first batch
+  // plus parallel remainder batches, then atomically switches the canonical
+  // value and serving hash. 180s includes the 25s source deadline, Redis retry
+  // ceiling, freshness write, and process cleanup.
+  // It stays last: if Static or Food consumes the current tick, admission
+  // defers this daily section without starting it. On the next ordinary tick
+  // those long-cadence sections skip and the 180s reservation fits after Scores.
+  { label: 'Five-Factor-Scorecard', script: 'seed-five-factor-scorecard.mjs', seedMetaKey: 'scorecard:five-factor', intervalMs: DAY, timeoutMs: 180_000 },
 ], {
   // Railway kills the container at 10 minutes. The runner admits a section only
   // when `timeoutMs + KILL_GRACE_MS` still fits the remaining budget, so without

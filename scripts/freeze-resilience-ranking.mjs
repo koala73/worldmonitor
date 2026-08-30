@@ -437,6 +437,9 @@ async function main() {
   const snapshot = {
     capturedAt,
     source: `Live capture via ${RANKING_URL}`,
+    snapshotNote: METHODOLOGY_FORMULA === 'pillar-combined-penalized-v1'
+      ? `Post-P1-1 full-universe capture: pillar scores applied domain design weights inside pillar aggregation on ${capturedAt}.`
+      : `Historical full-universe capture using the ${METHODOLOGY_FORMULA} formula on ${capturedAt}.`,
     commitSha: commitSha(),
     schemaVersion: '2.0',
     methodologyFormula: METHODOLOGY_FORMULA,

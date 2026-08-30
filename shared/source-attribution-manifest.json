@@ -571,6 +571,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/user/passkey-offer.ts"
+        },
+        {
           "path": "server/auth-session.ts"
         }
       ]
@@ -7499,6 +7502,20 @@
       ]
     },
     {
+      "host": "registry.modelcontextprotocol.io",
+      "provider": "registry.modelcontextprotocol.io",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/publish-mcp-registry.mjs"
+        }
+      ]
+    },
+    {
       "host": "reliefweb.int",
       "provider": "reliefweb.int",
       "kind": "structured",
@@ -10031,7 +10048,13 @@
           "path": "scripts/notification-relay.cjs"
         },
         {
+          "path": "scripts/publish-mcp-registry.mjs"
+        },
+        {
           "path": "scripts/seed-digest-notifications.mjs"
+        },
+        {
+          "path": "scripts/seed-five-factor-scorecard.mjs"
         },
         {
           "path": "scripts/seed-hyperliquid-flow.mjs"
@@ -10114,6 +10137,9 @@
       "references": [
         {
           "path": "api/docs-mcp.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
         }
       ]
     },
@@ -14095,6 +14121,9 @@
         },
         {
           "path": "src/components/RuntimeConfigPanel.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
         },
         {
           "path": "src/config/variant-meta.ts"

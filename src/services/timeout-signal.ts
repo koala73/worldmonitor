@@ -49,6 +49,39 @@ export function createTimeoutSignal(ms: number): AbortSignal {
   return controller.signal;
 }
 
+/** Compose cancellation without assuming the Baseline 2024 AbortSignal.any API. */
+export function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
+  if (signals.length === 0) return new AbortController().signal;
+  if (signals.length === 1) return signals[0]!;
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
+    return AbortSignal.any(signals);
+  }
+  const controller = new AbortController();
+  const listeners = new Map<AbortSignal, () => void>();
+  const cleanup = (): void => {
+    for (const [signal, listener] of listeners) signal.removeEventListener('abort', listener);
+    listeners.clear();
+  };
+  const forward = (signal: AbortSignal): void => {
+    cleanup();
+    try {
+      controller.abort(signal.reason);
+    } catch {
+      controller.abort();
+    }
+  };
+  for (const signal of signals) {
+    if (signal.aborted) {
+      forward(signal);
+      break;
+    }
+    const listener = (): void => forward(signal);
+    listeners.set(signal, listener);
+    signal.addEventListener('abort', listener, { once: true });
+  }
+  return controller.signal;
+}
+
 /**
  * True for deadline/cancel outcomes from `createTimeoutSignal` / fetch abort.
  *

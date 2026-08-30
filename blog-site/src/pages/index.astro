@@ -95,10 +95,11 @@ const jsonLd = {
               />
             </picture>
           )}
-          <div class="tag">
-            {post.data.pinned && <span class="pin">Pinned</span>}
-            {post.data.audience}
-          </div>
+          {post.data.pinned && (
+            <div class="tag">
+              <span class="pin">Pinned</span>
+            </div>
+          )}
           <h2>{post.data.title}</h2>
           <p>{post.data.description}</p>
           <div class="meta">

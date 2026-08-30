@@ -51,7 +51,7 @@ function unusedNavigationResult(
 
 const unusedNavigationBindings: Pick<
   WebMcpAppBindings,
-  'switchMonitor' | 'openSettings' | 'openAlerts'
+  'switchMonitor' | 'openSettings' | 'openAlerts' | 'listMissionPresets' | 'applyMissionPreset' | 'openMissionPicker'
 > = {
   switchMonitor: async () => unusedNavigationResult('full', { navigation: 'none' }),
   openSettings: async () => unusedNavigationResult('settings', {
@@ -62,6 +62,43 @@ const unusedNavigationBindings: Pick<
     overlay: 'open',
     tab: 'notifications',
   }),
+  listMissionPresets: async () => ({
+    ok: true,
+    variant: 'full',
+    activePresetId: null,
+    presets: [],
+    count: 0,
+  }),
+  applyMissionPreset: async () => ({
+    ok: true,
+    status: 'applied',
+    presetId: 'supply-chain-risk',
+    label: 'Supply-Chain Risk',
+    changed: false,
+    monitor: 'full',
+    message: 'Unused mission preset binding.',
+  }),
+  openMissionPicker: async () => unusedNavigationResult('mission_picker', {
+    overlay: 'open',
+  }),
+};
+
+const unusedPanelLayoutBindings: Pick<
+  WebMcpAppBindings,
+  'getPanelLayout' | 'setPanelCollapsed' | 'movePanel' | 'setPanelFullscreen'
+> = {
+  getPanelLayout: async () => {
+    throw new Error('Unexpected panel layout read.');
+  },
+  setPanelCollapsed: async () => {
+    throw new Error('Unexpected panel layout mutation.');
+  },
+  movePanel: async () => {
+    throw new Error('Unexpected panel layout mutation.');
+  },
+  setPanelFullscreen: async () => {
+    throw new Error('Unexpected panel layout mutation.');
+  },
 };
 
 function commandMatch(id: string): SearchMatch {
@@ -475,6 +512,7 @@ describe('open_search_result rejects a caller-supplied effect class', () => {
       setPanelEnabled: async () => {
         throw new Error('Unexpected dashboard panel mutation.');
       },
+      ...unusedPanelLayoutBindings,
       applyDashboardTabAction: async () => {
         throw new Error('Unexpected dashboard tab action.');
       },

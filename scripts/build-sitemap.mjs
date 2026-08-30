@@ -288,7 +288,6 @@ export function buildSitemapEntries({
   requireCompleteCorpus = true,
   today = TODAY,
 } = {}) {
-  const existingLastmods = parseExistingSitemapLastmods(existingSitemapSource);
   const entries = STATIC_ROUTE_MANIFEST.map((manifestEntry) => {
     assertMaterialSourcesExist(repoRoot, manifestEntry);
     return {
@@ -314,7 +313,7 @@ export function buildSitemapEntries({
   for (const page of corpusPages) {
     entries.push({
       loc: page.loc,
-      lastmod: laterDate(page.lastmod, existingLastmods.get(page.loc)),
+      lastmod: page.lastmod,
       family: 'content-corpus',
       owner: 'root',
     });

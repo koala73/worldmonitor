@@ -1,4 +1,12 @@
 import { isKnownPublicPagePath, originNotFoundResponse } from './src/config/agent-not-found';
+import {
+  DOCS_UPSTREAM_ORIGIN,
+  DOCS_UPSTREAM_TIMEOUT_MS,
+  isDocsFullDocumentRequest,
+  isDocsHtmlDocumentPath,
+  rewriteDocsLocaleHtml,
+  shouldTransformDocsUpstreamHtml,
+} from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 
 const BOT_UA =
@@ -148,10 +156,6 @@ function clientAcceptsSse(request: Request): boolean {
   });
 }
 
-// HTML-escape a string for safe interpolation into BOTH text content and
-// double-quoted attribute values. Required because VARIANT_OG values are
-// hand-edited prose and a future double-quote, ampersand, or angle bracket
-// would otherwise close the attribute early or corrupt the document.
 function escHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -161,11 +165,59 @@ function escHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Query keys that create duplicate index entries without changing document identity. */
+const INDEX_NOISE_QUERY_KEYS = new Set([
+  'ref',
+  'wm_referral',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+]);
+
+function stripIndexNoiseQuery(url: URL): URL | null {
+  let changed = false;
+  const next = new URL(url);
+  for (const key of [...next.searchParams.keys()]) {
+    if (INDEX_NOISE_QUERY_KEYS.has(key) || key.toLowerCase().startsWith('utm_')) {
+      next.searchParams.delete(key);
+      changed = true;
+    }
+  }
+  return changed ? next : null;
+}
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+
+  // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380).
+  // Humans still receive the param so referral-capture / analytics can run;
+  // crawlers are 308'd to the clean canonical document URL.
+  if (
+    (request.method === 'GET' || request.method === 'HEAD') &&
+    !path.startsWith('/api/') &&
+    BOT_UA.test(ua)
+  ) {
+    const cleaned = stripIndexNoiseQuery(url);
+    if (cleaned) {
+      // Built by hand rather than via Response.redirect() so the response can
+      // carry Vary + no-store. This redirect is decided by User-Agent; a 308
+      // is cacheable by default (RFC 9110 §15.4.9). Without those headers a
+      // crawler can warm the tagged URL and a shared edge cache can replay
+      // the clean Location to a human, stripping `ref` before referral capture.
+      return new Response(null, {
+        status: 308,
+        headers: {
+          Location: cleaned.toString(),
+          Vary: 'User-Agent',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+  }
 
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
     const dashboardUrl = new URL(request.url);
@@ -179,6 +231,13 @@ export default function middleware(request: Request) {
       const canonicalUrl = new URL(docsDestination);
       canonicalUrl.search = url.search;
       return Response.redirect(canonicalUrl.toString(), 308);
+    }
+
+    // Mintlify rewrite cannot set zh-Hans <html lang> or reciprocal hreflang
+    // for /docs/zh/* (issue #7378). Proxy full-document HTML only — leave RSC
+    // flights and static assets on the direct Mintlify rewrite.
+    if (isDocsHtmlDocumentPath(path) && isDocsFullDocumentRequest(request)) {
+      return proxyDocsLocaleHtml(request, url);
     }
 
     // Real HTTP 404 for unknown pages. Agents get markdown (orank
@@ -335,6 +394,72 @@ export default function middleware(request: Request) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+}
+
+async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response> {
+  const upstreamUrl = `${DOCS_UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
+  const forwardHeaders = new Headers();
+  for (const name of ['accept', 'accept-language', 'user-agent', 'if-none-match', 'if-modified-since']) {
+    const value = request.headers.get(name);
+    if (value) forwardHeaders.set(name, value);
+  }
+  if (!forwardHeaders.has('user-agent')) {
+    forwardHeaders.set('user-agent', 'WorldMonitorDocsLocaleProxy/1.0');
+  }
+
+  let upstream: Response;
+  let html: string;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers: forwardHeaders,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(DOCS_UPSTREAM_TIMEOUT_MS),
+    });
+
+    // Pass through redirects / not-modified without rewriting.
+    if (upstream.status >= 300 && upstream.status < 400) {
+      return upstream;
+    }
+    if (upstream.status === 304 || request.method === 'HEAD') {
+      return upstream;
+    }
+
+    const contentType = upstream.headers.get('content-type');
+    if (!shouldTransformDocsUpstreamHtml(url.pathname, contentType)) {
+      return upstream;
+    }
+
+    html = await upstream.text();
+  } catch {
+    return new Response('Docs upstream unavailable', { status: 502 });
+  }
+
+  const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
+  const headers = new Headers(upstream.headers);
+  // Fetch already decoded the body; hop-by-hop / recomputed framing must not
+  // be forwarded onto the rewritten string response (Mintlify serves br).
+  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
+    headers.delete(name);
+  }
+  headers.set('x-wm-docs-locale-seo', '1');
+  // Ensure shared caches vary on the headers that select this proxy path.
+  const vary = headers.get('vary');
+  const varyParts = new Set(
+    (vary ? vary.split(',') : [])
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => part.toLowerCase()),
+  );
+  varyParts.add('accept');
+  varyParts.add('rsc');
+  headers.set('vary', [...varyParts].join(', '));
+
+  return new Response(rewritten, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers,
+  });
 }
 
 export const config = {

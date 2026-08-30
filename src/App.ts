@@ -170,12 +170,15 @@ import {
   type WebMcpExecutionOptions,
 } from '@/services/webmcp';
 import {
+  applyWebMcpMissionPreset,
   applyWebMcpOpenAlerts,
+  applyWebMcpOpenMissionPicker,
   applyWebMcpOpenSettings,
   applyWebMcpSwitchMonitor,
   getWebMcpDashboardContext,
   getWebMcpMapLayerCatalogSnapshot,
   listWebMcpDashboardPanels,
+  listWebMcpMissionPresets,
   WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '@/app/webmcp-dashboard';
@@ -941,6 +944,8 @@ export class App {
 
     const PANEL_ORDER_KEY = 'panel-order';
     const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
+    const PANEL_ORDER_MIGRATION_KEY = 'worldmonitor-panel-order-v1.9';
+    const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
 
     const isMobile = isMobileDevice();
     const isDesktopApp = isDesktopRuntime();
@@ -1000,6 +1005,8 @@ export class App {
       );
       // Load existing panel prefs (if any), disable panels not belonging to the new variant
       const newVariantKeys = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
+      const hadLegacyPanelLayoutState = localStorage.getItem(PANEL_ORDER_KEY) !== null
+        || localStorage.getItem(PANEL_SPANS_KEY) !== null;
       panelSettings = applyVariantPanelLayoutTransition({
         currentVariant,
         panelSettings: loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {}),
@@ -1024,6 +1031,17 @@ export class App {
           localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant);
         },
       });
+      if (
+        !hadLegacyPanelLayoutState
+        && localStorage.getItem(STORAGE_KEYS.panelLayoutVariant) === currentVariant
+      ) {
+        try {
+          localStorage.setItem(PANEL_ORDER_MIGRATION_KEY, 'done');
+          localStorage.setItem(LAYOUT_RESET_MIGRATION_KEY, 'done');
+        } catch {
+          // Blocked storage leaves the legacy migrations eligible for a later retry.
+        }
+      }
     } else {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
@@ -1136,7 +1154,6 @@ export class App {
       console.log('[App] Loaded panel settings from storage:', Object.entries(panelSettings).filter(([_, v]) => !v.enabled).map(([k]) => k));
 
       // One-time migration: reorder panels for existing users (v1.9 panel layout)
-      const PANEL_ORDER_MIGRATION_KEY = 'worldmonitor-panel-order-v1.9';
       if (!localStorage.getItem(PANEL_ORDER_MIGRATION_KEY)) {
         const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
         if (savedOrder) {
@@ -1208,7 +1225,6 @@ export class App {
       }
 
       // One-time migration: clear stale panel ordering and sizing state
-      const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
       if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {
         const hadSavedOrder = !!localStorage.getItem(PANEL_ORDER_KEY);
         const hadSavedSpans = !!localStorage.getItem(PANEL_SPANS_KEY);
@@ -2073,6 +2089,80 @@ export class App {
           }
         }
         return result;
+      },
+      listMissionPresets: async (query, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return listWebMcpMissionPresets(this.state, SITE_VARIANT, query, {
+          hasPremium: hasPremiumAccess(getAuthState()),
+          isPanelEntitled: (panelId) => {
+            const config = this.state.panelSettings[panelId]
+              ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
+            if (!config) return true;
+            return isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()));
+          },
+        });
+      },
+      applyMissionPreset: async (presetId, execution) => {
+        await this.waitForDashboardReady(true, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return applyWebMcpMissionPreset(this.state, SITE_VARIANT, presetId, {
+          hasPremium: hasPremiumAccess(getAuthState()),
+          isPanelEntitled: (panelId) => {
+            const config = this.state.panelSettings[panelId]
+              ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
+            if (!config) return true;
+            return isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()));
+          },
+          apply: (id) => this.eventHandlers.applyMissionPresetForWebMcp(id),
+        });
+      },
+      openMissionPicker: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpOpenMissionPicker(
+          this.state,
+          SITE_VARIANT,
+          () => this.eventHandlers.openMissionPresetPickerForWebMcp(),
+        );
+      },
+      getPanelLayout: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.getPanelLayoutSnapshot();
+      },
+      setPanelCollapsed: async (panelId, collapsed, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpSetPanelCollapsed(panelId, collapsed);
+      },
+      movePanel: async (panelId, region, index, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpMovePanel(panelId, region, index);
+      },
+      setPanelFullscreen: async (panelId, fullscreen, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpSetPanelFullscreen(panelId, fullscreen);
       },
       getAccessContext: async (execution) => {
         throwIfWebMcpAborted(execution?.signal);

@@ -1,4 +1,8 @@
 import { VARIANT_META, type VariantMeta } from './variant-meta';
+import {
+  VARIANT_SEO_PARAGRAPHS,
+  type VariantSeoKey,
+} from './variant-seo-summaries';
 
 // Variants that are served from their own worldmonitor.app subdomain by the
 // single web deployment (vercel.json host-based rewrites map
@@ -6,6 +10,38 @@ import { VARIANT_META, type VariantMeta } from './variant-meta';
 // Desktop/self-host variant builds are NOT in scope — they run
 // htmlVariantPlugin at build time with VITE_VARIANT set.
 export const WEB_DASHBOARD_VARIANTS = ['tech', 'finance', 'commodity', 'happy', 'energy'] as const;
+
+export function renderVariantSeoSummaryHtml(variant: VariantSeoKey): string {
+  const paragraphs = VARIANT_SEO_PARAGRAPHS[variant];
+  if (!paragraphs?.length) {
+    throw new Error(`[variant-dashboard-html] missing SEO paragraphs for "${variant}"`);
+  }
+  const body = paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join('\n      ');
+  return `<section class="app-seo-summary" aria-hidden="true">\n      ${body}\n    </section>`;
+}
+
+export function renderVariantNoscriptMainHtml(variant: VariantSeoKey, meta: VariantMeta): string {
+  const paragraphs = VARIANT_SEO_PARAGRAPHS[variant];
+  const about = paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join('\n        ');
+  return `<main id="dashboard-noscript" class="dashboard-noscript">
+        <h2>${escHtml(meta.siteName)} requires JavaScript for the live map</h2>
+        ${about}
+        <p>Visit the <a href="/">World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
+        <nav aria-label="${escHtml(meta.siteName)} references">
+          <ul>
+            <li><a href="/countries/">Country intelligence</a></li>
+            <li><a href="/chokepoints/">Maritime chokepoints</a></li>
+            <li><a href="/crises/">Crisis trackers</a></li>
+            <li><a href="/tools/">Live tools</a></li>
+            <li><a href="/research/">Research reports</a></li>
+            <li><a href="/blog/">Blog</a></li>
+            <li><a href="/docs">Documentation</a></li>
+            <li><a href="/pro#pricing">Pricing</a></li>
+            <li><a href="https://github.com/koala73/worldmonitor">GitHub</a></li>
+          </ul>
+        </nav>
+      </main>`;
+}
 
 export function variantDashboardFileName(variant: string): string {
   return `dashboard-${variant}.html`;
@@ -177,6 +213,25 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
 
   // Visually-hidden <h1> — the topic signal crawlers read on this page.
   html = replaceCounted(html, /(<h1 class="app-heading">)[^<]*(<\/h1>)/g, (_m, a, b) => `${a}${escHtml(meta.title)}${b}`, ONE, 'app-heading h1');
+
+  // Persistent SEO summary + noscript body (#7380): replace the full-dashboard
+  // differentiation copy with this variant's own paragraphs so shells are not
+  // near-duplicates. Summary sits outside #app so SPA hydration does not wipe it.
+  const seoKey = variant as VariantSeoKey;
+  html = replaceCounted(
+    html,
+    /<section class="app-seo-summary" aria-hidden="true">[\s\S]*?<\/section>/,
+    () => renderVariantSeoSummaryHtml(seoKey),
+    ONE,
+    'app-seo-summary',
+  );
+  html = replaceCounted(
+    html,
+    /<main id="dashboard-noscript" class="dashboard-noscript">[\s\S]*?<\/main>/,
+    () => renderVariantNoscriptMainHtml(seoKey, meta),
+    ONE,
+    'dashboard-noscript',
+  );
 
   return html;
 }

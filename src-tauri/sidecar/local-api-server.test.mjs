@@ -28,6 +28,9 @@ test('bundles the shared LLM health provider registry with the sidecar (#7126)',
 test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
   assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
   assert.equal(__testing__.isCloudPreferred('/api/military/v1/get-defense-industrial-base'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/get-five-factor-scorecard'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/get-bloc-scorecard'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/list-five-factor-scorecards'), true);
 });
 
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:

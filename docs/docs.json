@@ -118,6 +118,7 @@
                   "methodology/news-credibility",
                   "country-instability-index",
                   "methodology/country-resilience-index",
+                  "methodology/five-factor-scorecard",
                   "methodology/chokepoints",
                   "methodology/pipelines",
                   "methodology/storage",
@@ -468,7 +469,7 @@
         ]
       },
       {
-        "language": "zh-Hans",
+        "language": "zh",
         "navbar": {
           "links": [
             {
@@ -590,6 +591,7 @@
                   "zh/methodology/news-credibility",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
+                  "zh/methodology/five-factor-scorecard",
                   "zh/methodology/chokepoints",
                   "zh/methodology/pipelines",
                   "zh/methodology/storage",

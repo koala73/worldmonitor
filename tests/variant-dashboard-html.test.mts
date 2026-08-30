@@ -67,6 +67,20 @@ const fixture = `<!doctype html>
   </head>
   <body>
     <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
+    <section class="app-seo-summary" aria-hidden="true">
+      <p>Full dashboard SEO summary placeholder for transform tests.</p>
+    </section>
+    <noscript>
+      <main id="dashboard-noscript" class="dashboard-noscript">
+        <h2>The live dashboard requires JavaScript</h2>
+        <p>Full dashboard noscript placeholder.</p>
+        <nav aria-label="World Monitor references">
+          <ul>
+            <li><a href="/countries/">Country intelligence</a></li>
+          </ul>
+        </nav>
+      </main>
+    </noscript>
     <p>Link to <a href="${FULL.url}">the main dashboard</a> stays untouched.</p>
   </body>
 </html>`;
@@ -137,6 +151,16 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.deepEqual(webApp.featureList, finance.features);
     assert.deepEqual(webApp.publisher, { '@id': 'https://www.worldmonitor.app/#organization' });
     assert.deepEqual(webApp.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+  });
+
+  it('injects variant-specific SEO summary and noscript differentiation copy', () => {
+    const html = renderVariantDashboardHtml(fixture, 'tech');
+    assert.match(html, /<section class="app-seo-summary" aria-hidden="true">/);
+    assert.match(html, /Tech Monitor is the World Monitor variant/);
+    assert.match(html, /<main id="dashboard-noscript"/);
+    assert.match(html, /Tech Monitor requires JavaScript for the live map/);
+    assert.doesNotMatch(html, /Full dashboard SEO summary placeholder/);
+    assert.doesNotMatch(html, /Full dashboard noscript placeholder/);
   });
 
   it('leaves body links to the main dashboard untouched', () => {

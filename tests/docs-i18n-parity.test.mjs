@@ -54,10 +54,10 @@ const docs = JSON.parse(readFileSync(DOCS_JSON, 'utf8'));
 const languages = docs.navigation?.languages ?? [];
 
 const enLang = languages.find(l => l.language === 'en');
-const zhLang = languages.find(l => l.language === 'zh-Hans');
+const zhLang = languages.find(l => l.language === 'zh');
 
 if (!enLang) throw new Error('No "en" language in docs.json navigation.languages');
-if (!zhLang) throw new Error('No "zh-Hans" language in docs.json navigation.languages');
+if (!zhLang) throw new Error('No "zh" language in docs.json navigation.languages');
 
 // Collect English page paths (root-level, no prefix)
 const enPagesRaw = collectPagePaths(enLang);
@@ -71,8 +71,8 @@ const enPages = [...new Set(enPagesRaw)].filter(p =>
 );
 
 describe('docs i18n parity', () => {
-  it('zh-Hans language is registered in navigation.languages', () => {
-    assert.ok(zhLang, 'zh-Hans must be registered in navigation.languages');
+  it('zh language is registered in navigation.languages', () => {
+    assert.ok(zhLang, 'zh must be registered in navigation.languages');
   });
 
   it('en is the default (first) language', () => {
@@ -96,7 +96,7 @@ describe('docs i18n parity', () => {
     });
   }
 
-  it('every zh-Hans nav page path starts with zh/', () => {
+  it('every zh nav page path starts with zh/', () => {
     const zhPages = collectPagePaths(zhLang);
     const leaks = zhPages.filter(p =>
       typeof p === 'string' &&
@@ -106,7 +106,7 @@ describe('docs i18n parity', () => {
       !p.endsWith('.yaml') &&
       !p.endsWith('.json')
     );
-    assert.equal(leaks.length, 0, `zh-Hans nav has non-zh/-prefixed page paths: ${leaks.join(', ')}`);
+    assert.equal(leaks.length, 0, `zh nav has non-zh/-prefixed page paths: ${leaks.join(', ')}`);
   });
 
   it('zh carousel docs preserve the live route, renderer, page map, image size, and token gate', () => {
