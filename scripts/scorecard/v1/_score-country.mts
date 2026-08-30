@@ -77,6 +77,7 @@ export function scorePillar(
       insufficientReasons: uniqueReasons(reasons),
       includedMembers: [],
       excludedMembers: [],
+      memberWeights: [],
     };
   }
   const continuous = available.reduce(
@@ -96,6 +97,7 @@ export function scorePillar(
     insufficientReasons: [],
     includedMembers: [],
     excludedMembers: [],
+    memberWeights: [],
   };
 }
 

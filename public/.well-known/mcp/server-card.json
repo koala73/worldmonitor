@@ -342,7 +342,7 @@
     },
     {
       "name": "list_five_factor_scorecards",
-      "description": "List compact frozen v1 scorecard summaries for every country in the seeded cohort. Returns pillar scores, bands, coverage, and insufficient-data reasons without the full evidence ledger. Use get_five_factor_scorecard for source provenance and raw observations. Requires a WorldMonitor subscription.",
+      "description": "List compact v1 scorecards; read hasScore first because false makes numeric zero an insufficient-data placeholder. Returns bands, coverage, and insufficient-data reasons without the full evidence ledger. Use get_five_factor_scorecard for source provenance and raw observations. Requires a WorldMonitor subscription.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }

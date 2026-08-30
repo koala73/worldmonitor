@@ -597,6 +597,7 @@ curl -s https://worldmonitor.app/mcp \
 - **类型：** 同一个原子 `scorecard:five-factor:v1` 快照的紧凑投影。
 
 如需输入来源、原始观测或集团汇总，请使用 `get_five_factor_scorecard`。
+读取 `score` 或 `subScore` 前必须检查 `hasScore`。若 `hasScore` 为 false，两个数值零只是 protobuf 的数据不足占位符，并不表示韧性实测为零。
 
 ```bash
 curl -s https://worldmonitor.app/mcp \

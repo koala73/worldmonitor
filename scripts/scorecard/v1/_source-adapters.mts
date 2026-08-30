@@ -1,4 +1,5 @@
 import { SCORECARD_INPUT_REGISTRY } from './_input-registry.mts';
+import { SCORECARD_SOURCE_KEYS, type ScorecardSourceField } from './_source-registry.mts';
 import type {
   AvailableScorecardEvidence,
   CountryScorecardEvidence,
@@ -29,20 +30,31 @@ export type ScorecardSourceSnapshots = {
   powerLosses: unknown;
   importHhi: unknown;
   techByIso2: Record<string, unknown> | null;
+  sourceFreshness?: Partial<Record<ScorecardSourceField, {
+    status: 'fresh' | 'stale' | 'unknown';
+    detail?: string;
+    byCountry?: Record<string, {
+      status: 'fresh' | 'stale' | 'unknown';
+      detail?: string;
+    }>;
+  }>>;
 };
+
+export { SCORECARD_SOURCE_KEYS };
 
 const asRecord = (value: unknown): JsonRecord | null =>
   value != null && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null;
 
 const finite = (value: unknown): number | null => {
-  if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
-  const numeric = Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const numeric = Number(value.trim());
   return Number.isFinite(numeric) ? numeric : null;
 };
 
 const year = (value: unknown): number | null => {
-  const numeric = Number(value);
-  return Number.isInteger(numeric) && numeric >= 1900 && numeric <= 2200 ? numeric : null;
+  const numeric = finite(value);
+  return numeric != null && Number.isInteger(numeric) && numeric >= 1900 && numeric <= 2200 ? numeric : null;
 };
 
 function sourceUnavailable(inputId: ScorecardInputId, source: string): ScorecardEvidence {
@@ -60,6 +72,16 @@ function countryUnavailable(inputId: ScorecardInputId, source: string): Scorecar
     availability: 'unavailable',
     inputId,
     reason: 'country-unavailable',
+    source,
+    sourceKey: SCORECARD_INPUT_REGISTRY[inputId].sourceKey,
+  };
+}
+
+function invalidValue(inputId: ScorecardInputId, source: string): ScorecardEvidence {
+  return {
+    availability: 'unavailable',
+    inputId,
+    reason: 'invalid-value',
     source,
     sourceKey: SCORECARD_INPUT_REGISTRY[inputId].sourceKey,
   };
@@ -117,7 +139,7 @@ function oneObservation(
     unit: String(row.unit || SCORECARD_INPUT_REGISTRY[inputId].unit),
     source,
     ...(row.indicatorCode || indicatorCode ? { indicatorCode: String(row.indicatorCode || indicatorCode) } : {}),
-  }]);
+  }], asRecord(row._recovered) ? { quality: 'retained' } : {});
 }
 
 function readCountry(source: unknown, countryCode: string): JsonRecord | null {
@@ -127,7 +149,8 @@ function readCountry(source: unknown, countryCode: string): JsonRecord | null {
 }
 
 function parseMarketingYear(value: unknown): number | null {
-  const match = /^(\d{4})/.exec(String(value || ''));
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4})/.exec(value);
   return match ? year(match[1]) : null;
 }
 
@@ -149,9 +172,12 @@ function foodEvidence(countryCode: string, source: unknown): Pick<CountryScoreca
   let consumption = 0;
   let endingStocks = 0;
   let totalUse = 0;
-  let productionYear = 0;
-  let stocksYear = 0;
+  let productionYear: number | null = null;
+  let stocksYear: number | null = null;
   let observed = 0;
+  let stockObserved = 0;
+  let invalidProductionBalance = false;
+  let invalidStocksBalance = false;
   for (const [commodity, rawRecord] of Object.entries(asRecord(country.commodities) ?? {})) {
     const record = asRecord(rawRecord);
     const kcal = SCORECARD_COMMODITY_KCAL_PER_KG[commodity as keyof typeof SCORECARD_COMMODITY_KCAL_PER_KG];
@@ -162,37 +188,44 @@ function foodEvidence(countryCode: string, source: unknown): Pick<CountryScoreca
     const commodityExports = finite(record.exports) ?? 0;
     const commodityStocks = finite(record.endingStocks);
     if (commodityYear != null && commodityProduction != null && commodityConsumption != null) {
-      production += commodityProduction * kcal / 1000;
-      consumption += commodityConsumption * kcal / 1000;
       observed += 1;
-      productionYear = Math.max(productionYear, commodityYear);
+      productionYear = productionYear == null ? commodityYear : Math.min(productionYear, commodityYear);
+      if (commodityProduction < 0 || commodityConsumption <= 0) invalidProductionBalance = true;
+      else {
+        production += commodityProduction * kcal / 1_000_000;
+        consumption += commodityConsumption * kcal / 1_000_000;
+      }
     }
     if (commodityYear != null && commodityStocks != null && commodityConsumption != null) {
-      endingStocks += commodityStocks * kcal / 1000;
-      totalUse += (commodityConsumption + commodityExports) * kcal / 1000;
-      stocksYear = Math.max(stocksYear, commodityYear);
+      stockObserved += 1;
+      stocksYear = stocksYear == null ? commodityYear : Math.min(stocksYear, commodityYear);
+      if (commodityStocks < 0 || commodityConsumption < 0 || commodityExports < 0 || commodityConsumption + commodityExports <= 0) {
+        invalidStocksBalance = true;
+      } else {
+        endingStocks += commodityStocks * kcal / 1_000_000;
+        totalUse += (commodityConsumption + commodityExports) * kcal / 1_000_000;
+      }
     }
   }
-  if (observed === 0 || consumption <= 0 || productionYear === 0) {
-    return {
-      'food.productionBalance': countryUnavailable('food.productionBalance', 'USDA PSD / FAOSTAT'),
-      'food.stocksToUse': countryUnavailable('food.stocksToUse', 'USDA PSD / FAOSTAT'),
-    };
-  }
-  const productionObservations: SourceObservation[] = [
-    { name: 'calorieProduction', value: production, year: productionYear, unit: 'trillion kcal', source: 'USDA PSD / FAOSTAT' },
-    { name: 'calorieConsumption', value: consumption, year: productionYear, unit: 'trillion kcal', source: 'USDA PSD / FAOSTAT' },
-  ];
   return {
-    'food.productionBalance': available(
-      'food.productionBalance',
-      production / consumption,
-      productionYear,
-      'USDA PSD / FAOSTAT',
-      productionObservations,
-      { aggregation: { numerator: production, denominator: consumption, unit: 'trillion kcal' } },
-    ),
-    'food.stocksToUse': totalUse > 0 && stocksYear > 0
+    'food.productionBalance': invalidProductionBalance
+      ? invalidValue('food.productionBalance', 'USDA PSD / FAOSTAT')
+      : observed > 0 && consumption > 0 && productionYear != null
+      ? available(
+        'food.productionBalance',
+        production / consumption,
+        productionYear,
+        'USDA PSD / FAOSTAT',
+        [
+          { name: 'calorieProduction', value: production, year: productionYear, unit: 'trillion kcal', source: 'USDA PSD / FAOSTAT' },
+          { name: 'calorieConsumption', value: consumption, year: productionYear, unit: 'trillion kcal', source: 'USDA PSD / FAOSTAT' },
+        ],
+        { aggregation: { numerator: production, denominator: consumption, unit: 'trillion kcal' } },
+      )
+      : countryUnavailable('food.productionBalance', 'USDA PSD / FAOSTAT'),
+    'food.stocksToUse': invalidStocksBalance
+      ? invalidValue('food.stocksToUse', 'USDA PSD / FAOSTAT')
+      : stockObserved > 0 && totalUse > 0 && stocksYear != null
       ? available(
         'food.stocksToUse',
         endingStocks / totalUse,
@@ -214,12 +247,15 @@ function energyBalance(countryCode: string, source: unknown): ScorecardEvidence 
   if (!entry) return countryUnavailable('energy.productionBalance', 'OWID and World Bank');
   const consumption = finite(entry.primaryEnergyConsumptionTwh);
   const netImports = finite(entry.importShare);
-  const observationYear = year(entry.year);
-  if (consumption == null || !(consumption > 0) || netImports == null || observationYear == null) {
+  const observationYear = year(entry.balanceYear ?? entry.year);
+  if (entry.primaryEnergyConsumptionTwh == null || entry.importShare == null || (entry.balanceYear ?? entry.year) == null) {
     return countryUnavailable('energy.productionBalance', 'OWID and World Bank');
   }
+  if (consumption == null || !(consumption > 0) || netImports == null || observationYear == null) {
+    return invalidValue('energy.productionBalance', 'OWID and World Bank');
+  }
   const production = consumption * (1 - netImports / 100);
-  if (!(production >= 0)) return available('energy.productionBalance', Number.NaN, observationYear, 'OWID and World Bank', []);
+  if (!(production >= 0)) return invalidValue('energy.productionBalance', 'OWID and World Bank');
   return available(
     'energy.productionBalance',
     production / consumption,
@@ -253,17 +289,21 @@ function demographicsEvidence(countryCode: string, source: unknown): Partial<Rec
   const trainedMetric = asRecord(workforce.trainedIndustrialWorkforcePeople);
   const workingCurrent = finite(workingCurrentMetric?.value);
   const workingProjected = finite(workingProjectedMetric?.value);
-  const projectionYear = workingProjectedMetric?.year;
+  const workingCurrentYear = year(workingCurrentMetric?.year);
+  const projectionYear = year(workingProjectedMetric?.year);
   const trained = finite(trainedMetric?.value);
   const result: Partial<Record<ScorecardInputId, ScorecardEvidence>> = {
     'demographics.totalDependency': oneObservation('demographics.totalDependency', age.totalDependencyRatioPercent, 'totalDependencyRatioPercent', 'UN WPP'),
     'demographics.oldAgeDependency': oneObservation('demographics.oldAgeDependency', age.oldAgeDependencyRatioPercent, 'oldAgeDependencyRatioPercent', 'UN WPP'),
-    'demographics.workingAgeProjection': workingCurrent != null && workingCurrent > 0 && workingProjected != null
-      ? available('demographics.workingAgeProjection', workingProjected / workingCurrent, projectionYear, 'UN WPP', [
-        { name: 'workingAgePopulationPeople', value: workingCurrent, year: Number(workingCurrentMetric?.year), unit: 'people', source: String(workingCurrentMetric?.source || 'UN WPP') },
-        { name: 'workingAgePopulationProjected10yPeople', value: workingProjected, year: Number(projectionYear), unit: 'people', source: String(workingProjectedMetric?.source || 'UN WPP') },
-      ], { quality: 'derived' })
-      : countryUnavailable('demographics.workingAgeProjection', 'UN WPP'),
+    'demographics.workingAgeProjection': !workingCurrentMetric || !workingProjectedMetric
+      ? countryUnavailable('demographics.workingAgeProjection', 'UN WPP')
+      : workingCurrent == null || workingCurrent <= 0 || workingProjected == null || workingProjected < 0
+        || workingCurrentYear == null || projectionYear == null || projectionYear - workingCurrentYear !== 10
+        ? invalidValue('demographics.workingAgeProjection', 'UN WPP')
+        : available('demographics.workingAgeProjection', workingProjected / workingCurrent, workingCurrentYear, 'UN WPP', [
+          { name: 'workingAgePopulationPeople', value: workingCurrent, year: workingCurrentYear, unit: 'people', source: String(workingCurrentMetric.source || 'UN WPP') },
+          { name: 'workingAgePopulationProjected10yPeople', value: workingProjected, year: projectionYear, unit: 'people', source: String(workingProjectedMetric.source || 'UN WPP') },
+        ], { quality: 'derived' }),
     'demographics.tertiaryEnrollment': oneObservation('demographics.tertiaryEnrollment', education.tertiaryEnrollmentGrossPercent, 'tertiaryEnrollmentGrossPercent', 'World Bank', 'SE.TER.ENRR'),
     'demographics.researchersPerMillion': oneObservation('demographics.researchersPerMillion', education.researchersPerMillion, 'researchersPerMillion', 'World Bank', 'SP.POP.SCIE.RD.P6'),
     'demographics.stemGraduateShare': oneObservation('demographics.stemGraduateShare', education.stemGraduatesSharePercent, 'stemGraduatesSharePercent', 'World Bank'),
@@ -278,23 +318,26 @@ function demographicsEvidence(countryCode: string, source: unknown): Partial<Rec
     'technology.stemGraduateShare': oneObservation('technology.stemGraduateShare', education.stemGraduatesSharePercent, 'stemGraduatesSharePercent', 'World Bank'),
   };
   const stages = asRecord(sourceRecord?.stages);
-  const stageByInput: Partial<Record<ScorecardInputId, 'wpp' | 'education' | 'ilostat'>> = {
-    'demographics.totalDependency': 'wpp',
-    'demographics.oldAgeDependency': 'wpp',
-    'demographics.workingAgeProjection': 'wpp',
-    'demographics.tertiaryEnrollment': 'education',
-    'demographics.researchersPerMillion': 'education',
-    'demographics.stemGraduateShare': 'education',
-    'technology.researchersPerMillion': 'education',
-    'technology.stemGraduateShare': 'education',
-    'demographics.trainedIndustrialShare': 'ilostat',
-    'demographics.manufacturingEmploymentShare': 'ilostat',
+  type DemographicsStage = 'wpp' | 'education' | 'ilostat';
+  const stageDependenciesByInput: Partial<Record<ScorecardInputId, DemographicsStage[]>> = {
+    'demographics.totalDependency': ['wpp'],
+    'demographics.oldAgeDependency': ['wpp'],
+    'demographics.workingAgeProjection': ['wpp'],
+    'demographics.tertiaryEnrollment': ['education'],
+    'demographics.researchersPerMillion': ['education'],
+    'demographics.stemGraduateShare': ['education'],
+    'technology.researchersPerMillion': ['education'],
+    'technology.stemGraduateShare': ['education'],
+    'demographics.trainedIndustrialShare': ['wpp', 'ilostat'],
+    'demographics.manufacturingEmploymentShare': ['ilostat'],
   };
-  for (const [inputId, stageName] of Object.entries(stageByInput) as Array<[ScorecardInputId, 'wpp' | 'education' | 'ilostat']>) {
-    const status = String(asRecord(stages?.[stageName])?.status || '');
-    if (status === 'unavailable') {
-      result[inputId] = sourceUnavailable(inputId, stageName === 'wpp' ? 'UN WPP' : stageName === 'education' ? 'World Bank' : 'ILOSTAT');
-    } else if (status === 'retained' && result[inputId]?.availability === 'available') {
+  const stageSource = (stage: DemographicsStage): string =>
+    stage === 'wpp' ? 'UN WPP' : stage === 'education' ? 'World Bank' : 'ILOSTAT';
+  for (const [inputId, dependencies] of Object.entries(stageDependenciesByInput) as Array<[ScorecardInputId, DemographicsStage[]]>) {
+    const statuses = dependencies.map((stage) => String(asRecord(stages?.[stage])?.status || ''));
+    if (statuses.includes('unavailable')) {
+      result[inputId] = sourceUnavailable(inputId, dependencies.map(stageSource).join(' / '));
+    } else if (statuses.includes('retained') && result[inputId]?.availability === 'available') {
       result[inputId] = { ...result[inputId], quality: 'retained' };
     }
   }
@@ -328,7 +371,18 @@ function staticIndicator(record: unknown, indicatorCode: string): unknown {
   }
   const infrastructure = asRecord(values);
   const indicators = asRecord(infrastructure?.indicators);
-  return indicators?.[indicatorCode] ?? infrastructure?.[indicatorCode] ?? null;
+  const match = asRecord(indicators?.[indicatorCode] ?? infrastructure?.[indicatorCode]);
+  if (!match) return null;
+  const recovered = asRecord(infrastructure?._recovered);
+  return recovered ? { ...match, _recovered: recovered } : match;
+}
+
+function aquastatWaterStress(record: JsonRecord | null): ScorecardEvidence {
+  const aquastat = asRecord(record?.aquastat);
+  if (!aquastat || String(aquastat.indicator || '').trim().toLowerCase() !== 'water stress') {
+    return countryUnavailable('food.waterSecurity', 'World Bank AQUASTAT');
+  }
+  return oneObservation('food.waterSecurity', aquastat, 'waterStressPercent', 'World Bank AQUASTAT', 'ER.H2O.FWST.ZS');
 }
 
 function defenseEvidence(countryCode: string, source: unknown): Partial<Record<ScorecardInputId, ScorecardEvidence>> {
@@ -340,22 +394,32 @@ function defenseEvidence(countryCode: string, source: unknown): Partial<Record<S
   const importsMetric = asRecord(country.armsImportsTiv);
   const exportsValue = finite(exportsMetric?.value);
   const importsValue = finite(importsMetric?.value);
-  const totalTransfers = (exportsValue ?? 0) + (importsValue ?? 0);
-  const transferYear = Math.max(year(exportsMetric?.year) ?? 0, year(importsMetric?.year) ?? 0);
+  const exportsYear = year(exportsMetric?.year);
+  const importsYear = year(importsMetric?.year);
+  const alignedTransfers = exportsValue != null
+    && importsValue != null
+    && exportsYear != null
+    && importsYear != null
+    && exportsYear === importsYear;
+  const totalTransfers = alignedTransfers ? exportsValue + importsValue : 0;
   return {
     'defense.expenditureUsd': oneObservation('defense.expenditureUsd', country.expenditureUsd, 'expenditureUsd', 'World Bank', 'MS.MIL.XPND.CD'),
     'defense.expenditurePctGdp': oneObservation('defense.expenditurePctGdp', country.expenditurePctGdp, 'expenditurePctGdp', 'World Bank', 'MS.MIL.XPND.GD.ZS'),
     'defense.personnel': oneObservation('defense.personnel', country.personnel, 'personnel', 'World Bank', 'MS.MIL.TOTL.P1'),
-    'defense.industrialBalance': totalTransfers > 0 && transferYear > 0
-      ? available('defense.industrialBalance', (exportsValue ?? 0) / totalTransfers, transferYear, 'World Bank', [
-        { name: 'armsExportsTiv', value: exportsValue ?? 0, year: year(exportsMetric?.year) ?? transferYear, unit: 'SIPRI trend-indicator value', source: 'World Bank', indicatorCode: 'MS.MIL.XPRT.KD' },
-        { name: 'armsImportsTiv', value: importsValue ?? 0, year: year(importsMetric?.year) ?? transferYear, unit: 'SIPRI trend-indicator value', source: 'World Bank', indicatorCode: 'MS.MIL.MPRT.KD' },
+    'defense.industrialBalance': alignedTransfers && totalTransfers > 0
+      ? available('defense.industrialBalance', exportsValue / totalTransfers, exportsYear, 'World Bank', [
+        { name: 'armsExportsTiv', value: exportsValue, year: exportsYear, unit: 'SIPRI trend-indicator value', source: 'World Bank', indicatorCode: 'MS.MIL.XPRT.KD' },
+        { name: 'armsImportsTiv', value: importsValue, year: importsYear, unit: 'SIPRI trend-indicator value', source: 'World Bank', indicatorCode: 'MS.MIL.MPRT.KD' },
       ], { quality: 'derived' })
       : countryUnavailable('defense.industrialBalance', 'World Bank'),
   };
 }
 
-export function adaptCountryEvidence(countryCode: string, sources: ScorecardSourceSnapshots): CountryScorecardEvidence {
+export function adaptCountryEvidence(
+  countryCode: string,
+  sources: ScorecardSourceSnapshots,
+  asOfYear = new Date().getUTCFullYear(),
+): CountryScorecardEvidence {
   const inputs = Object.fromEntries(
     Object.keys(SCORECARD_INPUT_REGISTRY).map((inputId) => [
       inputId,
@@ -376,7 +440,7 @@ export function adaptCountryEvidence(countryCode: string, sources: ScorecardSour
 
   const staticRecord = asRecord(sources.staticByCountry?.[countryCode]);
   inputs['food.waterSecurity'] = sources.staticByCountry
-    ? oneObservation('food.waterSecurity', staticRecord?.aquastat, 'waterStressPercent', 'World Bank AQUASTAT', 'ER.H2O.FWST.ZS')
+    ? aquastatWaterStress(staticRecord)
     : sourceUnavailable('food.waterSecurity', 'World Bank AQUASTAT');
   inputs['technology.electricityAccess'] = sources.staticByCountry
     ? oneObservation('technology.electricityAccess', staticIndicator(staticRecord, 'EG.ELC.ACCS.ZS'), 'electricityAccessPercent', 'World Bank', 'EG.ELC.ACCS.ZS')
@@ -398,9 +462,34 @@ export function adaptCountryEvidence(countryCode: string, sources: ScorecardSour
     inputId: 'defense.supplierDiversity',
     reason: 'redistribution-blocked',
     source: 'SIPRI Arms Transfers Database',
-    sourceKey: 'military:arms-suppliers:v1',
+    sourceKey: SCORECARD_INPUT_REGISTRY['defense.supplierDiversity'].sourceKey,
     detail: 'Partner-facing redistribution is not approved for v1.',
   };
 
-  return { countryCode, population, inputs };
+  for (const inputId of Object.keys(SCORECARD_INPUT_REGISTRY) as ScorecardInputId[]) {
+    const evidence = inputs[inputId];
+    const definition = SCORECARD_INPUT_REGISTRY[inputId];
+    const sourceFreshnessEntry = definition.sourceField
+      ? sources.sourceFreshness?.[definition.sourceField]
+      : undefined;
+    const sourceFreshness = definition.sourceField === 'staticByCountry'
+      ? sourceFreshnessEntry?.byCountry?.[countryCode] ?? sourceFreshnessEntry
+      : sourceFreshnessEntry;
+    const staleByEnvelope = sourceFreshness?.status === 'stale';
+    const staleByObservation = evidence.availability === 'available'
+      && asOfYear - evidence.year > definition.maxAgeYears;
+    if (!staleByEnvelope && !staleByObservation) continue;
+    inputs[inputId] = {
+      availability: 'unavailable',
+      inputId,
+      reason: 'stale',
+      source: evidence.source,
+      sourceKey: evidence.sourceKey,
+      detail: staleByEnvelope
+        ? sourceFreshness?.detail || 'The source freshness contract expired.'
+        : `Observation year ${evidence.availability === 'available' ? evidence.year : 'unknown'} exceeds the frozen ${definition.maxAgeYears}-year age limit.`,
+    };
+  }
+
+  return { countryCode, inputs };
 }

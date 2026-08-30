@@ -121,11 +121,11 @@ generate: clean ## Generate code from proto definitions
 	@node scripts/openapi-inject-security.mjs
 	@node scripts/openapi-inject-company-monitoring-contract.mjs
 	@node scripts/apply-openapi-filter-param-schemas.mjs
+	@node scripts/openapi-inject-jmespath.mjs
 	@node scripts/openapi-inject-required.mjs
 	@node scripts/openapi-inject-examples.mjs
 	@node scripts/openapi-inject-servers.mjs
 	@node scripts/openapi-inject-deprecated.mjs
-	@node scripts/openapi-inject-jmespath.mjs
 	@node scripts/openapi-inject-webhooks.mjs
 	@node scripts/openapi-inject-idempotency.mjs
 	@node scripts/openapi-inject-rate-limit-errors.mjs

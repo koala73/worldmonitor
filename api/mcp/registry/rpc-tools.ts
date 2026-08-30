@@ -691,21 +691,44 @@ const DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA = {
   },
 };
 
+const SCORECARD_PILLAR_VALUES = ['food', 'energy', 'demographics', 'technology', 'defense'];
+const SCORECARD_BAND_VALUES = ['', 'severe-deficit', 'material-deficit', 'mixed-capability', 'strong-capability', 'high-capability'];
+const SCORECARD_AGGREGATION_VALUES = ['country-weighted-components', 'aggregate-physical-inputs', 'population-weighted-continuous-score'];
+const SCORECARD_EVIDENCE_REASON_VALUES = ['', 'source-unavailable', 'country-unavailable', 'invalid-value', 'stale', 'coverage-below-floor', 'required-group-missing', 'missing-population', 'redistribution-blocked'];
+const SCORECARD_REASON_VALUES = SCORECARD_EVIDENCE_REASON_VALUES.slice(1);
+const SCORECARD_TOP_LEVEL_REASON_VALUES = ['', 'country-unavailable', 'bloc-members-unavailable', 'scorecard-snapshot-unavailable'];
+
+const SCORECARD_OBSERVATION_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  required: ['name', 'value', 'year', 'unit', 'source', 'indicatorCode'],
+  description: 'One source-preserving raw observation used by the scorecard input.',
+  properties: {
+    name: { type: 'string' as const },
+    value: { type: 'number' as const },
+    year: { type: 'integer' as const, minimum: 1900, maximum: 2200, description: 'Source observation year.' },
+    unit: { type: 'string' as const },
+    source: { type: 'string' as const },
+    indicatorCode: { type: 'string' as const, description: 'Upstream indicator code when the source publishes one.' },
+  },
+};
+
 const SCORECARD_INPUT_OUTPUT_SCHEMA = {
   type: 'object' as const,
+  required: ['inputId', 'available', 'value', 'hasValue', 'year', 'unit', 'source', 'sourceKey', 'unavailableReason', 'quality', 'observations', 'countryCode'],
   description: 'One scorecard input. Read available and hasValue before value; an unavailable proto3 numeric field is zero.',
   properties: {
     inputId: { type: 'string' as const },
     available: { type: 'boolean' as const },
     value: { type: 'number' as const },
     hasValue: { type: 'boolean' as const },
-    year: { type: 'integer' as const },
+    year: { type: 'integer' as const, minimum: 0, maximum: 2200 },
     unit: { type: 'string' as const },
     source: { type: 'string' as const },
     sourceKey: { type: 'string' as const },
-    unavailableReason: { type: 'string' as const },
-    quality: { type: 'string' as const },
-    observations: { type: 'array' as const, items: { type: 'object' as const } },
+    unavailableReason: { type: 'string' as const, enum: SCORECARD_EVIDENCE_REASON_VALUES },
+    quality: { type: 'string' as const, enum: ['', 'observed', 'retained', 'derived'] },
+    observations: { type: 'array' as const, items: SCORECARD_OBSERVATION_OUTPUT_SCHEMA },
+    countryCode: { type: 'string' as const, pattern: '^(?:|[A-Z]{2})$', description: 'ISO-2 member identity on bloc evidence; empty for a country scorecard.' },
   },
 };
 
@@ -713,74 +736,72 @@ const SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA = {
   type: 'object' as const,
   required: ['countryCode', 'reason'],
   properties: {
-    countryCode: { type: 'string' as const },
-    reason: { type: 'string' as const },
+    countryCode: { type: 'string' as const, pattern: '^[A-Z]{2}$' },
+    reason: { type: 'string' as const, enum: SCORECARD_REASON_VALUES },
   },
 };
 
 const FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA = {
   type: 'object' as const,
+  required: ['unavailable', 'unavailableReason'],
+  oneOf: [
+    {
+      required: ['scorecard'],
+      properties: { unavailable: { const: false }, unavailableReason: { const: '' } },
+    },
+    {
+      properties: {
+        unavailable: { const: true },
+        unavailableReason: { enum: SCORECARD_TOP_LEVEL_REASON_VALUES.slice(1) },
+      },
+      not: { required: ['scorecard'] },
+    },
+  ],
   properties: {
     scorecard: {
       type: 'object' as const,
+      required: ['methodologyVersion', 'computedAt', 'pillars'],
+      oneOf: [
+        { required: ['countryCode'], not: { required: ['id'] } },
+        { required: ['id', 'label', 'members', 'includedMembers', 'excludedMembers'], not: { required: ['countryCode'] } },
+      ],
       properties: {
-        countryCode: { type: 'string' as const },
+        countryCode: { type: 'string' as const, pattern: '^[A-Z]{2}$' },
         id: { type: 'string' as const },
         label: { type: 'string' as const },
-        members: { type: 'array' as const, items: { type: 'string' as const } },
-        includedMembers: { type: 'array' as const, items: { type: 'string' as const } },
+        members: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' } },
+        includedMembers: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' } },
         excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA },
-        methodologyVersion: { type: 'string' as const },
-        computedAt: { type: 'string' as const },
+        methodologyVersion: { type: 'string' as const, const: '1.0.0' },
+        computedAt: { type: 'string' as const, format: 'date-time' },
         pillars: {
           type: 'array' as const,
           items: {
             type: 'object' as const,
+            required: ['pillar', 'hasScore', 'score', 'subScore', 'band', 'inputCoverage', 'aggregationMethod', 'insufficientReasons', 'includedMembers', 'excludedMembers', 'inputs', 'memberWeights'],
             properties: {
-              pillar: { type: 'string' as const },
+              pillar: { type: 'string' as const, enum: SCORECARD_PILLAR_VALUES },
               hasScore: { type: 'boolean' as const, description: 'Read before score and subScore.' },
-              score: { type: 'number' as const },
-              subScore: { type: 'number' as const },
-              band: { type: 'string' as const },
-              inputCoverage: { type: 'number' as const },
-              aggregationMethod: { type: 'string' as const },
-              insufficientReasons: { type: 'array' as const, items: { type: 'string' as const } },
-              includedMembers: { type: 'array' as const, items: { type: 'string' as const } },
+              score: { type: 'integer' as const, minimum: 0, maximum: 5 },
+              subScore: { type: 'number' as const, minimum: 0, maximum: 100 },
+              band: { type: 'string' as const, enum: SCORECARD_BAND_VALUES },
+              inputCoverage: { type: 'number' as const, minimum: 0, maximum: 1 },
+              aggregationMethod: { type: 'string' as const, enum: SCORECARD_AGGREGATION_VALUES },
+              insufficientReasons: { type: 'array' as const, items: { type: 'string' as const, enum: SCORECARD_REASON_VALUES } },
+              includedMembers: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' } },
               excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA },
               inputs: { type: 'array' as const, items: SCORECARD_INPUT_OUTPUT_SCHEMA },
-            },
-          },
-        },
-      },
-    },
-    unavailable: { type: 'boolean' as const },
-    unavailableReason: { type: 'string' as const },
-  },
-};
-
-const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    methodologyVersion: { type: 'string' as const },
-    computedAt: { type: 'string' as const },
-    scorecards: {
-      type: 'array' as const,
-      items: {
-        type: 'object' as const,
-        properties: {
-          countryCode: { type: 'string' as const },
-          pillars: {
-            type: 'array' as const,
-            items: {
-              type: 'object' as const,
-              properties: {
-                pillar: { type: 'string' as const },
-                hasScore: { type: 'boolean' as const },
-                score: { type: 'number' as const },
-                subScore: { type: 'number' as const },
-                band: { type: 'string' as const },
-                inputCoverage: { type: 'number' as const },
-                insufficientReasons: { type: 'array' as const, items: { type: 'string' as const } },
+              memberWeights: {
+                type: 'array' as const,
+                items: {
+                  type: 'object' as const,
+                  required: ['countryCode', 'populationMillions', 'hasPopulation'],
+                  properties: {
+                    countryCode: { type: 'string' as const, pattern: '^[A-Z]{2}$' },
+                    populationMillions: { type: 'number' as const, minimum: 0 },
+                    hasPopulation: { type: 'boolean' as const },
+                  },
+                },
               },
             },
           },
@@ -788,50 +809,64 @@ const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
       },
     },
     unavailable: { type: 'boolean' as const },
-    unavailableReason: { type: 'string' as const },
+    unavailableReason: { type: 'string' as const, enum: SCORECARD_TOP_LEVEL_REASON_VALUES },
   },
 };
 
-type FiveFactorListBody = {
-  methodologyVersion?: unknown;
-  computedAt?: unknown;
-  scorecards?: unknown;
-  unavailable?: unknown;
-  unavailableReason?: unknown;
+const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  required: ['methodologyVersion', 'computedAt', 'scorecards', 'unavailable', 'unavailableReason'],
+  oneOf: [
+    {
+      properties: {
+        unavailable: { const: false },
+        unavailableReason: { const: '' },
+        methodologyVersion: { const: '1.0.0' },
+      },
+    },
+    {
+      properties: {
+        unavailable: { const: true },
+        unavailableReason: { const: 'scorecard-snapshot-unavailable' },
+        methodologyVersion: { const: '' },
+        computedAt: { const: '' },
+        scorecards: { maxItems: 0 },
+      },
+    },
+  ],
+  properties: {
+    methodologyVersion: { type: 'string' as const, enum: ['', '1.0.0'] },
+    computedAt: { type: 'string' as const },
+    scorecards: {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        required: ['countryCode', 'pillars'],
+        properties: {
+          countryCode: { type: 'string' as const, pattern: '^[A-Z]{2}$' },
+          pillars: {
+            type: 'array' as const,
+            items: {
+              type: 'object' as const,
+              required: ['pillar', 'hasScore', 'score', 'subScore', 'band', 'inputCoverage', 'insufficientReasons'],
+              properties: {
+                pillar: { type: 'string' as const, enum: SCORECARD_PILLAR_VALUES },
+                hasScore: { type: 'boolean' as const, description: 'Read before score and subScore; false means both numeric fields are proto3 zero placeholders, not measured zero resilience.' },
+                score: { type: 'integer' as const, minimum: 0, maximum: 5 },
+                subScore: { type: 'number' as const, minimum: 0, maximum: 100 },
+                band: { type: 'string' as const, enum: SCORECARD_BAND_VALUES },
+                inputCoverage: { type: 'number' as const, minimum: 0, maximum: 1 },
+                insufficientReasons: { type: 'array' as const, items: { type: 'string' as const, enum: SCORECARD_REASON_VALUES } },
+              },
+            },
+          },
+        },
+      },
+    },
+    unavailable: { type: 'boolean' as const },
+    unavailableReason: { type: 'string' as const, enum: ['', 'scorecard-snapshot-unavailable'] },
+  },
 };
-
-function compactFiveFactorScorecardList(body: FiveFactorListBody) {
-  const scorecards = Array.isArray(body.scorecards) ? body.scorecards : [];
-  return {
-    methodologyVersion: typeof body.methodologyVersion === 'string' ? body.methodologyVersion : '',
-    computedAt: typeof body.computedAt === 'string' ? body.computedAt : '',
-    scorecards: scorecards.flatMap((entry) => {
-      if (!entry || typeof entry !== 'object') return [];
-      const scorecard = entry as Record<string, unknown>;
-      const pillars = Array.isArray(scorecard.pillars) ? scorecard.pillars : [];
-      return [{
-        countryCode: typeof scorecard.countryCode === 'string' ? scorecard.countryCode : '',
-        pillars: pillars.flatMap((entryPillar) => {
-          if (!entryPillar || typeof entryPillar !== 'object') return [];
-          const pillar = entryPillar as Record<string, unknown>;
-          return [{
-            pillar: typeof pillar.pillar === 'string' ? pillar.pillar : '',
-            hasScore: pillar.hasScore === true,
-            score: typeof pillar.score === 'number' ? pillar.score : 0,
-            subScore: typeof pillar.subScore === 'number' ? pillar.subScore : 0,
-            band: typeof pillar.band === 'string' ? pillar.band : '',
-            inputCoverage: typeof pillar.inputCoverage === 'number' ? pillar.inputCoverage : 0,
-            insufficientReasons: Array.isArray(pillar.insufficientReasons)
-              ? pillar.insufficientReasons.filter((reason): reason is string => typeof reason === 'string')
-              : [],
-          }];
-        }),
-      }];
-    }),
-    unavailable: body.unavailable === true,
-    unavailableReason: typeof body.unavailableReason === 'string' ? body.unavailableReason : '',
-  };
-}
 
 export const RPC_TOOLS: ToolDef[] = [
   {
@@ -1829,7 +1864,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_five_factor_scorecard',
-    _outputBudgetBytes: 524288,
+    _outputBudgetBytes: 1_048_576,
     description: 'Return the frozen v1 food, energy, demographics, technology, and defense scorecard for exactly one country or bloc. Select a country_code, one official preset, or a custom members list. Read every hasScore, available, and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a WorldMonitor subscription.',
     inputSchema: {
       type: 'object',
@@ -1854,6 +1889,11 @@ export const RPC_TOOLS: ToolDef[] = [
         },
       },
       required: [],
+      oneOf: [
+        { required: ['country_code'] },
+        { required: ['preset'] },
+        { required: ['members'] },
+      ],
     },
     outputSchema: FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1904,7 +1944,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'list_five_factor_scorecards',
     _outputBudgetBytes: 262144,
-    description: 'List compact frozen v1 scorecard summaries for every country in the seeded cohort. Returns pillar scores, bands, coverage, and insufficient-data reasons without the full evidence ledger. Use get_five_factor_scorecard for source provenance and raw observations. Requires a WorldMonitor subscription.',
+    description: 'List compact v1 scorecards; read hasScore first because false makes numeric zero an insufficient-data placeholder. Returns bands, coverage, and insufficient-data reasons without the full evidence ledger. Use get_five_factor_scorecard for source provenance and raw observations. Requires a WorldMonitor subscription.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     outputSchema: FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1917,7 +1957,7 @@ export const RPC_TOOLS: ToolDef[] = [
         signal: AbortSignal.timeout(8_000),
       });
       await assertToolFetchOk(res, 'list-five-factor-scorecards');
-      return compactFiveFactorScorecardList(await res.json() as FiveFactorListBody);
+      return res.json();
     },
     _apiPaths: [
       'GET /api/scorecard/v1/list-five-factor-scorecards',

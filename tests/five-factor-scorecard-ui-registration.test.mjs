@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
+import { combineAbortSignals } from '../src/services/timeout-signal.ts';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -73,6 +74,125 @@ describe('five-factor scorecard country UI registration (#6441)', () => {
       panel.close();
     } finally {
       harness.cleanup();
+    }
+  });
+
+  it('reacts to auth and entitlement changes while the scorecard is mounted', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: false, scorecardMode: 'deferred-ignore-abort' });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
+
+      harness.setPremiumAccess(true, 'auth');
+      await waitFor(() => harness.getPendingScorecards().length === 1);
+      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.loading/);
+
+      harness.setPremiumAccess(false, 'entitlement');
+      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
+      harness.resolveScorecard(0, {
+        unavailable: false,
+        unavailableReason: '',
+        scorecard: { countryCode: 'DE', methodologyVersion: '1.0.0', computedAt: '2026-08-29T00:00:00.000Z', pillars: [] },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('does not render a stale scorecard response after the selected country changes', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true, scorecardMode: 'deferred-ignore-abort' });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getPendingScorecards().length === 1);
+      panel.show('France', 'FR', null, {});
+      await waitFor(() => harness.getPendingScorecards().length === 2);
+      const response = (countryCode, source) => ({
+        unavailable: false,
+        unavailableReason: '',
+        scorecard: {
+          countryCode,
+          methodologyVersion: '1.0.0',
+          computedAt: '2026-08-29T00:00:00.000Z',
+          pillars: [{
+            pillar: 'energy', hasScore: true, score: 4, subScore: 70, band: 'strong-capability', inputCoverage: 1,
+            aggregationMethod: 'country-weighted-components', insufficientReasons: [],
+            inputs: [{ inputId: 'energy.productionBalance', available: true, value: 1, hasValue: true, year: 2024, unit: 'ratio', source, sourceKey: 'energy:mix:v1:_all', unavailableReason: '', quality: 'derived', observations: [] }],
+          }],
+        },
+      });
+      harness.resolveScorecard(0, response('DE', 'STALE-DE-SOURCE'));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.doesNotMatch(harness.getPanelRoot().textContent, /STALE-DE-SOURCE/);
+      harness.resolveScorecard(1, response('FR', 'CURRENT-FR-SOURCE'));
+      await waitFor(() => harness.getPanelRoot().textContent.includes('CURRENT-FR-SOURCE'));
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('suppresses expected abort errors and reports ordinary scorecard failures', async () => {
+    const aborted = await createCountryDeepDivePanelHarness({ premiumAccess: true, scorecardMode: 'deferred' });
+    try {
+      const panel = aborted.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => aborted.getPendingScorecards().length === 1);
+      panel.close();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(aborted.getSentryExceptions().length, 0);
+    } finally {
+      aborted.cleanup();
+    }
+
+    const failed = await createCountryDeepDivePanelHarness({ premiumAccess: true, scorecardMode: 'reject' });
+    try {
+      const panel = failed.createPanel();
+      panel.show('France', 'FR', null, {});
+      await waitFor(() => failed.getSentryExceptions().length === 1);
+      assert.match(failed.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.unavailable/);
+      panel.close();
+    } finally {
+      failed.cleanup();
+    }
+  });
+
+  it('turns a scorecard deadline into an unavailable state and observable failure', async () => {
+    const service = read('src/services/scorecard.ts');
+    assert.match(service, /SCORECARD_REQUEST_TIMEOUT_MS = 8_000/);
+    assert.match(service, /createTimeoutSignal\(timeoutMs\)/);
+    assert.match(service, /combineAbortSignals\(\[signal, timeoutSignal\]\)/);
+    assert.match(service, /return withScorecardDeadline\(/);
+
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true, scorecardMode: 'timeout' });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getSentryExceptions().length === 1);
+      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.unavailable/);
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('composes cancellation when the native AbortSignal.any helper is absent', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
+    try {
+      const lifecycle = new AbortController();
+      const entitlement = new AbortController();
+      const combined = combineAbortSignals([lifecycle.signal, entitlement.signal]);
+      entitlement.abort();
+      assert.equal(combined.aborted, true);
+      assert.doesNotMatch(read('src/components/CountryDeepDivePanel.ts'), /AbortSignal\.any\(\[signal, accessSignal\]\)/);
+    } finally {
+      if (descriptor) Object.defineProperty(AbortSignal, 'any', descriptor);
+      else delete AbortSignal.any;
     }
   });
 

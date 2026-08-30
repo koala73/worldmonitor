@@ -30,6 +30,7 @@ export interface FiveFactorPillar {
   insufficientReasons: string[];
   includedMembers: string[];
   excludedMembers: ExcludedBlocMember[];
+  memberWeights: ScorecardMemberWeight[];
 }
 
 export interface ScorecardEvidence {
@@ -44,6 +45,7 @@ export interface ScorecardEvidence {
   unavailableReason: string;
   quality: string;
   observations: ScorecardObservation[];
+  countryCode: string;
 }
 
 export interface ScorecardObservation {
@@ -60,15 +62,36 @@ export interface ExcludedBlocMember {
   reason: string;
 }
 
+export interface ScorecardMemberWeight {
+  countryCode: string;
+  populationMillions: number;
+  hasPopulation: boolean;
+}
+
 export interface ListFiveFactorScorecardsRequest {
 }
 
 export interface ListFiveFactorScorecardsResponse {
-  scorecards: FiveFactorCountryScorecard[];
+  scorecards: FiveFactorCountryScorecardSummary[];
   unavailable: boolean;
   unavailableReason: string;
   methodologyVersion: string;
   computedAt: string;
+}
+
+export interface FiveFactorCountryScorecardSummary {
+  countryCode: string;
+  pillars: FiveFactorPillarSummary[];
+}
+
+export interface FiveFactorPillarSummary {
+  pillar: string;
+  hasScore: boolean;
+  score: number;
+  subScore: number;
+  band: string;
+  inputCoverage: number;
+  insufficientReasons: string[];
 }
 
 export interface GetBlocScorecardRequest {

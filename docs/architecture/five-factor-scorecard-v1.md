@@ -46,7 +46,8 @@ upstream Redis snapshots
   -> closed SCORECARD_INPUT_REGISTRY evidence
   -> pure country scorer
   -> scorecard:five-factor:v1 (evidence + results)
-  -> country/list responses or pure on-demand bloc scorer
+  -> staged hash read model, atomically renamed into place
+  -> country/compact-list responses or pure on-demand bloc scorer
 ```
 
 The canonical snapshot is internal and versioned independently from the public
@@ -73,31 +74,54 @@ tagged availability state. It also contains the physical food and energy
 quantities and population required for bloc aggregation. Raw SIPRI transfer
 rows and undeclared upstream fields are forbidden.
 
-The scorecard API reads only this snapshot. It does not fan out to source keys.
-Country and list methods return stored results. Bloc methods use adjacent
-evidence from the same snapshot, aggregate physical values or population-weight
-continuous scores as the methodology specifies, and then apply the absolute
-bands.
+The scorecard API never fans out to source keys. Normal reads use the atomic
+Redis hash read model: one country field for a country request, requested
+country fields for a bloc, and a precomputed summary field for the list. A
+missing or malformed read model falls back to the full canonical snapshot.
+Bloc methods use adjacent evidence from the same cohort, aggregate physical
+values or population-weight continuous scores as the methodology specifies,
+and then apply the absolute bands.
 
 ## Module boundary
 
-The implementation lives under `server/worldmonitor/scorecard/v1/`:
+The shared scoring core lives under `scripts/scorecard/v1/` so the browser/API
+build and the measured Railway seeder package use one implementation:
 
 - `_types.ts`: evidence, result, snapshot, and scorer types.
 - `_input-registry.ts`: the closed `SCORECARD_INPUT_REGISTRY`.
 - `_methodology.ts`: version, goalposts, weights, floors, bands, and rounding.
 - `_source-adapters.ts`: upstream snapshots to declared evidence.
 - `_score-country.ts`: pure country scoring.
+- `_source-registry.ts`: the authoritative Redis source-key map.
+
+The server surface under `server/worldmonitor/scorecard/v1/` contains thin
+re-export bridges for the shared core, plus the runtime-only modules:
+
 - `_score-bloc.ts`: pure physical and population-weighted bloc scoring.
 - `_bloc-presets.ts`: versioned preset membership and custom-member validation.
-- `_snapshot.ts`: snapshot validation and canonical read.
+- `_read-snapshot.ts`: bounded read-model reads and canonical fallback.
 - `_response.ts`: internal result to generated response conversion.
 - handler modules: country, list, and bloc RPC methods.
 
-The seeder batch-reads the upstream Redis keys and publishes the complete next
-snapshot with one canonical `SET` through `runSeed`. A read, adaptation,
-validation, or publish failure leaves the previous canonical snapshot intact.
-Health uses `seed-meta:scorecard:five-factor`.
+The Railway service watches and packages both roots explicitly; the bridge
+keeps Edge handlers inside the server import boundary without copying scorer
+logic.
+
+The seeder batch-reads the upstream Redis keys and validates the complete next
+snapshot. Before canonical publish it writes a unique, expiring staging hash.
+One idempotent Lua command sets the canonical envelope, renames the staged hash,
+and applies both TTLs. No reader can observe a canonical cohort and serving
+projection from different runs. A read, adaptation, validation, staging, or
+atomic-switch failure leaves the previous canonical and read model intact.
+Failure preservation extends both keys. Hash readers fall back to canonical if
+any requested field declared by the cohort metadata is missing or malformed.
+That multi-megabyte fallback uses the bounded five-second Redis body-read path
+and one five-minute in-process last-good slot instead of the generic 1.5-second
+small-value deadline. Read-model metadata is validated as a sorted, unique
+ISO-2 cohort list.
+Health uses population-evidence, scoreable-country, and per-pillar coverage floors from
+`seed-meta:scorecard:five-factor` and directly checks that the live read-model
+hash still has its metadata field; the full canonical value remains the last-good fallback.
 
 ## Invariants
 
@@ -108,6 +132,8 @@ Health uses `seed-meta:scorecard:five-factor`.
 - Every stored result equals a fresh pure-scorer result from its adjacent
   evidence.
 - The serialized snapshot remains below the repository's 5 MB seed limit.
+- Observation freshness and scoreable-country publication floors are frozen
+  parts of methodology 1.0.0.
 - The persistence schema is never exposed directly through protobuf or MCP.
 - Unsupported snapshot, registry, or methodology versions fail explicitly.
 - CRI seeded inputs and output bytes are not modified by this feature.
@@ -125,6 +151,7 @@ one depends on the other for v1 delivery.
 
 The snapshot duplicates the small set of adapted evidence beside derived
 results. This is deliberate: a single value is auditable, supports arbitrary
-blocs without live source fan-out, and is an atomic rollback unit. If measured
-payload size later exceeds the hard limit, a versioned pointer transaction can
-split evidence and results. V1 does not add that complexity without evidence.
+blocs without live source fan-out, and is an atomic rollback unit. The measured
+3.7 MB cohort made full-value reads too expensive for country and compact-list
+requests, so the hash read model provides narrow fields without weakening the
+canonical last-good unit.

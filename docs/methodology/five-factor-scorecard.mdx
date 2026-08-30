@@ -15,6 +15,7 @@ Resilience Index (CRI), or a replacement for either one.
 - **Input registry:** `1.0.0`
 - **Stored schema:** `1`
 - **Canonical snapshot:** `scorecard:five-factor:v1`
+- **Atomic read model:** `scorecard:five-factor:v1:read-model`
 - **Seed health:** `seed-meta:scorecard:five-factor`
 
 Every result carries its methodology version and computation time. A change to
@@ -36,8 +37,10 @@ goalposts below. Values outside a goalpost are clamped. The scorer then:
    respectively. Rounding never changes a band.
 
 Unavailable inputs do not receive a neutral score and do not enter the weighted
-mean. A pillar below its floor has `hasScore=false`, `score=null`,
-`subScore=null`, and one or more explicit reasons.
+mean. Internally, a pillar below its floor has `hasScore=false`, `score=null`,
+`subScore=null`, and one or more explicit reasons. Protobuf JSON keeps numeric
+fields present as zero; API and MCP clients must read `hasScore` first because
+those zeros are insufficient-data placeholders, not measured zero resilience.
 
 ### Absolute bands
 
@@ -68,12 +71,31 @@ Each evidence item is a tagged available/unavailable record. Available evidence
 includes input ID, value, year, unit, source, and source key. A retained
 last-good upstream observation stays available and carries `quality=retained`.
 
+### Freshness and publication floors
+
+V1 applies observation-age limits before scoring. Population, food-balance,
+food-stock, and age-structure inputs allow at most 3 years; physical energy
+balance allows 4; low-carbon generation, trade diversity, workforce, and
+defense allow 5; all other annual inputs allow 7. The boundary year is
+inclusive. An expired source content-age envelope also makes its declared
+inputs `stale` even when the stored values remain readable.
+
+A daily cohort replaces last-good only when at least 180 countries have one
+scoreable pillar, at least 150 have usable population evidence, and the
+scoreable-country counts meet these frozen floors: food 80, energy 120,
+demographics 150, technology 120, and defense 30. The
+floors were set from the 196-country production-source audit with headroom for
+normal source coverage. Health publishes population and the five pillar counts separately. A
+partial source outage cannot refresh health or replace a richer cohort.
+
 ## Food
 
 Food measures the ability to meet caloric use from production and stocks. It
 uses commodity production, consumption, ending stocks, and use from
-`resilience:food-stocks:v1`. Tonnes are converted to calorie-equivalent units
-with the seeder's frozen commodity conversion table before aggregation.
+`resilience:food-stocks:v1`. Source quantities in thousand metric tonnes are
+converted to trillion kcal as `thousand metric tonnes * kcal/kg / 1,000,000`
+with the frozen commodity conversion
+table before aggregation.
 
 | Component | Weight | Direction and goalposts | Input source |
 |---|---:|---|---|
@@ -186,7 +208,7 @@ already derived supplier HHI, that component is explicitly unavailable with
 | Military expenditure, USD | 0.20 | higher, log scale; `$100m -> 0`, `$100bn -> 100` |
 | Military expenditure, % GDP | 0.15 | higher; `0.5% -> 0`, `5% -> 100` |
 | Armed forces personnel | 0.15 | higher, log scale; `10,000 -> 0`, `1,000,000 -> 100` |
-| Arms export share of transfers | 0.30 | higher; `0 -> 0`, `1 -> 100`; exports / (exports + imports) |
+| Arms export share of transfers | 0.30 | higher; `0 -> 0`, `1 -> 100`; same-year exports / (exports + imports) |
 | Supplier diversity | 0.20 | lower HHI; `0.65 -> 0`, `0.15 -> 100` |
 
 Coverage floor: **0.50**. At least one posture input (spending or personnel)
@@ -199,6 +221,10 @@ and the arms-transfer industrial-balance input are required.
 Bloc defense is the population-weighted mean of member unrounded continuous
 defense sub-scores. Supplier diversity remains unavailable while the policy
 block applies.
+
+The industrial balance is available only when both exports and imports are
+explicit finite observations from the same year. A missing side is never
+coerced to zero; an explicit measured zero remains valid.
 
 ## Bloc rules
 
@@ -230,3 +256,5 @@ population-weight continuous scores. No bloc formula averages country bands.
 - Added source-safe evidence provenance and an explicit SIPRI redistribution
   block.
 - Defined current preset and custom bloc validation contracts.
+- Froze per-input evidence ages and per-pillar publication floors; stale or
+  coverage-collapsed cohorts preserve the prior last-good snapshot.

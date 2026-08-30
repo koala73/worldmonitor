@@ -67,6 +67,7 @@ export interface AvailableScorecardEvidence {
     denominator: number;
     unit: string;
   };
+  countryCode?: string;
 }
 
 export interface UnavailableScorecardEvidence {
@@ -76,13 +77,13 @@ export interface UnavailableScorecardEvidence {
   source: string;
   sourceKey: string;
   detail?: string;
+  countryCode?: string;
 }
 
 export type ScorecardEvidence = AvailableScorecardEvidence | UnavailableScorecardEvidence;
 
 export interface CountryScorecardEvidence {
   countryCode: string;
-  population: ScorecardEvidence;
   inputs: Record<ScorecardInputId, ScorecardEvidence>;
 }
 
@@ -103,6 +104,21 @@ export interface PillarResult {
   insufficientReasons: EvidenceUnavailableReason[];
   includedMembers: string[];
   excludedMembers: Array<{ countryCode: string; reason: EvidenceUnavailableReason }>;
+  memberWeights: Array<{ countryCode: string; populationMillions: number | null }>;
+}
+
+export interface CountryScorecardSummary {
+  countryCode: string;
+  pillars: Record<ScorecardPillar, Pick<PillarResult, 'hasScore' | 'score' | 'subScore' | 'band' | 'inputCoverage' | 'insufficientReasons'>>;
+}
+
+export interface FiveFactorReadModelMetadata {
+  schemaVersion: typeof SCORECARD_SNAPSHOT_SCHEMA_VERSION;
+  methodologyVersion: '1.0.0';
+  inputRegistryVersion: '1.0.0';
+  computedAt: string;
+  sourceStates: Record<string, ScorecardSourceState>;
+  countryCodes: string[];
 }
 
 export interface CountryScorecardResult {
@@ -122,7 +138,7 @@ export interface BlocScorecardResult {
 }
 
 export type ScorecardSourceState = {
-  status: 'available' | 'unavailable';
+  status: 'available' | 'unavailable' | 'stale';
   sourceKey: string;
   detail?: string;
 };

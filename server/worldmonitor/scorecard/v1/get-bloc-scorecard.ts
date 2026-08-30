@@ -26,44 +26,47 @@ export async function getBlocScorecardWithReader(
       description: error instanceof Error ? error.message : 'Invalid scorecard bloc selection.',
     }]);
   }
+  let snapshotValue: unknown;
   try {
-    const snapshot = asFiveFactorSnapshot(await reader());
-    if (!snapshot) {
-      return markNoStoreFallbackResponse(ctx.request, {
-        unavailable: true,
-        unavailableReason: 'scorecard-snapshot-unavailable',
-      });
-    }
-    const missingMembers = selection.members
-      .filter((countryCode) => snapshot.countries[countryCode] == null)
-      .map((countryCode) => ({ countryCode, reason: 'country-unavailable' as const }));
-    const members = selection.members
-      .map((countryCode) => snapshot.countries[countryCode]?.evidence)
-      .filter((evidence): evidence is CountryScorecardEvidence => evidence != null);
-    if (members.length < 2) {
-      return markNoStoreFallbackResponse(ctx.request, {
-        unavailable: true,
-        unavailableReason: 'bloc-members-unavailable',
-      });
-    }
-    const result = scoreBloc({
-      id: selection.id,
-      label: selection.label,
-      members,
-      requestedMembers: selection.members,
-      unavailableMembers: missingMembers,
-    });
-    return {
-      scorecard: toPublicBlocScorecard(result, snapshot.computedAt),
-      unavailable: false,
-      unavailableReason: '',
-    };
-  } catch {
+    snapshotValue = await reader(selection.members);
+  } catch (error) {
+    console.warn('[scorecard] snapshot read failed operation=get-bloc-scorecard', error instanceof Error ? error.message : 'unknown');
     return markNoStoreFallbackResponse(ctx.request, {
       unavailable: true,
       unavailableReason: 'scorecard-snapshot-unavailable',
     });
   }
+  const snapshot = asFiveFactorSnapshot(snapshotValue);
+  if (!snapshot) {
+    return markNoStoreFallbackResponse(ctx.request, {
+      unavailable: true,
+      unavailableReason: 'scorecard-snapshot-unavailable',
+    });
+  }
+  const missingMembers = selection.members
+    .filter((countryCode) => snapshot.countries[countryCode] == null)
+    .map((countryCode) => ({ countryCode, reason: 'country-unavailable' as const }));
+  const members = selection.members
+    .map((countryCode) => snapshot.countries[countryCode]?.evidence)
+    .filter((evidence): evidence is CountryScorecardEvidence => evidence != null);
+  if (members.length < 2) {
+    return markNoStoreFallbackResponse(ctx.request, {
+      unavailable: true,
+      unavailableReason: 'bloc-members-unavailable',
+    });
+  }
+  const result = scoreBloc({
+    id: selection.id,
+    label: selection.label,
+    members,
+    requestedMembers: selection.members,
+    unavailableMembers: missingMembers,
+  });
+  return {
+    scorecard: toPublicBlocScorecard(result, snapshot.computedAt),
+    unavailable: false,
+    unavailableReason: '',
+  };
 }
 
 export const getBlocScorecard: ScorecardServiceHandler['getBlocScorecard'] = (ctx, req) =>

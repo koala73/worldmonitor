@@ -40,6 +40,9 @@ COPY scripts/_opensky-account-cooldown.cjs ./scripts/_opensky-account-cooldown.c
 # Shared ingestion outcome/cooldown helpers imported by ais-relay.cjs.
 COPY scripts/_ingestion-coverage.cjs ./scripts/_ingestion-coverage.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+# Source-preserving World Bank technology observations are assembled in the
+# relay and imported at startup by ais-relay.cjs.
+COPY scripts/_wb-tech-readiness-projection.cjs ./scripts/_wb-tech-readiness-projection.cjs
 # Authenticated Yahoo sector valuation client required at relay startup.
 COPY scripts/_yahoo-sector-valuations.cjs ./scripts/_yahoo-sector-valuations.cjs
 COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs

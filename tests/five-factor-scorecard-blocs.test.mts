@@ -5,15 +5,14 @@ import { SCORECARD_BLOC_PRESETS, resolveBlocSelection } from '../server/worldmon
 
 describe('five-factor bloc selection', () => {
   it('pins current official preset membership', () => {
-    assert.deepEqual(SCORECARD_BLOC_PRESETS.USMCA.members, ['CA', 'MX', 'US']);
-    assert.equal(SCORECARD_BLOC_PRESETS.EU27.members.length, 27);
-    assert.equal(SCORECARD_BLOC_PRESETS.BRICS.members.length, 11);
-    assert.ok(SCORECARD_BLOC_PRESETS.BRICS.members.includes('SA'));
-    assert.deepEqual(SCORECARD_BLOC_PRESETS.GCC.members, ['AE', 'BH', 'KW', 'OM', 'QA', 'SA']);
-    assert.equal(SCORECARD_BLOC_PRESETS.ASEAN.members.length, 11);
-    assert.ok(SCORECARD_BLOC_PRESETS.ASEAN.members.includes('TL'));
-    assert.equal(SCORECARD_BLOC_PRESETS.NATO.members.length, 32);
-    assert.ok(SCORECARD_BLOC_PRESETS.NATO.members.includes('SE'));
+    assert.deepEqual(SCORECARD_BLOC_PRESETS, {
+      USMCA: { id: 'USMCA', label: 'USMCA', members: ['CA', 'MX', 'US'] },
+      EU27: { id: 'EU27', label: 'European Union', members: ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE'] },
+      BRICS: { id: 'BRICS', label: 'BRICS', members: ['BR', 'RU', 'IN', 'CN', 'ZA', 'SA', 'EG', 'AE', 'ET', 'ID', 'IR'] },
+      GCC: { id: 'GCC', label: 'Gulf Cooperation Council', members: ['AE', 'BH', 'KW', 'OM', 'QA', 'SA'] },
+      ASEAN: { id: 'ASEAN', label: 'ASEAN', members: ['BN', 'KH', 'ID', 'LA', 'MY', 'MM', 'PH', 'SG', 'TH', 'TL', 'VN'] },
+      NATO: { id: 'NATO', label: 'NATO', members: ['AL', 'BE', 'BG', 'CA', 'HR', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IT', 'LV', 'LT', 'LU', 'ME', 'NL', 'MK', 'NO', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'TR', 'GB', 'US'] },
+    });
   });
 
   it('accepts exactly one preset or custom member list', () => {

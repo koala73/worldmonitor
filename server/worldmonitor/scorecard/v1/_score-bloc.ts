@@ -13,7 +13,7 @@ import {
 } from './_types';
 
 function populationOf(member: CountryScorecardEvidence): number | null {
-  const population = member.population;
+  const population = member.inputs.population;
   return population.availability === 'available' && population.value > 0 ? population.value : null;
 }
 
@@ -24,6 +24,7 @@ function unavailableResult(
   reasons: EvidenceUnavailableReason[],
   includedMembers: string[] = [],
   excludedMembers: PillarResult['excludedMembers'] = [],
+  memberWeights: PillarResult['memberWeights'] = [],
 ): PillarResult {
   return {
     hasScore: false,
@@ -37,6 +38,7 @@ function unavailableResult(
     insufficientReasons: [...new Set(reasons)],
     includedMembers,
     excludedMembers,
+    memberWeights,
   };
 }
 
@@ -47,6 +49,7 @@ function scoredResult(
   continuous: number,
   includedMembers: string[] = [],
   excludedMembers: PillarResult['excludedMembers'] = [],
+  memberWeights: PillarResult['memberWeights'] = [],
 ): PillarResult {
   const score = bandScore(continuous);
   return {
@@ -61,6 +64,7 @@ function scoredResult(
     insufficientReasons: [],
     includedMembers,
     excludedMembers,
+    memberWeights,
   };
 }
 
@@ -81,7 +85,14 @@ function scorePhysicalBlocPillar(
 ): PillarResult {
   const definitions = (Object.entries(SCORECARD_INPUT_REGISTRY) as Array<[ScorecardInputId, typeof SCORECARD_INPUT_REGISTRY[ScorecardInputId]]>)
     .filter(([, definition]) => definition.pillar === pillar);
-  const inputs = members.flatMap((member) => definitions.map(([inputId]) => member.inputs[inputId]));
+  const inputs = members.flatMap((member) => definitions.map(([inputId]) => ({
+    ...member.inputs[inputId],
+    countryCode: member.countryCode,
+  })));
+  const memberWeights = members.map((member) => ({
+    countryCode: member.countryCode,
+    populationMillions: populationOf(member),
+  }));
   const componentScores: Array<{ inputId: ScorecardInputId; score: number; weight: number; group: string }> = [];
   const contributingMembers = new Set<string>();
 
@@ -131,10 +142,10 @@ function scorePhysicalBlocPillar(
     return unavailableResult(inputs, coverage, 'aggregate-physical-inputs', [
       ...(coverage + Number.EPSILON < rules.coverageFloor ? ['coverage-below-floor' as const] : []),
       ...(!groupsPresent ? ['required-group-missing' as const] : []),
-    ], includedMembers, excludedMembers);
+    ], includedMembers, excludedMembers, memberWeights);
   }
   const continuous = componentScores.reduce((sum, component) => sum + component.score * component.weight, 0) / coverage;
-  return scoredResult(inputs, coverage, 'aggregate-physical-inputs', continuous, includedMembers, excludedMembers);
+  return scoredResult(inputs, coverage, 'aggregate-physical-inputs', continuous, includedMembers, excludedMembers, memberWeights);
 }
 
 type ScoredMember = {
@@ -148,7 +159,14 @@ function scorePopulationWeightedPillar(
   countryRows: ScoredMember[],
 ): PillarResult {
   const rows = countryRows.map((row) => ({ ...row, pillar: row.pillars[pillar] }));
-  const inputs = rows.flatMap((row) => row.pillar.inputs);
+  const inputs = rows.flatMap((row) => row.pillar.inputs.map((evidence) => ({
+    ...evidence,
+    countryCode: row.member.countryCode,
+  })));
+  const memberWeights = rows.map((row) => ({
+    countryCode: row.member.countryCode,
+    populationMillions: row.population,
+  }));
   const knownPopulation = rows.reduce((sum, row) => sum + (row.population ?? 0), 0);
   const scored = rows.filter((row): row is typeof row & { population: number; pillar: PillarResult & { continuousScore: number } } =>
     row.population != null && row.pillar.hasScore && row.pillar.continuousScore != null);
@@ -162,15 +180,22 @@ function scorePopulationWeightedPillar(
         ? 'missing-population' as const
         : row.pillar.insufficientReasons[0] ?? 'coverage-below-floor' as const,
     }));
-  if (knownPopulation <= 0 || scoredPopulation <= 0) {
-    return unavailableResult(inputs, 0, 'population-weighted-continuous-score', ['missing-population', 'coverage-below-floor'], includedMembers, excludedMembers);
+  if (knownPopulation <= 0) {
+    return unavailableResult(inputs, 0, 'population-weighted-continuous-score', ['missing-population', 'coverage-below-floor'], includedMembers, excludedMembers, memberWeights);
+  }
+  if (scoredPopulation <= 0) {
+    const reasons = [...new Set([
+      ...excludedMembers.map((member) => member.reason),
+      'coverage-below-floor' as const,
+    ])];
+    return unavailableResult(inputs, 0, 'population-weighted-continuous-score', reasons, includedMembers, excludedMembers, memberWeights);
   }
   const coverage = scored.reduce((sum, row) => sum + row.population * row.pillar.inputCoverage, 0) / knownPopulation;
   if (coverage + Number.EPSILON < SCORECARD_PILLAR_RULES[pillar].coverageFloor) {
-    return unavailableResult(inputs, coverage, 'population-weighted-continuous-score', ['coverage-below-floor'], includedMembers, excludedMembers);
+    return unavailableResult(inputs, coverage, 'population-weighted-continuous-score', ['coverage-below-floor'], includedMembers, excludedMembers, memberWeights);
   }
   const continuous = scored.reduce((sum, row) => sum + row.population * row.pillar.continuousScore, 0) / scoredPopulation;
-  return scoredResult(inputs, coverage, 'population-weighted-continuous-score', continuous, includedMembers, excludedMembers);
+  return scoredResult(inputs, coverage, 'population-weighted-continuous-score', continuous, includedMembers, excludedMembers, memberWeights);
 }
 
 export function scoreBloc(input: {

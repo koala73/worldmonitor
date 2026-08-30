@@ -55,12 +55,48 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.ok(tool.inputSchema.properties.country_code);
     assert.ok(tool.inputSchema.properties.preset);
     assert.ok(tool.inputSchema.properties.members);
+    assert.deepEqual(tool.inputSchema.oneOf, [
+      { required: ['country_code'] },
+      { required: ['preset'] },
+      { required: ['members'] },
+    ]);
+    assert.deepEqual(tool.inputSchema.properties.preset.enum, ['USMCA', 'EU27', 'BRICS', 'GCC', 'ASEAN', 'NATO']);
+    assert.equal(tool.inputSchema.properties.members.minItems, 2);
+    assert.equal(tool.inputSchema.properties.members.maxItems, 30);
+    assert.equal(tool.inputSchema.properties.members.uniqueItems, true);
+    assert.equal(tool.inputSchema.properties.members.items.pattern, '^[A-Z]{2}$');
     assert.ok(tool.outputSchema.properties.scorecard.properties.id);
     assert.ok(tool.outputSchema.properties.scorecard.properties.label);
     assert.ok(tool.outputSchema.properties.scorecard.properties.includedMembers);
     assert.ok(tool.outputSchema.properties.scorecard.properties.excludedMembers);
     assert.ok(tool.outputSchema.properties.scorecard.properties.pillars.items.properties.includedMembers);
     assert.ok(tool.outputSchema.properties.scorecard.properties.pillars.items.properties.excludedMembers);
+    assert.ok(tool.outputSchema.properties.scorecard.properties.pillars.items.properties.memberWeights);
+    assert.equal(tool.outputSchema.oneOf.length, 2);
+    assert.deepEqual(tool.outputSchema.oneOf[0].properties, {
+      unavailable: { const: false },
+      unavailableReason: { const: '' },
+    });
+    assert.deepEqual(tool.outputSchema.oneOf[1].properties, {
+      unavailable: { const: true },
+      unavailableReason: {
+        enum: ['country-unavailable', 'bloc-members-unavailable', 'scorecard-snapshot-unavailable'],
+      },
+    });
+    assert.equal(tool.outputSchema.properties.scorecard.oneOf.length, 2);
+    const pillarSchema = tool.outputSchema.properties.scorecard.properties.pillars.items.properties;
+    assert.deepEqual(pillarSchema.pillar.enum, ['food', 'energy', 'demographics', 'technology', 'defense']);
+    assert.deepEqual(pillarSchema.band.enum, ['', 'severe-deficit', 'material-deficit', 'mixed-capability', 'strong-capability', 'high-capability']);
+    assert.deepEqual(pillarSchema.aggregationMethod.enum, ['country-weighted-components', 'aggregate-physical-inputs', 'population-weighted-continuous-score']);
+    assert.deepEqual(pillarSchema.insufficientReasons.items.enum, [
+      'source-unavailable', 'country-unavailable', 'invalid-value', 'stale', 'coverage-below-floor',
+      'required-group-missing', 'missing-population', 'redistribution-blocked',
+    ]);
+    assert.deepEqual([pillarSchema.score.minimum, pillarSchema.score.maximum], [0, 5]);
+    assert.deepEqual([pillarSchema.subScore.minimum, pillarSchema.subScore.maximum], [0, 100]);
+    assert.deepEqual([pillarSchema.inputCoverage.minimum, pillarSchema.inputCoverage.maximum], [0, 1]);
+    const observationSchema = tool.outputSchema.properties.scorecard.properties.pillars.items.properties.inputs.items.properties.observations.items;
+    assert.deepEqual(Object.keys(observationSchema.properties), ['name', 'value', 'year', 'unit', 'source', 'indicatorCode']);
 
     const { deps } = makeProDeps();
     const response = await mcpHandler(proReq('POST', callBody('get_five_factor_scorecard', { country_code: 'zw' })), deps);
@@ -93,7 +129,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.equal(requests.length, 0);
   });
 
-  it('preserves a NATO-sized provenance response that exceeds the old 128 KiB budget', async () => {
+  it('preserves a full NATO-sized provenance response within the measured 1 MiB budget', async () => {
     const members = Array.from({ length: 32 }, (_, index) => `M${String(index).padStart(2, '0')}`);
     const verboseObservation = {
       name: 'source-preserving technology observation', value: 1, year: 2024, unit: 'per million',
@@ -107,7 +143,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
           pillar: `pillar-${pillarIndex}`, hasScore: false, score: 0, subScore: 0, band: '', inputCoverage: 0,
           aggregationMethod: 'population-weighted-continuous-score', insufficientReasons: ['coverage-below-floor'],
           includedMembers: [], excludedMembers: members.map((countryCode) => ({ countryCode, reason: 'country-unavailable' })),
-          inputs: Array.from({ length: 42 }, (_, inputIndex) => ({
+          inputs: Array.from({ length: pillarIndex < 2 ? 32 * 4 : pillarIndex < 4 ? 32 * 7 : 32 * 5 }, (_, inputIndex) => ({
             inputId: `input-${pillarIndex}-${inputIndex}`, available: true, value: 1, hasValue: true, year: 2024,
             unit: 'index', source: 'World Bank', sourceKey: 'economic:worldbank-techreadiness:v1', unavailableReason: '',
             quality: 'observed', observations: [verboseObservation],
@@ -119,7 +155,8 @@ describe('get_five_factor_scorecard MCP tool', () => {
     };
     const responseBytes = Buffer.byteLength(JSON.stringify(downstreamResponse));
     assert.ok(responseBytes > 131_072, `fixture must exceed old budget, got ${responseBytes}`);
-    assert.ok(responseBytes < 524_288, `fixture must fit new budget, got ${responseBytes}`);
+    assert.ok(responseBytes > 524_288, `fixture must exceed the prior incomplete budget, got ${responseBytes}`);
+    assert.ok(responseBytes < 1_048_576, `fixture must fit measured budget, got ${responseBytes}`);
 
     const { deps } = makeProDeps();
     const response = await mcpHandler(proReq('POST', callBody('get_five_factor_scorecard', { preset: 'NATO' })), deps);
@@ -132,8 +169,16 @@ describe('get_five_factor_scorecard MCP tool', () => {
       methodologyVersion: '1.0.0',
       computedAt: '2026-08-29T00:00:00.000Z',
       scorecards: [{
-        ...canonicalResponse.scorecard,
-        pillars: canonicalResponse.scorecard.pillars.map((pillar) => ({ ...pillar, inputs: [{ ...pillar.inputs[0], source: 'not returned by compact MCP list' }] })),
+        countryCode: canonicalResponse.scorecard.countryCode,
+        pillars: canonicalResponse.scorecard.pillars.map((pillar) => ({
+          pillar: pillar.pillar,
+          hasScore: pillar.hasScore,
+          score: pillar.score,
+          subScore: pillar.subScore,
+          band: pillar.band,
+          inputCoverage: pillar.inputCoverage,
+          insufficientReasons: pillar.insufficientReasons,
+        })),
       }],
       unavailable: false,
       unavailableReason: '',
@@ -144,6 +189,26 @@ describe('get_five_factor_scorecard MCP tool', () => {
     }));
     const listTool = (await listed.json()).result.tools.find((entry) => entry.name === 'list_five_factor_scorecards');
     assert.ok(listTool);
+    assert.match(listTool.description, /read hasScore first/);
+    assert.match(listTool.outputSchema.properties.scorecards.items.properties.pillars.items.properties.hasScore.description, /proto3 zero placeholders/);
+    assert.deepEqual(listTool.outputSchema.oneOf, [
+      {
+        properties: {
+          unavailable: { const: false },
+          unavailableReason: { const: '' },
+          methodologyVersion: { const: '1.0.0' },
+        },
+      },
+      {
+        properties: {
+          unavailable: { const: true },
+          unavailableReason: { const: 'scorecard-snapshot-unavailable' },
+          methodologyVersion: { const: '' },
+          computedAt: { const: '' },
+          scorecards: { maxItems: 0 },
+        },
+      },
+    ]);
 
     const { deps } = makeProDeps();
     const response = await mcpHandler(proReq('POST', callBody('list_five_factor_scorecards', {})), deps);
@@ -152,7 +217,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.equal(body.scorecards[0].countryCode, 'ZW');
     assert.equal(body.scorecards[0].pillars[0].hasScore, false);
     assert.equal(body.scorecards[0].pillars[0].inputCoverage, 0.55);
-    assert.ok(!('inputs' in body.scorecards[0].pillars[0]));
+    assert.deepEqual(body, downstreamResponse);
     assert.ok(Buffer.byteLength(JSON.stringify(body)) < 262_144);
   });
 });

@@ -15,44 +15,59 @@ register();
 // @railway-runtime-dependency ./scorecard/v1/_methodology.mts
 // @railway-runtime-dependency ./scorecard/v1/_score-country.mts
 // @railway-runtime-dependency ./scorecard/v1/_source-adapters.mts
+// @railway-runtime-dependency ./scorecard/v1/_source-registry.mts
 // @railway-runtime-dependency ./scorecard/v1/_types.mts
 
 const {
   buildFiveFactorSnapshot,
   FIVE_FACTOR_SCORECARD_KEY,
+  FIVE_FACTOR_SCORECARD_READ_MODEL_KEY,
+  FIVE_FACTOR_SCORECARD_READ_MODEL_LIST_FIELD,
+  FIVE_FACTOR_SCORECARD_READ_MODEL_METADATA_FIELD,
+  SCORECARD_SOURCE_KEYS,
+  buildFiveFactorReadModel,
+  scorecardCoverage,
   scorecardSnapshotBytes,
   validateFiveFactorSnapshot,
 } = await import('./scorecard/v1/_snapshot.mts');
 
-loadEnvFile(import.meta.url);
-
 export const SCORECARD_TTL_SECONDS = 3 * 24 * 3600;
 export const SCORECARD_MAX_STALE_MIN = 36 * 60;
 
-const FIXED_SOURCES = {
-  population: 'economic:imf:labor:v1',
-  foodStocks: 'resilience:food-stocks:v1',
-  demographics: 'demographics:capability:v1',
-  defense: 'military:industrial-base:v1',
-  energyMix: 'energy:mix:v1:_all',
-  lowCarbon: 'resilience:low-carbon-generation:v1',
-  powerLosses: 'resilience:power-losses:v1',
-  importHhi: 'resilience:recovery:import-hhi:v1',
-  tech: 'economic:worldbank-techreadiness:v1',
-};
+const FIXED_SOURCE_ENTRIES = Object.entries(SCORECARD_SOURCE_KEYS)
+  .filter(([field]) => field !== 'staticByCountry');
 
-function parseStored(value) {
-  if (value == null) return null;
+function parseStored(value, nowMs = Date.now()) {
+  if (value == null) return { data: null, freshness: { status: 'unknown' } };
   try {
-    return unwrapEnvelope(JSON.parse(value)).data;
+    const { data, _seed } = unwrapEnvelope(JSON.parse(value));
+    if (!_seed) return { data, freshness: { status: 'unknown' } };
+    const maxContentAgeMin = Number(_seed.maxContentAgeMin);
+    const newestItemAt = Number(_seed.newestItemAt);
+    if (
+      Number.isFinite(maxContentAgeMin)
+      && maxContentAgeMin > 0
+      && (!Number.isFinite(newestItemAt) || nowMs - newestItemAt > maxContentAgeMin * 60_000)
+    ) {
+      return {
+        data,
+        freshness: {
+          status: 'stale',
+          detail: Number.isFinite(newestItemAt)
+            ? `Source content age exceeded ${maxContentAgeMin} minutes.`
+            : 'Source content freshness metadata has no usable newestItemAt.',
+        },
+      };
+    }
+    return { data, freshness: { status: 'fresh' } };
   } catch {
-    return null;
+    return { data: null, freshness: { status: 'unknown' } };
   }
 }
 
-async function redisPipeline(commands) {
+export async function redisPipeline(commands, fetchImpl = globalThis.fetch) {
   const { url, token } = getRedisCredentials();
-  const response = await fetch(`${url}/pipeline`, {
+  const response = await fetchImpl(`${url}/pipeline`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -63,7 +78,68 @@ async function redisPipeline(commands) {
     signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) throw new Error(`scorecard source pipeline HTTP ${response.status}`);
-  return response.json();
+  const results = await response.json();
+  if (!Array.isArray(results) || results.length !== commands.length || results.some((entry) => entry?.error)) {
+    throw new Error('scorecard Redis pipeline returned an invalid command result');
+  }
+  return results;
+}
+
+export async function stageScorecardReadModel(snapshot, {
+  runId,
+  pipeline = redisPipeline,
+  batchSize = 24,
+} = {}) {
+  const safeRunId = String(runId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!safeRunId) throw new Error('scorecard read model requires a runId');
+  const stagingKey = `${FIVE_FACTOR_SCORECARD_READ_MODEL_KEY}:staging:${safeRunId}`;
+  const readModel = buildFiveFactorReadModel(snapshot);
+  const fields = [
+    [FIVE_FACTOR_SCORECARD_READ_MODEL_METADATA_FIELD, readModel.metadata],
+    [FIVE_FACTOR_SCORECARD_READ_MODEL_LIST_FIELD, readModel.list],
+    ...Object.entries(readModel.countries).map(([countryCode, record]) => [`country:${countryCode}`, record]),
+  ];
+  const batches = [];
+  for (let offset = 0; offset < fields.length; offset += batchSize) {
+    const command = ['HSET', stagingKey];
+    for (const [field, value] of fields.slice(offset, offset + batchSize)) {
+      command.push(field, JSON.stringify(value));
+    }
+    batches.push([command]);
+  }
+  const [firstBatch, ...remainingBatches] = batches;
+  if (!firstBatch) throw new Error('scorecard read model has no fields');
+  try {
+    await pipeline([...firstBatch, ['EXPIRE', stagingKey, '3600']]);
+    const results = await Promise.allSettled(remainingBatches.map((commands) => pipeline(commands)));
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+  } catch (error) {
+    await pipeline([['DEL', stagingKey]]).catch(() => {});
+    throw error;
+  }
+  return stagingKey;
+}
+
+export async function publishScorecardCohortAtomically(stagingKey, {
+  canonicalKey = FIVE_FACTOR_SCORECARD_KEY,
+  payload,
+  pipeline = redisPipeline,
+  ttlSeconds = SCORECARD_TTL_SECONDS,
+} = {}) {
+  if (!stagingKey || typeof payload !== 'string') throw new Error('scorecard atomic publish requires stagingKey and payload');
+  await pipeline([
+    [
+      'EVAL',
+      "if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]); redis.call('RENAME', KEYS[2], KEYS[3]); redis.call('EXPIRE', KEYS[3], ARGV[2]); return 1 end; if redis.call('GET', KEYS[1]) == ARGV[1] and redis.call('EXISTS', KEYS[3]) == 1 then return 1 end; return redis.error_reply('scorecard staging cohort missing')",
+      '3',
+      canonicalKey,
+      stagingKey,
+      FIVE_FACTOR_SCORECARD_READ_MODEL_KEY,
+      payload,
+      String(ttlSeconds),
+    ],
+  ]);
 }
 
 function techByIso2(rankings) {
@@ -73,22 +149,36 @@ function techByIso2(rankings) {
     .filter(([iso2]) => /^[A-Z]{2}$/.test(iso2 || '')));
 }
 
-export async function readScorecardSources(countryCodes = listRankableCountries()) {
-  const fixedEntries = Object.entries(FIXED_SOURCES);
+export async function readScorecardSources(
+  countryCodes = listRankableCountries(),
+  { pipeline = redisPipeline, nowMs = Date.now() } = {},
+) {
+  const fixedEntries = FIXED_SOURCE_ENTRIES;
   const keys = [
     ...fixedEntries.map(([, key]) => key),
     ...countryCodes.map((countryCode) => `resilience:static:${countryCode}`),
   ];
-  const response = await redisPipeline(keys.map((key) => ['GET', key]));
+  const response = await pipeline(keys.map((key) => ['GET', key]));
   if (!Array.isArray(response) || response.length !== keys.length) {
     throw new Error(`scorecard source pipeline returned ${response?.length ?? 0}/${keys.length} rows`);
   }
-  const values = response.map((entry) => parseStored(entry?.result));
-  const fixedValues = Object.fromEntries(fixedEntries.map(([name], index) => [name, values[index]]));
+  const values = response.map((entry) => parseStored(entry?.result, nowMs));
+  const fixedValues = Object.fromEntries(fixedEntries.map(([name], index) => [name, values[index]?.data]));
+  const sourceFreshness = Object.fromEntries(fixedEntries.map(([name], index) => [name, values[index]?.freshness]));
   const staticOffset = fixedEntries.length;
   const staticByCountry = Object.fromEntries(countryCodes
-    .map((countryCode, index) => [countryCode, values[staticOffset + index]])
+    .map((countryCode, index) => [countryCode, values[staticOffset + index]?.data])
     .filter(([, value]) => value != null));
+  const staticFreshnessByCountry = Object.fromEntries(countryCodes.map((countryCode, index) => [
+    countryCode,
+    values[staticOffset + index]?.freshness ?? { status: 'unknown' },
+  ]));
+  const staticFreshness = Object.values(staticFreshnessByCountry);
+  sourceFreshness.staticByCountry = staticFreshness.some((entry) => entry.status === 'stale')
+    ? { status: 'stale', detail: 'One or more country static snapshots exceeded their source freshness contract.', byCountry: staticFreshnessByCountry }
+    : staticFreshness.some((entry) => entry.status === 'fresh')
+      ? { status: 'fresh', byCountry: staticFreshnessByCountry }
+      : { status: 'unknown', byCountry: staticFreshnessByCountry };
   return {
     population: fixedValues.population,
     foodStocks: fixedValues.foodStocks,
@@ -99,7 +189,8 @@ export async function readScorecardSources(countryCodes = listRankableCountries(
     lowCarbon: fixedValues.lowCarbon,
     powerLosses: fixedValues.powerLosses,
     importHhi: fixedValues.importHhi,
-    techByIso2: fixedValues.tech ? techByIso2(fixedValues.tech) : null,
+    techByIso2: fixedValues.techByIso2 ? techByIso2(fixedValues.techByIso2) : null,
+    sourceFreshness,
   };
 }
 
@@ -110,32 +201,58 @@ export async function buildScorecardSeedSnapshot({
 } = {}) {
   const sources = await readSources(countryCodes);
   const snapshot = buildFiveFactorSnapshot(countryCodes, sources, now().toISOString());
-  console.log(`[scorecard] ${countryCodes.length} countries, ${scorecardSnapshotBytes(snapshot)} bytes`);
+  const coverage = scorecardCoverage(snapshot);
+  console.log(`[scorecard] ${countryCodes.length} countries, ${coverage.scoreableCountries} scoreable, ${scorecardSnapshotBytes(snapshot)} bytes`);
+  console.log(`[scorecard] scoreable by pillar ${JSON.stringify(coverage.scoreableCountriesByPillar)}`);
   return snapshot;
 }
 
 export function declareScorecardRecords(snapshot) {
-  return Object.keys(snapshot?.countries || {}).length;
+  return scorecardCoverage(snapshot).scoreableCountries;
 }
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
+  loadEnvFile(import.meta.url);
   if (process.argv.includes('--dry-run')) {
     const snapshot = await buildScorecardSeedSnapshot();
     if (!validateFiveFactorSnapshot(snapshot)) throw new Error('dry-run snapshot validation failed');
     console.log('[scorecard] dry-run valid; Redis was not modified');
-  } else runSeed('scorecard', 'five-factor', FIVE_FACTOR_SCORECARD_KEY, buildScorecardSeedSnapshot, {
+  } else {
+    let stagedReadModelKey = null;
+    runSeed('scorecard', 'five-factor', FIVE_FACTOR_SCORECARD_KEY, buildScorecardSeedSnapshot, {
     validateFn: validateFiveFactorSnapshot,
     ttlSeconds: SCORECARD_TTL_SECONDS,
     declareRecords: declareScorecardRecords,
     sourceVersion: 'five-factor-scorecard-1.0.0',
     schemaVersion: 1,
     maxStaleMin: SCORECARD_MAX_STALE_MIN,
-    lockTtlMs: 60_000,
+    lockTtlMs: 240_000,
     fetchPhaseTimeoutMs: 25_000,
     emptyDataIsFailure: true,
-  }).catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+    preserveKeys: [FIVE_FACTOR_SCORECARD_READ_MODEL_KEY],
+    beforePublish: async (snapshot, { runId }) => {
+      stagedReadModelKey = await stageScorecardReadModel(snapshot, { runId });
+    },
+    publishAtomically: async (_snapshot, { canonicalKey, payload, ttlSeconds }) => {
+      if (!stagedReadModelKey) throw new Error('scorecard read model was not staged');
+      await publishScorecardCohortAtomically(stagedReadModelKey, { canonicalKey, payload, ttlSeconds });
+    },
+    afterPublish: async (snapshot) => {
+      const coverage = scorecardCoverage(snapshot);
+      return {
+        freshnessMetaPatch: {
+          ...coverage,
+          poolCounts: {
+            population: coverage.populationEvidenceCountries,
+            ...coverage.scoreableCountriesByPillar,
+          },
+        },
+      };
+    },
+    }).catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+  }
 }

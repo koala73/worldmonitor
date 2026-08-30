@@ -96,8 +96,9 @@ function safeFloat(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function hasAnyShareField(row) {
-  return Object.values(COLS).some((col) => {
+function hasAnyElectricityShare(row) {
+  return Object.entries(COLS).some(([field, col]) => {
+    if (field === 'primaryEnergyConsumption' || field === 'imports') return false;
     const v = parseFloat(row[col]);
     return Number.isFinite(v);
   });
@@ -120,30 +121,50 @@ export function parseOwidCsv(csvText) {
 
     const year = parseInt(row.year, 10);
     if (!Number.isFinite(year)) continue;
-    if (!hasAnyShareField(row)) continue;
+    const hasElectricityShare = hasAnyElectricityShare(row);
+    const importShare = safeFloat(row[COLS.imports]);
+    const primaryEnergyConsumptionTwh = safeFloat(row[COLS.primaryEnergyConsumption]);
+    const hasEnergyBalance = importShare != null && primaryEnergyConsumptionTwh != null;
+    if (!hasElectricityShare && !hasEnergyBalance) continue;
 
     const iso2 = resolveIso2({ iso3 });
     if (!iso2) continue;
 
-    const prev = byCountry.get(iso2);
-    if (prev && prev.year >= year) continue;
-
-    byCountry.set(iso2, {
+    const prev = byCountry.get(iso2) ?? {
       iso2,
       country: row.country || iso2,
-      year,
-      coalShare: safeFloat(row[COLS.coal]),
-      gasShare: safeFloat(row[COLS.gas]),
-      oilShare: safeFloat(row[COLS.oil]),
-      nuclearShare: safeFloat(row[COLS.nuclear]),
-      renewShare: safeFloat(row[COLS.renewables]),
-      windShare: safeFloat(row[COLS.wind]),
-      solarShare: safeFloat(row[COLS.solar]),
-      hydroShare: safeFloat(row[COLS.hydro]),
-      importShare: safeFloat(row[COLS.imports]),
-      primaryEnergyConsumptionTwh: safeFloat(row[COLS.primaryEnergyConsumption]),
+      year: null,
+      coalShare: null,
+      gasShare: null,
+      oilShare: null,
+      nuclearShare: null,
+      renewShare: null,
+      windShare: null,
+      solarShare: null,
+      hydroShare: null,
+      balanceYear: null,
+      importShare: null,
+      primaryEnergyConsumptionTwh: null,
       seededAt: new Date().toISOString(),
-    });
+    };
+    if (hasElectricityShare && (prev.year == null || year > prev.year)) {
+      Object.assign(prev, {
+        country: row.country || iso2,
+        year,
+        coalShare: safeFloat(row[COLS.coal]),
+        gasShare: safeFloat(row[COLS.gas]),
+        oilShare: safeFloat(row[COLS.oil]),
+        nuclearShare: safeFloat(row[COLS.nuclear]),
+        renewShare: safeFloat(row[COLS.renewables]),
+        windShare: safeFloat(row[COLS.wind]),
+        solarShare: safeFloat(row[COLS.solar]),
+        hydroShare: safeFloat(row[COLS.hydro]),
+      });
+    }
+    if (hasEnergyBalance && (prev.balanceYear == null || year > prev.balanceYear)) {
+      Object.assign(prev, { balanceYear: year, importShare, primaryEnergyConsumptionTwh });
+    }
+    byCountry.set(iso2, prev);
   }
 
   return byCountry;
@@ -178,13 +199,14 @@ export function buildExposureIndex(countries) {
  * Build a compact bulk map of all countries keyed by ISO2.
  * Omits `iso2`, `country`, and `seededAt` to reduce payload size (~30% savings).
  * @param {Map<string, object>} countries
- * @returns {Record<string, {year: number, coalShare: number|null, gasShare: number|null, oilShare: number|null, nuclearShare: number|null, renewShare: number|null, windShare: number|null, solarShare: number|null, hydroShare: number|null, importShare: number|null, primaryEnergyConsumptionTwh: number|null}>}
+ * @returns {Record<string, {year: number|null, balanceYear: number|null, coalShare: number|null, gasShare: number|null, oilShare: number|null, nuclearShare: number|null, renewShare: number|null, windShare: number|null, solarShare: number|null, hydroShare: number|null, importShare: number|null, primaryEnergyConsumptionTwh: number|null}>}
  */
 export function buildAllCountriesMap(countries) {
   const result = {};
   for (const [iso2, entry] of countries) {
     result[iso2] = {
       year: entry.year,
+      balanceYear: entry.balanceYear ?? entry.year,
       coalShare: entry.coalShare,
       gasShare: entry.gasShare,
       oilShare: entry.oilShare,

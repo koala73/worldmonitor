@@ -912,6 +912,7 @@
       "scripts/scorecard/v1/_score-country.mts",
       "scripts/scorecard/v1/_snapshot.mts",
       "scripts/scorecard/v1/_source-adapters.mts",
+      "scripts/scorecard/v1/_source-registry.mts",
       "scripts/scorecard/v1/_types.mts"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-4-seed-bundle-resilience"

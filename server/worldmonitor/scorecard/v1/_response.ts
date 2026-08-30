@@ -1,10 +1,12 @@
 import type {
   FiveFactorBlocScorecard,
   FiveFactorCountryScorecard,
+  FiveFactorCountryScorecardSummary,
   FiveFactorPillar,
   ScorecardEvidence as PublicScorecardEvidence,
 } from '../../../../src/generated/server/worldmonitor/scorecard/v1/service_server';
-import { SCORECARD_PILLARS, type BlocScorecardResult, type CountryScorecardResult, type PillarResult, type ScorecardEvidence, type ScorecardPillar } from './_types';
+import { summarizeCountryScorecard } from './_snapshot';
+import { SCORECARD_PILLARS, type BlocScorecardResult, type CountryScorecardResult, type CountryScorecardSummary, type PillarResult, type ScorecardEvidence, type ScorecardPillar } from './_types';
 
 export function toPublicEvidence(evidence: ScorecardEvidence): PublicScorecardEvidence {
   if (evidence.availability === 'unavailable') {
@@ -20,6 +22,7 @@ export function toPublicEvidence(evidence: ScorecardEvidence): PublicScorecardEv
       unavailableReason: evidence.reason,
       quality: '',
       observations: [],
+      countryCode: evidence.countryCode || '',
     };
   }
   return {
@@ -41,6 +44,7 @@ export function toPublicEvidence(evidence: ScorecardEvidence): PublicScorecardEv
       source: observation.source,
       indicatorCode: observation.indicatorCode || '',
     })),
+    countryCode: evidence.countryCode || '',
   };
 }
 
@@ -57,6 +61,33 @@ export function toPublicPillar(pillar: ScorecardPillar, result: PillarResult): F
     insufficientReasons: result.insufficientReasons,
     includedMembers: result.includedMembers,
     excludedMembers: result.excludedMembers,
+    memberWeights: result.memberWeights.map((weight) => ({
+      countryCode: weight.countryCode,
+      populationMillions: weight.populationMillions ?? 0,
+      hasPopulation: weight.populationMillions != null,
+    })),
+  };
+}
+
+export function toPublicCountryScorecardSummary(result: CountryScorecardResult): FiveFactorCountryScorecardSummary {
+  return toPublicStoredCountryScorecardSummary(summarizeCountryScorecard(result));
+}
+
+export function toPublicStoredCountryScorecardSummary(summary: CountryScorecardSummary): FiveFactorCountryScorecardSummary {
+  return {
+    countryCode: summary.countryCode,
+    pillars: SCORECARD_PILLARS.map((pillar) => {
+      const score = summary.pillars[pillar];
+      return {
+        pillar,
+        hasScore: score.hasScore,
+        score: score.score ?? 0,
+        subScore: score.subScore ?? 0,
+        band: score.band ?? '',
+        inputCoverage: score.inputCoverage,
+        insufficientReasons: score.insufficientReasons,
+      };
+    }),
   };
 }
 

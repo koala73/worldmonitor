@@ -26256,10 +26256,11 @@ paths:
                 - name: countryCode
                   in: query
                   description: ISO 3166-1 alpha-2 country code for the requested scorecard.
-                  required: false
+                  required: true
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -26277,18 +26278,47 @@ paths:
                                 "scorecard":
                                     "computedAt": "2026-01-15T12:00:00Z"
                                     "countryCode": "US"
-                                    "methodologyVersion": "example"
+                                    "methodologyVersion": "1.0.0"
                                     "pillars":
-                                        - "aggregationMethod": "example"
-                                          "band": "example"
+                                        - "aggregationMethod": "country-weighted-components"
+                                          "band": "mixed-capability"
                                           "excludedMembers":
                                               - "countryCode": "US"
-                                                "reason": "example"
+                                                "reason": "source-unavailable"
                                           "hasScore": true
                                           "includedMembers":
-                                              - "example"
+                                              - "US"
+                                          "inputCoverage": 1
+                                          "inputs":
+                                              - "available": true
+                                                "countryCode": ""
+                                                "hasValue": true
+                                                "inputId": "example-id"
+                                                "observations":
+                                                    - "indicatorCode": "IT.NET.USER.ZS"
+                                                      "name": "internetUsePercent"
+                                                      "source": "World Bank"
+                                                      "unit": "percent"
+                                                      "value": 92.4
+                                                      "year": 2025
+                                                "quality": "observed"
+                                                "source": "example"
+                                                "sourceKey": "example"
+                                                "unavailableReason": ""
+                                                "unit": "example"
+                                                "value": 1.5
+                                                "year": 1
+                                          "insufficientReasons":
+                                              - "source-unavailable"
+                                          "memberWeights":
+                                              - "countryCode": "US"
+                                                "hasPopulation": true
+                                                "populationMillions": 1.5
+                                          "pillar": "food"
+                                          "score": 3
+                                          "subScore": 42.5
                                 "unavailable": false
-                                "unavailableReason": "example"
+                                "unavailableReason": ""
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_scorecard_v1_GetFiveFactorScorecardResponse'
                 "400":
@@ -26401,22 +26431,20 @@ paths:
                         application/json:
                             example:
                                 "computedAt": "2026-01-15T12:00:00Z"
-                                "methodologyVersion": "example"
+                                "methodologyVersion": "1.0.0"
                                 "scorecards":
-                                    - "computedAt": "2026-01-15T12:00:00Z"
-                                      "countryCode": "US"
-                                      "methodologyVersion": "example"
+                                    - "countryCode": "US"
                                       "pillars":
-                                          - "aggregationMethod": "example"
-                                            "band": "example"
-                                            "excludedMembers":
-                                                - "countryCode": "US"
-                                                  "reason": "example"
+                                          - "band": "mixed-capability"
                                             "hasScore": true
-                                            "includedMembers":
-                                                - "example"
+                                            "inputCoverage": 1
+                                            "insufficientReasons":
+                                                - "source-unavailable"
+                                            "pillar": "food"
+                                            "score": 3
+                                            "subScore": 42.5
                                 "unavailable": false
-                                "unavailableReason": "example"
+                                "unavailableReason": ""
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_scorecard_v1_ListFiveFactorScorecardsResponse'
                 "400":
@@ -26516,14 +26544,15 @@ paths:
             parameters:
                 - name: preset
                   in: query
-                  description: 'Official bloc preset: eu, nato, asean, or brics. Omit when members is provided.'
+                  description: 'Official bloc preset: USMCA, EU27, BRICS, GCC, ASEAN, or NATO. Values are case-sensitive. Omit when members is provided.'
                   required: false
-                  example: "example"
+                  example: "NATO"
                   schema:
                     type: string
+                    pattern: '^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$'
                 - name: members
                   in: query
-                  description: Custom ISO 3166-1 alpha-2 country members. Omit when preset is provided.
+                  description: Custom list of 2-30 unique uppercase ISO 3166-1 alpha-2 members. Provide either preset or members; do not provide both.
                   required: false
                   style: form
                   explode: true
@@ -26533,6 +26562,10 @@ paths:
                     type: array
                     items:
                         type: string
+                        pattern: ^[A-Z]{2}$
+                    minItems: 2
+                    maxItems: 30
+                    uniqueItems: true
                 - name: jmespath
                   in: query
                   description: |-
@@ -26541,6 +26574,9 @@ paths:
                   example: "keys(@)"
                   schema:
                     type: string
+            x-worldmonitor-selector-one-of:
+                - preset
+                - members
             responses:
                 "200":
                     description: Successful response
@@ -26551,13 +26587,54 @@ paths:
                                     "computedAt": "2026-01-15T12:00:00Z"
                                     "excludedMembers":
                                         - "countryCode": "US"
-                                          "reason": "example"
+                                          "reason": "source-unavailable"
                                     "id": "example-id"
                                     "includedMembers":
-                                        - "example"
+                                        - "US"
                                     "label": "example"
+                                    "members":
+                                        - "US"
+                                    "methodologyVersion": "1.0.0"
+                                    "pillars":
+                                        - "aggregationMethod": "country-weighted-components"
+                                          "band": "mixed-capability"
+                                          "excludedMembers":
+                                              - "countryCode": "US"
+                                                "reason": "source-unavailable"
+                                          "hasScore": true
+                                          "includedMembers":
+                                              - "US"
+                                          "inputCoverage": 1
+                                          "inputs":
+                                              - "available": true
+                                                "countryCode": ""
+                                                "hasValue": true
+                                                "inputId": "example-id"
+                                                "observations":
+                                                    - "indicatorCode": "IT.NET.USER.ZS"
+                                                      "name": "internetUsePercent"
+                                                      "source": "World Bank"
+                                                      "unit": "percent"
+                                                      "value": 92.4
+                                                      "year": 2025
+                                                "quality": "observed"
+                                                "source": "example"
+                                                "sourceKey": "example"
+                                                "unavailableReason": ""
+                                                "unit": "example"
+                                                "value": 1.5
+                                                "year": 1
+                                          "insufficientReasons":
+                                              - "source-unavailable"
+                                          "memberWeights":
+                                              - "countryCode": "US"
+                                                "hasPopulation": true
+                                                "populationMillions": 1.5
+                                          "pillar": "food"
+                                          "score": 3
+                                          "subScore": 42.5
                                 "unavailable": false
-                                "unavailableReason": "example"
+                                "unavailableReason": ""
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_scorecard_v1_GetBlocScorecardResponse'
                 "400":
@@ -50735,7 +50812,10 @@ components:
             properties:
                 countryCode:
                     type: string
+                    pattern: ^[A-Z]{2}$
                     description: ISO 3166-1 alpha-2 country code for the requested scorecard.
+            required:
+                - countryCode
         worldmonitor_scorecard_v1_GetFiveFactorScorecardResponse:
             type: object
             properties:
@@ -50745,39 +50825,78 @@ components:
                     type: boolean
                 unavailableReason:
                     type: string
+                    pattern: ^(?:|country-unavailable|scorecard-snapshot-unavailable)$
+            required:
+                - unavailable
+                - unavailableReason
+            oneOf:
+                - required:
+                    - scorecard
+                  properties:
+                    unavailable:
+                        const: false
+                    unavailableReason:
+                        const: ''
+                - not:
+                    required:
+                        - scorecard
+                  properties:
+                    unavailable:
+                        const: true
+                    unavailableReason:
+                        enum:
+                            - country-unavailable
+                            - scorecard-snapshot-unavailable
         worldmonitor_scorecard_v1_FiveFactorCountryScorecard:
             type: object
             properties:
                 countryCode:
                     type: string
+                    pattern: ^[A-Z]{2}$
                 methodologyVersion:
                     type: string
+                    const: 1.0.0
                 computedAt:
                     type: string
                 pillars:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorPillar'
+            required:
+                - computedAt
+                - countryCode
+                - methodologyVersion
+                - pillars
         worldmonitor_scorecard_v1_FiveFactorPillar:
             type: object
             properties:
                 pillar:
                     type: string
+                    pattern: ^(?:food|energy|demographics|technology|defense)$
                 hasScore:
                     type: boolean
+                    description: Read before score and sub_score. When false, both numeric zeros are protobuf placeholders for insufficient data.
                 score:
                     type: integer
+                    maximum: 5
+                    minimum: 0
                     format: int32
                 subScore:
                     type: number
+                    maximum: 100
+                    minimum: 0
                     format: double
                 band:
                     type: string
+                    pattern: ^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$
                 inputCoverage:
                     type: number
+                    maximum: 1
+                    minimum: 0
                     format: double
                 aggregationMethod:
                     type: string
+                    pattern: ^(?:country-weighted-components|aggregate-physical-inputs|population-weighted-continuous-score)$
                 inputs:
                     type: array
                     items:
@@ -50786,14 +50905,33 @@ components:
                     type: array
                     items:
                         type: string
+                        pattern: ^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
                 includedMembers:
                     type: array
                     items:
                         type: string
+                        pattern: ^[A-Z]{2}$
                 excludedMembers:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_scorecard_v1_ExcludedBlocMember'
+                memberWeights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_ScorecardMemberWeight'
+            required:
+                - aggregationMethod
+                - band
+                - excludedMembers
+                - hasScore
+                - includedMembers
+                - inputCoverage
+                - inputs
+                - insufficientReasons
+                - memberWeights
+                - pillar
+                - score
+                - subScore
         worldmonitor_scorecard_v1_ScorecardEvidence:
             type: object
             properties:
@@ -50808,6 +50946,8 @@ components:
                     type: boolean
                 year:
                     type: integer
+                    maximum: 2200
+                    minimum: 0
                     format: int32
                 unit:
                     type: string
@@ -50817,12 +50957,31 @@ components:
                     type: string
                 unavailableReason:
                     type: string
+                    pattern: ^(?:|source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
                 quality:
                     type: string
+                    pattern: ^(?:|observed|retained|derived)$
                 observations:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_scorecard_v1_ScorecardObservation'
+                countryCode:
+                    type: string
+                    pattern: ^(?:|[A-Z]{2})$
+                    description: ISO-2 member that supplied this evidence. Empty only on a country scorecard.
+            required:
+                - available
+                - countryCode
+                - hasValue
+                - inputId
+                - observations
+                - quality
+                - source
+                - sourceKey
+                - unavailableReason
+                - unit
+                - value
+                - year
         worldmonitor_scorecard_v1_ScorecardObservation:
             type: object
             properties:
@@ -50833,6 +50992,8 @@ components:
                     format: double
                 year:
                     type: integer
+                    maximum: 2200
+                    minimum: 1900
                     format: int32
                 unit:
                     type: string
@@ -50840,13 +51001,43 @@ components:
                     type: string
                 indicatorCode:
                     type: string
+            required:
+                - indicatorCode
+                - name
+                - source
+                - unit
+                - value
+                - year
         worldmonitor_scorecard_v1_ExcludedBlocMember:
             type: object
             properties:
                 countryCode:
                     type: string
+                    pattern: ^[A-Z]{2}$
                 reason:
                     type: string
+                    pattern: ^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
+            required:
+                - countryCode
+                - reason
+        worldmonitor_scorecard_v1_ScorecardMemberWeight:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                populationMillions:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: Population in millions used by population-weighted components.
+                hasPopulation:
+                    type: boolean
+                    description: Read before population_millions; false means the numeric zero is a placeholder.
+            required:
+                - countryCode
+                - hasPopulation
+                - populationMillions
         worldmonitor_scorecard_v1_ListFiveFactorScorecardsRequest:
             type: object
         worldmonitor_scorecard_v1_ListFiveFactorScorecardsResponse:
@@ -50855,26 +51046,122 @@ components:
                 scorecards:
                     type: array
                     items:
-                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorCountryScorecard'
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorCountryScorecardSummary'
                 unavailable:
                     type: boolean
                 unavailableReason:
                     type: string
+                    pattern: ^(?:|scorecard-snapshot-unavailable)$
                 methodologyVersion:
                     type: string
+                    pattern: ^(?:|1\.0\.0)$
                 computedAt:
                     type: string
+            required:
+                - computedAt
+                - methodologyVersion
+                - scorecards
+                - unavailable
+                - unavailableReason
+            oneOf:
+                - properties:
+                    unavailable:
+                        const: false
+                    unavailableReason:
+                        const: ''
+                    methodologyVersion:
+                        const: 1.0.0
+                - properties:
+                    unavailable:
+                        const: true
+                    unavailableReason:
+                        const: scorecard-snapshot-unavailable
+                    methodologyVersion:
+                        const: ''
+                    computedAt:
+                        const: ''
+                    scorecards:
+                        maxItems: 0
+        worldmonitor_scorecard_v1_FiveFactorCountryScorecardSummary:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorPillarSummary'
+            required:
+                - countryCode
+                - pillars
+        worldmonitor_scorecard_v1_FiveFactorPillarSummary:
+            type: object
+            properties:
+                pillar:
+                    type: string
+                    pattern: ^(?:food|energy|demographics|technology|defense)$
+                hasScore:
+                    type: boolean
+                    description: Read before score and sub_score. When false, both numeric zeros are protobuf placeholders for insufficient data.
+                score:
+                    type: integer
+                    maximum: 5
+                    minimum: 0
+                    format: int32
+                subScore:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                band:
+                    type: string
+                    pattern: ^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$
+                inputCoverage:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                insufficientReasons:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^(?:source-unavailable|country-unavailable|invalid-value|stale|coverage-below-floor|required-group-missing|missing-population|redistribution-blocked)$
+            required:
+                - band
+                - hasScore
+                - inputCoverage
+                - insufficientReasons
+                - pillar
+                - score
+                - subScore
         worldmonitor_scorecard_v1_GetBlocScorecardRequest:
             type: object
             properties:
                 preset:
                     type: string
-                    description: 'Official bloc preset: eu, nato, asean, or brics. Omit when members is provided.'
+                    pattern: ^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$
+                    description: 'Official bloc preset: USMCA, EU27, BRICS, GCC, ASEAN, or NATO. Values are case-sensitive. Omit when members is provided.'
                 members:
                     type: array
                     items:
                         type: string
-                        description: Custom ISO 3166-1 alpha-2 country members. Omit when preset is provided.
+                        pattern: ^[A-Z]{2}$
+                    minItems: 2
+                    maxItems: 30
+                    uniqueItems: true
+                    description: Custom list of 2-30 unique uppercase ISO 3166-1 alpha-2 members. Provide either preset or members; do not provide both.
+            oneOf:
+                - required:
+                    - preset
+                  not:
+                    required:
+                        - members
+                - required:
+                    - members
+                  not:
+                    required:
+                        - preset
         worldmonitor_scorecard_v1_GetBlocScorecardResponse:
             type: object
             properties:
@@ -50884,6 +51171,28 @@ components:
                     type: boolean
                 unavailableReason:
                     type: string
+                    pattern: ^(?:|bloc-members-unavailable|scorecard-snapshot-unavailable)$
+            required:
+                - unavailable
+                - unavailableReason
+            oneOf:
+                - required:
+                    - scorecard
+                  properties:
+                    unavailable:
+                        const: false
+                    unavailableReason:
+                        const: ''
+                - not:
+                    required:
+                        - scorecard
+                  properties:
+                    unavailable:
+                        const: true
+                    unavailableReason:
+                        enum:
+                            - bloc-members-unavailable
+                            - scorecard-snapshot-unavailable
         worldmonitor_scorecard_v1_FiveFactorBlocScorecard:
             type: object
             properties:
@@ -50893,16 +51202,19 @@ components:
                     type: string
                 methodologyVersion:
                     type: string
+                    const: 1.0.0
                 computedAt:
                     type: string
                 members:
                     type: array
                     items:
                         type: string
+                        pattern: ^[A-Z]{2}$
                 includedMembers:
                     type: array
                     items:
                         type: string
+                        pattern: ^[A-Z]{2}$
                 excludedMembers:
                     type: array
                     items:
@@ -50911,6 +51223,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_scorecard_v1_FiveFactorPillar'
+            required:
+                - computedAt
+                - excludedMembers
+                - id
+                - includedMembers
+                - label
+                - members
+                - methodologyVersion
+                - pillars
         worldmonitor_seismology_v1_ListEarthquakesRequest:
             type: object
             properties:

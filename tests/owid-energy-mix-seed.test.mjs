@@ -162,7 +162,7 @@ describe('buildAllCountriesMap', () => {
   });
 
   it('each entry has exactly the 9 numeric share fields, consumption, and year', () => {
-    const expectedFields = ['year', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
+    const expectedFields = ['year', 'balanceYear', 'coalShare', 'gasShare', 'oilShare', 'nuclearShare', 'renewShare', 'windShare', 'solarShare', 'hydroShare', 'importShare', 'primaryEnergyConsumptionTwh'];
     const all = buildAllCountriesMap(makeCountries());
     for (const [iso2, entry] of Object.entries(all)) {
       const keys = Object.keys(entry).sort();
@@ -213,6 +213,33 @@ describe('golden fixture (OWID CSV)', () => {
   it('parseOwidCsv returns at least 1 country from the fixture', () => {
     const countries = parseOwidCsv(csv);
     assert.ok(countries.size >= 1, `expected >=1 country, got ${countries.size}`);
+  });
+
+  it('does not let a newer consumption-only row replace the latest complete energy-mix row', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'United States,USA,2023,20,40,1,18,21,10,5,6,7,25000',
+      'United States,USA,2024,,,,,,,,,,26000',
+    ].join('\n'));
+    assert.equal(countries.get('US')?.year, 2023);
+    assert.equal(countries.get('US')?.importShare, 7);
+    assert.equal(countries.get('US')?.primaryEnergyConsumptionTwh, 25_000);
+  });
+
+  it('keeps the latest complete balance when a newer electricity-share row omits imports', () => {
+    const header = 'country,iso_code,year,coal_share_elec,gas_share_elec,oil_share_elec,nuclear_share_elec,renewables_share_elec,wind_share_elec,solar_share_elec,hydro_share_elec,net_energy_imports,primary_energy_consumption';
+    const countries = parseOwidCsv([
+      header,
+      'United States,USA,2023,20,40,1,18,21,10,5,6,7,25000',
+      'United States,USA,2024,18,42,1,18,21,11,6,5,,26000',
+    ].join('\n'));
+    const us = countries.get('US');
+    assert.equal(us?.year, 2024);
+    assert.equal(us?.coalShare, 18);
+    assert.equal(us?.balanceYear, 2023);
+    assert.equal(us?.importShare, 7);
+    assert.equal(us?.primaryEnergyConsumptionTwh, 25_000);
   });
 
   it('picks the most recent year per country (US 2023 over 2022)', () => {

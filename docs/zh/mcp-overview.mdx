@@ -234,7 +234,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、铀、煤）。 |
 | `get_mineral_production` | 各国矿产开采/冶炼份额与 HHI（USGS MCS，BGS 补缺）。 |
 | `get_five_factor_scorecard` | 冻结版 v1 五因素韧性评分卡：食品、能源、人口结构、科技与国防。可查询一个国家、官方集团或已验证的自定义集团，并保留输入可用性与来源信息。 |
-| `list_five_factor_scorecards` | 紧凑列出各国五因素支柱评分、档位、覆盖率和数据不足原因。完整证据账本请使用单项评分卡工具。 |
+| `list_five_factor_scorecards` | 紧凑列出各国五因素支柱评分、档位、覆盖率和数据不足原因。读取数值前必须检查 `hasScore`；若为 false，零值只是数据不足占位符。完整证据账本请使用单项评分卡工具。 |
 
 ### 能源
 

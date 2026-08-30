@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { SCORECARD_INPUT_REGISTRY } from '../server/worldmonitor/scorecard/v1/_input-registry';
 import { bandScore, scoreCountry } from '../server/worldmonitor/scorecard/v1/_score-country';
 import { scoreBloc } from '../server/worldmonitor/scorecard/v1/_score-bloc';
+import { toPublicBlocScorecard } from '../server/worldmonitor/scorecard/v1/_response';
 import type {
   AvailableScorecardEvidence,
   CountryScorecardEvidence,
@@ -51,8 +52,7 @@ function country(
   }
   return {
     countryCode,
-    population: available('population', populationMillions),
-    inputs,
+    inputs: { ...inputs, population: available('population', populationMillions) },
   };
 }
 
@@ -72,6 +72,55 @@ describe('five-factor absolute bands', () => {
 });
 
 describe('five-factor evidence and coverage', () => {
+  it('scores at every exact coverage floor and rejects the next tested subset below it', () => {
+    const cases = [
+      {
+        pillar: 'food' as const,
+        exact: ['food.productionBalance', 'food.waterSecurity'] as ScorecardInputId[],
+        below: ['food.productionBalance', 'food.importDiversity'] as ScorecardInputId[],
+      },
+      {
+        pillar: 'energy' as const,
+        exact: ['energy.productionBalance'] as ScorecardInputId[],
+        below: ['energy.lowCarbonShare', 'energy.gridEfficiency'] as ScorecardInputId[],
+      },
+      {
+        pillar: 'demographics' as const,
+        exact: ['demographics.totalDependency', 'demographics.oldAgeDependency', 'demographics.workingAgeProjection', 'demographics.tertiaryEnrollment'] as ScorecardInputId[],
+        below: ['demographics.totalDependency', 'demographics.oldAgeDependency', 'demographics.workingAgeProjection', 'demographics.manufacturingEmploymentShare'] as ScorecardInputId[],
+      },
+      {
+        pillar: 'technology' as const,
+        exact: ['technology.internetUse', 'technology.mobileSubscriptions', 'technology.rdSpend', 'technology.stemGraduateShare'] as ScorecardInputId[],
+        below: ['technology.internetUse', 'technology.mobileSubscriptions', 'technology.rdSpend'] as ScorecardInputId[],
+      },
+      {
+        pillar: 'defense' as const,
+        exact: ['defense.expenditureUsd', 'defense.industrialBalance'] as ScorecardInputId[],
+        below: ['defense.expenditurePctGdp', 'defense.industrialBalance'] as ScorecardInputId[],
+      },
+    ];
+    for (const testCase of cases) {
+      const make = (ids: ScorecardInputId[]) => Object.fromEntries(ids.map((inputId) => [inputId, available(inputId, 1)]));
+      const exact = scoreCountry(country('AA', 1, make(testCase.exact))).pillars[testCase.pillar];
+      const below = scoreCountry(country('BB', 1, make(testCase.below))).pillars[testCase.pillar];
+      assert.equal(exact.hasScore, true, `${testCase.pillar} exact floor`);
+      assert.equal(below.hasScore, false, `${testCase.pillar} below floor`);
+      assert.ok(below.insufficientReasons.includes('coverage-below-floor'));
+    }
+  });
+
+  it('rejects exact coverage when a required evidence group is absent', () => {
+    const defense = scoreCountry(country('AA', 1, {
+      'defense.expenditureUsd': available('defense.expenditureUsd', 1_000_000_000),
+      'defense.expenditurePctGdp': available('defense.expenditurePctGdp', 2),
+      'defense.personnel': available('defense.personnel', 100_000),
+    })).pillars.defense;
+    assert.equal(defense.inputCoverage, 0.5);
+    assert.equal(defense.hasScore, false);
+    assert.ok(defense.insufficientReasons.includes('required-group-missing'));
+  });
+
   it('returns null with explicit unavailable and coverage reasons', () => {
     const result = scoreCountry(country('ZZ', 1));
     for (const pillar of Object.values(result.pillars)) {
@@ -188,13 +237,69 @@ describe('five-factor bloc aggregation', () => {
       'demographics.researchersPerMillion': available('demographics.researchersPerMillion', 2000),
       'demographics.trainedIndustrialShare': available('demographics.trainedIndustrialShare', 10),
     });
-    missingPopulation.population = unavailable('population');
+    missingPopulation.inputs.population = unavailable('population');
     const bloc = scoreBloc({ id: 'custom:AA-BB', label: 'AA + BB', members: [foodMember, missingPopulation] });
 
     assert.deepEqual(bloc.pillars.food.includedMembers, ['AA']);
     assert.deepEqual(bloc.pillars.food.excludedMembers, [{ countryCode: 'BB', reason: 'country-unavailable' }]);
     assert.deepEqual(bloc.pillars.demographics.includedMembers, ['AA']);
     assert.deepEqual(bloc.pillars.demographics.excludedMembers, [{ countryCode: 'BB', reason: 'missing-population' }]);
+  });
+
+  it('applies the bloc coverage floor to the full known population', () => {
+    const scoredMinority = country('AA', 1, {
+      'demographics.totalDependency': available('demographics.totalDependency', 50),
+      'demographics.oldAgeDependency': available('demographics.oldAgeDependency', 20),
+      'demographics.workingAgeProjection': available('demographics.workingAgeProjection', 1),
+      'demographics.tertiaryEnrollment': available('demographics.tertiaryEnrollment', 70),
+    });
+    const missingMajority = country('BB', 9);
+    const pillar = scoreBloc({ id: 'custom:AA-BB', label: 'AA + BB', members: [scoredMinority, missingMajority] }).pillars.demographics;
+    assert.equal(pillar.hasScore, false);
+    assert.equal(pillar.inputCoverage, 0.06);
+    assert.ok(pillar.insufficientReasons.includes('coverage-below-floor'));
+  });
+
+  it('does not report missing population when known-population members lack scoreable evidence', () => {
+    const pillar = scoreBloc({
+      id: 'custom:AA-BB',
+      label: 'AA + BB',
+      members: [country('AA', 1), country('BB', 2)],
+    }).pillars.technology;
+    assert.equal(pillar.hasScore, false);
+    assert.equal(pillar.insufficientReasons.includes('missing-population'), false);
+    assert.ok(pillar.insufficientReasons.includes('coverage-below-floor'));
+  });
+
+  it('does not score physical bloc ratios without aggregate numerators and denominators', () => {
+    const member = country('AA', 1, {
+      'energy.productionBalance': available('energy.productionBalance', 1),
+      'energy.lowCarbonShare': available('energy.lowCarbonShare', 50),
+      'energy.gridEfficiency': available('energy.gridEfficiency', 5),
+    });
+    const pillar = scoreBloc({ id: 'custom:AA-BB', label: 'AA + BB', members: [member, country('BB', 1)] }).pillars.energy;
+    assert.equal(pillar.hasScore, false);
+    assert.ok(pillar.insufficientReasons.includes('required-group-missing'));
+  });
+
+  it('keeps the real 32-member scorer response within the MCP budget', () => {
+    const members = Array.from({ length: 32 }, (_, index) => {
+      const patches = Object.fromEntries((Object.entries(SCORECARD_INPUT_REGISTRY) as Array<[ScorecardInputId, typeof SCORECARD_INPUT_REGISTRY[ScorecardInputId]]>)
+        .filter(([inputId]) => inputId !== 'population' && inputId !== 'defense.supplierDiversity')
+        .map(([inputId, definition]) => {
+          const value = definition.normalization.kind === 'log'
+            ? Math.sqrt(definition.normalization.worst * definition.normalization.best)
+            : (definition.normalization.worst + definition.normalization.best) / 2;
+          const aggregation = definition.blocAggregation === 'physical-ratio'
+            ? { numerator: value * 100, denominator: 100, unit: definition.unit }
+            : undefined;
+          return [inputId, available(inputId, value, aggregation ? { aggregation } : {})];
+        })) as Partial<Record<ScorecardInputId, AvailableScorecardEvidence>>;
+      return country(`M${String(index).padStart(2, '0')}`, index + 1, patches);
+    });
+    const response = toPublicBlocScorecard(scoreBloc({ id: 'NATO', label: 'NATO', members }), '2026-08-29T00:00:00.000Z');
+    assert.equal(response.pillars.reduce((count, pillar) => count + pillar.inputs.length, 0), 864);
+    assert.ok(Buffer.byteLength(JSON.stringify({ scorecard: response, unavailable: false, unavailableReason: '' })) < 1_048_576);
   });
 });
 

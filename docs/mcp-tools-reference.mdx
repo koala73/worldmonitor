@@ -683,6 +683,7 @@ List a compact summary for every country in the frozen scorecard cohort. Each ro
 - **Kind:** compact projection of the same atomic `scorecard:five-factor:v1` snapshot.
 
 Use `get_five_factor_scorecard` when you need input provenance, raw observations, or bloc aggregation.
+Always read `hasScore` before `score` or `subScore`. When `hasScore` is false, both numeric zeros are protobuf placeholders for insufficient data, not measured zero resilience.
 
 ```bash
 curl -s https://worldmonitor.app/mcp \

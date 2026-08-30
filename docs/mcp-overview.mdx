@@ -236,7 +236,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_food_stocks` | USDA PSD cereal stocks-to-use per country (or `WORLD`) by marketing year, optional per-commodity filter. |
 | `get_demographics_capability` | Country age structure, education capacity, and industrial-workforce observations (UN WPP, UNESCO UIS, ILOSTAT). |
 | `get_five_factor_scorecard` | Frozen v1 food, energy, demographics, technology, and defense scorecard for one country, official bloc preset, or validated custom bloc. Preserves input availability and source provenance. |
-| `list_five_factor_scorecards` | Compact country-by-country five-factor pillar scores, bands, coverage, and insufficient-data reasons. Use the single-scorecard tool for the full evidence ledger. |
+| `list_five_factor_scorecards` | Compact country-by-country five-factor pillar scores, bands, coverage, and insufficient-data reasons. Read `hasScore` before numeric scores; false means zero is an insufficient-data placeholder. Use the single-scorecard tool for the full evidence ledger. |
 
 ### Energy
 

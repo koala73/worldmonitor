@@ -22,7 +22,8 @@ import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
 import { STRATEGIC_WATERWAYS } from '@/config/geo';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { trackGateHit } from '@/services/analytics';
 import { fetchBypassOptions, fetchChokepointStatus } from '@/services/supply-chain';
 import { haversineDistanceKm } from '@/services/related-assets';
@@ -63,6 +64,7 @@ import { ciiBandForLevel } from './CountryDeepDivePanel-cii';
 import { renderDefenseIndustrialSection } from './CountryDeepDivePanel-defense-industrial';
 import { renderDemographicsCapabilitySection } from './CountryDeepDivePanel-demographics-capability';
 import { renderFiveFactorScorecardSection } from './CountryDeepDivePanel-five-factor-scorecard';
+import { combineAbortSignals } from '@/services/timeout-signal';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -158,6 +160,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private foodStocksRequestId = 0;
   private demographicsCapabilityRequestId = 0;
   private fiveFactorScorecardRequestId = 0;
+  private fiveFactorScorecardAbortController: AbortController | null = null;
+  private fiveFactorScorecardAuthUnsubscribe: (() => void) | null = null;
+  private fiveFactorScorecardEntitlementUnsubscribe: (() => void) | null = null;
+  private fiveFactorScorecardBody: HTMLElement | null = null;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
   private tradeExposureBody: HTMLElement | null = null;
@@ -315,7 +321,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.destroyResilienceWidget();
     this.foodStocksRequestId += 1;
     this.demographicsCapabilityRequestId += 1;
-    this.fiveFactorScorecardRequestId += 1;
+    this.tearDownFiveFactorScorecard();
     this.tearDownFollowButton();
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
@@ -2646,12 +2652,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       t('countryBrief.fiveFactorScorecard.title'),
       t('countryBrief.fiveFactorScorecard.help'),
     );
-    if (isPro) {
-      fiveFactorScorecardBody.append(this.makeLoading(t('countryBrief.fiveFactorScorecard.loading')));
-      void this.renderFiveFactorScorecard(code, fiveFactorScorecardBody);
-    } else {
-      fiveFactorScorecardBody.append(this.makeProLocked(t('countryBrief.fiveFactorScorecard.proLocked')));
-    }
+    this.mountFiveFactorScorecard(code, fiveFactorScorecardBody);
 
     const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity', 'Port-level tanker call volume and import/export cargo weight over 30 days. ⚠ badge = port running below 50% of its 30-day baseline. Source: IMF PortWatch.');
     this.maritimeBody = maritimeBody;
@@ -2853,9 +2854,48 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
   }
 
-  private async renderFiveFactorScorecard(code: string, body: HTMLElement): Promise<void> {
+  private mountFiveFactorScorecard(code: string, body: HTMLElement): void {
+    this.tearDownFiveFactorScorecard();
+    this.fiveFactorScorecardBody = body;
+    let lastAccess: boolean | null = null;
+    const syncAccess = (): void => {
+      if (this.currentCode !== code || this.fiveFactorScorecardBody !== body) return;
+      const hasAccess = hasPremiumAccess(getAuthState());
+      if (hasAccess === lastAccess) return;
+      lastAccess = hasAccess;
+      this.fiveFactorScorecardRequestId += 1;
+      this.fiveFactorScorecardAbortController?.abort();
+      this.fiveFactorScorecardAbortController = null;
+      if (!hasAccess) {
+        body.replaceChildren(this.makeProLocked(t('countryBrief.fiveFactorScorecard.proLocked')));
+        return;
+      }
+      body.replaceChildren(this.makeLoading(t('countryBrief.fiveFactorScorecard.loading')));
+      const accessController = new AbortController();
+      this.fiveFactorScorecardAbortController = accessController;
+      void this.renderFiveFactorScorecard(code, body, accessController.signal);
+    };
+    this.fiveFactorScorecardAuthUnsubscribe = subscribeAuthState(syncAccess);
+    this.fiveFactorScorecardEntitlementUnsubscribe = onEntitlementChange(syncAccess);
+    syncAccess();
+  }
+
+  private tearDownFiveFactorScorecard(): void {
+    this.fiveFactorScorecardRequestId += 1;
+    this.fiveFactorScorecardAbortController?.abort();
+    this.fiveFactorScorecardAbortController = null;
+    this.fiveFactorScorecardAuthUnsubscribe?.();
+    this.fiveFactorScorecardAuthUnsubscribe = null;
+    this.fiveFactorScorecardEntitlementUnsubscribe?.();
+    this.fiveFactorScorecardEntitlementUnsubscribe = null;
+    this.fiveFactorScorecardBody = null;
+  }
+
+  private async renderFiveFactorScorecard(code: string, body: HTMLElement, accessSignal: AbortSignal): Promise<void> {
     const requestId = ++this.fiveFactorScorecardRequestId;
-    const stillCurrent = (): boolean => requestId === this.fiveFactorScorecardRequestId;
+    const stillCurrent = (): boolean => requestId === this.fiveFactorScorecardRequestId
+      && this.currentCode === code
+      && this.fiveFactorScorecardBody === body;
     const signal = this.signal;
     try {
       if (typeof location === 'undefined') {
@@ -2863,20 +2903,26 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         return;
       }
       const { getFiveFactorScorecard } = await import('@/services/scorecard');
-      if (!stillCurrent() || signal.aborted) return;
-      const response = await getFiveFactorScorecard(code, signal);
-      if (!stillCurrent()) return;
+      if (!stillCurrent() || signal.aborted || accessSignal.aborted) return;
+      const response = await getFiveFactorScorecard(code, combineAbortSignals([signal, accessSignal]));
+      if (!stillCurrent() || !hasPremiumAccess(getAuthState())) return;
       body.replaceChildren(renderFiveFactorScorecardSection(response, t));
     } catch (error) {
       console.warn('[CountryDeepDivePanel] five-factor scorecard load failed', error);
-      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted;
-      if (!aborted) {
+      const cancelled = signal.aborted || accessSignal.aborted || !stillCurrent();
+      if (!cancelled) {
         this.captureCountryDeepDiveLoadFailure(error, code, {
           message: 'Five-factor scorecard load failed',
           widget: 'five-factor-scorecard',
         });
       }
-      if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.fiveFactorScorecard.unavailable')));
+      if (stillCurrent() && hasPremiumAccess(getAuthState())) {
+        body.replaceChildren(this.makeEmpty(t('countryBrief.fiveFactorScorecard.unavailable')));
+      }
+    } finally {
+      if (this.fiveFactorScorecardAbortController?.signal === accessSignal) {
+        this.fiveFactorScorecardAbortController = null;
+      }
     }
   }
 
@@ -3002,6 +3048,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private resetPanelContent(): void {
+    this.tearDownFiveFactorScorecard();
     this.destroyResilienceWidget();
     this.tearDownFollowButton();
     this.selectedSectorHs2 = null;
