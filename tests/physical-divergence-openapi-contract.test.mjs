@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { load as loadYaml } from 'js-yaml';
+import { PHYSICAL_DIVERGENCE_CONTRACT } from '../shared/physical-divergence-contract.js';
 
 const specs = [
   ['service JSON', JSON.parse(readFileSync(new URL('../docs/api/MarketService.openapi.json', import.meta.url), 'utf8'))],
@@ -32,6 +33,21 @@ describe('physical divergence OpenAPI contract', () => {
       const operation = spec.paths['/api/market/v1/get-physical-divergence-index'].get;
       const parameter = operation.parameters.find((candidate) => candidate.name === 'metals');
       assert.deepEqual(parameter.schema, expected, label);
+    }
+  });
+
+  it('publishes the shared reading and composite reason patterns', () => {
+    for (const [label, spec] of specs) {
+      assert.equal(
+        schema(spec, 'PhysicalDivergenceReading').properties.reason.pattern,
+        PHYSICAL_DIVERGENCE_CONTRACT.readingReasonPattern,
+        label,
+      );
+      assert.equal(
+        schema(spec, 'PhysicalStressComposite').properties.reason.pattern,
+        PHYSICAL_DIVERGENCE_CONTRACT.compositeReasonPattern,
+        label,
+      );
     }
   });
 });

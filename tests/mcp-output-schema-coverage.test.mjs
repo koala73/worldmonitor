@@ -30,6 +30,7 @@ import {
   extractPhysicalPremiumRegimeTransition,
   extractRegulatoryAction,
 } from '../scripts/seed-cross-source-signals.mjs';
+import { PHYSICAL_DIVERGENCE_CONTRACT } from '../shared/physical-divergence-contract.js';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
@@ -219,6 +220,14 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(crossSourceSignal.type.enum.includes('CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION'));
     const divergenceSchema = dataProperties('get_market_data')['physical-divergence'].properties;
     assert.equal(divergenceSchema.readings.items.properties.historyKey.type, 'string');
+    assert.deepEqual(
+      divergenceSchema.readings.items.properties.reason.enum,
+      PHYSICAL_DIVERGENCE_CONTRACT.readingReasonValues,
+    );
+    assert.deepEqual(
+      divergenceSchema.composite.properties.reason.enum,
+      PHYSICAL_DIVERGENCE_CONTRACT.compositeReasonValues,
+    );
     assert.deepEqual(divergenceSchema.composite.properties.weights.items.properties.metal.enum, ['gold', 'silver']);
     assert.equal(
       divergenceSchema.composite.properties.weights.items.properties.methodologyVersion.type,

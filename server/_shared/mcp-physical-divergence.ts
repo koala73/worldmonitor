@@ -2,10 +2,11 @@ import {
   isPhysicalDivergenceContractError,
   normalizePhysicalDivergenceSnapshot,
 } from './physical-divergence-snapshot';
+import { PHYSICAL_DIVERGENCE_CONTRACT } from '../../shared/physical-divergence-contract.js';
 
 export const PHYSICAL_PREMIUM_SYMBOL_ALIASES: Record<string, string[]> = {
-  gold: ['gold', 'xau', 'gc=f'],
-  silver: ['silver', 'xag', 'si=f'],
+  gold: ['gold', 'xau', PHYSICAL_DIVERGENCE_CONTRACT.metals.gold.paperSymbol.toLowerCase()],
+  silver: ['silver', 'xag', PHYSICAL_DIVERGENCE_CONTRACT.metals.silver.paperSymbol.toLowerCase()],
 };
 
 export const PHYSICAL_PREMIUM_OUTPUT_SCHEMA = {
@@ -16,7 +17,7 @@ export const PHYSICAL_PREMIUM_OUTPUT_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          metal: { type: 'string', enum: ['gold', 'silver'] },
+          metal: { type: 'string', enum: PHYSICAL_DIVERGENCE_CONTRACT.metalOrder },
           physical: { type: 'object', properties: { price: { type: 'number' }, currency: { type: 'string' }, unit: { type: 'string' }, source: { type: 'string' }, asOf: { type: 'string' } } },
           paper: { type: 'object', properties: { price: { type: 'number' }, source: { type: 'string' }, asOf: { type: 'string' } } },
           premiumUsdPerOz: { type: 'number' },
@@ -39,10 +40,10 @@ export const PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          metal: { type: 'string', enum: ['gold', 'silver'] },
-          state: { type: 'string', enum: ['ok', 'insufficient_history', 'stale_input', 'missing_input'] },
-          reason: { type: 'string' },
-          regime: { type: ['string', 'null'], enum: ['normal', 'elevated', 'stressed', 'extreme', null] },
+          metal: { type: 'string', enum: PHYSICAL_DIVERGENCE_CONTRACT.metalOrder },
+          state: { type: 'string', enum: PHYSICAL_DIVERGENCE_CONTRACT.states },
+          reason: { type: 'string', enum: PHYSICAL_DIVERGENCE_CONTRACT.readingReasonValues },
+          regime: { type: ['string', 'null'], enum: [...PHYSICAL_DIVERGENCE_CONTRACT.regimes, null] },
           index: { type: ['number', 'null'] },
           premiumPct: { type: ['number', 'null'] },
           premiumUsdPerOz: { type: ['number', 'null'] },
@@ -50,8 +51,8 @@ export const PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA = {
           robustZ: { type: ['number', 'null'] },
           delta5d: { type: ['number', 'null'] },
           delta20d: { type: ['number', 'null'] },
-          trend5d: { type: ['string', 'null'], enum: ['widening', 'stable', 'narrowing', null] },
-          trend20d: { type: ['string', 'null'], enum: ['widening', 'stable', 'narrowing', null] },
+          trend5d: { type: ['string', 'null'], enum: [...PHYSICAL_DIVERGENCE_CONTRACT.trends, null] },
+          trend20d: { type: ['string', 'null'], enum: [...PHYSICAL_DIVERGENCE_CONTRACT.trends, null] },
           historyPoints: { type: 'number' },
           historyWindowStart: { type: 'string' },
           historyWindowEnd: { type: 'string' },
@@ -82,15 +83,15 @@ export const PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA = {
     composite: {
       type: 'object',
       properties: {
-        state: { type: 'string', enum: ['ok', 'insufficient_history', 'stale_input', 'missing_input'] },
-        reason: { type: 'string' },
+        state: { type: 'string', enum: PHYSICAL_DIVERGENCE_CONTRACT.states },
+        reason: { type: 'string', enum: PHYSICAL_DIVERGENCE_CONTRACT.compositeReasonValues },
         index: { type: ['number', 'null'] },
         weights: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              metal: { type: 'string', enum: ['gold', 'silver'] },
+              metal: { type: 'string', enum: PHYSICAL_DIVERGENCE_CONTRACT.metalOrder },
               weight: { type: 'number' },
               methodologyVersion: { type: 'string' },
             },

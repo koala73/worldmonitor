@@ -3,14 +3,25 @@ import {
   isPhysicalDivergenceInstant,
   physicalDivergenceStaleReason,
 } from '../../shared/physical-divergence-staleness.js';
+import {
+  PHYSICAL_DIVERGENCE_CONTRACT,
+  buildPhysicalStressComposite,
+  isPhysicalDivergenceStoredCompositeReason,
+  isPhysicalDivergenceStoredReadingReason,
+  physicalDivergenceStateForFreshnessReason,
+  type PhysicalDivergenceMetal as ContractPhysicalDivergenceMetal,
+  type PhysicalDivergenceRegime,
+  type PhysicalDivergenceState,
+  type PhysicalDivergenceTrend,
+} from '../../shared/physical-divergence-contract.js';
 
-export const PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION = 'physical-divergence-v2';
-export const PHYSICAL_DIVERGENCE_METALS = ['gold', 'silver'] as const;
+export const PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION = PHYSICAL_DIVERGENCE_CONTRACT.methodologyVersion;
+export const PHYSICAL_DIVERGENCE_METALS = PHYSICAL_DIVERGENCE_CONTRACT.metalOrder;
 
-export type PhysicalDivergenceMetal = typeof PHYSICAL_DIVERGENCE_METALS[number];
-export type PhysicalDivergenceRawState = 'ok' | 'insufficient_history' | 'stale_input' | 'missing_input';
-export type PhysicalDivergenceRawRegime = 'normal' | 'elevated' | 'stressed' | 'extreme';
-export type PhysicalDivergenceRawTrend = 'widening' | 'stable' | 'narrowing';
+export type PhysicalDivergenceMetal = ContractPhysicalDivergenceMetal;
+export type PhysicalDivergenceRawState = PhysicalDivergenceState;
+export type PhysicalDivergenceRawRegime = PhysicalDivergenceRegime;
+export type PhysicalDivergenceRawTrend = PhysicalDivergenceTrend;
 
 export interface PhysicalDivergenceRawProvenance {
   physicalSource: string;
@@ -75,24 +86,9 @@ export interface PhysicalDivergenceRawTransition {
   methodologyVersion: string;
 }
 
-const PROVENANCE_CONTRACTS = {
-  gold: { physicalSymbol: 'SHAU', paperSymbol: 'GC=F', weight: 0.7 },
-  silver: { physicalSymbol: 'SHAG', paperSymbol: 'SI=F', weight: 0.3 },
-} as const;
-
-const RAW_STATES = new Set<PhysicalDivergenceRawState>([
-  'ok',
-  'insufficient_history',
-  'stale_input',
-  'missing_input',
-]);
-const RAW_REGIMES = new Set<PhysicalDivergenceRawRegime>(['normal', 'elevated', 'stressed', 'extreme']);
-const RAW_TRENDS = new Set<PhysicalDivergenceRawTrend>(['widening', 'stable', 'narrowing']);
-const NON_OK_STATE_PRIORITY: PhysicalDivergenceRawState[] = [
-  'missing_input',
-  'stale_input',
-  'insufficient_history',
-];
+const RAW_STATES = new Set<PhysicalDivergenceRawState>(PHYSICAL_DIVERGENCE_CONTRACT.states);
+const RAW_REGIMES = new Set<PhysicalDivergenceRawRegime>(PHYSICAL_DIVERGENCE_CONTRACT.regimes);
+const RAW_TRENDS = new Set<PhysicalDivergenceRawTrend>(PHYSICAL_DIVERGENCE_CONTRACT.trends);
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -166,7 +162,7 @@ function provenance(
   readingState: PhysicalDivergenceRawState,
 ): PhysicalDivergenceRawProvenance {
   const raw = object(value);
-  const contract = PROVENANCE_CONTRACTS[readingMetal];
+  const contract = PHYSICAL_DIVERGENCE_CONTRACT.metals[readingMetal];
   if (
     raw.physicalSymbol !== contract.physicalSymbol
     || !optionalMissingSource(
@@ -189,8 +185,8 @@ function provenance(
     )
     || !optionalMissingSource(raw.fxPair, (pair) => pair === 'CNY/USD', readingState)
     || !optionalMissingClock(raw.fxAsOf, isoInstant, readingState)
-    || raw.historyKey !== `market:physical-premium-history:v1:${readingMetal}`
-    || raw.historyWindowPoints !== 250
+    || raw.historyKey !== contract.historyKey
+    || raw.historyWindowPoints !== PHYSICAL_DIVERGENCE_CONTRACT.history.windowPoints
   ) throw new TypeError('Physical divergence reading has invalid provenance');
   return {
     physicalSource: raw.physicalSource,
@@ -202,8 +198,8 @@ function provenance(
     fxSource: raw.fxSource,
     fxPair: raw.fxPair,
     fxAsOf: raw.fxAsOf,
-    historyKey: `market:physical-premium-history:v1:${readingMetal}`,
-    historyWindowPoints: 250,
+    historyKey: contract.historyKey,
+    historyWindowPoints: PHYSICAL_DIVERGENCE_CONTRACT.history.windowPoints,
     methodologyVersion: methodology(raw.methodologyVersion),
   };
 }
@@ -262,7 +258,7 @@ function reading(value: unknown): PhysicalDivergenceRawReading {
   const readingMetal = metal(raw.metal);
   const readingState = state(raw.state);
   const readingProvenance = provenance(raw.provenance, readingMetal, readingState);
-  if (!string(raw.reason) || (readingState === 'ok' ? raw.reason !== '' : raw.reason.length === 0)) {
+  if (!string(raw.reason) || !isPhysicalDivergenceStoredReadingReason(readingState, raw.reason)) {
     throw new TypeError('Physical divergence reading has invalid state metadata');
   }
   if (!finite(raw.historyPoints) || !Number.isInteger(raw.historyPoints) || raw.historyPoints < 0) {
@@ -287,8 +283,8 @@ function reading(value: unknown): PhysicalDivergenceRawReading {
       || readingPercentile > 100
       || readingDelta5d == null
       || readingDelta20d == null
-      || raw.historyPoints < 60
-      || raw.historyPoints > 250
+      || raw.historyPoints < PHYSICAL_DIVERGENCE_CONTRACT.history.minimumPoints
+      || raw.historyPoints > PHYSICAL_DIVERGENCE_CONTRACT.history.windowPoints
     ) throw new TypeError('Ok physical divergence reading is incomplete');
   } else if (
     readingIndex != null
@@ -344,7 +340,7 @@ function canonicalWeights(value: unknown): PhysicalDivergenceRawComposite['weigh
     const weightMetal = metal(raw.metal);
     if (
       !finite(raw.weight)
-      || raw.weight !== PROVENANCE_CONTRACTS[weightMetal].weight
+      || raw.weight !== PHYSICAL_DIVERGENCE_CONTRACT.metals[weightMetal].weight
       || methodology(raw.methodologyVersion) !== PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION
     ) throw new TypeError('Physical divergence composite has an invalid weight');
     return [weightMetal, raw.weight] as const;
@@ -354,61 +350,28 @@ function canonicalWeights(value: unknown): PhysicalDivergenceRawComposite['weigh
   }
   return PHYSICAL_DIVERGENCE_METALS.map((weightMetal) => ({
     metal: weightMetal,
-    weight: PROVENANCE_CONTRACTS[weightMetal].weight,
+    weight: PHYSICAL_DIVERGENCE_CONTRACT.metals[weightMetal].weight,
     methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
   }));
-}
-
-function round(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
-function deriveComposite(
-  readings: PhysicalDivergenceRawReading[],
-  weights: PhysicalDivergenceRawComposite['weights'],
-): PhysicalDivergenceRawComposite {
-  const byMetal = new Map(readings.map((entry) => [entry.metal, entry]));
-  const firstNonOk = NON_OK_STATE_PRIORITY
-    .flatMap((entryState) => PHYSICAL_DIVERGENCE_METALS
-      .map((entryMetal) => byMetal.get(entryMetal))
-      .filter((entry) => entry?.state === entryState))[0];
-  if (firstNonOk) {
-    return {
-      state: firstNonOk.state,
-      reason: `member_not_ok:${firstNonOk.metal}:${firstNonOk.state}`,
-      index: null,
-      weights,
-      methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
-    };
-  }
-  const index = round(PHYSICAL_DIVERGENCE_METALS.reduce((sum, entryMetal) => (
-    sum + (byMetal.get(entryMetal)?.index ?? 0) * PROVENANCE_CONTRACTS[entryMetal].weight
-  ), 0));
-  return {
-    state: 'ok',
-    reason: '',
-    index,
-    weights,
-    methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
-  };
 }
 
 function validateStoredComposite(
   value: unknown,
   readings: PhysicalDivergenceRawReading[],
-): PhysicalDivergenceRawComposite['weights'] {
+): void {
   const raw = object(value);
   methodology(raw.methodologyVersion);
-  const weights = canonicalWeights(raw.weights);
-  const expected = deriveComposite(readings, weights);
+  canonicalWeights(raw.weights);
+  const expected = buildPhysicalStressComposite(readings);
   const actualState = state(raw.state);
   const actualIndex = nullableFinite(raw.index);
   if (
-    actualState !== expected.state
+    !string(raw.reason)
+    || !isPhysicalDivergenceStoredCompositeReason(actualState, raw.reason)
+    || actualState !== expected.state
     || raw.reason !== expected.reason
     || actualIndex !== expected.index
   ) throw new TypeError('Physical divergence composite does not match its member readings');
-  return weights;
 }
 
 function applyFreshness(
@@ -426,9 +389,7 @@ function applyFreshness(
     if (!staleReason) return entry;
     return {
       ...entry,
-      state: staleReason.endsWith('_in_future') || staleReason.endsWith('_invalid')
-        ? 'missing_input'
-        : 'stale_input',
+      state: physicalDivergenceStateForFreshnessReason(staleReason),
       reason: staleReason,
       regime: null,
       index: null,
@@ -486,11 +447,11 @@ export function normalizePhysicalDivergenceSnapshot(
     storedReadings.length !== PHYSICAL_DIVERGENCE_METALS.length
     || new Set(storedReadings.map((entry) => entry.metal)).size !== PHYSICAL_DIVERGENCE_METALS.length
   ) throw new TypeError('Physical divergence snapshot must contain gold and silver readings');
-  const weights = validateStoredComposite(raw.composite, storedReadings);
+  validateStoredComposite(raw.composite, storedReadings);
   const readings = applyFreshness(storedReadings, nowMs);
   return {
     readings,
-    composite: deriveComposite(readings, weights),
+    composite: buildPhysicalStressComposite(readings),
     evaluatedAt: raw.evaluatedAt,
     methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
     transitions: raw.transitions.map(transition),

@@ -25,6 +25,8 @@ const MIRRORED_FILES = [
   'iso2-to-region.json',
   'iso3-to-iso2.json',
   'publisher-families.js',
+  'physical-divergence-contract.js',
+  'physical-divergence-contract.d.ts',
   'physical-divergence-staleness.js',
   'physical-divergence-staleness.d.ts',
   'stablecoin-classifier.cjs',

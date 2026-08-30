@@ -19,6 +19,7 @@ import type {
   MarketQuoteUnavailable,
   MarketQuoteUnavailableReason,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { PHYSICAL_DIVERGENCE_CONTRACT } from '../../shared/physical-divergence-contract.js';
 import { openMarketChartModal } from './market-chart-modal';
 import { navigateToStockResearch } from '@/features/stock-research/stock-research-overlay';
 import { normalizeStockResearchSymbol } from '@/features/stock-research/stock-research-route';
@@ -404,16 +405,16 @@ function physicalDivergenceStateCopy(
     case 'PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY':
       return t('components.commodities.divergence.states.insufficientHistory', {
         count: historyPoints,
-        required: 60,
+        required: PHYSICAL_DIVERGENCE_CONTRACT.history.minimumPoints,
       });
     case 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT':
-      if (reason === 'physical_print_older_than_12_calendar_days') {
+      if (reason === PHYSICAL_DIVERGENCE_CONTRACT.reasons.physicalPrintStale) {
         return `${t('components.commodities.physical')}: ${t('popups.expired')}`;
       }
-      if (reason === 'paper_snapshot_older_than_36_hours') {
+      if (reason === PHYSICAL_DIVERGENCE_CONTRACT.reasons.paperSnapshotStale) {
         return `${t('components.commodities.paper')}: ${t('popups.expired')}`;
       }
-      if (reason === 'fx_snapshot_older_than_60_hours') {
+      if (reason === PHYSICAL_DIVERGENCE_CONTRACT.reasons.fxSnapshotStale) {
         return `FX: ${t('popups.expired')}`;
       }
       return t('components.commodities.divergence.states.staleInput');

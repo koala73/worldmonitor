@@ -1,6 +1,10 @@
-export const PHYSICAL_DIVERGENCE_STALE_AFTER_CALENDAR_DAYS = 12;
-export const PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS = 36 * 60 * 60 * 1000;
-export const PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS = 60 * 60 * 60 * 1000;
+import { PHYSICAL_DIVERGENCE_CONTRACT } from './physical-divergence-contract.js';
+
+export const PHYSICAL_DIVERGENCE_STALE_AFTER_CALENDAR_DAYS = PHYSICAL_DIVERGENCE_CONTRACT.freshness.physicalStaleAfterCalendarDays;
+export const PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS = PHYSICAL_DIVERGENCE_CONTRACT.freshness.paperMaxAgeMs;
+export const PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS = PHYSICAL_DIVERGENCE_CONTRACT.freshness.fxMaxAgeMs;
+
+const { reasons } = PHYSICAL_DIVERGENCE_CONTRACT;
 
 const SHANGHAI_DAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Shanghai',
@@ -65,26 +69,26 @@ function isInstantFuture(value, nowMs) {
 }
 
 export function physicalDivergenceStaleReason({ physicalAsOf, paperAsOf, fxAsOf }, nowMs) {
-  if (!isPhysicalDivergenceDate(physicalAsOf)) return 'physical_print_invalid';
-  if (!isPhysicalDivergenceInstant(paperAsOf)) return 'paper_snapshot_invalid';
-  if (!isPhysicalDivergenceInstant(fxAsOf)) return 'fx_snapshot_invalid';
+  if (!isPhysicalDivergenceDate(physicalAsOf)) return reasons.physicalPrintInvalid;
+  if (!isPhysicalDivergenceInstant(paperAsOf)) return reasons.paperSnapshotInvalid;
+  if (!isPhysicalDivergenceInstant(fxAsOf)) return reasons.fxSnapshotInvalid;
   if (isPhysicalDivergencePrintFuture(physicalAsOf, nowMs)) {
-    return 'physical_print_in_future';
+    return reasons.physicalPrintInFuture;
   }
   if (isPhysicalDivergencePrintStale(physicalAsOf, nowMs)) {
-    return 'physical_print_older_than_12_calendar_days';
+    return reasons.physicalPrintStale;
   }
   if (isInstantFuture(paperAsOf, nowMs)) {
-    return 'paper_snapshot_in_future';
+    return reasons.paperSnapshotInFuture;
   }
   if (isInstantStale(paperAsOf, nowMs, PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS)) {
-    return 'paper_snapshot_older_than_36_hours';
+    return reasons.paperSnapshotStale;
   }
   if (isInstantFuture(fxAsOf, nowMs)) {
-    return 'fx_snapshot_in_future';
+    return reasons.fxSnapshotInFuture;
   }
   if (isInstantStale(fxAsOf, nowMs, PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS)) {
-    return 'fx_snapshot_older_than_60_hours';
+    return reasons.fxSnapshotStale;
   }
   return null;
 }
