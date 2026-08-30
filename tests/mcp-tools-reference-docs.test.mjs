@@ -93,6 +93,19 @@ function documentedCacheToolNames() {
   });
 }
 
+/**
+ * Every registry tool must have its own `### `<name>`` section in the public
+ * reference. The cache-tool parity check below is deliberately scoped to cache
+ * tools, so before this guard an RPC tool could ship with no reference section
+ * at all and nothing failed -- which is how `get_resilience_indicators` reached
+ * production undocumented.
+ */
+function documentedToolSectionNames() {
+  return new Set(
+    [...DOC.matchAll(/^### `([a-z0-9_]+)`/gm)].map((match) => match[1]),
+  );
+}
+
 function expectedToolSpecificParams(tool) {
   const publicTool = buildPublicTool(tool, { compressDescriptions: false });
   return Object.entries(publicTool.inputSchema.properties)
@@ -109,6 +122,19 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
     assert.match(DOC, /Universal arguments:/);
     assert.match(DOC, /Every tool accepts `jmespath`/);
     assert.match(DOC, /Every cache tool also accepts `summary`/);
+  });
+
+  it('documents every registry tool, RPC tools included', () => {
+    const documented = documentedToolSectionNames();
+    const undocumented = __testing__.TOOL_REGISTRY
+      .map((tool) => tool.name)
+      .filter((name) => !documented.has(name))
+      .sort();
+    assert.deepEqual(
+      undocumented,
+      [],
+      'every TOOL_REGISTRY tool needs a section in docs/mcp-tools-reference.mdx',
+    );
   });
 
   it('cache tool-specific parameter tables match registry inputSchema properties', () => {
