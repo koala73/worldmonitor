@@ -125,7 +125,7 @@ function handlePreferenceChange(
   target: HTMLInputElement,
   container: HTMLElement,
   host: PreferencesHost,
-): boolean {
+): boolean | Promise<boolean> {
   switch (target.id) {
     case 'us-stream-quality':
       setStreamQuality(target.value as StreamQuality);
@@ -162,8 +162,7 @@ function handlePreferenceChange(
       return true;
     case 'us-language':
       trackLanguageChange(target.value);
-      void changeLanguage(target.value);
-      return true;
+      return changeLanguage(target.value);
     case 'us-cloud':
       setAiFlowSetting('cloudLlm', target.checked);
       updateAiStatus(container);
@@ -538,7 +537,14 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           return;
         }
 
-        if (handlePreferenceChange(target, container, host)) host.onSettingSaved?.();
+        const saveResult = handlePreferenceChange(target, container, host);
+        if (typeof saveResult === 'boolean') {
+          if (saveResult) host.onSettingSaved?.();
+          return;
+        }
+        void saveResult.then((saved) => {
+          if (saved) host.onSettingSaved?.();
+        }).catch(() => undefined);
       }, { signal });
 
       container.addEventListener('click', (e) => {

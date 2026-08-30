@@ -4,6 +4,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { resolveLanguageTag } from '@/shared/language-tags';
 import { readQueryLanguage, stripQueryLanguage } from '@/utils/i18n-url';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
 // Keep only first-paint English strings in the entry chunk. The full English
 // dictionary is loaded through localeModules so it can split like other locales.
@@ -32,6 +33,7 @@ export interface I18nResourcesLoadedDetail {
 
 const SUPPORTED_LANGUAGE_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
 const loadedLanguages = new Set<SupportedLanguage>();
+const languageChangeGuard = new LatestRequestGuard();
 
 // Lazy-load only the locale that's actually needed — all others stay out of the bundle.
 const localeModules = import.meta.glob<TranslationDictionary>(
@@ -227,10 +229,15 @@ export function t(key: string, options?: Record<string, unknown>): string {
 // `localStorage.removeItem(EXPLICIT_LOCALE_KEY)` and reload — the next
 // initI18n() will fall through `wmExplicit` and detect from navigator.
 // We deliberately don't ship that helper now since no UI consumes it.
-export async function changeLanguage(lng: string): Promise<void> {
+export async function changeLanguage(lng: string): Promise<boolean> {
+  const request = languageChangeGuard.begin();
   const normalized = await ensureLanguageLoaded(lng);
-  try { localStorage.setItem(EXPLICIT_LOCALE_KEY, normalized); } catch { /* private mode */ }
+  if (!languageChangeGuard.isCurrent(request)) return false;
+
   await i18next.changeLanguage(normalized);
+  if (!languageChangeGuard.isCurrent(request)) return false;
+
+  try { localStorage.setItem(EXPLICIT_LOCALE_KEY, normalized); } catch { /* private mode */ }
   applyDocumentDirection(normalized);
   // Drop any `?lang=` from the URL before reloading. `wmQuery` is first in
   // detection.order, so a stale query param would out-rank the explicit choice
@@ -242,6 +249,7 @@ export async function changeLanguage(lng: string): Promise<void> {
     }
   } catch { /* history unavailable */ }
   window.location.reload(); // Simple reload to update all components for now
+  return true;
 }
 
 // Helper to get current language (normalized to short code)
