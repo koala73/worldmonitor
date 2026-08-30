@@ -5,7 +5,7 @@ import {
   readBoundedRequestBody,
   RequestBodyTooLargeError,
 } from '../api/mcp/bounded-body.ts';
-import { MAX_JSON_RPC_BODY_BYTES } from '../api/mcp/constants.ts';
+import { MAX_JSON_RPC_BODY_BYTES } from '../api/mcp/body-limits.ts';
 
 describe('readBoundedRequestBody', () => {
   it('exports the shared 256 KiB MCP JSON-RPC body cap', () => {
@@ -77,6 +77,34 @@ describe('readBoundedRequestBody', () => {
       RequestBodyTooLargeError,
     );
     assert.equal(cancelled, true, 'oversized streams must be cancelled');
+  });
+
+  it('still caps when Content-Length understates the streamed body', async () => {
+    let cancelled = false;
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(8));
+        controller.enqueue(new Uint8Array(8));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    await assert.rejects(
+      () => readBoundedRequestBody(
+        new Request('https://example.test', {
+          method: 'POST',
+          headers: { 'Content-Length': '8' },
+          // @ts-expect-error — undici duplex for streaming bodies
+          duplex: 'half',
+          body: stream,
+        }),
+        10,
+      ),
+      RequestBodyTooLargeError,
+    );
+    assert.equal(cancelled, true, 'understated Content-Length must still cancel on overflow');
   });
 
   it('accepts a body whose size equals the cap', async () => {

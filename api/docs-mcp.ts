@@ -15,7 +15,7 @@
 // MCP spec reserves top-level errors for protocol-level failures only.
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
-import { MAX_JSON_RPC_BODY_BYTES } from './mcp/constants';
+import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 
 export const config = { runtime: 'edge' };
 

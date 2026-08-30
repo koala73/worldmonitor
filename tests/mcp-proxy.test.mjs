@@ -623,7 +623,7 @@ describe('api/mcp-proxy', () => {
     });
 
     it('rejects an oversized POST body before forwarding (#7406)', async () => {
-      const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/constants.ts');
+      const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
       const previousUpstashUrl = process.env.UPSTASH_REDIS_REST_URL;
       const previousUpstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
       delete process.env.UPSTASH_REDIS_REST_URL;
