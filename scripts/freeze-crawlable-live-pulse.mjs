@@ -38,7 +38,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchJson(url, { headers = {}, method = 'GET', body } = {}) {
+function normalizeApiBase(apiBase) {
+  return String(apiBase || API_BASE).replace(/\/$/, '');
+}
+
+async function fetchJson(url, { headers = {}, method = 'GET', body, apiBase = API_BASE } = {}) {
+  const origin = normalizeApiBase(apiBase);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
   try {
@@ -47,8 +52,8 @@ async function fetchJson(url, { headers = {}, method = 'GET', body } = {}) {
       headers: {
         'User-Agent': USER_AGENT,
         Accept: 'application/json',
-        Origin: `${API_BASE}`,
-        Referer: `${API_BASE}/`,
+        Origin: origin,
+        Referer: `${origin}/`,
         ...headers,
       },
       body,
@@ -73,20 +78,24 @@ async function fetchJson(url, { headers = {}, method = 'GET', body } = {}) {
   }
 }
 
-async function mintSession() {
-  const payload = await fetchJson(`${API_BASE}/api/wm-session`, {
+async function mintSession(apiBase = API_BASE) {
+  const base = normalizeApiBase(apiBase);
+  const payload = await fetchJson(`${base}/api/wm-session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
+    apiBase: base,
   });
   const token = String(payload?.token || '').trim();
   if (!token) throw new Error('wm-session response did not include a token');
   return token;
 }
 
-async function authedGet(pathname, token) {
-  return fetchJson(`${API_BASE}${pathname}`, {
+async function authedGet(pathname, token, apiBase = API_BASE) {
+  const base = normalizeApiBase(apiBase);
+  return fetchJson(`${base}${pathname}`, {
     headers: { Cookie: `wm-session=${token}` },
+    apiBase: base,
   });
 }
 
@@ -239,9 +248,10 @@ export async function freezeCrawlableLivePulse({
   apiBase = API_BASE,
   rootDir = REPO_ROOT,
 } = {}) {
+  const base = normalizeApiBase(apiBase);
   const freezeStartedAt = Date.now();
   const capturedAt = isoDate(freezeStartedAt);
-  const token = await mintSession();
+  const token = await mintSession(base);
   const { relativePath: resilienceSnapshotPath, codes } = await resolveLatestResilienceSnapshot();
   const crises = await loadCrises();
   const chokepointIds = await loadChokepointIds();
@@ -253,6 +263,7 @@ export async function freezeCrawlableLivePulse({
       const payload = await authedGet(
         `/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`,
         token,
+        base,
       );
       const view = liveRiskViewModel(payload, freezeStartedAt);
       countries[code] = countryRecord(view, payload, freezeStartedAt);
@@ -262,7 +273,7 @@ export async function freezeCrawlableLivePulse({
     await sleep(REQUEST_GAP_MS);
   }
 
-  const chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token);
+  const chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token, base);
   const chokepoints = {};
   const chokepointErrors = [];
   for (const id of chokepointIds) {
@@ -284,6 +295,7 @@ export async function freezeCrawlableLivePulse({
           const payload = await authedGet(
             `/api/conflict/v1/get-humanitarian-summary?country_code=${encodeURIComponent(country.code)}`,
             token,
+            base,
           );
           results.push({ code: country.code, payload });
         } catch (error) {
@@ -316,7 +328,7 @@ export async function freezeCrawlableLivePulse({
     schemaVersion: 1,
     capturedAt,
     capturedAtMs: freezeStartedAt,
-    apiBase,
+    apiBase: base,
     resilienceSnapshotPath,
     countries,
     chokepoints,
@@ -385,3 +397,5 @@ if (isMain) {
       process.exitCode = 1;
     });
 }
+
+export { normalizeApiBase, mintSession, authedGet };

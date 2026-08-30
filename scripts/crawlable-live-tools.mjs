@@ -706,7 +706,12 @@ function setTime(root, selector, timestamp, prefix) {
 
 /** True when SSR (or a prior successful hydrate) already stamped a dated pulse. */
 export function hasPublishedLivePulse(tool) {
-  return Boolean(tool.querySelector('[data-live-updated][datetime]'));
+  if (tool?.hasAttribute?.('data-published-pulse')) return true;
+  return Boolean(tool?.querySelector?.('[data-live-updated][datetime]'));
+}
+
+function markPublishedLivePulse(tool) {
+  tool?.setAttribute?.('data-published-pulse', '');
 }
 
 function renderList(root, selector, rows, formatter, emptyMessage = 'No current matches in this bounded result.') {
@@ -797,8 +802,12 @@ function renderCountryRiskViewModel(tool, view) {
   if (updated) {
     if (view.partial) {
       if (view.computedAt === null) {
-        updated.textContent = 'Advisory and sanctions signals retrieved live; no combined instability score for this country.';
-        updated.removeAttribute('datetime');
+        // Keep any SSR (or prior) datetime so a later soft failure still
+        // preserves advisory/sanctions via hasPublishedLivePulse().
+        const existingDatetime = updated.getAttribute('datetime');
+        updated.textContent = existingDatetime
+          ? `Retrieved ${formatDateTime(Date.parse(existingDatetime))} · advisory and sanctions only; no combined instability score`
+          : 'Advisory and sanctions signals retrieved live; no combined instability score for this country.';
       } else {
         setTime(tool, '[data-live-updated]', view.computedAt, 'Retrieved');
         const stamped = tool.querySelector('[data-live-updated]');
@@ -817,6 +826,7 @@ function renderCountryRiskViewModel(tool, view) {
       }
     }
   }
+  markPublishedLivePulse(tool);
   if (view.partial) setToolState(tool, 'partial', 'Partial API result');
   else setToolState(tool, 'ready', 'API result');
 }
@@ -885,6 +895,7 @@ export async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? 'Unavailable');
     setText(tool, '[data-chokepoint-description]', view.description);
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
+    markPublishedLivePulse(tool);
     setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial API result' : 'API result');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
@@ -948,6 +959,7 @@ export async function loadCrisis(tool) {
       );
     }
     setTime(tool, '[data-live-updated]', view.updatedAt, 'Retrieved');
+    markPublishedLivePulse(tool);
     setToolState(tool, view.state, view.state === 'partial' ? 'Partial API result' : 'API result');
   } catch {
     if (!isCurrentRequest(tool, state)) return;

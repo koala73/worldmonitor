@@ -985,6 +985,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
+      assert.match(norway, /data-published-pulse/);
       assert.match(norway, /Instability combines current information/);
       assert.match(norway, /do not combine the scores/);
       // #7376: no-JS HTML ships published pulse values, never Connecting…/Loading placeholders.
@@ -1529,6 +1530,7 @@ describe('crawlable corpus generator', () => {
       // Cross-link to the matching glossary term.
       assert.match(hormuz, /href="\/blog\/glossary\/strait-of-hormuz\/"/);
       assert.match(hormuz, /data-live-chokepoint data-chokepoint-id="hormuz_strait"/);
+      assert.match(hormuz, /data-published-pulse/);
       assert.match(hormuz, /traffic-light badge is a disruption score, not an operational closure declaration/i);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
       assert.doesNotMatch(hormuz, /id="app"/, 'chokepoint page must be raw static HTML, not the SPA shell');

@@ -760,6 +760,63 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(chokepoint.dataset.state, 'error');
   });
 
+  it('keeps SSR datetime after an undated partial country hydrate so later soft failures preserve sub-signals', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/andorra/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="AD" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>—</span><small data-live-band>No current score</small></strong></div>
+          <div class="metric"><strong data-live-trend>Unavailable</strong></div>
+          <div class="metric"><strong data-live-advisory>Exercise Normal Precautions</strong></div>
+          <div class="metric"><strong data-live-sanctions>None in feed</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-country-risk]');
+    const originalFetch = globalThis.fetch;
+    let phase = 'partial';
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      if (phase === 'partial') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            upstreamUnavailable: false,
+            advisoryLevel: 'Exercise Increased Caution',
+            sanctionsCount: 2,
+            fetchedAt: 0,
+            cii: undefined,
+          }),
+        };
+      }
+      throw new Error('offline');
+    };
+    try {
+      await loadCountryRisk(tool);
+      assert.equal(
+        tool.querySelector('[data-live-updated]').getAttribute('datetime'),
+        '2026-08-30T12:00:00.000Z',
+        'undated partial must retain the SSR datetime marker',
+      );
+      assert.equal(tool.querySelector('[data-live-advisory]').textContent, 'Exercise Increased Caution');
+      assert.equal(hasPublishedLivePulse(tool), true);
+
+      phase = 'fail';
+      await loadCountryRisk(tool);
+      assert.equal(tool.querySelector('[data-live-advisory]').textContent, 'Exercise Increased Caution');
+      assert.equal(tool.querySelector('[data-live-sanctions]').textContent, '2 designated entities');
+      assert.match(tool.querySelector('[data-live-status]').textContent, /published pulse/i);
+      assert.equal(tool.dataset.state, 'error');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('commits counters, URL, and dashboard link only for the latest request', async () => {
     const tool = {};
     const rendered = {
