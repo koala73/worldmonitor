@@ -353,7 +353,12 @@ function securityAuditMatrixLockfiles(): string[] {
 describe('CI workflow coverage', () => {
   it('runs the proto breaking check against the full main history (#6114)', () => {
     const breakingJob = workflowJobBlock(protoCheckWorkflow, 'proto-breaking');
-    assert.doesNotMatch(breakingJob, /^\s+if:/m, 'proto-breaking must run for fork pull requests');
+    assert.match(breakingJob, /^\s+needs: changes\s*$/m);
+    assert.match(
+      breakingJob,
+      /^\s+if: needs\.changes\.outputs\.breaking == 'true'\s*$/m,
+      'proto-breaking must run for schema changes from both internal and fork pull requests',
+    );
     const [checkoutStep] = workflowStepBlocksByUses(breakingJob, 'actions/checkout');
     assert.match(
       checkoutStep,
