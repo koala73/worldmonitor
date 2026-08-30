@@ -234,6 +234,17 @@ const PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT = [
   "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)",
   "return redis.call('LRANGE', KEYS[1], 0, tonumber(ARGV[4]) - 1)",
 ].join('\n');
+// PINNED COPY of scripts/seed-physical-premiums.mjs PUBLISH_PHYSICAL_PREMIUM_LUA.
+// The raw premium snapshot and its durable production activation marker must
+// become visible together so health cannot mistake a partial publish for a
+// producer that has never run.
+const PHYSICAL_PREMIUM_PUBLISH_SCRIPT = [
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
+  "if ARGV[3] == '1' then",
+  "  redis.call('SET', KEYS[2], '1')",
+  'end',
+  'return 1',
+].join('\n');
 // PINNED COPY of scripts/seed-physical-premiums.mjs PUBLISH_DIVERGENCE_LUA.
 // The derived snapshot, health metadata, activation marker, and transition
 // cooldowns must become visible together.
@@ -253,6 +264,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   STORY_ALIAS_PUBLISH_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
   PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
+  PHYSICAL_PREMIUM_PUBLISH_SCRIPT,
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
 ]);
 

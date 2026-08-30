@@ -29,6 +29,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
+import { localePathTokens } from './_locale-keys.mjs';
 
 export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
 
@@ -90,23 +91,6 @@ export function flatten(obj, prefix = '', out = {}) {
     else if (typeof v === 'string') out[key] = v;
   }
   return out;
-}
-
-export function localePathTokens(dotted) {
-  // Path tokens are either object keys (split on `.`) or array indices
-  // (`name[3]`). Split into a flat token list with explicit string/number
-  // typing so we can materialise arrays vs objects on demand.
-  const tokens = [];
-  for (const part of dotted.split('.')) {
-    const m = part.match(/^([^[]*)((?:\[\d+\])+)?$/);
-    if (m && m[1]) tokens.push({ type: 'key', value: m[1] });
-    if (m && m[2]) {
-      for (const idx of m[2].matchAll(/\[(\d+)\]/g)) {
-        tokens.push({ type: 'index', value: Number(idx[1]) });
-      }
-    }
-  }
-  return tokens;
 }
 
 function setNested(obj, dotted, value) {

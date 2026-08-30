@@ -92,6 +92,30 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
 const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
 const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
+const CROSS_SOURCE_SIGNAL_TYPES = [
+  'CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE',
+  'CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING',
+  'CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER',
+  'CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE',
+  'CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK',
+  'CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION',
+  'CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT',
+  'CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY',
+  'CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS',
+  'CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME',
+  'CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE',
+  'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
+] as const;
 
 function fitConflictEventsToBudget(data: Record<string, unknown>): void {
   const lists = CONFLICT_EVENT_LISTS.flatMap((label) => {
@@ -574,11 +598,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      try {
-        normalizePhysicalDivergenceDataset(data);
-      } catch {
-        delete data['physical-divergence'];
-      }
+      normalizePhysicalDivergenceDataset(data);
       const symbols = argStrList(params.symbols);
       if (symbols.length > 0) {
         for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
@@ -942,7 +962,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_news_intelligence',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).',
+    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1014,7 +1034,17 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       'cross-source-signals': {
         type: ['object', 'null'],
-        properties: { signals: { type: 'array', items: { type: 'object' } } },
+        properties: { signals: { type: 'array', items: { type: 'object', properties: {
+          id: { type: 'string' },
+          type: { type: 'string', enum: [...CROSS_SOURCE_SIGNAL_TYPES] },
+          theater: { type: 'string' },
+          summary: { type: 'string' },
+          severity: { type: 'string' },
+          severityScore: { type: 'number' },
+          detectedAt: { type: 'number' },
+          contributingTypes: { type: 'array', items: { type: 'string' } },
+          signalCount: { type: 'number' },
+        } } } },
       },
       'advisories-bootstrap': {
         type: ['object', 'null'],

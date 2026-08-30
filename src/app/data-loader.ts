@@ -250,6 +250,21 @@ export async function loadPhysicalPremiumComparison(
   }
 }
 
+export async function loadPhysicalPremiumComparisonIfNeeded(
+  panel: Pick<CommoditiesPanel,
+    | 'shouldRefreshPhysicalComparison'
+    | 'updatePhysicalPremiums'
+    | 'updatePhysicalDivergence'
+    | 'showPhysicalDivergenceUnavailable'>,
+  isCurrent: () => boolean,
+  fetchPremiums: PhysicalPremiumFetcher,
+  fetchDivergence: PhysicalDivergenceFetcher,
+): Promise<boolean> {
+  if (!panel.shouldRefreshPhysicalComparison()) return false;
+  await loadPhysicalPremiumComparison(panel, isCurrent, fetchPremiums, fetchDivergence);
+  return true;
+}
+
 const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
   STORY_PHASE_BREAKING:   'breaking',
   STORY_PHASE_DEVELOPING: 'developing',
@@ -2589,9 +2604,9 @@ export class DataLoaderManager implements AppModule {
         if (!energyLoaded) energyPanel?.updateTape([]);
       }
 
-      if (commoditiesPanel?.shouldRefreshPhysicalComparison()) {
+      if (commoditiesPanel) {
         try {
-          await loadPhysicalPremiumComparison(
+          await loadPhysicalPremiumComparisonIfNeeded(
             commoditiesPanel,
             isCurrent,
             fetchPhysicalPremiums,

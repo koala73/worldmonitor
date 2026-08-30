@@ -10,6 +10,7 @@ import {
   PHYSICAL_PREMIUM_HISTORY_KEY_PREFIX,
   PHYSICAL_PREMIUM_LOCK_TTL_MS,
   APPEND_HISTORY_LUA,
+  PUBLISH_PHYSICAL_PREMIUM_LUA,
   PUBLISH_DIVERGENCE_LUA,
   appendPhysicalPremiumHistory,
   buildPhysicalDivergenceSnapshot,
@@ -20,11 +21,12 @@ import {
   parseSgeBenchmarkHtml,
   physicalPremiumHistoryKey,
   physicalPremiumHistoryWriteCommand,
+  physicalPremiumPublishCommand,
   physicalDivergenceMeta,
   physicalDivergencePublishCommand,
   publishPhysicalDivergenceDerivedData,
   retryDerivedRedisCommand,
-  physicalPremiumActivationWrite,
+  runPhysicalPremiumSeed,
   shouldWritePhysicalPremiumActivationMarker,
   validatePhysicalPremiumPayload,
 } from '../scripts/seed-physical-premiums.mjs';
@@ -121,7 +123,7 @@ return #list, result, list
   return execution;
 }
 
-function executePublishDivergenceLua(command) {
+function executePublishLua(command, script = PUBLISH_DIVERGENCE_LUA) {
   const { lua, lauxlib, lualib, to_jsstring, to_luastring } = fengari;
   const state = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(state);
@@ -142,7 +144,7 @@ function redis.call(commandName, ...)
   return 'OK'
 end
 local function executeProductionScript()
-${PUBLISH_DIVERGENCE_LUA}
+${script}
 end
 executeProductionScript()
 local result = {}
@@ -305,24 +307,64 @@ describe('physical premium seed', () => {
     assert.throws(() => parseSeedTargetArgs(['--env=staging']), /Invalid --env/);
   });
 
-  it('writes the unprefixed activation marker only for production publishes', () => {
+  it('publishes the raw snapshot and production activation marker atomically', () => {
     assert.equal(shouldWritePhysicalPremiumActivationMarker('production'), true);
     assert.equal(shouldWritePhysicalPremiumActivationMarker('preview'), false);
     assert.equal(shouldWritePhysicalPremiumActivationMarker('development'), false);
+    const production = physicalPremiumPublishCommand({
+      canonicalKey: 'market:physical-premium:v1',
+      payload: '{"premium":1}',
+      ttlSeconds: 3600,
+      env: 'production',
+    });
+    const productionWrites = executePublishLua(production, PUBLISH_PHYSICAL_PREMIUM_LUA);
+    assert.equal(productionWrites['market:physical-premium:v1'].value, '{"premium":1}');
+    assert.equal(productionWrites['market:physical-premium:v1'].ttlSeconds, 3600);
+    assert.equal(productionWrites['seed-activated:market:physical-premium'].value, '1');
+    assert.equal(productionWrites['seed-activated:market:physical-premium'].ttlSeconds, -1);
+
+    const preview = physicalPremiumPublishCommand({
+      canonicalKey: 'preview:abc:market:physical-premium:v1',
+      payload: '{"premium":1}',
+      ttlSeconds: 3600,
+      env: parseSeedTargetArgs(['--env', 'preview', '--sha', 'abc']).env,
+    });
+    const previewWrites = executePublishLua(preview, PUBLISH_PHYSICAL_PREMIUM_LUA);
+    assert.equal(previewWrites['seed-activated:market:physical-premium'].value, undefined);
+  });
+
+  it('passes runtime bounds, target scope, and publish callbacks to runSeed', async () => {
+    const calls = [];
+    const invocation = await runPhysicalPremiumSeed(
+      ['--env', 'preview', '--sha', 'abc'],
+      {
+        runSeedFn: (...args) => args,
+        publishPremiumFn: async (context) => { calls.push(['premium', context]); },
+        publishDivergenceFn: async (context) => { calls.push(['divergence', context]); },
+      },
+    );
+    const [domain, resource, canonicalKey, , options] = invocation;
     assert.deepEqual(
-      physicalPremiumActivationWrite('production'),
-      ['SET', 'seed-activated:market:physical-premium', '1'],
+      { domain, resource, canonicalKey },
+      {
+        domain: 'market',
+        resource: 'physical-premium:preview:abc',
+        canonicalKey: 'preview:abc:market:physical-premium:v1',
+      },
     );
-    assert.equal(physicalPremiumActivationWrite('preview'), null);
-    assert.equal(physicalPremiumActivationWrite('development'), null);
-    assert.equal(
-      physicalPremiumActivationWrite(parseSeedTargetArgs(['--env', 'preview']).env),
-      null,
-    );
-    assert.equal(
-      physicalPremiumActivationWrite(parseSeedTargetArgs(['--env=development']).env),
-      null,
-    );
+    assert.equal(options.lockTtlMs, PHYSICAL_PREMIUM_LOCK_TTL_MS);
+    assert.equal(options.fetchPhaseTimeoutMs, PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS);
+    await options.publishAtomically({}, {
+      canonicalKey,
+      payload: '{"premium":1}',
+      ttlSeconds: 3600,
+    });
+    const payload = { premiums: [] };
+    await options.afterPublish(payload);
+    assert.deepEqual(calls, [
+      ['premium', { canonicalKey, payload: '{"premium":1}', ttlSeconds: 3600, env: 'preview' }],
+      ['divergence', { payload, prefix: 'preview:abc:' }],
+    ]);
   });
 
   it('uses one atomic append, date dedupe, and trim command for each bounded history list', async () => {
@@ -411,7 +453,7 @@ describe('physical premium seed', () => {
     assert.equal(command[11], '0');
     assert.equal(JSON.parse(command.at(-1)).transitionId, snapshot.transitions[0].id);
 
-    const previewWrites = executePublishDivergenceLua(command);
+    const previewWrites = executePublishLua(command);
     assert.deepEqual(JSON.parse(previewWrites[command[3]].value), snapshot);
     assert.equal(previewWrites[command[3]].ttlSeconds, Number(command[9]));
     assert.equal(JSON.parse(previewWrites[command[4]].value).sourceState, 'ok');
@@ -428,7 +470,7 @@ describe('physical premium seed', () => {
     });
     assert.equal(productionCommand[5], 'seed-activated:market:physical-divergence');
     assert.equal(productionCommand.at(-1), '1');
-    const productionWrites = executePublishDivergenceLua(productionCommand);
+    const productionWrites = executePublishLua(productionCommand);
     assert.equal(productionWrites[productionCommand[5]].value, '1');
     assert.equal(productionWrites[productionCommand[5]].ttlSeconds, -1);
   });
@@ -460,6 +502,21 @@ describe('physical premium seed', () => {
       physicalDivergenceMeta(snapshot, Date.parse('2026-08-18T12:30:00.000Z')).sourceState,
       'error',
     );
+  });
+
+  it('publishes the Shanghai physical-print deadline when it is the earliest clock', () => {
+    const snapshot = {
+      readings: ['gold', 'silver'].map(() => ({
+        state: 'ok',
+        physicalAsOf: '2026-08-18',
+        paperAsOf: '2026-09-30T00:00:00.000Z',
+        provenance: { fxAsOf: '2026-09-30T00:00:00.000Z' },
+      })),
+      composite: { state: 'ok', reason: '' },
+    };
+
+    const meta = physicalDivergenceMeta(snapshot, Date.parse('2026-08-18T12:30:00.000Z'));
+    assert.equal(meta.inputFreshUntil, Date.parse('2026-08-30T16:00:00.000Z'));
   });
 
   it('publishes bounded histories, the derived snapshot, metadata, and transition cooldowns', async () => {

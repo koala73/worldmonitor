@@ -132,7 +132,20 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       return tool.outputSchema.properties.data.properties;
     };
 
-    const newsStory = dataProperties('get_news_intelligence').insights.properties.topStories.items.properties;
+    const newsData = dataProperties('get_news_intelligence');
+    const newsTool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_news_intelligence');
+    const newsStory = newsData.insights.properties.topStories.items.properties;
+    const crossSourceSignal = newsData['cross-source-signals'].properties.signals.items.properties;
+    assert.match(newsTool.description, /physical-premium regime transitions/);
+    assert.ok(crossSourceSignal.type.enum.includes(
+      'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
+    ));
+    for (const field of [
+      'id', 'type', 'theater', 'summary', 'severity', 'severityScore', 'detectedAt',
+      'contributingTypes', 'signalCount',
+    ]) {
+      assert.ok(crossSourceSignal[field], `cross-source signal schema must declare ${field}`);
+    }
     assert.ok(newsStory.primaryTitle, 'news schema must declare primaryTitle');
     assert.ok(newsStory.primarySource, 'news schema must declare primarySource');
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');

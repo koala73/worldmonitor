@@ -80,22 +80,31 @@ export function shouldWritePhysicalPremiumActivationMarker(env) {
   return env === 'production';
 }
 
-export function physicalPremiumActivationWrite(env) {
-  return shouldWritePhysicalPremiumActivationMarker(env)
-    ? ['SET', PHYSICAL_PREMIUM_ACTIVATION_KEY, '1']
-    : null;
+export const PUBLISH_PHYSICAL_PREMIUM_LUA = `
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+if ARGV[3] == '1' then
+  redis.call('SET', KEYS[2], '1')
+end
+return 1
+`.trim();
+
+export function physicalPremiumPublishCommand({ canonicalKey, payload, ttlSeconds, env }) {
+  return [
+    'EVAL',
+    PUBLISH_PHYSICAL_PREMIUM_LUA,
+    '2',
+    canonicalKey,
+    PHYSICAL_PREMIUM_ACTIVATION_KEY,
+    payload,
+    String(ttlSeconds),
+    shouldWritePhysicalPremiumActivationMarker(env) ? '1' : '0',
+  ];
 }
 
-async function markPhysicalPremiumActivated({ env } = {}) {
-  const command = physicalPremiumActivationWrite(env);
-  if (!command) return;
-  try {
-    const creds = getOptionalUpstashCreds();
-    if (!creds) return;
-    await upstashCommand(creds, command);
-  } catch (error) {
-    console.warn(`  WARN: activation marker write failed: ${error?.message || error}`);
-  }
+export async function publishPhysicalPremiumAtomically(context) {
+  const creds = getOptionalUpstashCreds();
+  if (!creds) throw new Error('Redis credentials are unavailable for physical-premium publication');
+  await upstashCommand(creds, physicalPremiumPublishCommand(context));
 }
 
 export const APPEND_HISTORY_LUA = `
@@ -705,11 +714,18 @@ async function fetchPhysicalPremiums({ runStartedAtMs }) {
   });
 }
 
-export async function runPhysicalPremiumSeed(args = process.argv.slice(2)) {
+export async function runPhysicalPremiumSeed(
+  args = process.argv.slice(2),
+  {
+    runSeedFn = runSeed,
+    publishPremiumFn = publishPhysicalPremiumAtomically,
+    publishDivergenceFn = publishPhysicalDivergenceDerivedData,
+  } = {},
+) {
   const { env, sha } = parseSeedTargetArgs(args);
   const prefix = env === 'production' ? '' : `${env}:${sha}:`;
   const resource = env === 'production' ? 'physical-premium' : `physical-premium:${env}:${sha}`;
-  return runSeed('market', resource, `${prefix}${PHYSICAL_PREMIUM_KEY}`, fetchPhysicalPremiums, {
+  return runSeedFn('market', resource, `${prefix}${PHYSICAL_PREMIUM_KEY}`, fetchPhysicalPremiums, {
     lockTtlMs: PHYSICAL_PREMIUM_LOCK_TTL_MS,
     fetchPhaseTimeoutMs: PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS,
     validateFn: validatePhysicalPremiumPayload,
@@ -720,9 +736,11 @@ export async function runPhysicalPremiumSeed(args = process.argv.slice(2)) {
     maxStaleMin: 3 * DAY_MIN,
     contentMeta: physicalPremiumContentMeta,
     maxContentAgeMin: SGE_MAX_CONTENT_AGE_MIN,
+    publishAtomically: async (_payload, { canonicalKey, payload, ttlSeconds }) => {
+      await publishPremiumFn({ canonicalKey, payload, ttlSeconds, env });
+    },
     afterPublish: async (payload) => {
-      await publishPhysicalDivergenceDerivedData({ payload, prefix });
-      await markPhysicalPremiumActivated({ env });
+      await publishDivergenceFn({ payload, prefix });
     },
   });
 }

@@ -31,6 +31,7 @@ import type {
   McpToolExecutionContext,
 } from './types';
 import { utf8ByteLength } from './utils';
+import { McpStoredDataValidationError } from '../../server/_shared/mcp-physical-divergence';
 
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
@@ -157,6 +158,7 @@ export async function executeTool(
     try {
       result = tool._postFilter(structuredClone(data), params);
     } catch (err) {
+      if (err instanceof McpStoredDataValidationError) throw err;
       // Same minified-frame over-grouping guard as the tool-execution catch
       // below — key on step + tool + error type so a post-filter bug in one
       // tool doesn't merge into the shared api/mcp catch-all (WORLDMONITOR-T8).

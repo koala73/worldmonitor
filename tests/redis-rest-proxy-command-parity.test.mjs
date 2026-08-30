@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   APPEND_HISTORY_LUA,
+  PUBLISH_PHYSICAL_PREMIUM_LUA,
   PUBLISH_DIVERGENCE_LUA,
 } from '../scripts/seed-physical-premiums.mjs';
 
@@ -185,6 +186,19 @@ describe('redis-rest-proxy command gate', () => {
       accepts(gate, ['EVAL', `${APPEND_HISTORY_LUA} `, '1', 'history']),
       false,
       'a one-character script variant must stay blocked',
+    );
+  });
+
+  it('pins the atomic physical-premium publication by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(PUBLISH_PHYSICAL_PREMIUM_LUA), true);
+    assert.equal(
+      accepts(gate, ['EVAL', PUBLISH_PHYSICAL_PREMIUM_LUA, '2', 'snapshot', 'activation']),
+      true,
+    );
+    assert.equal(
+      accepts(gate, ['EVAL', `${PUBLISH_PHYSICAL_PREMIUM_LUA} `, '2', 'snapshot', 'activation']),
+      false,
     );
   });
 

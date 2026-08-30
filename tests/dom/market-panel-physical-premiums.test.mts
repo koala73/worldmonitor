@@ -38,7 +38,7 @@ function divergenceResponse(
       historyWindowStart: ok ? '2025-08-18' : '',
       historyWindowEnd: ok ? '2026-08-18' : '',
       physicalAsOf: '2026-08-18',
-      paperAsOf: '2026-08-18T12:22:24.000Z',
+      paperAsOf: Date.parse('2026-08-18T12:22:24.000Z'),
       historyKey: 'market:physical-premium-history:v1:gold',
       methodologyVersion: 'physical-divergence-v1',
       provenance: {
@@ -47,10 +47,10 @@ function divergenceResponse(
         physicalAsOf: '2026-08-18',
         paperSource: 'COMEX GC=F futures snapshot',
         paperSymbol: 'GC=F',
-        paperAsOf: '2026-08-18T12:22:24.000Z',
+        paperAsOf: Date.parse('2026-08-18T12:22:24.000Z'),
         fxSource: 'shared:fx-rates:v1',
         fxPair: 'CNY/USD',
-        fxAsOf: '2026-08-18T12:28:48.000Z',
+        fxAsOf: Date.parse('2026-08-18T12:28:48.000Z'),
         historyKey: 'market:physical-premium-history:v1:gold',
         historyWindowPoints: 250,
         methodologyVersion: 'physical-divergence-v1',
@@ -66,7 +66,7 @@ function divergenceResponse(
       ],
       methodologyVersion: 'physical-divergence-v1',
     },
-    evaluatedAt: '2026-08-18T12:30:00.000Z',
+    evaluatedAt: Date.parse('2026-08-18T12:30:00.000Z'),
     methodologyVersion: 'physical-divergence-v1',
   };
 }

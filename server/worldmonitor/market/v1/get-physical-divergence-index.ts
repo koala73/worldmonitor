@@ -1,12 +1,11 @@
 import type {
-  GetPhysicalDivergenceIndexRequest,
   GetPhysicalDivergenceIndexResponse,
+  MarketServiceHandler,
   PhysicalDivergenceReading,
   PhysicalDivergenceState,
   PhysicalPremiumRegime,
   PhysicalPremiumTrend,
   PhysicalStressComposite,
-  ServerContext,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import {
   PHYSICAL_DIVERGENCE_METALS,
@@ -70,10 +69,14 @@ function mapReading(raw: PhysicalDivergenceRawReading): PhysicalDivergenceReadin
     historyWindowStart: raw.historyWindowStart,
     historyWindowEnd: raw.historyWindowEnd,
     physicalAsOf: raw.physicalAsOf,
-    paperAsOf: raw.paperAsOf,
+    paperAsOf: Date.parse(raw.paperAsOf),
     historyKey: raw.provenance.historyKey,
     methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
-    provenance: raw.provenance,
+    provenance: {
+      ...raw.provenance,
+      paperAsOf: Date.parse(raw.provenance.paperAsOf),
+      fxAsOf: Date.parse(raw.provenance.fxAsOf),
+    },
   };
 }
 
@@ -101,7 +104,7 @@ function missingResponse(metals: readonly string[]): GetPhysicalDivergenceIndexR
       historyWindowStart: '',
       historyWindowEnd: '',
       physicalAsOf: '',
-      paperAsOf: '',
+      paperAsOf: 0,
       historyKey: `market:physical-premium-history:v1:${metal}`,
       methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
     })),
@@ -114,15 +117,12 @@ function missingResponse(metals: readonly string[]): GetPhysicalDivergenceIndexR
       ],
       methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
     },
-    evaluatedAt: '',
+    evaluatedAt: 0,
     methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
   };
 }
 
-export async function getPhysicalDivergenceIndex(
-  ctx: ServerContext,
-  req: GetPhysicalDivergenceIndexRequest,
-): Promise<GetPhysicalDivergenceIndexResponse> {
+export const getPhysicalDivergenceIndex: MarketServiceHandler['getPhysicalDivergenceIndex'] = async (ctx, req) => {
   const metals = resolvePhysicalPremiumMetals(parseStringArray(req.metals));
   const cacheRead = await readCachedJson(PHYSICAL_DIVERGENCE_KEY, true);
   if (cacheRead.status === 'error') throw cacheRead.error;
@@ -135,7 +135,7 @@ export async function getPhysicalDivergenceIndex(
   return {
     readings: metals.length === 0 ? readings : readings.filter((reading) => selected.has(reading.metal)),
     composite: mapComposite(snapshot.composite),
-    evaluatedAt: snapshot.evaluatedAt,
+    evaluatedAt: Date.parse(snapshot.evaluatedAt),
     methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
   };
-}
+};

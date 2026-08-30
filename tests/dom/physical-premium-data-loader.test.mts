@@ -1,12 +1,47 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { loadPhysicalPremiumComparison } from '@/app/data-loader';
+import {
+  loadPhysicalPremiumComparison,
+  loadPhysicalPremiumComparisonIfNeeded,
+} from '@/app/data-loader';
 import type {
   GetPhysicalDivergenceIndexResponse,
   GetPhysicalPremiumsResponse,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 
 describe('physical premium data loading', () => {
+  it('fetches only while the comparison needs discovery or refresh', async () => {
+    const panel = {
+      shouldRefreshPhysicalComparison: vi.fn(() => false),
+      updatePhysicalPremiums: vi.fn(),
+      updatePhysicalDivergence: vi.fn(),
+      showPhysicalDivergenceUnavailable: vi.fn(),
+    };
+    const fetchPremiums = vi.fn(async () => ({ premiums: [] }));
+    const fetchDivergence = vi.fn(async () => (
+      { readings: [], composite: undefined } as unknown as GetPhysicalDivergenceIndexResponse
+    ));
+
+    expect(await loadPhysicalPremiumComparisonIfNeeded(
+      panel,
+      () => true,
+      fetchPremiums,
+      fetchDivergence,
+    )).toBe(false);
+    expect(fetchPremiums).not.toHaveBeenCalled();
+    expect(fetchDivergence).not.toHaveBeenCalled();
+
+    panel.shouldRefreshPhysicalComparison.mockReturnValue(true);
+    expect(await loadPhysicalPremiumComparisonIfNeeded(
+      panel,
+      () => true,
+      fetchPremiums,
+      fetchDivergence,
+    )).toBe(true);
+    expect(fetchPremiums).toHaveBeenCalledOnce();
+    expect(fetchDivergence).toHaveBeenCalledOnce();
+  });
+
   it('keeps a successful premium response when divergence fails', async () => {
     const premiums: GetPhysicalPremiumsResponse = { premiums: [] };
     const panel = {

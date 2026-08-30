@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { flattenKeys } from './_locale-keys.mjs';
+import { flattenKeys, localePathTokens } from './_locale-keys.mjs';
 // Imported rather than restated: this file would otherwise be a third place
 // that has to be told zh-TW is generated, after translate-locales.mjs and the
 // catalogue test.
@@ -31,7 +31,6 @@ import {
   findPluralBases,
   flatten,
   getPluralCategories,
-  localePathTokens,
 } from './translate-locales.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

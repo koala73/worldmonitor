@@ -103,7 +103,7 @@ export interface GetPhysicalDivergenceIndexRequest {
 export interface GetPhysicalDivergenceIndexResponse {
   readings: PhysicalDivergenceReading[];
   composite?: PhysicalStressComposite;
-  evaluatedAt: string;
+  evaluatedAt: number;
   methodologyVersion: string;
 }
 
@@ -125,7 +125,7 @@ export interface PhysicalDivergenceReading {
   historyWindowStart: string;
   historyWindowEnd: string;
   physicalAsOf: string;
-  paperAsOf: string;
+  paperAsOf: number;
   historyKey: string;
   methodologyVersion: string;
   provenance?: PhysicalDivergenceProvenance;
@@ -137,10 +137,10 @@ export interface PhysicalDivergenceProvenance {
   physicalAsOf: string;
   paperSource: string;
   paperSymbol: string;
-  paperAsOf: string;
+  paperAsOf: number;
   fxSource: string;
   fxPair: string;
-  fxAsOf: string;
+  fxAsOf: number;
   historyKey: string;
   historyWindowPoints: number;
   methodologyVersion: string;

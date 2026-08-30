@@ -38,6 +38,11 @@ function isInstantStale(value, nowMs, maxAgeMs) {
   return Number.isFinite(inputMs) && nowMs - inputMs > maxAgeMs;
 }
 
+function isInstantFuture(value, nowMs) {
+  const inputMs = Date.parse(value);
+  return Number.isFinite(inputMs) && Number.isFinite(nowMs) && inputMs > nowMs;
+}
+
 export function physicalDivergenceStaleReason({ physicalAsOf, paperAsOf, fxAsOf }, nowMs) {
   if (isPhysicalDivergencePrintFuture(physicalAsOf, nowMs)) {
     return 'physical_print_in_future';
@@ -45,8 +50,14 @@ export function physicalDivergenceStaleReason({ physicalAsOf, paperAsOf, fxAsOf 
   if (isPhysicalDivergencePrintStale(physicalAsOf, nowMs)) {
     return 'physical_print_older_than_12_calendar_days';
   }
+  if (isInstantFuture(paperAsOf, nowMs)) {
+    return 'paper_snapshot_in_future';
+  }
   if (isInstantStale(paperAsOf, nowMs, PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS)) {
     return 'paper_snapshot_older_than_36_hours';
+  }
+  if (isInstantFuture(fxAsOf, nowMs)) {
+    return 'fx_snapshot_in_future';
   }
   if (isInstantStale(fxAsOf, nowMs, PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS)) {
     return 'fx_snapshot_older_than_60_hours';

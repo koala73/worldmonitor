@@ -959,6 +959,12 @@ function extractPhysicalPremiumRegimeTransition(d) {
   const payload = d['market:physical-divergence:v1'];
   const nowMs = Date.now();
   const readings = Array.isArray(payload?.readings) ? payload.readings : [];
+  const knownStates = new Set(['ok', 'insufficient_history', 'stale_input', 'missing_input']);
+  for (const reading of readings) {
+    if (typeof reading?.state === 'string' && !knownStates.has(reading.state)) {
+      throw new TypeError(`Unknown physical divergence state: ${reading.state}`);
+    }
+  }
   const readingsByMetal = new Map(readings.map((reading) => [reading?.metal, reading]));
   const inputsFresh = ['gold', 'silver'].every((metal) => {
     const reading = readingsByMetal.get(metal);

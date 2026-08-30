@@ -231,6 +231,29 @@ describe('physical divergence methodology v1', () => {
     );
   });
 
+  it('fails closed when COMEX or FX clocks are in the future', () => {
+    const history = Array.from({ length: 60 }, (_, index) => point(index));
+    const futurePaper = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold', { paper: { asOf: '2026-10-10T12:00:00.001Z' } }),
+      history,
+      fx: FX,
+      nowMs: NOW_MS,
+    });
+    const futureFx = buildPhysicalDivergenceReading({
+      metal: 'gold',
+      current: current('gold'),
+      history,
+      fx: { ...FX, asOf: '2026-10-10T12:00:00.001Z' },
+      nowMs: NOW_MS,
+    });
+
+    assert.deepEqual(
+      [futurePaper.state, futurePaper.reason, futureFx.state, futureFx.reason],
+      ['missing_input', 'paper_snapshot_in_future', 'missing_input', 'fx_snapshot_in_future'],
+    );
+  });
+
   it('keeps missing input distinct from a normal reading', () => {
     const missing = buildPhysicalDivergenceReading({
       metal: 'gold',

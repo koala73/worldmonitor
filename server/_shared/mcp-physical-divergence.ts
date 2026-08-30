@@ -88,10 +88,24 @@ export const PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA = {
   },
 } as const;
 
+export class McpStoredDataValidationError extends TypeError {
+  override name = 'McpStoredDataValidationError';
+}
+
 export function normalizePhysicalDivergenceDataset(data: Record<string, unknown>, nowMs = Date.now()): void {
   const raw = data['physical-divergence'];
   if (raw == null) return;
-  const { transitions: _, ...agentDataset } = normalizePhysicalDivergenceSnapshot(raw, nowMs);
+  let normalized: ReturnType<typeof normalizePhysicalDivergenceSnapshot>;
+  try {
+    normalized = normalizePhysicalDivergenceSnapshot(raw, nowMs);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.startsWith('Unknown physical divergence state:')) {
+      throw new McpStoredDataValidationError(error.message);
+    }
+    delete data['physical-divergence'];
+    return;
+  }
+  const { transitions: _, ...agentDataset } = normalized;
   if (!matchesPhysicalPremiumCohort(data['physical-premium'], agentDataset.readings)) {
     delete data['physical-divergence'];
     return;

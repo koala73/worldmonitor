@@ -1988,6 +1988,15 @@ export function buildWebMcpTools(
         if (!hasOnlyOwnKeys(args, ['panelId', 'tab'])) {
           return applyDashboardAction({ type: 'invalid_open_panel_arguments' }, app, extra);
         }
+        if (args.tab != null && args.panelId !== 'commodities') {
+          return boundDashboardActionResult({
+            ok: false,
+            status: 'invalid',
+            reason: 'panel_unsupported',
+            message: 'Panel tabs are supported only for the commodities panel.',
+            targets: [],
+          });
+        }
         const opened = await applyDashboardAction({
           type: 'open_panel',
           panelId: args.panelId,

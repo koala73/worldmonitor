@@ -210,7 +210,7 @@ export function buildPhysicalDivergenceReading({ metal, current, history, fx, no
     paperAsOf: current.paper.asOf,
     fxAsOf: fx.asOf,
   }, nowMs);
-  if (staleReason === 'physical_print_in_future') {
+  if (staleReason?.endsWith('_in_future')) {
     return nonOkReading(base, 'missing_input', staleReason);
   }
   if (staleReason) return nonOkReading(base, 'stale_input', staleReason);

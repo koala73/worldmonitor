@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { createMarketServiceRoutes } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
 import { marketHandler } from '../server/worldmonitor/market/v1/handler.ts';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
+import { serverOptions } from '../server/gateway.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import {
   METHODOLOGY_VERSION,
@@ -71,7 +72,7 @@ function snapshot(historyPoints: number) {
 }
 
 function routeHandler() {
-  const descriptor = createMarketServiceRoutes(marketHandler, {})
+  const descriptor = createMarketServiceRoutes(marketHandler, serverOptions)
     .find((route) => route.path === '/api/market/v1/get-physical-divergence-index');
   assert.ok(descriptor);
   return descriptor.handler;
@@ -107,6 +108,22 @@ afterEach(() => {
 });
 
 describe('GetPhysicalDivergenceIndex public contract', () => {
+  it('rejects unsupported and duplicate metal filters before Redis access', async () => {
+    let redisCalls = 0;
+    mock.method(globalThis, 'fetch', async () => {
+      redisCalls += 1;
+      return new Response(JSON.stringify({ result: null }));
+    });
+
+    for (const query of ['metals=platinum', 'metals=gold&metals=gold']) {
+      const response = await routeHandler()(
+        new Request(`https://worldmonitor.app/api/market/v1/get-physical-divergence-index?${query}`),
+      );
+      assert.equal(response.status, 400);
+    }
+    assert.equal(redisCalls, 0);
+  });
+
   it('proves the 59-point and 60-point state boundary through the generated public route', async () => {
     installRedisMock(snapshot(59));
     let response = await routeHandler()(new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index'));
@@ -149,10 +166,10 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
       physicalAsOf: '2026-08-18',
       paperSource: 'COMEX SI=F futures snapshot',
       paperSymbol: 'SI=F',
-      paperAsOf: '2026-08-18T12:00:00.000Z',
+      paperAsOf: Date.parse('2026-08-18T12:00:00.000Z'),
       fxSource: 'shared:fx-rates:v1',
       fxPair: 'CNY/USD',
-      fxAsOf: '2026-08-18T12:28:48.000Z',
+      fxAsOf: Date.parse('2026-08-18T12:28:48.000Z'),
       historyKey: 'market:physical-premium-history:v1:silver',
       historyWindowPoints: 250,
       methodologyVersion: METHODOLOGY_VERSION,
@@ -275,6 +292,30 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     }
   });
 
+  it('fails closed on future paper and FX clocks at request time', async () => {
+    for (const [clock, reason] of [
+      ['paper', 'paper_snapshot_in_future'],
+      ['fx', 'fx_snapshot_in_future'],
+    ] as const) {
+      const stored = snapshot(60);
+      for (const reading of stored.readings) {
+        if (clock === 'paper') {
+          reading.paperAsOf = '2026-08-18T12:30:00.001Z';
+          reading.provenance.paperAsOf = '2026-08-18T12:30:00.001Z';
+        } else {
+          reading.provenance.fxAsOf = '2026-08-18T12:30:00.001Z';
+        }
+      }
+      installRedisMock(stored);
+      const response = await routeHandler()(new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index'));
+      const body = await response.json();
+      assert.ok(body.readings.every((reading: { state: string }) => reading.state === 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT'));
+      assert.ok(body.readings.every((reading: { reason: string }) => reading.reason === reason));
+      mock.restoreAll();
+      mock.method(Date, 'now', () => NOW_MS);
+    }
+  });
+
   it('surfaces an unknown state as a server error instead of mapping it to normal', async () => {
     const corrupt = snapshot(60);
     corrupt.readings[0].state = 'future_state';
@@ -283,7 +324,7 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     const body = await response.json();
 
     assert.equal(response.status, 500);
-    assert.match(body.message, /Unknown physical divergence state/);
+    assert.equal(body.message, 'Internal server error');
   });
 
   it('rejects a stored composite that disagrees with its member readings', async () => {
@@ -294,7 +335,7 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     const response = await routeHandler()(new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index'));
     const body = await response.json();
     assert.equal(response.status, 500);
-    assert.match(body.message, /composite does not match its member readings/);
+    assert.equal(body.message, 'Internal server error');
 
     const filtered = marketDataTool._postFilter?.(
       { 'physical-divergence': structuredClone(corrupt) },
@@ -334,7 +375,7 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     const response = await routeHandler()(new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index'));
     const body = await response.json();
     assert.equal(response.status, 500);
-    assert.match(body.message, /must contain gold and silver readings/);
+    assert.equal(body.message, 'Internal server error');
 
     const filtered = marketDataTool._postFilter?.(
       { 'physical-divergence': structuredClone(corrupt) },

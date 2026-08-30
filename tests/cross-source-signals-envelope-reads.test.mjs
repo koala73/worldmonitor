@@ -666,6 +666,17 @@ it('rejects a recent transition when any required input clock is stale', () => {
   }), []);
 });
 
+it('fails closed when a divergence reading has an unknown state', () => {
+  const readings = freshPhysicalReadings(now);
+  readings[0].state = 'future_state';
+  assert.throws(
+    () => extractPhysicalPremiumRegimeTransition({
+      'market:physical-divergence:v1': { readings, transitions: [] },
+    }),
+    /Unknown physical divergence state/,
+  );
+});
+
 it('pins every physical premium transition severity tier', () => {
   const expected = {
     normal: [1.5, 'CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM'],

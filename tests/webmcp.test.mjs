@@ -711,6 +711,27 @@ describe('webmcp.ts: current API contract', () => {
     assert.equal(denied.panelTab.effectiveTab, 'commodities');
   });
 
+  it('rejects a tab on another panel before any UI action', async () => {
+    const calls = [];
+    const tool = buildWebMcpTools(createBindings({
+      applyDashboardAction: async (action) => {
+        calls.push(['open', action]);
+        throw new Error('must not open');
+      },
+      selectPanelTab: async (panelId, tab) => {
+        calls.push(['tab', panelId, tab]);
+        throw new Error('must not select');
+      },
+    }), () => {}).find((candidate) => candidate.name === 'open_dashboard_panel');
+
+    const result = await tool.execute({ panelId: 'markets', tab: 'physical' });
+    assert.deepEqual(calls, []);
+    assert.deepEqual(
+      { ok: result.ok, status: result.status, reason: result.reason },
+      { ok: false, status: 'invalid', reason: 'panel_unsupported' },
+    );
+  });
+
   it('includes active panel subtabs in dashboard context', async () => {
     const context = await buildWebMcpTools(createBindings({
       getDashboardContext: async () => ({

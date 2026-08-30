@@ -163,22 +163,21 @@ describe('get_market_data physical premium coverage', () => {
     );
   });
 
-  it('contains an unknown divergence state instead of mapping or returning it', () => {
+  it('fails closed on an unknown divergence state', () => {
     const corrupted = structuredClone(dataset);
     corrupted['physical-divergence'].readings[0].state = 'future_state';
-    const filtered = tool._postFilter?.(corrupted, { limit: 0 });
-    assert.equal(filtered?.['physical-divergence'], undefined);
+    assert.throws(
+      () => tool._postFilter?.(corrupted, { limit: 0 }),
+      /Unknown physical divergence state/,
+    );
   });
 
-  it('contains malformed divergence while preserving the remaining MCP filters', async () => {
+  it('fails the real MCP execution path on an unknown divergence state', async () => {
     const corrupted = structuredClone(dataset['physical-divergence']);
     corrupted.readings[0].state = 'future_state';
-    const result = await executeWithStoredData({ symbols: ['AAPL'], limit: 0 }, corrupted);
-
-    assert.equal(result.data['physical-divergence'], undefined);
-    assert.deepEqual(
-      (result.data['stocks-bootstrap'] as { quotes: Array<{ symbol: string }> }).quotes,
-      [{ symbol: 'AAPL' }],
+    await assert.rejects(
+      executeWithStoredData({ symbols: ['AAPL'], limit: 0 }, corrupted),
+      /Unknown physical divergence state/,
     );
   });
 

@@ -773,8 +773,8 @@ export class CommoditiesPanel extends Panel {
     premium: PhysicalPremium,
   ): boolean {
     return reading.physicalAsOf === premium.physical?.asOf
-      && reading.paperAsOf === premium.paper?.asOf
-      && reading.provenance?.fxAsOf === this._physicalPremiumFxAsOf;
+      && reading.paperAsOf === Date.parse(premium.paper?.asOf ?? '')
+      && reading.provenance?.fxAsOf === Date.parse(this._physicalPremiumFxAsOf);
   }
 
   private _renderXau(): string {

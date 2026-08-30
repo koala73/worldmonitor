@@ -19149,7 +19149,7 @@ paths:
                                         - "metal": "example"
                                           "methodologyVersion": "example"
                                           "weight": 1.5
-                                "evaluatedAt": "2026-01-15T12:00:00Z"
+                                "evaluatedAt": 1717200000000
                                 "methodologyVersion": "example"
                                 "readings":
                                     - "delta20d": 1.5
@@ -46326,7 +46326,12 @@ components:
                     type: array
                     items:
                         type: string
+                        maxItems: 2
+                        uniqueItems: true
                         description: Accepted values are "gold" and "silver". Empty returns both metals.
+                    maxItems: 2
+                    uniqueItems: true
+            description: GetPhysicalDivergenceIndexRequest selects zero or more supported metals.
         worldmonitor_market_v1_GetPhysicalDivergenceIndexResponse:
             type: object
             properties:
@@ -46337,14 +46342,19 @@ components:
                 composite:
                     $ref: '#/components/schemas/worldmonitor_market_v1_PhysicalStressComposite'
                 evaluatedAt:
-                    type: string
+                    type: integer
+                    format: int64
+                    description: 'Evaluation time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 methodologyVersion:
                     type: string
+                    description: Methodology identifier for the complete response.
+            description: GetPhysicalDivergenceIndexResponse returns metal readings and the composite.
         worldmonitor_market_v1_PhysicalDivergenceReading:
             type: object
             properties:
                 metal:
                     type: string
+                    description: 'Supported metal name: gold or silver.'
                 state:
                     type: string
                     enum:
@@ -46356,6 +46366,7 @@ components:
                     description: PhysicalDivergenceState is exhaustive for every divergence consumer.
                 reason:
                     type: string
+                    description: Machine-readable explanation for the state.
                 regime:
                     type: string
                     enum:
@@ -46364,27 +46375,35 @@ components:
                         - PHYSICAL_PREMIUM_REGIME_ELEVATED
                         - PHYSICAL_PREMIUM_REGIME_STRESSED
                         - PHYSICAL_PREMIUM_REGIME_EXTREME
+                    description: PhysicalPremiumRegime classifies the normalized premium distribution.
                 index:
                     type: number
                     format: double
+                    description: Normalized divergence index from 0 to 100.
                 premiumPct:
                     type: number
                     format: double
+                    description: Current physical premium as a percentage.
                 premiumUsdPerOz:
                     type: number
                     format: double
+                    description: Current physical premium in USD per troy ounce.
                 percentile:
                     type: number
                     format: double
+                    description: Current premium's empirical percentile from 0 to 100.
                 robustZ:
                     type: number
                     format: double
+                    description: Median-absolute-deviation robust z-score.
                 delta5d:
                     type: number
                     format: double
+                    description: Premium change versus five observations earlier.
                 delta20d:
                     type: number
                     format: double
+                    description: Premium change versus twenty observations earlier.
                 trend5d:
                     type: string
                     enum:
@@ -46392,6 +46411,7 @@ components:
                         - PHYSICAL_PREMIUM_TREND_WIDENING
                         - PHYSICAL_PREMIUM_TREND_STABLE
                         - PHYSICAL_PREMIUM_TREND_NARROWING
+                    description: PhysicalPremiumTrend describes a trailing premium direction.
                 trend20d:
                     type: string
                     enum:
@@ -46399,51 +46419,75 @@ components:
                         - PHYSICAL_PREMIUM_TREND_WIDENING
                         - PHYSICAL_PREMIUM_TREND_STABLE
                         - PHYSICAL_PREMIUM_TREND_NARROWING
+                    description: PhysicalPremiumTrend describes a trailing premium direction.
                 historyPoints:
                     type: integer
                     format: int32
+                    description: Number of valid observations available to the classifier.
                 historyWindowStart:
                     type: string
+                    description: Oldest observation date in the evaluated window.
                 historyWindowEnd:
                     type: string
+                    description: Newest observation date in the evaluated window.
                 physicalAsOf:
                     type: string
+                    description: Physical benchmark trading date in YYYY-MM-DD form.
                 paperAsOf:
-                    type: string
+                    type: integer
+                    format: int64
+                    description: 'Paper snapshot time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 historyKey:
                     type: string
+                    description: Redis history key used by the calculation.
                 methodologyVersion:
                     type: string
+                    description: Methodology identifier used by this reading.
                 provenance:
                     $ref: '#/components/schemas/worldmonitor_market_v1_PhysicalDivergenceProvenance'
+            description: PhysicalDivergenceReading is one metal's normalized divergence result.
         worldmonitor_market_v1_PhysicalDivergenceProvenance:
             type: object
             properties:
                 physicalSource:
                     type: string
+                    description: Human-readable physical benchmark provider.
                 physicalSymbol:
                     type: string
+                    description: Physical benchmark contract symbol.
                 physicalAsOf:
                     type: string
+                    description: Physical benchmark trading date in YYYY-MM-DD form.
                 paperSource:
                     type: string
+                    description: Human-readable paper benchmark provider.
                 paperSymbol:
                     type: string
+                    description: Paper benchmark contract symbol.
                 paperAsOf:
-                    type: string
+                    type: integer
+                    format: int64
+                    description: 'Paper snapshot time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 fxSource:
                     type: string
+                    description: Human-readable FX provider.
                 fxPair:
                     type: string
+                    description: FX conversion pair.
                 fxAsOf:
-                    type: string
+                    type: integer
+                    format: int64
+                    description: 'FX snapshot time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 historyKey:
                     type: string
+                    description: Redis history key used by the calculation.
                 historyWindowPoints:
                     type: integer
                     format: int32
+                    description: Maximum number of observations retained in history.
                 methodologyVersion:
                     type: string
+                    description: Methodology identifier used by this provenance record.
             description: PhysicalDivergenceProvenance preserves the exact inputs used for one reading.
         worldmonitor_market_v1_PhysicalStressComposite:
             type: object
@@ -46459,25 +46503,33 @@ components:
                     description: PhysicalDivergenceState is exhaustive for every divergence consumer.
                 reason:
                     type: string
+                    description: Machine-readable explanation for the aggregate state.
                 index:
                     type: number
                     format: double
+                    description: Weighted aggregate index from 0 to 100 when state is OK.
                 weights:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_market_v1_PhysicalStressWeight'
                 methodologyVersion:
                     type: string
+                    description: Methodology identifier used by the composite.
+            description: PhysicalStressComposite combines the supported metals into one index.
         worldmonitor_market_v1_PhysicalStressWeight:
             type: object
             properties:
                 metal:
                     type: string
+                    description: 'Supported metal name: gold or silver.'
                 weight:
                     type: number
                     format: double
+                    description: Composite weight from zero to one.
                 methodologyVersion:
                     type: string
+                    description: Methodology identifier used by this weight.
+            description: PhysicalStressWeight records one metal's composite contribution.
         worldmonitor_market_v1_GetSectorSummaryRequest:
             type: object
             properties:
