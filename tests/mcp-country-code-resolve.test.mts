@@ -249,8 +249,8 @@ describe('resolveCountryCode — the ladder', () => {
   });
 });
 
-// The ladder's ORDER is only safe because of two properties of the shipped
-// data. If a future regeneration of country-names.json breaks either one, the
+// The ladder's ORDER is only safe because of three properties of the shipped
+// data. If a future regeneration of country-names.json breaks any of them, the
 // order has to be revisited — so assert the properties, not just the outcomes.
 describe('data invariants the ladder order depends on', () => {
   it('the name map has exactly one two-character key, and it is uk', () => {
