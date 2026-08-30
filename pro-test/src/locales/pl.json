@@ -313,7 +313,7 @@
     "q11": "Jak spersonalizowany jest digest?",
     "a11": "Wybierz częstotliwość — codziennie, dwa razy dziennie lub tygodniowo. Przeliczamy co monitorowany artykuł względem Twoich reguł alertów i listy monitorowania, deduplikujemy w źródłach i wysyłamy do 30 rankingowanych pozycji z oceną AI i sygnałami do obserwacji napisanymi w Twoim kontekście. Alerty w czasie rzeczywistym są też dostępne dla krytycznych zdarzeń.",
     "q12": "Jakie jest tempo odświeżania?",
-    "a12": "Niemal w czasie rzeczywistym dla Pro. 5–15 minut na Free.",
+    "a12": "Pro odświeża notowania rynkowe co 30 sekund. Pozostałe dane podążają za kadencją swojego źródła. Free pozostaje przy standardowej kadencji źródła.",
     "q13": "Gdzie trafiają moje dane?",
     "a13": "Kanały powiadomień są szyfrowane AES-256 w spoczynku. Digesty nigdy nie opuszczają naszego pipeline'u nieoczyszczone."
   },

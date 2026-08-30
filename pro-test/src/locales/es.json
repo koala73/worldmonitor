@@ -313,7 +313,7 @@
     "q11": "¿Cómo de personalizado es el resumen?",
     "a11": "Elige tu cadencia — diaria, dos veces al día o semanal. Re-puntuamos cada noticia monitorizada contra tus reglas de alerta y lista de monitoreo, deduplicamos entre fuentes, y enviamos hasta 30 elementos clasificados con una Evaluación IA y Señales a monitorear escritas en tu contexto. También hay alertas en tiempo real disponibles para eventos críticos.",
     "q12": "¿Cuál es la tasa de actualización?",
-    "a12": "Casi en tiempo real para Pro. 5–15 minutos en Free.",
+    "a12": "Pro actualiza las cotizaciones de mercado cada 30 segundos. El resto de datos sigue la cadencia de su fuente. Free permanece en la cadencia estándar de la fuente.",
     "q13": "¿A dónde van mis datos?",
     "a13": "Los canales de notificación están cifrados AES-256 en reposo. Los resúmenes nunca salen de nuestro pipeline sin redactar."
   },

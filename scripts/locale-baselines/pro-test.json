@@ -96,7 +96,7 @@
   "faq.a1": "Yes. The core platform remains free. Pro adds equity research, macro analytics, and AI briefings. Pro Business adds the commercial license and data export. Enterprise adds team deployments and TV apps.",
   "faq.a10": "Yes. MCP is included in Pro — plug WorldMonitor into Claude, GPT, or any MCP-compatible LLM as a live tool.",
   "faq.a11": "Pick your cadence — daily, twice-daily, or weekly. We re-score every tracked story against your alert rules and watchlist, dedupe across sources, and send up to 30 ranked items with an AI Assessment and Signals to watch written to your context. Real-time alerts are also available for critical events.",
-  "faq.a12": "Near real time for Pro. 5–15 minutes on Free.",
+  "faq.a12": "Pro refreshes market quotes every 30 seconds. Other datasets follow each source's own cadence. Free stays on the standard source cadence.",
   "faq.a13": "Notification channels are AES-256 encrypted at rest. Digests never leave our pipeline unredacted.",
   "faq.a2": "Pro is for investors, analysts, and professionals who want stock monitoring, geopolitical analysis, economy analytics, and AI-powered daily briefings — all under one key.",
   "faq.a3": "Enterprise is for teams that need shared use, APIs, integrations, deployment options, and direct support.",

@@ -313,7 +313,7 @@
     "q11": "Quanto è personalizzato il digest?",
     "a11": "Scegli la tua cadenza — giornaliera, due volte al giorno o settimanale. Rivalutiamo ogni storia monitorata rispetto alle tue regole di avviso e watchlist, dedichiamo tra le fonti e inviamo fino a 30 elementi classificati con una Valutazione AI e Segnali da monitorare scritti nel tuo contesto. Gli avvisi in tempo reale sono disponibili anche per gli eventi critici.",
     "q12": "Qual è la frequenza di aggiornamento?",
-    "a12": "Quasi real-time per Pro. 5–15 minuti su Free.",
+    "a12": "Pro aggiorna le quotazioni di mercato ogni 30 secondi. Gli altri dataset seguono la cadenza della propria fonte. Free resta sulla cadenza standard della fonte.",
     "q13": "Dove vanno i miei dati?",
     "a13": "I canali di notifica sono crittografati AES-256 a riposo. I digest non lasciano mai la nostra pipeline non redatti."
   },

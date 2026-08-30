@@ -313,7 +313,7 @@
     "q11": "Mennyire személyre szabott a digest?",
     "a11": "Válaszd meg az ütemezésedet — napi, napanta kétszer vagy hetente. Minden nyomon követett történetet újrapontozunk a riasztási szabályaid és figyelőlistád szerint, forrásokon közösen eltávolítjuk, és legfeljebb 30 rangsorolt elemet küldünk AI Assessment és Signals to watch írásommal a kontextusodba. Valós idejű riasztások is elérhetők kritikus eseményekhez.",
     "q12": "Milyen gyakori a frissítés?",
-    "a12": "Pro esetén közel valós idejű. Ingyenes csomagban 5–15 perc.",
+    "a12": "A Pro 30 másodpercenként frissíti a piaci árakat. A többi adat a saját forrásának ütemét követi. A Free a standard forrásütemen marad.",
     "q13": "Hová kerülnek az adataim?",
     "a13": "Az értesítési csatornák nyugalmi állapotban AES-256-tal titkosítottak. A digestek soha nem hagyják el a pipeline-unkat az érzékeny adatok kitakarása nélkül."
   },

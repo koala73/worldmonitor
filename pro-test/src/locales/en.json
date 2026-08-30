@@ -432,7 +432,7 @@
     "q11": "How personalized is the digest?",
     "a11": "Pick your cadence — daily, twice-daily, or weekly. We re-score every tracked story against your alert rules and watchlist, dedupe across sources, and send up to 30 ranked items with an AI Assessment and Signals to watch written to your context. Real-time alerts are also available for critical events.",
     "q12": "What's the refresh rate?",
-    "a12": "Near real time for Pro. 5–15 minutes on Free.",
+    "a12": "Pro refreshes market quotes every 30 seconds. Other datasets follow each source's own cadence. Free stays on the standard source cadence.",
     "q13": "Where does my data go?",
     "a13": "Notification channels are AES-256 encrypted at rest. Digests never leave our pipeline unredacted."
   },
